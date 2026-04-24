@@ -474,7 +474,7 @@ test 'tax rounds to two decimals':
 
 ## Auth Guards on Mutations (MANDATORY — top source of compile errors)
 
-**Every mutation endpoint needs `requires login` as the first line.** Mutations = POST, PUT, DELETE. The compiler blocks builds without it.
+**Every mutation endpoint needs `requires login` as the first line.** Mutations = POST, PUT, DELETE. The compiler blocks builds without it — but only when the app actually has auth set up.
 
 ```clear
 // ✅ CORRECT
@@ -490,12 +490,22 @@ when user sends todo to /api/todos:
   save todo to Todos
   send back todo with status 201
 
-// ❌ WRONG — compiler blocks this
+// ❌ WRONG — compiler blocks this (when auth is scaffolded)
 when user calls DELETE /api/todos/:id:
   delete Todo with this id
 ```
 
 GET endpoints only need `requires login` if they expose private data. Mutations always need it.
+
+### Auth-less apps (toy K/V stores, webhook receivers, demos)
+
+If your app genuinely has no concept of user accounts — no `allow signup and login`, no Users table with a password field — the compiler downgrades the mutation-needs-auth error to a single summary warning at the top of the file listing every public mutation endpoint. This exists because demanding `requires login` on an app with no auth infrastructure is meaningless.
+
+**Two options when you see this warning:**
+1. **You want auth** — add `allow signup and login` at the top of your file and a Users table. Then add `requires login` to each mutation endpoint. The compiler will enforce it.
+2. **Public by design** (toy, demo, webhook receiver) — do nothing. The warning stays, the app compiles.
+
+Never add a bare `requires login` to an endpoint in an app that has no auth scaffolding — it will fail to authenticate anything because there's no user system to check against.
 
 ## URL Path Parameters — `this X`, Not Bare `X`
 

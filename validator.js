@@ -1050,6 +1050,35 @@ function validateSecurity(body, errors, warnings) {
   }
   collectSchemas(body);
 
+  // Auth-capability detection. The "mutation without auth" hard error only
+  // makes sense when the program HAS auth to apply. For toy apps without a
+  // Users-with-password table and without `allow signup and login`, demanding
+  // `requires login` is nonsense — there's nothing to check against. Session 45
+  // friction analysis showed ~50% give-up rate on such apps; Meph just had no
+  // good move. Gate the error on capability presence; emit a single summary
+  // warning instead when there's no capability.
+  const hasAuthScaffold = body.some(n => n && n.type === NodeType.AUTH_SCAFFOLD);
+  function hasUsersWithPassword(nodes) {
+    if (!Array.isArray(nodes)) return false;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.DATA_SHAPE) {
+        const nm = (n.name || '').toLowerCase();
+        const looksLikeUsers = nm === 'user' || nm === 'users';
+        const hasPassword = Array.isArray(n.fields) && n.fields.some(f => f.name === 'password');
+        if (looksLikeUsers && hasPassword) return true;
+      }
+      if (Array.isArray(n.body) && hasUsersWithPassword(n.body)) return true;
+    }
+    return false;
+  }
+  const hasAuthCapability = hasAuthScaffold || hasUsersWithPassword(body);
+
+  // Collect public-mutation endpoints in auth-less apps; we'll batch them
+  // into one top-of-file warning so Meph can triage once instead of seeing
+  // N per-endpoint errors for the same root cause.
+  const publicMutationsWithoutCapability = [];
+
   // Check endpoints for security issues
   function checkEndpoints(nodes) {
     for (const node of nodes) {
@@ -1059,15 +1088,22 @@ function validateSecurity(body, errors, warnings) {
         n.type === NodeType.REQUIRES_AUTH || n.type === NodeType.REQUIRES_ROLE
       );
 
-      // Check 1: Destructive endpoints without auth -- this is an error, not a warning
+      // Check 1: Destructive endpoints without auth.
+      // Hard error when the app HAS auth capability (so `requires login` can
+      // actually check something); advisory summary warning when it doesn't
+      // (the app is auth-less by design and the fix would be meaningless).
       if ((method === 'DELETE' || method === 'PUT') && !hasAuth) {
-        errors.push({
-          line: node.line,
-          patchable: true,
-          fix: [`  requires login`],
-          insertAfter: node.line,
-          message: `${method} ${node.path} needs 'requires login' as the first line of its body — right now anyone can ${method === 'DELETE' ? 'delete' : 'modify'} data without logging in. All mutation endpoints (POST, PUT, DELETE) must have 'requires login' unless explicitly public. Example:\n  when user calls ${method} ${node.path}:\n    requires login\n    <rest of body>`
-        });
+        if (hasAuthCapability) {
+          errors.push({
+            line: node.line,
+            patchable: true,
+            fix: [`  requires login`],
+            insertAfter: node.line,
+            message: `${method} ${node.path} needs 'requires login' as the first line of its body — right now anyone can ${method === 'DELETE' ? 'delete' : 'modify'} data without logging in. All mutation endpoints (POST, PUT, DELETE) must have 'requires login' unless explicitly public. Example:\n  when user calls ${method} ${node.path}:\n    requires login\n    <rest of body>`
+          });
+        } else {
+          publicMutationsWithoutCapability.push({ method, path: node.path, line: node.line });
+        }
       }
 
       // Check 1b: Auth is present but not on line 1 of the body — warn, don't error.
@@ -1136,6 +1172,24 @@ function validateSecurity(body, errors, warnings) {
     }
   }
   checkEndpoints(body);
+
+  // Auth-capability gate: when the app has no Users+password table and no
+  // `allow signup and login`, the per-endpoint mutation-needs-auth errors
+  // get batched here into one advisory warning at the top of the file. This
+  // is the fix for Session 45 friction items #2 + #5 (combined 25 rows,
+  // ~50% give-up rate). The warning tells Meph exactly how to convert this
+  // into a hard error (by adding auth capability) so it isn't lost noise.
+  if (!hasAuthCapability && publicMutationsWithoutCapability.length > 0) {
+    const list = publicMutationsWithoutCapability
+      .map(m => `${m.method} ${m.path} (line ${m.line})`)
+      .join(', ');
+    warnings.push(
+      `Security: ${publicMutationsWithoutCapability.length} public mutation endpoint(s) without auth: ${list}. ` +
+      `This is allowed because your app has no auth set up (no 'allow signup and login' declaration and no Users table with a password field). ` +
+      `If these endpoints should be gated, add 'allow signup and login' at the top of your file — then the compiler will require 'requires login' on each mutation endpoint. ` +
+      `If they're public by design (e.g. a toy K/V store or a webhook receiver), no action needed.`
+    );
+  }
 
   // Check 4: POST endpoints that handle login/signup without rate limiting
   function checkBruteForce(nodes) {

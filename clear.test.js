@@ -13333,6 +13333,110 @@ describe('Security - sensitive data exposure', () => {
   });
 });
 
+// Session 45 friction-score analysis: the "DELETE/PUT needs requires login"
+// hard error fired ~32 times with ~50% give-up rate on apps that had NO auth
+// scaffolding at all (toy K/V stores, demo scratch apps). `requires login`
+// had nothing to check against because there was no Users table and no
+// `allow signup and login` — the validator was demanding infrastructure
+// Meph didn't want. Auth-capability gating resolves this: hard error when
+// auth exists but isn't applied; single advisory warning when there's no
+// auth capability in the app at all.
+describe('Security - auth-capability gating on mutation endpoints', () => {
+  it('no hard error on DELETE when program has no auth scaffolding at all', () => {
+    // Toy K/V store: no Users table, no `allow signup and login`, no auth
+    // anywhere. The DELETE endpoint is public BY DESIGN — the app has no
+    // concept of accounts to log into. Pre-fix: hard error. Post-fix:
+    // compiles clean with a single top-of-file warning.
+    const src = `build for javascript backend
+database is local memory
+create a Store table:
+  store_key, required
+  store_value, required
+when user calls DELETE /api/store/:key:
+  delete Store where store_key is this key
+  send back 'ok'`;
+    const result = compileProgram(src);
+    const authErrors = result.errors.filter(e => /requires login/.test(e.message || ''));
+    expect(authErrors).toHaveLength(0);
+  });
+
+  it('still errors hard on DELETE in an app that DOES have auth', () => {
+    // App has `allow signup and login`. Now `requires login` has something
+    // to check against. Forgetting it on a mutation endpoint is a real bug.
+    const src = `build for javascript backend
+allow signup and login
+database is local memory
+create a Items table:
+  name, required
+when user calls DELETE /api/items/:id:
+  delete Items where id is this id
+  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => /requires login/.test(e.message || ''))).toBe(true);
+  });
+
+  it('still errors hard when auth capability comes from a Users table with password', () => {
+    // Users + password implies the app MODELS accounts even without the
+    // auth-scaffold directive. Mutation endpoints still need `requires login`.
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  email, required, unique
+  password, required
+create a Items table:
+  name, required
+when user calls DELETE /api/items/:id:
+  delete Items where id is this id
+  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => /requires login/.test(e.message || ''))).toBe(true);
+  });
+
+  it('emits ONE summary warning when an auth-less app has multiple public mutations', () => {
+    // Three DELETE endpoints in an auth-less app — one warning at the top,
+    // not three per-endpoint errors. Meph can triage once, not N times.
+    const src = `build for javascript backend
+database is local memory
+create a Store table:
+  key, required
+  value, required
+when user calls DELETE /api/store/:key:
+  delete Store where key is this key
+  send back 'ok'
+when user calls PUT /api/store/:key sending data:
+  save data to Store
+  send back data
+when user calls DELETE /api/store-all:
+  delete from Store
+  send back 'ok'`;
+    const result = compileProgram(src);
+    const publicMutationWarnings = result.warnings.filter(w =>
+      /public mutation|no auth/i.test(w) && /allow signup and login/i.test(w)
+    );
+    expect(publicMutationWarnings.length).toBe(1);
+    // Warning should reference all three endpoints by path
+    expect(publicMutationWarnings[0]).toContain('DELETE /api/store/:key');
+    expect(publicMutationWarnings[0]).toContain('PUT /api/store/:key');
+    expect(publicMutationWarnings[0]).toContain('DELETE /api/store-all');
+  });
+
+  it('the top-of-file warning names the count AND points to the fix', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Store table:
+  key, required
+when user calls DELETE /api/store/:key:
+  delete Store where key is this key
+  send back 'ok'`;
+    const result = compileProgram(src);
+    const w = result.warnings.find(w => /allow signup and login/i.test(w));
+    expect(w).toBeTruthy();
+    // Warning must tell Meph HOW to fix (add allow signup and login) AND
+    // how to keep things public if intentional (no-op acknowledgment).
+    expect(w).toMatch(/allow signup and login/);
+  });
+});
+
 describe('Security - open CORS without auth', () => {
   it('warns when CORS enabled but no auth on any endpoint', () => {
     const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  send back 'ok'`;

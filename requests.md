@@ -56,6 +56,8 @@
 
 ---
 
+> **Audit 2026-04-24 (Session 45):** ~32 rows / ~50% Meph-give-up rate on the "DELETE/PUT needs `requires login`" error were driven by apps with no auth scaffolding at all. Fixed by auth-capability gating: error downgrades to one top-of-file summary warning when there's no Users+password table and no `allow signup and login`. See CHANGELOG entry.
+
 ## 🗺️ JS vs Python Feature Matrix
 
 | Feature | JS Backend | Python Backend |

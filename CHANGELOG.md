@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Friction batch 2: auth-capability gate on mutation security check
+
+Session 45 friction data showed the "DELETE/PUT needs `requires login`" security error accounted for 25 rows and ~50% give-up rate (items #2 and #5 on the ranked list). Root cause surfaced from reading real Meph sessions: the apps were toy K/V stores with NO auth set up at all — no Users table, no `allow signup and login`. The validator was demanding `requires login`, which needs a user system to check against, in programs that had none. Meph had no valid move.
+
+**Fix:** auth-capability gate. The mutation-needs-auth check now branches on whether the program has auth capability (`allow signup and login` declaration OR a Users table with a password field):
+
+- **Auth capability present** → unchanged hard error on each DELETE/PUT missing `requires login`. The check still catches real auth bugs.
+- **No auth capability** → per-endpoint errors are batched into ONE advisory warning at the top of the file, naming every public mutation endpoint by path and line, and telling Meph exactly how to upgrade to a hard error (add `allow signup and login`) or acknowledge the public-by-design case.
+
+Before the fix, an auth-less 3-endpoint toy K/V store emitted 3 hard errors Meph couldn't resolve. After: 0 errors, 1 advisory warning listing all three — program compiles clean.
+
+5 new tests in `Security - auth-capability gating on mutation endpoints`: auth-less compiles clean, auth-scaffolded still errors (regression floor), Users+password still errors (capability via table), multi-endpoint summary warning, warning names every path + points to the fix. 2438 → 2443 tests green, zero regressions, all 8 core templates compile clean.
+
+This is a friction-driven fix: the Factor DB's top-5 script ranked it #2 and #5 combined. One rewrite shipped globally forever at \$0.
+
+---
+
 ## 2026-04-24 — Multipart file upload server middleware (TIER 2 #15)
 
 The client half of file upload already worked: `upload X to '/api/foo'` emitted `FormData` + `fetch` POST. The server half didn't. Any endpoint that received the multipart request saw `req.body = {}` because only `express.json()` was wired — `multipart/form-data` went unparsed, the handler got nothing, the file vanished silently.

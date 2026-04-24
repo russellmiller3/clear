@@ -140,6 +140,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Scheduled cron | `every 5 minutes:` / `every day at 9am:` | Interval or HH:MM recurrence; both wired into shutdown-safe cancellation. |
 | File upload (client) | `upload doc to '/api/upload'` | FormData + fetch POST. |
 | File upload (server) | auto-wired on POST endpoints that match client upload URLs | `_upload.any()` multer middleware with memoryStorage + 10MB default. |
+| Auth-capability gate | silence `requires login` on mutation endpoints for auth-less toy apps | Compiler detects whether the app has `allow signup and login` OR a `Users` table with a `password` field. Auth-capable apps still get hard errors; auth-less apps get one advisory warning listing every public mutation. |
 | Has many | `Users has many Posts` | Auto-generates nested GET endpoint |
 | Search | `search Posts for query` | Case-insensitive full-text |
 | Aggregates | `sum of amount in Orders` | Also `avg of`, `count of`, `min of`, `max of` |

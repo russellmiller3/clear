@@ -49,6 +49,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 45: Python `belongs to` JOIN silent bug](#session-45-python-belongs-to-join-silent-bug-2026-04-24) | Python schema emitter appended `s` to lowercased FK target (`userss(id)` for `belongs to Users`); Python backend ctx was missing `schemaMap` so `compileCrud` couldn't find FK fields to stitch; fix: use `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop; runtime smoke confirms embedded record on read |
 | [Session 45b: Scheduled-task shutdown leak](#session-45b-scheduled-task-shutdown-leak-2026-04-24) | Every `background` / `cron` / `agent runs every` compiled to an anonymous `setInterval`/`setTimeout`, which kept the event loop alive after `server.close()`; unified `_scheduledCancellers[]` registry drained by SIGTERM and SIGINT; HH:MM recursive setTimeout solved by closure over a mutable `_curTimer` so the canceller always sees the currently-armed timer |
 | [Session 45c: Multipart upload middleware auto-wiring](#session-45c-multipart-upload-middleware-auto-wiring-2026-04-24) | Client-side `upload X to '/api/foo'` always worked; server half received empty `req.body` because only `express.json()` was wired; compiler now walks nested AST (page > button > body) for UPLOAD_TO/ACCEPT_FILE, emits module-top multer + memoryStorage, injects `_upload.any()` middleware only on POST endpoints whose path matches an upload target — plain JSON POSTs untouched |
+| [Session 45d: Auth-capability gate on mutation security check](#session-45d-auth-capability-gate-on-mutation-security-check-2026-04-24) | "DELETE/PUT needs `requires login`" was firing as a hard error even on apps with NO auth setup (no Users+password, no `allow signup and login`) — Meph had no valid move since `requires login` had nothing to check against; 25 rows / 50% give-up rate on Factor DB; fix gates the error on capability presence and batches auth-less cases into one summary warning at file top |
 
 ---
 
@@ -1880,4 +1881,37 @@ Three footguns avoided:
 - **When a frontend node generates a specific HTTP contract, the compiler must wire the server to match.** UPLOAD_TO → multipart/form-data; the matching POST endpoint needs the parser. Stream endpoints → SSE; client needs the EventSource reader. JSON POSTs → `express.json()`; already handled. The client-server pair must be consistent, and the compiler is the only place that knows both halves.
 - **AST walks for cross-cutting features need to recurse into all body-like arrays, not just `body`.** Conditional branches (`thenBody`, `elseBody`), loop bodies, nested page blocks — missing any of these means features silently fail inside them. Pattern: scan for `Array.isArray(n.body)`, `Array.isArray(n.thenBody)`, `Array.isArray(n.elseBody)` and recurse into each.
 - **Negative-case tests are as important as positive.** Auto-wiring middleware on EVERY POST endpoint (lazy approach) would have broken JSON POST parsing for every app that doesn't use uploads. The test "does NOT wire multer on POST endpoints that are not upload targets" locks the discrimination in. Without it, one refactor could add `_upload.any()` everywhere and no test would complain.
+
+---
+
+## Session 45d: Auth-capability gate on mutation security check (2026-04-24)
+
+Session 45 friction-batch-2 pass surfaced a subtle failure mode. Friction items #2 + #5 (combined: 25 rows, ~50% give-up rate) were the "DELETE /api/foo/:key needs `requires login` as the first line" hard error. The message was already clear, included an example, and was marked `patchable: true` with a structured fix. So why was Meph giving up?
+
+Reading three real Meph sessions end-to-end answered it: the apps were **toy K/V stores**. No `allow signup and login`. No Users table. No auth infrastructure. Meph was being told to add `requires login` to an app that had no user system to check against. It's like demanding every function have a return type in a dynamic language — syntactically possible, semantically nonsense.
+
+### The capability gate
+
+Added a `hasAuthCapability` pre-check to `validateSecurity`:
+
+```js
+const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+function hasUsersWithPassword(nodes) {
+  // recurse into body-like arrays; look for a DATA_SHAPE named user/users
+  // with a password field
+}
+const hasAuthCapability = hasAuthScaffold || hasUsersWithPassword(body);
+```
+
+Two outcomes:
+- **Capability present** → unchanged hard error on each DELETE/PUT missing `requires login`.
+- **Capability absent** → collect the endpoints into an array during the pass; at the end, emit ONE top-of-file warning listing all the paths + lines + exactly how to upgrade to a hard error (add `allow signup and login` + Users table) OR acknowledge public-by-design (do nothing).
+
+### Gotchas-as-rules
+
+- **When a validator demands a feature, verify the feature's precondition is met.** Demanding `requires login` on an app with no auth setup is a check without a referent. Every rule in the validator should have a "what needs to exist for this rule to make sense" precondition — if the precondition isn't satisfied, downgrade to a warning or skip entirely. Otherwise the rule becomes a trap.
+- **Batch-summarize when the root cause is repeated.** N per-endpoint errors for the same root cause overwhelm the reader and hide the shared fix. One top-of-file warning listing all N with a single remediation path gives Meph (or a human) one thing to triage instead of N things to resolve independently.
+- **Friction data ranks; real sessions diagnose.** The top-friction script says WHICH error is expensive. Reading the actual `source_before` for 2-3 flagged rows tells you WHY it's expensive. Don't skip the second step — the error message might be fine; the failure might be in the validator's assumption about the program shape, not its wording.
+- **"Auth capability" beats "auth presence" as a predicate.** A program with no Users table and no auth-scaffold directive has no auth capability, period. Checking for the AUTH_SCAFFOLD node alone would miss custom-table-based setups; checking for the Users+password pattern alone would miss the scaffold-only case. The OR of both is what you want.
+- **Compile-error rewrites must be data-driven, not hunch-driven.** This fix targeted the top friction item (#2 + #5 same root cause); previous fixes targeted the top of batch 1. Running `node scripts/top-friction-errors.mjs` before touching validator error messages is a hard rule in project CLAUDE.md now because it's the difference between chasing symptoms and killing root causes.
 
