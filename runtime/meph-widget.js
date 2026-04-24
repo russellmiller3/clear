@@ -50,6 +50,29 @@
 		return claims && claims.role === 'owner';
 	}
 
+	// LAE Phase B: when the widget is running on a Cloudflare-deployed app,
+	// a <meta name="clear-cloud" content='{"tenantSlug":"X","appSlug":"Y"}'>
+	// tag tells us so. Future compiler cycle emits this tag automatically
+	// on the --target=cloudflare path; until then the tag must be added
+	// manually (or the widget just uses local paths, unchanged from Phase A).
+	function readCloudContext() {
+		try {
+			const meta = document.querySelector('meta[name="clear-cloud"]');
+			if (!meta) return null;
+			const raw = meta.getAttribute('content') || '';
+			const parsed = JSON.parse(raw);
+			if (parsed && parsed.tenantSlug && parsed.appSlug) {
+				return { tenantSlug: parsed.tenantSlug, appSlug: parsed.appSlug };
+			}
+		} catch { /* ignore malformed tag */ }
+		return null;
+	}
+	const cloudContext = readCloudContext();
+	// Remember the most-recent shipped versionId so Undo knows what to roll
+	// BACK FROM. Cloud rollback rolls to the version-before-this-one, which
+	// is versions[1] on the server side (versions[0] is the current live).
+	let _lastShippedVersionId = null;
+
 	function api(path, body) {
 		return fetch('/__meph__/api/' + path, {
 			method: 'POST',
@@ -267,12 +290,27 @@
 	async function shipProposal(proposal) {
 		addBot('Shipping...');
 		try {
-			const r = await api('ship', { newSource: proposal.newSource });
+			// LAE Phase B: when cloudContext is known, include tenantSlug +
+			// appSlug so the backend routes to the Cloudflare incremental-
+			// update path. When unset, the backend takes the local respawn
+			// path (Phase A behavior, unchanged).
+			const body = { newSource: proposal.newSource };
+			if (cloudContext) {
+				body.tenantSlug = cloudContext.tenantSlug;
+				body.appSlug = cloudContext.appSlug;
+			}
+			const r = await api('ship', body);
 			if (!r.ok) {
 				addBot([el('div', { class: 'clear-meph-err' }, [r.body.error || 'Ship failed'])]);
 				return;
 			}
-			addBot('Shipped in ' + (r.body.elapsed_ms || '?') + 'ms. Reloading...');
+			// Remember the new versionId if the cloud path set one — used
+			// by Undo so we know what to roll back FROM.
+			if (r.body && r.body.versionId) _lastShippedVersionId = r.body.versionId;
+			const mode = r.body && r.body.mode;
+			const urlMsg = r.body && r.body.url ? ' at ' + r.body.url : '';
+			const modeMsg = mode === 'update' ? ' (cloud update)' : '';
+			addBot('Shipped' + modeMsg + ' in ' + (r.body.elapsed_ms || '?') + 'ms' + urlMsg + '. Reloading...');
 			setTimeout(() => window.location.reload(), 1200);
 		} catch (err) {
 			addBot([el('div', { class: 'clear-meph-err' }, ['Ship error: ' + err.message])]);
@@ -284,9 +322,52 @@
 		addBot('Cancelled.');
 	}
 
+	// Fetch the current version history so cloud Undo knows which version
+	// to target (the second-most-recent, i.e. the one before the last ship).
+	async function fetchCloudVersionTarget() {
+		if (!cloudContext) return null;
+		try {
+			const r = await fetch('/__meph__/api/deploy-history?appSlug=' + encodeURIComponent(cloudContext.appSlug), {
+				headers: { Authorization: 'Bearer ' + getToken() },
+			});
+			if (!r.ok) return null;
+			const body = await r.json();
+			// versions[0] is the current live; versions[1] is the previous.
+			if (body && Array.isArray(body.versions) && body.versions.length >= 2) {
+				return body.versions[1].versionId;
+			}
+		} catch { /* fall through */ }
+		return null;
+	}
+
 	async function undoLast() {
 		addBot('Undoing the last change...');
 		try {
+			// LAE Phase B: cloud-deployed apps use the Cloudflare rollback
+			// path (rollbackToVersion + recordVersion); local apps use the
+			// snapshot-restore path (Phase A, unchanged).
+			if (cloudContext) {
+				const targetVersionId = await fetchCloudVersionTarget();
+				if (!targetVersionId) {
+					addBot([el('div', { class: 'clear-meph-err' }, ['No previous version to roll back to.'])]);
+					return;
+				}
+				const r = await api('cloud-rollback', {
+					tenantSlug: cloudContext.tenantSlug,
+					appSlug: cloudContext.appSlug,
+					targetVersionId,
+				});
+				if (!r.ok) {
+					const msg = (r.body && r.body.code === 'VERSION_GONE')
+						? 'That version has been removed from Cloudflare. History will refresh.'
+						: (r.body && r.body.error) || 'Cloud rollback failed';
+					addBot([el('div', { class: 'clear-meph-err' }, [msg])]);
+					return;
+				}
+				addBot('Rolled back to the previous version. Reloading...');
+				setTimeout(() => window.location.reload(), 1000);
+				return;
+			}
 			const r = await api('rollback', { relative: -1 });
 			if (!r.ok) {
 				addBot([el('div', { class: 'clear-meph-err' }, [r.body.error || 'Undo failed'])]);

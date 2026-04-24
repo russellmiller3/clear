@@ -8,8 +8,9 @@ import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
-import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './eval-auth.js';
-import { wireDeploy } from './deploy.js';
+import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken, verifyLegacyEvalAuthToken } from './eval-auth.js';
+import { wireDeploy, getDeployDeps } from './deploy.js';
+import { deploySource as deploySourceCloudflare } from './deploy-cloudflare.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
 import {
@@ -129,28 +130,20 @@ try {
 
 // Middleware that populates req.user from a Bearer JWT using Studio's
 // existing eval secret. Matches the shape runtime/auth.js produces.
+//
+// Security: uses verifyLegacyEvalAuthToken which constant-time compares the
+// HMAC-SHA256 signature, rejects expired tokens, rejects malformed tokens.
+// Before Session 44, this middleware parsed the payload WITHOUT verifying
+// the signature — anyone with the token shape could forge {"role":"owner"}
+// and pass the downstream owner-gate. Verify + timing-safe compare closes
+// that hole.
 function liveEditAuth(req, res, next) {
   const h = req.headers.authorization || '';
   if (!h.startsWith('Bearer ')) {
     req.user = null;
     return next();
   }
-  const token = h.slice(7);
-  const parts = token.split('.');
-  if (parts.length !== 2) {
-    req.user = null;
-    return next();
-  }
-  try {
-    const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
-    if (payload.exp && payload.exp < Date.now()) {
-      req.user = null;
-    } else {
-      req.user = payload;
-    }
-  } catch {
-    req.user = null;
-  }
+  req.user = verifyLegacyEvalAuthToken(h.slice(7));
   next();
 }
 
@@ -169,11 +162,42 @@ createEditApi(app, {
     }
     return await callMeph({ prompt, source, apiKey: key });
   },
-  applyShip: async (newSource) => {
-    // Cycle 10b: compile the new source, then POST to Studio's own /api/run
-    // to write files and respawn the child app. Returns the new port so
-    // the widget can reload to the right URL.
+  applyShip: async (newSource, cloudContext) => {
     const t0 = Date.now();
+
+    // LAE Phase B: if the widget supplied tenantSlug + appSlug AND the
+    // deploy infrastructure is wired AND the app is cloud-deployed, push
+    // an incremental update to Cloudflare and return. Otherwise fall through
+    // to the local write/compile/respawn path (Phase A behavior, unchanged).
+    if (cloudContext && cloudContext.tenantSlug && cloudContext.appSlug) {
+      const deps = getDeployDeps();
+      if (deps && deps.store) {
+        try {
+          const lastRecord = await deps.store.getAppRecord(cloudContext.tenantSlug, cloudContext.appSlug);
+          if (lastRecord && lastRecord.scriptName) {
+            const cfRes = await deploySourceCloudflare({
+              source: newSource,
+              tenantSlug: cloudContext.tenantSlug,
+              appSlug: cloudContext.appSlug,
+              mode: 'update',
+              lastRecord,
+              via: 'widget',
+              secrets: {},
+              api: deps.api,
+              store: deps.store,
+              rootDomain: deps.rootDomain,
+            });
+            return { ...cfRes, elapsed_ms: Date.now() - t0 };
+          }
+        } catch (err) {
+          // Cloud path errored — fall through to local so the widget at
+          // least sees SOME response; log for the next-session debug.
+          console.warn('[lae-cloud-ship] fell back to local after error:', err.message);
+        }
+      }
+    }
+
+    // Local path (Phase A): compile, POST to /api/run, respawn child.
     let compiled;
     try {
       compiled = compileProgram(newSource);
@@ -210,6 +234,46 @@ createEditApi(app, {
   },
   widgetScript: _liveEditWidgetSource,
   listSnapshots: async () => _listSnapshots(),
+  // LAE Phase B Phase 4 — cloud rollback. Widget sends {tenantSlug, appSlug,
+  // targetVersionId}; we call rollbackToVersion on Cloudflare and record
+  // a new 'widget-undo-v<N>' version row so history stays linear. Returns
+  // {ok, newVersionId} on success, {ok:false, code} for error paths the
+  // widget UI surfaces (VERSION_GONE, NOT_DEPLOYED, etc).
+  applyCloudRollback: async ({ tenantSlug, appSlug, targetVersionId }) => {
+    const deps = getDeployDeps();
+    if (!deps || !deps.store || !deps.api) {
+      return { ok: false, code: 'CLOUD_NOT_CONFIGURED', error: 'Cloudflare deploy infrastructure not wired on this server' };
+    }
+    const lastRecord = await deps.store.getAppRecord(tenantSlug, appSlug);
+    if (!lastRecord || !lastRecord.scriptName) {
+      return { ok: false, code: 'NOT_DEPLOYED', error: 'App has no deployed version to roll back to' };
+    }
+    try {
+      const r = await deps.api.rollbackToVersion({
+        scriptName: lastRecord.scriptName,
+        versionId: targetVersionId,
+      });
+      if (!r || !r.ok) {
+        // CF returns 404 when the version has been retention-purged.
+        const code = r && r.status === 404 ? 'VERSION_GONE' : 'ROLLBACK_FAILED';
+        return { ok: false, code, error: (r && r.error) || 'rollback failed' };
+      }
+      // Record the rollback as a new version entry so history stays linear
+      // rather than branching. Prior versions stay addressable on CF.
+      const noteSuffix = targetVersionId.slice(0, 8);
+      await deps.store.recordVersion({
+        tenantSlug,
+        appSlug,
+        versionId: targetVersionId,
+        uploadedAt: new Date().toISOString(),
+        note: `widget-undo-to-${noteSuffix}`,
+        via: 'widget',
+      });
+      return { ok: true, newVersionId: targetVersionId };
+    } catch (err) {
+      return { ok: false, code: 'ROLLBACK_FAILED', error: err.message };
+    }
+  },
   applyRollback: async (ref) => {
     // Rollback restores source + SQLite data to a prior snapshot.
     // Uses Studio's BUILD_DIR paths so Studio respawn sees the

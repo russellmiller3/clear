@@ -38,7 +38,7 @@
  */
 
 import { spawn } from 'child_process';
-import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir, homedir, platform } from 'os';
 import { fileURLToPath } from 'url';
@@ -59,6 +59,49 @@ const SUBPROCESS_TIMEOUT_MS = 180_000;
 /** Tool mode is opt-in while the stream-json parser is being battle-tested. */
 function toolModeEnabled() {
   return process.env.GHOST_MEPH_CC_TOOLS === '1';
+}
+
+/**
+ * Append the raw claude stream-json NDJSON for one cc-agent turn to
+ * playground/sessions/<session-id>.ndjson. Prepends a `cc_agent_turn_marker`
+ * JSON line so downstream replay can split a multi-turn session back into
+ * its individual turns.
+ *
+ * Session id resolution:
+ *   1. Explicit `sessionId` arg (callers that already have an id)
+ *   2. `process.env.MEPH_SESSION_ID` (set by curriculum-sweep workers and
+ *      the Studio /api/chat handler when a Studio tab has one)
+ *   3. Fallback `cc-agent_<pid>_<ms>` — keeps ad-hoc cc-agent invocations
+ *      from colliding when no id is supplied
+ *
+ * Returns the full path written, or null if the write failed (logged,
+ * non-fatal — transcript persistence is a research convenience, not
+ * correctness).
+ *
+ * Exported for tests.
+ */
+export function persistCcAgentTranscript(ndjson, sessionId = null) {
+  const sid = sessionId
+    || process.env.MEPH_SESSION_ID
+    || `cc-agent_${process.pid}_${Date.now()}`;
+  const dir = join(__dirname, '..', 'sessions');
+  try { mkdirSync(dir, { recursive: true }); } catch {}
+  const path = join(dir, `${sid}.ndjson`);
+  const turnMarker = JSON.stringify({
+    type: 'cc_agent_turn_marker',
+    session_id: sid,
+    turn_start_ms: Date.now(),
+  }) + '\n';
+  const body = (typeof ndjson === 'string' && ndjson.length > 0)
+    ? (ndjson.endsWith('\n') ? ndjson : (ndjson + '\n'))
+    : '';
+  try {
+    appendFileSync(path, turnMarker + body, 'utf8');
+    return path;
+  } catch (err) {
+    console.warn(`[cc-agent] transcript persist failed (${path}): ${err.message}`);
+    return null;
+  }
 }
 
 // Cache the resolved binary path so we don't re-scan the filesystem on
@@ -233,14 +276,13 @@ async function chatViaClaudeCodeWithTools(userPrompt, systemPrompt) {
   }
   try { unlinkSync(configPath); } catch {}
   if (systemPromptPath) { try { unlinkSync(systemPromptPath); } catch {} }
-  // Debug hook: set GHOST_MEPH_CC_DEBUG=1 to dump the raw claude stream-json
-  // to /tmp/ghost-meph-last-stream.ndjson so we can inspect the exact
-  // event shape if translation produces unexpected results.
-  if (process.env.GHOST_MEPH_CC_DEBUG === '1') {
-    try {
-      writeFileSync(join(tmpdir(), 'ghost-meph-last-stream.ndjson'), ndjson, 'utf8');
-    } catch {}
-  }
+  // Persist the raw claude stream-json to playground/sessions/<session-id>.ndjson
+  // unconditionally. Enables deterministic replay of every cc-agent turn
+  // against alternate hint/ranker/prompt configurations at $0 (no re-spawn
+  // of claude). ~40KB per task; trivial storage vs massive research leverage
+  // (A/B counterfactuals, SFT corpus, tool-use audit). Failure is non-fatal
+  // — the primary response is still returned even if the disk write errors.
+  persistCcAgentTranscript(ndjson);
   const events = translateStreamJsonBuffer(ndjson);
   // Pull the final source Claude wrote (if any) out of the event log and
   // attach it to the Response as a sidecar field. /api/chat reads this

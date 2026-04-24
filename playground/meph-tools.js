@@ -1084,7 +1084,18 @@ export function compileTool(input, ctx, helpers) {
     //   Tier 2: exact same error_sig previously fixed anywhere
     //   Tier 3: same-archetype passing gold rows (archetype-only fallback)
     // Tier is attached to each hint so Meph sees which signal produced it.
-    if (ctx.factorDB && r.errors.length > 0 && source) {
+    //
+    // CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
+    // honest A/B measurement of hint effect on Meph's live pass rate
+    // (Session 44 Track 1.2). Passive observational data is confounded by
+    // selection bias — hints fire on hard tasks Meph is already struggling
+    // with, so "hints correlate with failure" is uninterpretable. A sweep
+    // controlling this flag produces a clean counterfactual. We skip the
+    // ENTIRE block (including querySuggestions + rerankers) so the hint-off
+    // arm pays zero DB-query cost — the A/B measures hint *effect*, not
+    // hint *compute overhead*.
+    const hintsDisabled = process.env.CLEAR_HINT_DISABLE === '1';
+    if (ctx.factorDB && r.errors.length > 0 && source && !hintsDisabled) {
       try {
         const archetype = safeArchetype(source);
         const errorSig = sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(source));

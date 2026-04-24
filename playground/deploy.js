@@ -195,10 +195,30 @@ export async function deploySource({ source, tenantSlug, appSlug, secrets = {}, 
 	return { ok: true, jobId: builderRes.json?.jobId, needsSecrets: pkgRes.needsSecrets, aiCallsDetected: pkgRes.aiCallsDetected };
 }
 
+// -------- shared deploy deps (for sibling modules that need the same
+// store + CF API the /api/deploy route uses). Populated by wireDeploy.
+// Used by the Live App Editing widget's cloud-ship path so it doesn't
+// construct a second InMemoryTenantStore with an empty cfDeploys map. --
+let _sharedStore = null;
+let _sharedRootDomain = null;
+export function getDeployDeps() {
+	if (!_sharedStore) return null;
+	return {
+		store: _sharedStore,
+		api: getWfpApi(),
+		rootDomain: _sharedRootDomain || cloudflareRootDomain(),
+	};
+}
+
 // -------- wire endpoints into an Express app --------
 export function wireDeploy(app, opts = {}) {
 	const store = opts.store || new InMemoryTenantStore();
 	const priceId = opts.priceId || process.env.STRIPE_PRICE_PRO_99 || 'price_pro_99';
+	// Record the store + root domain into module-scope so getDeployDeps can
+	// surface them to sibling modules (LAE widget, etc.) without any of the
+	// parties constructing their own duplicate.
+	_sharedStore = store;
+	_sharedRootDomain = cloudflareRootDomain();
 
 	async function requireTenant(req, res) {
 		const slug = readTenantCookie(req);

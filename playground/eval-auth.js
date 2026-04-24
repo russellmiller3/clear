@@ -102,3 +102,35 @@ export function mintLegacyEvalAuthToken(user) {
   const signature = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(payloadB64).digest('base64url');
   return `${payloadB64}.${signature}`;
 }
+
+// Verify a 2-part legacy token (payload.signature shape). Returns the
+// decoded payload on success, or null if anything fails: malformed shape,
+// wrong signature, payload isn't JSON, or payload.exp already past.
+//
+// Used by Studio's liveEditAuth middleware to gate /__meph__/api/* routes.
+// Without HMAC verification (the pre-Session-44 state) any client that
+// knew the payload shape could forge {"role":"owner"} and get a live-edit
+// session. Constant-time comparison uses timingSafeEqual to avoid string-
+// compare timing leaks on the signature check.
+export function verifyLegacyEvalAuthToken(token) {
+  if (typeof token !== 'string' || token.length === 0) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [payloadB64, signature] = parts;
+  if (!payloadB64 || !signature) return null;
+  const expected = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(payloadB64).digest('base64url');
+  let sigBuf, expBuf;
+  try {
+    sigBuf = Buffer.from(signature, 'base64url');
+    expBuf = Buffer.from(expected, 'base64url');
+  } catch { return null; }
+  if (sigBuf.length !== expBuf.length) return null;
+  if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+  } catch { return null; }
+  if (!payload || typeof payload !== 'object') return null;
+  if (typeof payload.exp === 'number' && payload.exp < Date.now()) return null;
+  return payload;
+}

@@ -505,3 +505,283 @@ describe('deploySource — double-click idempotency integration', () => {
 		expect(provisionCount).toBe(1);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// LAE Phase B Cycle 2 — incremental update mode (no D1, no migrations, no
+// domain). Widget ships + Deploy-modal "Update" both call this path. Tests
+// reuse the same fake-api / fake-store harness to keep the surface drift-proof.
+// See plans/plan-live-editing-phase-b-cloud-04-23-2026.md Phase 2.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Fake store with Phase 1's versions + secretKeys surface. Mirrors the
+// production InMemoryTenantStore shape closely so behavior doesn't diverge.
+function makeFakeStoreWithVersions(seed = {}) {
+	const state = {
+		markAppDeployedCalls: [],
+		recordVersionCalls: [],
+		updateSecretKeysCalls: [],
+		appNameReturns: seed.appNameReturns ?? null,
+		markFails: seed.markFails || false,
+		appRecord: seed.appRecord || null,
+	};
+	return {
+		_state: state,
+		async appNameFor(_t, _a) { return state.appNameReturns; },
+		async getAppRecord(_t, _a) { return state.appRecord; },
+		async markAppDeployed(args) {
+			state.markAppDeployedCalls.push(args);
+			if (state.markFails) throw new Error('tenants-db unreachable');
+			return { ok: true };
+		},
+		async recordVersion(args) {
+			state.recordVersionCalls.push(args);
+			return { ok: true };
+		},
+		async updateSecretKeys(args) {
+			state.updateSecretKeysCalls.push(args);
+			return { ok: true };
+		},
+		async incrementAppsDeployed() { /* noop */ },
+	};
+}
+
+describe('deploySource mode:update — LAE Phase B Cycle 2', () => {
+	// Cycle 2.1: mode routes correctly — update path skips initial-only steps.
+	testAsync('mode:update skips provisionD1, applyMigrations, attachDomain', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi();
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'items',
+				d1_database_id: 'd1-prior',
+				hostname: 'items.buildclear.dev',
+				versions: [],
+				secretKeys: [],
+			},
+		});
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(r.mode).toBe('update');
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('provisionD1')).toBe(false);
+		expect(ops.includes('applyMigrations')).toBe(false);
+		expect(ops.includes('attachDomain')).toBe(false);
+		// Upload still happens — that IS the update.
+		expect(ops.includes('uploadScript')).toBe(true);
+	});
+
+	// Cycle 2.1b: mode defaults to 'deploy' — backward compat for current callers.
+	testAsync('mode unset or "deploy" runs full initial deploy (regression floor)', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi();
+		const store = makeFakeStoreWithVersions();
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(r.mode === 'deploy' || r.mode === undefined).toBe(true);
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('provisionD1')).toBe(true);
+		expect(ops.includes('uploadScript')).toBe(true);
+	});
+
+	// Cycle 2.2: _captureVersionId resolves the new versionId after uploadScript.
+	testAsync('_captureVersionId returns result.id when uploadScript exposes it', async () => {
+		const { _captureVersionId } = await import('./deploy-cloudflare.js');
+		const api = makeFakeWfpApi({
+			uploadScript: async () => ({ ok: true, result: { id: 'v-fast-path' } }),
+		});
+		// Fast path: last uploadScript result carried id; helper returns it.
+		const { result } = await api.uploadScript({ scriptName: 'x', bundle: {} });
+		const vid = await _captureVersionId({ api, scriptName: 'x', lastUploadResult: result });
+		expect(vid).toBe('v-fast-path');
+	});
+
+	testAsync('_captureVersionId falls back to listVersions newest when upload has no id', async () => {
+		const { _captureVersionId } = await import('./deploy-cloudflare.js');
+		const api = makeFakeWfpApi({
+			listVersions: async () => ({
+				ok: true,
+				versions: [
+					{ id: 'v-old', created_on: '2026-04-22T10:00:00Z' },
+					{ id: 'v-new', created_on: '2026-04-23T10:00:00Z' },
+				],
+			}),
+		});
+		const vid = await _captureVersionId({ api, scriptName: 'x', lastUploadResult: {} });
+		expect(vid).toBe('v-new');
+	});
+
+	testAsync('_captureVersionId returns null when listVersions is empty (race)', async () => {
+		const { _captureVersionId } = await import('./deploy-cloudflare.js');
+		const api = makeFakeWfpApi({ listVersions: async () => ({ ok: true, versions: [] }) });
+		const vid = await _captureVersionId({ api, scriptName: 'x', lastUploadResult: {} });
+		expect(vid).toBe(null);
+	});
+
+	// Cycle 2.3 + 2.4: update mode captures versionId AND calls recordVersion.
+	testAsync('mode:update captures versionId + calls store.recordVersion (not markAppDeployed)', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi({
+			uploadScript: async (args) => {
+				api.calls.push({ op: 'uploadScript', scriptName: args.scriptName });
+				return { ok: true, result: { id: 'v-new-abc' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'items', d1_database_id: 'd1-x',
+				hostname: 'items.buildclear.dev', versions: [], secretKeys: [],
+			},
+		});
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(r.versionId).toBe('v-new-abc');
+		expect(store._state.recordVersionCalls).toHaveLength(1);
+		expect(store._state.markAppDeployedCalls).toHaveLength(0);
+		const rv = store._state.recordVersionCalls[0];
+		expect(rv.tenantSlug).toBe('clear-acme');
+		expect(rv.appSlug).toBe('items');
+		expect(rv.versionId).toBe('v-new-abc');
+		expect(typeof rv.sourceHash).toBe('string');
+		expect(rv.sourceHash.length).toBeGreaterThan(0);
+	});
+
+	// Cycle 2.5: update mode only sets NEW secret keys — skips existing ones.
+	testAsync('mode:update sets only secrets whose keys are NOT in lastRecord.secretKeys', async () => {
+		_resetLockManagerForTest();
+		let setSecretsArgs = null;
+		const api = makeFakeWfpApi({
+			setSecrets: async ({ scriptName, secrets }) => {
+				setSecretsArgs = { scriptName, secretNames: Object.keys(secrets || {}) };
+				api.calls.push({ op: 'setSecrets', scriptName, secretNames: setSecretsArgs.secretNames });
+				return { ok: true };
+			},
+			uploadScript: async (args) => {
+				api.calls.push({ op: 'uploadScript' });
+				return { ok: true, result: { id: 'v-next' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'items', d1_database_id: 'd1',
+				hostname: 'h', versions: [],
+				secretKeys: ['API_KEY'], // already set
+			},
+		});
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: { API_KEY: 'existing-val', DB_URL: 'new-val' },
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(setSecretsArgs).toBeDefined();
+		// Only DB_URL should have been sent — API_KEY was already on the record.
+		expect(setSecretsArgs.secretNames).toEqual(['DB_URL']);
+	});
+
+	testAsync('mode:update skips setSecrets entirely when all secrets already set', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi({
+			uploadScript: async () => ({ ok: true, result: { id: 'v-next' } }),
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'items', d1_database_id: 'd1',
+				hostname: 'h', versions: [], secretKeys: ['API_KEY'],
+			},
+		});
+		await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: { API_KEY: 'existing-val' },
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('setSecrets')).toBe(false);
+	});
+
+	// Cycle 2.6: DeployLockManager covers update mode too.
+	testAsync('mode:update second concurrent call gets conflict via DeployLockManager', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi({
+			uploadScript: async () => {
+				await new Promise(r => setTimeout(r, 10));
+				return { ok: true, result: { id: 'v' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: { scriptName: 'items', d1_database_id: 'd1', hostname: 'h', versions: [], secretKeys: [] },
+		});
+		const baseOpts = {
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		};
+		const [r1, r2] = await Promise.all([deploySource(baseOpts), deploySource(baseOpts)]);
+		const wins = [r1, r2].filter(r => r.ok);
+		const conflicts = [r1, r2].filter(r => r.conflict);
+		expect(wins).toHaveLength(1);
+		expect(conflicts).toHaveLength(1);
+	});
+
+	// Tags: recordVersion via args carry `via:'widget'` when passed through
+	// (used by widget-mode ship to distinguish live-edit versions from
+	// Deploy-modal versions). Additive option — default unset.
+	testAsync('mode:update forwards opts.via into recordVersion metadata', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi({ uploadScript: async () => ({ ok: true, result: { id: 'v' } }) });
+		const store = makeFakeStoreWithVersions({
+			appRecord: { scriptName: 'items', d1_database_id: 'd1', hostname: 'h', versions: [], secretKeys: [] },
+		});
+		await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'items',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			via: 'widget',
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(store._state.recordVersionCalls[0].via).toBe('widget');
+	});
+});

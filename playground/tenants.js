@@ -9,6 +9,12 @@
 import { randomBytes } from 'crypto';
 import { PLANS, planFor } from './plans.js';
 
+// Cap the versions[] array per app at this many entries. Full history still
+// lives on Cloudflare's side (CF keeps versions until explicitly deleted) —
+// we just don't offer UI rollback past 20. Simpler schema, fits a single
+// in-memory object, easy to serialize when tenant store gets persisted.
+export const MAX_VERSIONS_PER_APP = 20;
+
 export class InMemoryTenantStore {
 	constructor() {
 		this.tenants = new Map();
@@ -62,17 +68,118 @@ export class InMemoryTenantStore {
 	async appNameFor(slug, appSlug) {
 		return this.appsByTenant.get(`${slug}/${appSlug}`) || null;
 	}
+	// Private key builder — used by markAppDeployed, getAppRecord,
+	// recordVersion, updateSecretKeys. All per-app state lives under
+	// `<tenantSlug>/<appSlug>` in cfDeploys.
+	_appKey(tenantSlug, appSlug) {
+		return `${tenantSlug}/${appSlug}`;
+	}
+
 	// Phase 7.7 — after a successful CF deploy, record script name + d1 id +
 	// hostname so we can cross-reference against CF in the reconcile job.
-	async markAppDeployed({ tenantSlug, appSlug, scriptName, d1_database_id, hostname }) {
+	//
+	// LAE Phase B extension: optionally accept `versionId`, `sourceHash`,
+	// `migrationsHash` to seed the `versions[]` array with the initial
+	// deploy's version, and `secretKeys: string[]` to track which secret
+	// KEY NAMES (never values) have been set. All five are optional for
+	// backward compat with the Phase 7 call sites; new code paths pass them.
+	async markAppDeployed({
+		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
+		versionId = null, sourceHash = null, migrationsHash = null, secretKeys = null,
+	}) {
 		if (!this.cfDeploys) this.cfDeploys = new Map();
-		const key = `${tenantSlug}/${appSlug}`;
-		this.cfDeploys.set(key, {
+		const key = this._appKey(tenantSlug, appSlug);
+		const row = {
 			tenantSlug, appSlug, scriptName, d1_database_id, hostname,
 			deployedAt: new Date().toISOString(),
-		});
+			versions: [],
+			secretKeys: Array.isArray(secretKeys) ? [...secretKeys] : [],
+		};
+		if (versionId) {
+			row.versions.push({
+				versionId,
+				uploadedAt: row.deployedAt,
+				sourceHash,
+				migrationsHash,
+			});
+		}
+		this.cfDeploys.set(key, row);
 		// Keep appNameFor working by dual-writing the scriptName there too.
 		this.appsByTenant.set(key, scriptName);
+		return { ok: true };
+	}
+
+	// LAE Phase B — lookup the full per-app state row. Returns a shallow
+	// copy with `versions` sorted newest-first (by uploadedAt) so callers
+	// can treat versions[0] as "the most recent version" without sorting.
+	// Original storage remains insertion-order so recordVersion's append +
+	// cap logic stays simple. Returns null for unknown (tenantSlug, appSlug).
+	async getAppRecord(tenantSlug, appSlug) {
+		if (!this.cfDeploys) return null;
+		const key = this._appKey(tenantSlug, appSlug);
+		const raw = this.cfDeploys.get(key);
+		if (!raw) return null;
+		const versions = Array.isArray(raw.versions) ? [...raw.versions] : [];
+		versions.sort((a, b) => {
+			const ta = Date.parse(a.uploadedAt || '') || 0;
+			const tb = Date.parse(b.uploadedAt || '') || 0;
+			return tb - ta; // descending = newest first
+		});
+		return {
+			...raw,
+			versions,
+			secretKeys: Array.isArray(raw.secretKeys) ? [...raw.secretKeys] : [],
+		};
+	}
+
+	// LAE Phase B — append a new version to the app's versions[]. Trims
+	// oldest entries once the array exceeds MAX_VERSIONS_PER_APP. Rejects
+	// with APP_NOT_FOUND if markAppDeployed was never called for this
+	// (tenantSlug, appSlug) — forces the happy-path sequencing.
+	async recordVersion({ tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via }) {
+		if (!this.cfDeploys) return { ok: false, code: 'APP_NOT_FOUND' };
+		const key = this._appKey(tenantSlug, appSlug);
+		const row = this.cfDeploys.get(key);
+		if (!row) return { ok: false, code: 'APP_NOT_FOUND' };
+		if (!Array.isArray(row.versions)) row.versions = [];
+		row.versions.push({
+			versionId,
+			uploadedAt: uploadedAt || new Date().toISOString(),
+			sourceHash: sourceHash || null,
+			migrationsHash: migrationsHash || null,
+			...(note ? { note } : {}),
+			...(via ? { via } : {}),
+		});
+		if (row.versions.length > MAX_VERSIONS_PER_APP) {
+			// Sort by uploadedAt ascending, keep the newest MAX_VERSIONS_PER_APP.
+			row.versions.sort((a, b) => {
+				const ta = Date.parse(a.uploadedAt || '') || 0;
+				const tb = Date.parse(b.uploadedAt || '') || 0;
+				return ta - tb;
+			});
+			row.versions.splice(0, row.versions.length - MAX_VERSIONS_PER_APP);
+		}
+		return { ok: true };
+	}
+
+	// LAE Phase B — append new secret KEY NAMES to the app's secretKeys
+	// list. Dedupes — existing keys stay in their original position, new
+	// keys append. SECURITY: this function only ever stores key NAMES;
+	// actual secret values flow through setSecrets on CF and never touch
+	// tenants-db.
+	async updateSecretKeys({ tenantSlug, appSlug, newKeys }) {
+		if (!this.cfDeploys) return { ok: false, code: 'APP_NOT_FOUND' };
+		const key = this._appKey(tenantSlug, appSlug);
+		const row = this.cfDeploys.get(key);
+		if (!row) return { ok: false, code: 'APP_NOT_FOUND' };
+		if (!Array.isArray(row.secretKeys)) row.secretKeys = [];
+		const existing = new Set(row.secretKeys);
+		for (const k of (newKeys || [])) {
+			if (typeof k === 'string' && !existing.has(k)) {
+				row.secretKeys.push(k);
+				existing.add(k);
+			}
+		}
 		return { ok: true };
 	}
 	// Phase 7.7c — reconcile job calls this to get the full known-apps view.

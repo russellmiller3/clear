@@ -25,6 +25,7 @@ theme 'ivory'
 # Database
 
 database is local memory
+owner is 'owner@example.com'
 
 create an Authors table:
   name, required

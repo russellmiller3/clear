@@ -15,6 +15,7 @@ Todo Fullstack — CRUD task manager with categories, search, and auth
 
 build for web and javascript backend
 database is local memory
+owner is 'owner@example.com'
 
 # Database
 

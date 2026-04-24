@@ -99,6 +99,63 @@ console.log('\n🔑 eval-auth — tampered payload cannot reuse signature');
   assert(originalSig === signature, 'original payload signature still verifies (control)');
 }
 
+// Session 44 Track 2: verifyLegacyEvalAuthToken closes the Phase A Security
+// TODO — the Studio-side liveEditAuth used to parse Bearer JWT payloads
+// WITHOUT verifying the HMAC signature. Anyone who knew the payload shape
+// could forge an owner session. Wiring this verify path prevents that;
+// plus the assertions below lock the contract (valid, tampered, expired,
+// malformed) so no future refactor silently drops the signature check.
+console.log('\n🔑 eval-auth — verifyLegacyEvalAuthToken (live-edit owner gate)');
+{
+  const { mintLegacyEvalAuthToken, verifyLegacyEvalAuthToken } = await import('./eval-auth.js');
+
+  // Happy path: valid token round-trips to its payload.
+  const goodToken = mintLegacyEvalAuthToken();
+  const verified = verifyLegacyEvalAuthToken(goodToken);
+  assert(verified && verified.id === EVAL_USER.id,
+    `valid token verifies and returns payload (got ${verified ? 'id=' + verified.id : 'null'})`);
+  assert(verified && typeof verified.exp === 'number' && verified.exp > Date.now(),
+    'verified payload carries future ms-expiry');
+
+  // Tampered payload: signature doesn't match → reject.
+  const [, signature] = goodToken.split('.');
+  const tamperedPayload = Buffer.from(JSON.stringify({
+    id: 'attacker', role: 'owner', exp: Date.now() + 3600e3,
+  })).toString('base64url');
+  const tamperedToken = tamperedPayload + '.' + signature;
+  assert(verifyLegacyEvalAuthToken(tamperedToken) === null,
+    'tampered payload rejected (attacker cannot reuse signature to elevate to role=owner)');
+
+  // Forged signature: attacker signs with the wrong secret.
+  const [payloadB64] = goodToken.split('.');
+  const forgedSig = crypto.createHmac('sha256', 'wrong-secret').update(payloadB64).digest('base64url');
+  const forgedToken = payloadB64 + '.' + forgedSig;
+  assert(verifyLegacyEvalAuthToken(forgedToken) === null,
+    'forged signature rejected (attacker without secret cannot mint a valid token)');
+
+  // Expired token: valid signature but payload.exp in the past → reject.
+  const expiredPayload = { id: EVAL_USER.id, role: 'owner', exp: Date.now() - 1000 };
+  const expiredB64 = Buffer.from(JSON.stringify(expiredPayload)).toString('base64url');
+  const expiredSig = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(expiredB64).digest('base64url');
+  const expiredToken = expiredB64 + '.' + expiredSig;
+  assert(verifyLegacyEvalAuthToken(expiredToken) === null,
+    'expired token rejected even with a valid signature');
+
+  // Malformed inputs: null, empty, one-part, three-part, non-string.
+  assert(verifyLegacyEvalAuthToken(null) === null, 'null token rejected');
+  assert(verifyLegacyEvalAuthToken('') === null, 'empty-string token rejected');
+  assert(verifyLegacyEvalAuthToken('one-part') === null, '1-part token rejected');
+  assert(verifyLegacyEvalAuthToken('h.p.s') === null, '3-part token rejected (this verifier handles 2-part only)');
+  assert(verifyLegacyEvalAuthToken(12345) === null, 'non-string token rejected');
+
+  // Garbage in payload (valid signature over non-JSON) → reject.
+  const garbageB64 = Buffer.from('not-json').toString('base64url');
+  const garbageSig = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(garbageB64).digest('base64url');
+  const garbageToken = garbageB64 + '.' + garbageSig;
+  assert(verifyLegacyEvalAuthToken(garbageToken) === null,
+    'token with signed non-JSON payload rejected');
+}
+
 console.log(`\n========================================`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 console.log(`========================================`);

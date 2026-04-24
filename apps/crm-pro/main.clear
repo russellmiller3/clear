@@ -28,6 +28,7 @@ theme 'midnight'
 # Database
 
 database is local memory
+owner is 'owner@example.com'
 
 create a Companies table:
   name, required
