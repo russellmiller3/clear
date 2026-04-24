@@ -165,6 +165,15 @@ while count is less than 10:
   increase count by 1
 ```
 
+Clear automatically caps every `while` loop at **100 iterations** so a missing `increase` line can't lock up your program. If you legitimately need more (paginating through 500 records, walking a deep tree), declare it explicitly:
+
+```clear
+while has_more_pages, max 1000 times:
+  page = fetch_next_page()
+```
+
+When the loop exceeds its cap, you get a clear error: `"while-loop exceeded 100 iterations — add ', max N times' if you need a higher cap"`. Same goes for recursive functions (default depth 1000, override with `define function walk(n), max depth N:`) and `send email` (default 30-second timeout, override with `with timeout N seconds`). The compiler picks safe defaults so you never silently hang.
+
 ### Working with Lists
 
 ```clear

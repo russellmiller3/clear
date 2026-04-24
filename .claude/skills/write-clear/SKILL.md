@@ -290,7 +290,7 @@ The `[clear:N]` tag is the source line. Every status code (200, 201, 204, 400, 4
 
 ## Available Features (all implemented)
 
-**Core:** variables, math, strings, functions, loops, conditionals, pattern matching, objects, lists, maps, error handling, modules, comments
+**Core:** variables, math, strings, functions, loops, conditionals, pattern matching, objects, lists, maps, error handling, modules, comments. Every loop and recursion is auto-bounded for safety: `while cond:` caps at 100 iterations (override with `, max N times:`), self-recursive functions cap at depth 1000 (override with `define function f(x), max depth N:`). Every external call is auto-timed-out: `send email` 30s, `ask claude` 60s with auto-retry on transient failures, `call api` 30s. The compiler emits the bounds — you only declare overrides when you genuinely need more.
 
 **Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications, ECharts (bar/line/pie/area with subtitle/stacked), images
 
