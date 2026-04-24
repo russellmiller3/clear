@@ -9,7 +9,8 @@ import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
 import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken, verifyLegacyEvalAuthToken } from './eval-auth.js';
-import { wireDeploy } from './deploy.js';
+import { wireDeploy, getDeployDeps } from './deploy.js';
+import { deploySource as deploySourceCloudflare } from './deploy-cloudflare.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
 import {
@@ -161,11 +162,42 @@ createEditApi(app, {
     }
     return await callMeph({ prompt, source, apiKey: key });
   },
-  applyShip: async (newSource) => {
-    // Cycle 10b: compile the new source, then POST to Studio's own /api/run
-    // to write files and respawn the child app. Returns the new port so
-    // the widget can reload to the right URL.
+  applyShip: async (newSource, cloudContext) => {
     const t0 = Date.now();
+
+    // LAE Phase B: if the widget supplied tenantSlug + appSlug AND the
+    // deploy infrastructure is wired AND the app is cloud-deployed, push
+    // an incremental update to Cloudflare and return. Otherwise fall through
+    // to the local write/compile/respawn path (Phase A behavior, unchanged).
+    if (cloudContext && cloudContext.tenantSlug && cloudContext.appSlug) {
+      const deps = getDeployDeps();
+      if (deps && deps.store) {
+        try {
+          const lastRecord = await deps.store.getAppRecord(cloudContext.tenantSlug, cloudContext.appSlug);
+          if (lastRecord && lastRecord.scriptName) {
+            const cfRes = await deploySourceCloudflare({
+              source: newSource,
+              tenantSlug: cloudContext.tenantSlug,
+              appSlug: cloudContext.appSlug,
+              mode: 'update',
+              lastRecord,
+              via: 'widget',
+              secrets: {},
+              api: deps.api,
+              store: deps.store,
+              rootDomain: deps.rootDomain,
+            });
+            return { ...cfRes, elapsed_ms: Date.now() - t0 };
+          }
+        } catch (err) {
+          // Cloud path errored — fall through to local so the widget at
+          // least sees SOME response; log for the next-session debug.
+          console.warn('[lae-cloud-ship] fell back to local after error:', err.message);
+        }
+      }
+    }
+
+    // Local path (Phase A): compile, POST to /api/run, respawn child.
     let compiled;
     try {
       compiled = compileProgram(newSource);
