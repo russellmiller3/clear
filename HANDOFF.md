@@ -1,8 +1,8 @@
 # Handoff — 2026-04-23 (session 44 — Cloudflare Phases 1–7 shipped + sweep flywheel: 2 root-cause fixes shipped to main)
 
-## 🎯 Next Session: Two Parallel Tracks (READ THIS FIRST)
+## 🎯 Next Session: Three Tracks, ALL in one long session (READ THIS FIRST)
 
-Two tracks to run. Track 1 is research and tonight-only ($0, fast). Track 2 is the flagship feature (Live App Editing → Cloud). The user journey we're building is:
+Three tracks. All three in a single session — don't split across nights. Time calibration per user CLAUDE.md: when my gut says "a week," that means one long session. The user journey we're building is:
 
 ```
  Cloud Studio ──deploy──► running on CF ──live-edit──► ship change in ~2s
@@ -11,7 +11,7 @@ Two tracks to run. Track 1 is research and tonight-only ($0, fast). Track 2 is t
                             waits on Russell)
 ```
 
-**Track 1 is tonight. Track 2 is "start on the next session, no API cost, ~1 week."**
+**All three tracks tonight. Tracks 2 and 3 can interleave — Phase A gets tested locally, Phase B wires cloud shipping, ship both in the same session.**
 
 ---
 
@@ -31,26 +31,33 @@ Session 41 blew $50 chasing metric shifts inside noise. Budget-first rule: singl
 
 ---
 
-### Track 2 — Flagship feature: Live App Editing (next session, ~1 week)
+### Track 2 — LAE Phase A: local running apps (tonight, same session as Track 1)
 
-**This is the differentiator nobody else has.** Marcus talks to a running app ("add a field called email"), classifier enforces additive-only safety, change ships live. Plan already exists at [`plans/plan-live-editing-phase-a-04-18-2026.md`](plans/plan-live-editing-phase-a-04-18-2026.md) (299 lines, April 18).
+**This is the differentiator nobody else has.** Marcus talks to a running app ("add a field called email"), classifier enforces additive-only safety, change ships live to the app running locally. Plan: [`plans/plan-live-editing-phase-a-04-18-2026.md`](plans/plan-live-editing-phase-a-04-18-2026.md) (299 lines, April 18).
 
-**The order we landed on this session (2026-04-23):**
+**How to run Track 2:**
+1. Read the plan end-to-end.
+2. Red-team it — scan for drift since April 18 (Cloudflare deploys shipped since; does anything in the plan need updating?).
+3. `/pres plans/plan-live-editing-phase-a-04-18-2026.md` — red-team + execute + ship.
+4. Gate to Track 3: LAE Phase A tests green, classifier works, chat UX ships an additive change to a local running app.
 
-| Order | Plan | Why |
-|---|---|---|
-| 1 | **LAE Phase A** (`plans/plan-live-editing-phase-a-04-18-2026.md`) | 299-line plan already thought through. Targets LOCAL running apps — zero dependency on CF paperwork. Proves classifier + chat UX + additive-only semantics. |
-| 2 | **LAE Phase B+** (cloud shipping) | Once LAE works locally, add cloud-shipping. This absorbs the "one-click updates" plan I wrote today (`plans/plan-one-click-updates-04-23-2026.md` — 470 lines, covers incremental redeploy, tenants-db versions schema, migration-safety gate, rollback UX). Don't ship that plan standalone; fold it into LAE Phase B. |
+### Track 3 — LAE Phase B: cloud shipping (tonight, same session as Track 2)
 
-**Why this ordering:**
-- LAE Phase A proves the user-visible differentiation FAST (local loop, no CF).
-- Phase B wires in the cloud-shipping path once Phase A works AND your CF paperwork is done.
-- Building cloud-first would block everything on the Phase 8 prereq; local-first unblocks the agent.
+**After Phase A works locally, extend it to cloud-deployed apps in the same session.** When the classifier accepts an additive change on a Cloudflare-deployed app, ship to the existing Worker via the incremental-update path.
 
-**How to start Track 2 on the next session:**
-1. Read [`plans/plan-live-editing-phase-a-04-18-2026.md`](plans/plan-live-editing-phase-a-04-18-2026.md) end-to-end.
-2. Decide: is it current (no drift since April 18)? Needs red-team? Run `/pres plans/plan-live-editing-phase-a-04-18-2026.md`.
-3. Treat `plans/plan-one-click-updates-04-23-2026.md` as **Phase B preview** — don't execute it, reference it when drafting Phase B.
+**Reference material already written:** [`plans/plan-one-click-updates-04-23-2026.md`](plans/plan-one-click-updates-04-23-2026.md) — 470 lines covering tenants-db versions schema, mode-switching deploy orchestration, migration-safety gate, version history UX, rollback. Don't execute it standalone; absorb the relevant phases into an LAE-Phase-B plan.
+
+**How to run Track 3:**
+1. Once Phase A is green, skim the one-click-updates plan.
+2. Write a lean LAE-Phase-B plan that cherry-picks the cloud-shipping mechanics from it: tenants-db `versions[]`, `deploySource({ mode:'update' })`, version history/rollback UX. Skip pieces that don't advance LAE (no need for a full Deploy-modal UX rewrite if LAE provides its own).
+3. TDD → ship. Can run against mocked CF (your real Cloudflare paperwork still pending, but the code path can be fully unit-tested).
+4. Final integration smoke against real CF waits for your Phase 8 setup — document it as a runbook step, don't block on it.
+
+**Why all three tonight:**
+- Per the 10x time-calibration rule, "a week of work" = "one long session."
+- Track 1 is ~20-40 min ($0).
+- Tracks 2+3 are mechanical once plans are red-teamed — classifier, chat wiring, schema, mode-switch, version UI. Lots of pieces, none individually hard.
+- Shipping A and B in one session means the Marcus journey (build → deploy → live-edit on cloud) works end-to-end at session's end.
 
 ---
 
