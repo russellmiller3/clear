@@ -7573,6 +7573,7 @@ ${pad}}`;
         "sameSite: 'lax'",
         "secure: process.env.NODE_ENV === 'production'",
       ];
+      if (node.signed === true) opts.push('signed: true');
       if (node.maxAgeMs !== null && node.maxAgeMs !== undefined) {
         opts.push(`maxAge: ${node.maxAgeMs}`);
       }
@@ -8093,12 +8094,15 @@ export function exprToCode(expr, ctx) {
     case NodeType.COOKIE_GET: {
       // T2 #42 — cookie read expression. On the JS backend, cookies are
       // parsed by cookie-parser middleware (auto-wired at module top)
-      // into `req.cookies`. Returns the raw cookie value or `undefined`
-      // if the cookie isn't set — the caller can guard with `if X is nothing:`.
+      // into `req.cookies` (unsigned) or `req.signedCookies` (signed).
+      // Returns the raw cookie value or `undefined` if unset.
       const nameLit = JSON.stringify(expr.name);
       if (ctx.lang === 'python') {
         // Python backend cookie reads are a follow-up (needs Request dep injection)
         return `None  # TODO: get cookie ${expr.name} — Python backend cookies TBD`;
+      }
+      if (expr.signed === true) {
+        return `(req.signedCookies && req.signedCookies[${nameLit}])`;
       }
       return `(req.cookies && req.cookies[${nameLit}])`;
     }
@@ -11561,26 +11565,44 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // nodes live anywhere in endpoint bodies; walk the tree just like
   // uploads. Only emit the import + middleware if at least one cookie
   // op exists (no dead code on the majority of apps).
-  function walkForCookies(nodes) {
-    if (!Array.isArray(nodes)) return false;
+  function walkForCookies(nodes, acc) {
+    if (!Array.isArray(nodes)) return acc;
     for (const n of nodes) {
       if (!n || typeof n !== 'object') continue;
-      if (n.type === NodeType.COOKIE_SET || n.type === NodeType.COOKIE_GET || n.type === NodeType.COOKIE_CLEAR) return true;
-      if (Array.isArray(n.body) && walkForCookies(n.body)) return true;
-      if (Array.isArray(n.thenBody) && walkForCookies(n.thenBody)) return true;
-      if (Array.isArray(n.elseBody) && walkForCookies(n.elseBody)) return true;
-      // Cookie reads can also appear inside assignment expressions
-      if (n.type === NodeType.ASSIGN && n.expression && n.expression.type === NodeType.COOKIE_GET) return true;
+      if (n.type === NodeType.COOKIE_SET || n.type === NodeType.COOKIE_GET || n.type === NodeType.COOKIE_CLEAR) {
+        acc.found = true;
+        if (n.signed === true) acc.signed = true;
+      }
+      if (n.type === NodeType.ASSIGN && n.expression && n.expression.type === NodeType.COOKIE_GET) {
+        acc.found = true;
+        if (n.expression.signed === true) acc.signed = true;
+      }
+      if (Array.isArray(n.body)) walkForCookies(n.body, acc);
+      if (Array.isArray(n.thenBody)) walkForCookies(n.thenBody, acc);
+      if (Array.isArray(n.elseBody)) walkForCookies(n.elseBody, acc);
     }
-    return false;
+    return acc;
   }
-  const hasCookies = walkForCookies(body);
+  const _cookieScan = walkForCookies(body, { found: false, signed: false });
+  const hasCookies = _cookieScan.found;
+  const hasSignedCookies = _cookieScan.signed;
   if (hasCookies) {
     lines.push("const cookieParser = require('cookie-parser');");
   }
+  if (hasSignedCookies) {
+    // T2 #42 signed cookies — cookieParser requires a secret to sign/verify.
+    // Fallback warns at startup if the env var is missing so deployers
+    // don't accidentally ship an app that signs cookies with a default
+    // (which would mean any attacker who reads this source knows the secret).
+    lines.push("const _COOKIE_SECRET = process.env.COOKIE_SECRET;");
+    lines.push("if (!_COOKIE_SECRET) console.warn('[cookies] COOKIE_SECRET env var is unset — signed cookies will use an ephemeral fallback secret. Set COOKIE_SECRET in production.');");
+    lines.push("const _cookieSecretResolved = _COOKIE_SECRET || ('clear-dev-' + Math.random().toString(36).slice(2));");
+  }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
-  if (hasCookies) {
+  if (hasSignedCookies) {
+    lines.push('app.use(cookieParser(_cookieSecretResolved));');
+  } else if (hasCookies) {
     lines.push('app.use(cookieParser());');
   }
   // Catch malformed JSON bodies -- return clean 400 instead of Express HTML stack trace

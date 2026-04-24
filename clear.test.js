@@ -13553,6 +13553,28 @@ describe('TIER 2 #42 — cookies (JS backend, secure-by-default)', () => {
     expect(r.javascript).toContain("require('cookie-parser')");
     expect(r.javascript).toContain('app.use(cookieParser())');
   });
+
+  it('set signed cookie emits signed:true + wires cookieParser(secret)', () => {
+    const src = "target: backend\nwhen user calls POST /api/login receiving creds:\n  set signed cookie 'session' to 'abc'\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const _COOKIE_SECRET = process.env.COOKIE_SECRET");
+    expect(r.javascript).toContain('app.use(cookieParser(_cookieSecretResolved))');
+    expect(r.javascript).toContain('signed: true');
+  });
+
+  it('get signed cookie reads from req.signedCookies (not req.cookies)', () => {
+    const src = "target: backend\nwhen user calls GET /api/me:\n  token = get signed cookie 'session'\n  send back token";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('req.signedCookies && req.signedCookies["session"]');
+  });
+
+  it('warns at runtime when COOKIE_SECRET env is unset', () => {
+    const src = "target: backend\nwhen user calls POST /api/login receiving creds:\n  set signed cookie 'session' to 'x'\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.javascript).toMatch(/console\.warn\(.*COOKIE_SECRET/);
+  });
 });
 
 // T2#8 — `display X as bar chart` / `show X as line chart` shorthand.

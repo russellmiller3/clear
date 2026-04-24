@@ -82,7 +82,29 @@ I wrote the ASH-1 result as a negative finding for the Bitter Lesson, but the in
 - Syntax: `parser.js` cookie-set handler in the `set` block — change the shape of `set cookie 'name' to value`.
 - Python support: compile target in COOKIE_SET emits a TODO. Needs Response dependency injection in the endpoint signature. Tracked as follow-up.
 
-**Not checked:** signed cookies (defer), CSRF tokens (out of scope), cookie removal (`clear cookie 'session'` — should add), list-all-cookies. Meph can use the primitive; the ergonomics stubs are follow-ups.
+**Follow-ups shipped later this session:** signed cookies (`set signed cookie 'name' to X` + `get signed cookie 'name'`), `clear cookie 'name'`. Signed cookies auto-wire `cookieParser(secret)` with `COOKIE_SECRET` env var + a runtime warning if unset. Full entry below as #8.
+
+**Still not checked:** CSRF tokens (out of scope), list-all-cookies. Meph can use the primitive; the ergonomics stubs are follow-ups.
+
+---
+
+## 8. Signed cookies — `set signed cookie 'name' to X` / `get signed cookie 'name'` (T2 #42 continuation)
+
+**Design choice:** extend the existing cookie syntax with a `signed` modifier. Set form: `set signed cookie 'name' to value`; read form: `get signed cookie 'name'`. Compiler auto-wires `cookieParser(secret)` with the secret from `process.env.COOKIE_SECRET`. If the env var isn't set at runtime, the program prints a LOUD `console.warn` and falls back to a random ephemeral per-process secret (so signed cookies still work but session continuity breaks on restart).
+
+**Alternatives I considered:**
+- **Sign every cookie by default.** Rejected: requires all apps to manage a secret, even toy demos. Opt-in via `signed` keeps the simple path simple.
+- **Silently use a default secret if env var unset.** Rejected: silent secret reuse is exactly the bug pattern that breaks production (committed default in source, anyone with git access can forge). The loud warn is the right trade.
+- **Fail to start if COOKIE_SECRET unset.** Rejected: kills local dev loops. The warn + ephemeral fallback lets you iterate locally without ceremony.
+
+**Evidence it works:**
+- 3 new tests: signed set emits `signed: true` + `cookieParser(secret)`, signed get reads `req.signedCookies[name]`, runtime warning fires on missing env var.
+- 2483 → 2486 tests, 8 templates clean.
+
+**Where to change it if you disagree:**
+- Default secret policy: `compiler.js` cookie-scan block. Swap the console.warn for `throw new Error(...)` if you want fail-fast.
+- Python parity still deferred — same Response dep-injection blocker as plain cookies.
+- Cookie TTL (`for N days` maxAge): parser scans for it but the `for` canonicalization didn't match cleanly on first try — left as TODO. Would unblock `set signed cookie 'session' to token for 7 days`.
 
 ---
 

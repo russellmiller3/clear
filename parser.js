@@ -1855,9 +1855,40 @@ const CANONICAL_DISPATCH = new Map([
       if (result.node) ctx.body.push(result.node);
       return result.endIdx;
     }
-    // Cookies (T2 #42): "set cookie 'name' to value"
+    // Cookies (T2 #42): "set cookie 'name' to value" / "set signed cookie 'name' to value"
     // Secure-by-default: compiler emits httpOnly + sameSite='lax' + secure in prod.
-    // `set signed cookie 'name' to value` adds signing (future — just accepts here).
+    // `set signed cookie` flips `signed: true` + requires cookieParser(secret)
+    // at module top; secret comes from process.env.COOKIE_SECRET with a
+    // loud fallback warning that prints if unset at runtime.
+    const signedIdx = ctx.tokens.length >= 6 &&
+        typeof ctx.tokens[1].value === 'string' &&
+        ctx.tokens[1].value.toLowerCase() === 'signed' &&
+        typeof ctx.tokens[2].value === 'string' &&
+        ctx.tokens[2].value.toLowerCase() === 'cookie' &&
+        ctx.tokens[3].type === TokenType.STRING
+      ? 2 : null;
+    if (signedIdx !== null) {
+      // set signed cookie 'name' to value  — name at idx 3, `to` somewhere after
+      const cookieName = ctx.tokens[3].value;
+      let toPos = -1;
+      for (let k = 4; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'to_connector') { toPos = k; break; }
+      }
+      if (toPos > 0 && toPos + 1 < ctx.tokens.length) {
+        const valueExpr = parseExpression(ctx.tokens, toPos + 1, ctx.line, ctx.tokens.length);
+        if (!valueExpr.error) {
+          ctx.body.push({
+            type: NodeType.COOKIE_SET,
+            name: cookieName,
+            value: valueExpr.node,
+            maxAgeMs: null,
+            signed: true,
+            line: ctx.line,
+          });
+          return ctx.i + 1;
+        }
+      }
+    }
     if (ctx.tokens.length >= 5 &&
         typeof ctx.tokens[1].value === 'string' &&
         ctx.tokens[1].value.toLowerCase() === 'cookie' &&
@@ -8919,6 +8950,21 @@ function parsePrimary(tokens, pos, line, end) {
         };
       }
     }
+  }
+
+  // "get signed cookie 'name'" — signed cookie read (T2 #42).
+  // Must precede the plain `get cookie` branch below.
+  if (tok.canonical === 'get_key' &&
+      pos + 3 < maxPos &&
+      typeof tokens[pos + 1].value === 'string' &&
+      tokens[pos + 1].value.toLowerCase() === 'signed' &&
+      typeof tokens[pos + 2].value === 'string' &&
+      tokens[pos + 2].value.toLowerCase() === 'cookie' &&
+      tokens[pos + 3].type === TokenType.STRING) {
+    return {
+      node: { type: NodeType.COOKIE_GET, name: tokens[pos + 3].value, signed: true, line },
+      nextPos: pos + 4,
+    };
   }
 
   // "get cookie 'name'" — cookie read expression (T2 #42).

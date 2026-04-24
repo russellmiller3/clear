@@ -6,6 +6,31 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Signed cookies (T2 #42 continuation)
+
+`set signed cookie 'name' to value` + `get signed cookie 'name'` — HMAC-signed cookies via `cookie-parser(secret)`. Only wired when the program actually uses signed cookies (no dead code on plain-cookie-only apps).
+
+- Parser: extended the `set cookie` path to detect `set signed cookie 'name' to value` and set `signed: true` on the COOKIE_SET node. Similarly for `get signed cookie 'name'` in parsePrimary.
+- Compiler: `res.cookie(name, value, { ..., signed: true })` for set; `req.signedCookies[name]` for read; module-top emits `const _COOKIE_SECRET = process.env.COOKIE_SECRET` + a runtime `console.warn` if the env var is unset so deployers don't ship apps with an ephemeral fallback secret. `app.use(cookieParser(_cookieSecretResolved))` replaces the plain `cookieParser()` call when signed cookies exist.
+
+Secret policy: require `COOKIE_SECRET` env var at deploy time; runtime warns loudly if unset and generates an ephemeral per-process fallback. Deliberate choice: fail loud rather than fail silent. Reading a signed cookie with the wrong secret returns `false` (cookie-parser's standard behavior), which lets `if X is nothing:` guards flow correctly.
+
+```clear
+when user calls POST /api/login receiving creds:
+  set signed cookie 'session' to creds's token
+  send back 'ok'
+
+when user calls GET /api/me:
+  token = get signed cookie 'session'
+  if token is nothing:
+    send back 'not logged in' with status 401
+  send back token
+```
+
+3 new tests: signed emit + cookieParser(secret) wiring, signedCookies read, runtime secret-missing warning. 2483 → 2486 green, 8 templates clean.
+
+---
+
 ## 2026-04-24 — Python upsert parity + `clear cookie 'name'` follow-ups
 
 Two small follow-ups on last session's features.
