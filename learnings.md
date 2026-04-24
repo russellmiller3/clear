@@ -1915,3 +1915,38 @@ Two outcomes:
 - **"Auth capability" beats "auth presence" as a predicate.** A program with no Users table and no auth-scaffold directive has no auth capability, period. Checking for the AUTH_SCAFFOLD node alone would miss custom-table-based setups; checking for the Users+password pattern alone would miss the scaffold-only case. The OR of both is what you want.
 - **Compile-error rewrites must be data-driven, not hunch-driven.** This fix targeted the top friction item (#2 + #5 same root cause); previous fixes targeted the top of batch 1. Running `node scripts/top-friction-errors.mjs` before touching validator error messages is a hard rule in project CLAUDE.md now because it's the difference between chasing symptoms and killing root causes.
 
+---
+
+## Session 46: Decidability audit (2026-04-24)
+
+Question we came in with: should Clear move from Turing-complete to decidable / total-by-default, with effect boundaries for the non-total constructs? Recon ran before drafting the plan.
+
+### What the audit turned up
+
+Clear has 154 node types. Almost all are pure. The termination risks cluster in a small set:
+
+- **`WHILE` is the only unguarded loop.** `REPEAT N TIMES` is integer-bounded; `FOR EACH X IN Y` is finite-collection bounded; `REPEAT UNTIL ... MAX N TIMES` has a hard iteration cap. `WHILE` (parser.js:437-439, compiler.js:6269-6278) emits naked `while(cond)` with nothing. If Meph hallucinates a while with no decrementing condition, the runtime hangs.
+- **Unbounded recursion.** No check in `validator.js` (`grep recursion validator.js` returns nothing). No depth guard in `compiler.js`. A function calling itself with no base case stack-overflows.
+- **`SEND_EMAIL` has no timeout.** SMTP can hang indefinitely (compiler.js:6660-6674). Same for database mutations.
+- **`ask claude` has no global timeout.** Per-call `with timeout` works, but there's no default ceiling. If a Meph-built app forgets the timeout, the request can hang.
+
+The four constructs that LOOK unbounded are actually by-design: `ENDPOINT`, `SUBSCRIBE`, `BACKGROUND`/`CRON`, and `every N seconds`. They run forever because they're servers — not a bug.
+
+**The surprise:** the 8 core templates are 94% pure by line count. Effect density averages 6%. Grep confirms zero uses of `while` across all 8 templates; `ask claude` appears 6 times total (helpdesk-agent × 2, ecom-agent × 4); `send email` zero. Curriculum tasks (38 JSON specs) mention `while` zero times. The language doesn't need a language-level purity fence to fix the hang class — it needs three surgical validator rules + three runtime timeouts on the constructs that are *accidentally* unbounded.
+
+### Decision that flowed from the audit
+
+Two paths emerged:
+- **Path A (minimalist):** forbid naked `WHILE`, cap recursion depth, add default timeouts on email/DB/AI/HTTP. Three validator rules, three compiler changes. No new syntax, no template migration.
+- **Path B (maximalist):** add a `live:` effect-fence keyword, migrate endpoints, retrain Meph's system prompt on the new form.
+
+Shipped Path A first as both a fix and a diagnostic. If Phase 7 measurement shows the infinite-loop rate drops ≥50%, Path B is unnecessary. If the remaining hangs come from places Path A doesn't touch (agent tool loops, subscribe handlers), Path B gets evidence-based scoping. This mirrors the "compiler accumulates quality" pattern — ship the cheapest change that demonstrably helps, measure, only pay more if data says we need it.
+
+### Gotchas-as-rules
+
+- **Audit before designing language-level change.** A "we need X" feature request rarely survives contact with actual codebase statistics. The audit said 94% pure → the fence isn't the load-bearing part → 3 validator rules are. Without the audit, we'd have spent a week on the fence.
+- **"Inherently non-total" and "accidentally non-total" are different problems.** Endpoints running forever is correct behavior; a `while` with no max is a bug. Treating both as the same thing leads to either over-engineering (wrap every endpoint in ceremony) or under-engineering (let the bugs stay runtime). Separate the two and target only the accidental class.
+- **Budget-first applies to plans too.** Phase 7 measurement is $10-capped per CLAUDE.md's Session 41 rule. The first draft of the plan said "run a curriculum sweep, compare infinite-loop rate" — that's the $168 pattern. Replay past failing Factor DB transcripts first (free), then A/B on 5 curriculum tasks ($2-5), then decide.
+- **Near-violations of PHILOSOPHY.md rules need precedent citations.** The WHILE counter emission (`_iter++; if (_iter > MAX) throw`) is extra lines that don't trace back to the Clear source — a brush with "1:1 mapping." It's acceptable only because `REPEAT UNTIL` already emits similar counter scaffolding; citing that precedent in the plan prevents the "did you really think about the rule?" pushback from becoming a real objection.
+- **New principles that codify existing behavior are stronger than ones that demand new behavior.** "Total by default, effects by label" deserves a PHILOSOPHY.md slot because the audit showed it's already ~94% true implicitly. The plan just closes the gap between what Clear does and what it claims to do.
+
