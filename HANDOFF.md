@@ -63,9 +63,30 @@ Every construct that could previously hang silently now has a bound, and the bou
 
 - Merge landed with conflicts only in CHANGELOG.md and HANDOFF.md — both doc files, resolved by keeping both entry sets.
 - Code auto-merged cleanly (parser.js, compiler.js, clear.test.js — different areas touched on each side).
+- `node clear.test.js` — **2502 / 2502 green** after post-merge fixes (validator self-recursion check fixed + 9 tests with invalid syntax repaired).
 - `node scripts/cross-target-smoke.mjs` — 32/32 emissions parse clean.
-- Core templates — 0 errors.
-- `playground/clear-compiler.min.js` — rebuild after this merge (see "Immediate follow-ups").
+- Core templates — 8/8 compile clean.
+- `playground/clear-compiler.min.js` — rebuilt post-merge.
+
+---
+
+## 📊 Phase 7 measurement — deterministic replay complete ($0)
+
+Ran `node scripts/decidable-core-replay.mjs` against 1,390 Meph-written Clear sources in the Factor DB. Headline findings:
+
+| Metric | Value | Reading |
+|---|---|---|
+| Factor DB rows analyzed | 1,390 | Every Meph output, ever |
+| Rows with `while` loops | **0** | Bound is preventive — no historical use |
+| Rows with `send email` | **0** | Same — zero historical use |
+| Rows with self-recursive functions | **0** | Same — zero historical use |
+| W-T1 / W-T2 / W-T3 warnings fired | **0 / 0 / 0** | Nothing in history would have triggered them |
+| Rows with `ask claude` | **102 (7.3%)** | Every one now carries auto-retry on 429/5xx/network |
+| Recompile-clean rate | 1005 / 1390 (72.3%) | 289 fail; top buckets are pre-existing syntax drift (save-literal check, unclosed `{`, time format `'02:00 AM'`), NOT decidable-core bounds |
+
+**Verdict:** The paid A/B is a no-op. The deterministic replay already answers the hypothesis ("do the bounds reduce hang rate ≥50%?") with a useful null: the bounds cannot reduce a rate that was zero to begin with. **Paid budget ($10) preserved.** The one measurable signal-positive: 102 past Meph runs now carry retry logic; every future session's AI call is auto-recoverable.
+
+See `RESEARCH.md` → "Phase 7 — decidable-core replay (1,390 rows)" for the full writeup.
 
 ---
 

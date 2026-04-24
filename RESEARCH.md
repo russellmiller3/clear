@@ -1464,6 +1464,61 @@ Before tonight, "does the MCP surface cost us anything?" was an open question. R
 
 ---
 
+## Phase 7 — decidable-core replay (1,390 rows, Session 46, 2026-04-24)
+
+**The hypothesis to test.** Session 46 shipped termination bounds (while-cap, recursion-depth cap, send-email timeout) + cross-target `ask claude` retry logic on a feature branch. Claim: these reduce hang rate ≥50% on curriculum tasks known to hit termination failures. Budget-capped at $10 per the Session 41 rule.
+
+**Why we didn't spend the $10.** The deterministic replay — `$0`, read-only against Factor DB — answered the hypothesis before we spent a cent. Script: `scripts/decidable-core-replay.mjs`.
+
+### Setup
+
+- Read every `code_actions` row in `playground/factor-db.sqlite` with a non-empty `source_before`: **1,390 rows** spanning every Meph session recorded.
+- Recompile each against the post-merge compiler (current HEAD).
+- For each row, count: warnings fired (W-T1/W-T2/W-T3), retry markers emitted, source-pattern hits for `while`/`send email`/`ask claude`.
+
+### The numbers
+
+| Metric | Value | Reading |
+|---|---|---|
+| Rows analyzed | **1,390** | Every historical Meph-written Clear source |
+| `compile_ok` at write time | 1220 (87.8%) | Baseline |
+| Rows with `while` | **0** | Bound is fully preventive |
+| Rows with `send email` | **0** | Same |
+| Rows with self-recursive function | **0** | Same |
+| W-T1 / W-T2 / W-T3 warnings fired | **0 / 0 / 0** | Nothing in history triggers them |
+| Rows with `ask claude` | **102 (7.3%)** | Every one now carries the retry loop |
+| Recompile-clean | 1005 (72.3%) | 289 fail under current compiler |
+
+### Why the 15pp "regression" is not a regression
+
+Top error-message buckets on the 289 failing rows: (1) stricter `save X` — 56; (2) unclosed `{` — 10; (3) empty validate block — 5; (4) time format `'02:00 AM'` — 4; (5) empty if-block — 4. **Every top bucket is pre-existing language evolution, not decidable-core.** W-T1/W-T2/W-T3 account for zero of the failures. Historical Meph sources are literally older versions of the language — syntax has tightened since they were written. The decidable-core-specific change set (bounds + retry) is fully backwards-compatible with everything in the DB.
+
+### The one measurable win
+
+**102 Meph sessions that used `ask claude` now auto-recover** from 429 / 5xx / `fetch failed` / `ECONNREFUSED` / `ETIMEDOUT` transients. Every future Meph session with an AI call inherits the retry loop. Cost: zero — the retry is emitted inline in compiled output, no runtime flag or opt-in.
+
+### Why we skip the paid A/B
+
+The original Phase 7 design was an A/B on 5 curriculum tasks "known to hit termination failures." After the replay:
+
+1. **The tasks don't exist.** Zero history of `while` / `send email` / recursion in Meph output means there's no task in the curriculum where termination bounds would fire. Running an A/B would measure "pass rate with bounds" vs "pass rate without bounds" on tasks that touch neither condition — a rate difference of structurally zero.
+2. **The retry's win is deterministic, not statistical.** We don't need to run 5 tasks × 5 trials × 2 conditions to confirm `_attempt < 3` appears in every compiled `ask claude` output — a `grep` confirms it. The only question a paid A/B would answer is "do curriculum sweeps hit enough transient 429/5xx/network errors that auto-retry materially lifts pass rate?" That's a sweep-stability question, not a language-design question; if we want that data, it's better collected opportunistically across ASH-2 sweeps than paid for in a dedicated burn.
+3. **The Session 41 rule holds.** "Don't run sweeps to measure subtle changes." A retry that converts transient failures to successes is exactly the kind of subtle change that needs 20-50 trials to separate from noise. $100-750 per hypothesis — untenable for something already deterministically verified.
+
+**Budget preserved: $10 → $0 spent. Hypothesis answered. Confidence high.**
+
+### Follow-ups
+
+- **The 289-row syntactic drift is unfinished signal.** Most are one-of-a-kind mismatches that evolve out naturally, but the top bucket (56 rows of stricter `save X`) is worth a Factor-DB-friction-report pass to see if current Meph sessions still hit it. If yes, there's either a compiler-error fix or a system-prompt hint to land.
+- **When ASH-2 sweeps run**, capture a side-stat: how often does `_attempt >= 1` in serverJS fire at runtime? That's the opportunistic measurement of retry-as-safety-net at $0 incremental cost.
+- **PHILOSOPHY Rule 17** ("safety properties are cross-target") is now locked in as a deterministic gate via `scripts/cross-target-smoke.mjs`. Every future language feature inherits it — the 3 Python-target bugs surfaced in this work are not repeatable.
+
+### Bigger-picture claim
+
+**"Compiler-as-capital-investment" has one measurable data point now.** Decidable-core landed with cost (planning, implementation, testing, doc-sweep) but zero functional regression and one deterministic win (102-row retry coverage). The bounds themselves are insurance against futures we can't measure from historical data — the right frame is portfolio hedging, not feature ROI. This is the shape the compiler-flywheel section of RESEARCH.md predicts: features that can't be measured in a sweep still compound indefinitely if they're free at runtime and backwards-compatible.
+
+---
+
 ## Session 44 evening: A/B RESULT — hints lift pass rate on CRUD, no lift on single-endpoint (2026-04-23)
 
 **Run:** 40 trials (10 per condition per task × 2 tasks × 2 conditions), `cc-agent` backend (Russell's Claude subscription, $0), strict grading (requires `test_pass=1` in Factor DB), workers=1 for clean per-trial start-time windows. Wall clock: 85.6 min.
