@@ -135,7 +135,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Look up all | `look up all Users` / `get all Users` | Optional `where` clause |
 | Delete | `delete the User with this id` | |
 | Update | `save profile to Users` | Var name = incoming entity |
-| Belongs to | `author belongs to Users` | Foreign key |
+| Belongs to | `author belongs to Users` | Foreign key. `get all Posts` auto-stitches the referenced record on read (JS + Python). |
 | Has many | `Users has many Posts` | Auto-generates nested GET endpoint |
 | Search | `search Posts for query` | Case-insensitive full-text |
 | Aggregates | `sum of amount in Orders` | Also `avg of`, `count of`, `min of`, `max of` |

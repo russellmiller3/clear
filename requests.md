@@ -83,7 +83,7 @@
 | File upload middleware | ❌ no multer | ❌ no multipart |
 | Email sending | 💀 fetch to email address | 💀 silent drop |
 | External API calls | ✅ works | 💀 `httpx` not imported |
-| DB relationships/JOIN | ❌ ignored | ❌ ignored |
+| DB relationships/JOIN | ✅ auto-stitched on read | ✅ auto-stitched on read [2026-04-24] |
 | Charts | ❌ empty canvas | ❌ silently dropped |
 | Conditional display | 💀 empty JS bodies | N/A |
 | `display as list` | ❌ stat card instead | N/A |
@@ -221,7 +221,7 @@
 | 6 | ~~Policy guards leak into frontend~~ **[DONE]** | JS | ✅ |
 | 7 | ~~Policy guards re-register on every `_recompute()`~~ **[DONE]** | JS | ✅ |
 | 8 | Charts — `display X as bar chart` **silently dropped** — no ECharts CDN, no `echarts.init`, no chart DOM. Directive accepted but no codegen | Both | **open** |
-| 9 | DB relationships — `belongs to` parses clean but no JOIN emitted on `get all X with Y` | Both | **open** |
+| 9 | ~~DB relationships — `belongs to` parses clean but no JOIN emitted on `get all X`~~ **[DONE 2026-04-24]** JS always auto-stitched; Python path gained `schemaMap` + FK stitching loop + pluralized `REFERENCES` | Both | ✅ |
 | 10 | ~~External APIs — `fetch from` compiles to `undefined`~~ **[DONE]** | Both | ✅ |
 | 11 | Agent streaming display not expressible in Clear | Both | open |
 | 12 | Compile tool returns no source on error (debug blind) | Tooling | open |
@@ -2997,7 +2997,7 @@ because the original test used non-canonical wording. Each passes a green repro:
 Actual remaining backlog (everything else has been verified or moved to DONE):
 
 - **T2#8 Charts** — `display X as bar chart` is *silently dropped* (no ECharts CDN, no `echarts.init`, no chart DOM). Directive accepted, no codegen. **Real bug.**
-- **T2#9 DB relationships** — `belongs to` parses clean but `get all Orders with Customers` emits no JOIN. **Real bug.**
+- ~~**T2#9 DB relationships**~~ **[DONE 2026-04-24]** JS had auto-stitching already; Python path now emits `for _item in rows: _item[fk] = db.query_one(...)` after every list lookup + fixed `REFERENCES <tbl>(id)` pluralization bug. 5 new compiler tests + runtime smoke.
 - **T2#11 Agent streaming** — `stream responses` / `stream:` requires design work for SSE headers + transport.
 - **T2#12 Compile tool returns no source on error** — tooling (playground/server.js compile endpoint).
 - **T2#13 Scheduled task cancellation** — has `try/catch` + `setInterval`, but no `clearInterval` / handle exposed. **Partial.**

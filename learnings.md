@@ -46,6 +46,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 40: `caller` rename + compiler shadow bug + HINT_APPLIED reliability](#session-40-caller-rename--compiler-shadow-bug--hint_applied-reliability-2026-04-20) | Compiler magic-var mapping ignored lexical shadow (bug); `caller` as 1-word canonical eliminates Users-table exception; prompt-only Claude compliance ~50% in long loops — need server-side fallback; keyword-collision validator surfaces post/deploy/update/payment as bad receiving vars |
 | [Session 41: End-to-end flywheel verification — first real measurement](#session-41-end-to-end-flywheel-verification--first-real-measurement-2026-04-21) | Three-intervention stack (prompt reflex + inline reminder + server fallback) got tag rate 43% → ~100%; first-ever negative labels (Meph rejects hints w/ reasons); ranker retrained on 6.6× data (52→344 pairs); archetype audit found 9/16 gaps, filled 8; compile-output opt-in saves $/sweep; `current_user` underscore now a synonym (surfaced by rejection reason row 1284) |
 | [Session 44: cc-agent Windows stdin race + system-prompt size ceiling](#session-44-cc-agent-windows-stdin-race--system-prompt-size-ceiling-2026-04-23) | claude.exe 2.1.111 on Windows fails 100% of stdin-piped prompts (3s data-received check races Node's async pipe write); argv-only path hits 32KB Windows `CreateProcess` ceiling (ENAMETOOLONG) when Meph's 48KB system prompt is concatenated; fix uses `--system-prompt-file` for system + positional argv for user prompt + `stdio:['ignore',...]` to kill stdin entirely; 5.3% → ~60-75% pass rate; parallel-3 still flaky (separate ticket) |
+| [Session 45: Python `belongs to` JOIN silent bug](#session-45-python-belongs-to-join-silent-bug-2026-04-24) | Python schema emitter appended `s` to lowercased FK target (`userss(id)` for `belongs to Users`); Python backend ctx was missing `schemaMap` so `compileCrud` couldn't find FK fields to stitch; fix: use `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop; runtime smoke confirms embedded record on read |
 
 ---
 
@@ -1789,4 +1790,30 @@ Session 42's sweeps "worked" at 89% pass rate. Either (a) a recent claude.exe bi
 ### Gotcha-as-rule for this project
 
 **Never pipe a prompt to `claude.exe` via stdin on Windows.** Use argv for the user-side prompt, `--system-prompt-file` for any system prompt that might exceed 32KB. Close stdin explicitly with `stdio: ['ignore', ...]` so no future change can accidentally revive the race.
+
+---
+
+## Session 45: Python `belongs to` JOIN silent bug (2026-04-24)
+
+TIER 2 #9 had sat in requests.md for weeks with "both langs broken." Reality was sharper: JS had been auto-stitching FK reads all along; Python shipped two distinct silent bugs that both needed fixing in one pass.
+
+### Two failures, both silent, both class-of-bug important
+
+**Failure 1 — schema double-s typo.** `compiler.js:5735` built the Python `REFERENCES` clause with `${f.fk.toLowerCase()}s(id)`. For `author belongs to Users`, that produces `REFERENCES userss(id)` — a table that does not exist. SQLite silently accepts the DDL (FK enforcement is off by default in the stdlib driver), so the bug is invisible until someone reads the compiled output. The JS path always did this correctly via `pluralizeName`. **Fix:** use `pluralizeName(f.fk)` in Python too.
+
+**Failure 2 — no stitching on read.** Python's `get all Posts` compiled to `db.query("posts")` with no follow-up loop to swap the FK id for the referenced record. The user got `{author: 1}`. JS's `compileCrud` has had a FK-stitching loop for ages, gated on `ctx.schemaMap.fkFields` — but the Python backend compile entry (`compiler.js:12196`) never populated `schemaMap` on its ctx. `compileCrud` saw `undefined` and silently skipped the stitch block. **Fix:** build `pySchemaMap` alongside `pySchemaNames`, pass it on ctx, mirror the JS stitching loop inside the Python lookup branch.
+
+### Gotchas-as-rules from this
+
+- **When emitting SQL `REFERENCES`, use `pluralizeName(targetName)` — never append `s` by hand.** Tables ending in `s` or `es` double-pluralize (Users → userss; Addresses → addressess). Both already-plural entity names are common in Clear apps.
+- **Per-target compile ctx must be symmetric.** If the JS backend ctx carries `schemaMap`, the Python backend ctx must too. Asymmetry between language paths produces silent feature gaps that unit tests won't catch — the feature exists in one target, is just gone in the other. Audit: grep `ctx\\.schemaMap` and make sure both `lang: 'js'` and `lang: 'python'` entry points populate it.
+- **Run the compiled output through `py_compile` + a hand-rolled mock-db smoke before declaring a Python fix done.** `node clear.test.js` greens off string assertions, not semantic correctness. A 20-line `temp-py-stitch-smoke.py` script spoofs the runtime db class, runs the generated stitching loop, and asserts the user-visible shape (`{author: {id:1, name:'Alice'}}` not `{author: 1}`). That's the Session 9 "runtime guards > compile-time guards" pattern applied to test coverage.
+- **Phrase-as-negative for the double-s trap.** "Never hand-append `s` to a table name in generated SQL." Anyone wiring a new language target or adapter will otherwise repeat the same bug.
+
+### Why this mattered more than it looked
+
+Every relational Marcus app (CRM, blog, helpdesk, booking — 4 of the 8 core templates) hit this bug on the Python target. Looked like users would simply "not use Python for relational data" — but the bug was also the reason Python benchmarks underperformed against JS on every CRUD archetype. Fixing it:
+- Unblocks Python-backend relational apps end-to-end
+- Tightens Python/JS parity (one fewer silent divergence)
+- Added 5 compiler tests + 1 runtime smoke, so the regression floor exists. Future pluralize changes can't re-introduce the typo without a red test.
 

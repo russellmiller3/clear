@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Python `belongs to` JOIN emission fixed (TIER 2 #9)
+
+Silent bug shipped in a single session: Python apps with `belongs to` FK fields compiled to code that returned disconnected rows at runtime. Two distinct failures, both fixed, both covered by new tests.
+
+**1. Schema typo: `REFERENCES userss(id)`.** The Python schema emitter naively appended `s` to the lowercased FK target — `Users` → `users` + `s` = `userss`. The referenced table never existed, so SQLite silently ignored the FK constraint. JS did this correctly via `pluralizeName` all along. Fix: use `pluralizeName(f.fk)` in the Python path too (compiler.js:5735).
+
+**2. No FK stitching on read.** Python's `get all Posts` compiled to `db.query("posts")` and stopped. No loop to swap the FK id for the referenced record. The user got `{author: 1}` when they expected `{author: {id: 1, name: "Alice"}}`. The JS path has had this loop forever via `ctx.schemaMap.fkFields`, but the Python backend ctx never received `schemaMap` at all. Fix: populate `pySchemaMap` alongside `pySchemaNames` in the Python compile entry (compiler.js:12196), then mirror the JS stitching loop in the Python lookup branch (compiler.js:4200).
+
+**User-visible outcome proven with runtime smoke** (temp-py-stitch-smoke.py):
+```python
+# Before: {'title': 'hello world', 'author': 1, 'id': 1}
+# After:  {'title': 'hello world', 'author': {'name': 'Alice', 'id': 1}, 'id': 1}
+```
+
+5 new tests added to clear.test.js covering: `REFERENCES` pluralization correctness (double-s regression floor + -es plural + singular-needs-pluralize), Python stitching loop emission, and negative-case (no FK → no loop). 2426 compiler tests green, all 8 core templates compile clean, zero regressions.
+
+Landed in a single commit on `fix/belongs-to-python-joins`. Closes TIER 2 #9.
+
+---
+
 ## 2026-04-23 evening — Session 44 three-track push (research A/B + LAE hardening + LAE Phase B scaffolding)
 
 9 commits on `feature/research-ab-tooling` (pushed to origin; merge to main pending Phase B 3.3+3.4+4-6). Three simultaneous tracks in one long session: close the hint-effect measurement gap, production-harden Live App Editing Phase A, and build 60% of the cloud-shipping path for Phase B.

@@ -4200,7 +4200,25 @@ function compileCrud(node, ctx, pad) {
     if (node.operation === 'lookup') {
       const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
       const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-      return `${pad}${sanitizeName(node.variable)} = db.${isSingleLookup ? 'query_one' : 'query'}("${table}"${where})`;
+      const varName = sanitizeName(node.variable);
+      let lookupCode = `${pad}${varName} = db.${isSingleLookup ? 'query_one' : 'query'}("${table}"${where})`;
+      // FK join stitching: for each declared `belongs to` field, replace the
+      // raw FK id with the full referenced record. Mirrors the JS path so
+      // `get all Posts` returns posts with embedded author records, not
+      // disconnected ids. Only applies to list lookups — single `query_one`
+      // results get stitched via the existing per-field access pattern.
+      if (!isSingleLookup && ctx.schemaMap) {
+        const schema = ctx.schemaMap[(node.target || '').toLowerCase()];
+        if (schema && schema.fkFields.length > 0) {
+          lookupCode += `\n${pad}for _item in ${varName}:`;
+          for (const fkField of schema.fkFields) {
+            const fkTable = pluralizeName(fkField.fk);
+            const fkName = sanitizeName(fkField.name);
+            lookupCode += `\n${pad}    if _item.get('${fkName}'): _item['${fkName}'] = db.query_one("${fkTable}", {"id": _item['${fkName}']})`;
+          }
+        }
+      }
+      return lookupCode;
     }
     if (node.operation === 'save') {
       if (node.resultVar) return `${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${sanitizeName(node.variable)})`;
@@ -5732,7 +5750,7 @@ function compileDataShape(node, ctx, pad) {
       if (f.unique) col += ' UNIQUE';
       if (f.defaultValue !== null && f.defaultValue !== undefined) col += ` DEFAULT '${f.defaultValue}'`;
       if (f.auto && f.fieldType === 'timestamp') col += ' DEFAULT NOW()';
-      if (f.fk) col += ` REFERENCES ${f.fk.toLowerCase()}s(id)`;
+      if (f.fk) col += ` REFERENCES ${pluralizeName(f.fk)}(id)`;
       return col;
     }).join(', ');
     const tableName = pluralizeName(node.name);
@@ -12192,8 +12210,17 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   }
 
   const pySchemaNames = new Set();
-  for (const node of body) { if (node.type === NodeType.DATA_SHAPE) pySchemaNames.add(node.name); }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, dbBackend: pyDbBackend, _allNodes: body };
+  const pySchemaMap = {};
+  for (const node of body) {
+    if (node.type === NodeType.DATA_SHAPE) {
+      pySchemaNames.add(node.name);
+      pySchemaMap[node.name.toLowerCase()] = {
+        fields: node.fields,
+        fkFields: node.fields.filter(f => f.fk)
+      };
+    }
+  }
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, dbBackend: pyDbBackend, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {

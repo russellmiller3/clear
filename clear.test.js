@@ -6044,6 +6044,53 @@ when user calls GET /api/posts:
     expect(r.python).toContain('REFERENCES');
   });
 
+  it('Python belongs to emits REFERENCES with correctly pluralized table (no double-s)', () => {
+    // Regression: Users → users (already plural, no extra 's'). Earlier compiler emitted
+    // `REFERENCES userss(id)` because it naively appended 's' to the lowercased name.
+    const r = compileProgram("target: python backend\ncreate a Users table:\n  name\ncreate a Posts table:\n  title\n  author belongs to Users\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('REFERENCES users(id)');
+    expect(r.python).not.toContain('userss');
+  });
+
+  it('Python belongs to — pluralizes singular FK target (Customer → customers)', () => {
+    const r = compileProgram("target: python backend\ncreate a Customer table:\n  name\ncreate an Order table:\n  item\n  customer belongs to Customer\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('REFERENCES customers(id)');
+  });
+
+  it('Python belongs to — handles -es plural (Addresses stays Addresses)', () => {
+    const r = compileProgram("target: python backend\ncreate an Addresses table:\n  street\ncreate a Users table:\n  name\n  home belongs to Addresses\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('REFERENCES addresses(id)');
+    expect(r.python).not.toContain('addressess');
+  });
+
+  it('Python GET all with belongs_to emits join stitching loop', () => {
+    const r = compileProgram(`target: python backend
+create a Users table:
+  name
+create a Posts table:
+  title
+  author belongs to Users
+when user calls GET /api/posts:
+  all_posts = get all Posts
+  send back all_posts`);
+    // Expect Python to stitch the FK author → full Users record, mirroring JS behavior.
+    // Using db.query_one (the Python lookup_one helper) to load the referenced record.
+    expect(r.python).toContain('for _item in all_posts');
+    expect(r.python).toContain("db.query_one(\"users\"");
+    expect(r.python).toContain("_item['author']");
+  });
+
+  it('Python GET all with no belongs_to — no stitching loop emitted', () => {
+    const r = compileProgram(`target: python backend
+create a Items table:
+  name
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items`);
+    // No FK fields → no stitching loop, endpoint stays a flat db.query.
+    expect(r.python).not.toContain('for _item in all_items');
+  });
+
   it('belongs to field collision — field named belongs without to', () => {
     const r = compileProgram("target: backend\ncreate a Items table:\n  belongs, required\non GET '/test':\n  send back 'ok'");
     expect(r.errors).toHaveLength(0);
