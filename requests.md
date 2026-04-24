@@ -225,7 +225,7 @@
 | 10 | ~~External APIs — `fetch from` compiles to `undefined`~~ **[DONE]** | Both | ✅ |
 | 11 | Agent streaming display not expressible in Clear | Both | open |
 | 12 | Compile tool returns no source on error (debug blind) | Tooling | open |
-| 13 | JS scheduled task — has `try/catch` + `setInterval` but NO `clearInterval`/cancellation handle | JS | partial |
+| 13 | ~~JS scheduled task — has `try/catch` + `setInterval` but NO `clearInterval`/cancellation handle~~ **[DONE 2026-04-24]** unified `_scheduledCancellers` registry, drained by SIGTERM + SIGINT; covers setInterval, HH:MM recursive setTimeout, and node-cron | JS | ✅ |
 | 14 | ~~[PYTHON] Scheduled task uses deprecated `@app.on_event`~~ **[DONE 2026-04-14]** (now `@asynccontextmanager` lifespan) | Python | ✅ |
 | 15 | Server has no multipart/file upload middleware | JS | open |
 | 16 | ~~`tabs` — `_switchTab()` never defined~~ **[DONE 2026-04-14]** | JS | ✅ |
@@ -3000,7 +3000,7 @@ Actual remaining backlog (everything else has been verified or moved to DONE):
 - ~~**T2#9 DB relationships**~~ **[DONE 2026-04-24]** JS had auto-stitching already; Python path now emits `for _item in rows: _item[fk] = db.query_one(...)` after every list lookup + fixed `REFERENCES <tbl>(id)` pluralization bug. 5 new compiler tests + runtime smoke.
 - **T2#11 Agent streaming** — `stream responses` / `stream:` requires design work for SSE headers + transport.
 - **T2#12 Compile tool returns no source on error** — tooling (playground/server.js compile endpoint).
-- **T2#13 Scheduled task cancellation** — has `try/catch` + `setInterval`, but no `clearInterval` / handle exposed. **Partial.**
+- ~~**T2#13 Scheduled task cancellation**~~ **[DONE 2026-04-24]** all timer handles now live in `_scheduledCancellers[]`; SIGTERM and SIGINT drain it before `server.close()`. HH:MM cron uses closure-over-mutable-var so the canceller always sees whichever _setTimeout is armed right now. 7 new compiler tests.
 - **T2#15 Multipart middleware** — client sends `FormData`, server has no `multer`/`busboy`/`formidable` to parse it. **Real bug.**
 - **T2#33 Throttle** — no `on scroll throttle` syntax recognized. Missing feature.
 - **T2#42 Cookies** — no `set cookie` syntax, no `cookie-parser` infra. Missing feature.

@@ -47,6 +47,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 41: End-to-end flywheel verification — first real measurement](#session-41-end-to-end-flywheel-verification--first-real-measurement-2026-04-21) | Three-intervention stack (prompt reflex + inline reminder + server fallback) got tag rate 43% → ~100%; first-ever negative labels (Meph rejects hints w/ reasons); ranker retrained on 6.6× data (52→344 pairs); archetype audit found 9/16 gaps, filled 8; compile-output opt-in saves $/sweep; `current_user` underscore now a synonym (surfaced by rejection reason row 1284) |
 | [Session 44: cc-agent Windows stdin race + system-prompt size ceiling](#session-44-cc-agent-windows-stdin-race--system-prompt-size-ceiling-2026-04-23) | claude.exe 2.1.111 on Windows fails 100% of stdin-piped prompts (3s data-received check races Node's async pipe write); argv-only path hits 32KB Windows `CreateProcess` ceiling (ENAMETOOLONG) when Meph's 48KB system prompt is concatenated; fix uses `--system-prompt-file` for system + positional argv for user prompt + `stdio:['ignore',...]` to kill stdin entirely; 5.3% → ~60-75% pass rate; parallel-3 still flaky (separate ticket) |
 | [Session 45: Python `belongs to` JOIN silent bug](#session-45-python-belongs-to-join-silent-bug-2026-04-24) | Python schema emitter appended `s` to lowercased FK target (`userss(id)` for `belongs to Users`); Python backend ctx was missing `schemaMap` so `compileCrud` couldn't find FK fields to stitch; fix: use `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop; runtime smoke confirms embedded record on read |
+| [Session 45b: Scheduled-task shutdown leak](#session-45b-scheduled-task-shutdown-leak-2026-04-24) | Every `background` / `cron` / `agent runs every` compiled to an anonymous `setInterval`/`setTimeout`, which kept the event loop alive after `server.close()`; unified `_scheduledCancellers[]` registry drained by SIGTERM and SIGINT; HH:MM recursive setTimeout solved by closure over a mutable `_curTimer` so the canceller always sees the currently-armed timer |
 
 ---
 
@@ -1816,4 +1817,36 @@ Every relational Marcus app (CRM, blog, helpdesk, booking — 4 of the 8 core te
 - Unblocks Python-backend relational apps end-to-end
 - Tightens Python/JS parity (one fewer silent divergence)
 - Added 5 compiler tests + 1 runtime smoke, so the regression floor exists. Future pluralize changes can't re-introduce the typo without a red test.
+
+---
+
+## Session 45b: Scheduled-task shutdown leak (2026-04-24)
+
+TIER 2 #13 had been marked "partial" for weeks. The symptom was subtle: every Clear app with a `background` job or a `cron` block would refuse to exit on SIGTERM. `server.close()` fired; the HTTP server shut down; then the process hung until Node's 30-second grace timeout killed it. Local dev: `ctrl-c` required a second press. Production deploys: 30-second tail on every rollout.
+
+### Root cause: anonymous timer handles
+
+The compiler emitted `setInterval(fn, ms);` with no handle capture. Nothing to `clearInterval`. `server.close()` stopped accepting connections but the interval kept running on the event loop, so Node's "exit when event loop is empty" check never tripped. This applied to five distinct emit sites:
+1. `background 'foo': runs every N unit` → `setInterval`
+2. `every N minute:` / `every N hour:` top-level cron → `setInterval`
+3. `every day at HH:MM:` top-level cron → IIFE with recursive `setTimeout` (each `_tick` re-arms the next one)
+4. `agent 'X' runs every N unit` → `setInterval`
+5. `agent 'X' runs every N unit at HH` → node-cron `.schedule()` (returns a `.stop()`-able object)
+
+### Fix: one registry, five push sites
+
+Single array `const _scheduledCancellers = []` at module top (gated on `hasScheduled = body.some(n => n.type === BACKGROUND || n.type === CRON || (n.type === AGENT && n.schedule))` so apps without scheduled work emit no dead code). Every emit site captures its timer in a named variable and pushes a zero-arg closure:
+- `setInterval(fn, ms)` → `_scheduledCancellers.push(() => clearInterval(_job_x))`
+- `node-cron.schedule(...)` → `_scheduledCancellers.push(() => _cron_x.stop())`
+- Recursive setTimeout → `let _curTimer; ... _curTimer = setTimeout(_tick, ...); _scheduledCancellers.push(() => clearTimeout(_curTimer))` — the closure sees `_curTimer` by reference, not value, so it cancels whichever _tick is armed RIGHT NOW
+
+Both `SIGTERM` and `SIGINT` drain the registry before `server.close()`.
+
+### Gotchas-as-rules
+
+- **Every generated timer must pair with a canceller.** If the compiler emits a `setInterval`, it also emits a `clearInterval` path. Any emit site that just calls `setInterval(fn, ms)` without capturing the handle is a bug in the compiler — it's not the app author's job to clean up compiler-emitted plumbing.
+- **Recursive setTimeout patterns need closure-over-mutable-var for cancel.** `setTimeout(_tick, _nextMs())` assigned at IIFE top-level only captures the FIRST timer. When `_tick` re-arms with `setTimeout(_tick, 86400000)`, the new handle is orphaned unless the IIFE stores it to a `let` that a registered canceller can read. The pattern `let _cur; _cur = setTimeout(_tick, ...); push(() => clearTimeout(_cur))` is the textbook solution — the canceller closes over `_cur` by reference, so it always reads the latest armed timer.
+- **SIGINT and SIGTERM should share shutdown logic.** Production containers send SIGTERM; local dev sends SIGINT (ctrl-c). Having SIGTERM clean up and SIGINT exit dirty is a silent asymmetry — same cleanup, same symbol, both signals. When writing shutdown code, always wire both handlers to the same body.
+- **Gate dead code with capability detection.** The registry adds 3 lines at module top and is empty for the majority of apps. Guarding on `hasScheduled` avoids polluting 95% of compiled apps with plumbing they don't use. Same pattern as `usesAuth` / `usesRateLimit` / `hasAuthScaffold` detection higher up in the backend JS emitter.
+- **"Partial" in requests.md is a red flag, not a status.** T2#13 had sat as "partial" while new features shipped around it. Every "partial" means: it technically works in some dimension but silently fails in another. Audit all current "partial" entries — they're usually shutdown, error, or cancellation paths that look fine until production.
 

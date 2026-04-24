@@ -4696,7 +4696,7 @@ function compileAgent(node, ctx, pad) {
     // If "at" time specified, use cron-style scheduling
     if (at) {
       const cronExpr = _timeToCron(at, value, unit);
-      return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}const _cron_${fnName} = require('node-cron');\n${pad}_cron_${fnName}.schedule('${cronExpr}', ${fnName});\n${pad}console.log("Scheduled agent '${node.name}' running ${cronExpr}");`;
+      return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}const _cron_${fnName} = require('node-cron').schedule('${cronExpr}', ${fnName});\n${pad}_scheduledCancellers.push(() => _cron_${fnName}.stop());\n${pad}console.log("Scheduled agent '${node.name}' running ${cronExpr}");`;
     }
     // Otherwise use setInterval
     const ms = unit === 'second' ? value * 1000
@@ -4704,7 +4704,7 @@ function compileAgent(node, ctx, pad) {
       : unit === 'hour' ? value * 3600000
       : unit === 'day' ? value * 86400000
       : value * 3600000; // default hour
-    return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}setInterval(${fnName}, ${ms});\n${pad}console.log("Scheduled agent '${node.name}' running every ${value} ${unit}(s)");`;
+    return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}const _interval_${fnName} = setInterval(${fnName}, ${ms});\n${pad}_scheduledCancellers.push(() => clearInterval(_interval_${fnName}));\n${pad}console.log("Scheduled agent '${node.name}' running every ${value} ${unit}(s)");`;
   }
 
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
@@ -7177,14 +7177,16 @@ ${pad}}`;
         return code;
       }
       const bodyCode = compileBody(node.body, ctx, { declared: new Set() });
+      const jobVar = `_job_${sanitizeName(node.name)}`;
       let code = `${pad}// Background job: ${node.name}\n`;
-      code += `${pad}setInterval(async () => {\n`;
+      code += `${pad}const ${jobVar} = setInterval(async () => {\n`;
       code += `${pad}  try {\n`;
       code += bodyCode.split('\n').map(l => `  ${l}`).join('\n') + '\n';
       code += `${pad}  } catch (_err) {\n`;
       code += `${pad}    console.error('Background job error:', _err);\n`;
       code += `${pad}  }\n`;
-      code += `${pad}}, ${scheduleMs});`;
+      code += `${pad}}, ${scheduleMs});\n`;
+      code += `${pad}_scheduledCancellers.push(() => clearInterval(${jobVar}));`;
       return code;
     }
 
@@ -7237,21 +7239,27 @@ ${pad}}`;
       if (node.mode === 'interval') {
         const msMap = { second: 1000, minute: 60000, hour: 3600000 };
         const ms = node.value * (msMap[node.unit] || 60000);
+        const intervalVar = `_cron_int_${node.value}_${node.unit}`;
         let code = `${pad}// Scheduled: every ${node.value} ${node.unit}(s)\n`;
-        code += `${pad}setInterval(async () => {\n`;
+        code += `${pad}const ${intervalVar} = setInterval(async () => {\n`;
         code += `${pad}  try {\n`;
         code += bodyCode.split('\n').map(l => `  ${l}`).join('\n') + '\n';
         code += `${pad}  } catch (_err) {\n`;
         code += `${pad}    console.error('Scheduled task error:', _err);\n`;
         code += `${pad}  }\n`;
-        code += `${pad}}, ${ms});`;
+        code += `${pad}}, ${ms});\n`;
+        code += `${pad}_scheduledCancellers.push(() => clearInterval(${intervalVar}));`;
         return code;
       } else {
-        // mode === 'at': every day at HH:MM
+        // mode === 'at': every day at HH:MM. The `_curTimer` closure lets the
+        // canceller see whichever setTimeout is armed RIGHT NOW — _tick keeps
+        // re-arming, but the canceller's reference updates each time because
+        // it closes over the var, not the initial value.
         const h = node.hour;
         const m = node.minute;
         let code = `${pad}// Scheduled: every day at ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}\n`;
         code += `${pad}(function _scheduleDailyAt${h}_${m}() {\n`;
+        code += `${pad}  let _curTimer;\n`;
         code += `${pad}  const _runAt = async () => {\n`;
         code += `${pad}    try {\n`;
         code += bodyCode.split('\n').map(l => `    ${l}`).join('\n') + '\n';
@@ -7266,8 +7274,9 @@ ${pad}}`;
         code += `${pad}    if (next <= now) next.setDate(next.getDate() + 1);\n`;
         code += `${pad}    return next - now;\n`;
         code += `${pad}  };\n`;
-        code += `${pad}  const _tick = () => { _runAt(); setTimeout(_tick, 86400000); };\n`;
-        code += `${pad}  setTimeout(_tick, _nextMs());\n`;
+        code += `${pad}  const _tick = () => { _runAt(); _curTimer = setTimeout(_tick, 86400000); };\n`;
+        code += `${pad}  _curTimer = setTimeout(_tick, _nextMs());\n`;
+        code += `${pad}  _scheduledCancellers.push(() => clearTimeout(_curTimer));\n`;
         code += `${pad}})();`;
         return code;
       }
@@ -11299,6 +11308,14 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
   );
+  // Any timer-based node needs a cancel registry so SIGTERM/SIGINT can shut
+  // it down cleanly. BACKGROUND + CRON compile to setInterval/setTimeout
+  // loops; AGENT nodes with `runs every` take the same path.
+  const hasScheduled = body.some(n =>
+    n.type === NodeType.BACKGROUND ||
+    n.type === NodeType.CRON ||
+    (n.type === NodeType.AGENT && n.schedule)
+  );
   const usesRateLimit = body.some(n =>
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.RATE_LIMIT)
@@ -11490,6 +11507,11 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('});');
   } else if (usesAuth) {
     lines.push('app.use(auth.middleware());');
+  }
+  if (hasScheduled) {
+    lines.push('// Scheduled-job cancel registry — SIGTERM/SIGINT drain this');
+    lines.push('// before server.close() so timers don\'t pin the event loop.');
+    lines.push('const _scheduledCancellers = [];');
   }
   lines.push('');
 
@@ -11798,9 +11820,21 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   lines.push('});');
   lines.push('');
   lines.push('// Graceful shutdown');
+  const shutdownBody = hasScheduled
+    ? [
+        "  console.log('Shutting down...');",
+        '  for (const _c of _scheduledCancellers) _c();',
+        '  server.close(() => process.exit(0));',
+      ]
+    : [
+        "  console.log('Shutting down...');",
+        '  server.close(() => process.exit(0));',
+      ];
   lines.push("process.on('SIGTERM', () => {");
-  lines.push("  console.log('Shutting down...');");
-  lines.push('  server.close(() => process.exit(0));');
+  for (const ln of shutdownBody) lines.push(ln);
+  lines.push('});');
+  lines.push("process.on('SIGINT', () => {");
+  for (const ln of shutdownBody) lines.push(ln);
   lines.push('});');
 
   // Build JS-line → Clear-line source map from // clear:N markers.

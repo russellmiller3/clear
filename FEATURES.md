@@ -136,6 +136,8 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Delete | `delete the User with this id` | |
 | Update | `save profile to Users` | Var name = incoming entity |
 | Belongs to | `author belongs to Users` | Foreign key. `get all Posts` auto-stitches the referenced record on read (JS + Python). |
+| Background jobs | `background 'name': runs every 1 hour` | Compiles to `setInterval`; cleaned up on SIGTERM + SIGINT via `_scheduledCancellers` registry. |
+| Scheduled cron | `every 5 minutes:` / `every day at 9am:` | Interval or HH:MM recurrence; both wired into shutdown-safe cancellation. |
 | Has many | `Users has many Posts` | Auto-generates nested GET endpoint |
 | Search | `search Posts for query` | Case-insensitive full-text |
 | Aggregates | `sum of amount in Orders` | Also `avg of`, `count of`, `min of`, `max of` |

@@ -5100,6 +5100,61 @@ describe('Compiler - background', () => {
     expect(result.python).toContain('job_send_emails');
     expect(result.python).toContain('lifespan');
   });
+
+  // TIER 2 #13 — scheduled tasks must expose their timer handle so the
+  // process can clean up on shutdown. Before today the handle was anonymous,
+  // so SIGTERM let zombie timers keep the event loop alive after
+  // `server.close()` — local dev had to ctrl-c twice, production shutdowns
+  // waited for the 30s grace timeout every deploy.
+  //
+  // Design: a single `_scheduledCancellers` array at module top. Every emit
+  // site pushes a zero-arg cancel function — `() => clearInterval(h)` for
+  // setInterval, `() => clearTimeout(_curTimer)` for the recursive-setTimeout
+  // HH:MM path, `() => _cron_X.stop()` for node-cron. SIGTERM + SIGINT each
+  // drain the array before calling `server.close()`. One uniform shape = one
+  // cleanup loop = no per-timer-style fanout.
+  it('captures setInterval cancellers in the shared registry', () => {
+    const result = compileProgram("target: backend\nbackground 'send-emails':\n  runs every 1 hour\n  show 'sending'");
+    expect(result.javascript).toContain('_scheduledCancellers');
+    expect(result.javascript).toMatch(/_scheduledCancellers\.push\(/);
+    expect(result.javascript).toMatch(/clearInterval/);
+  });
+
+  it('declares _scheduledCancellers at module top when a job is scheduled', () => {
+    const result = compileProgram("target: backend\nbackground 'send-emails':\n  runs every 1 hour\n  show 'sending'");
+    expect(result.javascript).toContain('const _scheduledCancellers = []');
+  });
+
+  it('SIGTERM drains _scheduledCancellers before server.close', () => {
+    const result = compileProgram("target: backend\nbackground 'send-emails':\n  runs every 1 hour\n  show 'sending'");
+    const shutdown = result.javascript.match(/process\.on\('SIGTERM'[\s\S]*?server\.close/);
+    expect(shutdown).toBeTruthy();
+    expect(shutdown[0]).toContain('_scheduledCancellers');
+    // The shutdown block must actually CALL each canceller, not just read the array.
+    expect(shutdown[0]).toMatch(/for \(const _c of _scheduledCancellers\) _c\(\)/);
+  });
+
+  it('SIGINT handler also drains cancellers (ctrl-c local dev parity)', () => {
+    const result = compileProgram("target: backend\nbackground 'send-emails':\n  runs every 1 hour\n  show 'sending'");
+    expect(result.javascript).toContain("process.on('SIGINT'");
+    const sigint = result.javascript.match(/process\.on\('SIGINT'[\s\S]*?server\.close/);
+    expect(sigint).toBeTruthy();
+    expect(sigint[0]).toContain('_scheduledCancellers');
+  });
+
+  it('no registry declared when no scheduled jobs exist (no dead code)', () => {
+    const result = compileProgram("target: backend\nwhen user calls GET /api/health:\n  send back 'ok'");
+    expect(result.javascript).not.toContain('_scheduledCancellers');
+  });
+
+  it('HH:MM daily cron path tracks the recursive setTimeout', () => {
+    // `every day at 9am:` uses the setTimeout-recursive IIFE. The canceller
+    // must close over the current timer reference so it cancels whichever
+    // _tick is armed right now, not just the first one.
+    const result = compileProgram("target: backend\nevery day at 9am:\n  show 'sending'");
+    expect(result.javascript).toContain('_scheduledCancellers');
+    expect(result.javascript).toMatch(/clearTimeout/);
+  });
 });
 
 describe('Parser - subscribe', () => {

@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Scheduled-task cancellation (TIER 2 #13)
+
+Every Clear app with `background`, top-level `cron`, or `agent ... runs every` shipped with anonymous timer handles. SIGTERM closed the HTTP server but `setInterval`/`setTimeout` loops kept running — which meant the Node process refused to exit, production deploys waited for the 30s grace-period kill, and local `ctrl-c` required a second press.
+
+**Fix:** unified `_scheduledCancellers = []` registry at module top (emitted only when the program actually has scheduled work — no dead code otherwise). Every emit site captures its timer in a named variable and pushes a zero-arg cancel closure:
+
+| Pattern | Handle | Canceller |
+|---------|--------|-----------|
+| `background ... runs every X` | `setInterval` | `() => clearInterval(_job_X)` |
+| `every X minutes:` (top-level cron) | `setInterval` | `() => clearInterval(_cron_int_X_min)` |
+| `every day at 9am:` (HH:MM cron) | recursive `setTimeout` (re-armed on each `_tick`) | `() => clearTimeout(_curTimer)` — closes over a mutable var, so it always cancels whichever timer is armed right now |
+| `agent ... runs every X` | `setInterval` | `() => clearInterval(_interval_fnName)` |
+| `agent ... runs every X at Y` | `node-cron` | `() => _cron_fnName.stop()` |
+
+Both `SIGTERM` and `SIGINT` now drain the registry before `server.close()`. SIGINT parity means ctrl-c in local dev exits on the first press.
+
+7 new compiler tests assert: registry declaration, canceller push, SIGTERM/SIGINT drainage, negative case (no registry when no scheduled work), and closure semantics for the HH:MM recursive-setTimeout case. 2432 tests total green, zero regressions, all 8 core templates compile clean. Closes TIER 2 #13.
+
+---
+
 ## 2026-04-24 — Python `belongs to` JOIN emission fixed (TIER 2 #9)
 
 Silent bug shipped in a single session: Python apps with `belongs to` FK fields compiled to code that returned disconnected rows at runtime. Two distinct failures, both fixed, both covered by new tests.
