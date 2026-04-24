@@ -13342,6 +13342,72 @@ describe('Security - sensitive data exposure', () => {
 // on type keywords like `amount is number`. Russell's call: Meph's
 // shorthand is natural English — treat it as a missing feature, add it
 // to the language.
+// T2#8 — `display X as bar chart` / `show X as line chart` shorthand.
+// Before: parsed silently as a DISPLAY node with format='bar'; compiler had
+// no 'bar' format so it emitted nothing. Meph got no chart, no error — the
+// worst kind of silent drop on any dashboard demo. After: the parser
+// detects `as <type> chart` in the display statement and rewrites to a
+// CHART node identical to what `bar chart 'Title' showing X` produces.
+describe('`display X as bar chart` shorthand parses as CHART', () => {
+  it('emits ECharts CDN + chart DOM for `display sales as bar chart`', () => {
+    const src = "build for web\npage 'p' at '/':\n  sales = [10, 20, 30]\n  display sales as bar chart";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+    expect(result.html).toMatch(/echarts\.init/);
+  });
+
+  it('accepts `show X as line chart` (show synonym + line type)', () => {
+    const src = "build for web\npage 'p' at '/':\n  trend = [1, 2, 3]\n  show trend as line chart";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+  });
+
+  it('accepts all four chart types: bar, line, pie, area', () => {
+    for (const chartType of ['bar', 'line', 'pie', 'area']) {
+      const src = `build for web\npage 'p' at '/':\n  data = [1, 2, 3]\n  display data as ${chartType} chart`;
+      const result = compileProgram(src);
+      expect(result.errors).toHaveLength(0);
+      expect(result.html).toContain('echarts');
+    }
+  });
+
+  it("canonical `bar chart 'Title' showing data` still works (regression floor)", () => {
+    const src = "build for web\npage 'p' at '/':\n  sales = [10, 20]\n  bar chart 'Revenue' showing sales";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+  });
+
+  it('rejects `as neon chart` with a helpful error listing the valid types', () => {
+    // Typo / unsupported chart type should suggest valid options, not silently
+    // drop. The existing parseChartRemainder already emits this error for the
+    // canonical form — the shorthand path should reuse the same error.
+    const src = "build for web\npage 'p' at '/':\n  d = [1]\n  display d as neon chart";
+    const result = compileProgram(src);
+    // Either errors cleanly OR falls back to DISPLAY format='neon' (graceful).
+    // We don't want a SILENT drop — if it didn't emit echarts, it should have
+    // given Meph an error.
+    const hasChart = (result.html || '').includes('echarts');
+    const hasError = result.errors.length > 0;
+    expect(hasChart || hasError).toBe(true);
+  });
+
+  it('preserves non-chart `display X as json` / `display X as dollars` formats', () => {
+    // Regression check: `as json`, `as dollars`, `as date`, `as percent`, etc.
+    // are still DISPLAY formats, not CHART types. Make sure the shorthand
+    // doesn't accidentally capture them.
+    for (const fmt of ['json', 'dollars', 'date', 'percent']) {
+      const src = `build for web\npage 'p' at '/':\n  v = 42\n  display v as ${fmt}`;
+      const result = compileProgram(src);
+      expect(result.errors).toHaveLength(0);
+      // These formats should NOT trigger ECharts injection
+      expect(result.html).not.toContain('echarts');
+    }
+  });
+});
+
 describe('`table X:` shorthand (no `create a` prefix) parses as DATA_SHAPE', () => {
   it('accepts `table Sales:` as a table declaration', () => {
     const src = "build for javascript backend\ntable Sales:\n  amount, number\n  region, text\nwhen user calls GET /api/sales:\n  send back 'ok'";

@@ -6,6 +6,25 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — `display X as bar chart` shorthand (TIER 2 #8)
+
+Meph kept writing `display sales as bar chart` expecting it to render a chart — natural English for "show this as a bar chart." The parser accepted the line (it looked like `display X as <format>` with format=bar), but the compiler had no `bar` display format, so nothing was emitted. No ECharts CDN, no chart DOM, no `echarts.init` call. Worst kind of silent drop — chart-less dashboards with zero compile errors.
+
+**Fix:** parseDisplay now detects `as <type> chart` at the `as_format` position and rewrites to a CHART node identical to what the canonical `bar chart 'Title' showing X` produces. Supports bar/line/pie/area. Title defaults to the capitalized variable name (`sales` → `"Sales"`). Unknown chart types (`as neon chart`) emit a helpful error listing valid types instead of silently falling through.
+
+6 new tests in `` `display X as bar chart` shorthand parses as CHART ``:
+- Bar, line, pie, area all emit ECharts CDN + chart DOM
+- `show X as line chart` (show synonym) works too
+- Canonical `bar chart 'Title' showing data` unchanged (regression floor)
+- Unknown chart type errors instead of silently dropping
+- `as json` / `as dollars` / `as date` / `as percent` still route to DISPLAY (not captured by the shorthand)
+
+2453 → 2459 tests green, zero regressions, all 8 core templates compile clean. Closes TIER 2 #8.
+
+Per Russell's directive: "if errors meph does should be features, edit the compiler too." The shorthand is the feature; the silent-drop was the bug.
+
+---
+
 ## 2026-04-24 — `table X:` shorthand + ASH-1 tool-allowlist config
 
 Two things in one commit because they surfaced from the same Meph session triage.

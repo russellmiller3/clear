@@ -6107,6 +6107,47 @@ function parseDisplay(tokens, line) {
   if (expr.error) return { error: expr.error };
   pos = exprEnd;
 
+  // T2#8 chart shorthand: `display X as bar chart` / `show Y as line chart`.
+  // Meph reaches for this natural English form; canonical is `bar chart
+  // 'Title' showing X`. Without this branch the rest of the function sets
+  // format='bar' and the compiler silently drops — no CDN, no DOM, no init.
+  // Detect `as <chartType> chart` at this position and rewrite to a
+  // CHART node that goes through the same codegen as the canonical form.
+  if (pos + 2 < tokens.length &&
+      tokens[pos].canonical === 'as_format' &&
+      typeof tokens[pos + 1].value === 'string' &&
+      typeof tokens[pos + 2].value === 'string' &&
+      tokens[pos + 2].value.toLowerCase() === 'chart') {
+    const chartType = tokens[pos + 1].value.toLowerCase();
+    // Validate chart type; unknown types return a helpful error instead
+    // of silently falling through to format=<word> (which would drop to
+    // an empty HTML emit). parseChartRemainder uses the same whitelist.
+    if (!['bar', 'line', 'pie', 'area'].includes(chartType)) {
+      return {
+        error: `Unknown chart type '${chartType}'. Use: line, bar, pie, or area. Example: display sales as bar chart`,
+      };
+    }
+    // Derive a title from the expression (variable name if available,
+    // otherwise fall back to a capitalized chart-type label).
+    const title = expr.node && expr.node.name
+      ? expr.node.name.charAt(0).toUpperCase() + expr.node.name.slice(1)
+      : chartType.charAt(0).toUpperCase() + chartType.slice(1) + ' Chart';
+    const dataVar = expr.node && expr.node.name ? expr.node.name : null;
+    const slug = sanitizeForId(title.replace(/\s+/g, '_'));
+    const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
+    return {
+      node: {
+        type: NodeType.CHART,
+        title,
+        chartType,
+        dataVar,
+        groupBy: null,
+        line,
+        ui,
+      },
+    };
+  }
+
   // Optional: as <format>
   let format = 'text';
   if (pos < tokens.length && tokens[pos].canonical === 'as_format') {
