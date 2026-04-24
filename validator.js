@@ -179,7 +179,7 @@ function bodyReferencesName(nodes, name) {
   if (!Array.isArray(nodes)) return false;
   for (const n of nodes) {
     if (!n || typeof n !== 'object') continue;
-    if (n.type === 'function_call' && n.name === name) return true;
+    if (n.type === 'call' && n.name === name) return true;
     if (n.type === 'assign' && n.expression && exprReferencesName(n.expression, name)) return true;
     for (const key of ['body', 'thenBody', 'elseBody', 'handleBody']) {
       if (Array.isArray(n[key]) && bodyReferencesName(n[key], name)) return true;
@@ -193,7 +193,7 @@ function bodyReferencesName(nodes, name) {
 
 function exprReferencesName(expr, name) {
   if (!expr || typeof expr !== 'object') return false;
-  if (expr.type === 'function_call' && expr.name === name) return true;
+  if (expr.type === 'call' && expr.name === name) return true;
   for (const key of ['left', 'right', 'operand', 'value', 'object']) {
     if (expr[key] && exprReferencesName(expr[key], name)) return true;
   }
