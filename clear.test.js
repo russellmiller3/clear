@@ -15646,6 +15646,117 @@ when user calls POST /api/seed:
 });
 
 // =============================================================================
+// KEYWORD-MISUSE DETECTION (Session 44 evening — friction-score OL-3 fix)
+// =============================================================================
+// The Factor DB friction analysis showed 7 of the top-10 highest-friction
+// compile errors are the SAME message ("You used 'X' on line N but it hasn't
+// been created yet") mis-firing on reserved words and Clear-specific keywords.
+// Meph reads the generic message and thinks "I need to define the variable"
+// when the real fix is "don't use this word as an identifier." Rewriting the
+// error generator with keyword-aware branching ships 7 fixes in one commit.
+//
+// This block TDD-locks the new behavior:
+//   - Reserved structural words (`the`, `of`, `in`, etc.) get a SPECIFIC
+//     message explaining they're structural, not variables.
+//   - Clear-specific keyword misfires (`body`, `remember`, `calls`,
+//     `current_user`) get the canonical-form hint.
+// =============================================================================
+
+describe('validator — keyword-misuse detection (Session 44 friction-score fix)', () => {
+  it("'the' as a bareword gets a reserved-word-specific message (not generic 'define it')", () => {
+    // Derived from Factor DB row 626: Meph wrote `message is the request data`
+    // trying to grab POST data; `the` ends up as an undefined VARIABLE_REF.
+    const src = `build for javascript backend
+
+when user calls POST /api/broadcast:
+  message is the request data
+  send back 'sent'
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    // New error should NOT say "define 'the' on an earlier line" — that's the
+    // generic fallback we're replacing for reserved words.
+    expect(msg).not.toMatch(/the = 0|the is 'value'/);
+    // New error SHOULD say 'the' is reserved/structural in Clear.
+    expect(msg.toLowerCase()).toMatch(/reserved|structural|article|keyword/);
+  });
+
+  it("'body' as a bareword points Meph at the `sends X to` POST-data pattern", () => {
+    // Derived from Factor DB row 619.
+    const src = `build for javascript backend
+
+when user calls POST /api/todo:
+  create a todo:
+    title is body's title
+  send back 'saved'
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg).not.toMatch(/body = 0|body is 'value'/);
+    // Should redirect to the `sends X to` canonical pattern.
+    expect(msg.toLowerCase()).toMatch(/sends|receive|name/);
+  });
+
+  it("'remember' as a bareword points Meph at `remember conversation`", () => {
+    // Derived from Factor DB row 624 (agent archetype, `remember conversation`
+    // is the canonical agent-memory primitive).
+    const src = `build for javascript backend
+
+agent Helper:
+  knows about: 'how to help'
+  remember
+
+when user sends question to /api/ask:
+  answer = ask Helper question
+  send back answer
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    // Should mention `remember conversation` as the canonical form.
+    expect(msg.toLowerCase()).toMatch(/remember conversation|conversation/);
+  });
+
+  it("'calls' as bareword verb hints at the `when user calls METHOD /path:` form", () => {
+    // Derived from Factor DB row 1576. Meph dropped the `when user` prefix.
+    const src = `build for javascript backend
+
+calls GET '/api/hello':
+  send back { message: 'hello world' }
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    // Should name the `when user calls` canonical endpoint form.
+    expect(msg.toLowerCase()).toMatch(/when user calls|endpoint/);
+  });
+
+  // Note: `current_user` compiles today because the parser/BUILTINS accepts
+  // it as a synonym for `_current_user`. The Factor DB row 691 that flagged
+  // "You used 'current_user'..." was in a specific context where scope
+  // didn't include the synonym. The intent hint for `current_user` is still
+  // wired in INTENT_HINTS so if a future parser change exposes that error
+  // path, Meph gets a redirect to `caller` — safer than removing the hint
+  // entirely.
+
+  it('existing valid programs still compile (regression floor for the reserved-word change)', () => {
+    // A program that uses `to` INSIDE a valid Clear phrase — must not trigger
+    // the new reserved-word error. Guards against the regression where the
+    // stricter handling accidentally flags legitimate uses.
+    const src = `build for javascript backend
+
+when user sends todo to /api/todos:
+  new_todo = save todo as new Todo
+  send back new_todo
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBe(0);
+  });
+});
+
+// =============================================================================
 // MULTI-FILE, COMPONENTS, STREAMING STRESS TESTS
 // =============================================================================
 

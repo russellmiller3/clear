@@ -565,13 +565,35 @@ function validateForwardReferences(body, errors) {
     rewrite: "use `ask claude 'rewrite in formal style: ...' with input_text`",
     analyze: "use `ask claude 'analyze this: ...' with input_data`",
     predict: "for ML models, use `predict X with model_name using features`. For LLM-based predictions, use `ask claude ...`",
+    // Session 44 friction-score additions — these four words accounted for ~35
+    // of the top-10 highest-friction errors in the Factor DB. Each one fires
+    // when Meph reaches for a Clear-specific keyword as if it were a variable.
+    // Redirecting here gives him the canonical form directly instead of the
+    // generic "define X on an earlier line" (which is wrong — X is a keyword).
+    body: "POST endpoints receive data by NAMING it in the `sends` phrase. Use `when user sends X to /api/...:` and then reference X as the incoming data (e.g., `title is X's title`). `body` isn't a Clear identifier — the data has whatever name you gave it.",
+    remember: "use `remember conversation` inside an `agent` block — that's the canonical agent-memory primitive. `remember` on its own isn't a statement.",
+    calls: "endpoint definitions start with `when user calls METHOD /path:`. The bare `calls` keyword at line start is missing the `when user` prefix — add it and the endpoint will parse.",
+    current_user: "use `caller` (one word — `caller's id`, `caller's email`) for the authenticated caller inside a `requires login` endpoint. Legacy `current user` (two words, no underscore) also works; `current_user` with an underscore isn't valid.",
+    // Common Meph misfires around POST-data access (often paired with `body`).
+    request: "POST/PUT data doesn't live at `request` — name it in the `sends` phrase: `when user sends X to /api/...:` where X is whatever you want to call the incoming data.",
+    incoming: "the POST body is NAMED in the `sends` phrase, not called `incoming`. Write `when user sends todo_data to /api/...:` then reference `todo_data` — no magic variables in Clear.",
   };
+
+  // Reserved structural words. These are never variable names — they only
+  // appear INSIDE phrases like 'save X as new Y' or 'look up records in Users
+  // table'. When Meph's error mentions one of these, the fix is always
+  // "you used it wrong structurally", not "define it on an earlier line".
+  // Kept in sync with CLAUDE.md § Reserved words.
+  const RESERVED_WORDS = new Set(['a', 'an', 'the', 'in', 'on', 'to', 'by', 'as', 'at', 'of', 'or', 'is', 'it', 'do', 'no']);
 
   function suggestKeyword(name, scope) {
     const lower = name.toLowerCase();
-    // Skip reserved words — 'a', 'an', 'the' etc. are never typos
-    const RESERVED = new Set(['a', 'an', 'the', 'in', 'on', 'to', 'by', 'as', 'at', 'of', 'or', 'is', 'it', 'do', 'no']);
-    if (RESERVED.has(lower)) return null;
+    if (RESERVED_WORDS.has(lower)) {
+      return {
+        kind: 'reserved',
+        hint: `'${lower}' is a reserved structural word in Clear — it only appears INSIDE longer phrases like \`save X as new Y\`, \`look up records in Users table\`, or \`when user sends X to /api/...:\`. It can't be a variable name on its own. Check that line for a missing verb or keyword.`
+      };
+    }
     // Intent hints take priority over Levenshtein — they're curated and actionable
     if (INTENT_HINTS[lower]) return { kind: 'intent', hint: INTENT_HINTS[lower] };
     let best = null, bestDist = 3; // max distance 2
@@ -632,7 +654,12 @@ function validateForwardReferences(body, errors) {
             break;
           }
           const suggestion = suggestKeyword(expr.name, scope);
-          if (suggestion && suggestion.kind === 'intent') {
+          if (suggestion && suggestion.kind === 'reserved') {
+            errors.push({
+              line: line,
+              message: `Line ${line}: ${suggestion.hint}`
+            });
+          } else if (suggestion && suggestion.kind === 'intent') {
             errors.push({
               line: line,
               message: `'${expr.name}' isn't a Clear keyword on line ${line}. ${suggestion.hint}.`
