@@ -19,6 +19,38 @@ Create or overwrite `HANDOFF.md` in the project root with this structure:
 ```markdown
 # Handoff — [Date]
 
+## 🎯 Next Session: [top-line goal in 10 words] (READ THIS FIRST)
+
+[1-paragraph narrative: what journey the next session continues, why it matters,
+what done looks like. NOT a changelog. Write it so someone skimming this single
+block knows the mission.]
+
+**[How many tracks tonight].** [State single-session-default explicitly if
+applicable. The user's 10x-off time rule says "a week of work" = "one long
+session." If I'm about to say "next session" or "this will take several days,"
+stop — re-slice to fit one session.]
+
+### Track 1 — [goal]
+[Steps in order. File paths. Success criteria.]
+
+### Track 2 — [goal]
+[Steps in order. File paths. Success criteria.]
+
+---
+
+## Session rules in effect (summarized from ~/.claude/CLAUDE.md)
+
+The next session MUST apply these — skim if not already internalized:
+
+- **Big-picture framing on every narration.** Every chunk says what + why-for-session-goal + what-it-unlocks. Under 25 words. Reads like a nature doc, not a diff.
+- **Phase-boundary big picture.** At the end of every phase/feature/logical chunk, fire `/bigpicture` or emit a 60-second narrative. Don't wait for Russell to ask.
+- **Work in parallel by default.** Batch independent tool calls in one message. Never serialize reads/greps/tests that don't depend on each other.
+- **Time calibration: 10x off.** If gut says "a week," that's one long session. Never scope in human-days.
+- **Budget-first on API spend.** State hypothesis + cost cap before any API call. $0 is cheap; the Claude subscription via cc-agent is $0.
+- **TDD red-first.** Test must fail before code is written.
+
+---
+
 ## Current State
 - **Branch:** [current branch name]
 - **Last commit:** [hash + message]
@@ -37,18 +69,16 @@ Create or overwrite `HANDOFF.md` in the project root with this structure:
 ## Known Issues / Bugs
 [Anything broken, flaky, or needing investigation]
 
-## Next Steps (Priority Order)
-1. [Most important next task]
-2. [Second priority]
-3. [Third priority]
-
 ## Files to Read First
 | File | Why |
 |------|-----|
 | [path] | [what context it provides] |
 
 ## Resume Prompt
-> [Copy-paste-ready prompt for the next session to start with]
+> [Copy-paste-ready prompt. MUST include: (1) read HANDOFF.md, (2) track list
+> with "all in one session" framing if applicable, (3) one-line reminder of
+> the session rules above (big-picture narration + parallel + 10x-time +
+> budget-first + TDD red-first), (4) current main commit hash.]
 ```
 
 ## Rules

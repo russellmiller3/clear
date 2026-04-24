@@ -61,6 +61,19 @@ Session 41 blew $50 chasing metric shifts inside noise. Budget-first rule: singl
 
 ---
 
+### Session rules in effect (enforced by ~/.claude/CLAUDE.md)
+
+The next session MUST apply these. Violating them wastes Russell's wall-clock + energy:
+
+- **Big-picture framing on every narration.** Every chunk says what + why-for-session-goal + what-it-unlocks. Under 25 words. Nature doc, not diff summary.
+- **Phase-boundary big picture.** At end of every phase / feature / logical chunk, proactively fire `/bigpicture` or emit a 60-second narrative. Don't wait to be asked.
+- **Work in parallel by default.** Batch independent tool calls in one message. Never serialize reads/greps/tests that don't depend on each other.
+- **Time calibration: 10x off.** If gut says "a week," that's one long session. Never scope in human-days.
+- **Budget-first on API spend.** Hypothesis + cost cap before any API call. $0 on the Claude subscription via cc-agent.
+- **TDD red-first.** Test must fail before code is written.
+
+---
+
 ### Read order for the next session
 
 1. This block (you're here).
