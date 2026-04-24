@@ -449,3 +449,24 @@ Before kicking any sweep, Meph eval, or multi-call research operation:
 **Separate BUILDING sessions from MEASURING sessions.** Building = code changes, $0 API. Measuring = API spend, capped at $10-20 per session, with ONE specific falsifiable hypothesis. Never stack multiple interventions and measure them in sequential sweeps — that's where the compounding waste came from.
 
 **The structural backstop:** set a daily spending cap at console.anthropic.com/settings/limits. This rule depends on Claude's discipline; the console cap depends on nothing.
+
+## Compiler error fixes are data-driven (MANDATORY)
+
+**Never rewrite a compiler error message based on a hunch that it "feels confusing."** Run `node scripts/top-friction-errors.mjs --top=10 --min-count=3` first and pick from the ranked list.
+
+The Factor DB already knows which error messages cost Meph the most minutes — measured in unrecovered sessions and time-to-next-compile-ok. Session 44's friction analysis surfaced that 7 of the top-10 friction errors were the SAME message firing on different words; ONE validator rewrite fixed 4 of them in one commit. Random hunch-driven rewrites would have chased symptoms individually and missed the pattern.
+
+**When this applies:**
+- Editing `validator.js` error messages
+- Adding new entries to `INTENT_HINTS`
+- Deciding which compile-error UX to improve next
+- Any "Meph kept hitting this error" observation — check the friction data before acting
+
+**Automation backstop.** `.claude/settings.json` has a PostToolUse hook (`.claude/hooks/validator-friction.mjs`) that fires after every Edit/Write to `validator.js`. It runs the friction script and injects the top-5 ranked errors into Claude's context. So even if Claude forgets this rule, the ranked data lands in front of him the moment he touches the file.
+
+**After rewriting an error message:**
+- If the new message changes canonical Clear syntax Meph should produce (e.g., "use `when user sends X to` instead of `body`"), update `AI-INSTRUCTIONS.md` IN THE SAME COMMIT. Future Meph sessions read AI-INSTRUCTIONS.md fresh — if the canonical form isn't documented there, the error message fires forever and the fix never compounds into Meph's write-path.
+- Add (or update) a test in `clear.test.js` under `validator — keyword-misuse detection` (Session 44 block). Regression floor so future edits can't silently re-generic-ify the message.
+- Re-run `node clear.test.js` + smoke-test all 8 core templates before commit.
+
+**Why this matters (the compounding story).** Ranker fixes help one Meph session at a time and cost inference every time. Compiler error fixes are permanent and global — rewrite once, every customer's every future session benefits forever at \$0. The friction script turns the Factor DB's accumulated waste heat into a sorted to-do list; treating it as the authoritative priority signal is how "the compiler accumulates quality" (PHILOSOPHY.md line 1) becomes mechanical rather than aspirational.
