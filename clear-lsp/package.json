@@ -1,0 +1,22 @@
+{
+  "name": "@clearlang/lsp",
+  "version": "0.1.0",
+  "description": "Language Server for Clear — calls the Clear Compiler API for diagnostics, runs a local syntax-only scan for autocomplete.",
+  "type": "module",
+  "bin": {
+    "clear-lsp": "./server.mjs"
+  },
+  "main": "./server.mjs",
+  "scripts": {
+    "test": "node test/server.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "server.mjs",
+    "lib/"
+  ],
+  "license": "UNLICENSED",
+  "keywords": ["clear", "language-server", "lsp", "compiler"]
+}
