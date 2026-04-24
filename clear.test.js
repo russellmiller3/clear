@@ -24890,6 +24890,37 @@ describe('Termination bounds (Session 46 — Total by default)', () => {
   });
 });
 
+describe('Assignment — `is` and `=` are interchangeable (Session 46+)', () => {
+  // Historically `reply = X` failed because `reply` is a synonym for `respond`,
+  // so the canonical dispatch tried to parse it as a send-back statement and
+  // choked on the `=`. `reply is X` worked because `isAssignmentLine` handled
+  // it downstream. The fix: the `respond` dispatch falls through when tokens[1]
+  // is `=`, letting the canonical assignment parser take over.
+  it('`reply = ask claude` compiles clean', () => {
+    const src = "build for javascript backend\nagent 'T' receiving d:\n  reply = ask claude 'hi'\n  send back reply\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+  it('`reply is ask claude` still compiles clean (no regression)', () => {
+    const src = "build for javascript backend\nagent 'T' receiving d:\n  reply is ask claude 'hi'\n  send back reply\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+  it('`send = X` (send synonym) compiles clean', () => {
+    const src = "build for javascript backend\nagent 'T' receiving d:\n  send = ask claude 'hi'\n  send back send\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+  it('genuine `send back X` still parses correctly (not hijacked)', () => {
+    const src = "build for javascript backend\nagent 'T' receiving d:\n  answer = ask claude 'hi'\n  send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === 'agent');
+    const respondNode = agent.body.find(n => n.type === 'respond');
+    expect(respondNode).toBeTruthy();
+  });
+});
+
 describe('AI helpers — exponential-backoff retry (Session 46)', () => {
   it('emits retry loop in _askAI (Node target)', () => {
     const src = "build for web and javascript backend\nagent 'Replier' receiving d:\n  answer = ask claude 'hi'\n  send back answer\n";

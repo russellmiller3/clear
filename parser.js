@@ -1763,6 +1763,13 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['respond', (ctx) => {
+    // If this line is actually an assignment (`reply = X`, `send = X`, etc.), fall
+    // through — the respond/send/reply words are synonyms but also common variable
+    // names. parseAssignment accepts KEYWORD tokens as names; we just need to not
+    // eat the line here first.
+    if (ctx.tokens.length >= 2 && (ctx.tokens[1].type === TokenType.ASSIGN)) {
+      return undefined;
+    }
     // Order matters — most specific first
     // 1. sendgrid: send email via sendgrid: + config block
     if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'email' &&
