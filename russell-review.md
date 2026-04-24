@@ -27,7 +27,14 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 
 **What's queued but needs your design input:** agent streaming display (SSE transport + client-side EventSource reader + how to declare "this agent's responses stream"). Everything else in the original queue is either shipped or requires nothing more than a design call that I didn't want to make without you.
 
-**The ASH-1 sweep is still running in the background** (50 trials, ~2 hrs, $0 via cc-agent). Baseline condition (`tools_off`, MCP-only) ~75% complete. Interesting early signal: `auth-todo` times out 5/5 in tools_off — tools_on condition will tell us whether built-in Bash/Read/Edit/Write re-enable the self-heal path that gets Meph unstuck on auth-heavy tasks.
+**The ASH-1 sweep is DONE.** Headline: re-enabling Bash/Read/Edit/Write crushed Meph on counter (80%→0%) and todo-crud (100%→0%). Contact-book + validated-forms unchanged at 100%. Auth-todo 0/0 both. **Strong negative result for Browser Use's "Bitter Lesson" hypothesis in our specific setup** — Meph's 28 MCP tools force narrow convergence on simple tasks; adding built-ins gives him rope to explore instead of finish. ASH-2 (`meph_propose_tool` flywheel) is now the right next move; ASH-3 (prune wrappers) is downgraded. Full writeup in RESEARCH.md.
+
+### ASH-1 — one more design call that needs your eye
+
+I wrote the ASH-1 result as a negative finding for the Bitter Lesson, but the inference is bounded: 5 tasks, one Claude subscription, one model. If you want to challenge the interpretation:
+- **Alternative reading:** the built-ins aren't broken — Meph just needs a prompt that says "prefer MCP tools when available." That'd be a quick re-run with `GHOST_MEPH_CC_ALLOWED_TOOLS="Bash,Read,Edit,Write"` + a one-line system-prompt addition. If pass rate recovers, the wrappers-are-necessary conclusion weakens.
+- **Another:** the 180s timeout is doing the work — maybe Meph CAN finish with the built-ins, just slower. Re-run with 300s or 480s cap would test that.
+- Both are cheap ($0, ~2 hrs each). I didn't run either because I wanted to ship the language features first and let you decide whether the cleaner result is worth another hour of sweep time.
 
 
 ---

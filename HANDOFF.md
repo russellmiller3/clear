@@ -1,14 +1,27 @@
-# Handoff — 2026-04-24 (session 45 — 5 silent-bug fixes + `table X:` shorthand + ASH-1 sweep running)
+# Handoff — 2026-04-24 (session 45 — 8 features + ASH-1 sweep COMPLETE with a negative result that changes the ROADMAP)
 
-## 🔬 ASH-1 sweep in progress as of this handoff
+## 🔬 ASH-1 COMPLETE — Browser Use's Bitter Lesson falsified on our stack
 
-`ab-ash1-sweep.js` is running in the background — 50 trials (5 tasks × 5 trials × 2 conditions = tools_off baseline vs tools_on re-enabled). Runner copied from `ab-hint-sweep.js` with env-var flipped from `CLEAR_HINT_DISABLE` to `GHOST_MEPH_CC_ALLOWED_TOOLS`. First trial was `[✅] tools_off #1 counter — 180.0s (DB)` — passed via Factor DB grading. Wall clock: ~2 hours at workers=1. Cost: $0 via cc-agent on Russell's Claude subscription.
+**50 trials, 116 min wall-clock, $0. Hypothesis rejected.**
 
-Tasks: counter (L3), todo-crud (L4), auth-todo (L5), contact-book (L6), validated-forms (L7) — span of difficulties so the result doesn't depend on picking one sensitive task.
+| Task | tools_on | tools_off | Lift |
+|------|----------|-----------|------|
+| counter (L3) | **0/5 (0%)** | 4/5 (80%) | **−80 pp** |
+| todo-crud (L4) | **0/5 (0%)** | 5/5 (100%) | **−100 pp** |
+| auth-todo (L5) | 0/5 (0%) | 0/5 (0%) | 0 pp |
+| contact-book (L6) | 5/5 (100%) | 5/5 (100%) | 0 pp |
+| validated-forms (L7) | 5/5 (100%) | 5/5 (100%) | 0 pp |
 
-Output artifact will land at `playground/sessions/ab-ash1-sweep-<stamp>.json`. Summary table in RESEARCH.md once the sweep completes.
+**Counter + todo-crud regressed from majority-passing to 0%** when Bash/Read/Edit/Write were re-enabled. Every tools_on trial on those tasks timed out at 180s. Contact-book and validated-forms were flat at 100% in both conditions. Auth-todo 0/0 in both (separate hard-task problem).
 
-**Hypothesis:** re-enabling Claude Code's built-in Bash/Read/Edit/Write tools lifts pass rate because Meph self-heals gaps in the 28 MCP tools. **Counter-hypothesis:** built-ins let Meph sidestep Factor DB instrumentation (grabbing Bash to curl an endpoint skips `meph_http_request` → no `test_pass=1` write), which could blur the signal. A/B controls for this by measuring Factor-DB-graded pass rate in both conditions — whatever the built-ins let Meph do OR circumvent, the truth is in the DB.
+**Working interpretation:** Meph's 28 MCP tools force narrow converging moves on simple tasks. Re-enabling built-ins lets him explore (grep/cat/alternative file-edit paths) instead of converging — iteration budget blown before task completes. Built-ins added distraction, not capability.
+
+**Consequence for ROADMAP:**
+- **ASH-2 (`meph_propose_tool` flywheel)** is now the right shape — add MCP tools as gaps surface rather than replacing them with built-ins.
+- **ASH-3 (prune wrappers once Bash wins)** is DOWNGRADED. ASH-1 showed the wrappers earn their 28 tools.
+- Full writeup in `RESEARCH.md` under "ASH-1 — Browser Use's Bitter Lesson, Falsified on Our Stack."
+
+Raw artifact: `playground/sessions/ab-ash1-sweep-2026-04-24T16-25-04.json` (50 trials, every one replayable).
 
 ## 🎯 Pickup: SIX fixes landed clean on main + 1 language feature + 1 research experiment in flight
 

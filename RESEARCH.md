@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-04-23 (Session 44: stdin-race + grader bugs fixed; hint-effect A/B still unmeasured)**.
+Updated: **2026-04-24 (Session 45: six features shipped + ASH-1 sweep ran — RE-ENABLING BASH/READ/EDIT/WRITE BROKE MEPH ON SIMPLE TASKS, contrary to Browser Use's "Bitter Lesson" hypothesis)**.
 
 ## Session timeline (recent)
 
@@ -12,6 +12,7 @@ Updated: **2026-04-23 (Session 44: stdin-race + grader bugs fixed; hint-effect A
 | 37 | 2026-04-18 | **Flywheel live.** Factor DB wired to `/api/chat`, archetype classifier (15 cats), Studio dashboard tab, cold-start harness, 5 Marcus curriculum tasks, cross-archetype curriculum diversity. 107 rows, 38 passing. |
 | **38** | **2026-04-19** | **Data-quality pass + first reranker trained.** Haiku 4.5 default, step-decomposition, parser inline records `{}`, 16th archetype (kpi), classifier ordering fix, sweep DB grader, CLI clobber-proofing, iteration limit bump, EBM chosen over XGBoost (trainer rewritten), EBM wired into `/api/chat`, compiler-flywheel design. **2-stage Lasso → EBM pipeline measured:** Lasso alone wins at Phase-1 scale (val R² 0.39 vs EBM 0.30); Lasso dropped 11 of 24 features as noise; Stage-2 EBM on the 13 Lasso-kept features beats vanilla EBM by +0.033. Finished at 492 rows, 182 passing (API capped until May 1). |
 | **44** | **2026-04-23** | **Measurement integrity restored.** Two sweep-flywheel bugs fixed: Windows stdin-race in cc-agent (Meph's prompt was being dropped, 100% fast-fail on sweeps) and grader ignoring Factor DB on timeout (7 tasks Meph actually passed were graded ⏱️). Morning sweep 2/38 → post-fix projected 27/38 (~71%). Also surfaced the open question: re-ranker learns offline (val_auc 0.96) but **hint-effect on Meph's live pass rate is unmeasured**. Observational data is confounded by selection bias (hints fire on hard tasks). Plan: ship transcript persistence + hint-toggle env flag, run 40-trial paired A/B on counter + todo-crud. See "Session 44" section below for the full writeup. |
+| **45** | **2026-04-24** | **ASH-1 sweep: re-enabling built-in tools CRUSHED Meph on simple tasks** — first rigorous test of Browser Use's "Bitter Lesson of Agent Harnesses" on our stack. 50 trials paired A/B, 5 tasks × 5 trials × 2 conditions, `$0` via cc-agent (116 min wall clock). Hypothesis: enabling Claude Code's built-in Bash/Read/Edit/Write lifts Meph because he can self-heal gaps in the 28 MCP tools. Result: **counter 80%→0%** and **todo-crud 100%→0%** when built-ins were re-enabled. Contact-book, validated-forms both 100% in both conditions; auth-todo 0/0 both (a separate hard-task problem). See "ASH-1 — Browser Use's Bitter Lesson, Falsified on Our Stack (Session 45)" section for the full writeup. Also shipped this session: 6 TIER-2 language features (charts shorthand, cookies, pick projection, upsert, transaction synonyms, scroll+throttle) + 2 follow-ups (Python upsert, clear cookie). 2459 → 2483 compiler tests green. |
 
 The document below is structured **theory → architecture → current state → path forward**. Start with "Read This First" for the plain-English summary; dive into the specific section that matches your question.
 
@@ -1401,6 +1402,65 @@ Read in this order:
 4. Then ship transcript persistence, then the hint toggle, then run the A/B.
 
 Goal: ONE clean measurement answering ONE question. Not more sweeps. If hints help, scale. If hints don't help, we know where to debug (hint *quality* or *injection point*, not ranker AUC).
+
+---
+
+## ASH-1 — Browser Use's Bitter Lesson, Falsified on Our Stack (Session 45, 2026-04-24)
+
+**The hypothesis that failed.** Browser Use's 2026-04 essay "The Bitter Lesson of Agent Harnesses" argued that thick tool wrappers limit what agents can accomplish compared to giving them raw shell access and letting them figure it out. Our version: Meph has 28 specialized MCP tools; Claude Code has built-in `Bash`, `Read`, `Edit`, `Write`. Re-enabling the built-ins should let Meph self-heal gaps in the MCP surface and lift his pass rate.
+
+**The test.** 50 paired trials, 5 curriculum tasks × 5 trials × 2 conditions, `$0` via cc-agent on Russell's Claude subscription, 116 min wall clock. Tasks span L3–L7 so the result isn't a fluke of one sensitive task: counter (L3), todo-crud (L4), auth-todo (L5), contact-book (L6), validated-forms (L7). Flip `GHOST_MEPH_CC_ALLOWED_TOOLS` between `""` (baseline, MCP only) and `"Bash,Read,Edit,Write"` (treatment, built-ins on). Everything else identical — same worker spawner, same registry, same Factor-DB-row-window grader as Session 44's hint A/B.
+
+### The numbers
+
+| Task | tools_on | tools_off | Lift (on − off) | avg_on | avg_off |
+|------|----------|-----------|------------------|--------|---------|
+| counter (L3) | **0/5 (0%)** | 4/5 (80%) | **−80.0 pp** | 180s | 170s |
+| todo-crud (L4) | **0/5 (0%)** | 5/5 (100%) | **−100.0 pp** | 180s | 62s |
+| auth-todo (L5) | 0/5 (0%) | 0/5 (0%) | 0.0 pp | 180s | 180s |
+| contact-book (L6) | 5/5 (100%) | 5/5 (100%) | 0.0 pp | 113s | 137s |
+| validated-forms (L7) | 5/5 (100%) | 5/5 (100%) | 0.0 pp | 84s | 107s |
+
+Raw artifact: `playground/sessions/ab-ash1-sweep-2026-04-24T16-25-04.json`. Factor DB: 1722 → 1771 rows (+49), passing 667 → 701 (+34).
+
+### What actually happened
+
+- **Counter and todo-crud collapsed** when the built-ins were re-enabled. Both tasks went from majority-passing to 0% passing, with every trial timing out at the 180s cap. Baseline `tools_off` finished todo-crud in 62s avg; tools_on couldn't finish in 3 minutes.
+- **Contact-book and validated-forms were unchanged** — both 100% in both conditions, tools_on actually marginally faster on average (113s vs 137s; 84s vs 107s). These are the more complex tasks (L6, L7).
+- **Auth-todo was 0/5 in both conditions** — a separate hard-task problem where neither harness helps. All 10 trials hit 180s timeout.
+
+### Why re-enabling the built-ins hurt (working hypothesis)
+
+The pattern is sharp: **simple tasks regressed, complex tasks didn't**. Two mechanisms plausible, not mutually exclusive:
+
+1. **Exploration instead of conclusion.** Meph's MCP surface forces a narrow set of moves: `meph_edit_code`, `meph_compile`, `meph_run_tests`, `meph_http_request`. On counter/todo-crud these moves converge in ~5–10 iterations because the task shape and toolset are matched. Re-enable Bash/Read/Edit/Write and Meph explores: `grep`, `cat`, `ls`, maybe rewriting files via Edit instead of edit_code. He runs out the 180s iteration budget before converging. The built-ins aren't adding capability he needed — they're adding distraction he didn't.
+2. **Instrumentation bypass.** Factor DB `test_pass=1` writes happen INSIDE specific MCP tools (`meph_http_request`'s 2xx path, `meph_compile`'s success path). When Meph uses `Bash` to `curl` an endpoint instead of `meph_http_request`, the Factor DB row never gets the `test_pass=1` write. The grader reads `test_pass` to grade; unset reads as 0. So even if Meph passed, we'd see it as fail. Time pattern (180s timeouts, not 120s pass-then-late-signal) argues mostly for #1, but #2 amplifies — once Meph starts using Bash, he can't course-correct into the instrumented path.
+
+Interpretation #1 matches the timing signal cleanly. #2 would show passes graded as fails (completion + timeout); we saw mostly timeouts with no completion markers. So it's primarily Meph getting stuck exploring, secondarily Meph bypassing instrumentation.
+
+### What this means for the flywheel
+
+**Thick MCP wrappers beat thin built-ins for the Meph loop — at this stage.** The Bitter-Lesson argument is that general-purpose tools beat domain-specific ones AT SCALE. Our version bounds it: for our 5-task curriculum at session-45 maturity, domain-specific wins. That bound could break later with:
+- Richer tasks that genuinely need capabilities the 28 MCP tools lack (file manipulation beyond edit_code, exploratory search across many files, running arbitrary scripts). Contact-book and validated-forms didn't hit this bound; harder tasks might.
+- Smarter iteration caps that distinguish "Meph exploring productively" from "Meph wandering." Current 25-iter cap is uniform.
+- A Bash-tool that writes its OWN Factor DB rows — closing the instrumentation-bypass gap so built-in Bash becomes a first-class citizen of the Meph loop instead of a sidestep.
+
+### Follow-ups queued by this result
+
+- **ASH-2 — `meph_propose_tool(name, sketch)`**. Instead of re-enabling all built-ins, let Meph propose a NEW MCP tool when he hits a gap. Russell reviews weekly, approves → next session inherits. The flywheel already runs for Clear output quality (Factor DB → ranker → hints); this adds a parallel flywheel for Meph's tool surface. **Next on the ROADMAP.** ASH-1 shows this is the better shape than ASH-3's "prune wrappers once Bash wins."
+- **ASH-3 — Principle-#5 audit of meph-tools.js** is now DOWNGRADED. Rationale was "if ASH-1 wins, prune wrappers Bash can cover." ASH-1 didn't win. Keep the wrappers; they earn their 28 tools.
+- **Why auth-todo failed in BOTH conditions (0/10 trials).** Separate problem worth digging into — neither the MCP harness nor the built-in harness solves it. Likely an iteration-cap-and-task-complexity mismatch: auth-todo needs ~6 endpoints + user table + login + signup, more than the 25-iter cap can cover. Not ASH's problem; a curriculum/cap-tuning task.
+
+### Honest caveats
+
+- n=5 trials per condition. Tight confidence intervals for 0/5 and 5/5, wider for the mid-range. But the −80pp / −100pp deltas on counter/todo-crud are way outside any plausible sampling noise.
+- One subject (Claude Haiku 4.5 via cc-agent). Another model might use built-ins differently — but our flywheel targets this subject, so the conclusion applies where we live.
+- Prompt unchanged between conditions — Meph doesn't KNOW he has Bash. He just finds the tools in his toolset and uses them. A prompt variant that explicitly says "prefer MCP tools" might rescue tools_on; whether that's "fair" depends on framing.
+- Cold-cache on every trial (`read=0 write=0 fresh=...`). No prompt caching; every condition starts from scratch. Matches prior A/B methodology.
+
+### The bigger-picture claim
+
+Before tonight, "does the MCP surface cost us anything?" was an open question. Russell's and I worked on the assumption that it's a net help — Factor DB can't grade Meph without it, so we'd need a parallel instrumentation plan to live without it. Tonight's result: **it's not costing us; it's helping us converge.** Which makes every future MCP tool we design a first-class flywheel investment, not overhead to someday-prune.
 
 ---
 
