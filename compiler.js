@@ -7012,12 +7012,15 @@ ${pad}}`;
       const mockNodes = node.body.filter(n => n.type === NodeType.MOCK_AI);
       const nonMockBody = node.body.filter(n => n.type !== NodeType.MOCK_AI);
       if (ctx.lang === 'python') {
-        // TEST_INTENT compilation (can user create / view / delete / ...) currently
-        // emits JS-shaped fetch/assert — no Python equivalents yet. Rather than let
-        // invalid syntax escape (PHILOSOPHY Rule 17: "document the gap explicitly"),
-        // emit a pytest-compatible stub that marks the test as unimplemented for
-        // this target. Tracked as follow-up: port TEST_INTENT cases to Python.
-        return `${pad}def test_${sanitizeName(node.name)}():\n${pad}    import pytest\n${pad}    pytest.skip("Intent-based tests not yet ported to Python target")`;
+        // Python test emission is staged behind a fuller test-harness port
+        // than a single session can justify. The JS target has a dedicated
+        // test-runner layer (BASE, AUTH_HEADERS, JWT token fixture,
+        // _expectStatus / _expectSuccess helpers, unique-counter fixtures)
+        // that doesn't yet exist for Python. Porting TEST_INTENT without
+        // that harness would produce code that can't actually run. Rather
+        // than ship dead code, we skip with an explicit signal. See
+        // ROADMAP "Python test-harness port" for the full scope.
+        return `${pad}def test_${sanitizeName(node.name)}():\n${pad}    import pytest\n${pad}    pytest.skip("Intent-based tests not yet ported to Python target — needs BASE url + auth fixture + expect-helpers port. Tracked in ROADMAP.")`;
       }
       const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
       if (mockNodes.length > 0) {
