@@ -6,6 +6,33 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Transaction synonyms: `atomically:` / `transaction:` / `begin transaction:` (TIER 2 #48)
+
+Canonical `as one operation:` was the only transaction form that parsed. Three natural English alternatives that Meph (and humans) reach for added as synonyms — all route to the same `NodeType.TRANSACTION` node, identical semantics:
+
+```clear
+atomically:
+  subtract amount from sender's balance
+  add amount to receiver's balance
+
+transaction:
+  ...
+
+begin transaction:
+  ...
+
+as one operation:    # canonical — still works
+  ...
+```
+
+Parser: three new keyword handlers (`atomically`, `transaction`, `begin` + next-token check for `transaction`). Compiler untouched — same TRANSACTION emit covers all four forms.
+
+4 new tests + regression floor on canonical. 2472 → 2476 green, zero regressions, 8 templates clean.
+
+Closes TIER 2 #48.
+
+---
+
 ## 2026-04-24 — Upsert: `upsert X to Y by <field>` (TIER 2 #47)
 
 Genuinely missing syntax. The canonical workaround was `look up X where email is Y's email` → `if X is nothing: save Y as new Y else save Y to Y`. Ugly and easy to get wrong.

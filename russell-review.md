@@ -102,3 +102,31 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 - Cloudflare D1 path (the `compileCrudD1` has its own branches; upsert not wired there yet — follow-up).
 - Python backend upsert — falls through to the "CRUD: upsert" comment. Needs parallel emit.
 
+---
+
+## 5. Transaction synonyms — `atomically:` / `transaction:` / `begin transaction:` (T2 #48)
+
+**Design choice:** all three English forms parse identically to the canonical `as one operation:` block, building the same `NodeType.TRANSACTION` node. No new semantics — just three more natural-sounding spellings.
+
+**Alternatives I considered:**
+- **Make one of these the canonical** — would force a doc-rewrite and a two-ways-to-do-it period. Rejected: `as one operation:` is established, and all three synonyms routing to it is the simplest mental model.
+- **New semantics (savepoints, nested transactions)** — out of scope for this pass. The existing TRANSACTION emit supports the basic begin/commit/rollback; advanced forms are a follow-up.
+
+**Evidence it works:**
+- 4 new tests green: each synonym produces an AST with a `transaction` node; canonical still works (regression floor).
+- 2472 → 2476 compiler tests, 8 templates clean.
+
+**Where to change it if you disagree:**
+- `parser.js` near the `as_format` TRANSACTION handler — 3 new entries for `atomically`, `transaction`, `begin`. Drop any you don't want.
+- Semantics: `compiler.js` TRANSACTION case is unchanged — any edit there affects all four forms.
+
+---
+
+## 6. Deferred from this pass — flagged for future
+
+**T2 #33 — `throttle` on scroll (deferred).** Scope expanded once I looked: Clear doesn't have a scroll-event handler at all today, so adding `throttle every 100ms:` needs both the event binding AND the time-gated dispatch. Debounce exists via `when X changes after 300:` — throttle could mirror that as `when X changes at most every 100:` but the scroll case is different enough to deserve its own scoping pass. Left in the queue.
+
+**T2 #11 — agent streaming display (design pass required).** SSE transport decision + how to express "this agent streams" at the call site.
+
+**Python parity for cookies + upsert (deferred).** JS path ships; Python paths emit TODO comments so programs compile but show the gap. Python Response dep-injection for cookies is the bigger ask.
+

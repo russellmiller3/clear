@@ -13342,6 +13342,47 @@ describe('Security - sensitive data exposure', () => {
 // on type keywords like `amount is number`. Russell's call: Meph's
 // shorthand is natural English — treat it as a missing feature, add it
 // to the language.
+// T2 #48 — transaction synonyms. `as one operation:` was the canonical
+// form. Meph kept writing `atomically:`, `transaction:`, `begin
+// transaction:` because those are the English names he knows. All
+// three now route to the same NodeType.TRANSACTION.
+describe('TIER 2 #48 — transaction synonyms all parse', () => {
+  const TX_BODY = (lead) => `target: backend\nwhen user calls POST /api/transfer receiving data:\n  ${lead}\n    send back 'ok'`;
+
+  it('atomically: parses as TRANSACTION', () => {
+    const r = compileProgram(TX_BODY('atomically:'));
+    expect(r.errors).toHaveLength(0);
+    const ep = r.ast.body.find(n => n.type === 'endpoint');
+    expect(ep).toBeDefined();
+    const tx = ep.body.find(n => n.type === 'transaction');
+    expect(tx).toBeDefined();
+  });
+
+  it('transaction: parses as TRANSACTION', () => {
+    const r = compileProgram(TX_BODY('transaction:'));
+    expect(r.errors).toHaveLength(0);
+    const ep = r.ast.body.find(n => n.type === 'endpoint');
+    const tx = ep.body.find(n => n.type === 'transaction');
+    expect(tx).toBeDefined();
+  });
+
+  it('begin transaction: parses as TRANSACTION', () => {
+    const r = compileProgram(TX_BODY('begin transaction:'));
+    expect(r.errors).toHaveLength(0);
+    const ep = r.ast.body.find(n => n.type === 'endpoint');
+    const tx = ep.body.find(n => n.type === 'transaction');
+    expect(tx).toBeDefined();
+  });
+
+  it('canonical as one operation: still works (regression floor)', () => {
+    const r = compileProgram(TX_BODY('as one operation:'));
+    expect(r.errors).toHaveLength(0);
+    const ep = r.ast.body.find(n => n.type === 'endpoint');
+    const tx = ep.body.find(n => n.type === 'transaction');
+    expect(tx).toBeDefined();
+  });
+});
+
 // T2 #47 — upsert. `upsert X to Y by field` — insert if no match,
 // update if match exists. Returns the saved record via Object.assign.
 describe('TIER 2 #47 — upsert X to Y by <field>', () => {

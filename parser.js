@@ -2044,6 +2044,37 @@ const CANONICAL_DISPATCH = new Map([
     }
     return undefined;
   }],
+  // T2 #48 — transaction synonyms. Natural English forms Meph keeps
+  // writing: `atomically:`, `transaction:`, `begin transaction:`. All
+  // route to the same NodeType.TRANSACTION the canonical `as one
+  // operation:` produces. Keyword handlers dispatch by the first token
+  // value (raw, lowercased) so we register each form explicitly.
+  ['atomically', (ctx) => {
+    if (ctx.tokens.length === 1 || (ctx.tokens.length === 2 && ctx.tokens[1].value === ':')) {
+      const { body: txBody, endIdx: txEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+      ctx.body.push({ type: NodeType.TRANSACTION, body: txBody, line: ctx.line });
+      return txEnd;
+    }
+    return undefined;
+  }],
+  ['transaction', (ctx) => {
+    if (ctx.tokens.length === 1 || (ctx.tokens.length === 2 && ctx.tokens[1].value === ':')) {
+      const { body: txBody, endIdx: txEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+      ctx.body.push({ type: NodeType.TRANSACTION, body: txBody, line: ctx.line });
+      return txEnd;
+    }
+    return undefined;
+  }],
+  ['begin', (ctx) => {
+    if (ctx.tokens.length >= 2 &&
+        typeof ctx.tokens[1].value === 'string' &&
+        ctx.tokens[1].value.toLowerCase() === 'transaction') {
+      const { body: txBody, endIdx: txEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+      ctx.body.push({ type: NodeType.TRANSACTION, body: txBody, line: ctx.line });
+      return txEnd;
+    }
+    return undefined;
+  }],
   ['with', (ctx) => {
     // Timeout: "with timeout 5 seconds:"
     if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'timeout') {
