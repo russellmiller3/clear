@@ -13445,6 +13445,17 @@ describe('TIER 2 #47 — upsert X to Y by <field>', () => {
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('user_id: s.user_id');
   });
+
+  it('Python backend emits parallel upsert — query_one + update-or-save + re-read', () => {
+    const src = "target: python backend\ncreate a Users table:\n  email, text, unique\n  name\nwhen user calls POST /api/users receiving profile:\n  upsert profile to Users by email\n  send back profile";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('_existing = db.query_one("users", {"email": profile["email"]})');
+    expect(r.python).toContain('if _existing:');
+    expect(r.python).toContain('profile["id"] = _existing["id"]');
+    expect(r.python).toContain('db.update("users", profile)');
+    expect(r.python).toContain('_saved = db.save("users", profile)');
+  });
 });
 
 // T2 #44 — field projection: `pick a, b from X`. Returns a new
@@ -13525,6 +13536,22 @@ describe('TIER 2 #42 — cookies (JS backend, secure-by-default)', () => {
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toMatch(/res\.cookie\("session", String\(token\)/);
+  });
+
+  it('clear cookie emits res.clearCookie with matching sameSite + secure', () => {
+    const src = "target: backend\nwhen user calls POST /api/logout receiving data:\n  clear cookie 'session'\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toMatch(/res\.clearCookie\("session"/);
+    expect(r.javascript).toContain("sameSite: 'lax'");
+    expect(r.javascript).toContain("secure: process.env.NODE_ENV === 'production'");
+  });
+
+  it('clear cookie also triggers cookie-parser auto-import', () => {
+    const src = "target: backend\nwhen user calls POST /api/logout receiving data:\n  clear cookie 'session'\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.javascript).toContain("require('cookie-parser')");
+    expect(r.javascript).toContain('app.use(cookieParser())');
   });
 });
 

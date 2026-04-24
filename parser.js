@@ -305,6 +305,7 @@ export const NodeType = Object.freeze({
   // Cookies (T2 #42)
   COOKIE_SET: 'cookie_set',
   COOKIE_GET: 'cookie_get',
+  COOKIE_CLEAR: 'cookie_clear',
   // Field projection (T2 #44): `pick a, b, c from X`
   PICK: 'pick',
 
@@ -1917,6 +1918,23 @@ const CANONICAL_DISPATCH = new Map([
       }
     }
     // Everything else (set x = 5, create person:) → fall through to assignment
+    return undefined;
+  }],
+  // T2 #42 cookies — clear cookie 'name' / remove cookie 'name'.
+  // Compiles to res.clearCookie on JS backend. Same security posture
+  // as set (matches the attributes Express uses by default).
+  ['clear', (ctx) => {
+    if (ctx.tokens.length >= 3 &&
+        typeof ctx.tokens[1].value === 'string' &&
+        ctx.tokens[1].value.toLowerCase() === 'cookie' &&
+        ctx.tokens[2].type === TokenType.STRING) {
+      ctx.body.push({
+        type: NodeType.COOKIE_CLEAR,
+        name: ctx.tokens[2].value,
+        line: ctx.line,
+      });
+      return ctx.i + 1;
+    }
     return undefined;
   }],
   // Upsert (T2 #47): "upsert X to Y by <field>" — insert if no row

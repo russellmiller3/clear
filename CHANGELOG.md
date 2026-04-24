@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Python upsert parity + `clear cookie 'name'` follow-ups
+
+Two small follow-ups on last session's features.
+
+**Python `upsert X to Y by <field>`** — mirrors the JS emit. `db.query_one` by match field, `db.update(table, var)` on hit (preserving id via `var["id"] = _existing["id"]`), `db.save(table, var)` on miss. Source variable mutated via `.update()` so `send back X` returns the canonical record either way. Closes the Python half of T2 #47.
+
+**`clear cookie 'name'`** — emits `res.clearCookie(name, { sameSite: 'lax', secure: process.env.NODE_ENV === 'production' })` with the same posture as set, so browsers agree the cleared cookie is the one earlier set. Also triggers cookie-parser auto-import for apps that only clear (e.g. a logout endpoint). Python: TODO comment.
+
+Tests added: 3 new (1 Python upsert + 2 clear-cookie). 2480 → 2483 green, 8 templates clean.
+
+---
+
 ## 2026-04-24 — Scroll handler with throttle: `on scroll every 100ms:` (TIER 2 #33)
 
 First-class scroll event handler. Optional `every N ms` / `every N seconds` suffix adds leading-edge throttle:

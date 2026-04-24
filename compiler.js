@@ -4247,6 +4247,22 @@ function compileCrud(node, ctx, pad) {
       const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
       return `${pad}db.remove("${table}"${where})`;
     }
+    if (node.operation === 'upsert') {
+      // T2 #47 Python parity — mirror JS emit: findOne by match field,
+      // update-preserving-id on hit, insert on miss, mutate source var.
+      const varCode = sanitizeName(node.variable);
+      const matchField = sanitizeName(node.matchField);
+      return (
+        `${pad}_existing = db.query_one("${table}", {"${matchField}": ${varCode}["${matchField}"]})\n` +
+        `${pad}if _existing:\n` +
+        `${pad}    ${varCode}["id"] = _existing["id"]\n` +
+        `${pad}    db.update("${table}", ${varCode})\n` +
+        `${pad}    ${varCode}.update(db.query_one("${table}", {"id": _existing["id"]}) or {})\n` +
+        `${pad}else:\n` +
+        `${pad}    _saved = db.save("${table}", ${varCode})\n` +
+        `${pad}    if _saved: ${varCode}.update(_saved)`
+      );
+    }
     return `${pad}# CRUD: ${node.operation}`;
   }
 
@@ -7529,6 +7545,17 @@ ${pad}}`;
       const val = exprToCode(node.value, ctx);
       if (ctx.lang === 'python') return `${pad}${map}[${key}] = ${val}`;
       return `${pad}${map}[${key}] = ${val};`;
+    }
+
+    case NodeType.COOKIE_CLEAR: {
+      // T2 #42 — clear/remove cookie. `res.clearCookie(name, {opts})`
+      // uses the same sameSite + secure posture as set, so browsers
+      // agree the cleared cookie is the one set earlier. Python: TODO.
+      const nameLit = JSON.stringify(node.name);
+      if (ctx.lang === 'python') {
+        return `${pad}# TODO: clear cookie ${node.name} — Python backend cookie support is a follow-up`;
+      }
+      return `${pad}res.clearCookie(${nameLit}, { sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });`;
     }
 
     case NodeType.COOKIE_SET: {
@@ -11538,7 +11565,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     if (!Array.isArray(nodes)) return false;
     for (const n of nodes) {
       if (!n || typeof n !== 'object') continue;
-      if (n.type === NodeType.COOKIE_SET || n.type === NodeType.COOKIE_GET) return true;
+      if (n.type === NodeType.COOKIE_SET || n.type === NodeType.COOKIE_GET || n.type === NodeType.COOKIE_CLEAR) return true;
       if (Array.isArray(n.body) && walkForCookies(n.body)) return true;
       if (Array.isArray(n.thenBody) && walkForCookies(n.thenBody)) return true;
       if (Array.isArray(n.elseBody) && walkForCookies(n.elseBody)) return true;

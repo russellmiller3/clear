@@ -150,7 +150,7 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 
 **T2 #11 — agent streaming display (design pass required).** SSE transport decision + how to express "this agent streams" at the call site.
 
-**Python parity for cookies + upsert (deferred).** JS path ships; Python paths emit TODO comments so programs compile but show the gap. Python Response dep-injection for cookies is the bigger ask.
+**Python parity for cookies + upsert — partially done.** Python upsert shipped (mirrors JS emit). Python cookies still deferred because FastAPI Response dep-injection is a parser/compiler change. `clear cookie 'name'` added on the JS side in the follow-up.
 
 ---
 
