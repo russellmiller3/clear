@@ -10,6 +10,28 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 
 ---
 
+## TL;DR — 7 language features landed this continuation
+
+| # | What | Status | Test delta |
+|---|------|--------|------------|
+| 1 | Charts shorthand `display X as bar chart` | ✅ shipped | +6 tests |
+| 2 | Cookies `set/get cookie` (JS, secure-by-default) | ✅ shipped | +5 tests |
+| 3 | Field projection `pick A, B from X` | ✅ shipped | +4 tests |
+| 4 | Upsert `upsert X to Y by <field>` | ✅ shipped | +4 tests |
+| 5 | Transaction synonyms (`atomically:` etc) | ✅ shipped | +4 tests |
+| 6 | Scroll handler `on scroll [every Nms]:` | ✅ shipped | +4 tests |
+| — | T2#11 agent streaming | ⏸ deferred | needs SSE design pass |
+| — | Python cookie parity + upsert | ⏸ deferred | follow-up |
+
+**2459 → 2480 compiler tests green** across the 6 fixes. All 8 core templates compile clean after every shipped change. Five commits on main, all pushed.
+
+**What's queued but needs your design input:** agent streaming display (SSE transport + client-side EventSource reader + how to declare "this agent's responses stream"). Everything else in the original queue is either shipped or requires nothing more than a design call that I didn't want to make without you.
+
+**The ASH-1 sweep is still running in the background** (50 trials, ~2 hrs, $0 via cc-agent). Baseline condition (`tools_off`, MCP-only) ~75% complete. Interesting early signal: `auth-todo` times out 5/5 in tools_off — tools_on condition will tell us whether built-in Bash/Read/Edit/Write re-enable the self-heal path that gets Meph unstuck on auth-heavy tasks.
+
+
+---
+
 ## 1. Charts shorthand — `display X as bar chart` (T2 #8)
 
 **Design choice:** `display X as <type> chart` (where `<type>` ∈ bar/line/pie/area) parses as a CHART node identical to the canonical `bar chart 'Title' showing X`. Title defaults to the capitalized variable name (`display sales as bar chart` → `"Sales"`); the existing 4 chart types stay the whitelist.
