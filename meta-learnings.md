@@ -156,6 +156,8 @@ _Last refresh: 2026-04-24_
 ### `scripts/` — helper utilities (safe to run on demand)
 
 - **check-doc-drift.cjs** — Files we care about — the canonical docs that must agree with each other.
+- **cross-target-smoke.mjs** — scripts/cross-target-smoke.mjs
+- **decidable-core-replay.mjs** — scripts/decidable-core-replay.mjs
 - **factor-db-summary.mjs** — Quick read-only summary of the Factor DB.
 - **reconcile-wfp.js** — Weekly reconcile job.
 - **smoke-cf-target.mjs** — Spot-check the --target cloudflare emission end-to-end for a representative
