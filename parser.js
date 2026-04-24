@@ -783,6 +783,20 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
   let j = startIdx;
   while (j < lines.length && lines[j].indent > parentIndent) {
     const cfgTokens = lines[j].tokens;
+    // Recognize `with timeout N seconds|minutes` as a config sub-line.
+    // Emits { value: N, unit: 'seconds'|'minutes' } so compilers can compute ms.
+    // Mirrors the shape HTTP_REQUEST + scheduled-task parsers produce elsewhere.
+    if (cfgTokens.length >= 4 &&
+        cfgTokens[0].value === 'with' &&
+        cfgTokens[1].value === 'timeout' &&
+        cfgTokens[2].type === TokenType.NUMBER &&
+        (cfgTokens[3].value === 'seconds' || cfgTokens[3].value === 'second' ||
+         cfgTokens[3].value === 'minutes' || cfgTokens[3].value === 'minute')) {
+      const unit = cfgTokens[3].value.startsWith('minute') ? 'minutes' : 'seconds';
+      config.timeout = { value: cfgTokens[2].value, unit };
+      j++;
+      continue;
+    }
     if (cfgTokens.length >= 3) {
       const key = cfgTokens[0].value;
       const valExpr = parseExpression(cfgTokens, 2, cfgTokens[0].line);
