@@ -1109,6 +1109,40 @@ first to finish:
 
 Retry compiles to a for loop with exponential backoff. Timeout compiles to `Promise.race` with a reject timer. Race compiles to `Promise.race` with multiple concurrent tasks. All three work in both JS and Python.
 
+## Table shorthand
+
+Three equivalent ways to declare a table:
+
+```clear
+# Canonical
+create a Users table:
+  name, text
+  email, text, unique
+
+# Shorthand (no `create a` prefix)
+table Users:
+  name, text
+  email, text, unique
+
+# Long form (legacy)
+create data shape User:
+  name, text
+  email, text, unique
+```
+
+All three parse to the same `data_shape` node. The shorthand `table Users:` was added in session 45 because Meph reached for it naturally and the parser wasn't wiring `table` → `data_shape` at the statement lead. Use whichever reads best.
+
+Fields accept two forms too:
+
+```clear
+table Products:
+  price, number, required    # comma form (canonical)
+  name is text, required     # is form (also valid)
+  description is text        # FK references work here too: `author is User`
+```
+
+Both field forms compile to the same schema entry. Pick the one that reads most naturally in context.
+
 ## Compound Unique Constraints
 
 ```clear

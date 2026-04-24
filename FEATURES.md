@@ -135,6 +135,8 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Look up all | `look up all Users` / `get all Users` | Optional `where` clause |
 | Delete | `delete the User with this id` | |
 | Update | `save profile to Users` | Var name = incoming entity |
+| Tables — three lead forms | `create a Users table:` \| `table Users:` \| `create data shape User:` | All three parse identically. Shorthand `table X:` added in session 45. |
+| Field declarations — two forms | `price, number, required` (comma) \| `name is text, required` (is) | Both compile to the same schema entry. |
 | Belongs to | `author belongs to Users` | Foreign key. `get all Posts` auto-stitches the referenced record on read (JS + Python). |
 | Background jobs | `background 'name': runs every 1 hour` | Compiles to `setInterval`; cleaned up on SIGTERM + SIGINT via `_scheduledCancellers` registry. |
 | Scheduled cron | `every 5 minutes:` / `every day at 9am:` | Interval or HH:MM recurrence; both wired into shutdown-safe cancellation. |

@@ -142,7 +142,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
-| `DATA_SHAPE` | `create a Users table:` + fields | Table schema with constraints |
+| `DATA_SHAPE` | `create a Users table:` \| `table Users:` \| `create data shape User:` + fields | Table schema with constraints. All three lead forms parse identically. Field declarations accept both `price, number` and `name is text`. |
 | `CRUD` | `save X as User` / `look up all records in Users table` / `remove from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
 | `SQL_AGGREGATE` | `sum of price from Orders` / `avg of score from Reviews where team is 'support'` | Server-side aggregation: compiles to `db.aggregate(table, fn, field, filter)` → `SELECT FN(col) FROM ... WHERE ...`. Distinguished from `sum of X in variable` (client-side JS reduce) by capitalized table name after `from`. Only supports equality filters (`is X`, `is 'Y' and Z is W`) — non-equality like `>` emits a runtime error. |
 

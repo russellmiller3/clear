@@ -228,6 +228,38 @@ function parseSSE(text) {
   assert(ccArgsEmpty.length === ccArgs.length,
     'empty prompt does NOT add a trailing arg (empty string would confuse claude)');
 
+  // ASH-1 (Agent Self-Heal A/B): the `allowedTools` param overrides the
+  // default '' so the sweep can re-enable Claude Code's built-in tools
+  // (Bash, Read, Edit, Write) side-by-side with the MCP-only baseline.
+  // Precedence: explicit param > GHOST_MEPH_CC_ALLOWED_TOOLS env var > ''.
+  const ccArgsBash = buildClaudeStreamJsonSpawnArgs(
+    '/tmp/fake-config.json', 'Build', null, 'Bash,Read,Edit,Write'
+  );
+  const bashToolsIdx = ccArgsBash.indexOf('--tools');
+  assert(ccArgsBash[bashToolsIdx + 1] === 'Bash,Read,Edit,Write',
+    `allowedTools param threads through to --tools (got ${JSON.stringify(ccArgsBash[bashToolsIdx + 1])})`);
+
+  // Env-var fallback: when param is undefined, read GHOST_MEPH_CC_ALLOWED_TOOLS.
+  const savedEnv = process.env.GHOST_MEPH_CC_ALLOWED_TOOLS;
+  process.env.GHOST_MEPH_CC_ALLOWED_TOOLS = 'Bash';
+  const ccArgsEnv = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json');
+  const envToolsIdx = ccArgsEnv.indexOf('--tools');
+  assert(ccArgsEnv[envToolsIdx + 1] === 'Bash',
+    `env var GHOST_MEPH_CC_ALLOWED_TOOLS overrides the '' default (got ${JSON.stringify(ccArgsEnv[envToolsIdx + 1])})`);
+  if (savedEnv === undefined) delete process.env.GHOST_MEPH_CC_ALLOWED_TOOLS;
+  else process.env.GHOST_MEPH_CC_ALLOWED_TOOLS = savedEnv;
+
+  // Explicit param beats env var.
+  process.env.GHOST_MEPH_CC_ALLOWED_TOOLS = 'Bash';
+  const ccArgsOverride = buildClaudeStreamJsonSpawnArgs(
+    '/tmp/fake-config.json', null, null, ''
+  );
+  const overrideToolsIdx = ccArgsOverride.indexOf('--tools');
+  assert(ccArgsOverride[overrideToolsIdx + 1] === '',
+    `explicit allowedTools='' beats env var (got ${JSON.stringify(ccArgsOverride[overrideToolsIdx + 1])})`);
+  if (savedEnv === undefined) delete process.env.GHOST_MEPH_CC_ALLOWED_TOOLS;
+  else process.env.GHOST_MEPH_CC_ALLOWED_TOOLS = savedEnv;
+
   // System prompt MUST be passed via --system-prompt-file, not concatenated
   // with the user prompt. Meph's system prompt is ~48KB; if we prepend it to
   // the user prompt and pass as argv, Windows hits ENAMETOOLONG (32KB argv

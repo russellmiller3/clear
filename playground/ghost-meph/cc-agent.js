@@ -483,12 +483,24 @@ export function runClaudeCli(prompt) {
  *             keeps the positional argv tiny (just the ~1-2KB user
  *             prompt) and the 48KB stays in a tmp file.
  */
-export function buildClaudeStreamJsonSpawnArgs(configPath, prompt, systemPromptPath) {
+export function buildClaudeStreamJsonSpawnArgs(configPath, prompt, systemPromptPath, allowedTools) {
+  // `allowedTools` resolution order:
+  //   1. explicit param (for tests + programmatic callers)
+  //   2. GHOST_MEPH_CC_ALLOWED_TOOLS env var (for sweep runners / ops)
+  //   3. '' (default — disable built-ins, MCP surface only)
+  // ASH-1 (Agent Self-Heal A/B) flips this to "Bash,Read,Edit,Write" to
+  // test the Browser Use "Bitter Lesson" hypothesis: Meph's pass rate
+  // may rise when he can self-heal gaps in the 28 MCP tools using
+  // Claude Code's built-ins. Default stays '' so existing behavior
+  // and Factor DB instrumentation are unchanged.
+  const toolsValue = typeof allowedTools === 'string'
+    ? allowedTools
+    : (process.env.GHOST_MEPH_CC_ALLOWED_TOOLS || '');
   const args = [
     '--print',
     '--verbose',
     '--permission-mode', 'bypassPermissions',
-    '--tools', '',
+    '--tools', toolsValue,
     '--mcp-config', configPath,
     '--output-format', 'stream-json',
   ];

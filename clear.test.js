@@ -13333,35 +13333,83 @@ describe('Security - sensitive data exposure', () => {
   });
 });
 
+// Session 45 friction-batch-2c: Meph repeatedly wrote `table X:` as shorthand
+// for `create a X table:`. The synonym table already maps `table` →
+// `data_shape`, but the parser only recognized the `create a X table:` form
+// — the bare `table X:` lead fell through to assignment. Friction items
+// #6 + #7 (12 rows combined) were the downstream effect: fields inside
+// the un-recognized block got parsed as standalone statements and errored
+// on type keywords like `amount is number`. Russell's call: Meph's
+// shorthand is natural English — treat it as a missing feature, add it
+// to the language.
+describe('`table X:` shorthand (no `create a` prefix) parses as DATA_SHAPE', () => {
+  it('accepts `table Sales:` as a table declaration', () => {
+    const src = "build for javascript backend\ntable Sales:\n  amount, number\n  region, text\nwhen user calls GET /api/sales:\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The parsed node should be a data_shape with the right name
+    const ds = result.ast.body.find(n => n.type === 'data_shape');
+    expect(ds).toBeDefined();
+    expect(ds.name).toBe('Sales');
+    expect(ds.fields.length).toBe(2);
+  });
+
+  it('`table X:` shorthand + `is type` field declarations compile clean', () => {
+    // The combo Meph wrote verbatim — now a first-class program.
+    const src = "build for javascript backend\ntable Sales:\n  amount is number\n  region is text\nwhen user calls GET /api/sales:\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('emits CREATE TABLE sales for `table Sales:` shorthand', () => {
+    const src = "target: backend\ntable Products:\n  name, text, required\n  price, number\non GET '/test':\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("db.createTable('products'");
+  });
+
+  it('canonical `create a Users table:` still works (regression floor)', () => {
+    const src = "target: backend\ncreate a Users table:\n  name, text\non GET '/test':\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("db.createTable('users'");
+  });
+
+  it('`data shape User:` long form still works (regression floor)', () => {
+    const src = "target: backend\ncreate data shape User:\n  name, text\non GET '/test':\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
 // Session 45 friction-batch-2: Meph writes `amount is number` inside table
 // blocks as if `is` were a type annotation — it's really assignment, so
 // `number` gets treated as an undefined variable. Friction items #6 + #7
 // (12 rows combined, 20min avg, 7 gave up). Add INTENT_HINTS entries for
 // the four type keywords so the error directs Meph to the comma form.
-describe('INTENT_HINTS — type keywords used as if they were values', () => {
-  // These tests drive a source shape that triggers the `X isn't a Clear keyword`
-  // path: Meph uses a type keyword at the statement-start position outside a
-  // proper table block, so the validator's suggestKeyword fires.
-  it('number: hint directs to comma-form field declaration', () => {
-    const src = "build for javascript backend with html frontend\n\ntable Sales:\n  amount is number\n  region is text";
+describe('INTENT_HINTS — type keywords used as values outside table blocks', () => {
+  // Now that `table X:` + `amount is number` compiles clean as a type
+  // declaration, the INTENT_HINTS for type keywords still bite when Meph
+  // uses them as VALUES in assignment context outside tables — e.g.,
+  // `price = number` which really wants `price = 5`.
+  it('number: hint fires when used as a value in assignment', () => {
+    const src = "target: backend\nwhen user calls GET /api/x:\n  price = number\n  send back price";
     const r = compileProgram(src);
     const hint = r.errors.find(e => /number/.test(e.message) && /TYPE keyword/i.test(e.message));
     expect(hint).toBeTruthy();
     expect(hint.message).toContain('comma form');
-    expect(hint.message).toContain('amount, number');
   });
 
-  it('text: hint directs to comma-form AND gives value-usage alternative', () => {
-    const src = "build for javascript backend with html frontend\n\ntable Items:\n  title is text";
+  it('text: hint includes quoted-string alternative', () => {
+    const src = "target: backend\nwhen user calls GET /api/x:\n  title = text\n  send back title";
     const r = compileProgram(src);
     const hint = r.errors.find(e => /text/.test(e.message) && /TYPE keyword/i.test(e.message));
     expect(hint).toBeTruthy();
-    expect(hint.message).toContain('comma form');
     expect(hint.message).toMatch(/quoted strings?/);
   });
 
   it('boolean: hint mentions true/false literals', () => {
-    const src = "build for javascript backend with html frontend\n\ntable Items:\n  active is boolean";
+    const src = "target: backend\nwhen user calls GET /api/x:\n  active = boolean\n  send back active";
     const r = compileProgram(src);
     const hint = r.errors.find(e => /boolean/.test(e.message) && /TYPE keyword/i.test(e.message));
     expect(hint).toBeTruthy();
@@ -13369,18 +13417,17 @@ describe('INTENT_HINTS — type keywords used as if they were values', () => {
   });
 
   it('timestamp: hint mentions auto-fill behavior', () => {
-    const src = "build for javascript backend with html frontend\n\ntable Events:\n  happened_at is timestamp";
+    const src = "target: backend\nwhen user calls GET /api/x:\n  ts = timestamp\n  send back ts";
     const r = compileProgram(src);
     const hint = r.errors.find(e => /timestamp/.test(e.message) && /TYPE keyword/i.test(e.message));
     expect(hint).toBeTruthy();
     expect(hint.message).toContain('auto-fill');
   });
 
-  it('valid usage: `create a Sales table:` with proper comma form still works', () => {
-    // Regression check: the INTENT_HINTS additions shouldn't change behavior
-    // when the canonical form is used. `amount, number` inside a proper
-    // `create a X table:` block compiles clean.
-    const src = "target: backend\ncreate a Sales table:\n  amount, number\n  region, text\non GET '/test':\n  send back 'ok'";
+  it('valid usage: `amount is number` inside table block compiles clean (no hint)', () => {
+    // Regression check on the POSITIVE path: since `table X:` + `is type`
+    // both work as type declarations now, the hint must NOT fire there.
+    const src = "target: backend\ntable Sales:\n  amount is number\non GET '/test':\n  send back 'ok'";
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
   });

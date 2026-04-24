@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — `table X:` shorthand + ASH-1 tool-allowlist config
+
+Two things in one commit because they surfaced from the same Meph session triage.
+
+**Language feature — `table X:` shorthand.** Meph kept writing `table Sales:` (no `create a` prefix) expecting it to parse as a table declaration, because `table` is already listed as a synonym for `data_shape` in synonyms.js. It didn't work — the parser only wired `create a X table:` into `parseDataShape`, and the bare `table X:` lead fell through to assignment parsing. Which then errored on fields like `amount is number` because `number` wasn't defined. Russell's call: this isn't a misuse, it's a missing language feature — fix the compiler.
+
+Added a `data_shape` keyword handler in parser.js that routes `table X:` to `parseDataShape`. Both field forms (`price, number` and `price is number`) already worked inside the block; they just never got reached because the block wasn't recognized. Now `table Users:` + `amount is number` + `name, text, required` all compile clean. Five new compiler tests lock the shorthand in as a first-class form alongside the canonical `create a Users table:` and the long form `create data shape User:`.
+
+Docs updated: SYNTAX.md new "Table shorthand" section listing all three equivalent forms + both field forms. AI-INSTRUCTIONS.md "Data Tables" section expanded with the three-forms block + two-field-forms block.
+
+**ASH-1 infrastructure — `GHOST_MEPH_CC_ALLOWED_TOOLS` env var.** Prep for the Agent Self-Heal A/B sweep queued in HANDOFF.md. `buildClaudeStreamJsonSpawnArgs` now takes an optional `allowedTools` param and also reads `GHOST_MEPH_CC_ALLOWED_TOOLS` from env, so the sweep runner can flip between `""` (MCP-only baseline) and `"Bash,Read,Edit,Write"` (ASH-1 treatment) without patching the cc-agent spawn code. Default stays `""` so existing behavior and Factor DB instrumentation are unchanged. 3 new tests cover param-wins-over-env, env-overrides-default, and default-stays-empty.
+
+2448 → 2453 tests green, zero regressions, all 8 core templates compile clean.
+
+---
+
 ## 2026-04-24 — Friction batch 2b: type-keyword INTENT_HINTS (items #6 + #7)
 
 Factor DB friction ranking items #6 (`text`) and #7 (`number`) were both the "You used X but it hasn't been created yet" error firing on type keywords. Root cause from reading real sessions: Meph writes `amount is number` inside a table block thinking `is` is a type annotation, but Clear reads `is` as assignment — so `number` gets treated as an undefined variable. Same pattern for `text`, `boolean`, `timestamp`.

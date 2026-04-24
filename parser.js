@@ -1833,6 +1833,20 @@ const CANONICAL_DISPATCH = new Map([
     // Everything else (set x = 5, create person:) → fall through to assignment
     return undefined;
   }],
+  // `table X:` shorthand — route to parseDataShape without the `create a`
+  // prefix. Session 45 friction data showed Meph frequently reached for this
+  // form (items #6 + #7, 12 rows combined) expecting it to work because
+  // `table` is the canonical of `data_shape` in the synonym table. The `set`
+  // handler above catches `create a X table:` but not the bare `table X:`
+  // lead. Handler mirrors the same parseDataShape forwarding.
+  ['data_shape', (ctx) => {
+    if (ctx.tokens.length >= 2) {
+      const result = parseDataShape(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (result.node) ctx.body.push(result.node);
+      return result.endIdx;
+    }
+    return undefined;
+  }],
   ['remove', (ctx) => {
     // CRUD delete: "delete the Todo with this id" (4+ tokens, table pattern)
     if (ctx.tokens.length >= 4) {

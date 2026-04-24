@@ -1372,6 +1372,36 @@ create a Users table:
 Use `created_at_date` (not `created_at`) -- the `_date` suffix tells the reader
 it's a timestamp, not a regular field.
 
+### Three equivalent forms (pick whichever reads best)
+
+`create a Users table:` is the canonical lead, but the shorthand `table Users:` and the long form `create data shape User:` parse to the exact same node. All three compile identically. Pick the one that reads most naturally in context — prefer the shorthand for quick schemas, the canonical for formal ones, the long form when you want explicit "this is not a table" emphasis.
+
+```clear
+table Users:             # shorthand — added in session 45
+  name, text
+  email, text, unique
+
+create a Users table:    # canonical
+  name, text
+  email, text, unique
+
+create data shape User:  # long form (legacy-OK)
+  name, text
+  email, text, unique
+```
+
+### Two field forms (both work)
+
+```clear
+table Products:
+  price, number, required        # comma form — preferred, more scannable
+  name is text, required         # is form — also valid
+  author is User                 # FK via capitalized name
+  category, belongs to Category  # FK via `belongs to`
+```
+
+Both compile to the same schema entry. Comma form tends to read cleanest when you have many fields; `is`-form reads better when you're showing the type alongside other metadata.
+
 ## Dynamic Maps
 
 **Explicit over terse. Use `get` and `set`:**
