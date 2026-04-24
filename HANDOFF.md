@@ -1,11 +1,24 @@
-# Handoff — 2026-04-24 (session 45 — five silent-bug fixes shipped while AFK)
+# Handoff — 2026-04-24 (session 45 — 5 silent-bug fixes + `table X:` shorthand + ASH-1 sweep running)
 
-## 🎯 Pickup: FIVE fixes landed clean on main, queue items 1, 3, 8, 11, 12 closed
+## 🔬 ASH-1 sweep in progress as of this handoff
+
+`ab-ash1-sweep.js` is running in the background — 50 trials (5 tasks × 5 trials × 2 conditions = tools_off baseline vs tools_on re-enabled). Runner copied from `ab-hint-sweep.js` with env-var flipped from `CLEAR_HINT_DISABLE` to `GHOST_MEPH_CC_ALLOWED_TOOLS`. First trial was `[✅] tools_off #1 counter — 180.0s (DB)` — passed via Factor DB grading. Wall clock: ~2 hours at workers=1. Cost: $0 via cc-agent on Russell's Claude subscription.
+
+Tasks: counter (L3), todo-crud (L4), auth-todo (L5), contact-book (L6), validated-forms (L7) — span of difficulties so the result doesn't depend on picking one sensitive task.
+
+Output artifact will land at `playground/sessions/ab-ash1-sweep-<stamp>.json`. Summary table in RESEARCH.md once the sweep completes.
+
+**Hypothesis:** re-enabling Claude Code's built-in Bash/Read/Edit/Write tools lifts pass rate because Meph self-heals gaps in the 28 MCP tools. **Counter-hypothesis:** built-ins let Meph sidestep Factor DB instrumentation (grabbing Bash to curl an endpoint skips `meph_http_request` → no `test_pass=1` write), which could blur the signal. A/B controls for this by measuring Factor-DB-graded pass rate in both conditions — whatever the built-ins let Meph do OR circumvent, the truth is in the DB.
+
+## 🎯 Pickup: SIX fixes landed clean on main + 1 language feature + 1 research experiment in flight
 
 **Shipped tonight, all merged to main, all pushed (most recent → oldest):**
 
 | Commit | What it does |
 |--------|--------------|
+| `f6010a4` | **ASH-1 sweep runner.** `playground/supervisor/ab-ash1-sweep.js` copied from ab-hint-sweep and adapted: flips `GHOST_MEPH_CC_ALLOWED_TOOLS` between `""` (MCP-only) and `"Bash,Read,Edit,Write"` (built-ins on). Default 5 tasks × 5 trials × 2 conditions = 50 trials. First trial completed successfully at handoff time. |
+| `d155afc` | **`table X:` shorthand + ASH-1 tool-allowlist config.** Meph kept writing `table Sales:` expecting it to parse as a table declaration because `table` is a synonym for `data_shape`. Parser only wired `create a X table:`; bare `table X:` fell through to assignment. Fix: added a `data_shape` keyword handler that routes to `parseDataShape`. Both field forms (`price, number` and `price is number`) already worked inside the block. Now all three leads (`create a Users table:`, `table Users:`, `create data shape User:`) parse identically. Also: `buildClaudeStreamJsonSpawnArgs` now takes an optional `allowedTools` param + reads `GHOST_MEPH_CC_ALLOWED_TOOLS` env var so the ASH-1 sweep can flip conditions without patching cc-agent spawn code. |
+| `16e7b5e` | **Friction-batch-2b — type-keyword INTENT_HINTS.** Items #6 + #7 on the friction ranking were `text` / `number` / `boolean` / `timestamp` firing as "undefined variable" when Meph used them as values in assignment context. Added hints directing to the comma-form field declaration + value-usage alternative for each type. Note: after the `table X:` shorthand fix below, the in-table case compiles clean; this hint is the fallback for assignment-context misuse. |
 | `da435af` | **TIER 2 #12 — compile-tool source-on-error regression net.** Audit found the fix was already in place (`meph-tools.js:1234` auto-embeds compiled source when `r.errors.length > 0`), but no regression test locked it in — a token-cost refactor could have silently stripped it. Added two assertions: failing compile must return javascript/serverJS + a note field mentioning "errors". |
 | `a2f1d90` | **Friction-batch-2 — auth-capability gate on mutation security check.** Session 45 friction data (items #2 + #5, combined 25 rows @ 50% give-up rate) surfaced a validator flaw: "DELETE/PUT needs `requires login`" fired as a hard error even on apps with NO auth scaffolding at all (toy K/V stores, webhook receivers). Meph had no valid move because `requires login` had nothing to check against. Fix: gate the error on capability presence (`allow signup and login` declaration OR a Users/users DATA_SHAPE with a password field). Capable apps still get hard errors; auth-less apps get ONE summary warning at file top listing every public mutation endpoint. |
 | `0313b7c` | **TIER 2 #9 — Python `belongs to` JOIN emission.** Two silent bugs in one: (a) schema emitted `REFERENCES userss(id)` (double-s typo) so the referenced table didn't exist; (b) Python backend ctx was missing `schemaMap`, which meant `compileCrud`'s FK-stitching loop silently skipped on every Python compile. Fix: `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop. Python `get all Posts` now returns `{author: {id:1, name:'Alice'}}` end-to-end. |
