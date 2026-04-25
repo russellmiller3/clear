@@ -34,16 +34,16 @@ Pre-push hook caught this during the cleanup push. Compiler tests still 2509 gre
 
 ## Overnight sequence (in order)
 
-Russell authorized "keep going" autonomously. All TDD-able, all $0 API spend.
+Russell authorized "keep going" autonomously. All TDD-able, all $0 API spend. Sequence revised away from landing-page polish toward substantive engineering.
 
 1. **Fix e2e regression** — diagnose `todos2.data?.find` at `e2e.test.js:327`. Probably envelope shape change. ~30 min.
 2. **R7: `needs login` page guard** — currently emits blank white page. Fix to redirect to `/login` or generate auto-login page. Half-day TDD. Listed in `FAQ.md → "Known broken things"`.
 3. **R8: `for each` HTML loop body** — currently emits `+ msg +` (whole object). Fix to expand child template per iteration. Half-day TDD. Also listed in `FAQ.md → "Known broken things"`.
 4. **GTM-1: build `apps/deal-desk/main.clear`** — hero discount-approval workflow with agent draft. ~150 lines. The asset every Marcus landing page points at. Uses R7 (auth pages) and R8 (approval lists) as integration test for the morning's bug fixes.
-5. **GTM-2: polish `landing/marcus.html`** — GAN against the ASCII mock locked Session 35. Headline: "That backlog of internal tools nobody's going to build? Ship the first one this Friday."
-6. **GTM-3: build `landing/pricing.html`** — Free / Team $99 / Business $499 / Enterprise tiers per Session 35 lockdown.
-7. **Builder Mode status bar** — chip at bottom of Studio: "12 users · 3 active · $0.03 agent spend today · last ship 4m ago." Always visible.
-8. **R5: `clear test` runner picks up user-written `test` blocks** — currently only runs auto-generated e2e tests. Listed in ROADMAP refactoring backlog.
+5. **CF-1: runtime instrumentation in compiled apps** — emit latency / error / memory beacons from compiled apps to a shared endpoint. ~20 lines of compiler emission + a tiny POST receiver. Once this lands, every compiled app starts feeding the Factor DB with runtime outcome data — the Compiler Flywheel can't start until this is in. ROADMAP P2.
+6. **R10: retire 1:1-mapping violations (`CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT`)** — these generate routes, functions, and imports the user never wrote, violating PHILOSOPHY rule #1 (the most important moat). Move toward explicit source forms or demote until they comply. Real refactor; protects the moat. ROADMAP refactoring backlog R10.
+7. **Builder Mode status bar** — chip at bottom of Studio: "12 users · 3 active · $0.03 agent spend today · last ship 4m ago." Always visible. ROADMAP P1 (Builder Mode polish).
+8. **R5: `clear test` runner picks up user-written `test` blocks** — currently only runs auto-generated e2e tests. Listed in ROADMAP refactoring backlog R5.
 
 ---
 
