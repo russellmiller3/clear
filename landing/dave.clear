@@ -1,0 +1,63 @@
+/*
++----------------------------------------------------------+
+|  Clear -- Dave-first landing page                        |
+|                                                          |
+|  ONE page, six bands:                                    |
+|    Nav      ->  brand + links                            |
+|    Hero     ->  the pitch in one line                    |
+|    Compare  ->  TS+Cursor side-by-side with Clear        |
+|    Flow     ->  you write -> compiler emits -> agent     |
+|    Why      ->  four bullets a senior dev cares about    |
+|    CTA      ->  install line + footer                    |
+|                                                          |
+|  No backend. No database. Pure HTML output.              |
++----------------------------------------------------------+
+*/
+
+build for web
+theme 'midnight'
+
+page 'Clear -- the language your agent writes without retries' at '/':
+
+  section 'Nav' with style page_navbar:
+    heading 'Clear'
+    link 'Docs' to '/docs'
+    link 'GitHub' to 'https://github.com/clearlang/clear'
+
+  section 'Hero' with style page_hero:
+    heading 'The language your coding agent writes without retries.'
+    subheading 'Plain English in. JavaScript, Python, and HTML out.'
+    text 'One extension. One compiler. Zero ceremony.'
+    link 'Install the extension' to 'vscode:extension/clearlang.clear'
+
+  section 'Compare' with style page_section:
+    heading 'Your agent building a todo API'
+    subheading 'TypeScript + Cursor'
+    text '3,420 tokens.  4 retries.  12 files.'
+    text 'Express + Prisma + Zod + dotenv + ts-node + ...'
+    text 'fix the type error. fix the import. fix the migration. fix the test.'
+    subheading 'Clear'
+    text '680 tokens.  0 retries.  1 file.'
+    code block 'a todo has subject and done\n\nwhen user sends POST to /todos:\n  create a todo\n  send back the todo'
+
+  section 'Flow' with style page_section_dark:
+    heading 'How it works'
+    subheading 'You write'
+    text 'todo.clear -- one file, plain English, reads like a spec.'
+    subheading 'Compiler emits'
+    text 'todo.server.js, todo.html, todo.py -- code you can actually read.'
+    subheading 'Your agent reads green tests'
+    text 'No retries. Ship it.'
+
+  section 'Why' with style page_section:
+    heading 'Why devs pick it'
+    text 'One file is a full app -- backend, frontend, database, auth.'
+    text 'Hosted compiler API. No toolchain to install on your team laptops.'
+    text 'LSP + VSCode + Cursor. Same workflow you have now. Better signal.'
+    text 'Compiles to code you can read. Not a black box. Not a framework.'
+
+  section 'CTA' with style page_hero:
+    heading 'Ship your next prototype before lunch.'
+    text 'code --install-extension clearlang'
+    link 'Read the docs' to '/docs'
+    link 'Try it in the browser' to '/playground'

@@ -1,0 +1,33 @@
+/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(18% 0.03 255);
+  --color-base-200: oklch(23% 0.03 255);
+  --color-base-300: oklch(29% 0.025 255);
+  --color-base-content: oklch(90% 0.02 240);
+  --color-primary: oklch(64% 0.18 252);
+  --color-primary-content: oklch(98% 0.005 252);
+  --color-secondary: oklch(60% 0.14 190);
+  --color-secondary-content: oklch(10% 0.02 190);
+  --color-accent: oklch(76% 0.15 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(26% 0.025 255);
+  --color-neutral-content: oklch(82% 0.02 240);
+  --color-info: oklch(66% 0.14 240);
+  --color-info-content: oklch(10% 0.02 240);
+  --color-success: oklch(62% 0.15 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(76% 0.15 82);
+  --color-warning-content: oklch(15% 0.02 82);
+  --color-error: oklch(62% 0.22 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}

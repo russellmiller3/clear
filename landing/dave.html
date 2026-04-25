@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear -- the language your agent writes without retries</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+
+
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(18% 0.03 255);
+  --color-base-200: oklch(23% 0.03 255);
+  --color-base-300: oklch(29% 0.025 255);
+  --color-base-content: oklch(90% 0.02 240);
+  --color-primary: oklch(64% 0.18 252);
+  --color-primary-content: oklch(98% 0.005 252);
+  --color-secondary: oklch(60% 0.14 190);
+  --color-secondary-content: oklch(10% 0.02 190);
+  --color-accent: oklch(76% 0.15 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(26% 0.025 255);
+  --color-neutral-content: oklch(82% 0.02 240);
+  --color-info: oklch(66% 0.14 240);
+  --color-info-content: oklch(10% 0.02 240);
+  --color-success: oklch(62% 0.15 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(76% 0.15 82);
+  --color-warning-content: oklch(15% 0.02 82);
+  --color-error: oklch(62% 0.22 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <nav class="sticky top-0 z-50 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">
+      <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <span class="font-display text-lg font-bold text-base-content tracking-tight">Clear</span>
+          <div class="hidden md:flex items-center gap-6">
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="/docs">Docs</a>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <label for="nav-drawer" class="btn btn-ghost btn-sm btn-square md:hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></label>
+          <a class="btn btn-primary btn-sm" href="https://github.com/clearlang/clear">GitHub</a>
+        </div>
+      </div>
+    </nav>
+    <input id="nav-drawer" type="checkbox" class="hidden peer">
+    <div class="fixed inset-0 z-40 bg-base-100 flex flex-col p-6 pt-20 gap-4 peer-checked:flex hidden md:hidden">
+      <label for="nav-drawer" class="absolute top-4 right-4 btn btn-ghost btn-sm btn-square"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></label>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="/docs">Docs</a>
+    </div>
+    <div class="bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6 relative overflow-hidden" style="background:radial-gradient(ellipse 70% 50% at 50% 0%, oklch(from var(--color-primary, oklch(0.55 0.2 260)) l c h / 0.1) 0%, transparent 65%), var(--color-base-100, white)" data-clear-line="27">
+    <h1 class="font-display text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl text-center mx-auto" data-clear-line="28">The language your coding agent writes without retries.</h1>
+    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl text-center mx-auto" data-clear-line="29">Plain English in. JavaScript, Python, and HTML out.</p>
+    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl text-center mx-auto" data-clear-line="30">One extension. One compiler. Zero ceremony.</p>
+    <a class="btn btn-primary btn-lg" href="vscode:extension/clearlang.clear" data-clear-line="31">Install the extension</a>
+    </div>
+    <div class="bg-base-100 py-16 px-6" data-clear-line="33">
+      <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4" data-clear-line="34">Your agent building a todo API</h2>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="35">TypeScript + Cursor</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="36">3,420 tokens.  4 retries.  12 files.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="37">Express + Prisma + Zod + dotenv + ts-node + ...</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="38">fix the type error. fix the import. fix the migration. fix the test.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="39">Clear</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="40">680 tokens.  0 retries.  1 file.</p>
+    <div class="rounded-xl border border-base-300/60 overflow-hidden mb-4" style="background:oklch(97% 0.005 240)" data-clear-line="41"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-base-300/60 bg-base-200"><span class="w-3 h-3 rounded-full bg-red-400/60"></span><span class="w-3 h-3 rounded-full bg-amber-400/60"></span><span class="w-3 h-3 rounded-full bg-emerald-400/60"></span></div><pre class="font-mono text-sm text-base-content/80 p-5 leading-relaxed overflow-x-auto"><code>a todo has subject and done
+
+when user sends POST to /todos:
+  create a todo
+  send back the todo</code></pre></div>
+      </div>
+    </div>
+    <div class="bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8" data-clear-line="43">
+      <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-neutral-content tracking-tight mb-4" data-clear-line="44">How it works</h2>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="45">You write</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="46">todo.clear -- one file, plain English, reads like a spec.</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="47">Compiler emits</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="48">todo.server.js, todo.html, todo.py -- code you can actually read.</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="49">Your agent reads green tests</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="50">No retries. Ship it.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-16 px-6" data-clear-line="52">
+      <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4" data-clear-line="53">Why devs pick it</h2>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="54">One file is a full app -- backend, frontend, database, auth.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="55">Hosted compiler API. No toolchain to install on your team laptops.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="56">LSP + VSCode + Cursor. Same workflow you have now. Better signal.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="57">Compiles to code you can read. Not a black box. Not a framework.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6 relative overflow-hidden" style="background:radial-gradient(ellipse 70% 50% at 50% 0%, oklch(from var(--color-primary, oklch(0.55 0.2 260)) l c h / 0.1) 0%, transparent 65%), var(--color-base-100, white)" data-clear-line="59">
+    <h1 class="font-display text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl text-center mx-auto" data-clear-line="60">Ship your next prototype before lunch.</h1>
+    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl text-center mx-auto" data-clear-line="61">code --install-extension clearlang</p>
+    <div class="flex gap-4 flex-wrap justify-center mt-2">
+      <a class="btn btn-primary btn-lg" href="/docs">Read the docs</a>
+      <a class="btn btn-outline btn-lg" href="/playground">Try it in the browser</a>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Clear -- the language your agent writes without retries' at / (line 20) -->
+  <script>
+// Generated by Clear v1.0
+// ┌─────────────────────────────────────────────┐
+// │         CLEAR APP — Architecture            │
+// └─────────────────────────────────────────────┘
+//
+// PAGES:
+//   'Clear -- the language your agent writes without retries' at / (line 20)
+//
+
+
+// +----------------------------------------------------------+
+// |  Clear -- Dave-first landing page                        |
+// |                                                          |
+// |  ONE page, six bands:                                    |
+// |    Nav      ->  brand + links                            |
+// |    Hero     ->  the pitch in one line                    |
+// |    Compare  ->  TS+Cursor side-by-side with Clear        |
+// |    Flow     ->  you write -> compiler emits -> agent     |
+// |    Why      ->  four bullets a senior dev cares about    |
+// |    CTA      ->  install line + footer                    |
+// |                                                          |
+// |  No backend. No database. Pure HTML output.              |
+// +----------------------------------------------------------+
+// clear:20
+// Page: Clear -- the language your agent writes without retries
+document.title = "Clear -- the language your agent writes without retries";
+
+
+
+  </script>
+
+
+  <!-- ============================================================== -->
+  <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
+  <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
+  <!-- ============================================================== -->
+  <script>
+  (function() {
+    if (window === window.parent) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
+    var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    function __selectorFor(el) {
+      if (!el || el === document) return null;
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/s+/).join('.') : '';
+      var txt = (el.textContent || '').trim().slice(0, 30);
+      if (tag === 'button' && txt) return tag + ':has-text("' + txt + '")';
+      return tag + cls;
+    }
+    function __post(msg) {
+      try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
+    }
+    // Capture user actions and forward to Studio
+    document.addEventListener('click', function(e) {
+      __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
+    }, true);
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') {
+        __post({ type: 'user-action', action: 'input', selector: __selectorFor(t), value: String(t.value || '').slice(0, 200), ts: Date.now() });
+      }
+    }, true);
+    document.addEventListener('submit', function(e) {
+      __post({ type: 'user-action', action: 'submit', selector: __selectorFor(e.target), ts: Date.now() });
+    }, true);
+    // Listen for commands from Meph
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.target !== 'clear-bridge') return;
+      var reply = { source: 'clear-bridge', replyTo: msg.id };
+      try {
+        if (msg.cmd === 'click') {
+          var el = document.querySelector(msg.selector);
+          if (!el) { reply.error = 'Element not found: ' + msg.selector; }
+          else { el.click(); reply.ok = true; reply.html = document.body.innerHTML.slice(0, 4000); }
+        } else if (msg.cmd === 'fill') {
+          var input = document.querySelector(msg.selector);
+          if (!input) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter) nativeSetter.set.call(input, msg.value);
+            else input.value = msg.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            reply.ok = true; reply.value = input.value;
+          }
+        } else if (msg.cmd === 'inspect') {
+          var target = document.querySelector(msg.selector);
+          if (!target) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var cs = window.getComputedStyle(target);
+            var rect = target.getBoundingClientRect();
+            reply.ok = true;
+            reply.tag = target.tagName.toLowerCase();
+            reply.text = (target.textContent || '').slice(0, 200);
+            reply.styles = { color: cs.color, backgroundColor: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, padding: cs.padding, border: cs.border };
+            reply.box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        } else if (msg.cmd === 'read-dom') {
+          reply.ok = true;
+          reply.html = document.body.innerHTML.slice(0, 8000);
+          reply.state = window._state ? JSON.parse(JSON.stringify(window._state)) : null;
+          reply.url = location.href;
+        } else if (msg.cmd === 'read-storage') {
+          var ls = {}, ss = {};
+          for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+          for (var j = 0; j < sessionStorage.length; j++) { var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2); }
+          reply.ok = true; reply.localStorage = ls; reply.sessionStorage = ss;
+        }
+      } catch (err) {
+        reply.error = err.message;
+      }
+      __post(reply);
+    });
+    __post({ type: 'bridge-ready', url: location.href });
+  })();
+  </script>
+</body>
+</html>
