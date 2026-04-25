@@ -234,7 +234,7 @@ Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real custom
 | R1 | Decompose `compileAgent()` — 300-line monolith mutating strings via regex. Extract `applyToolUse()`, `applyMemory()`, `applyRAG()`. | Before adding more agent features |
 | R2 | Deduplicate JS/Python CRUD — parallel logic, bugs in one missed in other. Shared IR. | When Python target becomes priority |
 | R4 | Skill instruction raw text — tokenizer destroys parentheses in skill `instructions:` blocks. Parser should store `.raw` line text. Partially fixed; tokenizer still eats some formatting. | Before shipping store-ops demo |
-| R5 | `clear test` runner doesn't pick up user-written `test` blocks — only compiler-generated e2e tests. | Before shipping store-ops demo |
+| ~~R5~~ | ~~`clear test` runner doesn't pick up user-written `test` blocks~~ — **DONE** (verified 2026-04-25). User blocks land in result.tests alongside auto-generated CRUD tests. Regression coverage in clear.test.js → "R5: user-written test: blocks land in result.tests". | — |
 | R6 | Fragile `[^)]*` regex patterns in `compileAgent()` break on literal parentheses. Real fix is R1. | Part of R1 |
 | R9 | Stale SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js` — pending migration unstaged since Session 32. Decide: ship, stash, or revert. | Whenever todo-fullstack is touched next |
 | R10 | **Retire 1:1-mapping violations.** `CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT` generate routes, functions, and imports the user never wrote — the compiler is doing magic the user can't trace. Move toward explicit source forms or demote until they comply. Protects PHILOSOPHY rule #1 (the most important moat). | Before adding more SERVICE_CALL-style sugar |

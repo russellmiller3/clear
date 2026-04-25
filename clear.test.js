@@ -22871,6 +22871,74 @@ describe('cron — scheduled task blocks', () => {
 // ============================================================
 // P5 — HTTP Test Assertions in Clear
 // ============================================================
+// =============================================================================
+// R5: `clear test` runner must include user-written test blocks alongside
+// the compiler-generated e2e tests. Earlier versions emitted a test.js with
+// only auto-tests; tests authored in the .clear file (via `test:` blocks)
+// were silently dropped. The runner now picks them up — this regression
+// locks it in. See cli/clear.js testCommand for the runner; result.tests
+// is the file the CLI writes to disk.
+// =============================================================================
+describe('R5: user-written test: blocks land in result.tests for clear-test runner', () => {
+  it('captures `test:` block with no description', () => {
+    const src = `build for javascript backend
+create a Items table:
+  name, required
+when user requests data from /api/items:
+  send back all Items
+test:
+  can user view all items`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toBeTruthy();
+    expect(r.tests).toContain('can user view all items');
+  });
+
+  it("captures `test 'description':` block alongside auto-generated CRUD tests", () => {
+    const src = `build for javascript backend
+create a Items table:
+  name, required
+when user requests data from /api/items:
+  send back all Items
+when user sends item to /api/items:
+  new_item = save item as new Item
+  send back new_item with success message
+test 'items list is non-empty after seed':
+  can user view all items
+test 'rejects empty name':
+  can user create an item without a name
+  expect it is rejected`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('items list is non-empty after seed');
+    expect(r.tests).toContain('rejects empty name');
+    // Auto-generated CRUD coverage is still there too — the user blocks
+    // are additive, not replacement.
+    expect(r.tests).toMatch(/Viewing all items|all Items/);
+  });
+
+  it("user `expect it succeeds` and `expect it is rejected` both compile", () => {
+    const src = `build for javascript backend
+create a Posts table:
+  title, required, min 1
+when user sends post to /api/posts:
+  validate post:
+    title is text, required, min 1
+  new_post = save post as new Post
+  send back new_post with success message
+test 'happy path':
+  can user create a new post with title is 'Hi'
+  expect it succeeds
+test 'blank title rejected':
+  can user create a post without a title
+  expect it is rejected`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('happy path');
+    expect(r.tests).toContain('blank title rejected');
+  });
+});
+
 describe('HTTP test assertions in test blocks', () => {
   it('parses call POST with body fields into HTTP_TEST_CALL node', () => {
     const src = `build for javascript backend
