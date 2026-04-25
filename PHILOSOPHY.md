@@ -835,3 +835,45 @@ The constructs that look unbounded are unbounded *by design*: endpoints serve re
 **Compiler-as-capital-investment.** Prevention compounds. Every foot-gun the compiler closes is one the author (human or AI) will never hit, across every future program, forever. Compute is cheap compared to the time a single hang costs a debug session. When in doubt, emit the counter, emit the timeout, emit the try/race. The 14-year-old shouldn't need to know what "total" means — they just need the compiler to refuse to emit a program that can hang.
 
 **Authors can still override.** Totality is a property the compiler maintains *on the author's behalf*. If an author genuinely wants a million iterations or a 10-minute SMTP timeout, they say so in the Clear source. The default is never "no bound at all" — it's "a bound generous enough for real work, loud enough to catch bugs."
+
+## Rule 19: English Tooling Beats Code Tooling — for Humans AND AI
+
+Code is written once and read hundreds of times. Tooling that operates on code in English — code review, security audits, debugging, spelunking, "what does this even do?", incident response, onboarding, AI agents adding features to existing code — gets a force multiplier when the source IS English.
+
+**Concretely:**
+- A code reviewer reading a Clear PR understands intent in seconds. The same diff in TypeScript with framework conventions takes minutes.
+- A security audit (OWASP class) finds vulnerabilities by reading. English source surfaces "validates input, then writes to DB" patterns that are obvious; the same TS code is buried in middleware chains and decorators.
+- An AI agent extending a 6-month-old codebase has to understand it first. The agent's own context budget pays for the parsing. Plain-English source = cheaper context = lower agent cost per change.
+- A non-engineer (PM, designer, ops, compliance officer) can read a Clear PR and contribute meaningful comments. They cannot read TS.
+- The original author returning after 3 months reads their own code at full speed. With dense JS, every return costs re-parsing.
+
+**The lifetime-cost math:** writing happens once. Reading + maintaining + auditing + extending happens forever. If reading drops 30-50%, total cost-of-ownership drops massively even when writing speed is identical. This is the wedge for AI-written codebases specifically — the agent writes fast, the team REVIEWS forever. English review beats AST review every time.
+
+**This applies even when Clear isn't the primary language.** A polyglot codebase (Clear for business logic + TypeScript for everything else) still wins on the lifecycle slice that's in Clear. The pitch isn't "rewrite your stack." It's "use English where the lifetime-read-cost matters most."
+
+**Don't confuse this with "no code allowed."** Clear compiles to JavaScript or Python. The COMPILED OUTPUT is code; reading IT is exactly as hard as reading any JS/Python. The English advantage applies to the SOURCE — the file the human or AI authored, edits, reviews. That's where the leverage is.
+
+## Rule 20: Pragmatic Dependencies — Minimal but Not Religious
+
+The compiler is zero-deps because that's the right call for a compiler — small, deterministic, portable, no supply-chain surface. **The compiler is the special case, not the model for the whole repo.** Studio (`playground/`), runtime helpers, and Clear Cloud's tenant store have different constraints and have always carried real deps: `bcryptjs`, `better-sqlite3`, `express`, and now `pg` + `pg-mem`.
+
+**The rule:** every dep should justify itself against the alternatives. Adding `pg` to the cloud-tenants layer is justified — it's the canonical Postgres client, mature pool, used by every Node-on-Postgres shop. Hand-rolling a Postgres wire-protocol client to "stay zero-dep" would be a 6-month detour for negative value.
+
+**The anti-pattern this rule kills:** "we're zero-deps" used as an excuse to reject every package, even ones that solve real problems for a few lines of cost. That's religion, not engineering. Pragmatic engineering says: each dep gets weighed against (a) the work to build it ourselves, (b) the supply-chain risk it adds, (c) the maintenance tax it introduces. When the math says "yes, this saves us 6 weeks for a 1MB install of well-tested code," we add it.
+
+**The compiler stays zero-deps.** That bar is non-negotiable because the compiler is the load-bearing piece every customer's app rides on. The infra layer (Studio, Clear Cloud, tooling) is held to "minimal and justified," not "zero." Different rules for different surfaces.
+
+## Rule 21: Syntax States What It Does — No Guessing
+
+Every directive in Clear must unambiguously name what it does. The reader (human or AI) should never have to guess what a phrase compiles to. If a phrase has two plausible meanings, the syntax is wrong.
+
+**The anti-pattern this rule kills:** cute-sounding but lying syntax. `database is local memory` is the canonical example — it sounds like an in-memory database, but compiles to SQLite-on-disk. Two readers will guess two different things and one will be wrong. The fix is to say what it actually is: `database is sqlite` for the SQLite case, `database is in memory` for the genuinely ephemeral case.
+
+**How to write a directive that passes the no-guessing test:**
+- Name the THING, not the metaphor. `database is sqlite` beats `database is local memory`.
+- Name the SHAPE, not the host. `database is sqlite` is portable; `database is d1` couples the source to one host. The host belongs in the build target, not the directive — same source ships to Node + Cloudflare + Python by changing the target, not the source.
+- When in doubt, write the phrase out loud to a 14-year-old. If they ask "what does that mean?", the syntax is failing the test.
+
+**When two readers would guess differently, change the syntax.** Don't add a comment explaining what it does — the comment proves the syntax is wrong. The fix is always at the syntax level, not the doc level.
+
+**This rule applies retroactively.** When we find a directive in Clear that lies about what it does (`local memory` was one), we deprecate it with a warning steering authors to the precise form. We do NOT keep the lying form because "people are used to it" — that's the same religion the dependencies rule kills.

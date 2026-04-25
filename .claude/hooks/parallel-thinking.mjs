@@ -34,7 +34,20 @@
 import { readFileSync } from 'fs';
 
 const REMINDER =
-`Before responding: think parallel FIRST, narrate everything you do, plain English only.
+`Before responding: PLAIN ENGLISH always, think parallel FIRST, narrate everything.
+
+═══ PLAIN ENGLISH ALWAYS — APPLIES TO EVERY WORD YOU WRITE TO RUSSELL ═══
+Not just narration. Not just summaries. EVERY message. Russell has Mito + ADHD; code-shaped language costs him energy he doesn't have.
+
+- Say what the thing DOES, not what it's CALLED.
+- ❌ "the validateSweepPreconditions function takes opts.real and falls back to deployTarget()"
+  ✅ "the sweep checks if you asked for the paid model; if not, it routes through the free Claude Code"
+- ❌ "we'll need to refactor the applyShip closure to wire the audit-first ordering"
+  ✅ "we'll change the order: write the audit row first, then ship, then mark the row done"
+- Names of functions / files / variables ONLY when Russell would need them to FIND something. Not as a way to describe what something does.
+- "Endpoint" / "compile" / "agent" / "stream" / "sync" / "async" — all jargon. Say "the URL" / "the app builds itself" / "AI assistant" / "arrives word-by-word" / "happens at the same time" / "happens in order".
+- BLUF summaries especially: re-read every word before sending. If a code term snuck in, replace it with the English thing it does.
+- Self-check before sending EVERY message: would a smart non-coder understand this? If no, rewrite.
 
 ═══ PARALLEL-FIRST DECISION TREE ═══
 1. **Is this multi-step?** If yes, list the subtasks before doing anything.
@@ -53,13 +66,13 @@ Russell's view is just text + tool calls. Silent stretches = he loses the thread
 - **Before launching agents:** state by NAME what each will produce ("agent 1 writes the CC-4 plan, agent 2 writes the Postgres plan, ...").
 - **After every tool batch (max 3 tool calls):** 1-line status. Format: "X of Y done, moving to Z" or "agents 1+2 fired, working on 3 myself."
 - **When background agents complete:** tell Russell what landed and whether quality looks ok.
-- **Plain English only** — no code terms, no internal function names, no "applyShip"/"validateX" jargon. Say what the thing DOES, not what it's CALLED.
 - **Three beats per narration:** what you're doing, why it matters for the session goal, what it unlocks next. Under 25 words total when possible.
 
 ═══ COMBINED COST ═══
 "Could have been parallel but wasn't" = wasted Russell-wall-clock (a 3x failure compounds across sessions).
 "Silent stretch of work" = Russell loses the thread + loses energy reading raw tool calls.
-Both compound. Both have the same fix: explicit, parallel, narrated.`;
+"Code jargon in a message to Russell" = re-parse cost he pays in energy he doesn't have.
+All three compound. All three have the same fix: explicit, parallel, narrated, plain.`;
 
 function main() {
 	let input;
