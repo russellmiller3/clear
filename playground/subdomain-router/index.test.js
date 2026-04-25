@@ -196,6 +196,132 @@ console.log('\n🔎 resolveAppTarget — extract + lookup\n');
   else process.env.CLEAR_CLOUD_TARGET_SCHEME = origScheme;
 }
 
+// =============================================================================
+// CC-4 cycle 3 — Cloudflare-target arm in resolveAppTarget
+// =============================================================================
+console.log('\n☁️  resolveAppTarget — Cloudflare-target arm (CC-4 cycle 3)\n');
+
+// CF-shaped row + CLEAR_CLOUD_CF_PROXY=1 → ok with public CF URL
+{
+  const origProxy = process.env.CLEAR_CLOUD_CF_PROXY;
+  process.env.CLEAR_CLOUD_CF_PROXY = '1';
+  const lookup = async (sub) => sub === 'deal-desk' ? {
+    id: 99, tenant_id: 7, subdomain: 'deal-desk',
+    scriptName: 'deal-desk', d1_database_id: 'd1-fake',
+    hostname: 'deal-desk.buildclear.dev',
+    status: 'active', tenant_status: 'active', tenant_plan: 'pro',
+  } : null;
+  const r = await resolveAppTarget('deal-desk.buildclear.dev', lookup);
+  assert(r.ok === true,
+    `CF row + proxy env=1 → ok=true (got ${JSON.stringify(r).slice(0, 160)})`);
+  assert(r.target.backend === 'cloudflare',
+    `target.backend === 'cloudflare' (got ${r.target.backend})`);
+  assert(r.target.scriptName === 'deal-desk',
+    `target.scriptName preserved (got ${r.target.scriptName})`);
+  assert(r.target.hostname === 'deal-desk.buildclear.dev',
+    `target.hostname preserved (got ${r.target.hostname})`);
+  assert(r.target.url === 'https://deal-desk.buildclear.dev',
+    `target.url is the public CF edge URL (got ${r.target.url})`);
+  assert(r.target.subdomain === 'deal-desk',
+    `target.subdomain set (got ${r.target.subdomain})`);
+  if (origProxy === undefined) delete process.env.CLEAR_CLOUD_CF_PROXY;
+  else process.env.CLEAR_CLOUD_CF_PROXY = origProxy;
+}
+
+// CF-shaped row + no proxy env → 502 with helpful message
+{
+  const origProxy = process.env.CLEAR_CLOUD_CF_PROXY;
+  delete process.env.CLEAR_CLOUD_CF_PROXY;
+  const lookup = async () => ({
+    id: 99, tenant_id: 7, subdomain: 'deal-desk',
+    scriptName: 'deal-desk', d1_database_id: 'd1-fake',
+    hostname: 'deal-desk.buildclear.dev',
+    status: 'active', tenant_status: 'active',
+  });
+  const r = await resolveAppTarget('deal-desk.buildclear.dev', lookup);
+  assert(r.ok === false && r.status === 502,
+    `CF row without proxy env → 502 (got status ${r.status})`);
+  assert(/cloudflare-deployed app — set CLEAR_CLOUD_CF_PROXY=1/i.test(r.reason),
+    `reason explains how to opt-in (got ${JSON.stringify(r.reason)})`);
+  assert(/dev mode only/i.test(r.reason) && /do not use in production/i.test(r.reason),
+    `reason warns against production use (got ${JSON.stringify(r.reason)})`);
+  if (origProxy !== undefined) process.env.CLEAR_CLOUD_CF_PROXY = origProxy;
+}
+
+// CF env value other than '1' (e.g. 'true', '0') → still 502 (strict equality gate)
+{
+  const origProxy = process.env.CLEAR_CLOUD_CF_PROXY;
+  process.env.CLEAR_CLOUD_CF_PROXY = 'true';
+  const lookup = async () => ({
+    id: 99, tenant_id: 7, subdomain: 'deal-desk',
+    scriptName: 'deal-desk', hostname: 'deal-desk.buildclear.dev',
+    status: 'active', tenant_status: 'active',
+  });
+  const r = await resolveAppTarget('deal-desk.buildclear.dev', lookup);
+  assert(r.ok === false && r.status === 502,
+    `proxy env='true' (truthy but not '1') still → 502 (got status ${r.status})`);
+  if (origProxy === undefined) delete process.env.CLEAR_CLOUD_CF_PROXY;
+  else process.env.CLEAR_CLOUD_CF_PROXY = origProxy;
+}
+
+// Existing Fly-shaped row → unchanged (regression test)
+{
+  const origProxy = process.env.CLEAR_CLOUD_CF_PROXY;
+  // Set proxy env to verify the Fly arm still wins for Fly-shaped rows
+  // (the CF arm only fires when scriptName + hostname are both present).
+  process.env.CLEAR_CLOUD_CF_PROXY = '1';
+  const lookup = async () => ({
+    id: 1, tenant_id: 1, subdomain: 'flyapp', fly_app_name: 'fly-flyapp',
+    status: 'active', tenant_status: 'active', tenant_plan: 'team',
+  });
+  const r = await resolveAppTarget('flyapp.buildclear.dev', lookup);
+  assert(r.ok === true,
+    `Fly-shaped row still resolves (got ${JSON.stringify(r).slice(0, 120)})`);
+  assert(r.target.backend === 'fly',
+    `Fly row → backend === 'fly' (got ${r.target.backend})`);
+  assert(r.target.flyAppName === 'fly-flyapp',
+    `Fly row preserves flyAppName (got ${r.target.flyAppName})`);
+  assert(r.target.url.startsWith('http://fly-flyapp.internal:'),
+    `Fly row builds internal URL (got ${r.target.url})`);
+  if (origProxy === undefined) delete process.env.CLEAR_CLOUD_CF_PROXY;
+  else process.env.CLEAR_CLOUD_CF_PROXY = origProxy;
+}
+
+// Orphan row (neither fly_app_name nor scriptName) → still 502 (existing behavior)
+{
+  const origProxy = process.env.CLEAR_CLOUD_CF_PROXY;
+  process.env.CLEAR_CLOUD_CF_PROXY = '1';  // even with proxy on, an orphan is an orphan
+  const lookup = async () => ({
+    id: 1, tenant_id: 1, subdomain: 'orphan',
+    fly_app_name: null, scriptName: null, hostname: null,
+    status: 'active', tenant_status: 'active',
+  });
+  const r = await resolveAppTarget('orphan.buildclear.dev', lookup);
+  assert(r.ok === false && r.status === 502,
+    `orphan row (no CF, no Fly) → 502 (got status ${r.status})`);
+  assert(/no fly_app_name/i.test(r.reason),
+    `orphan reason mentions fly_app_name (got ${JSON.stringify(r.reason)})`);
+  if (origProxy === undefined) delete process.env.CLEAR_CLOUD_CF_PROXY;
+  else process.env.CLEAR_CLOUD_CF_PROXY = origProxy;
+}
+
+// CF row missing hostname (partial CF data) → falls through to Fly check → 502
+{
+  const origProxy = process.env.CLEAR_CLOUD_CF_PROXY;
+  process.env.CLEAR_CLOUD_CF_PROXY = '1';
+  const lookup = async () => ({
+    id: 1, tenant_id: 1, subdomain: 'half-cf',
+    scriptName: 'half-cf', hostname: null,  // missing — half-configured
+    fly_app_name: null,
+    status: 'active', tenant_status: 'active',
+  });
+  const r = await resolveAppTarget('half-cf.buildclear.dev', lookup);
+  assert(r.ok === false && r.status === 502,
+    `CF row missing hostname → 502 (got status ${r.status})`);
+  if (origProxy === undefined) delete process.env.CLEAR_CLOUD_CF_PROXY;
+  else process.env.CLEAR_CLOUD_CF_PROXY = origProxy;
+}
+
 console.log('\n🛤  createRouterMiddleware — full proxy flow\n');
 
 // Spin up a mock target that echoes its view of the request

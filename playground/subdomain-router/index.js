@@ -116,6 +116,39 @@ export async function resolveAppTarget(hostHeader, lookupFn) {
   if (row.status && row.status !== 'active') {
     return { ok: false, status: 403, reason: 'app ' + row.status };
   }
+  // CC-4 cycle 3 — Cloudflare-target arm.
+  // Cloudflare-deployed rows have `scriptName` + `hostname` populated by
+  // markAppDeployed (cfDeploys), but no `fly_app_name`. In production,
+  // *.buildclear.dev DNS goes straight to Cloudflare's edge, never
+  // through Studio. In dev, Russell may want Studio to proxy to the real
+  // CF URL so he can verify the full Publish flow on his laptop —
+  // gated behind CLEAR_CLOUD_CF_PROXY=1 (strict equality so a stray
+  // truthy env doesn't silently turn Studio into a hot reverse-proxy
+  // bottleneck in production).
+  if (row.scriptName && row.hostname) {
+    const proxyEnabled = process.env.CLEAR_CLOUD_CF_PROXY === '1';
+    if (!proxyEnabled) {
+      return {
+        ok: false,
+        status: 502,
+        reason: 'cloudflare-deployed app — set CLEAR_CLOUD_CF_PROXY=1 to proxy through Studio (dev mode only; do not use in production)',
+        subdomain,
+      };
+    }
+    return {
+      ok: true,
+      target: {
+        appId: row.id,
+        tenantId: row.tenant_id,
+        plan: row.tenant_plan || null,
+        backend: 'cloudflare',
+        scriptName: row.scriptName,
+        hostname: row.hostname,
+        url: `https://${row.hostname}`,
+        subdomain,
+      },
+    };
+  }
   if (!row.fly_app_name) {
     return { ok: false, status: 502, reason: 'app has no fly_app_name assigned' };
   }
@@ -133,6 +166,7 @@ export async function resolveAppTarget(hostHeader, lookupFn) {
       tenantId: row.tenant_id,
       flyAppName: row.fly_app_name,
       plan: row.tenant_plan || null,
+      backend: 'fly',
       url,
       subdomain,
     },
@@ -251,6 +285,11 @@ export function createRouterMiddleware(opts) {
       res.end(`Subdomain routing error: ${resolution.reason}`);
       return;
     }
+    // CC-4 cycle 3 — CF-target arm. resolveAppTarget guarantees that
+    // when backend === 'cloudflare', target.url is the public CF edge
+    // URL (https://<hostname>) — proxyToTarget already handles the
+    // https scheme. The "proxy not enabled" path returns ok:false above,
+    // so by the time we get here, url is a real URL.
     proxyToTarget(req, res, resolution.target.url, { timeoutMs: opts.timeoutMs });
   };
 }
