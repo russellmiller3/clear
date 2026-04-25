@@ -270,6 +270,48 @@ export function wireDeploy(app, opts = {}) {
 		res.json({ ok: true, slug });
 	});
 
+	// CC-4 cycle 5 — test-only endpoint to install a built-in fake WfpApi
+	// inside this running server's _wfpApi singleton. Without this the deploy
+	// path tries to talk to real Cloudflare and 503s when the API token is
+	// missing. Body {reset:true} clears the singleton back to the real lazy
+	// getter; otherwise the default fake walks the orchestrator pipeline
+	// (provisionD1 → applyMigrations → uploadScript → setSecrets →
+	// attachDomain) and returns the same shape the real wrapper does. The
+	// fake is HARD-CODED here on purpose — accepting arbitrary fake bodies
+	// over the wire would let any caller in test mode redirect deploys to
+	// arbitrary code. Mirrors makeFakeWfpApiForDeployTest in deploy.test.js.
+	app.post('/api/_test/inject-wfp-api', async (req, res) => {
+		if (process.env.NODE_ENV !== 'test' && !process.env.CLEAR_ALLOW_SEED) return res.status(404).end();
+		if (req.body && req.body.reset === true) {
+			_setWfpApiForTest(null);
+			return res.json({ ok: true, reset: true });
+		}
+		const calls = [];
+		const fake = {
+			calls,
+			provisionD1: async (p) => { calls.push({ op: 'provisionD1', tenantSlug: p.tenantSlug, appSlug: p.appSlug }); return { ok: true, d1_database_id: 'd1-test', name: `${p.tenantSlug}-${p.appSlug}` }; },
+			applyMigrations: async () => { calls.push({ op: 'applyMigrations' }); return { ok: true }; },
+			uploadScript: async (p) => { calls.push({ op: 'uploadScript', scriptName: p.scriptName }); return { ok: true, result: { id: 'script-id' } }; },
+			setSecrets: async () => { calls.push({ op: 'setSecrets' }); return { ok: true, failed: [] }; },
+			attachDomain: async (p) => { calls.push({ op: 'attachDomain', hostname: p.hostname }); return { ok: true }; },
+			deleteScript: async () => ({ ok: true }),
+			listVersions: async () => ({ ok: true, versions: [] }),
+			rollbackToVersion: async () => ({ ok: true }),
+		};
+		_setWfpApiForTest(fake);
+		res.json({ ok: true, injected: true });
+	});
+
+	// CC-4 cycle 5 — test-only endpoint to read the multi-tenant subdomain
+	// binding the orchestrator wrote during deploy. Returns the same JSON
+	// the dev-mode subdomain router would resolve against, so the smoke test
+	// can assert the binding landed without reaching into module state.
+	app.get('/api/_test/lookup-subdomain/:sub', async (req, res) => {
+		if (process.env.NODE_ENV !== 'test' && !process.env.CLEAR_ALLOW_SEED) return res.status(404).end();
+		const row = await store.lookupAppBySubdomain(req.params.sub);
+		res.json(row);
+	});
+
 	// Deploy
 	app.post('/api/deploy', async (req, res) => {
 		const tenant = await requireTenant(req, res);

@@ -54,7 +54,12 @@ async function getJson(path) {
 console.log('Starting playground server on port 3457...');
 const server = spawn('node', ['playground/server.js'], {
   cwd: join(__dirname, '..'),
-  env: { ...process.env, PORT: '3457' },
+  // CC-4 cycle 5 — CLEAR_ALLOW_SEED unlocks the test-only seed/inject/lookup
+  // endpoints (gated behind NODE_ENV !== 'test' && !CLEAR_ALLOW_SEED). The
+  // smoke test below seeds a tenant, injects a fake CF api wrapper, ships the
+  // deal-desk source, and verifies the multi-tenant subdomain binding landed.
+  // CLEAR_CLOUD_ROOT_DOMAIN pins the deploy URL so we can assert it exactly.
+  env: { ...process.env, PORT: '3457', CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
   stdio: 'pipe',
 });
 
@@ -854,6 +859,100 @@ try {
     assert(typeof s.weak_assertion_count === 'number', 'session has weak_assertion_count');
     assert(typeof s.red_step_observed === 'boolean', 'session has red_step_observed');
   }
+}
+
+// =============================================================================
+// CC-4 cycle 5 — end-to-end smoke: deal-desk → /api/deploy → CF binding
+// =============================================================================
+// This is the load-bearing test for CC-4. Earlier cycles tested pieces in
+// isolation (orchestrator, modal, store). Cycle 5 wires it all up against
+// the real spawned server: seed a tenant, inject a fake CF api wrapper into
+// the running server's WfpApi singleton, POST the deal-desk source to the
+// real /api/deploy, then prove the multi-tenant subdomain binding landed by
+// looking up the deal-desk subdomain through a test-only admin endpoint.
+//
+// Two new test-only endpoints (gated like /api/_test/seed-tenant):
+//   POST /api/_test/inject-wfp-api  — installs the built-in fake into
+//     the server's _wfpApi singleton; body {reset:true} clears it back to
+//     the real lazy getter.
+//   GET  /api/_test/lookup-subdomain/:sub — returns store.lookupAppBySubdomain
+//     as JSON so the test can verify the binding without reaching into module
+//     state.
+{
+  console.log('\n☁️  CC-4 cycle 5 — Publish deal-desk via /api/deploy');
+
+  const fs = await import('fs');
+  const dealDeskSrc = fs.readFileSync(join(__dirname, '..', 'apps', 'deal-desk', 'main.clear'), 'utf8');
+
+  // 1. Seed a tenant. Server returns a Set-Cookie we have to carry on every
+  //    follow-up call (requireTenant reads clear_tenant from the cookie).
+  const seedRes = await fetch(BASE + '/api/_test/seed-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: 'clear-acme', plan: 'pro' }),
+  });
+  assert(seedRes.status === 200, 'seed-tenant returns 200');
+  const setCookie = seedRes.headers.get('set-cookie') || '';
+  const cookieMatch = setCookie.match(/clear_tenant=[^;]+/);
+  assert(!!cookieMatch, 'seed-tenant sets clear_tenant cookie');
+  const cookie = cookieMatch ? cookieMatch[0] : '';
+
+  // 2. Install the built-in fake WfpApi inside the running server. Without
+  //    this the deploy would try to hit real CF and fail (no API token).
+  const injectRes = await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(injectRes.status === 200, 'inject-wfp-api returns 200');
+  const injectBody = await injectRes.json();
+  assert(injectBody.ok === true, 'inject-wfp-api returns ok:true');
+
+  // 3. Ship deal-desk through /api/deploy with target=cloudflare. The fake
+  //    walks the orchestrator pipeline (provisionD1 → applyMigrations →
+  //    uploadScript → setSecrets → attachDomain → markAppDeployed) and
+  //    returns the same shape the real CF orchestrator does.
+  const deployRes = await fetch(BASE + '/api/deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ source: dealDeskSrc, appSlug: 'deal-desk', target: 'cloudflare' }),
+  });
+  const deployBody = await deployRes.json();
+  assert(deployRes.status === 200, `deploy returns 200 (got ${deployRes.status}: ${JSON.stringify(deployBody).slice(0, 200)})`);
+  assert(deployBody.ok === true, 'deploy returns ok:true');
+  assert(deployBody.url === 'https://deal-desk.buildclear.dev', `url is https://deal-desk.buildclear.dev (got ${deployBody.url})`);
+  assert(typeof deployBody.jobId === 'string' && deployBody.jobId.length > 0, 'deploy returns jobId');
+
+  // 4. Status polling — /api/deploy-status/:jobId?target=cloudflare reads
+  //    the same target from the query string the modal stamped on the URL.
+  const statusRes = await fetch(BASE + `/api/deploy-status/${encodeURIComponent(deployBody.jobId)}?target=cloudflare`, {
+    headers: { Cookie: cookie },
+  });
+  const statusBody = await statusRes.json();
+  assert(statusRes.status === 200, 'deploy-status returns 200');
+  assert(statusBody.ok === true, 'deploy-status returns ok:true');
+  assert(statusBody.status === 'ok', `deploy-status status is ok (got ${statusBody.status})`);
+  assert(statusBody.url === 'https://deal-desk.buildclear.dev', 'deploy-status url matches');
+
+  // 5. Multi-tenant subdomain binding — the load-bearing assertion. Without
+  //    this row, the dev-mode subdomain router can't resolve deal-desk to
+  //    the right tenant + script. CC-4's whole "click Publish, get a live
+  //    *.buildclear.dev URL" claim hinges on this lookup returning the row.
+  const lookupRes = await fetch(BASE + '/api/_test/lookup-subdomain/deal-desk');
+  const lookupBody = await lookupRes.json();
+  assert(lookupRes.status === 200, 'lookup-subdomain returns 200');
+  assert(lookupBody !== null, 'lookup-subdomain returns a row (not null)');
+  assert(lookupBody.tenantSlug === 'clear-acme', `binding has tenantSlug clear-acme (got ${lookupBody.tenantSlug})`);
+  assert(lookupBody.appSlug === 'deal-desk', `binding has appSlug deal-desk (got ${lookupBody.appSlug})`);
+  assert(lookupBody.scriptName === 'deal-desk', `binding has scriptName deal-desk (got ${lookupBody.scriptName})`);
+  assert(lookupBody.hostname === 'deal-desk.buildclear.dev', `binding hostname matches deploy URL (got ${lookupBody.hostname})`);
+
+  // 6. Sanity check — looking up a subdomain that was never deployed
+  //    returns null, not a stale or shared row from another tenant.
+  const missRes = await fetch(BASE + '/api/_test/lookup-subdomain/never-deployed-app');
+  const missBody = await missRes.json();
+  assert(missRes.status === 200, 'lookup-subdomain on missing slug returns 200');
+  assert(missBody === null, 'lookup-subdomain on missing slug returns null');
 }
 
 } catch (err) {
