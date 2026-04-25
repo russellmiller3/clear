@@ -762,6 +762,73 @@ The compiler is closed source. The playground runs in the browser and needs the 
 
 ---
 
+### Why does Clear Cloud beat Retool and Lovable at deploy specifically?
+
+Both have "Publish" buttons. Both ship to a URL in seconds. But both have shapes Clear can beat on structural grounds, not just UX polish.
+
+| Dimension | Retool | Lovable | **Clear Cloud** |
+|---|---|---|---|
+| Source of truth | Proprietary visual config (JSON in their DB) | Generated React/Next.js in GitHub | **Plain-English `.clear` file** |
+| Can you leave? | Self-host ($$$) or trapped | `git clone`, deploy elsewhere | **`clear export` → portable Docker, runs anywhere** |
+| Reads like English? | No (visual blocks) | No (React/TypeScript) | **Yes — the whole point** |
+| AI edits the app safely? | Retool AI can't edit structure, only inside components | Lovable prompts edit React — works but output is opaque | **Meph edits Clear source directly; 1:1 compile makes diffs reviewable** |
+| Live edit running prod app? | No — rebuild/redeploy cycle | No — regenerate/redeploy cycle | **Yes (Live App Editing — flagship)** |
+| Multi-tenant hosted? | Yes | Yes | Yes (Phase 85 + Clear Cloud) |
+| Custom domain | One-click (paid) | One-click (Pro $25/mo) | One-click (Team $99/mo) |
+| Agent-first | Bolted onto visual platform | Generates code | **Native primitive (`ask claude`, `has tools:`)** |
+| AI cost safety? | Manual | None — runaway agent burns your card | **AI Gateway (rate limits + caps + caching) — v2** |
+
+**The four structural differentiators:**
+
+1. **Portability without penalty.** Retool traps you in their visual editor. Lovable's React is portable but no human reviews it. Clear is portable AND readable — Marcus's CFO can read the deal-desk app and understand it.
+2. **Live editing a running prod app.** Live App Editing reshapes apps with data/session preservation. Retool and Lovable both require a rebuild-redeploy cycle.
+3. **AI cost safety baked in.** Retool and Lovable let runaway agents burn $500 overnight. Clear's v2 wraps every `ask claude` in Cloudflare AI Gateway automatically.
+4. **Agents are first-class, not bolted on.** Building an agent app in Clear is ~20 lines; in Retool it's a stitched workflow; in Lovable it's React + vendor SDK.
+
+**The one place Retool/Lovable currently win:** time from signup to first working app. They have years of templates and matured editors. Clear has Studio + Meph + the Core 8 templates. Gap closes with: more templates, Builder Mode, click-to-edit (all on the near-term roadmap).
+
+---
+
+### Why is the competitive landscape what it is?
+
+Researched Session 35 (Sep 2026) from G2, Capterra, Reddit, product pages.
+
+**Direct competitors (AI-native app builders):**
+
+- **Retool** — $450M+ raised, incumbent. Developer-only (needs JS + SQL). $10–50/seat/mo. Large apps "extremely cumbersome to maintain, nearly impossible to test." 2023 breach exposed 27 cloud customers. Clear's edge: no developer needed, readable source, auto-generated tests, compile-time security.
+- **Superblocks** — $60M raised, enterprise-focused. $49/creator/mo. G2 reviewers call lack of automated testing "a deal breaker." Has "Clark" AI agent but generates black-box output. Clear's edge: readable source, deterministic compilation, built-in tests.
+- **Zite** — Closest competitor. 100K+ teams. AI-native, prompt-to-app. $0/15/55/mo, unlimited users on all plans. SOC 2 Type II, SSO, Salesforce, custom domains. Weakness: black-box output, no agent primitives, no compile-time guarantees, "modify with follow-up prompts" = re-prompt and hope. Clear-side gap: they have hosting, compliance, integrations, marketplace, 100K users.
+- **Lovable** — AI app generator. Gets you "70% of the way there." Users report "unable to diagnose problems hidden deep within code they couldn't read." Credits burn on AI mistakes.
+- **Bolt.new** — AI app generator. "Rewrites the entire file, breaks your UI, and still fails to fix the original problem." Users spend "$1,000+ on tokens just debugging." Context degrades past 15–20 components.
+
+**Developer-only tools (different category — Marcus can't use these):**
+
+- **Appsmith** — Open source, self-hosted. G2 4.7/5. Needs SQL + JS. Performance degrades with large datasets.
+- **Budibase** — Open source. G2 4.5/5. Licensing changes angered community. Automations are fragile.
+- **ToolJet** — Open source. 25K stars. Best visual design quality. $19/builder/mo.
+
+**Simple/portal tools (too limited for Marcus):**
+
+- **Softr** — Best for non-technical IF data lives in Airtable. Pricing pivot destroyed trust. Customization ceiling low.
+- **Noloco** — Airtable/Sheets integration. Imposed 50K row limit mid-flight. Reliability degrades at scale.
+
+**New AI-native entrants (watch list):**
+
+- **AgentUI** — Claims 500+ teams. No independent reviews yet.
+- **Bricks.sh** — 1.6M EUR pre-seed (Jan 2026). One-click admin panels. Too early to evaluate.
+
+**Clear's unique combination:**
+1. Readable source code a non-technical person can understand
+2. Deterministic compilation (same input = same output, always)
+3. Built-in AI agent primitives with guardrails
+4. Compile-time security guarantees (27 bug classes eliminated)
+5. Auto-generated tests from the source
+6. Portable output (cancel the platform, keep your compiled JS)
+
+Every competitor either requires a developer (Retool, Appsmith, Budibase, ToolJet) OR generates black-box output the user can't read (Lovable, Bolt, Zite). Nobody gives you all six. Gap to close: hosting, compliance, integrations, marketplace, users.
+
+---
+
 ## What is X?
 
 ### What is Clear's big thesis?

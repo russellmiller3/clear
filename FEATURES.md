@@ -2,8 +2,8 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 124 node types. 2097 compiler tests. Zero npm dependencies in the compiler.
-**Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4).
+**Headline numbers:** 124 node types. ~2500 compiler tests. Zero npm dependencies in the compiler.
+**Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
 
@@ -15,7 +15,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Functions | `define function greet(name):` | Typed params (`is number`), typed returns |
 | For-each loop | `for each item in items:` | Also `for each key, value in map:` |
 | While loop (auto-bounded) | `while count is less than 10:` / `while cond, max N times:` | Default cap 100 iterations (tight — fail fast on hallucinated hangs); overflow throws a legible error (PHILOSOPHY Rule 18) |
-| Recursive function (depth-capped) | `define function walk(n): ... walk(n - 1) ...` | Default depth 1000; exceed → `"X recursed more than N levels"` throw |
+| Recursive function (depth-capped) | `define function walk(n): ... walk(n - 1) ...` / `define function walk(n) max depth 50:` | Default depth 1000; override with `max depth N`; exceed → `"X recursed more than N levels"` throw |
 | Send email with timeout | `send email to 'x@y.c': subject 'hi' body 'hi' with timeout 60 seconds` | Default 30s; applies on JS (Promise.race) + Python (smtplib timeout) |
 | AI calls auto-retry | `reply is ask claude 'hi'` | Retries 429/5xx/network transients with 1s/2s/4s exponential backoff across Node/CF/browser/Python |
 | Repeat loop | `repeat 5 times:` | |
@@ -26,7 +26,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Comments | `# text` | |
 | Modules | `use 'helpers'` | Namespaced, selective, or inline-all |
 | Script escape | `script:` + raw JS | For anything Clear doesn't cover |
-| Transactions | `as one operation:` | BEGIN/COMMIT/ROLLBACK |
+| Transactions | `as one operation:` / `atomically:` / `transaction:` / `begin:` | BEGIN/COMMIT/ROLLBACK |
 
 ## Expressions
 
@@ -43,6 +43,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Map operations | `get key from scope` / `set key in scope to value` | Also `exists in`, `keys of`, `values of` |
 | Higher-order | `apply fn to each in list` / `filter list using fn` | |
 | Optional chaining | `user?.name` | Auto-generated for possessive access |
+| Field projection | `pick name, email from user` | Returns subset of fields; works on records and lists |
 
 ## Web Frontend
 
@@ -62,6 +63,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Components | `define component Card receiving content:` | Reusable, parameterized |
 | Conditional UI | `if logged_in:` + content block | |
 | On change | `when search changes:` | Also debounced: `after 250ms` |
+| On scroll (throttled) | `on scroll every 100ms:` / `on scroll every 1 second:` | Leading-edge throttle; load-more-near-bottom pattern |
 | On page load | `on page load get todos from '/api/todos'` | Inline or block form |
 | Navigate | `go to '/dashboard'` | |
 
@@ -83,7 +85,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Chart Type | Syntax | Engine |
 |------------|--------|--------|
 | Line | `line chart 'Revenue' showing data` | ECharts |
-| Bar | `bar chart 'Sales' showing data` | ECharts |
+| Bar | `bar chart 'Sales' showing data` / `display Sales as bar chart` | ECharts |
 | Pie | `pie chart 'Breakdown' showing data` | ECharts |
 | Area | `area chart 'Trend' showing data` | ECharts |
 
@@ -117,7 +119,9 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | CORS | `allow cross-origin requests` | |
 | Log requests | `log every request` | |
 | Webhooks | `webhook '/stripe' signed with env('SECRET'):` | HMAC verification |
-| File uploads | `accept file:` + max size, allowed types | Multer |
+| File uploads | `accept file:` + max size, allowed types | Multer auto-wired on POST endpoints whose URL matches a client `upload X to '/api/...'` call |
+| Cookies (plain) | `set cookie 'name' to value [for N days/hours/minutes]` / `cookie = get cookie 'name'` / `clear cookie 'name'` | Secure-by-default (`sameSite: 'lax'`, `secure` when `NODE_ENV=production`); maxAge from `for N days` |
+| Cookies (signed) | `set signed cookie 'name' to value` / `get signed cookie 'name'` | HMAC via `cookie-parser(secret)`; requires `COOKIE_SECRET` env (warns loudly if unset, generates ephemeral fallback) |
 | External fetch | `data from 'url':` + timeout, cache, fallback | |
 | HTTP requests | `send to 'url':` + method, headers, body | GET/POST/PUT/DELETE |
 | Email (SMTP) | `send email:` + to, subject, body | Nodemailer |
@@ -138,6 +142,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Look up all | `look up all Users` / `get all Users` | Optional `where` clause |
 | Delete | `delete the User with this id` | |
 | Update | `save profile to Users` | Var name = incoming entity |
+| Upsert | `upsert user to Users by email` | Match-or-insert on a field; preserves id on hit, returns canonical record either way (JS + Python parity) |
 | Tables — three lead forms | `create a Users table:` \| `table Users:` \| `create data shape User:` | All three parse identically. Shorthand `table X:` added in session 45. |
 | Field declarations — two forms | `price, number, required` (comma) \| `name is text, required` (is) | Both compile to the same schema entry. |
 | Belongs to | `author belongs to Users` | Foreign key. `get all Posts` auto-stitches the referenced record on read (JS + Python). |
@@ -291,3 +296,161 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Builder Mode (v0.3) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. v0.2 added a Marcus-first tile gallery on empty preview (5 featured apps + "See more"). v0.3 added a 3-ship counter (source pane defaults visible for first 3 successful Publishes, hidden after) + click-to-edit (clicking an iframe element prefills the chat input with `Change the "<text>" button/link — `). |
 | First-visit onboarding | localStorage `clear-onboarding-seen` | Studio shows a one-time welcome card prepended to the chat on first load + auto-focuses chat input. Per-mode copy. Dismissed on first keystroke or × click. |
 | Ghost Meph (chat backend dispatch) | `MEPH_BRAIN` env var | Routes /api/chat to local backends instead of Anthropic. Backends: `cc-agent` (spawns local `claude` CLI; text-only MVP, tool support pending), `ollama:<model>` (local Ollama daemon at `OLLAMA_HOST`), `openrouter` / `openrouter:qwen` (OpenRouter API, requires `OPENROUTER_API_KEY`). All return Anthropic-shaped SSE so /api/chat is unchanged. See `playground/ghost-meph/` and `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`. |
+
+## Live App Editing (LAE — Phase A + B shipped)
+
+Conversational edits to a running, deployed Clear app. Owner authenticates, opens the app, types a change in the floating Meph widget, sees a diff preview, ships. Phases A + B cover additive (add field/page/endpoint) and reversible (hide, rename, relabel, reorder) edits with data + session preservation. Phase C (destructive) and Phase D (audit log + concurrent guard + dry-run) are still on the roadmap.
+
+| Feature | What it does |
+|---------|--------------|
+| In-browser edit widget | Floating 🔧 badge on the running app — auto-injected on apps with `allow signup and login`. Opens Meph chat at `/__meph__/api/*` (proxied to `STUDIO_PORT`; clean 503 when env var absent in production). |
+| Owner-only authorization | `liveEditAuth` middleware checks JWT + owner role before allowing edits. |
+| Change classifier | Every diff classified `additive` / `reversible` / `destructive`. Additive ships instantly; reversible needs one-click confirm; destructive requires typed confirmation + reason string + audit entry (Phase C — not yet built). |
+| Cloud rollback | `/__meph__/api/cloud-rollback` — point cloud-deployed apps back to a prior version. Studio Ship + Undo route to cloud paths when on a deployed app. |
+| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. |
+| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — additive edits ship in seconds. |
+
+## Compile Targets
+
+| Target | How to select | What ships | Notes |
+|--------|---------------|------------|-------|
+| **JavaScript (Node + Express)** | default | `server.js` + `index.html` + `package.json` | Local memory / SQLite / PostgreSQL / Supabase backends |
+| **Python (FastAPI)** | `compile target: python` or CLI flag | `server.py` + `requirements.txt` | Mirrors JS feature surface; TEST_INTENT still stubs as `pytest.skip` |
+| **HTML scaffold** | implicit (every app) | `index.html` + DaisyUI v5 + Tailwind v4 + Lucide icons | Auto-generated ASCII architecture diagram at top of compiled file |
+| **Cloudflare Workers** | `compile target: cloudflare` | Workers bundle + `wrangler.toml` (pinned compat date + flags) + D1 migrations | All 8 core templates compile clean; auth uses webcrypto; streaming via ReadableStream; tool-use Workers-safe; agents emit to shared `src/agents.js` for cross-module calls |
+
+**Cloudflare-specific capabilities (auto-selected when target is `cloudflare`):**
+
+| Feature | Compiles To | Notes |
+|---------|-------------|-------|
+| Database (any CRUD) | D1 prepare/bind/run | `runtime/db-d1.mjs` matches `runtime/db.js` interface; UPDATE requires id with instructive error |
+| Where clauses | D1 parameterized binds | SQL injection-safe by construction |
+| Auth (`allow signup and login`) | webcrypto hashPassword + constant-time verifyPassword | Replaces bcrypt for Workers compatibility |
+| AI calls (`ask claude`) | `_askAI_workers` (fetch-only) | Streaming via ReadableStream; tool-use loop unchanged from Node |
+| `runs durably` | Cloudflare Workflows | Vendor-neutral canonical; Node target uses Temporal |
+| `every X` / `every day at 9am:` | Cloudflare Cron Triggers (cron expressions in `wrangler.toml`) | Duration phrases auto-convert |
+| `knows about: <Table>` | Lazy-load from D1 at request time | Compile-time inline for text/PDF/DOCX (size-gated, warns on oversized) |
+| `knows about: '<URL>'` | Lazy-fetch on first request | Per-Worker cache |
+
+---
+
+## Compiler Guarantees — Bug Classes Eliminated at Compile Time
+
+Every app compiled from Clear ships with these protections. Fix a pattern once, every app gets the fix on recompile.
+
+### Security (compile errors — can't ship these bugs)
+
+| Bug Class | How It's Prevented | Validator/Compiler |
+|-----------|-------------------|-------------------|
+| SQL injection | All CRUD uses parameterized queries, always | `compiler.js` — `db.insert()`, `db.query()` with param binding |
+| Auth bypass | DELETE/PUT without `requires login` = compile ERROR | `validateSecurity()` |
+| Mass assignment | `_pick()` strips unknown fields from request body | `compiler.js` — generated `_pick()` helper |
+| CSRF | Data-mutating endpoints without auth = error | `validateOWASP()` |
+| Path traversal | File ops with variable paths = warning | `validateOWASP()` |
+| PII in errors | Passwords/tokens/keys auto-redacted from error responses | `_clearError()` — `redact()` function |
+| Sensitive field exposure | Schema has `password`/`secret`/`api_key` = warning | `validateSecurity()` |
+| Brute force | Login/signup without rate limiting = warning | `validateSecurity()` |
+| Overly permissive CORS | CORS enabled + no auth on endpoints = warning | `validateSecurity()` |
+
+### Correctness (compile errors or warnings — caught before runtime)
+
+| Bug Class | How It's Prevented | Validator |
+|-----------|-------------------|-----------|
+| Undefined variables | Forward reference check with typo suggestions | `validateForwardReferences()` |
+| Type mismatches in math | String used in arithmetic = error | `validateInferredTypes()` |
+| Frontend-backend URL mismatch | Fetching `/api/user` when endpoint is `/api/users` = warning | `validateFetchURLsMatchEndpoints()` |
+| Missing responses | Endpoint without `send back` = warning | `validateEndpointResponses()` |
+| Schema-frontend field mismatch | Sending `username` to table with `user_name` = warning | `validateFieldMismatch()` |
+| Duplicate endpoints | Same method+path declared twice = warning | `validateDuplicateEndpoints()` |
+| Undefined function/agent calls | Calling undefined agent or pipeline = error | `validateCallTargets()` |
+| Type errors in function calls | Literal arg doesn't match typed param = error | `validateTypedCallArgs()` |
+| Member access on primitives | `score's name` where score is a number = warning | `validateMemberAccessTypes()` |
+| Agent tool mismatches | Agent references undefined function as tool = error | `validateAgentTools()` |
+
+### Business Logic (warnings — common mistakes caught)
+
+| Bug Class | How It's Prevented | Validator |
+|-----------|-------------------|-----------|
+| Negative balance/stock | Subtracting without guard = warning | `validateArithmetic()` |
+| Overbooking | Inserting without capacity check = warning | `validateCapacity()` |
+| Deep property chains | 4+ levels of possessive access = warning | `validateChainDepth()` |
+| Complex expressions | 3+ operators in one expression = warning | `validateExprComplexity()` |
+| Invalid classification | Classify with < 2 categories = error | `validateClassify()` |
+
+### Generated Code Protections (always in compiled output)
+
+| Protection | What It Does |
+|-----------|-------------|
+| Input validation | `_validate()` checks required fields, types, min/max/pattern on every POST/PUT |
+| Mass assignment filter | `_pick()` only allows schema-defined fields through |
+| PII redaction | `_clearError()` strips sensitive fields from all error responses |
+| Source maps | `_clearLineMap` maps runtime errors back to Clear line numbers |
+| XSS escaping | `_esc()` escapes user input in all display/template contexts |
+
+### Not Yet Prevented (known gaps)
+
+| Bug Class | Status | Notes |
+|-----------|--------|-------|
+| Race conditions | Not prevented | Two users updating same record simultaneously |
+| Null reference chains | Partial | Optional chaining exists but not enforced |
+| Cross-tenant data leakage | Not prevented | Row-level security not auto-enforced |
+| Type safety on external returns | Not prevented | `ask ai` returns untyped string |
+| Sensitive data in logs | Partial | `_clearError()` redacts, but `log every request` logs full bodies |
+| Promise rejection handling | Not prevented | Async without error handler swallows errors |
+
+### Type System Assessment
+
+**Current state:** Limited inference (literals + function params). Catches type mismatches in arithmetic and function calls.
+
+**Recommendation:** Not needed yet for enterprise internal tools market. The 27 security/correctness guarantees matter more than type safety for CRUD apps. Revisit when targeting engineering teams who compare to TypeScript.
+
+---
+
+## What You Can Build
+
+### Tier 1 — Ship in an hour, no `script:` needed
+
+| Category | Examples |
+|----------|---------|
+| Admin dashboards | CRUD, roles, search, charts, aggregate stats |
+| AI agents | RAG, tool use, memory, pipelines, guardrails, structured output |
+| SaaS MVPs | Auth, validation, email, scheduling, webhooks |
+| Data apps | CSV import, filter, chart, export |
+| Chat apps | `display as chat` with markdown, typing dots, scroll, input absorption |
+
+### Tier 2 — 90%+ Clear, minor `script:` for edge cases
+
+| App | What needs `script:` |
+|-----|---------------------|
+| Project management | Drag-and-drop kanban |
+| Blog / CMS | Rich text editing |
+| E-commerce | Stripe checkout flow |
+| Monitoring | Slack/PagerDuty webhook format |
+
+### Tier 3 — Wrong tool for the job
+
+| App | Why |
+|-----|-----|
+| Collaborative editing | Operational transforms, conflict resolution |
+| Video / audio calls | WebRTC, media streams, STUN/TURN |
+| Mobile apps | Clear targets web only |
+| Games | Canvas/WebGL, physics, sprites |
+| Social media feeds | Algorithmic ranking, infinite scroll, image pipelines |
+
+---
+
+## Not Building (and Why)
+
+These are deliberate non-goals. Each has been considered and rejected.
+
+| Feature | Reason |
+|---------|--------|
+| OAuth / social login | `allow signup and login` covers MVPs. OAuth is a rat's nest. |
+| Soft delete | `deleted_at` field + filter. Not worth a keyword. |
+| Geolocation | One-liner `script:` call. Niche browser API. |
+| Camera / microphone | One-liner `script:` call. Niche. |
+| Speech to text / text to speech | One-liner `script:` call. Niche. |
+| Push notifications | Service workers + VAPID keys. Too much plumbing. |
+| Drag and drop | HTML5 events via `script:`. Niche. |
+| Infinite scroll | IntersectionObserver via `script:`. Performance concern, not language feature. |
+| Per-user app forks | Every employee seeing a fundamentally different version of the app destroys the shared ontology. Audit/compliance nightmare. See Live App Editing in ROADMAP for the right answer (owner-initiated changes that ship to everyone). |

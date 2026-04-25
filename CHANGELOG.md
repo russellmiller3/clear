@@ -6,6 +6,33 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — ROADMAP consolidation backfill
+
+Items that lived inline in `ROADMAP.md` as "DONE" tags. Consolidated here when ROADMAP got rewritten on 2026-04-24 to focus on what's *next*. No new code shipped — this is a paper trail entry so the historical record is complete. Capability surfaces are documented in `FEATURES.md`.
+
+**Performance pass (Session 37)**
+- **PERF-1: Pagination by default.** `get all Users` emits `LIMIT 50`. Opt-out with `get every`. Supabase path also gets `.limit(50)`. Every list endpoint is safe by default.
+- **PERF-2: Server-side aggregates.** `sum of price from Orders` compiles to `db.aggregate('orders', 'SUM', 'price', {})` → `SELECT SUM(price) FROM orders`. Filtered aggregates: `sum of price from Orders where status is 'paid'` passes the filter to SQL. Dashboards single-query instead of full-table-scan-then-reduce.
+- **PERF-3: Search result limits.** `search X for q` slices to 100 matches. Prevents runaway result sets.
+- **PERF-4: Virtual scrolling on tables.** `display X as table` calls `_clear_render_table(...)`. Below 100 rows: full render. 100+: fixed-height virtualization (40px rows, 560px container, 5-row buffer). 50,000-row table shows ~24 `<tr>` elements. Browser-verified on 500 rows.
+- **PERF-5: Server-side pagination.** `page N, M per page` compiles to `db.findAll('items', {}, { limit: N, offset: (page-1)*N })` → SQL `LIMIT N OFFSET M`. Works for literal page numbers and runtime variables. Supabase already used `.range()` server-side.
+
+**Language completeness (Session 37)**
+- **P1: Error throwing.** `send error 'message'` / `throw error` / `fail with` / `raise error`.
+- **P2: Finally block.** `try:` ... `finally:` / `always do:` / `after everything:`.
+- **P3: First-class functions.** `map_list(items, double)` — pass fn refs as args. Worked natively, confirmed.
+- **P5: `clear serve` ESM fix.** `clear build` writes a `package.json` containing `{"type":"commonjs"}` next to the generated `server.js`. Node walks up from `server.js`, finds the sibling, and treats the file as CommonJS — shielded from any parent project's `"type": "module"` setting.
+
+**RL flywheel (Session 38 → 40)**
+- **RL-1: Meph runs on Haiku 4.5 by default.** `MEPH_MODEL` env overrides to Sonnet for A/B. 15/16 vs 16/16 on eval-meph; within 6% capability at 3× cheaper. ~$2k saved per 10k-row sweep.
+- **RL-2: Step-decomposition labeling.** Every compile row tagged with task milestone (`step_id`, `step_index`, `step_name`). Sweep prints per-step rollup.
+- **RL-7: Honest-label tag reliability + inference fallback.** Tightened the system prompt; added server-side inference (no tag + later compile in same turn had fewer errors → log `applied=1, helpful='inferred'`, distinct value so it doesn't pollute honest set). Roughly doubles effective label rate.
+- **RL-9: `caller` as canonical magic var + compiler shadow fix.** Renamed authenticated-user var from `current user` → `caller` (legacy synonyms still work). Fixed a compiler bug where bare `user` in backend mode ignored local shadowing and always emitted `req.user` — `send back user` was returning the caller instead of the body. Users-table endpoints can now use `user` as their receiving var.
+
+**Phase 85 — One-click deploy (Session 37)** — already documented at session-level above; mentioned here for cross-reference. Studio → Fly deploy with shared builder + metered AI proxy + tenant/billing layer + cross-tenant isolation. 72 passing tests. External prerequisites (Fly Trust Verified quota, Stripe signup, Anthropic org key, Postgres for tenants DB) still required before first real deploy lands at `buildclear.dev`.
+
+---
+
 ## 2026-04-24 — Decidable Core (Session 46): Total by default
 
 Major language-safety pass. Every construct that could previously hang silently now has a bound, and the bound applies on every compile target (Node, Cloudflare Workers, browser, Python) per the new PHILOSOPHY Rule 17.
