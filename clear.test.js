@@ -2838,6 +2838,64 @@ page "Todo List":
   });
 });
 
+// =============================================================================
+// R8: for-each loop body must expand child content per iteration. Old behavior
+// silently dropped any child node it didn't recognize (anything other than
+// CONTENT and SHOW), then fell back to `'<div>' + itemVar + '</div>'` —
+// emitting [object Object] in the rendered HTML.
+// =============================================================================
+describe('R8: for-each body expands recognized children, never falls through to raw object emit', () => {
+  it('for-each with a section child still finds and renders the inner content/show', () => {
+    const source = `build for web
+create a Messages table:
+  text, required
+  author
+page 'Chat' at '/':
+  on page load:
+    get messages from '/api/messages'
+  for each msg in messages:
+    section 'Card' with style card_bordered:
+      text msg's author
+      text msg's text`;
+    const r = compileProgram(source);
+    expect(r.errors).toHaveLength(0);
+    // The render-list block should reference msg's fields, not just the bare msg.
+    const idx = r.html.indexOf('Render list:');
+    expect(idx).toBeGreaterThan(-1);
+    const block = r.html.slice(idx, idx + 1500);
+    expect(block).toContain('msg?.author');
+    expect(block).toContain('msg?.text');
+    // And must NOT fall back to the whole-object emit.
+    if (/\+\s*msg\s*\+/.test(block)) {
+      throw new Error("for-each body fell through to raw '+ msg +' (whole-object emit)");
+    }
+  });
+
+  it('for-each with no recognized children emits a sensible item placeholder, not raw object', () => {
+    // Empty body → fallback should not stringify the whole record. Render an
+    // empty list-item div instead so the fallback is harmless.
+    const source = `build for web
+create a Messages table:
+  text, required
+page 'Chat' at '/':
+  for each msg in messages:
+    `;
+    const r = compileProgram(source);
+    // Either the parser rejects the empty body OR the renderer must not emit
+    // raw `+ msg +`. Both are acceptable — what's NOT acceptable is silently
+    // emitting a JSON.stringify of the whole row.
+    if (r.errors.length === 0) {
+      const idx = r.html.indexOf('Render list:');
+      if (idx > -1) {
+        const block = r.html.slice(idx, idx + 1500);
+        if (/'<div>'\s*\+\s*msg\s*\+\s*'<\/div>'/.test(block)) {
+          throw new Error("for-each fallback emits raw '<div>' + msg + '</div>'");
+        }
+      }
+    }
+  });
+});
+
 describe('Conditional UI (if blocks in page)', () => {
   it('parses if block inside a page body', () => {
     const source = `

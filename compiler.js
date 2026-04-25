@@ -9345,37 +9345,54 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`      const _emptyEl = document.getElementById('empty_${itemVar}');`);
       lines.push(`      if (_emptyEl) _emptyEl.style.display = _listSource.length === 0 ? 'flex' : 'none';`);
       lines.push(`      _container.innerHTML = _listSource.map(${itemVar} => {`);
-      // Compile body to HTML string
+      // Compile body to HTML string. Children may be wrapped in containers
+      // like SECTION — descend into them so the per-iteration template still
+      // expands. Anything we don't recognize is silently skipped (better than
+      // the old behavior, which fell back to stringifying the whole row).
       const bodyParts = [];
-      for (const child of node.body) {
+      function emitChild(child) {
+        if (!child) return;
         if (child.type === NodeType.CONTENT) {
           const tag = child.contentType === 'heading' ? 'h3' : child.contentType === 'text' ? 'p' : 'span';
           if (child.textExpr) {
-            bodyParts.push(`'<${tag}>' + ${sanitizeName(child.textExpr.name || child.text)} + '</${tag}>'`);
+            const txt = exprToCode(child.textExpr, { ...reactiveCtx, stateVars: null });
+            bodyParts.push(`'<${tag}>' + (${txt} == null ? '' : ${txt}) + '</${tag}>'`);
           } else {
             bodyParts.push(`'<${tag}>${(child.text || '').replace(/'/g, "\\'")}</${tag}>'`);
           }
-        } else if (child.type === NodeType.SHOW) {
+          return;
+        }
+        if (child.type === NodeType.SHOW) {
           const expr = child.expression;
           const compiled = exprToCode(expr, { ...reactiveCtx, stateVars: null });
-          // Component calls return HTML — don't wrap in <p>
           if (expr.type === NodeType.CALL) {
             bodyParts.push(compiled);
           } else if (expr.type === NodeType.MEMBER_ACCESS) {
-            // Property access (issue's title etc) — first property = primary text, rest = badges
-            const propName = expr.property || '';
             if (bodyParts.length === 0) {
               bodyParts.push(`'<span class="text-sm font-medium text-base-content">' + (${compiled} || '') + '</span>'`);
             } else {
               bodyParts.push(`'<span class="badge badge-ghost badge-sm font-mono">' + (${compiled} || '') + '</span>'`);
             }
           } else {
-            // Plain variable — could be object from API, so format it
-            bodyParts.push(`'<p>' + (typeof ${compiled} === 'object' ? JSON.stringify(${compiled}) : ${compiled}) + '</p>'`);
+            bodyParts.push(`'<p>' + (typeof ${compiled} === 'object' ? JSON.stringify(${compiled}) : (${compiled} == null ? '' : ${compiled})) + '</p>'`);
           }
+          return;
         }
+        // Containers: recurse so a `section` wrapping content/show still
+        // expands per-iteration instead of being silently dropped.
+        if (child.type === NodeType.SECTION || child.type === NodeType.PAGE) {
+          for (const grandchild of (child.body || [])) emitChild(grandchild);
+          return;
+        }
+        // Other node types (button, input, if-then, etc.) inside a per-row
+        // template aren't supported yet — leave them out rather than emitting
+        // a stringified row. Tracked: future work.
       }
-      const bodyExpr = bodyParts.length > 0 ? bodyParts.join(' + ') : `'<div>' + ${itemVar} + '</div>'`;
+      for (const child of node.body) emitChild(child);
+      // Fallback when the body had no recognizable content: render an empty
+      // list-item div instead of stringifying the row. Old behavior emitted
+      // `'<div>' + msg + '</div>'`, which produced [object Object] in the UI.
+      const bodyExpr = bodyParts.length > 0 ? bodyParts.join(' + ') : `''`;
       lines.push(`        const _isMenu = _container.tagName === 'UL' && _container.classList.contains('menu');`);
       lines.push(`        return _isMenu ? '<li><a>' + ${bodyExpr} + '</a></li>' : '<div class="clear-list-item">' + ${bodyExpr} + '</div>';`);
       lines.push(`      }).join('');`);
