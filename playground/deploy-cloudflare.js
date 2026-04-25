@@ -484,7 +484,8 @@ async function _deployUpdate({
 	// half-applied migration mid-update can wedge a live D1.
 	const oldBundleForGate = (lastRecord && lastRecord.lastBundle) || null;
 	const newBundleForGate = compiled.workerBundle || {};
-	if (oldBundleForGate && migrationsDiffer(oldBundleForGate, newBundleForGate) && confirmMigration !== true) {
+	const schemaChanged = oldBundleForGate && migrationsDiffer(oldBundleForGate, newBundleForGate);
+	if (schemaChanged && confirmMigration !== true) {
 		return {
 			ok: false,
 			stage: 'migration-confirm-required',
@@ -492,6 +493,31 @@ async function _deployUpdate({
 			mode: 'update',
 			migrationDiff: _describeMigrationDiff(oldBundleForGate, newBundleForGate),
 		};
+	}
+
+	// 1c. Apply migrations (Phase 3 Cycle 3.3). Only fires when schema actually
+	// changed AND the caller explicitly confirmed. Run BEFORE upload so a
+	// migration error keeps the live script untouched — old code stays bound to
+	// the old schema, no half-applied state. If applyMigrations succeeds but
+	// upload later fails, the schema IS half-applied; auto-rollback of schema
+	// changes is a known followup (out of scope per the plan).
+	if (schemaChanged && confirmMigration === true) {
+		const newMigrationSql = newBundleForGate['migrations/001-init.sql'] || '';
+		const d1Id = lastRecord && lastRecord.d1_database_id;
+		if (d1Id && newMigrationSql) {
+			try {
+				await api.applyMigrations({ d1_database_id: d1Id, sql: newMigrationSql });
+			} catch (e) {
+				return {
+					ok: false,
+					stage: 'migrations',
+					jobId,
+					mode: 'update',
+					status: e.status || 500,
+					error: e.message,
+				};
+			}
+		}
 	}
 
 	// 2. Filter secrets — only set keys that aren't already on the record.
