@@ -36,6 +36,39 @@ function tenantJwtSecret() { return process.env.TENANT_JWT_SECRET || 'dev-tenant
 // Phase 7 so existing deploy.test.js mocks keep working. Phase 8 flips
 // the default once the real-CF smoke passes.
 function deployTarget() { return (process.env.CLEAR_DEPLOY_TARGET || 'fly').toLowerCase(); }
+
+// CC-4 cycle 1 — request-level deploy target switch. The Studio modal
+// (cycle 4) lets users pick where to ship per-Publish; ops can still pin
+// a default with CLEAR_DEPLOY_TARGET. Body-level switching is the
+// "modal exposes a target picker" foundation. Recognized inputs:
+//   'cloudflare', 'clear-cloud' → 'cloudflare'
+//   'fly', 'fly.io'             → 'fly'
+// Anything else throws a ValidationError the route turns into 400 so
+// the modal can show "unknown deploy target" instead of routing through
+// a default the caller didn't ask for.
+const _DEPLOY_TARGET_ALIASES = {
+	'cloudflare': 'cloudflare',
+	'clear-cloud': 'cloudflare',
+	'fly': 'fly',
+	'fly.io': 'fly',
+};
+export function pickDeployTarget(reqBodyOrQuery, env) {
+	const raw = reqBodyOrQuery && typeof reqBodyOrQuery === 'object' ? reqBodyOrQuery.target : null;
+	if (raw && typeof raw === 'string' && raw.length > 0) {
+		const canonical = _DEPLOY_TARGET_ALIASES[raw.toLowerCase()];
+		if (canonical) return canonical;
+		// Override the default ValidationError message so the route can echo
+		// "unknown deploy target: <input>" verbatim into the 400 response.
+		const err = new ValidationError('UNKNOWN_TARGET', raw);
+		err.message = `unknown deploy target: ${raw}`;
+		throw err;
+	}
+	// Fall back to the env reader. We accept the env directly so this
+	// helper stays pure and trivially testable; the route passes
+	// process.env so production behavior matches deployTarget().
+	const envTarget = (env && env.CLEAR_DEPLOY_TARGET) || 'fly';
+	return envTarget.toLowerCase() === 'cloudflare' ? 'cloudflare' : 'fly';
+}
 function cloudflareRootDomain() { return process.env.CLEAR_CLOUD_ROOT_DOMAIN || 'buildclear.dev'; }
 function cloudflareAccountId() { return process.env.CLOUDFLARE_ACCOUNT_ID || ''; }
 function cloudflareApiToken() { return process.env.CLOUDFLARE_API_TOKEN || ''; }
@@ -254,11 +287,23 @@ export function wireDeploy(app, opts = {}) {
 			catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
 		}
 
-		// Phase 7.10 — dispatch on CLEAR_DEPLOY_TARGET. Cloudflare Workers for
+		// CC-4 cycle 1 — body.target wins over env so the Studio modal can
+		// pick per-Publish; ops still pin the default with CLEAR_DEPLOY_TARGET.
+		// Unknown body.target → 400 with "unknown deploy target".
+		let resolvedTarget;
+		try { resolvedTarget = pickDeployTarget(req.body, process.env); }
+		catch (e) {
+			if (e.code === 'UNKNOWN_TARGET') {
+				return res.status(400).json({ ok: false, error: `unknown deploy target: ${e.input}`, code: errorCode(e) });
+			}
+			throw e;
+		}
+
+		// Phase 7.10 — dispatch on resolved target. Cloudflare Workers for
 		// Platforms path uses direct CF API calls and native workflows; the
 		// Fly path (legacy) tars the bundle and POSTs to the builder machine.
 		// Response shape stays identical so the UI never notices.
-		if (deployTarget() === 'cloudflare') {
+		if (resolvedTarget === 'cloudflare') {
 			let api;
 			try { api = getWfpApi(); }
 			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
@@ -317,12 +362,23 @@ export function wireDeploy(app, opts = {}) {
 	app.get('/api/deploy-status/:jobId', async (req, res) => {
 		const tenant = await requireTenant(req, res);
 		if (!tenant) return;
+		// CC-4 cycle 1 — symmetrical with POST /api/deploy: read target from
+		// query string (`?target=cloudflare`), fall back to env. The modal
+		// can stamp the same target on the polling URL it picked at submit.
+		let resolvedTarget;
+		try { resolvedTarget = pickDeployTarget(req.query, process.env); }
+		catch (e) {
+			if (e.code === 'UNKNOWN_TARGET') {
+				return res.status(400).json({ ok: false, error: `unknown deploy target: ${e.input}`, code: errorCode(e) });
+			}
+			throw e;
+		}
 		// Phase 7.11 — CF path reads job status from the in-memory map that
 		// /api/deploy populated. Jobs are short-lived (deploy is ~5-8s sync)
 		// so no persistent store — if the process restarts mid-deploy, the
 		// client re-polls once and the jobId won't exist; they'd have seen
 		// the URL in the original POST response anyway.
-		if (deployTarget() === 'cloudflare') {
+		if (resolvedTarget === 'cloudflare') {
 			const job = getJob(req.params.jobId);
 			if (!job) return res.status(404).json({ ok: false, error: 'Unknown jobId' });
 			return res.json({ ok: true, ...job });

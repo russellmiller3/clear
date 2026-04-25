@@ -8,7 +8,7 @@ import { describe, it, expect, testAsync } from '../lib/testUtils.js';
 import express from 'express';
 import http from 'http';
 
-import { tarDir, deploySource, wireDeploy, _setWfpApiForTest } from './deploy.js';
+import { tarDir, deploySource, wireDeploy, _setWfpApiForTest, pickDeployTarget } from './deploy.js';
 import { _resetLockManagerForTest, _resetJobsForTest } from './deploy-cloudflare.js';
 import { extractTarToDir } from './builder/tarExtract.js';
 import { InMemoryTenantStore } from './tenants.js';
@@ -426,6 +426,184 @@ when user requests data from /api/secret:
 			} finally { await close(); }
 		} finally {
 			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
+	});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// CC-4 cycle 1 — pickDeployTarget(reqBodyOrQuery, env) pure helper +
+	// route-level body.target switch. Body wins over env so the Studio
+	// modal can pick per-Publish; env stays as the ops-pinned default.
+	// ─────────────────────────────────────────────────────────────────────
+
+	await runSeq('pickDeployTarget — body.target wins over env (cc-4 cycle 1)', async () => {
+		const env = { CLEAR_DEPLOY_TARGET: 'fly' };
+		expect(pickDeployTarget({ target: 'cloudflare' }, env)).toBe('cloudflare');
+		const env2 = { CLEAR_DEPLOY_TARGET: 'cloudflare' };
+		expect(pickDeployTarget({ target: 'fly' }, env2)).toBe('fly');
+	});
+
+	await runSeq('pickDeployTarget — falls back to env when body.target unset (cc-4 cycle 1)', async () => {
+		expect(pickDeployTarget({}, { CLEAR_DEPLOY_TARGET: 'cloudflare' })).toBe('cloudflare');
+		expect(pickDeployTarget({}, { CLEAR_DEPLOY_TARGET: 'fly' })).toBe('fly');
+		expect(pickDeployTarget(null, { CLEAR_DEPLOY_TARGET: 'cloudflare' })).toBe('cloudflare');
+		expect(pickDeployTarget(undefined, {})).toBe('fly'); // env-unset default
+	});
+
+	await runSeq('pickDeployTarget — clear-cloud aliases to cloudflare (cc-4 cycle 1)', async () => {
+		expect(pickDeployTarget({ target: 'clear-cloud' }, {})).toBe('cloudflare');
+	});
+
+	await runSeq('pickDeployTarget — fly.io aliases to fly (cc-4 cycle 1)', async () => {
+		expect(pickDeployTarget({ target: 'fly.io' }, { CLEAR_DEPLOY_TARGET: 'cloudflare' })).toBe('fly');
+	});
+
+	await runSeq('pickDeployTarget — unknown target throws ValidationError (cc-4 cycle 1)', async () => {
+		let err = null;
+		try { pickDeployTarget({ target: 'nonsense' }, {}); }
+		catch (e) { err = e; }
+		expect(err).not.toBe(null);
+		expect(err.code).toBe('UNKNOWN_TARGET');
+		expect(/unknown deploy target/i.test(err.message)).toBe(true);
+	});
+
+	await runSeq('pickDeployTarget — empty-string target falls through to env (cc-4 cycle 1)', async () => {
+		// Defensive: empty string should not be treated as "set" — falls back to env.
+		expect(pickDeployTarget({ target: '' }, { CLEAR_DEPLOY_TARGET: 'cloudflare' })).toBe('cloudflare');
+	});
+
+	await runSeq('/api/deploy — body.target=cloudflare overrides unset env (cc-4 cycle 1)', async () => {
+		// Env unset, body picks CF — proves the body switch works.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'hello', target: 'cloudflare' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.url).toBe('https://hello.buildclear.dev');
+				const ops = fake.calls.map((c) => c.op);
+				expect(ops.includes('uploadScript')).toBe(true);
+				expect(ops.includes('attachDomain')).toBe(true);
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — body.target=fly overrides env=cloudflare (cc-4 cycle 1)', async () => {
+		// Env says CF, body says Fly — body must win, route through legacy builder.
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: TODO_SRC, appSlug: 'todos', target: 'fly' },
+				});
+				// Mock Fly builder returns jobId 'job-xyz'.
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.jobId).toBe('job-xyz');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+		}
+	});
+
+	await runSeq('/api/deploy — body.target=clear-cloud (alias) routes through cloudflare (cc-4 cycle 1)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'hello', target: 'clear-cloud' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.url).toBe('https://hello.buildclear.dev');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — body.target=fly.io (alias) routes through fly (cc-4 cycle 1)', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: TODO_SRC, appSlug: 'todos', target: 'fly.io' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.jobId).toBe('job-xyz');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+		}
+	});
+
+	await runSeq('/api/deploy — body.target=nonsense returns 400 (cc-4 cycle 1)', async () => {
+		const { port, cookie, close } = await startStudio();
+		try {
+			const r = await req(port, '/api/deploy', {
+				method: 'POST',
+				headers: { Cookie: cookie },
+				body: { source: TODO_SRC, appSlug: 'todos', target: 'nonsense' },
+			});
+			expect(r.status).toBe(400);
+			expect(r.body.ok).toBe(false);
+			expect(/unknown deploy target/i.test(r.body.error || '')).toBe(true);
+		} finally { await close(); }
+	});
+
+	await runSeq('/api/deploy-status — query string ?target=cloudflare reads CF jobs (cc-4 cycle 1)', async () => {
+		// Symmetrical to POST: status endpoint reads target from query string,
+		// falls back to env. Proves the GET path also routes through pickDeployTarget.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		_setWfpApiForTest(makeFakeWfpApiForDeployTest());
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				const deployR = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'hello', target: 'cloudflare' },
+				});
+				expect(deployR.status).toBe(200);
+				const jobId = deployR.body.jobId;
+				// Status endpoint with ?target=cloudflare reads the in-memory CF job map.
+				const statusR = await req(port, `/api/deploy-status/${jobId}?target=cloudflare`, { headers: { Cookie: cookie } });
+				expect(statusR.status).toBe(200);
+				expect(statusR.body.status).toBe('ok');
+				expect(statusR.body.url).toBe('https://hello.buildclear.dev');
+			} finally { await close(); }
+		} finally {
 			_setWfpApiForTest(null);
 		}
 	});
