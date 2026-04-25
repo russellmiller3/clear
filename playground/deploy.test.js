@@ -721,4 +721,184 @@ when user requests data from /api/secret:
 			} finally { await close(); }
 		} finally { /* env was already deleted at the top */ }
 	});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// CC-4 cycle 6 — cross-tenant slug uniqueness gate. The hostname
+	// <slug>.buildclear.dev is a global namespace: only one tenant can
+	// own 'deals.buildclear.dev'. Per-tenant uniqueness already lives in
+	// cfDeploys keyed by tenantSlug/appSlug; this is the cross-tenant
+	// version. Without this gate, T2 silently overwrites T1's binding (or
+	// vice versa) and Marcus loses his app to whoever publishes second.
+	//
+	// Same-tenant redeploy of an existing slug must NOT 409 — that's the
+	// existing update path the orchestrator handles via mode:'update'.
+	// ─────────────────────────────────────────────────────────────────────
+
+	// Two-tenant Studio harness — startStudio() seeds only 'clear-acme'.
+	// Cycle 6 needs both 'clear-acme' AND 'clear-globex' on the same store
+	// so a single /api/deploy → /api/deploy collision can fire across
+	// tenant cookies. Returns one server + two cookies.
+	async function startStudioTwoTenants() {
+		const builder = await startMockBuilder();
+		process.env.BUILDER_URL = builder.url;
+		process.env.BUILDER_SHARED_SECRET = 'test-builder-secret';
+		process.env.TENANT_JWT_SECRET = 'test-tenant-secret';
+		process.env.PROXY_URL = 'http://fake-proxy';
+
+		const app = express();
+		app.use(express.json({ limit: '5mb' }));
+		const { store } = wireDeploy(app, { store: new InMemoryTenantStore() });
+		await store.upsert('clear-acme', { slug: 'clear-acme', plan: 'pro', apps_deployed: 0, ai_spent_cents: 0, ai_credit_cents: 1000 });
+		await store.upsert('clear-globex', { slug: 'clear-globex', plan: 'pro', apps_deployed: 0, ai_spent_cents: 0, ai_credit_cents: 1000 });
+		const server = app.listen(0);
+		await new Promise(r => server.on('listening', r));
+		const port = server.address().port;
+		const cookieAcme = `clear_tenant=${encodeURIComponent(signTenantJwt('clear-acme', 'test-tenant-secret', 3600))}`;
+		const cookieGlobex = `clear_tenant=${encodeURIComponent(signTenantJwt('clear-globex', 'test-tenant-secret', 3600))}`;
+		return {
+			builder, port, cookieAcme, cookieGlobex, store,
+			close: async () => { server.close(); await builder.close(); },
+		};
+	}
+
+	await runSeq('/api/deploy — second tenant on same slug gets 409 with hint + suggestedSlug (cc-4 cycle 6)', async () => {
+		// T1 ('clear-acme') publishes 'deals' first — owns the hostname.
+		// T2 ('clear-globex') tries 'deals' next — must 409, NOT silently
+		// overwrite T1's row. The suggestedSlug is the on-ramp for T2 to
+		// recover with one click in the modal.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookieAcme, cookieGlobex, close, store } = await startStudioTwoTenants();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				// T1 ships first.
+				const r1 = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookieAcme },
+					body: { source: CLEAR_APP, appSlug: 'deals', target: 'cloudflare' },
+				});
+				expect(r1.status).toBe(200);
+				expect(r1.body.url).toBe('https://deals.buildclear.dev');
+				const row1 = await store.lookupAppBySubdomain('deals');
+				expect(row1.tenantSlug).toBe('clear-acme');
+
+				// T2 ships next with same slug — must 409.
+				const r2 = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookieGlobex },
+					body: { source: CLEAR_APP, appSlug: 'deals', target: 'cloudflare' },
+				});
+				expect(r2.status).toBe(409);
+				expect(r2.body.ok).toBe(false);
+				expect(/slug taken/i.test(r2.body.error || '')).toBe(true);
+				expect(/another tenant owns deals\.buildclear\.dev/i.test(r2.body.hint || '')).toBe(true);
+				// Plan allows either <slug>-<tenant> or <slug>-<random>; the
+				// implementation picks <slug>-<tenant_short> so 'clear-globex'
+				// → 'deals-globex'. Regex tolerates either.
+				expect(/^deals-(globex|[a-z0-9]{4,6})$/.test(r2.body.suggestedSlug || '')).toBe(true);
+
+				// Critical: T1's binding must be untouched.
+				const rowAfter = await store.lookupAppBySubdomain('deals');
+				expect(rowAfter.tenantSlug).toBe('clear-acme');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — second tenant retries with suggestedSlug and succeeds (cc-4 cycle 6)', async () => {
+		// The 409 response gave T2 a suggestedSlug. Re-publishing with
+		// that slug must succeed and bind 'deals-globex.buildclear.dev'
+		// to T2 — the recovery path's UX promise.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookieAcme, cookieGlobex, close, store } = await startStudioTwoTenants();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				// T1 takes 'deals'.
+				const r1 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookieAcme },
+					body: { source: CLEAR_APP, appSlug: 'deals', target: 'cloudflare' },
+				});
+				expect(r1.status).toBe(200);
+
+				// T2 collides → 409 with suggestedSlug.
+				const r2 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookieGlobex },
+					body: { source: CLEAR_APP, appSlug: 'deals', target: 'cloudflare' },
+				});
+				expect(r2.status).toBe(409);
+				const suggested = r2.body.suggestedSlug;
+				expect(typeof suggested).toBe('string');
+
+				// T2 retries with the suggested slug — must succeed and
+				// own its own hostname.
+				const r3 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookieGlobex },
+					body: { source: CLEAR_APP, appSlug: suggested, target: 'cloudflare' },
+				});
+				expect(r3.status).toBe(200);
+				expect(r3.body.ok).toBe(true);
+				expect(r3.body.url).toBe(`https://${suggested}.buildclear.dev`);
+
+				const row = await store.lookupAppBySubdomain(suggested);
+				expect(row).not.toBe(null);
+				expect(row.tenantSlug).toBe('clear-globex');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — same-tenant re-deploy of existing slug is NOT 409 (cc-4 cycle 6)', async () => {
+		// Same tenant publishing the same slug twice is the existing
+		// update path, not a collision. The pre-flight check must see
+		// "you already own this hostname" and let the orchestrator run
+		// its mode:'update' arm. If this 409s, every redeploy breaks.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				// First publish — fresh deploy.
+				const r1 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'mine', target: 'cloudflare' },
+				});
+				expect(r1.status).toBe(200);
+				expect(r1.body.ok).toBe(true);
+
+				// Second publish — same tenant, same slug. Must succeed,
+				// NOT 409. The orchestrator routes to its update path.
+				const r2 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'mine', target: 'cloudflare' },
+				});
+				expect(r2.status).toBe(200);
+				expect(r2.body.ok).toBe(true);
+				expect(r2.body.url).toBe('https://mine.buildclear.dev');
+
+				// The binding stays owned by the same tenant.
+				const row = await store.lookupAppBySubdomain('mine');
+				expect(row.tenantSlug).toBe('clear-acme');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
 })();

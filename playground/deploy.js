@@ -349,6 +349,31 @@ export function wireDeploy(app, opts = {}) {
 			let api;
 			try { api = getWfpApi(); }
 			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+
+			// CC-4 cycle 6 — cross-tenant slug uniqueness gate. The hostname
+			// <slug>.buildclear.dev is a global namespace; only one tenant can
+			// own 'deals.buildclear.dev'. Per-tenant uniqueness already lives
+			// in cfDeploys keyed by tenantSlug/appSlug — the orchestrator's
+			// mode:'update' path handles same-tenant redeploy. This pre-flight
+			// catches the cross-tenant case ONLY: another tenant already owns
+			// this hostname → 409 with a one-click recovery suggestion.
+			//
+			// Suggested slug is <slug>-<tenant_short>, where tenant_short is
+			// the tenant slug minus the leading 'clear-' prefix, capped at 6
+			// chars. Predictable + readable; the modal can render it as
+			// "Use 'deals-globex' instead?" and Russell can revise the shape
+			// later (the test fixture allows either <tenant> or <random>).
+			const collision = await store.lookupAppBySubdomain(appSlug);
+			if (collision && collision.tenantSlug !== tenant.slug) {
+				const tenantShort = String(tenant.slug || '').replace(/^clear-/, '').slice(0, 6) || 'mine';
+				return res.status(409).json({
+					ok: false,
+					error: 'slug taken',
+					hint: `Another tenant owns ${appSlug}.${cloudflareRootDomain()}. Pick a different name.`,
+					suggestedSlug: `${appSlug}-${tenantShort}`,
+				});
+			}
+
 			const r = await deploySourceCloudflare({
 				source,
 				tenantSlug: tenant.slug,
