@@ -1139,3 +1139,93 @@ describe('deploySource mode:update — confirmMigration applies schema (Cycle 3.
 		expect(store._state.recordVersionCalls).toHaveLength(0);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 3 Cycle 3.4 — wrangler.toml is schema-ish too.
+//
+// Durable Object namespace bindings, [[workflows]] entries, KV bindings,
+// and other resource declarations live in wrangler.toml. Re-binding a DO
+// namespace mid-update is the wrangler.toml equivalent of dropping a SQL
+// table — same blast radius. So migrationsDiffer treats wrangler.toml byte
+// changes the same way it treats migrations/* changes: any difference
+// requires explicit user confirmation.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('migrationsDiffer — wrangler.toml is schema-ish (Cycle 3.4)', () => {
+	testAsync('returns true when wrangler.toml content differs', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': '[[durable_objects.bindings]]\nname = "OLD_DO"\n',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': '[[durable_objects.bindings]]\nname = "NEW_DO"\n',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(true);
+	});
+
+	testAsync('returns false when wrangler.toml is identical (and migrations identical)', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(false);
+	});
+
+	testAsync('returns true when wrangler.toml is added in the new bundle', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = { 'migrations/001-init.sql': 'CREATE TABLE a' };
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(true);
+	});
+
+	testAsync('returns true when wrangler.toml is removed in the new bundle', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		const newB = { 'migrations/001-init.sql': 'CREATE TABLE a' };
+		expect(migrationsDiffer(oldB, newB)).toBe(true);
+	});
+
+	testAsync('still ignores src/index.js — code changes alone do not require confirmation', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+			'src/index.js': 'export default { fetch(){ return new Response("v1"); } }',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+			'src/index.js': 'export default { fetch(){ return new Response("v2-CHANGED"); } }',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(false);
+	});
+
+	testAsync('describes wrangler.toml diffs in _describeMigrationDiff alongside migrations/', async () => {
+		const { _describeMigrationDiff } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "v1"\n',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a-CHANGED',
+			'wrangler.toml': 'name = "v2"\n',
+		};
+		const diff = _describeMigrationDiff(oldB, newB);
+		const byFile = Object.fromEntries(diff.map((d) => [d.file, d.kind]));
+		expect(byFile['migrations/001-init.sql']).toBe('changed');
+		expect(byFile['wrangler.toml']).toBe('changed');
+	});
+});

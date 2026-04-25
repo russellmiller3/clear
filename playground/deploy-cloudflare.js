@@ -87,24 +87,31 @@ function _hashMigrations(bundle) {
 /**
  * migrationsDiffer — byte-precise schema-change detector.
  *
- * Compares the "schema-shaped" files in two compiled worker bundles:
- *   - any file whose path starts with `migrations/`
+ * Compares the "schema-shaped" files in two compiled worker bundles. The
+ * scope is broader than just SQL migrations — Cloudflare's wrangler.toml
+ * declares Durable Object namespaces, [[workflows]] entries, KV bindings,
+ * and other resource declarations. Re-binding a DO namespace mid-update
+ * is the toml equivalent of dropping a SQL table — same blast radius. So
+ * we treat both file kinds the same way.
+ *
+ * The set of "schema-ish" files this scans:
+ *   - any file whose path starts with `migrations/` (D1 SQL)
+ *   - `wrangler.toml` (DO bindings, workflows, KV, queues, etc.)
  *
  * Returns true when:
- *   - the SET of migration filenames differs (added, removed, renamed), OR
- *   - any same-named migration file's content differs by even one byte.
+ *   - the SET of schema-ish filenames differs (added, removed, renamed), OR
+ *   - any same-named schema-ish file's content differs by even one byte.
  *
- * The compare is intentionally dumb (string equality, not SQL semantics).
- * A false positive — two semantically identical migrations written
- * differently — costs Marcus one extra confirm click. A false negative —
- * letting a destructive schema change slip through silently — could wedge
- * a live D1 against a half-applied schema. Safe default = strict.
+ * The compare is intentionally dumb (string equality, not SQL/TOML semantics).
+ * A false positive costs Marcus one extra confirm click. A false negative
+ * could wedge a live D1 against a half-applied schema OR rebind a Durable
+ * Object namespace mid-flight. Strict default; both kinds are gated.
  *
  * Exported for unit tests + reuse by the /api/deploy handler in Phase 4.
  */
 export function migrationsDiffer(oldBundle, newBundle) {
-	const oldKeys = _migrationKeys(oldBundle);
-	const newKeys = _migrationKeys(newBundle);
+	const oldKeys = _schemaishFileKeys(oldBundle);
+	const newKeys = _schemaishFileKeys(newBundle);
 	if (oldKeys.length !== newKeys.length) return true;
 	for (let i = 0; i < oldKeys.length; i++) {
 		if (oldKeys[i] !== newKeys[i]) return true;
@@ -115,24 +122,29 @@ export function migrationsDiffer(oldBundle, newBundle) {
 	return false;
 }
 
-function _migrationKeys(bundle) {
+// Schema-ish files = anything whose presence or content shape impacts a
+// running deploy's bound resources. SQL migrations + wrangler.toml today;
+// we'll add more here if Cloudflare exposes new binding-declaration files.
+function _schemaishFileKeys(bundle) {
 	if (!bundle || typeof bundle !== 'object') return [];
-	return Object.keys(bundle).filter((k) => k.startsWith('migrations/')).sort();
+	return Object.keys(bundle)
+		.filter((k) => k.startsWith('migrations/') || k === 'wrangler.toml')
+		.sort();
 }
 
 /**
  * _describeMigrationDiff — structured diff for the UI gate.
  *
  * Returns an array of { file, kind } where kind is 'added' | 'removed' | 'changed'.
- * Only enumerates migration files (mirrors migrationsDiffer's scope). Used by
- * _deployUpdate to populate the migration-confirm-required response so the
- * Studio modal can show Marcus what's changing before he confirms.
+ * Mirrors migrationsDiffer's "schema-ish" scope (migrations/* AND wrangler.toml).
+ * Used by _deployUpdate to populate the migration-confirm-required response so
+ * the Studio modal can show Marcus what's changing before he confirms.
  *
  * Empty array on no diff. Exported for unit tests + reuse by handlers.
  */
 export function _describeMigrationDiff(oldBundle, newBundle) {
-	const oldKeys = new Set(_migrationKeys(oldBundle));
-	const newKeys = new Set(_migrationKeys(newBundle));
+	const oldKeys = new Set(_schemaishFileKeys(oldBundle));
+	const newKeys = new Set(_schemaishFileKeys(newBundle));
 	const out = [];
 	// Added: in new but not in old.
 	for (const k of newKeys) {
