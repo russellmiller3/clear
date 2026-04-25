@@ -989,3 +989,153 @@ describe('deploySource mode:update — migration-safety gate (Cycle 3.2)', () =>
 		expect(_describeMigrationDiff(a, b)).toEqual([]);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 3 Cycle 3.3 — confirmMigration:true unblocks AND applies migrations.
+//
+// When the user clicks "Apply migration + update," the handler re-POSTs
+// with confirmMigration:true. _deployUpdate must:
+//   1. skip the gate,
+//   2. call api.applyMigrations BEFORE api.uploadScript,
+//   3. if applyMigrations fails, return { ok:false, stage:'migrations' }
+//      and DO NOT upload — old code keeps serving against old schema.
+//
+// Each test uses a UNIQUE appSlug (mig-confirm / mig-sql / mig-fails)
+// to avoid lock-manager collisions when sibling testAsyncs run concurrently.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('deploySource mode:update — confirmMigration applies schema (Cycle 3.3)', () => {
+	testAsync('confirmMigration:true runs applyMigrations BEFORE uploadScript', async () => {
+		_resetLockManagerForTest();
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		const api = makeFakeWfpApi({
+			uploadScript: async (args) => {
+				api.calls.push({ op: 'uploadScript', scriptName: args.scriptName });
+				return { ok: true, result: { id: 'v-after-migration' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'mig-confirm',
+				d1_database_id: 'd1-prior',
+				hostname: 'mig-confirm.buildclear.dev',
+				versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'mig-confirm',
+			mode: 'update',
+			confirmMigration: true,
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(true);
+		const ops = api.calls.map((c) => c.op);
+		const applyIdx = ops.indexOf('applyMigrations');
+		const uploadIdx = ops.indexOf('uploadScript');
+		expect(applyIdx).toBeGreaterThan(-1);
+		expect(uploadIdx).toBeGreaterThan(-1);
+		expect(applyIdx).toBeLessThan(uploadIdx);
+		// recordVersion still fires on success.
+		expect(store._state.recordVersionCalls).toHaveLength(1);
+	});
+
+	testAsync('confirmMigration:true sends the new SQL to applyMigrations', async () => {
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+		const v2 = compileProgram(ITEMS_SCHEMA_V2, { target: 'cloudflare' });
+		const expectedSql = v2.workerBundle['migrations/001-init.sql'];
+
+		let appliedWith = null;
+		const api = makeFakeWfpApi({
+			applyMigrations: async ({ d1_database_id, sql }) => {
+				appliedWith = { d1_database_id, sql };
+				api.calls.push({ op: 'applyMigrations', d1_database_id, sqlLen: sql.length });
+				return { ok: true };
+			},
+			uploadScript: async () => ({ ok: true, result: { id: 'v' } }),
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'mig-sql',
+				d1_database_id: 'd1-prior-xyz',
+				hostname: 'h', versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'mig-sql',
+			mode: 'update',
+			confirmMigration: true,
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(appliedWith).toBeDefined();
+		expect(appliedWith.d1_database_id).toBe('d1-prior-xyz');
+		expect(appliedWith.sql).toBe(expectedSql);
+	});
+
+	testAsync('applyMigrations failure returns stage:migrations and DOES NOT upload', async () => {
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		let uploadCalled = false;
+		const api = makeFakeWfpApi({
+			applyMigrations: async () => {
+				api.calls.push({ op: 'applyMigrations' });
+				throw Object.assign(new Error('SQL syntax error near ALTER'), { status: 400 });
+			},
+			uploadScript: async () => {
+				uploadCalled = true;
+				api.calls.push({ op: 'uploadScript' });
+				return { ok: true, result: { id: 'v' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'mig-fails',
+				d1_database_id: 'd1', hostname: 'h',
+				versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'mig-fails',
+			mode: 'update',
+			confirmMigration: true,
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(false);
+		expect(r.stage).toBe('migrations');
+		// Critical: no upload happened — the new code never goes live so the
+		// running script keeps serving against the still-untouched old schema.
+		expect(uploadCalled).toBe(false);
+		// recordVersion not called either — there's no new version to record.
+		expect(store._state.recordVersionCalls).toHaveLength(0);
+	});
+});
