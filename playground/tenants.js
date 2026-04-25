@@ -287,6 +287,21 @@ export class InMemoryTenantStore {
  * Postgres database. Until that paperwork is done, the store has nothing
  * to talk to. Filed as a separate PR once Russell completes Phase 85a.
  */
+// Whitelist of columns `upsert` is allowed to patch. Anything outside this
+// set is silently ignored — defensive, because patch keys come from internal
+// callers but nothing stops a future caller from accidentally including a
+// `slug` field (which must NEVER change). Keeping the list explicit here also
+// means the SQL we build is always safe to interpolate without further
+// escaping (column names are static identifiers, never user input).
+const POSTGRES_UPSERT_PATCHABLE_COLUMNS = new Set([
+	'stripe_customer_id',
+	'plan',
+	'apps_deployed',
+	'ai_spent_cents',
+	'ai_credit_cents',
+	'grace_expires_at',
+]);
+
 export class PostgresTenantStore {
 	constructor({ pool } = {}) {
 		this._pool = pool || null;
@@ -296,10 +311,123 @@ export class PostgresTenantStore {
 			throw err;
 		};
 	}
-	async create() { return this._notImpl('create', 'INSERT INTO tenants (slug, stripe_customer_id, plan) VALUES ($1, $2, $3) RETURNING *'); }
-	async upsert() { return this._notImpl('upsert', 'INSERT ... ON CONFLICT (slug) DO UPDATE SET ...'); }
-	async get() { return this._notImpl('get', 'SELECT * FROM tenants WHERE slug = $1'); }
-	async getByStripeCustomer() { return this._notImpl('getByStripeCustomer', 'SELECT * FROM tenants WHERE stripe_customer_id = $1'); }
+
+	// CC-1 cycle 2 — INSERT a fresh tenant. Plan defaults to 'pro' (mirrors
+	// InMemoryTenantStore.create). ai_credit_cents seeds from planFor(plan)
+	// so a new pro tenant gets the $10 credit baked in at signup. The DB's
+	// own DEFAULT for ai_credit_cents is 0 (see 0001_init.sql) — we override
+	// it explicitly because the in-memory store does, and the contract is
+	// "Postgres returns the same shape with the same values".
+	async create({ slug, stripeCustomerId, plan = 'pro' }) {
+		const p = planFor(plan);
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`INSERT INTO clear_cloud.tenants
+				   (slug, stripe_customer_id, plan, ai_credit_cents)
+				 VALUES ($1, $2, $3, $4)
+				 RETURNING slug, stripe_customer_id, plan, apps_deployed,
+				           ai_spent_cents, ai_credit_cents, created_at, grace_expires_at`,
+				[slug, stripeCustomerId ?? null, plan, p.aiCreditCents]
+			);
+			return r.rows[0];
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 2 — shallow-merge upsert. Mirrors the in-memory `Map.set +
+	// spread` semantics: known slug → update the patched columns, unknown
+	// slug → INSERT a new row with whatever the patch carries. The whole
+	// thing runs as a single `INSERT ... ON CONFLICT (slug) DO UPDATE`
+	// statement so two concurrent upserts can't clobber each other's
+	// columns via a stale-read race.
+	async upsert(slug, patch = {}) {
+		// Pull the patchable fields out, ignoring anything else (including a
+		// rogue `slug` — the slug NEVER changes after create).
+		const cols = [];
+		const vals = [];
+		for (const [k, v] of Object.entries(patch || {})) {
+			if (POSTGRES_UPSERT_PATCHABLE_COLUMNS.has(k)) {
+				cols.push(k);
+				vals.push(v);
+			}
+		}
+
+		const client = await this._pool.connect();
+		try {
+			// On INSERT we also seed ai_credit_cents from planFor(plan) when
+			// plan is in the patch — same logic as `create`. If plan isn't
+			// patched, the DB DEFAULT (0) carries.
+			let insertCols = ['slug', ...cols];
+			let insertVals = [slug, ...vals];
+			let placeholders = insertCols.map((_, i) => `$${i + 1}`);
+
+			// Build the DO UPDATE clause from the patch. EXCLUDED is the row
+			// the INSERT *tried* to insert — perfect for shallow-merge.
+			let updateClause;
+			if (cols.length === 0) {
+				// Empty patch → the conflict is a no-op. Use `slug = slug` to
+				// keep ON CONFLICT happy (DO NOTHING wouldn't return the row).
+				updateClause = 'slug = clear_cloud.tenants.slug';
+			} else {
+				updateClause = cols.map(c => `${c} = EXCLUDED.${c}`).join(', ');
+			}
+
+			const sql = `
+				INSERT INTO clear_cloud.tenants (${insertCols.join(', ')})
+				VALUES (${placeholders.join(', ')})
+				ON CONFLICT (slug) DO UPDATE SET ${updateClause}
+				RETURNING slug, stripe_customer_id, plan, apps_deployed,
+				          ai_spent_cents, ai_credit_cents, created_at, grace_expires_at
+			`;
+			const r = await client.query(sql, insertVals);
+			return r.rows[0];
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 2 — single-row read by slug. Returns null on miss to match
+	// the in-memory shape exactly.
+	async get(slug) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT slug, stripe_customer_id, plan, apps_deployed,
+				        ai_spent_cents, ai_credit_cents, created_at, grace_expires_at
+				 FROM clear_cloud.tenants
+				 WHERE slug = $1`,
+				[slug]
+			);
+			return r.rows[0] || null;
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 2 — reverse lookup by Stripe customer id. Used by the
+	// billing webhook handler to find the tenant whose subscription just
+	// changed. Short-circuits on null/empty input — partial unique on
+	// stripe_customer_id allows multiple null tenants, and a SELECT WHERE
+	// stripe_customer_id IS NULL would match the first anonymous tenant
+	// (catastrophic — that's not a "match", it's a wildcard).
+	async getByStripeCustomer(stripeCustomerId) {
+		if (!stripeCustomerId) return null;
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT slug, stripe_customer_id, plan, apps_deployed,
+				        ai_spent_cents, ai_credit_cents, created_at, grace_expires_at
+				 FROM clear_cloud.tenants
+				 WHERE stripe_customer_id = $1`,
+				[stripeCustomerId]
+			);
+			return r.rows[0] || null;
+		} finally {
+			client.release();
+		}
+	}
 	async incrementAppsDeployed() { return this._notImpl('incrementAppsDeployed', 'UPDATE tenants SET apps_deployed = apps_deployed + 1 WHERE slug = $1 RETURNING *'); }
 	async setPlan() { return this._notImpl('setPlan', 'UPDATE tenants SET plan = $2, grace_expires_at = $3 WHERE slug = $1 RETURNING *'); }
 	async recordApp() { return this._notImpl('recordApp', 'INSERT INTO apps (tenant_slug, app_slug, app_name) VALUES ($1, $2, $3) ON CONFLICT (tenant_slug, app_slug) DO UPDATE SET app_name = $3'); }
