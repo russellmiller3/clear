@@ -93,7 +93,7 @@ ${body || '_(no obvious signals this week — but the question still applies: an
 
 **Process when you spot a candidate:**
 1. Check the existing-scripts list above to avoid duplication.
-2. Write it in \`scripts/\` as a pure-Node .mjs (zero deps) with a top-comment description (the meta-learnings-updater reads it for the inventory).
+2. Write it in \`scripts/\` as a pure-Node .mjs (zero deps) with a top-comment description (the cookbook-updater reads it for the inventory).
 3. Add a one-line rule to CLAUDE.md if the tool should be RUN at specific moments (e.g., "before touching X, run script Y").
 4. If the tool should be automatic (not manual), propose it as a hook via the propose-new-hooks flow.
 

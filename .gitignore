@@ -33,7 +33,7 @@ apps/*/build/clear-runtime/
 tests/*/build/clear-runtime/
 tests/guard-bugs/*/build/clear-runtime/
 .claude/.hook-proposal-stamp
-.claude/.meta-learnings-updater-stamp
+.claude/.cookbook-updater-stamp
 .claude/.propose-new-tools-stamp
 
 # CF-1 — runtime instrumentation beacon log (per-dev, regenerates on demand)

@@ -1,4 +1,6 @@
-# Meta-Learnings — A Portable Cookbook for AI-First Repos
+# Cookbook — A Portable Playbook for AI-First Repos
+
+> Renamed from `meta-learnings.md` Session 46 (2026-04-25). The old name described the genesis (lessons from 40+ sessions); the new name describes what the file is FOR — a copy-paste cookbook for the next AI-first repo. Same content, sharper label.
 
 **Last auto-refresh:** see `<!-- AUTO-INVENTORY -->` section below.
 
@@ -100,7 +102,27 @@ The hooks in the inventory below are all dependency-minimal by design: pure Node
 
 ---
 
-<!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/meta-learnings-updater.mjs refreshes this section every 7 days on SessionStart. -->
+## Hooks: Complete Inventory (hand-curated)
+
+Seven hooks in this repo as of 2026-04-25. Each fires automatically on a specific event. Together they enforce rules the AI contributor would otherwise forget mid-session. The auto-inventory below lists names; this section explains WHY each exists, WHEN it fires, and HOW it earns its keep. Copy whichever resonate to a new repo.
+
+| Hook | Event | What it does | Why it exists |
+|------|-------|--------------|---------------|
+| `parallel-thinking.mjs` | UserPromptSubmit | On every prompt, injects a "think parallel FIRST + narrate everything" reminder. Decision tree: identify subtasks, launch (N-1) as background agents in ONE message, work on the Nth in-conversation. After every tool batch, output a status line. | The "Work In Parallel By Default" rule existed in CLAUDE.md but Claude kept reverting to sequential edits in long sessions. Same with narration ("Narrate Every Chunk" rule). Hook makes both behaviors structural — fires at the moment of planning, before the wall-clock has burned. Added Session 46 (2026-04-25). |
+| `doc-cascade.mjs` | PostToolUse (Edit/Write) | When Claude touches `parser.js`, `synonyms.js`, `compiler.js`, `index.js`, or `runtime/*`, injects the 11-doc cascade list (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, ROADMAP.md, landing/*, system-prompt.md, FAQ.md, RESEARCH.md, FEATURES.md, CHANGELOG.md). | The Documentation Rule says new features must update 11 surfaces. Without the hook, Claude shipped a feature without doc updates and Russell had to nudge. The hook puts the cascade in front of him at edit time, when fixing is one Edit, not a separate session. Added Session 46. |
+| `validator-friction.mjs` | PostToolUse (Edit/Write to validator.js) | Runs `scripts/top-friction-errors.mjs` and injects the top-5 highest-friction compile errors (ranked by Meph-minutes-burned in the Factor DB). | Compile-error rewrites must be data-driven, not hunch-driven. Without this hook, Claude rewrote error messages based on "this feels confusing" and missed the actual top-friction items. Hook makes the ranked Factor DB data the FIRST thing Claude sees on validator edits. |
+| `learnings-miner.mjs` | PostToolUse (Edit/Write) | Mines `learnings.md` for sections relevant to the file just edited (matched by file/subsystem keywords) and injects the matching gotchas. | `learnings.md` is the append-only narrative log of every bug + root cause + fix. It's >50KB and growing. Without targeted mining, Claude can't surface relevant past gotchas at the moment they apply — too much to scan. Hook does the matching automatically. |
+| `cookbook-updater.mjs` | SessionStart (7-day gate) | Refreshes the AUTO-INVENTORY section of `cookbook.md` once per week — scans `.claude/hooks/`, `.claude/skills/`, `scripts/`, and CLAUDE.md headers, rewrites the inventory if drift is detected. | The hand-curated narrative in cookbook.md is stable; the inventory of what's actually installed today drifts every time someone adds a hook/rule/skill. Auto-maintained inventory = cookbook stays accurate without human effort = readers always see what's actually in the repo. (Renamed from `meta-learnings-updater.mjs` Session 46.) |
+| `propose-new-hooks.mjs` | SessionStart (7-day gate) | Once a week, scans `learnings.md` for repeated bug patterns and asks: "should this be a hook?" Surfaces candidates with the rule text, the proposed event, and a file matcher. | Every rule that fires often enough is a hook candidate. Without periodic mining, Claude knows the rules but forgets to PROPOSE turning them into hooks. The 7-day cadence keeps the question fresh without nagging every session. |
+| `propose-new-tools.mjs` | SessionStart (7-day gate) | Once a week, surfaces the question: "did you run any 5-line bash pipeline 3+ times this week? Build a tool." Lists existing scripts/ to avoid duplication. | The AI contributor should build its own tools proactively — running the same diagnostic three times means a script should exist. Hook nudges weekly so candidates surface before they're forgotten. |
+
+**The pattern:** every hook in this repo earns its keep by automating a discipline that would otherwise be advisory. Rule alone = ~80% adherence. Hook = 100%, because the harness does the remembering, not the AI's mid-session attention. Three of the hooks above (parallel-thinking, doc-cascade, validator-friction, learnings-miner) inject context AT THE MOMENT OF ACTION; three (cookbook-updater, propose-new-hooks, propose-new-tools) run periodically to keep the inventory + the rule-set + the tool-set fresh. Both shapes have a place; the at-the-moment ones are where most leverage lives.
+
+**Cost:** all 7 hooks combined run in <2 seconds total on session-start, and PostToolUse hooks are 50-200ms each. Asymmetric trade in favor of the reminders.
+
+---
+
+<!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
 _Last refresh: 2026-04-24_
 
@@ -129,8 +151,10 @@ _Last refresh: 2026-04-24_
 
 ### `.claude/hooks/` — event-driven enforcement
 
+- **cookbook-updater.mjs** — .claude/hooks/cookbook-updater.mjs
+- **doc-cascade.mjs** — .claude/hooks/doc-cascade.mjs
 - **learnings-miner.mjs** — .claude/hooks/learnings-miner.mjs
-- **meta-learnings-updater.mjs** — .claude/hooks/meta-learnings-updater.mjs
+- **parallel-thinking.mjs** — .claude/hooks/parallel-thinking.mjs
 - **propose-new-hooks.mjs** — .claude/hooks/propose-new-hooks.mjs
 - **propose-new-tools.mjs** — .claude/hooks/propose-new-tools.mjs
 - **validator-friction.mjs** — .claude/hooks/validator-friction.mjs
@@ -168,7 +192,7 @@ _Last refresh: 2026-04-24_
 - **CLAUDE.md** — AI contributor rules — read at every session start
 - **HANDOFF.md** — session-to-session state + prioritized next-moves
 - **learnings.md** — append-only narrative log of bugs + root causes + fixes
-- **meta-learnings.md** — portable cookbook (this file) for seeding new repos
+- **cookbook.md** — portable cookbook (this file) for seeding new repos
 - **ROADMAP.md** — forward-looking — what's planned, priority-ordered
 - **CHANGELOG.md** — historical — what shipped, session-dated, newest first
 - **FEATURES.md** — capability reference — what exists today (split from roadmap)

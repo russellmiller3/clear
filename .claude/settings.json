@@ -26,6 +26,18 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/parallel-thinking.mjs",
+            "timeout": 3,
+            "statusMessage": "Reminding to think parallel-first..."
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
@@ -37,9 +49,9 @@
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/meta-learnings-updater.mjs",
+            "command": "node .claude/hooks/cookbook-updater.mjs",
             "timeout": 10,
-            "statusMessage": "Refreshing meta-learnings.md inventory..."
+            "statusMessage": "Refreshing cookbook.md inventory..."
           },
           {
             "type": "command",

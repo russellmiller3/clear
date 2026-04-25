@@ -102,20 +102,32 @@ D-1 through D-5 shipped 2026-04-24 (compiler fix + Compiler API + clear-lsp + VS
 
 ---
 
-## Immediate Priorities (next concrete moves)
+## Immediate Priorities — Critical Path to First Paying Customer
 
-Ranked. Top of list = next session's pick.
+**Strategic decision locked 2026-04-25: Marcus first.** Dave-first remains a parallel track (D-1..D-5 shipped, D-6 HN launch on hold) but is NOT the wedge. Reasoning: today's session shipped 400 lines of CLI tooling (hooks + drift detector) — none of which Clear could have written, and all of which is Dave's daily bread. Clear's home turf is web-apps with login + DB + UI + AI agents — Marcus's daily bread. Marcus has a budget line for "save me 6 weeks of engineering"; Dave's employer paid for Cursor already. See `RESEARCH.md` and `FAQ.md` for the longer reasoning.
 
-| # | Task | Scope | Why it ladders to Marcus |
-|---|------|-------|---|
-| 1 | **R7 — Fix `needs login` page guard.** Pages with `needs login` compile to blank white pages (JWT check hides everything, no login form, no redirect). Generate a login page or redirect to `/login`. | half-day, TDD-able, $0 API | Any Marcus app with auth on a page is broken right now. Blocks every demo. |
-| 2 | **R8 — Fix `for each` loop body in HTML.** `for each msg in messages: section: text msg's role` emits `+ msg +` (whole object as string) instead of expanding the child template. | half-day, TDD-able, $0 API | Loops over data are core Marcus territory (chat lists, approval queues, anything iterating). |
-| ~~3~~ | ~~**GTM-1 — Build `apps/deal-desk/main.clear`.**~~ | **DONE 2026-04-25** | ~170 lines, 13/13 app tests pass, exercises R7+R8 fixes. Hero use case: discount approval workflow with AI-drafted CRO summaries. |
-| 4 | **Phase 85a — Provision the real cloud stack.** Register `buildclear.dev`, apply for Fly Trust Verified status with 10k-machine quota, Stripe live keys, Anthropic org key, Postgres for tenants DB. | external paperwork (Russell-blocking) | Deploy works in tests but has nowhere to deploy to until this lands. |
-| 5 | **CC-1 — Multi-tenant routing.** Wire the CC-2/3/5 scaffolding (already shipped: `listAppsForUser`, `assertCanAccessApp`, `app_domains`, `cloud-billing`, `cloud-quota`, `cloud-domains`, DNS poller, Stripe rollup) into a live subdomain router. `approvals.buildclear.dev` and `crm.buildclear.dev` route to different Workers with different D1 DBs. | 2-3 weeks | The missing piece. Without it the scaffolding doesn't ship traffic. |
-| 6 | **GTM-2 — Build `landing/marcus.html`.** GAN against the ASCII mock locked Session 35. Headline: "That backlog of internal tools nobody's going to build? Ship the first one this Friday." | 1 session | Pitch surface for first 5 Marcuses (item 7). |
-| 7 | **GTM-4 — Find 5 real Marcuses on LinkedIn.** DM, show Studio, watch what breaks. | ongoing | Fastest validation lever; data drives Builder Mode polish + bug priority. |
-| 8 | **CC-4 — Wire Studio Publish to live Clear Cloud.** Currently points at the test builder; needs to point at production CC-1 stack once that lands. | 3 days, after CC-1 | Closes the "no terminal" pitch. |
+Definition of launch: **first paying customer.** Not "we shipped a thing." Not "HN front page." A real human paying $200-2K/mo for an internal app.
+
+| # | Task | Owner | Days | Why it's next |
+|---|------|-------|------|---|
+| 1 | **CC-4 — Publish button → Clear Cloud.** Studio gets a "Publish" button that POSTs source to the existing `deploySourceCloudflare` flow, returns a live URL. Ships against `InMemoryTenantStore` first (durable Postgres backing comes after first customer per item 6). | agent | 1-2 | Without this, demos are local-only and there's nothing to sell. **First domino.** |
+| 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at item 1's Publish URL. | agent (parallel with #1) | 1 | Pitch surface. Lands when item 1 ships so the demo CTA isn't dead. |
+| 3 | **Demo recording.** Walkthrough of building deal-desk in 30 minutes from scratch on a hosted URL. Russell records voice-over; agent prepares the script + reference app + recording outline. | agent + Russell | 0.5 | What you DM with. Lossless evidence the workflow works. |
+| 4 | **Russell sells.** Cold pitch 5-10 sales-ops people on LinkedIn with the recording from #3. Goal: 1 paying customer at $200-500/mo. | Russell | 0.5 | The actual launch event. Everything above is setup. |
+| 5 | **Phase 85a — provision the real cloud stack** (parallel async track). Register `buildclear.dev`, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB. | Russell (external paperwork) | external | Async — runs in background. Items 1-4 ship against the existing test infra; item 6 needs this. |
+| 6 | **CC-1 finish — wire PostgresTenantStore to real Postgres** (after first customer). The interface stub shipped today (2026-04-25); production wire-up uses the SQL each method already documents. | agent | 1-2 | Durability for paying customers. Phased AFTER first sale because in-memory is fine for the first 1-3 demos. |
+
+**Total agent work to demo-ready: 2-3 days. Total agent + Russell work to first customer: ~1 week.**
+
+Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/server.js` + `playground/ide.html` + deploy code; GTM-2 touches `landing/marcus.html`). Item 3 starts after both land. Item 4 starts after Russell records the voice-over.
+
+**Parallel track (Dave):** keep `landing/for-developers.html`, `clear-lsp`, the VSCode extension, and the Compiler API. Don't bet on D-6 (HN launch) until Marcus revenue lands. After first Marcus customer, evaluate whether to push Dave-first as expansion or keep it as a parallel hobby track.
+
+**Other open work that doesn't block launch:**
+- LAE Phase C (destructive ships) — plan locked 2026-04-25, 7-cycle TDD. Compounds the "edit live app" pitch but isn't on the critical path.
+- LAE Phase D — LAE-9 concurrent-edit guard, LAE-10 dry-run mode. Phase D's audit log write path shipped today.
+- Builder Mode default flip (1 day, ships Builder Mode as the new-user default).
+- Charts T2#8 — donut/scatter/gauge/sparkline (6-cycle plan locked).
 
 ---
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// .claude/hooks/meta-learnings-updater.mjs
+// .claude/hooks/cookbook-updater.mjs
 //
 // SessionStart hook — refreshes the AUTO-INVENTORY section of
-// meta-learnings.md every 7 days (weekly cadence matching the other
+// cookbook.md every 7 days (weekly cadence matching the other
 // periodic mining hook, propose-new-hooks.mjs). Scans .claude/hooks/*.mjs,
 // .claude/skills/SKILL.md, CLAUDE.md section headers, and scripts/*.{mjs,sh}
 // and writes a current inventory between the BEGIN/END markers. If the
@@ -10,17 +10,19 @@
 // no write happens and the hook exits silent. If there's drift, the hook
 // rewrites the section and emits a systemMessage noting the changes.
 //
-// Force a re-run mid-week: `rm .claude/.meta-learnings-updater-stamp`.
+// Force a re-run mid-week: `rm .claude/.cookbook-updater-stamp`.
 //
-// Why this exists: meta-learnings.md is the portable cookbook for
-// seeding new AI-first repos. Its narrative (philosophy, starter kit,
-// advanced kit) is hand-curated. But the INVENTORY of what's actually
-// installed today — rules, hooks, skills, scripts — goes stale the
-// moment anyone adds a new hook or rule. Making the inventory auto-
-// maintained means the cookbook stays accurate without human effort;
-// the starter kit is always what's actually in the repo.
+// Why this exists: cookbook.md is the portable playbook for seeding
+// new AI-first repos. Its narrative (philosophy, starter kit, advanced
+// kit) is hand-curated. But the INVENTORY of what's actually installed
+// today — rules, hooks, skills, scripts — goes stale the moment anyone
+// adds a new hook or rule. Making the inventory auto-maintained means
+// the cookbook stays accurate without human effort; the starter kit is
+// always what's actually in the repo.
 //
-// Runtime: ~30-50ms. Gate: .claude/.meta-learnings-updater-stamp,
+// (Renamed from meta-learnings-updater.mjs Session 46 / 2026-04-25.)
+//
+// Runtime: ~30-50ms. Gate: .claude/.cookbook-updater-stamp,
 // 7-day refresh window.
 
 import { readFileSync, writeFileSync, existsSync, statSync, readdirSync } from 'fs';
@@ -30,12 +32,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, '..', '..');
-const META_PATH = join(REPO_ROOT, 'meta-learnings.md');
+const META_PATH = join(REPO_ROOT, 'cookbook.md');
 const HOOKS_DIR = join(REPO_ROOT, '.claude', 'hooks');
 const SKILLS_DIR = join(REPO_ROOT, '.claude', 'skills');
 const SCRIPTS_DIR = join(REPO_ROOT, 'scripts');
 const CLAUDE_MD = join(REPO_ROOT, 'CLAUDE.md');
-const STAMP_PATH = join(REPO_ROOT, '.claude', '.meta-learnings-updater-stamp');
+const STAMP_PATH = join(REPO_ROOT, '.claude', '.cookbook-updater-stamp');
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -89,17 +91,17 @@ function main() {
 		writeFileSync(META_PATH, newContent, 'utf8');
 		touchStamp();
 	} catch (err) {
-		process.stderr.write(`[meta-learnings-updater] write failed: ${err.message}\n`);
+		process.stderr.write(`[cookbook-updater] write failed: ${err.message}\n`);
 		process.exit(0);
 	}
 
 	// Surface the change to Claude + Russell so stale cookbook isn't silent.
 	const payload = {
-		systemMessage: 'meta-learnings.md auto-inventory refreshed (new/changed hooks, skills, scripts, or CLAUDE.md rules detected).',
+		systemMessage: 'cookbook.md auto-inventory refreshed (new/changed hooks, skills, scripts, or CLAUDE.md rules detected).',
 		hookSpecificOutput: {
 			hookEventName: 'SessionStart',
 			additionalContext:
-				'Note: `meta-learnings.md` auto-inventory section was just refreshed because new items appeared in `.claude/hooks/`, `.claude/skills/`, `scripts/`, or CLAUDE.md. Commit the update alongside whatever change introduced the new items.',
+				'Note: `cookbook.md` auto-inventory section was just refreshed because new items appeared in `.claude/hooks/`, `.claude/skills/`, `scripts/`, or CLAUDE.md. Commit the update alongside whatever change introduced the new items.',
 		},
 	};
 	process.stdout.write(JSON.stringify(payload));
@@ -294,7 +296,7 @@ function detectDocFiles() {
 		{ name: 'CLAUDE.md', desc: 'AI contributor rules — read at every session start' },
 		{ name: 'HANDOFF.md', desc: 'session-to-session state + prioritized next-moves' },
 		{ name: 'learnings.md', desc: 'append-only narrative log of bugs + root causes + fixes' },
-		{ name: 'meta-learnings.md', desc: 'portable cookbook (this file) for seeding new repos' },
+		{ name: 'cookbook.md', desc: 'portable cookbook (this file) for seeding new repos' },
 		{ name: 'ROADMAP.md', desc: 'forward-looking — what\'s planned, priority-ordered' },
 		{ name: 'CHANGELOG.md', desc: 'historical — what shipped, session-dated, newest first' },
 		{ name: 'FEATURES.md', desc: 'capability reference — what exists today (split from roadmap)' },
