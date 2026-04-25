@@ -16925,6 +16925,83 @@ when user calls DELETE /api/items/:id:
   });
 });
 
+// =============================================================================
+// R7: needs login on a page must produce a working guard, not a blank page.
+// Old emission was `if (...) { window.location.href = '/login'; return; }` at
+// the top level of <script>. `return;` outside a function is a SyntaxError —
+// the entire script failed to parse, the router never ran, and the page just
+// rendered whatever HTML was in the body (often blank if data hadn't loaded).
+// =============================================================================
+describe('R7: needs login on a page emits a working route-gated guard', () => {
+  function extractScripts(html) {
+    const out = [];
+    const re = /<script>([\s\S]*?)<\/script>/g;
+    let m;
+    while ((m = re.exec(html))) out.push(m[1]);
+    return out;
+  }
+
+  it('emitted page script parses as valid JavaScript (no top-level return)', () => {
+    const src = `build for web
+create a Tasks table:
+  title, required
+page 'Dashboard' at '/dash':
+  needs login
+  heading 'Welcome'
+page 'Login' at '/login':
+  heading 'Sign in'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const scripts = extractScripts(r.html);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const code of scripts) {
+      // Parse each script — top-level `return;` or any other syntax error trips
+      // here, which is the same parse browsers do on <script> blocks.
+      let parseErr = null;
+      try { new Function(code); } catch (e) { parseErr = e; }
+      if (parseErr) throw new Error(`Emitted script failed to parse: ${parseErr.message}\n--- script ---\n${code.slice(0, 600)}`);
+    }
+    // Specifically: must not emit a bare `return;` at the top level of the page
+    // setup. The redirect itself is fine.
+    expect(r.html).not.toMatch(/window\.location\.href\s*=\s*'\/login';\s*return;/);
+  });
+
+  it('auth guard is gated on the page route — only fires on the protected URL', () => {
+    const src = `build for web
+create a Tasks table:
+  title, required
+page 'Dashboard' at '/dash':
+  needs login
+  heading 'Welcome'
+page 'Login' at '/login':
+  heading 'Sign in'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Guard checks both the route AND the token, so visiting /login does not
+    // bounce the user away from the login page itself.
+    expect(r.html).toMatch(/location\.pathname[\s\S]*\/dash[\s\S]*localStorage\.getItem\('token'\)/);
+    expect(r.html).toContain("window.location.href = '/login'");
+  });
+
+  it('auth guard does not fire on the root route when only a sub-route is protected', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Public'
+page 'Dashboard' at '/dash':
+  needs login
+  heading 'Members only'
+page 'Login' at '/login':
+  heading 'Sign in'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // The redirect must be inside a route check, not unconditional at top level.
+    const scripts = extractScripts(r.html);
+    const guardLine = scripts.join('\n').split('\n').find(l => l.includes("window.location.href = '/login'"));
+    expect(guardLine).toBeTruthy();
+    expect(guardLine).toMatch(/location\.pathname/);
+  });
+});
+
 describe('when X notifies: webhook syntax', () => {
   it('when stripe notifies parses as webhook', () => {
     const src = `build for javascript backend

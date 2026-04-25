@@ -6704,7 +6704,11 @@ ${pad}}`;
         if (backendChildren.length === 0) return null;
         return backendChildren.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
       }
-      const pageCtx = { ...ctx, insidePage: true };
+      // Carry the page route into the body context so children that need to
+      // know what URL they belong to (auth guards in particular) can scope
+      // their behavior to just that route. Falls back to '/' for routeless pages.
+      const pageRoute = node.route || '/';
+      const pageCtx = { ...ctx, insidePage: true, pageRoute };
       const bodyCode = node.body.map(n => compileNode(n, pageCtx)).filter(Boolean).join('\n');
       if (ctx.lang === 'python') return `${pad}# Page: ${node.title}\n${bodyCode}`;
       return `${pad}// Page: ${node.title}\n${pad}document.title = ${JSON.stringify(node.title)};\n${bodyCode}`;
@@ -6773,9 +6777,19 @@ ${pad}}`;
         // Extract JWT from Authorization header and verify
         return `${pad}_auth_header = request.headers.get("authorization", "")\n${pad}if not _auth_header.startswith("Bearer "):\n${pad}    raise HTTPException(status_code=401, detail="Authentication required")\n${pad}try:\n${pad}    import jwt as _jwt\n${pad}    _token = _auth_header[7:]\n${pad}    request.state.user = _jwt.decode(_token, _JWT_SECRET, algorithms=["HS256"])\n${pad}except Exception:\n${pad}    raise HTTPException(status_code=401, detail="Invalid or expired token")`;
       }
-      // Client-side auth guard: check localStorage token, redirect to /login if missing
+      // Client-side auth guard: check localStorage token, redirect to /login if missing.
+      // Page-level guards must be route-gated AND must not use a bare `return;` —
+      // page setup is emitted at the top level of the <script>, where `return;`
+      // is a SyntaxError that kills the entire script (and the SPA router with it).
       if (ctx.mode === 'web') {
-        return `${pad}if (!localStorage.getItem('token')) { window.location.href = '/login'; return; }`;
+        const route = ctx.pageRoute || '/';
+        if (ctx.insidePage) {
+          // Match the route loosely: trailing-slash variants both count.
+          const routeJson = JSON.stringify(route);
+          return `${pad}{ const _path = (location.pathname || '/').replace(/\\/$/, '') || '/'; const _want = ${routeJson}.replace(/\\/$/, '') || '/'; if (_path === _want && !localStorage.getItem('token')) window.location.href = '/login'; }`;
+        }
+        // Outside a page (legacy / non-page guards) — no return;, just redirect.
+        return `${pad}if (!localStorage.getItem('token')) { window.location.href = '/login'; }`;
       }
       return `${pad}if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }`;
     }
