@@ -25379,5 +25379,8 @@ await import('./playground/wfp-api.test.js');
 // Cloudflare Workers for Platforms target — Phase 7.7 (deploy orchestration + lock)
 await import('./playground/deploy-cloudflare.test.js');
 
+// LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
+await import('./runtime/meph-widget.test.mjs');
+
 run();
 

@@ -13,6 +13,16 @@
 //
 // Phase A is strictly additive — any proposal that isn't additive is
 // rejected server-side and shown as an error.
+//
+// LAE Phase C cycle 5 adds the DESTRUCTIVE flow on the widget side:
+// when a proposal classifies as 'destructive', the widget renders a
+// typed-confirmation input + reason textarea + a clearly red
+// "I understand — ship and destroy" button. The button stays disabled
+// until the owner types the exact canonical phrase (e.g.
+// "DELETE field email") AND fills the reason. On click it POSTs both
+// fields to /__meph__/api/ship, where the cycle-4 audit-first gate
+// runs the show. Long button copy IS the safety — the reading-friction
+// prevents fat-finger ships. (See plan locked-in decision #3.)
 // =============================================================================
 
 (function () {
@@ -48,6 +58,39 @@
 	function isOwner() {
 		const claims = tokenClaims();
 		return claims && claims.role === 'owner';
+	}
+
+	// LAE Phase C cycle 5 — inlined copy of lib/destructive-confirm.js's
+	// requiredConfirmation helper. The plan calls it "small enough to dup"
+	// rather than build a runtime import path. Both copies MUST stay in
+	// sync — runtime/meph-widget.test.mjs has a test that fails if they
+	// diverge. If the widget renders "DELETE field email" but the API
+	// expects something different, every destructive ship 400s and
+	// Marcus thinks Meph is broken.
+	function requiredConfirmation(classification) {
+		if (!classification) return null;
+		if (!Array.isArray(classification.changes) || classification.changes.length === 0) return null;
+		const change = classification.changes[0];
+		if (!change || !change.kind) return null;
+		switch (change.kind) {
+			case 'remove_field':
+				if (!change.field) return null;
+				return 'DELETE field ' + change.field;
+			case 'remove_endpoint':
+				if (!change.method || !change.path) return null;
+				return 'DELETE endpoint ' + change.method + ' ' + change.path;
+			case 'remove_page':
+				if (!change.title) return null;
+				return 'DELETE page "' + change.title + '"';
+			case 'remove_table':
+				if (!change.table) return null;
+				return 'DELETE table ' + change.table;
+			case 'change_type':
+				if (!change.table || !change.field || !change.from || !change.to) return null;
+				return 'COERCE ' + change.table + '.' + change.field + ' from ' + change.from + ' to ' + change.to;
+			default:
+				return null;
+		}
 	}
 
 	// LAE Phase B: when the widget is running on a Cloudflare-deployed app,
@@ -175,6 +218,41 @@
 			.clear-meph-btn:hover { background: rgba(255,255,255,.1); }
 			.clear-meph-btn-primary { background: #6366f1; color: white; flex: 1; }
 			.clear-meph-btn-primary:hover { background: #4f46e5; }
+			/* LAE Phase C cycle 5: destructive button. Red so the owner
+			   cannot mistake it for a normal Ship button. The border +
+			   bold weight + caps text combine to scream "this is final". */
+			.clear-meph-btn-danger {
+				background: #dc2626; color: white; flex: 1;
+				border: 2px solid #b91c1c; font-weight: 700;
+				letter-spacing: 0.02em;
+			}
+			.clear-meph-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+			.clear-meph-btn-danger:disabled {
+				background: #7f1d1d; color: rgba(255,255,255,.5);
+				cursor: not-allowed; border-color: #7f1d1d;
+			}
+			.clear-meph-confirm-input {
+				width: 100%; background: rgba(255,255,255,.04);
+				border: 1px solid rgba(255,255,255,.08); color: #fca5a5;
+				border-radius: 8px; padding: 9px 11px;
+				font: 600 13px/1.2 "JetBrains Mono", ui-monospace, monospace;
+				outline: none; margin-top: 8px; box-sizing: border-box;
+			}
+			.clear-meph-confirm-input:focus { border-color: rgba(220,38,38,.6); }
+			.clear-meph-confirm-input.mismatch { border-color: #dc2626; }
+			.clear-meph-reason-input {
+				width: 100%; background: rgba(255,255,255,.04);
+				border: 1px solid rgba(255,255,255,.08); color: #e2e8f0;
+				border-radius: 8px; padding: 9px 11px; font: inherit;
+				outline: none; margin-top: 8px; resize: vertical;
+				min-height: 56px; box-sizing: border-box;
+			}
+			.clear-meph-reason-input:focus { border-color: rgba(99,102,241,.5); }
+			.clear-meph-warn {
+				background: rgba(220,38,38,.08); border: 1px solid rgba(220,38,38,.2);
+				border-radius: 8px; padding: 8px 10px; margin-top: 8px;
+				color: #fca5a5; font-size: 12px;
+			}
 			.clear-meph-foot {
 				border-top: 1px solid rgba(255,255,255,.06); padding: 10px 12px;
 				display:flex; align-items:center; gap:10px;
@@ -241,6 +319,90 @@
 						['Cancel'],
 					),
 				]),
+			);
+		} else if (proposal.classification.type === 'destructive') {
+			// LAE Phase C cycle 5 — destructive branch.
+			// Owner must type the canonical phrase (e.g. "DELETE field email")
+			// AND fill a reason before the red button enables. We compute the
+			// expected phrase once from the inlined helper so widget +
+			// API agree byte-for-byte. If the helper returns null (unknown
+			// destructive kind) we show the same "Phase A/B only" guard
+			// rather than render a broken form.
+			const expected = requiredConfirmation(proposal.classification);
+			if (!expected) {
+				summary.appendChild(
+					el('div', { class: 'clear-meph-err' }, [
+						'This destructive change has no confirmation phrase. Refusing to ship.',
+					]),
+				);
+				return summary;
+			}
+
+			// Warning copy first — owner needs to know what survives a rollback.
+			summary.appendChild(
+				el('div', { class: 'clear-meph-warn' }, [
+					'Permanent. Rolling back will restore the field, but not the data inside it.',
+				]),
+			);
+
+			const confirmInput = el('input', {
+				id: 'clear-meph-confirm',
+				class: 'clear-meph-confirm-input',
+				type: 'text',
+				placeholder: expected,
+				autocomplete: 'off',
+				spellcheck: 'false',
+			});
+			const reasonInput = el('textarea', {
+				id: 'clear-meph-reason',
+				class: 'clear-meph-reason-input',
+				placeholder: 'Reason for the deletion (e.g. user requested erasure under GDPR)',
+			});
+			const shipBtn = el(
+				'button',
+				{
+					class: 'clear-meph-btn clear-meph-btn-danger',
+					disabled: 'disabled',
+					type: 'button',
+				},
+				['I understand — ship and destroy'],
+			);
+			const cancelBtn = el(
+				'button',
+				{ class: 'clear-meph-btn', type: 'button', onclick: () => clearPending() },
+				['Cancel'],
+			);
+
+			// Re-evaluate the enable state on every keystroke. Both fields
+			// must be exact-match-correct at the same time. Using both
+			// 'input' and 'keyup' covers paste-from-clipboard (input fires)
+			// and typed entry (keyup fires).
+			function syncEnabled() {
+				const phraseOk = confirmInput.value === expected;
+				const reasonOk = (reasonInput.value || '').trim() !== '';
+				if (phraseOk && reasonOk) {
+					shipBtn.removeAttribute('disabled');
+				} else {
+					shipBtn.setAttribute('disabled', 'disabled');
+				}
+				// Visual hint: input turns red ONLY when non-empty AND mismatched.
+				if (confirmInput.value && !phraseOk) confirmInput.classList.add('mismatch');
+				else confirmInput.classList.remove('mismatch');
+			}
+			confirmInput.addEventListener('input', syncEnabled);
+			confirmInput.addEventListener('keyup', syncEnabled);
+			reasonInput.addEventListener('input', syncEnabled);
+			reasonInput.addEventListener('keyup', syncEnabled);
+
+			shipBtn.addEventListener('click', () => {
+				if (shipBtn.hasAttribute('disabled')) return;
+				shipDestructive(proposal, confirmInput, reasonInput, shipBtn);
+			});
+
+			summary.appendChild(confirmInput);
+			summary.appendChild(reasonInput);
+			summary.appendChild(
+				el('div', { class: 'clear-meph-actions' }, [shipBtn, cancelBtn]),
 			);
 		} else {
 			summary.appendChild(
@@ -314,6 +476,95 @@
 			setTimeout(() => window.location.reload(), 1200);
 		} catch (err) {
 			addBot([el('div', { class: 'clear-meph-err' }, ['Ship error: ' + err.message])]);
+		}
+	}
+
+	// LAE Phase C cycle 5 — destructive ship POST.
+	// The cycle-4 API gate runs the show: it checks the typed phrase
+	// against requiredConfirmation(), writes a 'pending' audit row,
+	// runs applyShip, then marks the row 'shipped' or 'ship-failed'.
+	// The widget's job here is to round-trip {confirmation, reason,
+	// classification} alongside the source, then translate the four
+	// possible response shapes into messages Marcus can act on:
+	//   200 ok        → "Shipped. Audit ID <id>." then reload
+	//   400 bad input → surface the expected phrase, re-enable input
+	//   503 audit gone → "audit log unreachable, try again"
+	//   500 ship-fail → "the attempt is on record (audit ID <id>)"
+	async function shipDestructive(proposal, confirmInput, reasonInput, shipBtn) {
+		// Disable button during the request so a double-click can't fire two ships.
+		shipBtn.setAttribute('disabled', 'disabled');
+		const thinking = addBot('Shipping the destructive change...');
+		try {
+			const body = {
+				newSource: proposal.newSource,
+				classification: proposal.classification,
+				confirmation: confirmInput.value,
+				reason: reasonInput.value,
+			};
+			if (cloudContext) {
+				body.tenantSlug = cloudContext.tenantSlug;
+				body.appSlug = cloudContext.appSlug;
+			}
+			const r = await api('ship', body);
+			thinking.remove();
+			if (r.status === 200 && r.ok) {
+				if (r.body && r.body.versionId) _lastShippedVersionId = r.body.versionId;
+				const auditId = r.body && r.body.audit && r.body.audit.auditId;
+				const idMsg = auditId ? ' Audit ID ' + auditId + '.' : '';
+				addBot('Shipped — destructive change applied.' + idMsg + ' Reloading...');
+				setTimeout(() => window.location.reload(), 1200);
+				return;
+			}
+			if (r.status === 400) {
+				// Confirmation mismatch or missing reason. Re-enable so the
+				// owner can fix the input. Surface the expected phrase if
+				// the API returned it (cycle 4's response shape).
+				const expected = r.body && r.body.expected;
+				const hint = expected
+					? 'The expected phrase is: ' + expected + '. Edit the input and try again.'
+					: (r.body && r.body.error) || 'Confirmation rejected.';
+				addBot([el('div', { class: 'clear-meph-err' }, [hint])]);
+				confirmInput.classList.add('mismatch');
+				// Don't auto-re-enable — the input listener will turn the
+				// button on once the typed phrase matches again.
+				return;
+			}
+			if (r.status === 503) {
+				// Audit-first ordering: API refused before applyShip ran.
+				// Tell Marcus this is transient — the destructive change
+				// did NOT happen. He can retype and click again once the
+				// audit store is back.
+				addBot([
+					el('div', { class: 'clear-meph-err' }, [
+						'Cannot ship — audit log unreachable. The change was NOT applied. Try again in a moment, or page support.',
+					]),
+				]);
+				shipBtn.removeAttribute('disabled');
+				return;
+			}
+			if (r.status === 500) {
+				// Ship failed AFTER pending audit row written. The row is
+				// evidence of the attempt — surface the auditId so support
+				// can reconcile state if needed.
+				const auditId = r.body && r.body.auditId;
+				const idMsg = auditId ? ' Audit ID ' + auditId + ' is on record.' : '';
+				addBot([
+					el('div', { class: 'clear-meph-err' }, [
+						'Ship failed.' + idMsg + ' The attempt is logged. Retry once the cause is fixed.',
+					]),
+				]);
+				shipBtn.removeAttribute('disabled');
+				return;
+			}
+			// Catch-all for unknown statuses. Leave the button disabled —
+			// owner has to tab away and back to retry, which is a tiny
+			// friction stop that beats accidental retry on a confused state.
+			const err = (r.body && r.body.error) || ('Unexpected status ' + r.status);
+			addBot([el('div', { class: 'clear-meph-err' }, [err])]);
+		} catch (err) {
+			thinking.remove();
+			addBot([el('div', { class: 'clear-meph-err' }, ['Ship error: ' + err.message])]);
+			shipBtn.removeAttribute('disabled');
 		}
 	}
 
