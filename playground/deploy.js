@@ -587,6 +587,43 @@ export function wireDeploy(app, opts = {}) {
 		const tenant = await requireTenant(req, res);
 		if (!tenant) return;
 		const appName = req.params.app;
+		// One-click updates Phase 4 cycle 4.5 — Cloudflare path uses the
+		// per-tenant store for ownership (no global tenant prefix on CF script
+		// names) and asks CF for the version list. If CF is unreachable, fall
+		// back to the store's versions[]; degraded history beats no history
+		// when the modal is asking for it. The Fly branch stays unchanged so
+		// existing tests still pass.
+		if (deployTarget() === 'cloudflare') {
+			try { sanitizeAppSlug(appName); }
+			catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
+			const record = await store.getAppRecord(tenant.slug, appName);
+			if (!record) return res.status(404).json({ ok: false, error: 'app not deployed for this tenant' });
+			let api;
+			try { api = getWfpApi(); }
+			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+			const scriptName = record.scriptName || appName;
+			try {
+				const lv = await api.listVersions({ scriptName });
+				if (lv && lv.ok && Array.isArray(lv.versions)) {
+					return res.json({ ok: true, source: 'cloudflare', versions: lv.versions });
+				}
+				// listVersions returned non-ok shape — treat like a soft failure
+				// and fall back to the store's versions[].
+				return res.json({
+					ok: true,
+					source: 'store',
+					versions: record.versions || [],
+					degradedReason: 'listVersions returned non-ok response',
+				});
+			} catch (e) {
+				return res.json({
+					ok: true,
+					source: 'store',
+					versions: record.versions || [],
+					degradedReason: e.message || 'listVersions threw',
+				});
+			}
+		}
 		try { sanitizeAppName(appName); assertOwnership(tenant.slug, appName); }
 		catch (e) { return res.status(e.code === 'CROSS_TENANT' ? 403 : 400).json({ ok: false, code: errorCode(e) }); }
 		const r = await postToBuilder(`/releases/${encodeURIComponent(appName)}`, 'GET', {
