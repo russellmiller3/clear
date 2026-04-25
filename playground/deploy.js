@@ -96,6 +96,20 @@ export function _setWfpApiForTest(api) {
 	_wfpApi = api;
 }
 
+// One-click updates Phase 4 — test hook that lets a test substitute the
+// deploySource function so it can assert exactly which opts the handler
+// passes (mode, confirmMigration, lastRecord, etc). Without this hook,
+// integration tests can only verify side-effects on the WfpApi fake which
+// doesn't see the orchestrator-level opts. Pass null to restore the real one.
+let _deployFnForTest = null;
+export function _setDeployFnForTest(fn) {
+	_deployFnForTest = fn;
+}
+function _deployCloudflare(opts) {
+	const fn = _deployFnForTest || deploySourceCloudflare;
+	return fn(opts);
+}
+
 // -------- tarball packing (pure Node, matches the builder's tar parser) --------
 function posixTarBlock(name, body, typeflag = '0') {
 	const block = Buffer.alloc(512);
@@ -382,7 +396,13 @@ export function wireDeploy(app, opts = {}) {
 			// stays a pure switch on `mode` (no decision logic inside).
 			const lastRecord = await store.getAppRecord(tenant.slug, appSlug);
 			const isRedeploy = !!lastRecord;
-			const r = await deploySourceCloudflare({
+			// One-click updates Phase 4 cycle 4.2 — confirmMigration flows
+			// from the modal's "Apply migration + update" button down to the
+			// orchestrator's gate. When the schema differs and confirmMigration
+			// is absent, the orchestrator returns 409 (cycle 4.3); when present,
+			// it applies the new schema then uploads the script.
+			const confirmMigration = req.body && req.body.confirmMigration === true;
+			const r = await _deployCloudflare({
 				source,
 				tenantSlug: tenant.slug,
 				appSlug,
@@ -396,6 +416,7 @@ export function wireDeploy(app, opts = {}) {
 				// Real delete is tracked in reconcile-wfp.js meanwhile.
 				deleteD1: async () => ({ ok: true, skipped: true }),
 				...(isRedeploy ? { mode: 'update', lastRecord } : {}),
+				...(confirmMigration ? { confirmMigration: true } : {}),
 			});
 			// Stash the job snapshot so /api/deploy-status can serve it.
 			if (r.jobId) {

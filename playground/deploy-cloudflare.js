@@ -120,6 +120,38 @@ function _migrationKeys(bundle) {
 	return Object.keys(bundle).filter((k) => k.startsWith('migrations/')).sort();
 }
 
+/**
+ * _describeMigrationDiff — structured diff for the UI gate.
+ *
+ * Returns an array of { file, kind } where kind is 'added' | 'removed' | 'changed'.
+ * Only enumerates migration files (mirrors migrationsDiffer's scope). Used by
+ * _deployUpdate to populate the migration-confirm-required response so the
+ * Studio modal can show Marcus what's changing before he confirms.
+ *
+ * Empty array on no diff. Exported for unit tests + reuse by handlers.
+ */
+export function _describeMigrationDiff(oldBundle, newBundle) {
+	const oldKeys = new Set(_migrationKeys(oldBundle));
+	const newKeys = new Set(_migrationKeys(newBundle));
+	const out = [];
+	// Added: in new but not in old.
+	for (const k of newKeys) {
+		if (!oldKeys.has(k)) out.push({ file: k, kind: 'added' });
+	}
+	// Removed: in old but not in new.
+	for (const k of oldKeys) {
+		if (!newKeys.has(k)) out.push({ file: k, kind: 'removed' });
+	}
+	// Changed: in both, content differs.
+	for (const k of oldKeys) {
+		if (!newKeys.has(k)) continue;
+		if (String(oldBundle[k] || '') !== String(newBundle[k] || '')) {
+			out.push({ file: k, kind: 'changed' });
+		}
+	}
+	return out;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // DeployLockManager — in-memory double-click guard
 // ──────────────────────────────────────────────────────────────────────
@@ -253,6 +285,7 @@ export async function deploySource({
 	mode = 'deploy',
 	lastRecord = null,
 	via,
+	confirmMigration,
 }) {
 	// 0. Idempotency lock — covers both deploy and update modes.
 	const lockKey = `${tenantSlug}:${appSlug}`;
@@ -282,6 +315,7 @@ export async function deploySource({
 				api, store, rootDomain,
 				lastRecord, via, jobId,
 				knowledgeBase, knowledgeCache,
+				confirmMigration,
 			});
 		} finally {
 			_lockManager.release(lockKey);
@@ -432,6 +466,7 @@ async function _deployUpdate({
 	api, store, rootDomain,
 	lastRecord, via, jobId,
 	knowledgeBase, knowledgeCache,
+	confirmMigration,
 }) {
 	// 1. Compile.
 	const compileOpts = { target: 'cloudflare' };
@@ -440,6 +475,23 @@ async function _deployUpdate({
 	const compiled = compileProgram(source, compileOpts);
 	if (compiled.errors && compiled.errors.length) {
 		return { ok: false, stage: 'compile', jobId, errors: compiled.errors, mode: 'update' };
+	}
+
+	// 1b. Migration safety gate (Phase 3 Cycle 3.2). If the new compile changed
+	// any migrations/* file vs the bundle stored on lastRecord, refuse to upload
+	// until the caller passes confirmMigration:true. This blocks silent
+	// destructive schema changes — SQLite has no atomic schema swap, so a
+	// half-applied migration mid-update can wedge a live D1.
+	const oldBundleForGate = (lastRecord && lastRecord.lastBundle) || null;
+	const newBundleForGate = compiled.workerBundle || {};
+	if (oldBundleForGate && migrationsDiffer(oldBundleForGate, newBundleForGate) && confirmMigration !== true) {
+		return {
+			ok: false,
+			stage: 'migration-confirm-required',
+			jobId,
+			mode: 'update',
+			migrationDiff: _describeMigrationDiff(oldBundleForGate, newBundleForGate),
+		};
 	}
 
 	// 2. Filter secrets — only set keys that aren't already on the record.

@@ -864,3 +864,128 @@ describe('migrationsDiffer — Phase 3 Cycle 3.1', () => {
 		expect(migrationsDiffer(a, b)).toBe(true);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 3 Cycle 3.2 — update mode blocks when migrations differ.
+// The new compile changed schema; without an explicit confirm flag, refuse
+// the upload and hand the UI a structured diff so it can prompt the user.
+// Each test uses a UNIQUE appSlug because the lock manager + describe block
+// fire all testAsyncs concurrently — sharing 'items' across tests races.
+// ─────────────────────────────────────────────────────────────────────────
+
+// .clear source whose schema diff vs SIMPLE_APP forces the gate to fire.
+// SIMPLE_APP creates Items with name; ITEMS_SCHEMA_V2 adds price, which
+// changes the compiled CREATE TABLE in migrations/001-init.sql.
+const ITEMS_SCHEMA_V2 = `build for javascript backend
+
+create a Items table:
+  name, required
+  price, number
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+describe('deploySource mode:update — migration-safety gate (Cycle 3.2)', () => {
+	testAsync('returns migration-confirm-required when compiled migrations differ from lastRecord', async () => {
+		_resetLockManagerForTest();
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		const api = makeFakeWfpApi();
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'gate-fires',
+				d1_database_id: 'd1-prior',
+				hostname: 'gate-fires.buildclear.dev',
+				versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'gate-fires',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(false);
+		expect(r.stage).toBe('migration-confirm-required');
+		expect(Array.isArray(r.migrationDiff)).toBe(true);
+		expect(r.migrationDiff.length).toBeGreaterThan(0);
+		const entry = r.migrationDiff.find((d) => d.file === 'migrations/001-init.sql');
+		expect(entry).toBeDefined();
+		expect(entry.kind).toBe('changed');
+		// Critical: no upload happened — old code keeps serving until confirm.
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('uploadScript')).toBe(false);
+	});
+
+	testAsync('proceeds normally when migrations are identical (no gate fires)', async () => {
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		const api = makeFakeWfpApi({
+			uploadScript: async (args) => {
+				api.calls.push({ op: 'uploadScript', scriptName: args.scriptName });
+				return { ok: true, result: { id: 'v-same-schema' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'no-gate', d1_database_id: 'd1', hostname: 'h',
+				versions: [], secretKeys: [], lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: SIMPLE_APP, // SAME source = same migrations
+			tenantSlug: 'clear-acme',
+			appSlug: 'no-gate',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(true);
+		expect(r.stage).toBeUndefined();
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('uploadScript')).toBe(true);
+	});
+
+	testAsync('records added/removed/changed kinds in migrationDiff', async () => {
+		// Pure helper test — no deploySource invocation, no lock manager use.
+		const { _describeMigrationDiff } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'migrations/002-old.sql': 'CREATE TABLE old_one',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a-CHANGED', // changed
+			'migrations/003-fresh.sql': 'CREATE TABLE fresh',     // added
+			// 002-old.sql removed
+		};
+		const diff = _describeMigrationDiff(oldB, newB);
+		const byFile = Object.fromEntries(diff.map((d) => [d.file, d.kind]));
+		expect(byFile['migrations/001-init.sql']).toBe('changed');
+		expect(byFile['migrations/002-old.sql']).toBe('removed');
+		expect(byFile['migrations/003-fresh.sql']).toBe('added');
+	});
+
+	testAsync('returns an empty migrationDiff when nothing differs (helper exposes [], not null)', async () => {
+		const { _describeMigrationDiff } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'X' };
+		const b = { 'migrations/001-init.sql': 'X' };
+		expect(_describeMigrationDiff(a, b)).toEqual([]);
+	});
+});

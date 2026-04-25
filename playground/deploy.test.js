@@ -8,7 +8,7 @@ import { describe, it, expect, testAsync } from '../lib/testUtils.js';
 import express from 'express';
 import http from 'http';
 
-import { tarDir, deploySource, wireDeploy, _setWfpApiForTest, pickDeployTarget } from './deploy.js';
+import { tarDir, deploySource, wireDeploy, _setWfpApiForTest, _setDeployFnForTest, pickDeployTarget } from './deploy.js';
 import { _resetLockManagerForTest, _resetJobsForTest } from './deploy-cloudflare.js';
 import { extractTarToDir } from './builder/tarExtract.js';
 import { InMemoryTenantStore } from './tenants.js';
@@ -1092,6 +1092,59 @@ when user requests data from /api/secret:
 			} finally { await close(); }
 		} finally {
 			_setWfpApiForTest(null);
+		}
+	});
+
+	// Cycle 4.2: confirmMigration:true on the request body must arrive
+	// inside the orchestrator's opts. The Studio modal sets this flag when
+	// the user clicks "Apply migration + update" after seeing the schema-
+	// change warning. Without propagation the modal click does nothing —
+	// the orchestrator keeps returning 409 forever.
+	await runSeq('/api/deploy — confirmMigration body flag propagates to orchestrator opts (one-click cycle 4.2)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		_setWfpApiForTest(makeFakeWfpApiForDeployTest());
+		// Capture the opts the handler passes to the deploy function.
+		let receivedOpts = null;
+		_setDeployFnForTest(async (opts) => {
+			receivedOpts = opts;
+			// Return a successful-looking shape so the handler runs to completion.
+			return { ok: true, jobId: 'job-stub', url: 'https://confirm.buildclear.dev' };
+		});
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				// First: WITHOUT confirmMigration — opts must NOT have the flag.
+				const r1 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: HELLO_APP, appSlug: 'confirm', target: 'cloudflare' },
+				});
+				expect(r1.status).toBe(200);
+				expect(receivedOpts.confirmMigration).toBe(undefined);
+
+				// Second: WITH confirmMigration:true — opts must surface it.
+				const r2 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: HELLO_APP, appSlug: 'confirm', target: 'cloudflare', confirmMigration: true },
+				});
+				expect(r2.status).toBe(200);
+				expect(receivedOpts.confirmMigration).toBe(true);
+
+				// Third: with confirmMigration:'truthy-but-not-true' — must NOT
+				// propagate. Strict equality avoids accidental enable from a
+				// stringy "true" or 1.
+				const r3 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: HELLO_APP, appSlug: 'confirm', target: 'cloudflare', confirmMigration: 'true' },
+				});
+				expect(r3.status).toBe(200);
+				expect(receivedOpts.confirmMigration).toBe(undefined);
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+			_setDeployFnForTest(null);
 		}
 	});
 })();
