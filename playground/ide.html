@@ -711,6 +711,13 @@ body.builder-mode.show-source #editor-pane {
     <span class="sb-sep"></span>
     <span id="sb-compile-stats" style="display:none"></span>
     <span style="flex:1"></span>
+    <!-- Builder Mode chips: live status of compiles, run, last ship -->
+    <span id="sb-builder-compiles" title="Successful / total compiles this session">0/0 ok</span>
+    <span class="sb-sep"></span>
+    <span id="sb-builder-run" title="Whether a compiled app is currently running">⏹ idle</span>
+    <span class="sb-sep"></span>
+    <span id="sb-builder-ship" title="Time since last commit on this branch">last ship —</span>
+    <span class="sb-sep"></span>
     <span>Clear v1.0</span>
     <span class="sb-sep"></span>
     <span id="sb-shortcuts">Ctrl+S compile &middot; Ctrl+Enter run &middot; Ctrl+K chat</span>
@@ -1015,6 +1022,38 @@ const _quotes = [
     setInterval(() => { qi = (qi + 1) % _quotes.length; show(); }, 45000);
   }
 }
+
+// ==========================================================================
+// BUILDER MODE STATUS — chips at the right end of the status bar that show
+// the live state of the build loop: how many compiles in this session, if
+// an app is currently running, and how long since the last commit. Polls
+// every 5s. Server-side tracking lives in playground/server.js _builderState.
+// ==========================================================================
+function _formatRelativeTime(ts) {
+  if (!ts) return '—';
+  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (sec < 60) return sec + 's ago';
+  const min = Math.round(sec / 60);
+  if (min < 60) return min + 'm ago';
+  const hr = Math.round(min / 60);
+  if (hr < 24) return hr + 'h ago';
+  return Math.round(hr / 24) + 'd ago';
+}
+async function _refreshBuilderStatus() {
+  try {
+    const r = await fetch('/api/builder-status');
+    if (!r.ok) return;
+    const s = await r.json();
+    const ce = document.getElementById('sb-builder-compiles');
+    const re = document.getElementById('sb-builder-run');
+    const she = document.getElementById('sb-builder-ship');
+    if (ce) ce.textContent = `${s.successful_compiles}/${s.compiles_today} ok`;
+    if (re) re.textContent = s.app_running ? `▶ :${s.running_port}` : '⏹ idle';
+    if (she) she.textContent = 'last ship ' + _formatRelativeTime(s.last_ship_at);
+  } catch {}
+}
+_refreshBuilderStatus();
+setInterval(_refreshBuilderStatus, 5000);
 
 // ==========================================================================
 // EDITOR TOC

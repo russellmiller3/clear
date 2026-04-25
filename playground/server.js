@@ -323,6 +323,11 @@ app.post('/api/compile', (req, res) => {
     if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
     if (!source.trim()) return res.json({ errors: [], warnings: [], html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
     const result = compileProgram(source, { sourceMap: true });
+    _builderState.compiles_today++;
+    _builderState.last_compile_at = Date.now();
+    _builderState.last_compile_ok = (result.errors || []).length === 0;
+    if (_builderState.last_compile_ok) _builderState.successful_compiles++;
+    else _builderState.failed_compiles++;
     res.json({
       errors: result.errors || [],
       warnings: result.warnings || [],
@@ -336,6 +341,37 @@ app.post('/api/compile', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Builder Mode status — chips at the bottom of Studio. Polled every few
+// seconds by ide.html. Returns whatever truth we have right now: how many
+// compiles this session, whether an app is currently running, when the
+// last successful compile happened. Last-ship reads `git log -1` with a
+// short cache so it doesn't fork git on every poll.
+let _lastShipCache = { ts: 0, value: null };
+app.get('/api/builder-status', (req, res) => {
+  const now = Date.now();
+  let last_ship_at = _lastShipCache.value;
+  if (now - _lastShipCache.ts > 30_000) {
+    try {
+      const ts = execSync('git log -1 --format=%ct', { cwd: ROOT_DIR, timeout: 1000 }).toString().trim();
+      const epoch = Number(ts) * 1000;
+      if (Number.isFinite(epoch)) last_ship_at = epoch;
+    } catch {}
+    _lastShipCache = { ts: now, value: last_ship_at };
+  }
+  res.json({
+    compiles_today: _builderState.compiles_today,
+    successful_compiles: _builderState.successful_compiles,
+    failed_compiles: _builderState.failed_compiles,
+    last_compile_at: _builderState.last_compile_at,
+    last_compile_ok: _builderState.last_compile_ok,
+    last_run_at: _builderState.last_run_at,
+    app_running: !!runningChild,
+    running_port: runningChild ? runningPort : null,
+    last_ship_at,
+    server_started_at: _SERVER_START_TS,
+  });
 });
 
 // =============================================================================
@@ -434,6 +470,23 @@ app.post('/api/exec', (req, res) => {
     });
   }
 });
+
+// =============================================================================
+// BUILDER STATUS — Studio status-bar chips: compiles today, app running,
+// last successful compile, last ship. All local; no API spend. Counters live
+// in memory and reset on server restart, which is fine for "what does the
+// builder feel like right now?" — for cross-session metrics, the Factor DB
+// is authoritative.
+// =============================================================================
+const _SERVER_START_TS = Date.now();
+const _builderState = {
+  compiles_today: 0,
+  successful_compiles: 0,
+  failed_compiles: 0,
+  last_compile_at: null,
+  last_compile_ok: null,
+  last_run_at: null,
+};
 
 // =============================================================================
 // RUN — start compiled app as child process
@@ -1780,6 +1833,7 @@ app.post('/api/run', async (req, res) => {
   const env = { ...process.env, PORT: String(runningPort), STUDIO_PORT: String(process.env.PORT || 3456), JWT_SECRET: process.env.JWT_SECRET || 'clear-test-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
   const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
   runningChild = child;
+  _builderState.last_run_at = Date.now();
 
   let responded = false;
   const logs = [];
