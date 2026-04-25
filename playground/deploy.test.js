@@ -860,6 +860,111 @@ when user requests data from /api/secret:
 		}
 	});
 
+	// ─────────────────────────────────────────────────────────────────────
+	// CC-4 cycle 7 — custom-domain pass-through. The orchestrator already
+	// honors the optional `domain` field by passing it as customDomain to
+	// attachDomain. These tests lock in:
+	//   1. Custom domain wins over the default hostname when CF accepts it.
+	//   2. Invalid domain syntax is caught at sanitize, never reaches CF.
+	//   3. CF rejecting the domain (DOMAIN_TAKEN) degrades gracefully:
+	//      app still ships under the default hostname, response carries
+	//      degraded:true so the UI can warn the owner.
+	// ─────────────────────────────────────────────────────────────────────
+
+	await runSeq('/api/deploy — custom domain passes through to attachDomain and wins over default URL (cc-4 cycle 7)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: DEAL_DESK_MIN, appSlug: 'deal-desk', target: 'cloudflare', domain: 'deals.acme.com' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.url).toBe('https://deals.acme.com');
+				const attachCall = fake.calls.find((c) => c.op === 'attachDomain');
+				expect(attachCall).not.toBe(undefined);
+				expect(attachCall.hostname).toBe('deals.acme.com');
+				// Custom domain replaces the default — the binding row's
+				// hostname is now 'deals.acme.com', so lookup keys on the
+				// FIRST PART of that hostname ('deals'), not the appSlug.
+				const row = await store.lookupAppBySubdomain('deals');
+				expect(row).not.toBe(null);
+				expect(row.hostname).toBe('deals.acme.com');
+				expect(row.appSlug).toBe('deal-desk');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — invalid domain 400s before any CF call (cc-4 cycle 7)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: DEAL_DESK_MIN, appSlug: 'deal-desk', target: 'cloudflare', domain: 'not-a-domain' },
+				});
+				expect(r.status).toBe(400);
+				expect(r.body.ok).toBe(false);
+				// Sanitize fired before the orchestrator — no CF calls, no binding row.
+				expect(fake.calls.length).toBe(0);
+				const row = await store.lookupAppBySubdomain('deal-desk');
+				expect(row).toBe(null);
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — CF rejecting custom domain degrades to default URL but still binds (cc-4 cycle 7)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		// Override attachDomain to simulate the domain-already-taken case.
+		fake.attachDomain = async (p) => {
+			fake.calls.push({ op: 'attachDomain', hostname: p.hostname });
+			return { ok: false, code: 'DOMAIN_TAKEN', status: 409 };
+		};
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: DEAL_DESK_MIN, appSlug: 'deal-desk', target: 'cloudflare', domain: 'taken.example.com' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.degraded).toBe(true);
+				expect(r.body.url).toBe('https://deal-desk.buildclear.dev');
+				expect(r.body.domainError.code).toBe('DOMAIN_TAKEN');
+				// markAppDeployed still ran with the default hostname so the
+				// app is reachable at <slug>.buildclear.dev.
+				const row = await store.lookupAppBySubdomain('deal-desk');
+				expect(row).not.toBe(null);
+				expect(row.hostname).toBe('deal-desk.buildclear.dev');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
 	await runSeq('/api/deploy — same-tenant re-deploy of existing slug is NOT 409 (cc-4 cycle 6)', async () => {
 		// Same tenant publishing the same slug twice is the existing
 		// update path, not a collision. The pre-flight check must see

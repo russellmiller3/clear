@@ -3286,15 +3286,12 @@ window.doDeploy = async function() {
           const cur = parseInt(localStorage.getItem('clear-bm-ships-counter') || '0', 10) || 0;
           localStorage.setItem('clear-bm-ships-counter', String(cur + 1));
         } catch (e) { /* private browsing — counter resets each session, harmless */ }
-        if (domain) {
-          fetch('/api/custom-domain', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appName: s.result?.appName, domain }),
-          }).then(x => x.json()).then(c => {
-            if (c.ok) progress.innerHTML += `<div style="margin-top:8px">DNS records: <pre>${escHtmlLocal(c.stdout || '')}</pre></div>`;
-          });
-        }
+        // Custom domain is attached during the publish itself by Cloudflare
+        // (see deploy-cloudflare.js attachDomain step). The old post-publish
+        // /api/custom-domain call was a Fly-era leftover — Studio is Clear
+        // Cloud only now, so the domain is already wired up by the time the
+        // user sees the live URL. If the orchestrator returned degraded:true,
+        // the URL above shows the default <slug>.buildclear.dev fallback.
         return;
       }
       if (s.status === 'failed') {

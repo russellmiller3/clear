@@ -414,7 +414,18 @@ export function wireDeploy(app, opts = {}) {
 				const boundHost = (r.url || '').replace(/^https?:\/\//, '');
 				console.log(`[cc-4] bound ${tenant.slug}/${appSlug} -> ${boundHost}`);
 			} catch { /* logging never breaks the response */ }
-			return res.json({ ok: true, jobId: r.jobId, url: r.url, degraded: r.degraded || false });
+			// CC-4 cycle 7 — pass domainError through when a custom domain
+			// failed (e.g. DOMAIN_TAKEN). The modal needs the code so it can
+			// tell the owner "your custom domain was already in use; the app
+			// is reachable at <slug>.buildclear.dev" instead of a vague
+			// "degraded" label.
+			return res.json({
+				ok: true,
+				jobId: r.jobId,
+				url: r.url,
+				degraded: r.degraded || false,
+				...(r.domainError ? { domainError: r.domainError } : {}),
+			});
 		}
 
 		// Legacy Fly builder path.
