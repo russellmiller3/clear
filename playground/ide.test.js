@@ -50,14 +50,16 @@ try {
   // ==========================================================================
   console.log('🌐 Page load');
 
-  assert(await page.title() === 'Clear Playground', 'page title correct');
+  assert(await page.title() === 'Clear Studio', 'page title correct');
   assert(await page.locator('#app').isVisible(), 'app renders');
   assert(await page.locator('#toolbar').isVisible(), 'toolbar visible');
   assert(await page.locator('#editor-pane').isVisible(), 'editor pane visible');
   assert(await page.locator('#preview-pane').isVisible(), 'preview pane visible');
   assert(await page.locator('#status-bar').isVisible(), 'status bar visible');
 
-  const jsErrors = consoleErrors.filter(e => !e.includes('favicon'));
+  // Filter expected boot noise: favicons + the unauthenticated tenant fetch (401).
+  const jsErrors = consoleErrors.filter(e =>
+    !e.includes('favicon') && !e.includes('401'));
   assert(jsErrors.length === 0, `no JS errors on load (got: ${jsErrors.join('; ') || 'none'})`);
 
   // ==========================================================================
@@ -66,12 +68,12 @@ try {
   console.log('\n✏️  Editor');
 
   assert(await page.locator('.cm-editor').isVisible(), 'CodeMirror editor visible');
-  assert(await page.locator('.cm-content').getAttribute('contenteditable') === 'true', 'editor is editable');
+  assert(await page.locator('.cm-content').first().getAttribute('contenteditable') === 'true', 'editor is editable');
 
   await page.locator('.cm-editor').click();
   await page.keyboard.type('x');
   await page.waitForTimeout(100);
-  const typedText = await page.locator('.cm-content').innerText();
+  const typedText = await page.locator('.cm-content').first().innerText();
   assert(typedText.includes('x'), 'can type in editor');
 
   // ==========================================================================
@@ -79,10 +81,11 @@ try {
   // ==========================================================================
   console.log('\n🔧 Toolbar buttons');
 
-  assert(await page.locator('button:has-text("New")').isVisible(), 'New button visible');
+  assert(await page.locator('button[onclick="newFile()"]').isVisible(), 'New button visible');
   assert(await page.locator('button[onclick="doCompile()"]').isVisible(), 'Compile button visible');
-  assert(await page.locator('button[onclick="doRun()"]').isVisible(), 'Run button visible');
-  assert(await page.locator('button[onclick="doStop()"]').isVisible(), 'Stop button visible');
+  // Run/Stop start hidden (display:none) and reveal after compile — assert presence not visibility.
+  assert(await page.locator('button[onclick="doRun()"]').count() === 1, 'Run button present');
+  assert(await page.locator('button[onclick="doStop()"]').count() === 1, 'Stop button present');
   assert(await page.locator('button[onclick="doSave()"]').isVisible(), 'Save button visible');
   assert(await page.locator('#theme-toggle').isVisible(), 'theme toggle visible');
 
@@ -91,9 +94,9 @@ try {
   // ==========================================================================
   console.log('\n📄 New button');
 
-  await page.locator('button:has-text("New")').click();
+  await page.locator('button[onclick="newFile()"]').click();
   await page.waitForTimeout(300);
-  const afterNew = await page.locator('.cm-content').innerText();
+  const afterNew = await page.locator('.cm-content').first().innerText();
   assert(afterNew.includes('build for web'), 'New resets editor to scaffold');
   assert((await page.locator('#editor-label').innerText()).toLowerCase() === 'main.clear', 'label resets to main.clear');
 
@@ -116,7 +119,7 @@ try {
   // Loading a template puts code in editor
   await picker.selectOption({ index: 2 });
   await page.waitForTimeout(800);
-  const afterTemplate = await page.locator('.cm-content').innerText();
+  const afterTemplate = await page.locator('.cm-content').first().innerText();
   assert(afterTemplate.includes('build for'), 'loading template populates editor');
   assert(await page.locator('#editor-label').innerText() !== 'main.clear', 'label updates to template name');
 
@@ -180,7 +183,7 @@ try {
   console.log('\n📋 Compiled Code empty state');
 
   // Force clear lastCompiled by going to new file
-  await page.locator('button:has-text("New")').click();
+  await page.locator('button[onclick="newFile()"]').click();
   await page.waitForTimeout(200);
   // Manually check: compiled tab before auto-compile settles
   // The auto-compile fires after 500ms — check the empty state message

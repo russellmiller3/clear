@@ -3175,8 +3175,8 @@ function _applyTheme(src, themeName) {
 }
 
 window.doDeploy = async function() {
-  const source = (typeof getSource === 'function') ? getSource() : (window.editor ? window.editor.state.doc.toString() : '');
-  if (!source) { alert('Nothing to deploy — compile first.'); return; }
+  const source = (typeof getSource === 'function') ? getSource() : (window._editor ? window._editor.state.doc.toString() : '');
+  if (!source) { alert('Nothing to publish — compile first.'); return; }
 
   const appSlugDefault = 'app-' + Math.random().toString(36).slice(2, 6);
   const detected = _detectTheme(source);
@@ -3200,13 +3200,13 @@ window.doDeploy = async function() {
   modal.style.display = 'flex';
   modal.innerHTML = `
     <div class="deploy-box">
-      <div class="deploy-title">Deploy to a live URL</div>
+      <div class="deploy-title">Publish to Clear Cloud</div>
       <label>App name</label>
       <input id="deploy-app-slug" type="text" value="${appSlugDefault}">
       <label style="margin-top:12px">Theme</label>
       <div class="theme-grid">${themeCardsHtml}</div>
       <label style="margin-top:12px">Custom domain (optional)</label>
-      <input id="deploy-domain" type="text" placeholder="deals.acme.com">
+      <input id="deploy-domain" type="text" placeholder="deals.acme.com (defaults to ${appSlugDefault}.buildclear.dev)">
       <div id="deploy-secret-fields"></div>
       <div class="deploy-actions">
         <button id="deploy-cancel-btn">Cancel</button>
@@ -3242,7 +3242,16 @@ window.doDeploy = async function() {
       r = await fetch('/api/deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: sourceWithTheme, appSlug, secrets, domain: domain || undefined }),
+        body: JSON.stringify({
+          source: sourceWithTheme,
+          appSlug,
+          secrets,
+          domain: domain || undefined,
+          // Studio is Clear Cloud only — every Publish ships to Cloudflare.
+          // The server still honors CLEAR_DEPLOY_TARGET env for ops overrides;
+          // this body field wins for the per-Publish path.
+          target: 'cloudflare',
+        }),
       }).then(x => x.json().then(j => ({ status: x.status, body: j })));
     } catch (e) {
       progress.innerHTML = `<span style="color:#e74c3c">Network error: ${escHtmlLocal(e.message)}</span>`;
