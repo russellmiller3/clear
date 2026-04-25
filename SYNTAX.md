@@ -1397,6 +1397,31 @@ login with 'google'
 login with 'github'
 ```
 
+## Cookies
+
+```clear
+# Plain cookies (readable by client JS)
+set cookie 'theme' to 'dark'
+set cookie 'flash' to 'Saved!' for 5 minutes
+set cookie 'last_visit' to today for 30 days
+favorite = get cookie 'theme'
+clear cookie 'theme'
+
+# Signed cookies (tamper-proof, server-side verifiable)
+set signed cookie 'user_id' to caller's id for 7 days
+verified = get signed cookie 'user_id'
+```
+
+`for N days/hours/minutes` sets `maxAge` on the cookie. Without it, the cookie expires when the browser closes.
+
+Plain and signed cookies share secure-by-default flags: `sameSite: 'lax'`, plus `secure: true` whenever `NODE_ENV=production`. Signed cookies additionally set `httpOnly: true` (client JS cannot read them).
+
+Signed cookies require `COOKIE_SECRET` in env. The runtime warns loudly if unset and uses an ephemeral fallback (sessions invalidate on every restart — fine for dev, breaks prod).
+
+`get signed cookie 'name'` returns `undefined` when the signature doesn't verify — never throws — so callers must handle the missing-or-tampered case explicitly.
+
+`cookie-parser` middleware auto-wires when any cookie node exists in the program. No manual `app.use()` needed.
+
 ## Production Features
 
 ```clear

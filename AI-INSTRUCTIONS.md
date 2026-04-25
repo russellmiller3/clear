@@ -507,6 +507,41 @@ If your app genuinely has no concept of user accounts — no `allow signup and l
 
 Never add a bare `requires login` to an endpoint in an app that has no auth scaffolding — it will fail to authenticate anything because there's no user system to check against.
 
+## Cookies (sessions, persisted state)
+
+Cookies are how you keep someone logged in or remember a tiny bit of state across page loads. Three forms:
+
+```clear
+# Plain cookie — readable by JS on the client
+set cookie 'theme' to 'dark'
+set cookie 'last_visit' to today for 30 days
+
+# Read it back on a later request
+favorite_theme = get cookie 'theme'
+
+# Clear it (logout, opt-out, etc.)
+clear cookie 'theme'
+
+# Signed cookie — tamper-proof. Use this for anything an attacker would change.
+set signed cookie 'user_id' to caller's id for 7 days
+verified_id = get signed cookie 'user_id'
+```
+
+**Defaults** (compiler sets these for you — don't re-specify):
+- `sameSite: 'lax'` — works for normal navigation, blocks most CSRF.
+- `secure: true` whenever `NODE_ENV=production`.
+- `httpOnly: true` on signed cookies (JS on the client can't read them).
+
+**`for N days/hours/minutes`** sets the cookie's expiry. Without it, the cookie expires when the browser closes (session cookie).
+
+**Signed cookies need `COOKIE_SECRET` in env.** The runtime warns loudly if it's unset and falls back to an ephemeral random secret — fine for dev, but signed cookies become invalid on every restart, which breaks production logins.
+
+**Use signed cookies for:** user IDs, session tokens, "remember me" tokens — anything that drives an auth decision or that a malicious user would benefit from modifying.
+
+**Use plain cookies for:** theme preferences, "hide this banner" dismissal flags, last-visit timestamps — non-security UI state.
+
+`get signed cookie 'name'` returns nothing (not throws) when the signature doesn't verify, so always treat the result as possibly-missing.
+
 ## URL Path Parameters — `this X`, Not Bare `X`
 
 When an endpoint path has a parameter (like `/:id` or `/:user_id`), access it inside the body with `this X`, not bare `X`. Bare names like `id` look like typos to the tokenizer and trigger "Did you mean 'if'?".

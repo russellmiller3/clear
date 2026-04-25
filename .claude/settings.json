@@ -16,6 +16,12 @@
             "command": "node .claude/hooks/learnings-miner.mjs",
             "timeout": 15,
             "statusMessage": "Mining learnings.md for relevant gotchas..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/doc-cascade.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking if doc cascade applies..."
           }
         ]
       }

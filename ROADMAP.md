@@ -174,7 +174,7 @@ Phase A (additive edits) + Phase B (reversible: hide/rename/relabel/reorder) shi
 | Phase | Items | Status | Effort |
 |-------|-------|--------|--------|
 | **Phase C** | LAE-5 schema migration planner; LAE-3 destructive changes (explicit permanent-delete + unavoidable type coercion). **No data snapshot on destructive delete** — audit trail replaces it as the accountability surface (GDPR/CCPA/HIPAA erasure compliance). | Not started | ~1.5 weeks |
-| **Phase D** | LAE-8 audit log per app; LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | Not started | ~1 week |
+| **Phase D** | ~~LAE-8 audit log per app~~ **DONE 2026-04-25** (write path on `InMemoryTenantStore`: `appendAuditEntry` + `getAuditLog`, append-only, schema `{ts, actor, action, verdict, sourceHashBefore, sourceHashAfter, note}`; Phase C extends with status + markAuditEntry); LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | LAE-8 done; LAE-9/10 not started | ~3 days remaining |
 
 **Still needed before any multi-user demo:**
 - Browser Playwright e2e covering owner→widget→ship/hide/undo on the three templates
@@ -221,7 +221,7 @@ cc-agent / ollama / openrouter backends shipped (see `FEATURES.md`). What remain
 | # | Item | Scope |
 |---|---|---|
 | GM-5 | Calibration harness — `curriculum-sweep.js --calibrate` runs N tasks on Ghost + same N on real Haiku, compares Factor DB row distributions, flags drift | 2 days |
-| GM-6 | Default research sweeps to Ghost — `curriculum-sweep.js --workers=3` uses `MEPH_BRAIN=cc-agent` by default; explicit `--real` required to hit production Anthropic | 1 day |
+| ~~GM-6~~ | ~~Default research sweeps to Ghost~~ **DONE 2026-04-25** — `validateSweepPreconditions(env, opts)` defaults to cc-agent; `--real` opts back into production Anthropic. Banner announces the default at sweep start. The "forgot --ghost and burned $50" failure mode is gone. | DONE |
 
 Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real customer apps.
 

@@ -15,6 +15,17 @@ if [ "$SKIP_CROSS_TARGET_SMOKE" != "1" ]; then
   node scripts/cross-target-smoke.mjs || exit 1
 fi
 
+# Doc-drift detector self-tests (must pass — the detector itself must work).
+echo "🧪 Running doc-drift self-tests..."
+node scripts/doc-drift.test.mjs || exit 1
+
+# Doc-drift detector: scans HEAD vs origin/main for new node types or
+# synonyms that landed without doc updates. Warning-only — never blocks
+# a push. Complements .claude/hooks/doc-cascade.mjs (which fires at
+# write time). See CLAUDE.md "Documentation Rule (MANDATORY)".
+echo "🔎 Scanning for doc drift (warning-only)..."
+node scripts/doc-drift.mjs --quiet
+
 # Meph tool eval — runs only when ANTHROPIC_API_KEY is set. Catches
 # regressions in tools, schemas, or system prompt that compiler tests
 # don't see. Skips cleanly with exit 0 if no key. Costs ~$0.10–0.30

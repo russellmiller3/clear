@@ -216,6 +216,14 @@ Read the TOC before working in the file so you know where things are.
 
 Before building a new feature, grep the parser for similar existing features. We've nearly rebuilt things that already existed (e.g. SERVICE_CALL for Stripe/SendGrid/Twilio was implemented but undocumented, which almost led to building a parallel "batteries" system).
 
+**Automation backstops** (added 2026-04-25 after Session 46 nearly shipped without doc updates):
+
+- **PostToolUse hook — `.claude/hooks/doc-cascade.mjs`**. Fires whenever Claude Edits or Writes `parser.js`, `synonyms.js`, `compiler.js`, `index.js`, or anything in `runtime/`. Injects the 11-doc cascade list into Claude's next-message context with a "did you touch any of these?" prompt. Catches drift at write time when fixing is one Edit, not a separate session. Wired in `.claude/settings.json` alongside the existing validator-friction + learnings-miner hooks.
+
+- **Pre-push detector — `scripts/doc-drift.mjs`**. Compares HEAD vs `origin/main`, extracts new entries in the NodeType freeze block (parser.js) and new top-level synonym keys (synonyms.js), and warns about items missing from EVERY user-facing doc (`intent.md`, `SYNTAX.md`, `FEATURES.md`, `AI-INSTRUCTIONS.md`). Uses fuzzy matching — variants of `cookie_set` include `cookie set` and `set cookie` so docs in natural English aren't false-flagged. Warning-only; never blocks a push. Self-tests in `scripts/doc-drift.test.mjs` (run by pre-push to ensure the detector itself isn't broken).
+
+These automate the rule, they don't replace it. The human-side practice — writing doc updates in the same commit as the feature — is still the actual quality bar. The hook nudges; the detector catches the misses.
+
 ## Before Adding New Features or Syntax (MANDATORY)
 1. Use `/write-plan` to create an implementation plan
 2. Use `/red-team-plan` to stress-test the plan before coding

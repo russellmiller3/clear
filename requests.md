@@ -137,7 +137,7 @@
 | `rate limit` | ❌ comment | ❌ comment |
 | `cache response` | ❌ comment | ❌ comment |
 | CORS headers | ❌ not emitted | ✅ CORSMiddleware |
-| Cookies | ❌ no cookie-parser | 💀 no Response import |
+| Cookies | ✅ JS complete (set/get/clear/signed, secure-by-default) [2026-04-25] | 💀 no Response import |
 | Environment variables | ⚠️ works but no .env | ⚠️ works but no dotenv |
 | `background job` | ❌ comment | N/A |
 | Server sent events | ❌ comment | N/A |
@@ -3005,7 +3005,7 @@ Actual remaining backlog (everything else has been verified or moved to DONE):
 - ~~**T2#13 Scheduled task cancellation**~~ **[DONE 2026-04-24]** all timer handles now live in `_scheduledCancellers[]`; SIGTERM and SIGINT drain it before `server.close()`. HH:MM cron uses closure-over-mutable-var so the canceller always sees whichever _setTimeout is armed right now. 7 new compiler tests.
 - ~~**T2#15 Multipart middleware**~~ **[DONE 2026-04-24]** Compiler walks the AST for UPLOAD_TO + ACCEPT_FILE nodes, emits multer + `_upload` module-scoped, auto-injects `_upload.any()` on POST endpoints whose path is an upload target. 6 new tests; negative case (non-upload POSTs) + no-dead-code case both covered.
 - **T2#33 Throttle** — no `on scroll throttle` syntax recognized. Missing feature.
-- **T2#42 Cookies** — no `set cookie` syntax, no `cookie-parser` infra. Missing feature.
+- ~~**T2#42 Cookies**~~ **[DONE 2026-04-25]** JS path complete: `set cookie`, `get cookie`, `clear cookie`, `set signed cookie`, `get signed cookie` parse + compile; `cookie-parser` auto-wired when any cookie node exists; secure-by-default flags (`sameSite: 'lax'`, `secure` in production, `httpOnly` on signed). `AI-INSTRUCTIONS.md` + `SYNTAX.md` updated so Meph knows the syntax. Python path remains open (separate Python-target follow-up).
 - **T2#44 Transform data** — no `transform data:` / `pick X from Y` keyword. Missing feature.
 - **T2#47 Upsert** — no `upsert` keyword or `save or update by email` syntax. Missing feature.
 - **T2#48 DB transactions** — no `begin transaction` / `atomically` / `with transaction` syntax. Missing feature.

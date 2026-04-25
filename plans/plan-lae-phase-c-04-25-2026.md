@@ -65,14 +65,22 @@ TOOL_DEFINITIONS includes 'propose_remove_field' with description that says
 **Test (red, extend `playground/tenants.test.js`):**
 
 ```
-appendAuditEntry now also accepts {kind, before, after, reason, ip, userAgent, versionId}.
-Rows surface those fields verbatim on getAuditLog.
-recordAuditEntry on unknown (tenantSlug, appSlug) still returns {ok:false, code:'APP_NOT_FOUND'}.
+appendAuditEntry now also accepts {kind, before, after, reason, ip, userAgent, status}.
+status defaults to 'shipped' when omitted (Phase D non-destructive callers stay unchanged);
+destructive callers pass status:'pending' explicitly.
+appendAuditEntry returns {ok:true, auditId} so callers can update the row later.
+markAuditEntry({auditId, status, versionId?, error?}) updates an existing row in place.
+markAuditEntry on unknown auditId returns {ok:false, code:'AUDIT_NOT_FOUND'}.
+markAuditEntry preserves all original fields except the ones explicitly set.
+Rows surface kind/before/after/reason/ip/userAgent/status/versionId/error verbatim on getAuditLog.
+appendAuditEntry on unknown (tenantSlug, appSlug) still returns {ok:false, code:'APP_NOT_FOUND'}.
 getAuditLog returns auditLog newest-first; original storage stays insertion-order.
 auditLog caps at MAX_AUDIT_PER_APP=200; oldest trimmed on overflow.
 ```
 
-**Green:** extend the existing `appendAuditEntry` to accept the destructive-specific fields. Add `MAX_AUDIT_PER_APP = 200` + trim logic. Extend `getAuditLog` to return newest-first via shallow-copy + sort (matches `getAppRecord(versions)` pattern). **Schema lock-in** — `before` and `after` are intentionally tiny string snippets (the diff hunk only — never full source — so audit row stays bounded). `kind` mirrors the classifier's change kind (`remove_field`, `drop_endpoint`, `change_type`). The audit row is the accountability surface that replaces the data snapshot for GDPR/CCPA/HIPAA erasure.
+**Green:** extend the existing `appendAuditEntry` to accept the destructive-specific fields plus a `status` (default `'shipped'`). Generate `auditId` server-side (timestamp + counter is fine for in-memory). Return `{ok:true, auditId}`. Add a new `markAuditEntry({auditId, status, versionId?, error?})` that does an in-place update — find the row by auditId in the app's `auditLog` array, merge the new fields, leave the rest. Add `MAX_AUDIT_PER_APP = 200` + trim logic on append (do NOT trim on mark — never lose a pending row mid-flight). Extend `getAuditLog` to return newest-first via shallow-copy + sort (matches `getAppRecord(versions)` pattern).
+
+**Schema lock-in** — `before` and `after` are intentionally tiny string snippets (the diff hunk only — never full source — so audit row stays bounded). `kind` mirrors the classifier's change kind (`remove_field`, `drop_endpoint`, `change_type`). `status` is one of `'pending' | 'shipped' | 'ship-failed'`. The audit row is the accountability surface that replaces the data snapshot for GDPR/CCPA/HIPAA erasure — and per locked-in decision #4, it's written BEFORE the ship runs, not after.
 
 **Files touched:** `playground/tenants.js`, `playground/tenants.test.js`.
 **Depends on:** none — pure store work, runs in parallel with cycle 1 if you want.
@@ -87,20 +95,36 @@ auditLog caps at MAX_AUDIT_PER_APP=200; oldest trimmed on overflow.
 POST /__meph__/api/ship with {newSource, classification:{type:'destructive'}, confirmation, reason}
 WITHOUT confirmation → 400 {error:/confirmation required/i, expected:'DELETE field email'}.
 WITH wrong confirmation 'delete email' → 400 {error:/confirmation mismatch/i}.
-WITH correct 'DELETE field email' AND reason → calls deps.applyShip,
-then calls deps.appendAuditEntry({actor:req.user.email, action:'ship', verdict:'destructive',
-kind:'remove_field', before:'- notes (text)', after:'(removed)', reason, versionId:result.versionId}).
 WITHOUT reason → 400 {error:/reason is required/i}.
+WITH correct 'DELETE field email' AND reason (happy path):
+  1. deps.appendAuditEntry called FIRST with status:'pending', kind:'remove_field',
+     actor:req.user.email, action:'ship', verdict:'destructive',
+     before:'- notes (text)', after:'(removed)', reason. Returns {ok:true, auditId}.
+  2. deps.applyShip called only after audit append returned ok:true.
+  3. After applyShip returns ok:true, deps.markAuditEntry called with
+     {auditId, status:'shipped', versionId:result.versionId}.
+  4. Endpoint returns 200 {...result, audit:{ok:true, auditId}}.
+WITH appendAuditEntry returning {ok:false, code:'STORE_UNAVAILABLE'} → 503
+{error:/audit unavailable/i}; deps.applyShip NEVER called.
+WITH appendAuditEntry throwing → 503 {error:/audit unavailable/i}; deps.applyShip NEVER called.
+WITH applyShip throwing AFTER pending audit row written → deps.markAuditEntry called
+with {auditId, status:'ship-failed', error:err.message}; the pending audit row remains as
+evidence of the attempt. Endpoint returns 500 {error:/ship failed/i, auditId}.
 ```
 
 **Green:** in `createEditApi`'s `/__meph__/api/ship` handler, before calling `deps.applyShip`, look at `req.body.classification` (the widget already round-trips this from `/propose`'s response). If `classification.type === 'destructive'`:
 
 - require non-empty `req.body.reason`
 - require `req.body.confirmation` to equal the canonical phrase derived from the first destructive change: e.g. `DELETE field <name>` for `remove_field`, `DELETE endpoint <method> <path>` for `remove_endpoint`, `DELETE page "<title>"` for `remove_page`, `COERCE <table>.<field> from <X> to <Y>` for `change_type`. Build this string with a `requiredConfirmation(classification)` pure helper, exported for the widget to import.
-- after `applyShip` returns `ok:true`, call `deps.appendAuditEntry` with the full row. If `appendAuditEntry` is missing on `deps`, log a warning and do NOT fail the ship (audit write is fire-and-forget on the happy path; alarm-only when missing).
-- return `{...result, audit:{ok}}` so the widget can show "audit row written" confirmation.
+- **Audit-first ordering (locked-in decision #4).** Before any destructive change touches the deployed app, the system must have proof of the attempt:
+  1. Call `deps.appendAuditEntry({...row, status:'pending'})`. If it throws or returns `{ok:false}`, return **503** `{error:'audit unavailable'}` and do NOT call `applyShip`. No row, no ship.
+  2. If audit append succeeds, capture the returned `auditId`, then call `deps.applyShip`.
+  3. On `applyShip` success: call `deps.markAuditEntry({auditId, status:'shipped', versionId:result.versionId})`. Return `{...result, audit:{ok:true, auditId}}`.
+  4. On `applyShip` failure: call `deps.markAuditEntry({auditId, status:'ship-failed', error:err.message})`. The pending row is now evidence of the attempt; return 500 with `{error:'ship failed', auditId}` so the widget can surface it.
 
 Add a small pure helper file `lib/destructive-confirm.js` exporting `requiredConfirmation(classification)` so the widget and the API agree. Test it directly.
+
+**Why audit-first.** Audit logs that have holes can't prove anything to a regulator. If the audit store fails, that's a bug signal — exactly when destructive changes should NOT be running. Cost today is zero (in-memory writes don't fail); strict default locked in before there are real users to break with a later tightening.
 
 **Files touched:** `lib/edit-api.js`, `lib/edit-api.test.js`, `lib/destructive-confirm.js` (new), `lib/destructive-confirm.test.js` (new).
 **Depends on:** Cycle 3.
@@ -118,7 +142,7 @@ Given a proposal {classification:{type:'destructive', changes:[{kind:'remove_fie
     a red diff
     an <input id="clear-meph-confirm"> with placeholder 'DELETE field email'
     a <textarea id="clear-meph-reason"> required
-    a 'Permanently ship' button DISABLED until input.value === requiredConfirmation AND textarea.value !== ''
+    a 'I understand — ship and destroy' button DISABLED until input.value === requiredConfirmation AND textarea.value !== ''
 On Ship click, the body POSTed to /__meph__/api/ship includes
   {newSource, classification, confirmation, reason}.
 On 400 'confirmation mismatch', the input border turns red and the button stays disabled.
@@ -127,11 +151,13 @@ On 400 'confirmation mismatch', the input border turns red and the button stays 
 **Green:** in `runtime/meph-widget.js` `renderProposal`, replace the current "Phase A only ships additive changes" branch for destructive with a new section that:
 
 - imports `requiredConfirmation` (inlined as a JS helper in the widget — small enough to dup)
-- renders the typed-confirmation input + reason textarea + a clearly-styled red-bordered "Permanently ship" button
+- renders the typed-confirmation input + reason textarea + a clearly-styled red-bordered **"I understand — ship and destroy"** button (locked-in decision #3 — long copy = reading-friction safety)
 - adds keyup listeners to enable/disable the button based on the exact-match confirmation
 - on click: POST to `/ship` with `{newSource, classification, confirmation:input.value, reason:textarea.value}` (cloud slugs already attached when present)
-- on 200: addBot(`Permanently shipped. Audit row recorded.`); reload as today
+- on 200: addBot(`Shipped. Audit row recorded — audit ID ${result.audit.auditId}.`); reload as today
 - on 400 with `expected`: addBot the expected phrase as a hint, re-enable input
+- on 503 (audit unavailable): addBot('Cannot ship — audit log unreachable. Try again in a moment, or page support.'); button stays enabled so the owner can retry once audit comes back.
+- on 500 (ship failed AFTER pending audit): addBot(`Ship failed. The attempt is on record (audit ID ${error.auditId}).`); offer Retry button.
 
 Keep the existing reversible flow (Phase B's chip and behavior) unchanged. Style adds: a `.clear-meph-btn-danger` class (red bg) so the destructive button is unmistakable.
 
@@ -195,26 +221,27 @@ planRename when types differ returns {detected:'rename', warning:/type mismatch/
 
 **Phase C gate:** all of `node lib/edit-tools-phase-c.test.js`, `node lib/proposal.test.js`, `node playground/tenants.test.js`, `node lib/edit-api.test.js`, `node lib/migration-planner.test.js`, `node lib/destructive-confirm.test.js`, `node lib/ship.test.js`, `node playground/deploy-cloudflare.test.js` green. `node clear.test.js` regression count unchanged.
 
-## Open decisions for Russell
+## Decisions locked in (Russell, 2026-04-25)
 
-1. **Confirmation phrase format.** I picked `DELETE field <name>`, `DELETE endpoint <method> <path>`, `DELETE page "<title>"`, `COERCE <table>.<field> from X to Y`. Consider whether `DROP` reads better than `DELETE` for fields/endpoints; both are typeable, both are unambiguous.
-2. **Audit log retention cap.** I picked 200 entries per app. Trade-off: 200 destructive ships per app is generous (a single app rarely sees more than ~10 destructive ships); going to 1000 costs ~50KB per app in memory and gives more history.
-3. **Widget destructive button copy.** "Permanently ship" or "I understand — ship and destroy"? The latter is one extra reading-friction tick of safety.
-4. **Audit write failure mode.** I made it fire-and-forget (warn but don't fail the ship). If we want stricter compliance, flip to "block ship if audit write fails" — a one-line change in cycle 4.
+1. **Confirmation phrase verb: `DELETE`** (not `DROP`). Plain English over SQL jargon — owners aren't database engineers. Canonical phrases: `DELETE field <name>`, `DELETE endpoint <method> <path>`, `DELETE page "<title>"`, `COERCE <table>.<field> from X to Y`.
+2. **Audit log retention cap: 200 entries per app.** Real apps see ~10 destructive ships ever; 200 is 20× the realistic ceiling. 1000 costs 50KB/app for no benefit.
+3. **Widget destructive button copy: "I understand — ship and destroy".** The reading-friction IS the safety feature. Long phrase prevents fat-finger ships.
+4. **Audit write failure → block the ship.** Audit logs with holes can't prove anything to a regulator. **Ordering flips:** write audit row as `pending` → `applyShip` → mark row `shipped` (or `ship-failed`). If audit append throws or returns `ok:false`, return **503** BEFORE calling `applyShip` — no row, no ship. Cycle 3 + Cycle 4 below incorporate this redesign.
 
 ## Risks
 
 | Risk | Mitigation |
 |------|-----------|
 | Owner types confirmation phrase wrong 3x and gives up | Show the expected phrase verbatim in the input placeholder (already in cycle 5 test). One-click copy button could come in Phase D. |
-| Audit row written but ship fails | Cycle 4 writes audit AFTER `applyShip` returns ok:true, so this can't happen — the audit row is only ever for shipped destructions. |
+| Pending audit row + ship fails | Cycle 4's audit-first ordering writes `status:'pending'` first, ships, then marks `'shipped'` or `'ship-failed'`. Pending+failed rows are evidence of the attempt — kept on purpose, not bugs. Phase D's read API filters by status if needed. |
+| Audit store completely unavailable | Cycle 4 returns 503 BEFORE `applyShip` — no destructive change happens. Owner sees error, retries when audit comes back. By design (locked-in decision #4). |
 | Cloud rollback restores code but not the dropped data | This is by design (per roadmap "no data snapshot on destructive delete"). Document loudly in the widget destructive prompt: "Rolling back will restore the field's column but not its values." Cycle 5 includes this copy. |
 | Meph proposes destructive when owner meant hide | Tool description (cycle 2) steers toward `propose_hide_field`. Server-side gate is independent — even if Meph picks the destructive tool, owner still has to type the confirmation. |
 | Two owners both ship destructive at same time | DeployLockManager covers this (Phase B). Second click returns 409. |
 
 ## Definition of done
 
-Russell opens a CF-deployed todo app, types "permanently delete the notes field" in the widget, sees the destructive chip and a `DELETE field notes` placeholder, types it, types "user requested erasure under GDPR", clicks "Permanently ship". Within 3s the field is gone from the live site and the column is dropped from D1. He calls `/api/audit-log?appSlug=todo` (Phase D's read surface — out of scope here, but the rows are queryable) and sees the row with actor, ts, before/after, reason, versionId. He clicks Undo; the previous version's code comes back (column re-added by ALTER TABLE in the rollback bundle's migration), but the deleted row values are not recovered. The audit row remains.
+Russell opens a CF-deployed todo app, types "permanently delete the notes field" in the widget, sees the destructive chip and a `DELETE field notes` placeholder, types it, types "user requested erasure under GDPR", clicks **"I understand — ship and destroy"**. Behind the scenes: a `pending` audit row is written FIRST. Only then does the field-drop ship to D1. Within 3s the row is marked `shipped` with the version ID. He calls `/api/audit-log?appSlug=todo` (Phase D's read surface — out of scope here, but the rows are queryable) and sees the row with actor, ts, before/after, reason, versionId, status='shipped'. He clicks Undo; the previous version's code comes back (column re-added by ALTER TABLE in the rollback bundle's migration), but the deleted row values are not recovered. The audit row remains. **Failure path:** if the audit store had been down at ship time, the destructive change would have been refused entirely with a 503 — no half-deleted state, no orphan column drop, no proof gap.
 
 ---
 

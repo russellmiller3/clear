@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — Mid-day session: LAE Phase D write path, Ghost defaults to free, MCP descriptions fixed
+
+Same-day session continued from the overnight run. Five small ships, all green, $0 production-Anthropic API spend.
+
+**Flywheel description fix.** MCP tool descriptions for `run_tests`, `list_evals`, `run_evals`, `run_eval`, `db_inspect` lied — they said "Not yet available in MCP mode" while the dispatcher and MCP context were fully wired. Meph in cc-agent mode read those descriptions and skipped the tools, so overnight Ghost sweeps produced zero Factor DB rows. Descriptions now reflect reality. Drift guard added in `mcp-server.test.js` so the next desync surfaces in CI.
+
+**GM-6 — sweep defaults to cc-agent.** `validateSweepPreconditions(env, opts)` now takes `opts.real`. Default behavior: route through cc-agent (no API spend). Pass `--real` to opt back into production Anthropic. Banner announces the default at sweep start. The "I forgot to add `--ghost` and burned $50" failure mode is gone.
+
+**CC-1 stub — `PostgresTenantStore` interface.** Mirrors `InMemoryTenantStore`'s 17-method public surface. Every method throws `NOT_IMPLEMENTED` with the SQL the production version will run, so the future Phase 85a wire-up has a 1:1 shopping list. Contract test verifies surface parity.
+
+**LAE-8 — audit log per app (write path).** `appendAuditEntry()` + `getAuditLog()` on `InMemoryTenantStore`. Append-only, no cap at this layer (Phase C cycle 3 adds the 200-entry cap + status field + `markAuditEntry`). Audit row schema: `{ts, actor, action, verdict, sourceHashBefore, sourceHashAfter, note}`. The accountability surface that destructive ships will write into. 4 new TDD tests. **Phase C plan extended same day** (`plans/plan-lae-phase-c-04-25-2026.md`) and locked in: `DELETE` confirmation verb, 200-row cap, "I understand — ship and destroy" button copy, audit-first ordering (write `pending` row → ship → mark `shipped`/`ship-failed`; refuse the ship if audit append fails).
+
+**Cookies T2#42 marked DONE.** Investigation revealed the JS path is fully shipped: `set cookie` / `get cookie` / `clear cookie` / `set signed cookie` / `get signed cookie` parse + compile, `cookie-parser` auto-wires when any cookie node exists, secure-by-default flags. `requests.md` and the JS/Python feature matrix updated. `AI-INSTRUCTIONS.md` and `SYNTAX.md` got explicit cookie sections so Meph knows the syntax. Python path remains the only open piece (filed as Python-target follow-up).
+
+**Two new plan files.** `plans/plan-lae-phase-c-04-25-2026.md` (7-cycle TDD plan for destructive ships + migration planner, decisions locked in) and `plans/plan-charts-t2-8-04-25-2026.md` (6-cycle plan for donut/scatter/gauge/sparkline — bar/line/pie/area already work).
+
+**Test bump:** `clear.test.js` 2525 unchanged (no compiler changes today). Tenant tests 71 → 75. MCP tests 161 / 0. e2e suite 75 / 75 green throughout.
+
+---
+
 ## 2026-04-25 — Overnight: 2 compiler bugs squashed, deal-desk shipped, Compiler Flywheel goes live
 
 Russell asleep. Authorized autonomous run through a queued sequence of bug fixes plus Marcus GTM build-outs. All TDD, $0 API spend (no production-Anthropic sweeps fired). Seven new commits on `main`, all green.
