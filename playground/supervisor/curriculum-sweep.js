@@ -44,15 +44,25 @@ import { readFileSync, unlinkSync, realpathSync, existsSync } from 'fs';
  * on a check that didn't apply. This predicate makes the branch explicit and
  * testable.
  */
-export function validateSweepPreconditions(env = process.env) {
+export function validateSweepPreconditions(env = process.env, opts = {}) {
   const brain = typeof env.MEPH_BRAIN === 'string' ? env.MEPH_BRAIN.trim() : '';
+  // GM-6 (2026-04-25): default flipped from "real Anthropic" to "cc-agent".
+  // The production-Anthropic path costs money; cc-agent routes through
+  // the local Claude CLI subscription at $0. Caller passes opts.real=true
+  // (CLI flag --real) to explicitly opt into spend.
+  if (opts.real === true) {
+    if (!env.ANTHROPIC_API_KEY) {
+      return { ok: false, reason: 'ANTHROPIC_API_KEY not set — --real requires the production Anthropic API. Drop --real to route via the cc-agent default, or set ANTHROPIC_API_KEY.' };
+    }
+    return { ok: true, needsApiPreflight: true, backend: null };
+  }
   if (brain.length > 0) {
     return { ok: true, needsApiPreflight: false, backend: brain };
   }
-  if (!env.ANTHROPIC_API_KEY) {
-    return { ok: false, reason: 'ANTHROPIC_API_KEY not set — required for real sweep. Use --dry-run to preview, or set MEPH_BRAIN=cc-agent to route via the Claude CLI subscription.' };
-  }
-  return { ok: true, needsApiPreflight: true, backend: null };
+  // No explicit opt-in. Default to cc-agent so an overnight sweep "just
+  // works" without API spend. The caller is responsible for surfacing this
+  // default in the run banner so the user knows why MEPH_BRAIN is suddenly set.
+  return { ok: true, needsApiPreflight: false, backend: 'cc-agent', defaulted: true };
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -344,9 +354,15 @@ export async function runSweep({
     return { tasksRun: 0, rowsAdded: 0, dryRun: true };
   }
 
-  const pre = validateSweepPreconditions(process.env);
+  const pre = validateSweepPreconditions(process.env, { real: !!opts.real });
   if (!pre.ok) {
     throw new Error(pre.reason);
+  }
+  // Apply the cc-agent default by exporting MEPH_BRAIN before workers spawn.
+  // The CLI banner already announces this; the export is what makes child
+  // processes see the same backend the validation produced.
+  if (pre.defaulted && !process.env.MEPH_BRAIN) {
+    process.env.MEPH_BRAIN = pre.backend;
   }
 
   if (pre.needsApiPreflight) {
@@ -476,6 +492,17 @@ if (_thisFile === _entryFile) {
   // Honest grade for sweeps that feed the flywheel — loose-mode false
   // positives directly poison Queue F retrains.
   const strict = argv.includes('--strict');
+  // GM-6 (2026-04-25): --real opts into the production-Anthropic API path.
+  // Default is cc-agent (no API spend). validateSweepPreconditions returns
+  // backend='cc-agent' + defaulted=true when --real isn't set; we apply
+  // the default by exporting MEPH_BRAIN before sub-process spawn so the
+  // rest of the pipeline sees the same backend it would on an explicit
+  // export.
+  const real = argv.includes('--real');
+  if (!real && !process.env.MEPH_BRAIN) {
+    process.env.MEPH_BRAIN = 'cc-agent';
+    console.log('GM-6: defaulted MEPH_BRAIN=cc-agent (no API spend). Pass --real to opt into the production Anthropic API.');
+  }
 
   const opts = {
     workers: workersArg ? parseInt(workersArg.split('=')[1]) : 3,
@@ -483,6 +510,7 @@ if (_thisFile === _entryFile) {
     timeoutPerTaskMs: timeoutArg ? parseInt(timeoutArg.split('=')[1]) * 1000 : 180_000,
     dryRun,
     strict,
+    real,
   };
 
   runSweep(opts)

@@ -189,6 +189,30 @@ function assert(cond, msg) {
       `MEPH_TOOLS.${t.name} — dispatchTool recognizes the bare name "${bareName}" (got "${err?.slice(0, 80)}")`);
   }
 
+  // Description-truthfulness drift guard — fixed 2026-04-25 after a Ghost
+  // Meph cc-agent sweep produced zero passing Factor DB rows. Investigation
+  // revealed run_tests, list_evals, run_evals, run_eval, and db_inspect were
+  // ALL dispatched correctly AND have full MCP-context wiring, but their MCP
+  // descriptions still claimed "Not yet available in MCP mode" — Meph in
+  // cc-agent mode read the description and skipped the tool entirely, so
+  // the sweep never wrote a test_pass=1 row. Same class of bug as the
+  // cross-path side-effect rule in CLAUDE.md.
+  //
+  // Scope: tools listed below ARE wired end-to-end in MCP context (no
+  // Playwright dependency). Their descriptions must NOT contain "not yet
+  // available in MCP mode" or Meph will skip them. Playwright-dependent
+  // tools (click_element, fill_input, inspect_element, read_dom, etc) are
+  // genuinely unavailable in MCP because buildMephContext doesn't wire
+  // ctx.getPage — those keep their warning descriptions intact.
+  const _mcpWiredTools = ['run_tests', 'list_evals', 'run_evals', 'run_eval', 'db_inspect'];
+  for (const t of fullList.result.tools) {
+    const bareName = t.name.replace(/^meph_/, '');
+    if (!_mcpWiredTools.includes(bareName)) continue;
+    const desc = t.description || '';
+    assert(!/not yet available in mcp mode/i.test(desc),
+      `MEPH_TOOLS.${t.name} — fully wired in MCP context but description still claims "not yet available". Meph cc-agent reads this and skips the tool, breaking flywheel feeding. Update the description in mcp-server/tools.js.`);
+  }
+
   // Happy path: edit_code write → stores source in module state
   const write = await dispatch({
     jsonrpc: '2.0', id: 101, method: 'tools/call',

@@ -96,16 +96,38 @@ describe('runSweep dry-run', () => {
 });
 
 describe('validateSweepPreconditions', () => {
-  it('requires ANTHROPIC_API_KEY when ghost-meph is NOT active', () => {
-    const result = validateSweepPreconditions({ /* no MEPH_BRAIN, no key */ });
+  // GM-6 (2026-04-25): default flipped from "real Anthropic" to "cc-agent".
+  // Reason: the production-Anthropic path costs money and Russell uses
+  // cc-agent for everything overnight. Sweeps still ROUTE through real
+  // Anthropic — the caller passes opts.real=true (CLI flag --real) to
+  // explicitly opt into spend.
+  it('defaults to cc-agent when neither MEPH_BRAIN nor opts.real is set', () => {
+    const result = validateSweepPreconditions({ /* no env */ });
+    expect(result.ok).toEqual(true);
+    expect(result.needsApiPreflight).toEqual(false);
+    expect(result.backend).toEqual('cc-agent');
+    expect(result.defaulted).toEqual(true);
+  });
+
+  it('requires ANTHROPIC_API_KEY when opts.real is true', () => {
+    const result = validateSweepPreconditions({ /* no key */ }, { real: true });
     expect(result.ok).toEqual(false);
     expect(result.reason.includes('ANTHROPIC_API_KEY')).toEqual(true);
   });
 
-  it('accepts ANTHROPIC_API_KEY alone when ghost-meph is NOT active', () => {
-    const result = validateSweepPreconditions({ ANTHROPIC_API_KEY: 'sk-ant-test' });
+  it('accepts ANTHROPIC_API_KEY when opts.real is true', () => {
+    const result = validateSweepPreconditions({ ANTHROPIC_API_KEY: 'sk-ant-test' }, { real: true });
     expect(result.ok).toEqual(true);
     expect(result.needsApiPreflight).toEqual(true);
+  });
+
+  it('opts.real with no key fails even if MEPH_BRAIN is set — explicit beats inferred', () => {
+    // Russell explicitly asked for production via --real; we don't silently
+    // route around the missing key just because MEPH_BRAIN happens to be
+    // exported in his shell. Surface the misconfiguration clearly.
+    const result = validateSweepPreconditions({ MEPH_BRAIN: 'cc-agent' }, { real: true });
+    expect(result.ok).toEqual(false);
+    expect(result.reason.includes('ANTHROPIC_API_KEY')).toEqual(true);
   });
 
   it('bypasses API key requirement when MEPH_BRAIN=cc-agent', () => {
@@ -129,15 +151,17 @@ describe('validateSweepPreconditions', () => {
     }
   });
 
-  it('treats empty MEPH_BRAIN like unset (real Anthropic required)', () => {
+  it('treats empty MEPH_BRAIN like unset (post-GM-6: defaults to cc-agent)', () => {
     const result = validateSweepPreconditions({ MEPH_BRAIN: '' });
-    expect(result.ok).toEqual(false);
-    expect(result.reason.includes('ANTHROPIC_API_KEY')).toEqual(true);
+    expect(result.ok).toEqual(true);
+    expect(result.backend).toEqual('cc-agent');
+    expect(result.defaulted).toEqual(true);
   });
 
   it('treats whitespace-only MEPH_BRAIN like unset', () => {
     const result = validateSweepPreconditions({ MEPH_BRAIN: '   ' });
-    expect(result.ok).toEqual(false);
+    expect(result.ok).toEqual(true);
+    expect(result.backend).toEqual('cc-agent');
   });
 });
 
