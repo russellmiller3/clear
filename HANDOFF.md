@@ -1,122 +1,89 @@
-# Handoff — 2026-04-24 (Sessions 45 + 46 — ASH-1 complete AND Decidable Core landed)
+# Handoff — 2026-04-25 (overnight session — Russell asleep)
 
-## 🎯 Pickup: Two major chunks shipped today and just merged together
+## Status right now
 
-**Session 45 (main):** 8 feature/fix commits + ASH-1 A/B sweep completed.
-**Session 46 (`feature/decidable-core`):** Total-by-default termination bounds + cross-target smoke + Python parity.
-**Both now on `main` as of this merge.**
+Russell signed off after a doc cleanup + merge + branch consolidation session. Tree is on `main`, pushed to `origin/main`, fast-forwardable. He authorized me (Claude) to keep working autonomously through a queued sequence of bug fixes + Marcus GTM build-outs.
 
 ---
 
-## 🔬 Session 45 — Browser Use's Bitter Lesson falsified on our stack
+## What just shipped this session
 
-**50 trials, 116 min wall-clock, $0. Hypothesis rejected.**
-
-| Task | tools_on | tools_off | Lift |
-|------|----------|-----------|------|
-| counter (L3) | **0/5 (0%)** | 4/5 (80%) | **−80 pp** |
-| todo-crud (L4) | **0/5 (0%)** | 5/5 (100%) | **−100 pp** |
-| auth-todo (L5) | 0/5 (0%) | 0/5 (0%) | 0 pp |
-| contact-book (L6) | 5/5 (100%) | 5/5 (100%) | 0 pp |
-| validated-forms (L7) | 5/5 (100%) | 5/5 (100%) | 0 pp |
-
-**Counter + todo-crud regressed from majority-passing to 0%** when Bash/Read/Edit/Write were re-enabled. Built-ins added distraction, not capability on simple tasks. Full writeup in `RESEARCH.md` → "ASH-1 — Browser Use's Bitter Lesson, Falsified on Our Stack." Raw artifact: `playground/sessions/ab-ash1-sweep-2026-04-24T16-25-04.json`.
-
-**ROADMAP consequence:**
-- **ASH-2 (`meph_propose_tool` flywheel)** is the right shape — add MCP tools as gaps surface rather than replacing them with built-ins.
-- **ASH-3 (prune wrappers once Bash wins)** DOWNGRADED. ASH-1 showed the wrappers earn their 28 tools.
-
-Session 45 feature landings (all on main before the merge):
-- Cookies (plain + signed) + `for N days/hours/minutes` maxAge shorthand
-- Reactive `on scroll [every Nms]:` with leading-edge throttle
-- Transaction synonyms: `atomically:` / `transaction:` / `begin transaction:`
-- `upsert X to Y by <field>` — T2 #47
-- `pick a, b from X` field projection — T2 #44
-- Python `belongs to` JOIN emission — T2 #9
-- Scheduled-task cancellation on SIGTERM/SIGINT — T2 #13
-- Multipart/file upload middleware auto-wiring — T2 #15
-- `table X:` shorthand (bare lead without `create a`)
-- Auth-capability gate on mutation security check
-- INTENT_HINTS for type keywords (`text`, `number`, `boolean`, `timestamp`)
+- **ROADMAP rewrite** — 846 → 275 lines, instructions on top, forward-looking only. Anti-regression rules baked in (no "DONE" tags inline, audit at 400 lines, end-of-session checklist).
+- **Capability content moved** to `FEATURES.md` (Cloudflare target, LSP, VSCode ext, Compiler API, cookies, on-scroll, upsert, transactions, namespaced components, LAE widget, etc).
+- **Competitive content moved** to `FAQ.md` ("Why does Clear Cloud beat Retool and Lovable?" + competitive landscape Q).
+- **CHANGELOG backfill entry** for done items previously inline in ROADMAP (PERF-1-5, Language Completeness, RL-1/2/7/9, Phase 85).
+- **Python TEST_INTENT port committed** — Session 46 follow-up #2. ~200 lines in compiler.js. Async httpx + pytest emission.
+- **competition.md rewritten** — structural-moat framing over day-1 UX, "Lovable wins month 1, Clear wins year 2."
+- **Merged `feat/dave-first-gtm`** — D-1..D-5 Dave-first wedge: namespaced component fix + Compiler API + clear-lsp + VSCode extension + `landing/for-developers.html` + `landing/dave.clear`. Tagged in ROADMAP as "Strategic pivot under review (PENDING RUSSELL DECISION)" — both Dave-first and Marcus-first threads stay alive.
+- **Pushed `local main → origin/main`** (fast-forward, no force).
+- **Deleted 38 stale remote branches**; salvaged 1 (`salvage/2026-04-07-bug-categories-landing` — preserves "45 bug categories eliminated" landing page copy); kept `snapshot/origin-main-2026-04-25` as safety net.
+- **FEATURES.md exec summary added** — plain-English scan-in-30-seconds list of what Clear can do today, with maintenance rule.
+- **This HANDOFF.md rewritten** as current-only with maintenance rule (below).
 
 ---
 
-## 🛡️ Session 46 — Decidable Core (Total by default)
+## ⚠️ Known broken — fix FIRST
 
-Every construct that could previously hang silently now has a bound, and the bound applies on every compile target (Node / Cloudflare Workers / browser / Python) per the new PHILOSOPHY Rule 17.
+**`playground/e2e.test.js:327` — `TypeError: todos2.data?.find is not a function`**
 
-**Runtime bounds**
-- `while cond:` auto-caps at 100 iterations (tight — fail-fast on hallucinated hangs). Override with `while cond, max N times:`.
-- Self-recursive functions auto-wrap in a depth counter (default 1000). Override with `, max depth N`.
-- `send email` gets a 30-second default timeout. Override with `with timeout N seconds/minutes`.
-- `ask claude` / `call api` runtime helpers retry on 429/5xx/network transient errors with 1s/2s/4s/8s exponential backoff across all 10 emission sites.
+Pre-push hook caught this during the cleanup push. Compiler tests still 2509 green; this is e2e-level. Almost certainly a `{data: [...]}` envelope vs bare `[...]` mismatch. Probably caused by the merge of `feat/dave-first-gtm` or my Python TEST_INTENT port.
 
-**Validator warnings W-T1/W-T2/W-T3** fire on naked forms, silence on explicit overrides.
-
-**Cross-target infrastructure**
-- `scripts/cross-target-smoke.mjs` — compiles 8 templates × 4 targets, syntax-checks every emission in ~10s. Surfaced 3 pre-existing Python-target bugs, all fixed in-branch.
-- PHILOSOPHY Rules 17 + 18 codify the principles.
+**Until this is fixed, every code commit will be blocked by the pre-push hook.** First task in the overnight sequence.
 
 ---
 
-## Verification state (as of this merge)
+## Overnight sequence (in order)
 
-- Merge landed with conflicts only in CHANGELOG.md and HANDOFF.md — both doc files, resolved by keeping both entry sets.
-- Code auto-merged cleanly (parser.js, compiler.js, clear.test.js — different areas touched on each side).
-- `node clear.test.js` — **2502 / 2502 green** after post-merge fixes (validator self-recursion check fixed + 9 tests with invalid syntax repaired).
-- `node scripts/cross-target-smoke.mjs` — 32/32 emissions parse clean.
-- Core templates — 8/8 compile clean.
-- `playground/clear-compiler.min.js` — rebuilt post-merge.
+Russell authorized "keep going" autonomously. All TDD-able, all $0 API spend.
 
----
-
-## 📊 Phase 7 measurement — deterministic replay complete ($0)
-
-Ran `node scripts/decidable-core-replay.mjs` against 1,390 Meph-written Clear sources in the Factor DB. Headline findings:
-
-| Metric | Value | Reading |
-|---|---|---|
-| Factor DB rows analyzed | 1,390 | Every Meph output, ever |
-| Rows with `while` loops | **0** | Bound is preventive — no historical use |
-| Rows with `send email` | **0** | Same — zero historical use |
-| Rows with self-recursive functions | **0** | Same — zero historical use |
-| W-T1 / W-T2 / W-T3 warnings fired | **0 / 0 / 0** | Nothing in history would have triggered them |
-| Rows with `ask claude` | **102 (7.3%)** | Every one now carries auto-retry on 429/5xx/network |
-| Recompile-clean rate | 1005 / 1390 (72.3%) | 289 fail; top buckets are pre-existing syntax drift (save-literal check, unclosed `{`, time format `'02:00 AM'`), NOT decidable-core bounds |
-
-**Verdict:** The paid A/B is a no-op. The deterministic replay already answers the hypothesis ("do the bounds reduce hang rate ≥50%?") with a useful null: the bounds cannot reduce a rate that was zero to begin with. **Paid budget ($10) preserved.** The one measurable signal-positive: 102 past Meph runs now carry retry logic; every future session's AI call is auto-recoverable.
-
-See `RESEARCH.md` → "Phase 7 — decidable-core replay (1,390 rows)" for the full writeup.
+1. **Fix e2e regression** — diagnose `todos2.data?.find` at `e2e.test.js:327`. Probably envelope shape change. ~30 min.
+2. **R7: `needs login` page guard** — currently emits blank white page. Fix to redirect to `/login` or generate auto-login page. Half-day TDD. Listed in `FAQ.md → "Known broken things"`.
+3. **R8: `for each` HTML loop body** — currently emits `+ msg +` (whole object). Fix to expand child template per iteration. Half-day TDD. Also listed in `FAQ.md → "Known broken things"`.
+4. **GTM-1: build `apps/deal-desk/main.clear`** — hero discount-approval workflow with agent draft. ~150 lines. The asset every Marcus landing page points at. Uses R7 (auth pages) and R8 (approval lists) as integration test for the morning's bug fixes.
+5. **GTM-2: polish `landing/marcus.html`** — GAN against the ASCII mock locked Session 35. Headline: "That backlog of internal tools nobody's going to build? Ship the first one this Friday."
+6. **GTM-3: build `landing/pricing.html`** — Free / Team $99 / Business $499 / Enterprise tiers per Session 35 lockdown.
+7. **Builder Mode status bar** — chip at bottom of Studio: "12 users · 3 active · $0.03 agent spend today · last ship 4m ago." Always visible.
+8. **R5: `clear test` runner picks up user-written `test` blocks** — currently only runs auto-generated e2e tests. Listed in ROADMAP refactoring backlog.
 
 ---
 
-## Immediate follow-ups (do now, in order)
+## After the sequence — what's next priority
 
-1. **Rebuild the playground compiler bundle** — `npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js --platform=node`. Required after any compiler/parser change.
-2. **Run `node clear.test.js`** — confirm the merge didn't silently break anything.
-3. **Smoke-test all 8 core templates** — `node -e "import { compileProgram } from './index.js'; …"` (see CLAUDE.md "Template Smoke Test on New Syntax" for the one-liner).
+If I get through 1-8 above, pull from ROADMAP P0/P1 in this order:
 
-## Three natural pickups after that
+1. **R10 — retire CHECKOUT/OAUTH_CONFIG/USAGE_LIMIT 1:1-mapping violations.** PHILOSOPHY rule #1 protection. Refactoring backlog R10.
+2. **CC-1 prep — multi-tenant routing skeleton.** 2-3 weeks total scope, but the file-layout + first-test scaffolding is a clean overnight start.
+3. **GTM-5 — Studio onboarding tweak.** New users land in Meph chat with "What do you want to build?" instead of empty editor. ~2 days; opening shot is a small UI change.
+4. **CF-1 — runtime instrumentation in compiled apps.** Latency/error/memory beacons to a shared endpoint. ~1 day, 20 lines of instrumentation that starts collecting data immediately.
 
-1. **Phase 7 measurement (budget-capped $10).** Replay past Factor DB failing transcripts through the new compiler + A/B on 5 curriculum tasks known to hit termination failures. Per the Session 41 rule — targeted replay, no full curriculum runs. Confirms or disproves the hypothesis that the bounds reduce hang rate ≥50%.
-2. **Port `TEST_INTENT` to Python.** The Python `TEST_DEF` branch currently emits `pytest.skip("not yet ported")`. Port means writing `httpx`-shaped generators for `can user create / view / delete / …` mirroring the JS generator at `compiler.js:7094+`. ~200 lines.
-3. **Wire cross-target smoke into the pre-push hook.** 5-line change in `.husky/pre-push` alongside `node clear.test.js`. Cheap insurance against future Python/Workers drift.
+**DO NOT do overnight without explicit authorization:**
+- Anything that spends Anthropic API budget (Session 41 burned $168 in one day; don't repeat).
+- Force pushes, branch deletions on `main` or `snapshot/*`.
+- Strategic pivots — the Dave-first vs Marcus-first decision in ROADMAP is *Russell's* call, don't enact silently.
 
-## Key files touched across both sessions
+---
 
-- `compiler.js` — cookies, scroll throttle, transactions, upsert, pick, Python JOINs, scheduled cancellation, multer wiring, retry backoff, termination bounds, Python-target fixes.
-- `parser.js` — `table X:` shorthand, `on scroll every Nms`, transaction synonyms, upsert, pick, `for N days` maxAge, signed cookies, max-iterations / max-depth / with-timeout suffixes.
-- `validator.js` — auth-capability gate, type-keyword INTENT_HINTS, validateTermination() + W-T1/W-T2/W-T3/W-T4.
-- `clear.test.js` — new regression blocks for cookies, scroll, transactions, upsert, pick, multer, termination bounds, retry.
-- `scripts/cross-target-smoke.mjs` — **new**, 157 lines, zero deps.
-- `PHILOSOPHY.md`, `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `FAQ.md`, `ROADMAP.md`, `FEATURES.md`, `CHANGELOG.md`, `USER-GUIDE.md`, `playground/system-prompt.md` — synced.
+## Maintenance rule for HANDOFF.md (READ BEFORE ADDING TO THIS FILE)
 
-## Session context (for the next pickup)
+**HANDOFF is the current-state file.** It answers "what's true *right now* and what should the next session do?" Anything older than the most recent session belongs in another file. Do not let this file accumulate.
 
-The original decidable-core plan was maximalist — validator warnings AND runtime bounds AND a `live:` effect-fence keyword (Path B). Factor DB reality check (1,599 Meph rows) showed `while`/`send email`/recursion have NEVER appeared in Meph output. That killed Path B and pivoted to Path A: 3 surgical rules + deterministic smoke script, which surfaced 3 real Python bugs we didn't know existed.
+**Routing for old content (do this BEFORE adding new):**
 
-**Lesson locked into learnings.md:** audit before designing language-level change. "We need X" instinct rarely survives contact with actual codebase statistics.
+| If the entry is about... | Move it to |
+|---|---|
+| What shipped in a past session (>1 session ago) | `CHANGELOG.md` (newest at top, dated entry) |
+| A capability the compiler now supports | `FEATURES.md` (relevant table row) |
+| An architecture decision / why-we-built-it-this-way | `FAQ.md` → "Why did we X?" question |
+| A design rule / 14-year-old-test / 1:1 mapping | `PHILOSOPHY.md` |
+| A node-type spec change | `intent.md` + `SYNTAX.md` |
+| A bug story / what broke + how we fixed | `learnings.md` |
+| A forward-looking priority | `ROADMAP.md` |
 
-Meanwhile Session 45's ASH-1 sweep falsified the "built-in tools beat custom wrappers" thesis in our setup. Wrappers earned their keep. The flywheel direction (ASH-2) is to GROW the MCP surface from observed gaps, not replace it.
+**At the start of every session, audit this file:**
+- Does any section describe work that's now in CHANGELOG? → cut it.
+- Does any "next priority" section describe work already done? → cut it.
+- Is the "Status right now" section still actually right now? → if no, rewrite.
 
-Tree is green post-merge. Docs are synced.
+**HANDOFF should never grow past ~150 lines.** If it crosses that, you're hoarding history. The whole point of this file is "scan in 60 seconds, know where I am, know what to do next." If you can't, the file is failing.
+
+**At the end of every session:** rewrite the "Status right now" + "What just shipped" + "Next priority" sections. Move past content out per the routing table above. The next session's first action is reading this file — make sure it's still valid pickup material.

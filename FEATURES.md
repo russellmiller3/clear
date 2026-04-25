@@ -7,6 +7,72 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 
 ---
 
+## Exec summary — what Clear can do today, in plain English
+
+Scan this in 30 seconds. If you remember Clear can do something but can't remember the syntax, this list points you at the section below.
+
+**Build full apps by writing English**
+- Write a working web app — frontend + backend + database — in one `.clear` file.
+- Add login + signup in one line; get JWT auth + bcrypt + role-based access for free.
+- Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
+- Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
+- Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
+
+**Talk to Claude inside your code**
+- Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
+- Give an agent tools (call your own functions), memory (cross-session), and a knowledge base (RAG over your tables, files, or URLs).
+- Stream responses by default; opt-out with one phrase.
+- Multi-step workflows with conditional branches and parallel steps.
+- Schedule agents to run every hour, every day at 9am, etc.
+
+**Test by writing English**
+- Auto-generated tests from your source — every endpoint, every page, every agent gets probed.
+- Write your own tests in plain English (`can user create a todo`).
+- Run evals on agents from Studio — cost-gated modal, per-row chips, real-time streaming.
+
+**Run anywhere**
+- Same Clear file → Node + Express, or Python + FastAPI, or Cloudflare Workers + D1.
+- Cloudflare target gets cron triggers, Workflows for durable agents, Web Crypto auth automatically.
+- Deploy to Fly with one click from Studio; rollback to any prior version.
+
+**Edit your live app while users are using it (LAE)**
+- Open your deployed app in the browser → 🔧 widget → "add a region field" → ship in 4 seconds.
+- Existing users keep their unsaved form data; new fields appear empty.
+- Owner-only; non-owners see no edit surface.
+- Phase A (additive) + Phase B (reversible — hide, rename, reorder, with cloud rollback) shipped.
+
+**Studio IDE + Meph the AI builder**
+- Three-panel: editor + preview + Meph chat. Meph writes Clear, compiles, runs, tests, fixes errors.
+- Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
+- 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
+- Ghost Meph: route /api/chat to local Claude Code, Ollama, or OpenRouter for $0 research sweeps.
+
+**Developer tooling (Dave-first wedge)**
+- VSCode + Cursor extension with autocomplete + live diagnostics.
+- Zero-dep `clear-lsp` Language Server (stdio JSON-RPC).
+- Compiler-as-API on Cloudflare Workers (`POST /compile` returns JSON).
+- Namespaced module imports: `use 'ui'` then `show ui's Card('Revenue')`.
+
+**Hostile to bugs by construction**
+- 30+ bug classes blocked at compile time: SQL injection, auth bypass, mass assignment, missing rate limits, sensitive-field exposure, undefined variables, type mismatches, frontend-backend URL drift, etc.
+- Every CRUD = parameterized; every error response = PII-redacted; every `display X` = XSS-escaped.
+- Termination bounds: every `while` capped at 100 iterations, every recursive function capped at 1000 depth, every `send email` 30s timeout, every `ask claude` retries on transients.
+- Compiles deterministically: same input → byte-for-byte identical output, every time.
+
+### Maintenance rule for this exec summary
+
+**When you ship a new substantive capability, add ONE plain-English line here.** Group it under whichever heading fits, or add a new heading if it's a genuinely new category. Test for inclusion: "would Russell scan this list and feel a 30-second hell-yes about Clear?" If yes, add. If no — it's a syntax variant or alias, just add a row to the table below, not the exec summary.
+
+**Plain English means:**
+- 14-year-old test — no jargon ("HMAC", "JWT", "bcrypt", "Promise.race"), no node-type names, no function names.
+- Say what it DOES, not what it's CALLED. Not "`set signed cookie 'name' to value`" — say "Tamper-proof cookies in one line."
+- Hide the syntax. The rows below carry the exact form. The exec summary is for "yes Clear does X."
+- Keep each line under ~20 words.
+
+**When in doubt, write it both ways and pick the one a stranger would understand.**
+
+---
+
 ## Core Language
 
 | Feature | Syntax | Notes |
