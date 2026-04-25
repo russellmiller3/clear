@@ -3174,6 +3174,33 @@ function _applyTheme(src, themeName) {
   return `theme '${themeName}'\n\n${src}`;
 }
 
+// One-click updates Phase 5 — fetch the deployed-state for an app slug so the
+// Publish window can swap to "Update <hostname>" / show "Last published N min
+// ago" / change button text. Returns null on any failure (network, 404, etc.)
+// so the modal falls back to the fresh-deploy UX cleanly.
+async function _fetchAppInfo(slug) {
+  if (!slug || !slug.trim()) return null;
+  try {
+    const r = await fetch('/api/app-info/' + encodeURIComponent(slug.trim()));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+// Plain-English relative time. "5 min ago", "2 hr ago", "3 days ago".
+function _formatTimeAgo(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return '';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + ' hr ago';
+  const days = Math.floor(hr / 24);
+  return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+}
+
 window.doDeploy = async function() {
   const source = (typeof getSource === 'function') ? getSource() : (window._editor ? window._editor.state.doc.toString() : '');
   if (!source) { alert('Nothing to publish — compile first.'); return; }
@@ -3200,7 +3227,8 @@ window.doDeploy = async function() {
   modal.style.display = 'flex';
   modal.innerHTML = `
     <div class="deploy-box">
-      <div class="deploy-title">Publish to Clear Cloud</div>
+      <div class="deploy-title" id="deploy-modal-title">Publish to Clear Cloud</div>
+      <div id="deploy-modal-subtitle" style="font-size:12px;color:var(--tx2);margin:-8px 0 12px;min-height:14px"></div>
       <label>App name</label>
       <input id="deploy-app-slug" type="text" value="${appSlugDefault}">
       <label style="margin-top:12px">Theme</label>
@@ -3220,8 +3248,47 @@ window.doDeploy = async function() {
   if (initialCard) initialCard.classList.add('active');
   document.getElementById('deploy-cancel-btn').onclick = () => { modal.style.display = 'none'; };
 
-  document.getElementById('deploy-submit-btn').onclick = async () => {
-    const appSlug = document.getElementById('deploy-app-slug').value.trim();
+  // One-click updates Phase 5 — when the entered app slug matches an already-
+  // deployed app, swap the window's title + button text + subtitle so the
+  // owner knows they're updating, not creating fresh. Falls back to the
+  // Publish UX cleanly if the lookup fails or the slug is unknown.
+  const titleEl = document.getElementById('deploy-modal-title');
+  const subtitleEl = document.getElementById('deploy-modal-subtitle');
+  const slugInput = document.getElementById('deploy-app-slug');
+  const submitBtn = document.getElementById('deploy-submit-btn');
+  let currentInfo = null;
+
+  const refreshFromInfo = async () => {
+    const slug = slugInput.value.trim();
+    const info = slug ? await _fetchAppInfo(slug) : null;
+    currentInfo = info;
+    if (info && info.deployed) {
+      const host = info.hostname || (slug + '.buildclear.dev');
+      titleEl.textContent = 'Update ' + host;
+      const when = info.lastVersion && info.lastVersion.uploadedAt ? _formatTimeAgo(info.lastVersion.uploadedAt) : '';
+      subtitleEl.textContent = when ? 'Last published ' + when : 'Already published';
+      submitBtn.textContent = 'Update';
+    } else {
+      titleEl.textContent = 'Publish to Clear Cloud';
+      subtitleEl.textContent = '';
+      submitBtn.textContent = 'Ship it';
+    }
+  };
+
+  let __infoDebounce = null;
+  slugInput.addEventListener('input', () => {
+    clearTimeout(__infoDebounce);
+    __infoDebounce = setTimeout(refreshFromInfo, 300);
+  });
+  // Initial fetch with the default slug — usually returns deployed:false
+  // (random slug) but if the user kept the same name across publishes it
+  // surfaces the Update state immediately.
+  refreshFromInfo();
+
+  // Re-callable submit so the "Apply migration + update" button can resubmit
+  // with the same form state plus a confirmMigration flag.
+  const submitDeploy = async (extraOpts = {}) => {
+    const appSlug = slugInput.value.trim();
     const domain = document.getElementById('deploy-domain').value.trim();
     const progress = document.getElementById('deploy-progress');
     progress.textContent = 'packaging…';
@@ -3248,9 +3315,8 @@ window.doDeploy = async function() {
           secrets,
           domain: domain || undefined,
           // Studio is Clear Cloud only — every Publish ships to Cloudflare.
-          // The server still honors CLEAR_DEPLOY_TARGET env for ops overrides;
-          // this body field wins for the per-Publish path.
           target: 'cloudflare',
+          ...extraOpts,
         }),
       }).then(x => x.json().then(j => ({ status: x.status, body: j })));
     } catch (e) {
@@ -3268,17 +3334,43 @@ window.doDeploy = async function() {
     }
     if (r.status === 402) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'quota exceeded')}</span>`; return; }
     if (r.status === 503) { progress.innerHTML = `<span style="color:#e74c3c">Deploy service down — try again in a minute.</span>`; return; }
+
+    // One-click updates Phase 5 — schema-change confirmation gate. The server
+    // returns 409 MIGRATION_REQUIRED when the new source's database structure
+    // would change. Owner must explicitly accept the brief in-flight failure
+    // window before the migration applies.
+    if (r.status === 409 && r.body.code === 'MIGRATION_REQUIRED') {
+      const diff = Array.isArray(r.body.migrationDiff) ? r.body.migrationDiff : [];
+      const list = diff.map(d => `<li>${escHtmlLocal(d.file || '')}: ${escHtmlLocal(d.kind || '')}</li>`).join('');
+      progress.innerHTML = `
+        <div style="background:#fff3cd;border:1px solid #ffeaa7;color:#664d03;padding:12px;border-radius:6px;margin-top:12px">
+          <strong>Schema change detected.</strong>
+          <p style="margin:6px 0 8px">This update changes the app's database structure. In-flight requests may briefly fail (~2 sec) during the change.</p>
+          <ul style="margin:0 0 10px 20px">${list}</ul>
+          <button id="deploy-confirm-migration" class="primary">Apply migration + update</button>
+        </div>`;
+      document.getElementById('deploy-confirm-migration').onclick = () => submitDeploy({ confirmMigration: true });
+      return;
+    }
+
     if (!r.body.ok) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'deploy failed')}</span>`; return; }
 
     const jobId = r.body.jobId;
     progress.textContent = 'deploying…';
+    const wasUpdate = !!(currentInfo && currentInfo.deployed);
+
     const poll = async () => {
       const s = await fetch(`/api/deploy-status/${encodeURIComponent(jobId)}`).then(x => x.ok ? x.json() : null).catch(() => null);
       if (!s) { setTimeout(poll, 2000); return; }
       progress.textContent = deployStageLabel(s);
       if (s.status === 'ok') {
         const url = s.result?.url || `https://${s.result?.appName || 'app'}.fly.dev`;
-        progress.innerHTML = `<div style="margin-top:12px">Live: <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
+        const versionId = s.result?.versionId;
+        // Phase 5 — different copy when this was an update vs a fresh publish.
+        const headerLine = wasUpdate
+          ? `Updated to version ${versionId ? versionId.slice(0, 10) : '(new)'}.`
+          : 'Live:';
+        progress.innerHTML = `<div style="margin-top:12px">${headerLine} <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
           <button onclick="navigator.clipboard.writeText('${url}')">Copy</button></div>`;
         // BM-3 full: count successful Publishes. After 3 ships, the next page load
         // in builder mode auto-hides the source editor.
@@ -3292,6 +3384,9 @@ window.doDeploy = async function() {
         // Cloud only now, so the domain is already wired up by the time the
         // user sees the live URL. If the orchestrator returned degraded:true,
         // the URL above shows the default <slug>.buildclear.dev fallback.
+        // Re-fetch app-info so reopening this window after the publish sees
+        // the new deployed state.
+        refreshFromInfo();
         return;
       }
       if (s.status === 'failed') {
@@ -3305,6 +3400,8 @@ window.doDeploy = async function() {
     };
     poll();
   };
+
+  submitBtn.onclick = () => submitDeploy();
 };
 
 // ==========================================================================
