@@ -1147,4 +1147,51 @@ when user requests data from /api/secret:
 			_setDeployFnForTest(null);
 		}
 	});
+
+	// Cycle 4.3: when the orchestrator detects a schema change in update mode
+	// without confirmation, it returns {ok:false, stage:'migration-confirm-required',
+	// migrationDiff:[...]}. The handler must surface that as HTTP 409 with
+	// body {ok:false, code:'MIGRATION_REQUIRED', migrationDiff:[...]} so the
+	// modal can render the warning + diff and offer "Apply migration + update".
+	// 409 (not 400) signals "this request is valid but conflicts with current
+	// state" — exactly what a schema-change-without-confirm is.
+	await runSeq('/api/deploy — migration-confirm-required surfaces as 409 MIGRATION_REQUIRED (one-click cycle 4.3)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		_setWfpApiForTest(makeFakeWfpApiForDeployTest());
+		const fakeDiff = [
+			{ file: 'migrations/001-init.sql', kind: 'changed' },
+			{ file: 'migrations/002-add-email.sql', kind: 'added' },
+		];
+		_setDeployFnForTest(async () => ({
+			ok: false,
+			stage: 'migration-confirm-required',
+			jobId: 'job-mig',
+			mode: 'update',
+			migrationDiff: fakeDiff,
+		}));
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: HELLO_APP, appSlug: 'mig', target: 'cloudflare' },
+				});
+				expect(r.status).toBe(409);
+				expect(r.body.ok).toBe(false);
+				expect(r.body.code).toBe('MIGRATION_REQUIRED');
+				expect(Array.isArray(r.body.migrationDiff)).toBe(true);
+				expect(r.body.migrationDiff.length).toBe(2);
+				expect(r.body.migrationDiff[0].file).toBe('migrations/001-init.sql');
+				expect(r.body.migrationDiff[0].kind).toBe('changed');
+				expect(r.body.migrationDiff[1].file).toBe('migrations/002-add-email.sql');
+				expect(r.body.migrationDiff[1].kind).toBe('added');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+			_setDeployFnForTest(null);
+		}
+	});
 })();

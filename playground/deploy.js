@@ -427,6 +427,18 @@ export function wireDeploy(app, opts = {}) {
 			if (!r.ok) {
 				if (r.conflict) return res.status(409).json({ ok: false, existingJobId: r.existingJobId, hint: r.hint });
 				if (r.stage === 'compile') return res.status(400).json({ ok: false, stage: 'compile', errors: r.errors });
+				// One-click updates Phase 4 cycle 4.3 — schema change blocked
+				// pending explicit user confirmation. 409 (not 400) = "this
+				// request is valid but conflicts with current state." The UI
+				// renders the migration diff and offers "Apply migration +
+				// update" which re-POSTs with confirmMigration:true.
+				if (r.stage === 'migration-confirm-required') {
+					return res.status(409).json({
+						ok: false,
+						code: 'MIGRATION_REQUIRED',
+						migrationDiff: r.migrationDiff || [],
+					});
+				}
 				if (r.stage === 'record') {
 					// Partial success — app IS live, just not recorded yet. UI shows
 					// the URL and tells user to refresh after reconcile catches up.
