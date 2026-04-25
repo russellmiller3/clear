@@ -6,6 +6,30 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — Overnight: 2 compiler bugs squashed, deal-desk shipped, Compiler Flywheel goes live
+
+Russell asleep. Authorized autonomous run through a queued sequence of bug fixes plus Marcus GTM build-outs. All TDD, $0 API spend (no production-Anthropic sweeps fired). Seven new commits on `main`, all green.
+
+**R7 — `needs login` page guard.** The page-level guard emitted `if (...) { window.location.href='/login'; return; }` at the top of the `<script>` block. `return;` outside a function is a `SyntaxError` that killed the entire script — the SPA router never ran and protected pages rendered as whatever static HTML was at load (commonly blank). Fix: pass the page route through `compileNode` context (`pageCtx.pageRoute`) and emit a route-gated guard with no bare `return;`. Three TDD tests added.
+
+**R8 — `for each` loop body whole-object emit.** The reactive renderer for `for each X in Y:` only handled `CONTENT` and `SHOW` children at the top level. Anything else — most commonly a `SECTION` wrapping the per-row template — was silently dropped, leaving an empty bodyParts array. The fallback then emitted `'<div>' + msg + '</div>'`, which renders as `[object Object]` in the running app. Fix: refactored into `emitChild()` that recurses into `SECTION` and `PAGE` containers; replaced the raw-object fallback with empty string. Two TDD tests.
+
+**Page-route propagation through reactive emit.** Side-fix landed with GTM-1: `flatten()` now tags every leaf node with `_pageRoute` so the reactive emit pass knows what page each node came from. Without this, a `needs login` inside `/cro` compiled with the route from the first declared page (usually `/`). One TDD test in the R7 block locks it in.
+
+**GTM-1 — `apps/deal-desk/main.clear` ships (~170 lines).** The hero asset every Marcus landing page points at: a sales rep submits a discount request, deals over 20% land in a CRO queue gated by login, and the CRO clicks "draft AI summary" to get a one-paragraph approval recommendation with a risk score. Exercises both R7 (`/cro` page guard) and R8 (pending-deals card list). 13/13 app tests pass.
+
+**CF-1 — Compiler Flywheel runtime instrumentation.** Every JS-backend server now emits a `_clearBeacon` helper plus per-request `endpoint_latency` and `endpoint_error` events. Silent no-op unless `CLEAR_FLYWHEEL_URL` and `CLEAR_COMPILE_ROW_ID` are set, so apps deployed without the flywheel pay nothing. Receiver lives at `POST /api/flywheel/beacon` in `playground/server.js` with a per-`compile_row_id` 100-events/sec rate limit; events append to `playground/flywheel-beacons.jsonl` (gitignored). Future session migrates into the Factor DB `code_actions_runtime` table per `plans/plan-compiler-flywheel-tier1-04-19-2026.md`. Five TDD tests. **The Compiler Flywheel begins collecting data the first time `CLEAR_FLYWHEEL_URL` points anywhere.**
+
+**R10 — `checkout` keyword soft-deprecated.** The `checkout 'X':` block emits a JS const named `CHECKOUT_X` that no Clear code can reach — there's no way to write `send back checkout_pro_plan's price` from Clear because that identifier is invented at emit time, not bound to a Clear symbol. Sibling keywords `oauth` and `limit` were removed in 2026-04-21 for the same shape. Validator now emits a deprecation warning steering authors to `create pro_plan_checkout: ...` (a real Clear binding). Three sample apps (`full-saas`, `saas-billing`, `ecommerce-api`) migrated; two of them had ALSO been broken by the prior `limit` removal and now compile clean. Two TDD tests.
+
+**Builder Mode status bar.** Three new chips at the right end of Studio's status bar, polled every 5s: "X/Y ok" (successful/total compiles this session), "▶ :PORT" or "⏹ idle" (whether a compiled app is running), "last ship Xm ago" (cached 30s, reads `git log -1 --format=%ct`). Server-side `_builderState` counters; new `GET /api/builder-status` endpoint.
+
+**R5 — `clear test` runner picks up user `test:` blocks.** ROADMAP entry was stale; verified end-to-end on the deal-desk app. Three regression tests added so future edits can't silently re-break it. ROADMAP struck through with the verification date.
+
+**Test bump:** `clear.test.js` 2509 → 2525. e2e suite 75/75 green throughout. Eight core templates compile clean throughout. No production-Anthropic API spend.
+
+---
+
 ## 2026-04-24 — Dave-first wedge: D-1..D-5 shipped (under-review pivot)
 
 Strategic pivot under review (see `ROADMAP.md` → "Strategic pivot under review"): a Dave-first wedge to ship in parallel with Marcus-first work, betting that "the language your coding agent writes without retries" is category creation with CAC ≈ 0 because devs already use agents.
