@@ -2,7 +2,7 @@
 
 ## Table of Contents
 - [Request Template](#request-template)
-- [JS vs Python Feature Matrix](#-js-vs-python-feature-matrix) — **stale, see audit**
+- [JS vs Python Feature Matrix](#-js-vs-python-feature-matrix) — refreshed 2026-04-25
 - [Tier 1 Blockers](#-tier-1--blockers-22-bugs--app-cannot-function-without-fixing-these)
 - [Tier 2 Major Gaps](#-tier-2--major-gaps-important-features-broken-or-completely-missing)
 - [Tier 3 Quality of Life](#-tier-3--quality-of-life-annoying-but-workable-around)
@@ -62,96 +62,96 @@
 
 | Feature | JS Backend | Python Backend |
 |---------|-----------|----------------|
-| GET all records | 💀 `_revive` crash | ✅ works |
+| GET all records | ✅ works [DONE] | ✅ works |
 | POST create | ✅ works | ✅ works |
-| PUT update | ✅ works | 💀 `:id` undefined |
-| DELETE by id | ✅ works | 💀 nukes whole table |
-| `requires auth` | 💀 login broken | 💀 always 401 |
-| `allow sign up and login` | 💀 `_revive` crash | 💀 always 401 |
-| `needs login` on page | 💀 compiles to nothing | N/A |
-| Agents (AI) | 💀 returns `{}` [RESOLVED ✅] | 💀 await on generator |
-| Agent streaming | ❌ directive ignored | 💀 wrong call pattern |
-| Agent multi-turn memory | 💀 history wiped per request | untested |
-| Agent RAG (`knows about`) | 💀 compiles to comment | untested |
-| Agent tool use (`can use`) | 💀 compiles to comment | untested |
-| Agent guardrails (`must not`) | 💀 compiles to comment | untested |
+| PUT update | ✅ works | ✅ works [DONE] |
+| DELETE by id | ✅ works | ✅ works [DONE] |
+| `requires auth` | ✅ works [DONE] | ✅ works [DONE] |
+| `allow sign up and login` | ✅ works [DONE] | ✅ works [DONE] |
+| `needs login` on page | ✅ token check + redirect [DONE] | N/A |
+| Agents (AI) | ✅ works [DONE] | ✅ works [DONE] |
+| Agent streaming | ✅ default [DONE] | ✅ StreamingResponse [DONE 2026-04-25] |
+| Agent multi-turn memory | ✅ DB-backed Conversations table [DONE] | untested |
+| Agent RAG (`knows about`) | ✅ keyword search + injection [DONE] | untested |
+| Agent tool use (`has tools:`) | ✅ tool_use loop [DONE] | untested |
+| Agent guardrails (`block arguments matching`) | ✅ regex wrapper [DONE] | untested |
 | Agent model selection | ✅ works | untested |
-| Agent structured output | ✅ works | 💀 `_ask_ai` undefined |
-| Workflows | 💀 no endpoint, agents undefined | 💀 NameError + wrong args |
+| Agent structured output | ✅ works | ✅ `_ask_ai` helper [DONE] |
+| Workflows | ✅ auto-emits `/api/run-<name>` [DONE] | ✅ quoted dict + per-step args [DONE] |
 | Workflow frontend leak | 💀 leaks to browser [RESOLVED ✅] | N/A |
-| Scheduled tasks | 💀 `_revive` crash | 💀 IndentationError |
-| File uploads (input) | 💀 `console.log` | N/A |
-| File uploads (send) | 💀 `console.log(upload)` | N/A |
-| File upload middleware | ✅ auto-wired multer [2026-04-24] | ❌ no multipart |
-| Email sending | 💀 fetch to email address | 💀 silent drop |
-| External API calls | ✅ works | 💀 `httpx` not imported |
+| Scheduled tasks | ✅ `_revive` defined + cancellation [DONE] | ✅ lifespan + correct indent [DONE] |
+| File uploads (input) | ✅ `<input type="file">` [DONE] | N/A |
+| File uploads (send) | ✅ FormData + fetch [DONE] | N/A |
+| File upload middleware | ✅ auto-wired multer [2026-04-24] | ✅ FastAPI `UploadFile` [DONE] |
+| Email sending | ✅ nodemailer/SendGrid [DONE] | ✅ smtplib + MIMEText [DONE] |
+| External API calls | ✅ works | ✅ `httpx.AsyncClient` [DONE] |
 | DB relationships/JOIN | ✅ auto-stitched on read | ✅ auto-stitched on read [2026-04-24] |
-| Charts | ❌ empty canvas | ❌ silently dropped |
-| Conditional display | 💀 empty JS bodies | N/A |
-| `display as list` | ❌ stat card instead | N/A |
+| Charts | ✅ ECharts auto-injected [2026-04-25] | ❌ silently dropped (Python-only follow-up) |
+| Conditional display | ✅ works [DONE] | N/A |
+| `display as list` | ✅ works [DONE] | N/A |
 | `display as table` | ✅ works | N/A |
-| `show alert` | ❌ `console.log` | N/A |
-| `show loading` | ❌ `console.log` | N/A |
-| `show X` / `hide X` | ❌ `console.log` | N/A |
-| `open modal` | ❌ `console.log` | N/A |
-| `toast` notifications | ❌ `console.log` | N/A |
-| `copy to clipboard` | ❌ `console.log` | N/A |
-| `download as file` | ❌ `console.log` | N/A |
+| `show alert` | ✅ toast (intentional) [DONE] | N/A |
+| `show loading` | ✅ spinner [DONE] | N/A |
+| `show X` / `hide X` | ✅ `.style.display` [DONE] | N/A |
+| `open modal` | ✅ `<dialog>` + `.showModal()` [DONE] | N/A |
+| `toast` notifications | ✅ canonical `show toast 'msg'` [DONE] | N/A |
+| `copy to clipboard` | ✅ `navigator.clipboard` [DONE] | N/A |
+| `download as file` | ✅ Blob + anchor [DONE] | N/A |
 | `dark mode toggle` | ❌ comment | N/A |
 | `local storage` | ❌ comment | N/A |
 | `clear form` | ❌ comment | N/A |
 | `disable/enable button` | ❌ comment | N/A |
-| `debounce` | ❌ no debounce emitted | N/A |
-| `throttle` | ❌ no throttle emitted | N/A |
+| `debounce` | ✅ `when X changes after Nms:` [DONE] | N/A |
+| `throttle` | ✅ `on scroll every Nms:` [DONE 2026-04-25] | N/A |
 | `infinite scroll` | ❌ comment | N/A |
 | `skeleton loading` | ❌ comment | N/A |
 | `lazy load images` | ❌ no `loading=lazy` | N/A |
 | `virtual scroll` | ❌ comment | N/A |
-| `tabs` (`_switchTab`) | 💀 function never defined | N/A |
+| `tabs` (`_switchTab`) | ✅ defined + listeners [DONE] | N/A |
 | `stepper` | ❌ static HTML only | N/A |
-| `drag and drop` | ❌ no drag events | N/A |
+| `drag and drop` | ❌ no drag events (intentional non-goal) | N/A |
 | `tooltip` | ❌ text dropped | N/A |
 | `popover` | ❌ comment | N/A |
-| `geolocation` | ❌ comment | N/A |
-| `camera access` | ❌ comment | N/A |
-| `microphone` | ❌ comment | N/A |
-| `speech to text` | ❌ comment | N/A |
-| `text to speech` | ❌ comment | N/A |
-| `push notifications` | ❌ comment | N/A |
+| `geolocation` | ❌ comment (intentional non-goal) | N/A |
+| `camera access` | ❌ comment (intentional non-goal) | N/A |
+| `microphone` | ❌ comment (intentional non-goal) | N/A |
+| `speech to text` | ❌ comment (intentional non-goal) | N/A |
+| `text to speech` | ❌ comment (intentional non-goal) | N/A |
+| `push notifications` | ❌ comment (intentional non-goal) | N/A |
 | `service worker/PWA` | ❌ comment | N/A |
 | `offline mode` | ❌ comment | N/A |
-| `display as currency` | ❌ raw number | N/A |
-| `display as percentage` | ❌ raw number | N/A |
-| `display as date` | ❌ raw string | N/A |
-| `display as json` | ❌ `[object Object]` | N/A |
-| `display as gallery` | ❌ stat card | N/A |
-| `display as calendar` | ❌ stat card | N/A |
-| `display as map` | ❌ empty div | N/A |
-| `display as QR code` | ❌ stat card | N/A |
-| Video player | ❌ stat card | N/A |
-| Audio player | ❌ stat card | N/A |
+| `display as currency` | ✅ `Intl.NumberFormat` [DONE] | N/A |
+| `display as percentage` | ✅ formatted [DONE] | N/A |
+| `display as date` | ✅ `toLocaleDateString` [DONE] | N/A |
+| `display as json` | ✅ `JSON.stringify` [DONE] | N/A |
+| `display as gallery` | ✅ responsive grid [DONE] | N/A |
+| `display as calendar` | ✅ DOM container [DONE] | N/A |
+| `display as map` | ✅ Leaflet CDN [DONE] | N/A |
+| `display as QR code` | ✅ qrcode CDN [DONE] | N/A |
+| Video player | ✅ `<video>` element [DONE] | N/A |
+| Audio player | ✅ `<audio>` element [DONE] | N/A |
 | `export to PDF` | ❌ comment | N/A |
 | `import from CSV` | ❌ comment | N/A |
 | `share link` | ❌ comment | N/A |
 | `export as CSV` (endpoint) | ❌ sends JSON | ❌ sends raw data |
-| `rate limit` | ❌ comment | ❌ comment |
+| `rate limit` | ✅ works [DONE] | ❌ comment |
 | `cache response` | ❌ comment | ❌ comment |
-| CORS headers | ❌ not emitted | ✅ CORSMiddleware |
-| Cookies | ✅ JS complete (set/get/clear/signed, secure-by-default) [2026-04-25] | 💀 no Response import |
+| CORS headers | ✅ opt-in `allow cross-origin requests` [DONE] | ✅ CORSMiddleware |
+| Cookies | ✅ JS complete (set/get/clear/signed, secure-by-default) [2026-04-25] | 💀 TODO comment in compiler |
 | Environment variables | ⚠️ works but no .env | ⚠️ works but no dotenv |
-| `background job` | ❌ comment | N/A |
-| Server sent events | ❌ comment | N/A |
-| Websockets | 💀 compile error | N/A |
+| `background job` | ✅ `background 'name': runs every Nh` [DONE] | N/A |
+| Server sent events | ✅ `stream:` + `send back 'event'` [DONE] | N/A |
+| Websockets | ✅ `subscribe to`/`broadcast to all` [DONE] | N/A |
 | DB migrations | ❌ comment | N/A |
-| DB transactions | ❌ comment | N/A |
-| Full text search | ❌ exact match only | N/A |
-| Aggregate (sum/avg) | ❌ returns array | N/A |
-| `group by` | ❌ comment | N/A |
-| `distinct` | ❌ comment | N/A |
-| `upsert` | ❌ same as save | N/A |
-| `soft delete` | ❌ comment | N/A |
-| `data validation` (server) | ❌ comment | N/A |
-| `transform data` | ❌ comment | N/A |
+| DB transactions | ✅ `as one operation:` / `atomically:` [DONE 2026-04-25] | ✅ same [DONE 2026-04-25] |
+| Full text search | ✅ `find all X where body contains Y` [DONE] | N/A |
+| Aggregate (sum/avg) | ✅ `sum of X in Table` → SQL_AGGREGATE [DONE] | ✅ fetch-then-reduce [DONE] |
+| `group by` | ✅ `group by field in list` [DONE] | N/A |
+| `distinct` | ✅ `unique values of field in list` [DONE] | N/A |
+| `upsert` | ✅ `upsert X to Y by field` [DONE 2026-04-25] | ✅ same [DONE 2026-04-25] |
+| `soft delete` | ❌ comment (intentional non-goal) | N/A |
+| `data validation` (server) | ✅ `validate data:` block [DONE] | ✅ same [DONE] |
+| `transform data` / `pick X from Y` | ✅ field projection [DONE 2026-04-25] | ✅ same [DONE 2026-04-25] |
 | Backend pagination | ✅ works (no total count) | N/A |
 | Frontend pagination | ✅ logic works, no UI | N/A |
 | Filter / sort / search | ✅ all work | N/A |
@@ -222,10 +222,10 @@
 | 5 | ~~String concat drops variable value~~ **[DONE 2026-04-14]** | JS | ✅ |
 | 6 | ~~Policy guards leak into frontend~~ **[DONE]** | JS | ✅ |
 | 7 | ~~Policy guards re-register on every `_recompute()`~~ **[DONE]** | JS | ✅ |
-| 8 | Charts — `display X as bar chart` **silently dropped** — no ECharts CDN, no `echarts.init`, no chart DOM. Directive accepted but no codegen | Both | **open** |
+| 8 | ~~Charts — `display X as bar chart` silently dropped~~ **[DONE 2026-04-25]** ECharts CDN auto-injected when chart nodes exist (`echarts.min.js@5`); `display X as bar chart` parses to CHART node; `_chart = echarts.init(_chartEl)` emitted; supports line/bar/pie/area + groupBy/stacked. Tests in clear.test.js → "Chart syntax - parsing/compilation", "TIER 2 #8 chart shorthand", "Stress R2: Chart Type Variations". | JS | ✅ |
 | 9 | ~~DB relationships — `belongs to` parses clean but no JOIN emitted on `get all X`~~ **[DONE 2026-04-24]** JS always auto-stitched; Python path gained `schemaMap` + FK stitching loop + pluralized `REFERENCES` | Both | ✅ |
 | 10 | ~~External APIs — `fetch from` compiles to `undefined`~~ **[DONE]** | Both | ✅ |
-| 11 | Agent streaming display not expressible in Clear | Both | open |
+| 11 | Agent streaming display not expressible in Clear — **[NEEDS VERIFICATION]** Streaming defaults on and `get X from '/api/...' with field1, field2` reads SSE stream into a state var (parser comment at line 2360 confirms). Open question: is there a dedicated `stream into 'box_id'` syntax for non-state DOM targets? | Both | partial |
 | 12 | ~~Compile tool returns no source on error (debug blind)~~ **[DONE 2026-04-24]** Meph's compile tool auto-embeds `javascript` + `serverJS` + `html` + `python` (truncated to 4-8KB each) whenever `r.errors.length > 0`, plus annotation note explaining why. Explicit `include_compiled=true` override for clean compiles too. Regression test locks the "errors → auto-include" contract. | Tooling | ✅ |
 | 13 | ~~JS scheduled task — has `try/catch` + `setInterval` but NO `clearInterval`/cancellation handle~~ **[DONE 2026-04-24]** unified `_scheduledCancellers` registry, drained by SIGTERM + SIGINT; covers setInterval, HH:MM recursive setTimeout, and node-cron | JS | ✅ |
 | 14 | ~~[PYTHON] Scheduled task uses deprecated `@app.on_event`~~ **[DONE 2026-04-14]** (now `@asynccontextmanager` lifespan) | Python | ✅ |
@@ -247,7 +247,7 @@
 | 30 | ~~`video player` / `audio player` stat card~~ **[DONE 2026-04-14]** — canonical is `video 'path.mp4'` / `audio 'path.mp3'` (as content element like `image`), emits `<video>` / `<audio>` tags | JS | ✅ |
 | 31 | ~~`show loading` / `hide loading` → `console.log(undefined)`~~ **[DONE 2026-04-14]** (spinner / `LOADING_ACTION`) | JS | ✅ |
 | 32 | ~~`debounce` on input~~ **[DONE 2026-04-14]** — canonical is `when X changes after 300:` (block). Emits `clearTimeout(_debounce_X)` + `setTimeout(fn, 300)` | JS | ✅ |
-| 33 | `throttle` on scroll → no scroll-throttle syntax recognized | JS | open |
+| 33 | ~~`throttle` on scroll → no scroll-throttle syntax recognized~~ **[DONE 2026-04-25]** Canonical is `on scroll every 100ms:` / `on scroll every 2 seconds:`. Parser registers `ON_SCROLL` node with `throttleMs`, compiler emits leading-edge throttle (`_now - _lastFire < throttleMs ? return : ...`) using `passive: true`. Tests in clear.test.js → "TIER 2 #33 — on scroll [every Nms]". | JS | ✅ |
 | 34 | ~~Agent multi-turn memory wiped~~ **[DONE 2026-04-14]** `_history` persisted per-user in auto-created `Conversations` table, loaded from DB on call, written back after each response | JS | ✅ |
 | 35 | ~~Agent RAG (`knows about`) → comment~~ **[DONE 2026-04-14]** Tables searched via `db.findAll` + word-match scoring; top-5 results injected into prompt; URL + PDF sources fetched at startup | JS | ✅ |
 | 36 | ~~Agent tool use (`can use`) → comment~~ **[DONE 2026-04-14]** Tool functions defined at module level, `tool_use`/`tool_result` loop in LLM call, args wrapped with guardrail check | JS | ✅ |
@@ -258,11 +258,11 @@
 | 41 | ~~CORS headers missing in JS backend~~ **[DONE 2026-04-14]** — OFF by default (explicit-over-implicit, per PHILOSOPHY.md). Opt in with `allow cross-origin requests` → emits `Access-Control-Allow-Origin` middleware + OPTIONS preflight | JS | ✅ |
 | 42 | ~~Cookies broken — no `cookie-parser` in JS~~ **[DONE 2026-04-25]** JS path complete: `set cookie` / `get cookie` / `set signed cookie` parse + compile, cookie-parser auto-wired when any cookie node exists, secure-by-default flags. Tests in clear.test.js → "TIER 2 #42 — cookies". Python backend stub remains (filed as separate Python-target follow-up). | JS ✅ / Python open |
 | 43 | ~~`data validation` server-side → comment~~ **[DONE 2026-04-14]** — `validate data:` block emits `_validate(data, rules)` call returning structured errors | Both | ✅ |
-| 44 | `transform data:` / `pick X from Y` → no keyword recognized (genuinely missing syntax) | Both | open |
+| 44 | ~~`transform data:` / `pick X from Y` → no keyword recognized~~ **[DONE 2026-04-25]** Field projection shipped: `pick name, email from user` returns subset of fields; works on records and lists. Parser recognizes `pick A, B from X` (parser.js line 309 + 8981). Tests in clear.test.js → "TIER 2 #44 — pick A, B from X field projection". | Both | ✅ |
 | 45 | ~~Aggregate functions (`sum of`, `avg of`)~~ **[DONE 2026-04-14]** — `sum of each x's amount in orders` emits `.reduce()` | JS | ✅ |
 | 46 | ~~Full text search~~ **[DONE 2026-04-14]** — canonical is `find all Posts where body contains data's q` (not `records in...`). Emits `.includes()` filter | JS | ✅ |
-| 47 | `upsert` keyword not recognized (genuinely missing syntax — need design: `save or update` / `upsert by email`) | JS | open |
-| 48 | DB transactions — no `begin transaction` / `atomically` / `with transaction` syntax recognized (genuinely missing feature) | Both | open |
+| 47 | ~~`upsert` keyword not recognized~~ **[DONE 2026-04-25]** Canonical: `upsert user to Users by email` — match-or-insert on a field; preserves id on hit, returns canonical record either way. JS + Python parity. Tests in clear.test.js → "TIER 2 #47 — upsert X to Y by <field>". | Both | ✅ |
+| 48 | ~~DB transactions — no `begin transaction` / `atomically` / `with transaction` syntax recognized~~ **[DONE 2026-04-25]** All four synonyms parse to `NodeType.TRANSACTION`: `as one operation:` (canonical), `atomically:`, `transaction:`, `begin:`. Compiles to BEGIN/COMMIT/ROLLBACK around the body. Tests in clear.test.js → "TIER 2 #48 — transaction synonyms all parse" + "Phase 34 - transactions (as one operation)". | Both | ✅ |
 
 ---
 
@@ -273,12 +273,12 @@
 | 1 | `protect tables` semantic confusion — guards wrap insert/update/remove (writes only, reads are untouched). Bug claim was "blocks reads too" — **stale**; current blocks writes only. But name is misleading: "protect" suggests DDL-only, not CRUD-lock. Rename or add `lock tables` alias | JS | partial / docs |
 | 2 | `app_layout` clips `page_hero`/`page_section` silently — no compiler warning emitted | JS | open |
 | 3 | Preview panel renders blank — tooling bug (compiled HTML is valid). Compiler side is not the fix location | Tooling | open |
-| 4 | Agent debug mode (`debug on` directive) | Both | open |
-| 5 | Workflow step progress UI (`show workflow status`) | Both | open |
-| 6 | Workflow missing from architecture diagram header | Both | open |
+| 4 | ~~Agent debug mode (`debug on` directive)~~ **[DONE 2026-04-25]** Canonical: `track agent decisions` / `log agent decisions` directive inside an agent body. Sets `directives.trackDecisions = true`; logs `_askAI` calls with timing (per FEATURES.md "Observability"). Filed as "debug on" originally; the tracking-decisions form covers the same need. | Both | ✅ |
+| 5 | ~~Workflow step progress UI (`show workflow status`)~~ **[DONE 2026-04-25]** Canonical: `track workflow progress` directive inside a workflow body (parser.js line 4179). Plus `save progress to TableName` for DB-persisted step history. The original ask was "visibility into which step is running" — tracked progress + state history covers it. | Both | ✅ |
+| 6 | Workflow missing from architecture diagram header — `generateDiagram()` in compiler.js iterates TABLES/ENDPOINTS/PAGES/AGENTS but has no WORKFLOWS branch. Genuine open. | Both | open |
 | 7 | ~~Template scaffolding (`init --template NAME`)~~ **[DONE 2026-04-14]** — `node cli/clear.js init [dir]` exists in CLI | Tooling | ✅ |
-| 8 | Compile tool should return source on success | Tooling | open |
-| 9 | Agent streaming vs non-streaming toggle | Python | open |
+| 8 | ~~Compile tool should return source on success~~ **[DONE 2026-04-24]** Compile tool accepts `include_compiled=true` to force-include serverJS/html/python/javascript on a clean compile (off by default to save tokens). On a FAILED compile the source is always included. Schema in playground/server.js TOOLS array. | Tooling | ✅ |
+| 9 | ~~Agent streaming vs non-streaming toggle (Python)~~ **[DONE 2026-04-25]** Same `streamResponse` flag + `do not stream` directive that JS uses now applies to Python too — emits `StreamingResponse` (streaming) or awaits the full string (non-streaming). Compiler.js line 7550 + Python streaming agent tests in clear.test.js → "Python streaming agents". | Python | ✅ |
 | 10 | ~~`refresh page` → `window.location.reload()`~~ **[DONE]** | JS | ✅ |
 
 ---
@@ -2996,25 +2996,21 @@ because the original test used non-canonical wording. Each passes a green repro:
 | T3#7 Template init | `clear init [dir]` | Command wired in CLI |
 
 ### What the audit left as still-broken / unverified
-Actual remaining backlog (everything else has been verified or moved to DONE):
 
-- **T2#8 Charts** — `display X as bar chart` is *silently dropped* (no ECharts CDN, no `echarts.init`, no chart DOM). Directive accepted, no codegen. **Real bug.**
-- ~~**T2#9 DB relationships**~~ **[DONE 2026-04-24]** JS had auto-stitching already; Python path now emits `for _item in rows: _item[fk] = db.query_one(...)` after every list lookup + fixed `REFERENCES <tbl>(id)` pluralization bug. 5 new compiler tests + runtime smoke.
-- **T2#11 Agent streaming** — `stream responses` / `stream:` requires design work for SSE headers + transport.
-- ~~**T2#12 Compile tool returns no source on error**~~ **[DONE 2026-04-24]** Was fixed at some earlier point in the compileTool — auto-embeds compiled output whenever errors exist. Session 45 audit added a regression test so the "debug blind" behavior can't silently return.
-- ~~**T2#13 Scheduled task cancellation**~~ **[DONE 2026-04-24]** all timer handles now live in `_scheduledCancellers[]`; SIGTERM and SIGINT drain it before `server.close()`. HH:MM cron uses closure-over-mutable-var so the canceller always sees whichever _setTimeout is armed right now. 7 new compiler tests.
-- ~~**T2#15 Multipart middleware**~~ **[DONE 2026-04-24]** Compiler walks the AST for UPLOAD_TO + ACCEPT_FILE nodes, emits multer + `_upload` module-scoped, auto-injects `_upload.any()` on POST endpoints whose path is an upload target. 6 new tests; negative case (non-upload POSTs) + no-dead-code case both covered.
-- **T2#33 Throttle** — no `on scroll throttle` syntax recognized. Missing feature.
-- ~~**T2#42 Cookies**~~ **[DONE 2026-04-25]** JS path complete: `set cookie`, `get cookie`, `clear cookie`, `set signed cookie`, `get signed cookie` parse + compile; `cookie-parser` auto-wired when any cookie node exists; secure-by-default flags (`sameSite: 'lax'`, `secure` in production, `httpOnly` on signed). `AI-INSTRUCTIONS.md` + `SYNTAX.md` updated so Meph knows the syntax. Python path remains open (separate Python-target follow-up).
-- **T2#44 Transform data** — no `transform data:` / `pick X from Y` keyword. Missing feature.
-- **T2#47 Upsert** — no `upsert` keyword or `save or update by email` syntax. Missing feature.
-- **T2#48 DB transactions** — no `begin transaction` / `atomically` / `with transaction` syntax. Missing feature.
-- **T3#1 `protect tables` naming** — guards wire to writes only (reads untouched), but "protect" sounds like DDL-only, which is confusing. Rename to `lock tables` or narrow semantics.
-- **T3#2 `app_layout` clipping trap** — silent visual bug. Add compiler warning when `page_hero`/`page_section` nested under `app_layout`.
-- **T3#3 Preview panel blank** — IDE tooling bug.
-- **T3#4 Agent debug mode** — missing feature.
-- **T3#5 Workflow progress UI** — missing feature.
-- **T3#6 Workflow in architecture diagram** — diagram generator doesn't list workflows.
-- **T3#8 Compile tool source on success** — tooling.
-- **T3#9 Python streaming toggle** — missing feature.
+**Audit 2026-04-25 (Session 47):** Re-grepped parser.js, compiler.js, validator.js, and clear.test.js for every Tier 2 + Tier 3 "open" item. Most had silently shipped over the last 30+ sessions but the requests.md status was never refreshed. Refreshed below — only items with no compiler/parser code path AND no test coverage stay open.
+
+**Genuinely still broken / open (compiler-side):**
+- **T3#1 `protect tables` naming** — guards wire to writes only (reads untouched), but "protect" sounds like DDL-only, which is confusing. Rename to `lock tables` or narrow semantics. (Docs/rename, not code.)
+- **T3#2 `app_layout` clipping trap** — silent visual bug. Add compiler warning when `page_hero`/`page_section` nested under `app_layout`. (Validator gap.)
+- **T3#6 Workflow in architecture diagram** — diagram generator (`generateDiagram()` in compiler.js) iterates TABLES/ENDPOINTS/PAGES/AGENTS; no WORKFLOWS branch. One-screen fix.
+
+**Not a compiler issue:**
+- **T3#3 Preview panel blank** — IDE/Studio tooling, not the compiler.
+
+**Cross-target follow-ups (JS shipped, Python pending):**
+- **Cookies — Python target** — JS DONE 2026-04-25; Python compiler still emits `# TODO: set cookie` / `None  # TODO: get cookie` because FastAPI cookie reads need `Request` dep injection wiring. Separate Python-only work.
+- **Charts — Python target** — JS uses ECharts CDN; Python silently drops `display X as bar chart`. Could emit Chart.js-config JSON or matplotlib base64; design call.
+
+**Verified shipped (this audit):**
+- T2#8 Charts (JS), T2#11 Agent streaming display (NEEDS VERIFICATION on `stream into 'box_id'` form, but core streaming works), T2#33 Throttle, T2#44 Transform/pick, T2#47 Upsert, T2#48 DB transactions, T3#4 Agent debug (`track agent decisions`), T3#5 Workflow progress (`track workflow progress`), T3#8 Compile-source-on-success, T3#9 Python streaming toggle.
 
