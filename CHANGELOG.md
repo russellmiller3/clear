@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Dave-first wedge: D-1..D-5 shipped (under-review pivot)
+
+Strategic pivot under review (see `ROADMAP.md` → "Strategic pivot under review"): a Dave-first wedge to ship in parallel with Marcus-first work, betting that "the language your coding agent writes without retries" is category creation with CAC ≈ 0 because devs already use agents.
+
+**D-1: Namespaced component calls (`show ns's Card()`) now work.** Fixed the "`ui's Card()` crashes buildHTML" known issue. Unblocks the multi-file module story the rest of D-* depends on. New helper `getComponentCall(expr)` in `compiler.js` detects both bare (`Card(x)`) and namespaced (`ui's Card(x)`) component calls from a single predicate. Four call sites that each did their own shape-check now use the helper. Reactive JS emits `namespace.Card(args)` when the call is namespaced. 3 new regression cycles in `clear.test.js`; all 8 core templates compile clean.
+
+**D-2: Compiler-as-API service on Cloudflare Workers.** `compiler-api/worker.js` + `wrangler.toml` + 12 passing tests. POST /compile wraps `compileProgram()`, supports multi-file via `modules` dict, structured-JSON telemetry, 1MB source cap, permissive CORS. Proprietary compiler stays on servers Russell controls; usage telemetry, per-user gating, instant patches all become possible. Russell deploys with `wrangler deploy` after pasting his Cloudflare account into wrangler.toml.
+
+**D-3: `clear-lsp` zero-dep Language Server.** `clear-lsp/` — stdio JSON-RPC, calls Compiler API for diagnostics (debounced 400ms), local scan for keyword + component + function + page completions. 13 passing tests covering completions, prefix extraction, JSON-RPC framing (single, multi, split-chunk).
+
+**D-4: VSCode + Cursor extension.** `vscode-extension/` thin LSP wrapper. TextMate grammar, language config, manifest with user settings (`clear.compilerApi`, `clear.debounceMs`). 16 structural tests against manifest + grammar + language config. Russell verifies locally with F5 in VSCode (the only manual gate in the chain).
+
+**D-5: `landing/for-developers.html`.** New page (NOT a hero rewrite — Marcus homepage stays as-is). Hero "The language your coding agent writes without retries", side-by-side TS+Cursor vs Clear, 4-metric comparison row, 3-step install (CLI + extension + scaffold), Marcus footer note linking back. Nav link added to `marcus.html`.
+
+**Plus:** `landing/dave.clear` — proof-of-concept one-file landing page written in Clear itself. Shows the language can build its own marketing surface.
+
+**What's still open before D-6 (HN launch):** Russell-only verification gates — `wrangler deploy`, F5-test the VSCode extension, `npm publish` for clear-lsp + clear-cli + the extension, eyeball `landing/for-developers.html`. After those: D-6 unblocked.
+
+**The pivot is under review, not committed.** Marcus-first priorities (CC-1, CC-4, GTM-1 through GTM-7) stay on the roadmap until Russell decides whether Dave-first is the new wedge or just a parallel track.
+
+---
+
 ## 2026-04-24 — ROADMAP consolidation backfill
 
 Items that lived inline in `ROADMAP.md` as "DONE" tags. Consolidated here when ROADMAP got rewritten on 2026-04-24 to focus on what's *next*. No new code shipped — this is a paper trail entry so the historical record is complete. Capability surfaces are documented in `FEATURES.md`.

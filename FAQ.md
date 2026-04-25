@@ -884,5 +884,4 @@ When someone says "Studio," they mean ide.html + server.js together.
 |-------|-----------|
 | `needs login` on a page compiles to blank white page — JWT check hides everything but doesn't show login form or redirect | Don't use `needs login` on pages yet; use endpoint auth instead |
 | `for each` loop body in HTML doesn't render child content — outputs whole object as string instead of expanding template | Use `display X as cards showing field1, field2` instead |
-| `ui's Card()` in web target crashes `buildHTML` | Don't use namespaced component calls in web target |
 | Browser server may 404 on some routes | Untested in real browser — verify if you hit this |

@@ -1,0 +1,65 @@
+{
+  "name": "clear-language",
+  "displayName": "Clear Language",
+  "description": "Syntax highlighting + IntelliSense for the Clear language. Calls the Clear Compiler API for diagnostics.",
+  "version": "0.1.0",
+  "publisher": "clearlang",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages"],
+  "keywords": ["clear", "language", "compiler", "ai-coding"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:clear"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "clear",
+        "aliases": ["Clear", "clear"],
+        "extensions": [".clear"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "clear",
+        "scopeName": "source.clear",
+        "path": "./syntaxes/clear.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Clear",
+      "properties": {
+        "clear.compilerApi": {
+          "type": "string",
+          "default": "https://compile.clearlang.dev",
+          "description": "URL of the Clear Compiler API. Override for local dev (e.g. http://localhost:8787 with `wrangler dev`)."
+        },
+        "clear.debounceMs": {
+          "type": "number",
+          "default": 400,
+          "description": "Milliseconds to wait after the last keystroke before re-validating the file."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  },
+  "scripts": {
+    "test": "node test/structural.test.mjs",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clearlang/vscode-extension"
+  },
+  "license": "UNLICENSED"
+}

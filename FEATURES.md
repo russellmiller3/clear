@@ -310,6 +310,23 @@ Conversational edits to a running, deployed Clear app. Owner authenticates, open
 | Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. |
 | Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — additive edits ship in seconds. |
 
+## Developer Tooling (Dave-first wedge — shipped 2026-04-24)
+
+The "language your coding agent writes without retries" surface. Editor integration + remote Compiler API. See `ROADMAP.md` → "Strategic pivot under review (2026-04-24) — Dave-first wedge" for status; this section documents what's built.
+
+| Component | Where | What it does |
+|-----------|-------|--------------|
+| **Compiler API** (`compiler-api/worker.js`) | Cloudflare Worker | POST `/compile` wraps `compileProgram()`. Accepts single source or multi-file via `modules` dict. Structured-JSON telemetry per request. 1MB source cap. Permissive CORS for browser/IDE callers. Deploy with `wrangler deploy` after pasting Cloudflare account into `wrangler.toml`. 12 passing tests. |
+| **`clear-lsp`** (`clear-lsp/server.mjs`) | Zero-dep stdio LSP | JSON-RPC framing (single, multi, split-chunk). Diagnostics via the Compiler API (debounced 400ms). Local scan for keyword + component + function + page completions. 13 passing tests. |
+| **VSCode + Cursor extension** (`vscode-extension/`) | Thin LSP wrapper | TextMate grammar, language config, `clear.compilerApi` + `clear.debounceMs` user settings. F5-launch in VSCode for development. 16 structural tests against manifest + grammar + config. |
+| **Namespaced component calls** | `compiler.js` | `use 'ui'` + `show ui's Card('Revenue')` works end-to-end. Bare (`Card(x)`) and namespaced (`ui's Card(x)`) calls share a single `getComponentCall()` predicate across `compileNode` SHOW-in-page, `needsReactive`, reactive JS emit, and `buildHTML`. Reactive JS emits `namespace.Card(args)` when namespaced. |
+| **`landing/for-developers.html`** | Static | Dave-targeted landing page. "The language your coding agent writes without retries", side-by-side TS+Cursor vs Clear, 4-metric comparison row, 3-step install (CLI + extension + scaffold). |
+| **`landing/dave.clear`** | Self-hosted | Proof-of-concept one-file landing page written in Clear itself. Compiles to a static HTML/JS/CSS bundle. Shows the language can build its own marketing surface. |
+
+**Verification gates Russell still owes** before D-6 (HN launch): `wrangler deploy` for the Compiler API, F5-test the VSCode extension locally, `npm publish` for clear-lsp + clear-cli + the extension, eyeball `landing/for-developers.html` + Lighthouse pass.
+
+---
+
 ## Compile Targets
 
 | Target | How to select | What ships | Notes |

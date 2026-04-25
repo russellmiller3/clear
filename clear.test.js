@@ -7175,6 +7175,63 @@ page 'App':
     expect(result.javascript).toContain('Label(_state.username)');
     expect(result.html).toContain('id="comp_0"');
   });
+
+  // Cycle 9: namespaced component call — show ui's Card() emits comp_N container
+  // Regression for D-1: previously buildHTML emitted <p> placeholder and the
+  // component never rendered. Now the namespaced form works like the bare form.
+  it('namespaced component call emits comp_N container div in HTML', () => {
+    const resolver = (name) => name === 'components'
+      ? "define component MyCard:\n  heading 'hi'\n"
+      : null;
+    const result = compileProgram(`
+build for web
+use 'components'
+page 'App':
+  show components's MyCard()
+  `, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('class="clear-component"');
+    expect(result.html).toContain('id="comp_0"');
+  });
+
+  // Cycle 10: namespaced component reactive JS calls namespace.Card(args)
+  it('namespaced component reactive JS emits namespace.Card(args)', () => {
+    const resolver = (name) => name === 'components'
+      ? "define component MyCard receiving title:\n  show title\n"
+      : null;
+    const result = compileProgram(`
+build for web
+use 'components'
+page 'App':
+  show components's MyCard('Hello')
+  `, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("getElementById('comp_0')");
+    expect(result.javascript).toContain('.innerHTML = components.MyCard(');
+  });
+
+  // Cycle 11: bare and namespaced component calls coexist with correct IDs
+  it('bare and namespaced component calls coexist with correct container IDs', () => {
+    const resolver = (name) => name === 'widgets'
+      ? "define component StatusTag receiving label:\n  show label\n"
+      : null;
+    const result = compileProgram(`
+build for web
+use 'widgets'
+define component Card receiving title:
+  show title
+
+page 'App':
+  show Card('Revenue')
+  show widgets's StatusTag('New')
+  `, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('id="comp_0"');
+    expect(result.html).toContain('id="comp_1"');
+    const js = result.javascript;
+    expect(js).toContain(".innerHTML = Card(");
+    expect(js).toContain(".innerHTML = widgets.StatusTag(");
+  });
 });
 
 // =============================================================================

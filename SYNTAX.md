@@ -577,7 +577,15 @@ show Greeting(user_name)
 # In loops
 for each user in users list:
   show UserCard(user)
+
+# From an imported module (namespaced call)
+use 'ui'
+
+show ui's Card('Revenue')
+show ui's Badge('New')
 ```
+
+The namespaced form `ui's ComponentName(args)` works wherever the bare form works. Use it when you have a local name that would otherwise collide, or just to make the source file of a component explicit.
 
 ### Reserved Component Names
 

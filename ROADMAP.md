@@ -49,6 +49,49 @@ If ROADMAP creeps past ~400 lines, stop and audit. Ask of every section: "is thi
 
 ---
 
+## Strategic pivot under review (2026-04-24) — Dave-first wedge
+
+> **Status: PENDING RUSSELL DECISION.** The Marcus-first North Star (locked 2026-04-21) is being reassessed, not deleted. Until Russell commits to the pivot or rejects it, both threads stay alive in this file. The Marcus priorities below remain as written — do NOT silently demote them.
+
+### The Big Picture (the case for Dave-first)
+
+AI coding is roughly half of all frontier-model inference today, growing fastest of any category. Every coding agent — Cursor, Copilot, Claude Code, Devin — burns the majority of its tokens on **retry loops**: write code, run, hit error, re-read context, fix, repeat. Clear's bet: a language designed for agents (deterministic compile, plain-English source, rich compile-time error messages, zero framework churn) cuts those loops 5-10×. Per-feature inference cost drops by an order of magnitude. Jevons paradox says total inference still goes up because 20× more apps get built — but per-app cost collapses, and whoever owns the language agents prefer captures the wave.
+
+**Why Dave-first now, Marcus-second:**
+- Devs already use agents, already pay for coding tools, already find new languages on HN/X/GitHub. CAC ≈ 0.
+- "The language your coding agent writes without retries" is **category creation**. Marcus positioning ("no-code for business") is category entry against Bubble/Lovable/Retool — harder fight, higher support cost.
+- Marcus stays alive as the **viral proof** ("watch a non-dev build a full-stack app") — shown below the fold, not as the hero.
+
+**Why Compiler API not bundled compiler:**
+- Obfuscated/minified local compiler = reverse-engineerable in an afternoon. Not real IP protection.
+- API keeps `compileProgram()` on servers Russell controls. Side effects worth more than IP: **usage telemetry** (which syntax, errors, features), **per-user gating** (free/paid tiers, kill switch), **instant patches** (fix a compiler bug, every user has it next compile).
+- Devs are conditioned to network calls in the agent loop; an extra 100ms is invisible.
+
+**Audit ground truth (2026-04-24):** Architecture supports multi-file + components today (`use 'module'`, `define component X receiving Y:` — proven in `apps/crm-spa/`). Studio IDE does NOT — single-file only. That's why the wedge is **editor integration** (LSP + VSCode/Cursor extension), not Studio multi-file.
+
+### What's left on the Dave-first thread
+
+D-1 through D-5 shipped 2026-04-24 (compiler fix + Compiler API + clear-lsp + VSCode extension + `landing/for-developers.html`). See `CHANGELOG.md` for shipped detail and `FEATURES.md` for capability surface.
+
+| # | Item | Scope | Status |
+|---|------|-------|--------|
+| **D-6** | Public launch: HN Show HN + X thread + 1 podcast with measurable receipt ("5 devs installed in 48h") | Russell-only | Open — gated on D-1..D-5 verification (below) |
+
+**Local verification gates Russell still owes (blocks D-6):**
+1. `cd compiler-api && wrangler deploy` — deploy the worker (needs his Cloudflare account in `wrangler.toml`)
+2. `cd vscode-extension && npm install && code --extensionDevelopmentPath=$PWD` — F5 to verify highlighting + autocomplete in real VSCode
+3. `npm publish` clear-lsp + clear-cli + the extension to their respective registries
+4. Open `landing/for-developers.html` in a browser; eyeball the visual; run a Lighthouse pass
+
+### Open decision points for Russell
+
+1. **Commit to Dave-first ordering, or keep Marcus-first locked?** If commit: demote CC-1..CC-5 to P1 below; rewrite Vision to lead with Dave wedge; reorder Immediate Priorities. If reject: delete this entire pivot section, keep Marcus-first as-is.
+2. **Compiler API hosting:** Cloudflare Workers (recommended — edge latency, $0 cold start) vs Fly (already have infra from Phase 85)?
+3. **LSP open-source or closed?** The LSP *client* logic is commodity; the value is in the API it calls. Recommend: open-source the extension, keep the API proprietary.
+4. **Free tier for Compiler API rate limit?** Recommend: 1000 compiles/day free, unlimited on paid ($9/mo solo, $29/team).
+
+---
+
 ## Vision
 
 1. **AI builds things fast.** Clear is the language AI writes. Short programs, deterministic compiler. The faster the write→compile→run→fix loop, the more it ships.
