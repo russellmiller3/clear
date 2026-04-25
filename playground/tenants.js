@@ -15,11 +15,23 @@ import { PLANS, planFor } from './plans.js';
 // in-memory object, easy to serialize when tenant store gets persisted.
 export const MAX_VERSIONS_PER_APP = 20;
 
+// LAE Phase C — cap the audit log per app. Real apps see ~10 destructive
+// ships ever; 200 is 20× the realistic ceiling. 1000 would cost ~50 KB/app
+// for no benefit. Trim happens on append (oldest first); mark NEVER trims
+// because a pending row in flight must never disappear before the ship
+// outcome is recorded. (Locked-in decision #2 in plans/plan-lae-phase-c.)
+export const MAX_AUDIT_PER_APP = 200;
+
 export class InMemoryTenantStore {
 	constructor() {
 		this.tenants = new Map();
 		this.appsByTenant = new Map();
 		this.stripeEvents = new Set();
+		// Monotonic counter for auditId uniqueness — combined with Date.now()
+		// in appendAuditEntry. The counter handles the case where two appends
+		// land in the same millisecond (rare in production, common in tight
+		// test loops). In-memory only — Postgres will use a SERIAL column.
+		this._auditCounter = 0;
 	}
 	async create({ slug, stripeCustomerId, plan = 'pro' }) {
 		const p = planFor(plan);
@@ -224,36 +236,133 @@ export class InMemoryTenantStore {
 		this.stripeEvents.add(eventId);
 	}
 
-	// LAE-8 — append-only audit log per app. Every widget Ship writes a row
-	// here; Phase C destructive flows write rows that double as the GDPR/
-	// CCPA/HIPAA accountability surface (no data snapshot — this row IS the
-	// receipt). Append-only means we never trim. Versions[] caps at 20 for
-	// UI rollback ergonomics; the audit log keeps everything because legal
-	// compliance is the load-bearing user.
+	// LAE-8 — audit log per app. Every widget Ship writes a row here; Phase
+	// C destructive flows write rows that double as the GDPR/CCPA/HIPAA
+	// accountability surface (no data snapshot — this row IS the receipt).
+	//
+	// LAE Phase C cycle 3 — capped at MAX_AUDIT_PER_APP=200 (real apps see
+	// ~10 destructive ships ever; 200 is 20× the realistic ceiling). Trim
+	// happens on append only — markAuditEntry NEVER trims, because that
+	// could lose a `pending` row mid-flight before the ship outcome is
+	// recorded. getAuditLog returns rows newest-first so widget renders
+	// most-recent first without sorting.
 	async getAuditLog(tenantSlug, appSlug) {
 		if (!this.cfDeploys) return [];
 		const key = this._appKey(tenantSlug, appSlug);
 		const row = this.cfDeploys.get(key);
 		if (!row || !Array.isArray(row.auditLog)) return [];
-		return row.auditLog.map(e => ({ ...e })); // shallow copies — no mutation back into storage
+		// Shallow copy + sort newest-first by ts. Storage stays insertion-
+		// order; this matches the getAppRecord(versions) pattern.
+		// Secondary sort on the auditId counter suffix breaks ties when
+		// many rows land in the same millisecond (tight loops, batched
+		// destructive ships) — without this, the sort is non-deterministic
+		// for same-ts rows and the "newest-first" guarantee leaks.
+		const rows = row.auditLog.map(e => ({ ...e }));
+		const counterOf = (id) => {
+			if (typeof id !== 'string') return 0;
+			const dash = id.lastIndexOf('-');
+			if (dash === -1) return 0;
+			const n = Number(id.slice(dash + 1));
+			return Number.isFinite(n) ? n : 0;
+		};
+		rows.sort((a, b) => {
+			const ta = Date.parse(a.ts || '') || 0;
+			const tb = Date.parse(b.ts || '') || 0;
+			if (tb !== ta) return tb - ta; // primary: newest ts first
+			return counterOf(b.auditId) - counterOf(a.auditId); // tie: higher counter wins
+		});
+		return rows;
 	}
 
-	async appendAuditEntry({ tenantSlug, appSlug, actor, action, verdict, sourceHashBefore, sourceHashAfter, note }) {
+	// Build a deterministic-ish auditId. Timestamp + monotonic counter is
+	// enough for in-memory uniqueness; Postgres will use a SERIAL column.
+	// The format `aud-<ts>-<n>` is grep-friendly in test output and logs.
+	_nextAuditId() {
+		this._auditCounter = (this._auditCounter || 0) + 1;
+		return `aud-${Date.now()}-${this._auditCounter}`;
+	}
+
+	// LAE Phase C cycle 3 — extended schema. New optional fields:
+	//   kind        — classifier change kind ('remove_field', 'drop_endpoint', etc.)
+	//   before/after — TINY diff hunks only (never full source — keeps row bounded)
+	//   reason      — owner's typed reason for the destructive change
+	//   ip          — owner's IP at ship time
+	//   userAgent   — owner's UA at ship time
+	//   status      — 'pending' | 'shipped' | 'ship-failed' (defaults to 'shipped')
+	//
+	// Defaulting status to 'shipped' keeps Phase D non-destructive callers
+	// unchanged. Destructive callers pass status:'pending' explicitly, then
+	// markAuditEntry flips it to 'shipped' or 'ship-failed' after the ship
+	// attempt. This is the audit-first ordering locked-in decision #4.
+	//
+	// Returns {ok:true, auditId} so the caller can update the row later.
+	// Trims oldest entries past MAX_AUDIT_PER_APP — never trims pending
+	// rows specifically (FIFO trim, no status awareness), but the cap is
+	// 20× realistic ceiling so the only way you hit it is malicious load.
+	async appendAuditEntry({
+		tenantSlug, appSlug,
+		actor, action, verdict,
+		sourceHashBefore, sourceHashAfter, note,
+		kind, before, after, reason, ip, userAgent, status,
+	}) {
 		if (!this.cfDeploys) return { ok: false, code: 'APP_NOT_FOUND' };
 		const key = this._appKey(tenantSlug, appSlug);
 		const row = this.cfDeploys.get(key);
 		if (!row) return { ok: false, code: 'APP_NOT_FOUND' };
 		if (!Array.isArray(row.auditLog)) row.auditLog = [];
-		row.auditLog.push({
+		const auditId = this._nextAuditId();
+		const entry = {
+			auditId,
 			ts: new Date().toISOString(),
 			actor: actor || 'unknown',
 			action: action || 'unknown',
 			verdict: verdict || null,
 			sourceHashBefore: sourceHashBefore || null,
 			sourceHashAfter: sourceHashAfter || null,
-			...(note ? { note } : {}),
-		});
-		return { ok: true };
+			status: status || 'shipped',
+			...(note !== undefined && note !== null ? { note } : {}),
+			...(kind !== undefined && kind !== null ? { kind } : {}),
+			...(before !== undefined && before !== null ? { before } : {}),
+			...(after !== undefined && after !== null ? { after } : {}),
+			...(reason !== undefined && reason !== null ? { reason } : {}),
+			...(ip !== undefined && ip !== null ? { ip } : {}),
+			...(userAgent !== undefined && userAgent !== null ? { userAgent } : {}),
+		};
+		row.auditLog.push(entry);
+		// Trim oldest if we exceed the cap. FIFO — first-in is the oldest
+		// because the array is insertion-order. Cap only applies on append
+		// (never on mark), so a pending row in flight can't disappear.
+		if (row.auditLog.length > MAX_AUDIT_PER_APP) {
+			row.auditLog.splice(0, row.auditLog.length - MAX_AUDIT_PER_APP);
+		}
+		return { ok: true, auditId };
+	}
+
+	// LAE Phase C cycle 3 — in-place update for an existing audit row. Used
+	// by the destructive ship endpoint to flip 'pending' → 'shipped' (with
+	// versionId) on success, or → 'ship-failed' (with error) on failure.
+	// Find by auditId; merge the explicit fields; leave the rest. Never
+	// trims (the trim story is "append-only" from the cap's perspective —
+	// marks update an existing row in place, they don't add a new one).
+	//
+	// Returns {ok:true} on success or {ok:false, code:'AUDIT_NOT_FOUND'}
+	// when the auditId doesn't match any row in this app's log.
+	async markAuditEntry({ auditId, status, versionId, error }) {
+		if (!this.cfDeploys) return { ok: false, code: 'AUDIT_NOT_FOUND' };
+		// Scan every app's auditLog for a row with this auditId. In production
+		// this would be a single index lookup; in-memory is O(N apps × M rows)
+		// which is fine since both are tiny.
+		for (const row of this.cfDeploys.values()) {
+			if (!Array.isArray(row.auditLog)) continue;
+			const target = row.auditLog.find(e => e.auditId === auditId);
+			if (target) {
+				if (status !== undefined && status !== null) target.status = status;
+				if (versionId !== undefined && versionId !== null) target.versionId = versionId;
+				if (error !== undefined && error !== null) target.error = error;
+				return { ok: true };
+			}
+		}
+		return { ok: false, code: 'AUDIT_NOT_FOUND' };
 	}
 }
 
@@ -473,9 +582,107 @@ export class PostgresTenantStore {
 		}
 	}
 
-	async recordApp() { return this._notImpl('recordApp', 'INSERT INTO apps (tenant_slug, app_slug, app_name) VALUES ($1, $2, $3) ON CONFLICT (tenant_slug, app_slug) DO UPDATE SET app_name = $3'); }
-	async appNameFor() { return this._notImpl('appNameFor', 'SELECT app_name FROM apps WHERE tenant_slug = $1 AND app_slug = $2'); }
-	async markAppDeployed() { return this._notImpl('markAppDeployed', 'INSERT INTO cf_deploys (tenant_slug, app_slug, script_name, d1_database_id, hostname, deployed_at, versions, secret_keys) VALUES ...'); }
+	// CC-1 cycle 4 — UPSERT the {tenant_slug, app_slug, app_name} row in
+	// the apps table. ON CONFLICT keys on the (tenant_slug, app_slug) UNIQUE
+	// index defined in 0001_init.sql; a second call with the same key but a
+	// different appName UPDATEs in place. Returns the app_name from the
+	// RETURNING clause (post-update, so the caller always sees the wire row's
+	// name, not the one they passed in — they're equal here, but keeping the
+	// pattern consistent makes future per-row server defaults safe).
+	async recordApp(slug, appSlug, appName) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`INSERT INTO clear_cloud.apps (tenant_slug, app_slug, app_name)
+				 VALUES ($1, $2, $3)
+				 ON CONFLICT (tenant_slug, app_slug)
+				   DO UPDATE SET app_name = EXCLUDED.app_name
+				 RETURNING app_name`,
+				[slug, appSlug, appName]
+			);
+			return r.rows[0]?.app_name ?? null;
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 4 — single-row read on (tenant_slug, app_slug). Returns the
+	// app_name string or null on miss to mirror in-memory's
+	// `Map.get(key) || null`.
+	async appNameFor(slug, appSlug) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT app_name FROM clear_cloud.apps
+				 WHERE tenant_slug = $1 AND app_slug = $2`,
+				[slug, appSlug]
+			);
+			return r.rows[0]?.app_name ?? null;
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 4 — record a successful Cloudflare deploy. Mirrors
+	// InMemoryTenantStore.markAppDeployed (line 86-110): writes to cf_deploys
+	// AND mirrors the script_name into apps so a subsequent appNameFor returns
+	// it. Both INSERTs share one transaction — a failure on either side
+	// rolls back BOTH rows, so the two tables can never disagree about
+	// whether this app exists.
+	//
+	// Cycle 4 deliberately ignores `versionId`, `sourceHash`, `migrationsHash`,
+	// and `secretKeys` even when passed: the app_versions and app_secret_keys
+	// seeding lands in cycles 5-6. Accepting the params now (rather than
+	// throwing) means callers in deploy-cloudflare.js can keep passing them
+	// across the cycle 4-6 transition without code changes — they just sit
+	// idle in this cycle.
+	//
+	// UPSERT semantics (ON CONFLICT (tenant_slug, app_slug) DO UPDATE) on
+	// BOTH tables means a redeploy of the same app updates the existing
+	// rows in place — no duplicate cf_deploys rows, no orphan apps rows.
+	// deployed_at is refreshed to now() on every UPSERT (a redeploy IS a
+	// new deploy timestamp, even if the script is unchanged).
+	async markAppDeployed({
+		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
+		// versionId, sourceHash, migrationsHash, secretKeys — accepted but
+		// ignored in cycle 4 (cycles 5-6 will wire them into the transaction).
+	}) {
+		const client = await this._pool.connect();
+		try {
+			await client.query('BEGIN');
+			// cf_deploys — UPSERT the deploy row. deployed_at refreshes to
+			// now() on every write, including the UPDATE branch (a redeploy
+			// IS a new deploy event).
+			await client.query(
+				`INSERT INTO clear_cloud.cf_deploys
+				   (tenant_slug, app_slug, script_name, d1_database_id, hostname, deployed_at)
+				 VALUES ($1, $2, $3, $4, $5, now())
+				 ON CONFLICT (tenant_slug, app_slug) DO UPDATE
+				   SET script_name = EXCLUDED.script_name,
+				       d1_database_id = EXCLUDED.d1_database_id,
+				       hostname = EXCLUDED.hostname,
+				       deployed_at = now()`,
+				[tenantSlug, appSlug, scriptName, d1_database_id ?? null, hostname ?? null]
+			);
+			// apps — mirror the scriptName into the apps table so appNameFor
+			// returns it. Same UPSERT key as recordApp (tenant_slug, app_slug).
+			await client.query(
+				`INSERT INTO clear_cloud.apps (tenant_slug, app_slug, app_name)
+				 VALUES ($1, $2, $3)
+				 ON CONFLICT (tenant_slug, app_slug)
+				   DO UPDATE SET app_name = EXCLUDED.app_name`,
+				[tenantSlug, appSlug, scriptName]
+			);
+			await client.query('COMMIT');
+			return { ok: true };
+		} catch (err) {
+			try { await client.query('ROLLBACK'); } catch { /* swallow secondary error */ }
+			throw err;
+		} finally {
+			client.release();
+		}
+	}
+
 	async getAppRecord() { return this._notImpl('getAppRecord', 'SELECT * FROM cf_deploys WHERE tenant_slug = $1 AND app_slug = $2'); }
 	async recordVersion() { return this._notImpl('recordVersion', 'UPDATE cf_deploys SET versions = versions || $1::jsonb WHERE tenant_slug = $2 AND app_slug = $3'); }
 	async updateSecretKeys() { return this._notImpl('updateSecretKeys', 'UPDATE cf_deploys SET secret_keys = ... WHERE tenant_slug = $1 AND app_slug = $2'); }
@@ -519,7 +726,12 @@ export class PostgresTenantStore {
 		}
 	}
 	async getAuditLog() { return this._notImpl('getAuditLog', 'SELECT * FROM app_audit_log WHERE tenant_slug = $1 AND app_slug = $2 ORDER BY ts DESC'); }
-	async appendAuditEntry() { return this._notImpl('appendAuditEntry', 'INSERT INTO app_audit_log (tenant_slug, app_slug, ts, actor, action, verdict, source_hash_before, source_hash_after, note) VALUES ($1..$9)'); }
+	async appendAuditEntry() { return this._notImpl('appendAuditEntry', 'INSERT INTO app_audit_log (tenant_slug, app_slug, ts, actor, action, verdict, source_hash_before, source_hash_after, note, kind, before_snippet, after_snippet, reason, ip, user_agent, status) VALUES ($1..$16) RETURNING audit_id'); }
+	// LAE Phase C cycle 3 — destructive ship audit-row update. Postgres
+	// version will look up by audit_id (UUID PK) and update status/version_id/
+	// error in a single statement. The in-memory equivalent is in
+	// InMemoryTenantStore.markAuditEntry — same surface, same semantics.
+	async markAuditEntry() { return this._notImpl('markAuditEntry', 'UPDATE app_audit_log SET status = $2, version_id = $3, error = $4 WHERE audit_id = $1'); }
 }
 
 export function newTenantSlug() {

@@ -453,11 +453,207 @@ await runAsync(async () => {
   assert(r === undefined, `recordStripeEvent returns undefined (got ${r})`);
 });
 
+// ═════════════════════════════════════════════════════════════════════════
+// CC-1 cycle 4 — app registration: recordApp, appNameFor, markAppDeployed
+// (without versions+secrets seeding — those land in cycles 5-6).
+// ═════════════════════════════════════════════════════════════════════════
+//
+// recordApp + appNameFor are the {tenant_slug, app_slug} → script_name
+// mapping that backs Studio's "did this tenant already deploy this app?"
+// check. markAppDeployed is the cross-table seed call run after every
+// successful Cloudflare deploy: writes the deploy state to cf_deploys AND
+// mirrors the script name into apps so appNameFor returns it. Both writes
+// happen in one transaction so a partial failure doesn't leave the two
+// tables out of sync.
+//
+// Cycle 4 explicitly does NOT seed app_versions or app_secret_keys — even
+// when versionId / secretKeys are passed in, they're ignored here. Cycles
+// 5-6 will extend the same transaction. getAppRecord still throws
+// NOT_IMPLEMENTED until cycle 5.
+
+// Helper: cycle 4's test apps need a tenant row to satisfy the
+// apps.tenant_slug FK. Wraps create() so the test bodies stay terse.
+async function freshStoreWithTenant(slug = 'clear-app') {
+  const { store, pool, db } = await freshStore();
+  await store.create({ slug, stripeCustomerId: `cus_${slug}`, plan: 'pro' });
+  return { store, pool, db, slug };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
-// Sanity — methods we DIDN'T implement in cycle 3 still throw
-// NOT_IMPLEMENTED so cycles 4-8 have somewhere to land.
+// recordApp — happy path returns the app_name; appNameFor mirrors it.
 // ─────────────────────────────────────────────────────────────────────────
-console.log('\n🐘 CC-1 cycle 3 — cycles 4-8 territory still NOT_IMPLEMENTED');
+console.log('\n🐘 CC-1 cycle 4 — recordApp returns app_name; appNameFor reads it back');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  const name = await store.recordApp(slug, 'todo', 'clear-abc-todo');
+  assert(name === 'clear-abc-todo', `recordApp returns the app_name (got ${name})`);
+
+  const reread = await store.appNameFor(slug, 'todo');
+  assert(reread === 'clear-abc-todo', `appNameFor returns the same name (got ${reread})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// recordApp — second call with same (slug, appSlug) and different appName
+// upserts (UPDATE wins, returns the new name).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 4 — recordApp upserts on same (slug, appSlug)');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  const first = await store.recordApp(slug, 'todo', 'clear-abc-todo');
+  assert(first === 'clear-abc-todo', `first recordApp returns first name (got ${first})`);
+
+  const second = await store.recordApp(slug, 'todo', 'clear-abc-todo-renamed');
+  assert(second === 'clear-abc-todo-renamed',
+    `second recordApp returns the NEW name (got ${second})`);
+
+  // appNameFor reflects the latest write.
+  const reread = await store.appNameFor(slug, 'todo');
+  assert(reread === 'clear-abc-todo-renamed',
+    `appNameFor returns the upserted name (got ${reread})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// appNameFor — null on unknown.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 4 — appNameFor returns null for unknown (slug, appSlug)');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  const missing = await store.appNameFor(slug, 'never-recorded');
+  assert(missing === null, `appNameFor unknown app → null (got ${missing})`);
+
+  // Wrong tenant slug also returns null.
+  const wrongTenant = await store.appNameFor('clear-other', 'todo');
+  assert(wrongTenant === null,
+    `appNameFor with unknown tenant → null (got ${wrongTenant})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// markAppDeployed — happy path returns {ok:true} and writes both tables.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 4 — markAppDeployed writes cf_deploys + apps in one transaction');
+await runAsync(async () => {
+  const { store, pool, slug } = await freshStoreWithTenant();
+  const result = await store.markAppDeployed({
+    tenantSlug: slug,
+    appSlug: 'todo',
+    scriptName: 'clear-abc-todo',
+    d1_database_id: 'db_abc_123',
+    hostname: 'todo-abc.buildclear.dev',
+  });
+  assert(result && result.ok === true,
+    `markAppDeployed returns {ok:true} (got ${JSON.stringify(result)})`);
+
+  // cf_deploys row exists with all fields.
+  const cf = await pool.query(
+    `SELECT tenant_slug, app_slug, script_name, d1_database_id, hostname
+     FROM clear_cloud.cf_deploys WHERE tenant_slug = $1 AND app_slug = $2`,
+    [slug, 'todo']
+  );
+  assert(cf.rows.length === 1, `cf_deploys has exactly one row (got ${cf.rows.length})`);
+  assert(cf.rows[0].tenant_slug === slug, 'cf_deploys.tenant_slug correct');
+  assert(cf.rows[0].app_slug === 'todo', 'cf_deploys.app_slug correct');
+  assert(cf.rows[0].script_name === 'clear-abc-todo',
+    `cf_deploys.script_name = clear-abc-todo (got ${cf.rows[0].script_name})`);
+  assert(cf.rows[0].d1_database_id === 'db_abc_123',
+    `cf_deploys.d1_database_id = db_abc_123 (got ${cf.rows[0].d1_database_id})`);
+  assert(cf.rows[0].hostname === 'todo-abc.buildclear.dev',
+    `cf_deploys.hostname = todo-abc.buildclear.dev (got ${cf.rows[0].hostname})`);
+
+  // apps row mirrors script name (the dual-write at line 108 of in-memory store).
+  const apps = await pool.query(
+    `SELECT app_name FROM clear_cloud.apps WHERE tenant_slug = $1 AND app_slug = $2`,
+    [slug, 'todo']
+  );
+  assert(apps.rows.length === 1, `apps has exactly one mirrored row (got ${apps.rows.length})`);
+  assert(apps.rows[0].app_name === 'clear-abc-todo',
+    `apps.app_name mirrors script_name (got ${apps.rows[0].app_name})`);
+
+  // appNameFor returns it (the public API for the dual-write).
+  const named = await store.appNameFor(slug, 'todo');
+  assert(named === 'clear-abc-todo',
+    `appNameFor returns the mirrored script_name (got ${named})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// markAppDeployed — UPSERT semantics: same (tenantSlug, appSlug) called
+// twice with different scriptName, second wins, no duplicate rows.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 4 — markAppDeployed twice on same (tenantSlug, appSlug) upserts');
+await runAsync(async () => {
+  const { store, pool, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'todo',
+    scriptName: 'clear-abc-todo-v1',
+    d1_database_id: 'db_v1', hostname: 'v1.buildclear.dev',
+  });
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'todo',
+    scriptName: 'clear-abc-todo-v2',
+    d1_database_id: 'db_v2', hostname: 'v2.buildclear.dev',
+  });
+
+  // Still exactly one row per table.
+  const cf = await pool.query(
+    `SELECT script_name, d1_database_id, hostname
+     FROM clear_cloud.cf_deploys WHERE tenant_slug = $1 AND app_slug = $2`,
+    [slug, 'todo']
+  );
+  assert(cf.rows.length === 1, `cf_deploys has exactly one row after upsert (got ${cf.rows.length})`);
+  assert(cf.rows[0].script_name === 'clear-abc-todo-v2',
+    `script_name updated to v2 (got ${cf.rows[0].script_name})`);
+  assert(cf.rows[0].d1_database_id === 'db_v2',
+    `d1_database_id updated to db_v2 (got ${cf.rows[0].d1_database_id})`);
+  assert(cf.rows[0].hostname === 'v2.buildclear.dev',
+    `hostname updated to v2.buildclear.dev (got ${cf.rows[0].hostname})`);
+
+  const apps = await pool.query(
+    `SELECT app_name FROM clear_cloud.apps WHERE tenant_slug = $1 AND app_slug = $2`,
+    [slug, 'todo']
+  );
+  assert(apps.rows.length === 1, `apps has exactly one row after upsert (got ${apps.rows.length})`);
+  assert(apps.rows[0].app_name === 'clear-abc-todo-v2',
+    `apps.app_name updated to v2 (got ${apps.rows[0].app_name})`);
+
+  // Public API confirms the upsert.
+  const named = await store.appNameFor(slug, 'todo');
+  assert(named === 'clear-abc-todo-v2',
+    `appNameFor returns the upserted name (got ${named})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// markAppDeployed — d1_database_id and hostname are nullable, both null
+// case must store nulls (not coerce to empty strings or skip the columns).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 4 — markAppDeployed accepts null d1_database_id + null hostname');
+await runAsync(async () => {
+  const { store, pool, slug } = await freshStoreWithTenant();
+  const result = await store.markAppDeployed({
+    tenantSlug: slug,
+    appSlug: 'no-db',
+    scriptName: 'clear-abc-no-db',
+    d1_database_id: null,
+    hostname: null,
+  });
+  assert(result.ok === true, `markAppDeployed with nulls returns {ok:true} (got ${JSON.stringify(result)})`);
+
+  const cf = await pool.query(
+    `SELECT script_name, d1_database_id, hostname
+     FROM clear_cloud.cf_deploys WHERE tenant_slug = $1 AND app_slug = $2`,
+    [slug, 'no-db']
+  );
+  assert(cf.rows.length === 1, 'cf_deploys row exists');
+  assert(cf.rows[0].script_name === 'clear-abc-no-db', 'script_name persisted');
+  assert(cf.rows[0].d1_database_id === null,
+    `d1_database_id stored as null (got ${cf.rows[0].d1_database_id})`);
+  assert(cf.rows[0].hostname === null,
+    `hostname stored as null (got ${cf.rows[0].hostname})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sanity — cycles 5-8 territory (versions / secrets / lookup / audit) still
+// throws NOT_IMPLEMENTED. markAppDeployed has graduated; getAppRecord has not.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 4 — cycles 5-8 territory still NOT_IMPLEMENTED');
 await runAsync(async () => {
   const { store } = await freshStore();
   let caught = null;
@@ -467,10 +663,16 @@ await runAsync(async () => {
     'lookupAppBySubdomain still throws NOT_IMPLEMENTED');
 
   caught = null;
-  try { await store.markAppDeployed({ tenantSlug: 'x', appSlug: 'y', scriptName: 'z' }); }
+  try { await store.getAppRecord('clear-x', 'app-y'); }
   catch (e) { caught = e; }
   assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'markAppDeployed still throws NOT_IMPLEMENTED');
+    'getAppRecord still throws NOT_IMPLEMENTED until cycle 5');
+
+  caught = null;
+  try { await store.recordVersion({ tenantSlug: 'x', appSlug: 'y', versionId: 'v1' }); }
+  catch (e) { caught = e; }
+  assert(caught && caught.code === 'NOT_IMPLEMENTED',
+    'recordVersion still throws NOT_IMPLEMENTED until cycle 5');
 });
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

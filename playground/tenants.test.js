@@ -335,9 +335,10 @@ await runAsync(async () => {
     'appendAuditEntry returns APP_NOT_FOUND for unknown app');
 });
 await runAsync(async () => {
-  // Appending many entries preserves ALL of them — log is append-only,
-  // never trimmed. (Compare versions[] which caps at MAX_VERSIONS_PER_APP;
-  // audit log has no cap because it's the legal-compliance surface.)
+  // Appending up to MAX_AUDIT_PER_APP entries preserves ALL of them.
+  // (Phase C cycle 3 changed the contract: getAuditLog returns NEWEST-FIRST
+  // and the log caps at MAX_AUDIT_PER_APP=200. 50 < 200, so all 50 are
+  // kept — but order is now reversed from insertion.)
   const s = new InMemoryTenantStore();
   await s.markAppDeployed({
     tenantSlug: 't', appSlug: 'a',
@@ -350,9 +351,231 @@ await runAsync(async () => {
     });
   }
   const log = await s.getAuditLog('t', 'a');
-  assert(log.length === 50, 'all 50 entries kept (append-only, no trim)');
-  assert(log[0].note === 'i=0' && log[49].note === 'i=49',
-    'log preserves insertion order');
+  assert(log.length === 50, 'all 50 entries kept (under cap of 200)');
+  assert(log[0].note === 'i=49' && log[49].note === 'i=0',
+    'log returns newest-first (i=49 first, i=0 last)');
+});
+
+// ── LAE Phase C cycle 3 — destructive-row extension on audit log ──────────
+// Phase C destructive ships need to write an audit row BEFORE the change
+// touches the deployed app (locked-in decision #4: write `pending` first,
+// ship, mark `shipped` or `ship-failed`). This requires:
+//   • appendAuditEntry accepts new fields: kind, before/after diff hunks,
+//     reason, ip, userAgent, status (default 'shipped' for back-compat).
+//   • appendAuditEntry returns {ok:true, auditId} so the caller can mark
+//     the row later with the ship outcome.
+//   • markAuditEntry({auditId, status, versionId?, error?}) does an in-place
+//     update — never trims, even if the cap is hit.
+//   • MAX_AUDIT_PER_APP=200 cap; oldest trimmed on append (NOT on mark —
+//     pending rows in flight must never disappear).
+//   • getAuditLog returns rows newest-first.
+// Schema lock-in: before/after are tiny diff snippets, never full source.
+console.log('\n🛡️ LAE Phase C cycle 3 — destructive audit-row extension');
+
+// New fields stored verbatim + auditId returned.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc', appSlug: 'app',
+    scriptName: 'pc-app', d1_database_id: 'd', hostname: 'h',
+  });
+  const res = await s.appendAuditEntry({
+    tenantSlug: 'pc', appSlug: 'app',
+    actor: 'owner@example.com',
+    action: 'ship',
+    verdict: 'destructive',
+    sourceHashBefore: 'aaa',
+    sourceHashAfter: 'bbb',
+    note: 'remove notes field',
+    kind: 'remove_field',
+    before: '- notes (text)',
+    after: '(removed)',
+    reason: 'GDPR erasure request',
+    ip: '203.0.113.7',
+    userAgent: 'Mozilla/5.0 (test)',
+    status: 'pending',
+  });
+  assert(res && res.ok === true, 'appendAuditEntry returns ok:true');
+  assert(typeof res.auditId === 'string' && res.auditId.length > 0,
+    'appendAuditEntry returns a non-empty auditId');
+  const log = await s.getAuditLog('pc', 'app');
+  assert(log.length === 1, 'log has 1 row');
+  assert(log[0].kind === 'remove_field', 'kind preserved verbatim');
+  assert(log[0].before === '- notes (text)', 'before (diff hunk) preserved verbatim');
+  assert(log[0].after === '(removed)', 'after preserved verbatim');
+  assert(log[0].reason === 'GDPR erasure request', 'reason preserved verbatim');
+  assert(log[0].ip === '203.0.113.7', 'ip preserved verbatim');
+  assert(log[0].userAgent === 'Mozilla/5.0 (test)', 'userAgent preserved verbatim');
+  assert(log[0].status === 'pending', 'status preserved as pending');
+  assert(log[0].auditId === res.auditId, 'row carries the same auditId returned by append');
+});
+
+// status defaults to 'shipped' when omitted (back-compat for non-destructive).
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc2', appSlug: 'app',
+    scriptName: 'pc2-app', d1_database_id: 'd', hostname: 'h',
+  });
+  const res = await s.appendAuditEntry({
+    tenantSlug: 'pc2', appSlug: 'app',
+    actor: 'o', action: 'ship', verdict: 'additive', note: 'add field',
+  });
+  assert(res.ok === true, 'append succeeds without status');
+  const log = await s.getAuditLog('pc2', 'app');
+  assert(log[0].status === 'shipped',
+    'status defaults to "shipped" when caller omits it');
+});
+
+// markAuditEntry updates status pending → shipped with versionId.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc3', appSlug: 'app',
+    scriptName: 'pc3-app', d1_database_id: 'd', hostname: 'h',
+  });
+  const append = await s.appendAuditEntry({
+    tenantSlug: 'pc3', appSlug: 'app',
+    actor: 'o', action: 'ship', verdict: 'destructive',
+    kind: 'remove_field', before: '- x', after: '(removed)',
+    reason: 'cleanup', status: 'pending',
+  });
+  const mark = await s.markAuditEntry({
+    auditId: append.auditId,
+    status: 'shipped',
+    versionId: 'v-789',
+  });
+  assert(mark && mark.ok === true, 'markAuditEntry returns ok:true on success');
+  const log = await s.getAuditLog('pc3', 'app');
+  assert(log[0].status === 'shipped', 'status flipped to shipped');
+  assert(log[0].versionId === 'v-789', 'versionId merged into row');
+  // Verify other fields preserved.
+  assert(log[0].kind === 'remove_field', 'kind preserved across mark');
+  assert(log[0].reason === 'cleanup', 'reason preserved across mark');
+  assert(log[0].before === '- x', 'before preserved across mark');
+});
+
+// markAuditEntry status:'ship-failed' + error.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc4', appSlug: 'app',
+    scriptName: 'pc4-app', d1_database_id: 'd', hostname: 'h',
+  });
+  const append = await s.appendAuditEntry({
+    tenantSlug: 'pc4', appSlug: 'app',
+    actor: 'o', action: 'ship', verdict: 'destructive',
+    kind: 'remove_field', before: '- y', after: '(removed)',
+    reason: 'try', status: 'pending',
+  });
+  const mark = await s.markAuditEntry({
+    auditId: append.auditId,
+    status: 'ship-failed',
+    error: 'D1 binding rejected ALTER',
+  });
+  assert(mark.ok === true, 'mark with ship-failed succeeds');
+  const log = await s.getAuditLog('pc4', 'app');
+  assert(log[0].status === 'ship-failed', 'status set to ship-failed');
+  assert(log[0].error === 'D1 binding rejected ALTER', 'error preserved');
+});
+
+// markAuditEntry on unknown auditId returns AUDIT_NOT_FOUND.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc5', appSlug: 'app',
+    scriptName: 'pc5-app', d1_database_id: 'd', hostname: 'h',
+  });
+  const mark = await s.markAuditEntry({
+    auditId: 'does-not-exist-12345',
+    status: 'shipped',
+    versionId: 'v-1',
+  });
+  assert(mark && mark.ok === false && mark.code === 'AUDIT_NOT_FOUND',
+    'markAuditEntry on unknown id returns AUDIT_NOT_FOUND');
+});
+
+// markAuditEntry does NOT trim the cap — pending rows must never vanish.
+// Fill to MAX (200) of pending rows, then mark one — count stays 200.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc6', appSlug: 'app',
+    scriptName: 'pc6-app', d1_database_id: 'd', hostname: 'h',
+  });
+  let firstId = null;
+  for (let i = 0; i < 200; i++) {
+    const r = await s.appendAuditEntry({
+      tenantSlug: 'pc6', appSlug: 'app',
+      actor: 'o', action: 'ship', verdict: 'destructive',
+      kind: 'remove_field', before: '- a', after: '(removed)',
+      reason: 'r' + i, status: 'pending',
+    });
+    if (i === 100) firstId = r.auditId; // pick a middle row to mark
+  }
+  let log = await s.getAuditLog('pc6', 'app');
+  assert(log.length === 200, `cap reached: 200 rows (got ${log.length})`);
+  const mark = await s.markAuditEntry({
+    auditId: firstId, status: 'shipped', versionId: 'v-x',
+  });
+  assert(mark.ok === true, 'mark succeeded at the cap');
+  log = await s.getAuditLog('pc6', 'app');
+  assert(log.length === 200,
+    `mark did not trim — still 200 rows (got ${log.length})`);
+});
+
+// appendAuditEntry past 200 trims the OLDEST.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc7', appSlug: 'app',
+    scriptName: 'pc7-app', d1_database_id: 'd', hostname: 'h',
+  });
+  // Append 205 rows; expect the first 5 (reason r0..r4) trimmed.
+  for (let i = 0; i < 205; i++) {
+    await s.appendAuditEntry({
+      tenantSlug: 'pc7', appSlug: 'app',
+      actor: 'o', action: 'ship', verdict: 'additive', reason: 'r' + i,
+    });
+  }
+  const log = await s.getAuditLog('pc7', 'app');
+  assert(log.length === 200,
+    `cap enforced at 200 (got ${log.length})`);
+  // newest-first: log[0] is r204, log[199] is r5 (r0..r4 trimmed)
+  assert(log[0].reason === 'r204', 'newest row first (r204)');
+  assert(log[199].reason === 'r5',
+    `oldest kept row is r5 — r0..r4 trimmed (got ${log[199].reason})`);
+  assert(!log.find(e => e.reason === 'r0'), 'r0 was trimmed');
+  assert(!log.find(e => e.reason === 'r4'), 'r4 was trimmed');
+});
+
+// getAuditLog returns newest-first.
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'pc8', appSlug: 'app',
+    scriptName: 'pc8-app', d1_database_id: 'd', hostname: 'h',
+  });
+  // Three appends; sleep a microtask between each so ts strings differ.
+  await s.appendAuditEntry({
+    tenantSlug: 'pc8', appSlug: 'app',
+    actor: 'o', action: 'ship', verdict: 'additive', reason: 'first',
+  });
+  await new Promise(r => setTimeout(r, 5));
+  await s.appendAuditEntry({
+    tenantSlug: 'pc8', appSlug: 'app',
+    actor: 'o', action: 'ship', verdict: 'additive', reason: 'second',
+  });
+  await new Promise(r => setTimeout(r, 5));
+  await s.appendAuditEntry({
+    tenantSlug: 'pc8', appSlug: 'app',
+    actor: 'o', action: 'ship', verdict: 'additive', reason: 'third',
+  });
+  const log = await s.getAuditLog('pc8', 'app');
+  assert(log.length === 3, 'three rows present');
+  assert(log[0].reason === 'third', 'log[0] is the most recent (third)');
+  assert(log[1].reason === 'second', 'log[1] is middle (second)');
+  assert(log[2].reason === 'first', 'log[2] is oldest (first)');
 });
 
 // ── CC-1 (Postgres path) — interface contract test ──────────────────────────
