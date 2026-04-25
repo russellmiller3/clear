@@ -2,7 +2,7 @@ import express from 'express';
 import { compileProgram } from '../index.js';
 import { parse } from '../parser.js';
 import { patch } from '../patch.js';
-import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, openSync, closeSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, openSync, closeSync, appendFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
@@ -1986,6 +1986,33 @@ app.post('/api/fetch', async (req, res) => {
     }
   }
   res.status(500).json({ error: lastErr?.message || 'fetch failed' });
+});
+
+// =============================================================================
+// CF-1 — Compiler Flywheel beacon receiver. Compiled apps POST runtime events
+// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server. We
+// drop them into a JSONL file at playground/flywheel-beacons.jsonl. A future
+// session migrates this into the Factor DB (see plans/plan-compiler-flywheel-tier1).
+// Per-compile_row_id rate-limit: 100 events/s, drop-and-count overflow.
+// =============================================================================
+const _beaconLog = join(__dirname, 'flywheel-beacons.jsonl');
+const _beaconRate = new Map(); // compile_row_id -> { sec, count }
+app.post('/api/flywheel/beacon', (req, res) => {
+  const ev = req.body || {};
+  const id = ev.compile_row_id;
+  if (!id || !ev.event_type) return res.status(400).json({ error: 'compile_row_id and event_type required' });
+  const sec = Math.floor(Date.now() / 1000);
+  const cur = _beaconRate.get(id);
+  if (cur && cur.sec === sec) {
+    if (cur.count >= 100) return res.status(429).json({ error: 'rate limited' });
+    cur.count++;
+  } else {
+    _beaconRate.set(id, { sec, count: 1 });
+  }
+  try {
+    appendFileSync(_beaconLog, JSON.stringify({ ...ev, received_at: Date.now() }) + '\n');
+  } catch {}
+  res.json({ ok: true });
 });
 
 // =============================================================================

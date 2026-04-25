@@ -35,3 +35,6 @@ tests/guard-bugs/*/build/clear-runtime/
 .claude/.hook-proposal-stamp
 .claude/.meta-learnings-updater-stamp
 .claude/.propose-new-tools-stamp
+
+# CF-1 — runtime instrumentation beacon log (per-dev, regenerates on demand)
+playground/flywheel-beacons.jsonl

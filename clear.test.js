@@ -2896,6 +2896,58 @@ page 'Chat' at '/':
   });
 });
 
+// =============================================================================
+// CF-1: Runtime instrumentation in compiled apps
+// Every compiled server emits a small _clearBeacon helper plus per-endpoint
+// latency hooks. The helper silently no-ops unless CLEAR_FLYWHEEL_URL is set,
+// so apps deployed without the flywheel pay nothing. When the env is set,
+// every request becomes a Factor-DB row tagged to its compile_row_id.
+// =============================================================================
+describe('CF-1: runtime instrumentation beacon in compiled apps', () => {
+  const fullstackSrc = `build for javascript backend
+when user requests data from /api/health:
+  send back 'ok'`;
+
+  it('compiled server includes the _clearBeacon helper', () => {
+    const r = compileProgram(fullstackSrc);
+    expect(r.errors).toHaveLength(0);
+    const code = r.serverJS || r.javascript || '';
+    expect(code).toContain('_clearBeacon');
+    expect(code).toContain('CLEAR_FLYWHEEL_URL');
+    expect(code).toContain('CLEAR_COMPILE_ROW_ID');
+  });
+
+  it('beacon helper bails out silently when env vars are unset', () => {
+    const r = compileProgram(fullstackSrc);
+    const code = r.serverJS || r.javascript || '';
+    // The helper must early-return when either env var is missing — otherwise
+    // every locally-built app eats fetch overhead for nothing.
+    expect(code).toMatch(/if\s*\(\s*!_CLEAR_FLYWHEEL_URL[\s\S]{0,40}return/);
+  });
+
+  it('beacon helper uses AbortSignal.timeout so a slow flywheel never blocks user requests', () => {
+    const r = compileProgram(fullstackSrc);
+    const code = r.serverJS || r.javascript || '';
+    // The whole point of the beacon is "fire and forget" — if the receiver
+    // hangs, the user's request must not.
+    expect(code).toContain('AbortSignal.timeout');
+  });
+
+  it('compiled server wires endpoint latency telemetry', () => {
+    const r = compileProgram(fullstackSrc);
+    const code = r.serverJS || r.javascript || '';
+    // After the request finishes, an endpoint_latency event ships. We don't
+    // care about the exact wiring — just that it's there.
+    expect(code).toContain("event_type: 'endpoint_latency'");
+  });
+
+  it('compiled server wires endpoint error telemetry', () => {
+    const r = compileProgram(fullstackSrc);
+    const code = r.serverJS || r.javascript || '';
+    expect(code).toContain("event_type: 'endpoint_error'");
+  });
+});
+
 describe('Conditional UI (if blocks in page)', () => {
   it('parses if block inside a page body', () => {
     const source = `

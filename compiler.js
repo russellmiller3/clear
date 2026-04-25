@@ -12037,6 +12037,36 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   lines.push('  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON in request body" });');
   lines.push('  next(err);');
   lines.push('});');
+  // CF-1 — Compiler Flywheel runtime instrumentation. Every compiled app
+  // beacons endpoint_latency + endpoint_error events to a shared receiver
+  // so the Factor DB can correlate compile-time decisions with production
+  // outcomes. Silent no-op unless BOTH env vars are set, so an app deployed
+  // without the flywheel pays nothing. Spec: plans/plan-compiler-flywheel-tier1-04-19-2026.md.
+  lines.push('// CF-1: runtime instrumentation — fire-and-forget beacons to the Compiler Flywheel.');
+  lines.push("const _CLEAR_FLYWHEEL_URL = process.env.CLEAR_FLYWHEEL_URL;");
+  lines.push("const _CLEAR_COMPILE_ROW_ID = process.env.CLEAR_COMPILE_ROW_ID;");
+  lines.push('function _clearBeacon(event) {');
+  lines.push('  if (!_CLEAR_FLYWHEEL_URL || !_CLEAR_COMPILE_ROW_ID) return;');
+  lines.push('  try {');
+  lines.push('    fetch(_CLEAR_FLYWHEEL_URL, {');
+  lines.push("      method: 'POST',");
+  lines.push("      headers: { 'Content-Type': 'application/json' },");
+  lines.push('      body: JSON.stringify(Object.assign({ compile_row_id: _CLEAR_COMPILE_ROW_ID, ts: Date.now() }, event)),');
+  lines.push('      signal: AbortSignal.timeout(500),');
+  lines.push('    }).catch(() => {});');
+  lines.push('  } catch {}');
+  lines.push('}');
+  lines.push('app.use((req, res, next) => {');
+  lines.push('  const _t0 = Date.now();');
+  lines.push("  res.on('finish', () => {");
+  lines.push("    _clearBeacon({ event_type: 'endpoint_latency', method: req.method, path: req.route ? req.route.path : req.path, status: res.statusCode, duration_ms: Date.now() - _t0 });");
+  lines.push('  });');
+  lines.push('  next();');
+  lines.push('});');
+  lines.push('app.use((err, req, res, next) => {');
+  lines.push("  _clearBeacon({ event_type: 'endpoint_error', method: req.method, path: req.path, error_sig: (err && err.message ? String(err.message).substring(0, 200) : 'unknown') });");
+  lines.push('  next(err);');
+  lines.push('});');
   // Middleware ordering matters: CORS and logging must come before auth
   // so preflight OPTIONS requests and request logs work without tokens
   const hasCORS = body.some(n => n.type === NodeType.ALLOW_CORS);
