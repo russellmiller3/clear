@@ -242,6 +242,26 @@ export async function deploySource({ source, tenantSlug, appSlug, secrets = {}, 
 	return { ok: true, jobId: builderRes.json?.jobId, needsSecrets: pkgRes.needsSecrets, aiCallsDetected: pkgRes.aiCallsDetected };
 }
 
+// One-click updates Phase 4 cycle 4.4 — shape the /api/app-info response
+// consistently for every caller (modal "Update vs Deploy" branch, history
+// panel, rollback button). When `record` is null, the app was never
+// deployed under (tenant, slug); return deployed:false so the modal can
+// render the "Deploy" branch on a single response shape. When present,
+// surface hostname / scriptName / versions[] (newest-first per
+// getAppRecord) plus a one-line lastVersion shortcut.
+function _appInfoResponse(record) {
+	if (!record) return { ok: true, deployed: false };
+	const versions = Array.isArray(record.versions) ? record.versions : [];
+	return {
+		ok: true,
+		deployed: true,
+		hostname: record.hostname || null,
+		scriptName: record.scriptName || null,
+		versions,
+		lastVersion: versions.length > 0 ? versions[0] : null,
+	};
+}
+
 // -------- shared deploy deps (for sibling modules that need the same
 // store + CF API the /api/deploy route uses). Populated by wireDeploy.
 // Used by the Live App Editing widget's cloud-ship path so it doesn't
@@ -545,6 +565,22 @@ export function wireDeploy(app, opts = {}) {
 		const body = Buffer.from(JSON.stringify({ appName, domain, tenantSlug: tenant.slug }));
 		const r = await postToBuilder('/cert', 'POST', { 'Content-Type': 'application/json' }, body);
 		res.status(r.status || 200).json(r.json || { ok: false });
+	});
+
+	// One-click updates Phase 4 cycle 4.4 — the modal's "is this slug
+	// already deployed?" lookup. Drives whether the Deploy button reads
+	// "Deploy" (fresh) or "Update" (incremental) and seeds the version
+	// history panel. Unknown slugs return deployed:false at 200, NOT 404,
+	// so the client branches on a single JSON shape instead of also
+	// handling fetch-error codes.
+	app.get('/api/app-info/:appSlug', async (req, res) => {
+		const tenant = await requireTenant(req, res);
+		if (!tenant) return;
+		const appSlug = req.params.appSlug;
+		try { sanitizeAppSlug(appSlug); }
+		catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
+		const record = await store.getAppRecord(tenant.slug, appSlug);
+		return res.json(_appInfoResponse(record));
 	});
 
 	app.get('/api/deploy-history/:app', async (req, res) => {

@@ -1194,4 +1194,113 @@ when user requests data from /api/secret:
 			_setDeployFnForTest(null);
 		}
 	});
+
+	// Cycle 4.4: GET /api/app-info/:appSlug — the modal's "is this slug
+	// already deployed?" lookup. Drives whether the modal renders
+	// "Deploy" (fresh) or "Update" (incremental). For unknown slugs,
+	// returns deployed:false at 200 (NOT 404) so the client can branch
+	// on a single response shape instead of also handling fetch-error
+	// codes. The shape is stable across deployed/undeployed via the
+	// _appInfoResponse helper so future callers (history panel, rollback
+	// button) can rely on it.
+	await runSeq('/api/app-info — 401 without tenant cookie (one-click cycle 4.4)', async () => {
+		const { port, close } = await startStudio();
+		try {
+			const r = await req(port, '/api/app-info/myapp', { method: 'GET' });
+			expect(r.status).toBe(401);
+		} finally { await close(); }
+	});
+
+	await runSeq('/api/app-info — unknown slug returns deployed:false at 200 (one-click cycle 4.4)', async () => {
+		const { port, cookie, close } = await startStudio();
+		try {
+			const r = await req(port, '/api/app-info/never-deployed', {
+				method: 'GET', headers: { Cookie: cookie },
+			});
+			expect(r.status).toBe(200);
+			expect(r.body.ok).toBe(true);
+			expect(r.body.deployed).toBe(false);
+		} finally { await close(); }
+	});
+
+	await runSeq('/api/app-info — invalid slug returns 400 INVALID_APP_SLUG (one-click cycle 4.4)', async () => {
+		const { port, cookie, close } = await startStudio();
+		try {
+			// URL-encoded "Bad Slug!" — caps + space + bang are all invalid per sanitizeAppSlug.
+			const r = await req(port, '/api/app-info/Bad%20Slug%21', {
+				method: 'GET', headers: { Cookie: cookie },
+			});
+			expect(r.status).toBe(400);
+			expect(r.body.code).toBe('INVALID_APP_SLUG');
+		} finally { await close(); }
+	});
+
+	await runSeq('/api/app-info — known slug returns full record with versions newest-first (one-click cycle 4.4)', async () => {
+		const { port, cookie, close, store } = await startStudio();
+		try {
+			// Seed the app record + 3 versions with deliberately-out-of-order timestamps.
+			await store.markAppDeployed({
+				tenantSlug: 'clear-acme', appSlug: 'myapp',
+				scriptName: 'myapp', d1_database_id: 'd1-myapp',
+				hostname: 'myapp.buildclear.dev',
+				secretKeys: ['API_KEY'],
+			});
+			await store.recordVersion({
+				tenantSlug: 'clear-acme', appSlug: 'myapp',
+				versionId: 'v-1', uploadedAt: '2026-04-23T10:00:00Z',
+				sourceHash: 'h1', migrationsHash: null,
+			});
+			await store.recordVersion({
+				tenantSlug: 'clear-acme', appSlug: 'myapp',
+				versionId: 'v-2', uploadedAt: '2026-04-23T12:00:00Z',
+				sourceHash: 'h2', migrationsHash: null,
+			});
+			await store.recordVersion({
+				tenantSlug: 'clear-acme', appSlug: 'myapp',
+				versionId: 'v-3', uploadedAt: '2026-04-23T11:00:00Z',
+				sourceHash: 'h3', migrationsHash: null,
+			});
+
+			const r = await req(port, '/api/app-info/myapp', {
+				method: 'GET', headers: { Cookie: cookie },
+			});
+			expect(r.status).toBe(200);
+			expect(r.body.ok).toBe(true);
+			expect(r.body.deployed).toBe(true);
+			expect(r.body.hostname).toBe('myapp.buildclear.dev');
+			expect(r.body.scriptName).toBe('myapp');
+			expect(Array.isArray(r.body.versions)).toBe(true);
+			expect(r.body.versions.length).toBe(3);
+			// Newest-first ordering — v-2 (12:00) > v-3 (11:00) > v-1 (10:00).
+			expect(r.body.versions[0].versionId).toBe('v-2');
+			expect(r.body.versions[1].versionId).toBe('v-3');
+			expect(r.body.versions[2].versionId).toBe('v-1');
+			// lastVersion mirrors versions[0] for one-line modal access.
+			expect(r.body.lastVersion).not.toBe(undefined);
+			expect(r.body.lastVersion.versionId).toBe('v-2');
+		} finally { await close(); }
+	});
+
+	await runSeq('/api/app-info — known slug with no versions still returns deployed:true (one-click cycle 4.4)', async () => {
+		// Edge case: app was deployed but no recordVersion call succeeded yet
+		// (orchestrator's seed passes versionId:null today). Modal must still
+		// render the Update branch so the user can re-deploy and pick up a
+		// real versionId on the next cycle.
+		const { port, cookie, close, store } = await startStudio();
+		try {
+			await store.markAppDeployed({
+				tenantSlug: 'clear-acme', appSlug: 'fresh',
+				scriptName: 'fresh', d1_database_id: null,
+				hostname: 'fresh.buildclear.dev',
+				secretKeys: [],
+			});
+			const r = await req(port, '/api/app-info/fresh', {
+				method: 'GET', headers: { Cookie: cookie },
+			});
+			expect(r.status).toBe(200);
+			expect(r.body.deployed).toBe(true);
+			expect(r.body.versions.length).toBe(0);
+			expect(r.body.lastVersion).toBe(null);
+		} finally { await close(); }
+	});
 })();
