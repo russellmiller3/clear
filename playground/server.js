@@ -92,6 +92,18 @@ if (!existsSync(SESSIONS_DIR)) mkdirSync(SESSIONS_DIR, { recursive: true });
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
+// CC-1 — Multi-tenant routing. When CLEAR_CLOUD_MODE=1 is set, the
+// subdomain router mounts FIRST so `<sub>.buildclear.dev` requests get
+// proxied to the deployed app before they hit Studio's static + chat
+// routes. When the env is unset (the dev path), this is a silent no-op
+// and Studio operates exactly as before. Wiring contract is in
+// playground/cloud-routing/index.test.js.
+import { mountCloudRouting } from './cloud-routing/index.js';
+import { InMemoryTenantStore } from './tenants.js';
+const _cloudTenantStore = new InMemoryTenantStore();
+const _cloudRouted = mountCloudRouting(app, { store: _cloudTenantStore });
+if (_cloudRouted) console.log('[cloud] CC-1 multi-tenant routing active (CLEAR_CLOUD_MODE=1)');
+
 // =============================================================================
 // STATIC FILES
 // =============================================================================

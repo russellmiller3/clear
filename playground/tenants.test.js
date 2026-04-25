@@ -241,6 +241,45 @@ await runAsync(async () => {
     'updateSecretKeys on unknown app returns APP_NOT_FOUND');
 });
 
+// ── CC-1 multi-tenant routing: lookupAppBySubdomain ─────────────────────────
+// The subdomain router needs a way to go from `acme-deals` (extracted from
+// Host:) to the deployed-app row that lives in cfDeploys. The hostname field
+// is already stored at deploy time (`hostname: 'acme-deals.buildclear.dev'`)
+// so the lookup is just a scan of cfDeploys keyed on the leading subdomain.
+console.log('\n🧭 CC-1 — lookupAppBySubdomain');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'acme', appSlug: 'deals',
+    scriptName: 'acme-deals-prod',
+    d1_database_id: 'd1-acme',
+    hostname: 'acme-deals.buildclear.dev',
+  });
+  const row = await s.lookupAppBySubdomain('acme-deals');
+  assert(row && row.scriptName === 'acme-deals-prod', 'lookup returns the right script');
+  assert(row.d1_database_id === 'd1-acme', 'lookup returns the d1 binding');
+  assert(row.tenantSlug === 'acme', 'lookup carries tenantSlug for further auth');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  const row = await s.lookupAppBySubdomain('does-not-exist');
+  assert(row === null, 'unknown subdomain returns null');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'acme', appSlug: 'deals',
+    scriptName: 'acme-deals',
+    d1_database_id: 'd1', hostname: 'acme-deals.buildclear.dev',
+  });
+  // Subdomain match is case-insensitive (Host headers are canonicalized
+  // lowercase by extractSubdomain, but the store should be defensive).
+  const row = await s.lookupAppBySubdomain('ACME-DEALS');
+  assert(row && row.scriptName === 'acme-deals', 'lookup is case-insensitive');
+});
+
 // ── Regression floor: existing Phase 7.7 behavior preserved ─────────────────
 console.log('\n🧩 Regression — loadKnownApps still works across the new fields');
 await runAsync(async () => {

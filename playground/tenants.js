@@ -182,6 +182,28 @@ export class InMemoryTenantStore {
 		}
 		return { ok: true };
 	}
+	// CC-1 — multi-tenant subdomain routing. Given the subdomain extracted
+	// from a Host header (e.g. `acme-deals` from `acme-deals.buildclear.dev`),
+	// return the deployed-app row that owns it. The hostname field is set by
+	// markAppDeployed at deploy time, so this is an O(N) scan of cfDeploys
+	// keyed on the leading label of the stored hostname. In production the
+	// scan moves to a Postgres index on hostname; the in-memory store is the
+	// dev path.
+	//
+	// Returns the full row (script + d1 + tenantSlug + appSlug + hostname +
+	// versions[] + secretKeys[]) or null when nothing matches.
+	async lookupAppBySubdomain(subdomain) {
+		if (!subdomain || !this.cfDeploys) return null;
+		const target = subdomain.toLowerCase();
+		for (const row of this.cfDeploys.values()) {
+			const host = (row.hostname || '').toLowerCase();
+			const dot = host.indexOf('.');
+			const head = dot === -1 ? host : host.slice(0, dot);
+			if (head === target) return { ...row };
+		}
+		return null;
+	}
+
 	// Phase 7.7c — reconcile job calls this to get the full known-apps view.
 	// Returns two sets so the caller can diff against CF listings.
 	async loadKnownApps() {
