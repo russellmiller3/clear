@@ -39,17 +39,21 @@ const CHECKOUT_PRO_PLAN = {
 };
 ```
 
-**Verdict: not a real violator.** One block in, one `const` out. The header
-comment names the source. The user still writes their own `/api/checkout`
-endpoint — the keyword only generates the config object, not the endpoint
-behavior. The "magic" is that the variable name gets uppercased and prefixed
-with `CHECKOUT_`; that's a 1-step rename, not hidden behavior.
+**Verdict (2026-04-25 update): soft deprecation.** Emit volume IS 1:1 — one
+block in, one const out — but the const name (`CHECKOUT_PRO_PLAN`) lives in
+a JS namespace no Clear code can reach. There's no way to write `send back
+CHECKOUT_PRO_PLAN`'s `price` from Clear, because that name is invented at
+emit time, not bound to a Clear identifier. So while the *line ratio* is 1:1,
+the *naming* is one-way.
 
-**Real-world use:** 3 apps reference `checkout '...':` (`apps/full-saas`,
-`apps/saas-billing`, `apps/ecommerce-api`).
+**Action taken:** validator now emits a deprecation warning steering authors
+toward `create pro_plan_checkout: ...` (a real Clear binding that can be
+referenced anywhere). The keyword still parses for back-compat. The 3 sample
+apps (`full-saas`, `saas-billing`, `ecommerce-api`) have been migrated.
 
-**Recommended action:** leave as-is. Possibly rename the section comment in
-PHILOSOPHY.md so future audits don't keep listing CHECKOUT as a violator.
+If a future session wants full removal: delete `parseCheckout`, the
+`'checkout'` token entry, the compiler `case NodeType.CHECKOUT`, and update
+the existing parser/compiler tests that exercise the legacy form.
 
 ---
 

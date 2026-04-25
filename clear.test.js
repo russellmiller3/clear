@@ -5162,6 +5162,46 @@ checkout 'Pro Plan':
 });
 
 // =============================================================================
+// R10: deprecate the `checkout` keyword. The compiler emits a JS const named
+// CHECKOUT_X that no Clear name can reach — it's a label-only keyword whose
+// only effect is "renaming the variable in the compiled output." Authors who
+// need a checkout config should write a record literal so the binding has a
+// real Clear name. The keyword still parses (3 sample apps used it) but emits
+// a warning that recommends the migration. Sibling keywords `oauth` and
+// `limit` were removed in 2026-04-21 for the same reason; this is the
+// last in the trio.
+// =============================================================================
+describe('R10: checkout keyword is deprecated, recommends record literal', () => {
+  it('emits a deprecation warning when `checkout` is used', () => {
+    const r = compileProgram(`build for javascript backend
+checkout 'Pro Plan':
+  price is 'price_x'
+  mode is 'subscription'`);
+    expect(r.errors).toHaveLength(0);
+    const dep = (r.warnings || []).find(w =>
+      typeof w === 'object' && /checkout' is deprecated/.test(w.message || '')
+    );
+    expect(dep).toBeTruthy();
+    expect(dep.message).toContain('record literal');
+    expect(dep.message).toContain('pro_plan_checkout');
+  });
+
+  it('migration target compiles clean with NO deprecation warning', () => {
+    const r = compileProgram(`build for javascript backend
+create pro_plan_checkout:
+  price is 'price_x'
+  mode is 'subscription'
+  success_url is '/billing/success'
+  cancel_url is '/pricing'`);
+    expect(r.errors).toHaveLength(0);
+    const dep = (r.warnings || []).find(w =>
+      typeof w === 'object' && /checkout' is deprecated/.test(w.message || '')
+    );
+    expect(dep).toBeFalsy();
+  });
+});
+
+// =============================================================================
 // PHASE 17: WEBHOOKS & OAUTH
 // =============================================================================
 

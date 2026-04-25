@@ -20,29 +20,31 @@ create data shape Usage:
 
 # --- Billing Config ---
 
-checkout 'Pro Plan':
+create pro_plan_checkout:
   price is 'price_pro_monthly'
   mode is 'subscription'
   success_url is '/billing/success'
   cancel_url is '/billing'
 
-checkout 'Enterprise Plan':
+create enterprise_plan_checkout:
   price is 'price_enterprise_monthly'
   mode is 'subscription'
   success_url is '/billing/success'
   cancel_url is '/billing'
 
-# --- Usage Limits ---
+# Usage Limits
 
-limit 'api_calls':
-  free allows 100 per month
-  pro allows 10000 per month
-  enterprise allows unlimited
+create api_calls_limits:
+  free is 100
+  pro is 10000
+  enterprise is 'unlimited'
+  period is 'month'
 
-limit 'file_uploads':
-  free allows 5 per month
-  pro allows 100 per month
-  enterprise allows unlimited
+create file_uploads_limits:
+  free is 5
+  pro is 100
+  enterprise is 'unlimited'
+  period is 'month'
 
 # --- Endpoints ---
 

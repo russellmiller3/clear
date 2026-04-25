@@ -21,7 +21,7 @@ create a Orders table:
 
 # --- Stripe Config ---
 
-checkout 'Standard Purchase':
+create standard_purchase_checkout:
   price is 'price_auto'
   mode is 'payment'
   success_url is '/order/success'

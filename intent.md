@@ -173,7 +173,7 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
-| `CHECKOUT` | `checkout 'Pro Plan':` + price, mode, URLs | Stripe session |
+| `CHECKOUT` | `checkout 'Pro Plan':` + price, mode, URLs | **Deprecated** (2026-04-25) — emits a JS const that no Clear code can reach. Validator suggests `create pro_plan_checkout: ...` (a real Clear binding). Still parses for back-compat. |
 
 (`USAGE_LIMIT` removed 2026-04-21 — zero app usage. Use a record literal for tier definitions instead.)
 

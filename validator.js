@@ -118,7 +118,32 @@ export function validate(ast) {
   validateReceivingVarNames(ast.body, warnings);
   validateReservedEndpointPrefixes(ast.body, errors);
   validateTermination(ast.body, warnings);
+  validateDeprecatedKeywords(ast.body, warnings);
   return { errors, warnings };
+}
+
+/**
+ * Deprecated keywords that emit a warning steering authors toward an
+ * explicit form. Right now only `checkout 'X':` — its sibling 1:1-mapping
+ * candidates `oauth` and `limit` were removed in 2026-04-21. CHECKOUT
+ * stays parseable for backwards compatibility (3 sample apps used it),
+ * but the warning recommends migrating to a record literal so the
+ * compiled output traces back to a Clear name the author can reuse —
+ * `CHECKOUT_PRO_PLAN` is a JS identifier, never reachable from Clear.
+ */
+function validateDeprecatedKeywords(body, warnings) {
+  walkAll(body, (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'checkout') {
+      warnings.push({
+        line: node.line || 0,
+        message: `'checkout' is deprecated — the compiler emits a JS const (CHECKOUT_${(node.name || '').replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}) that no Clear code can reach. Use a record literal instead so the name is a real Clear binding: ${pickCheckoutVarName(node.name)} = {price is '...', mode is 'subscription', success_url is '/...', cancel_url is '/...'}.`,
+      });
+    }
+  });
+}
+function pickCheckoutVarName(name) {
+  return (name || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') + '_checkout';
 }
 
 /**

@@ -25,15 +25,16 @@ create data shape ApiKey:
 
 # --- Billing ---
 
-checkout 'Pro Plan':
+create pro_plan_checkout:
   price is 'price_pro_monthly'
   mode is 'subscription'
   success_url is '/billing/success'
   cancel_url is '/pricing'
 
-limit 'api_requests':
-  free allows 100 per month
-  pro allows 10000 per month
+create api_request_limits:
+  free is 100
+  pro is 10000
+  period is 'month'
 
 # --- Styles ---
 
