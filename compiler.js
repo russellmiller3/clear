@@ -9112,17 +9112,22 @@ function isReactiveApp(body) {
 function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentNames = new Set()) {
   const lines = [];
 
-  // Collect all nodes from page/section bodies (flatten wrappers)
+  // Collect all nodes from page/section bodies (flatten wrappers).
+  // Each leaf node is tagged with `_pageRoute` so per-page concerns (auth
+  // guards in particular) survive the flatten — the reactive emit walks
+  // flatNodes, not the original tree, so without this tag a guard inside
+  // /cro would compile against an unknown route and default to '/'.
   const flatNodes = [];
   const pageTitles = [];
-  function flatten(nodes) {
+  function flatten(nodes, pageRoute) {
     for (const node of nodes) {
       if (node.type === NodeType.PAGE) {
         pageTitles.push(node.title);
-        flatten(node.body);
+        flatten(node.body, node.route || '/');
       } else if (node.type === NodeType.SECTION) {
-        flatten(node.body);
+        flatten(node.body, pageRoute);
       } else {
+        if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
       }
     }
@@ -9436,7 +9441,11 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`    if (_el) _el.innerHTML = ${compName}(${childrenExpr}); }`);
       continue;
     }
-    const result = compileNode(node, reactiveCtx);
+    // Honor per-node page route (set during flatten) so REQUIRES_AUTH inside
+    // a sub-route page like /cro doesn't fall back to '/' and bounce users
+    // off the public root.
+    const nodeCtx = node._pageRoute ? { ...reactiveCtx, pageRoute: node._pageRoute } : reactiveCtx;
+    const result = compileNode(node, nodeCtx);
     if (result !== null) lines.push(result);
   }
 

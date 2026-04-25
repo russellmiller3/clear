@@ -17058,6 +17058,32 @@ page 'Login' at '/login':
     expect(guardLine).toBeTruthy();
     expect(guardLine).toMatch(/location\.pathname/);
   });
+
+  it('auth guard inside a reactive page (with on-page-load) targets the right route, not the first page', () => {
+    // Reactive emission walks a flattened node list, not the page tree. If the
+    // page route doesn't survive flatten, the guard ends up checking the
+    // first declared route ('/') instead of the protected sub-route. This
+    // bit deal-desk: /cro `needs login` was emitting `_want = "/"` which
+    // either never fired (when token missing on /) or never bounced users
+    // hitting /cro directly.
+    const src = `build for web
+create a Deals table:
+  customer, required
+page 'Home' at '/':
+  heading 'Public'
+page 'CRO Queue' at '/cro':
+  needs login
+  on page load:
+    get pending from '/api/deals'
+  display pending as cards showing customer
+page 'Login' at '/login':
+  heading 'Sign in'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // The compiled guard MUST mention the protected route, not just '/'.
+    expect(r.html).toContain('"/cro"');
+    expect(r.html).toMatch(/_want = "\/cro"/);
+  });
 });
 
 describe('when X notifies: webhook syntax', () => {
