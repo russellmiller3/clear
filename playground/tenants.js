@@ -428,8 +428,51 @@ export class PostgresTenantStore {
 			client.release();
 		}
 	}
-	async incrementAppsDeployed() { return this._notImpl('incrementAppsDeployed', 'UPDATE tenants SET apps_deployed = apps_deployed + 1 WHERE slug = $1 RETURNING *'); }
-	async setPlan() { return this._notImpl('setPlan', 'UPDATE tenants SET plan = $2, grace_expires_at = $3 WHERE slug = $1 RETURNING *'); }
+	// CC-1 cycle 3 — atomic counter bump. The SQL adds 1 in a single UPDATE,
+	// so two concurrent calls can't read-then-write past each other (no
+	// lost-update race). RETURNING * gives us the post-update row in the
+	// same shape as `get` / `create` — caller doesn't need a follow-up SELECT.
+	// Returns null when the slug doesn't exist (mirrors in-memory which
+	// returns null when `tenants.get(slug)` misses).
+	async incrementAppsDeployed(slug) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`UPDATE clear_cloud.tenants
+				 SET apps_deployed = apps_deployed + 1
+				 WHERE slug = $1
+				 RETURNING slug, stripe_customer_id, plan, apps_deployed,
+				           ai_spent_cents, ai_credit_cents, created_at, grace_expires_at`,
+				[slug]
+			);
+			return r.rows[0] || null;
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 3 — flip plan + grace_expires_at in one statement. Used by
+	// the billing webhook handler when a subscription transitions between
+	// states (active → past_due → cancelled). graceExpiresAt defaults to null
+	// to match the in-memory signature `setPlan(slug, plan, graceExpiresAt = null)`
+	// — passing only `slug, plan` clears any previous grace window.
+	async setPlan(slug, plan, graceExpiresAt = null) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`UPDATE clear_cloud.tenants
+				 SET plan = $2, grace_expires_at = $3
+				 WHERE slug = $1
+				 RETURNING slug, stripe_customer_id, plan, apps_deployed,
+				           ai_spent_cents, ai_credit_cents, created_at, grace_expires_at`,
+				[slug, plan, graceExpiresAt]
+			);
+			return r.rows[0] || null;
+		} finally {
+			client.release();
+		}
+	}
+
 	async recordApp() { return this._notImpl('recordApp', 'INSERT INTO apps (tenant_slug, app_slug, app_name) VALUES ($1, $2, $3) ON CONFLICT (tenant_slug, app_slug) DO UPDATE SET app_name = $3'); }
 	async appNameFor() { return this._notImpl('appNameFor', 'SELECT app_name FROM apps WHERE tenant_slug = $1 AND app_slug = $2'); }
 	async markAppDeployed() { return this._notImpl('markAppDeployed', 'INSERT INTO cf_deploys (tenant_slug, app_slug, script_name, d1_database_id, hostname, deployed_at, versions, secret_keys) VALUES ...'); }
@@ -438,8 +481,43 @@ export class PostgresTenantStore {
 	async updateSecretKeys() { return this._notImpl('updateSecretKeys', 'UPDATE cf_deploys SET secret_keys = ... WHERE tenant_slug = $1 AND app_slug = $2'); }
 	async lookupAppBySubdomain() { return this._notImpl('lookupAppBySubdomain', "SELECT * FROM cf_deploys WHERE split_part(hostname, '.', 1) = lower($1)"); }
 	async loadKnownApps() { return this._notImpl('loadKnownApps', 'SELECT script_name, d1_database_id FROM cf_deploys'); }
-	async seenStripeEvent() { return this._notImpl('seenStripeEvent', 'SELECT 1 FROM stripe_events WHERE event_id = $1'); }
-	async recordStripeEvent() { return this._notImpl('recordStripeEvent', 'INSERT INTO stripe_events (event_id, received_at) VALUES ($1, NOW()) ON CONFLICT DO NOTHING'); }
+
+	// CC-1 cycle 3 — Stripe webhook deduplication. seenStripeEvent is the
+	// gate the billing handler runs BEFORE processing each webhook event;
+	// recordStripeEvent is what the handler runs AFTER successful processing.
+	// The pair makes redelivery safe: Stripe retries failed webhooks for up
+	// to 3 days, and we MUST NOT double-process a payment.
+	async seenStripeEvent(eventId) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT 1 FROM clear_cloud.stripe_events WHERE event_id = $1`,
+				[eventId]
+			);
+			return r.rowCount > 0;
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 3 — record the event id so subsequent seenStripeEvent calls
+	// return true. ON CONFLICT DO NOTHING means a duplicate insert (e.g. two
+	// webhook deliveries racing through the handler) is a silent no-op rather
+	// than a primary-key violation. Returns void/undefined to match the
+	// in-memory signature.
+	async recordStripeEvent(eventId) {
+		const client = await this._pool.connect();
+		try {
+			await client.query(
+				`INSERT INTO clear_cloud.stripe_events (event_id)
+				 VALUES ($1)
+				 ON CONFLICT (event_id) DO NOTHING`,
+				[eventId]
+			);
+		} finally {
+			client.release();
+		}
+	}
 	async getAuditLog() { return this._notImpl('getAuditLog', 'SELECT * FROM app_audit_log WHERE tenant_slug = $1 AND app_slug = $2 ORDER BY ts DESC'); }
 	async appendAuditEntry() { return this._notImpl('appendAuditEntry', 'INSERT INTO app_audit_log (tenant_slug, app_slug, ts, actor, action, verdict, source_hash_before, source_hash_after, note) VALUES ($1..$9)'); }
 }

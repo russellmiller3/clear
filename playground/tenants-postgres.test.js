@@ -256,12 +256,208 @@ await runAsync(async () => {
   assert(final.plan === 'pro', 'plan NOT clobbered by concurrent upserts');
 });
 
+// ═════════════════════════════════════════════════════════════════════════
+// CC-1 cycle 3 — small mutations: incrementAppsDeployed, setPlan,
+// seenStripeEvent, recordStripeEvent.
+// ═════════════════════════════════════════════════════════════════════════
+//
+// These four are the smallest SQL surface in the plan: counter bumps, plan
+// flips, and webhook dedupe. They get called every time a customer ships an
+// app (incrementAppsDeployed) or Stripe redelivers a webhook
+// (recordStripeEvent / seenStripeEvent). Two of them (setPlan, increment)
+// must mirror the in-memory store's null-on-missing behavior exactly so the
+// existing call sites in billing.js + cloud-routing/index.js don't change
+// shape. The other two (Stripe events) make the webhook handler idempotent:
+// any number of redeliveries of the same event_id are a no-op.
+
 // ─────────────────────────────────────────────────────────────────────────
-// Sanity — these tests do NOT touch other PostgresTenantStore methods.
-// All five other methods still throw NOT_IMPLEMENTED so cycles 3-8 have
-// somewhere to land.
+// incrementAppsDeployed — atomic counter bump (UPDATE ... RETURNING *).
 // ─────────────────────────────────────────────────────────────────────────
-console.log('\n🐘 CC-1 cycle 2 — other methods still NOT_IMPLEMENTED (cycles 3-8 territory)');
+console.log('\n🐘 CC-1 cycle 3 — incrementAppsDeployed bumps counter and returns row');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-bump', stripeCustomerId: 'cus_bump', plan: 'pro' });
+
+  const r1 = await store.incrementAppsDeployed('clear-bump');
+  assert(r1 !== null, 'incrementAppsDeployed returns the updated row');
+  assert(r1.slug === 'clear-bump', 'returned row has the right slug');
+  assert(r1.apps_deployed === 1, `apps_deployed bumped to 1 (got ${r1.apps_deployed})`);
+  // Other columns must come along for the ride — the in-memory store returns
+  // the same `t` reference, so the row shape is identical.
+  assert(r1.stripe_customer_id === 'cus_bump',
+    `stripe_customer_id preserved (got ${r1.stripe_customer_id})`);
+  assert(r1.plan === 'pro', `plan preserved (got ${r1.plan})`);
+
+  // Second bump — same row, count goes to 2.
+  const r2 = await store.incrementAppsDeployed('clear-bump');
+  assert(r2.apps_deployed === 2, `second bump → 2 (got ${r2.apps_deployed})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// incrementAppsDeployed — unknown slug returns null (matches in-memory).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — incrementAppsDeployed returns null for unknown slug');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const r = await store.incrementAppsDeployed('clear-nope');
+  assert(r === null, `null for unknown slug (got ${r})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// incrementAppsDeployed — concurrent bumps both land (atomic UPDATE).
+// In a read-modify-write pattern, two parallel bumps could each read 0 and
+// write 1 → final value 1, lost-update race. Atomic SQL
+// (`apps_deployed = apps_deployed + 1`) makes both increments add up.
+//
+// pg-mem caveat: the pg-mem driver runs queries serially per pool client,
+// so this isn't a TRUE concurrent-bump test the way real Postgres would be
+// under SERIALIZABLE. Two truly-concurrent transactions on real Postgres
+// would either both succeed (default READ COMMITTED — UPDATE locks the row)
+// or one would retry on serialization_failure. Either way the final count
+// must be +2 — which is what we assert. The shape of the SQL
+// (`UPDATE ... SET apps_deployed = apps_deployed + 1`) is what guarantees
+// no lost-update; the test confirms the SQL was written that way (a
+// read-modify-write impl would still hit final=2 here under pg-mem's serial
+// dispatch but would race under real concurrency).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — concurrent incrementAppsDeployed → +2 (no lost update)');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-race', stripeCustomerId: 'cus_race', plan: 'pro' });
+
+  const [a, b] = await Promise.all([
+    store.incrementAppsDeployed('clear-race'),
+    store.incrementAppsDeployed('clear-race'),
+  ]);
+  assert(a && b, 'both concurrent bumps returned rows');
+  // Final count must reflect BOTH bumps.
+  const final = await store.get('clear-race');
+  assert(final.apps_deployed === 2,
+    `concurrent +1 +1 → final 2, no lost update (got ${final.apps_deployed})`);
+  // The two returned rows should reflect 1 and 2 (in some order).
+  const counts = [a.apps_deployed, b.apps_deployed].sort((x, y) => x - y);
+  assert(counts[0] === 1 && counts[1] === 2,
+    `returned rows show monotonic 1 then 2 (got ${counts.join(',')})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// setPlan — updates plan + grace_expires_at, returns the row.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — setPlan updates plan and grace_expires_at');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-plan', stripeCustomerId: 'cus_plan', plan: 'pro' });
+
+  // Promote to team, no grace window.
+  const promoted = await store.setPlan('clear-plan', 'team', null);
+  assert(promoted !== null, 'setPlan returns the updated row');
+  assert(promoted.slug === 'clear-plan', 'returned row has right slug');
+  assert(promoted.plan === 'team', `plan flipped to team (got ${promoted.plan})`);
+  assert(promoted.grace_expires_at === null,
+    `grace_expires_at is null (got ${promoted.grace_expires_at})`);
+
+  // Demote to past_due with a grace window.
+  const futureIso = new Date(Date.now() + 86400000).toISOString();
+  const past = await store.setPlan('clear-plan', 'past_due', futureIso);
+  assert(past.plan === 'past_due', `plan flipped to past_due (got ${past.plan})`);
+  // Postgres returns timestamptz as a Date OR an ISO string — accept either.
+  const graceTs = past.grace_expires_at instanceof Date
+    ? past.grace_expires_at.toISOString()
+    : past.grace_expires_at;
+  assert(graceTs === futureIso || Date.parse(graceTs) === Date.parse(futureIso),
+    `grace_expires_at set to provided iso (got ${graceTs}, want ${futureIso})`);
+
+  // Other columns must NOT have been clobbered.
+  assert(past.stripe_customer_id === 'cus_plan',
+    `stripe_customer_id preserved (got ${past.stripe_customer_id})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// setPlan — unknown slug returns null.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — setPlan returns null for unknown slug');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const r = await store.setPlan('clear-nope', 'team', null);
+  assert(r === null, `null for unknown slug (got ${r})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// setPlan — graceExpiresAt defaults to null when omitted (matches in-memory
+// signature: `async setPlan(slug, plan, graceExpiresAt = null)`).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — setPlan defaults graceExpiresAt to null');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-def', plan: 'pro' });
+  // Set a grace first, then call setPlan without the third arg — should
+  // clear it back to null.
+  const futureIso = new Date(Date.now() + 86400000).toISOString();
+  await store.setPlan('clear-def', 'past_due', futureIso);
+  const cleared = await store.setPlan('clear-def', 'team');
+  assert(cleared.plan === 'team', 'plan changed');
+  assert(cleared.grace_expires_at === null,
+    `grace_expires_at cleared back to null when arg omitted (got ${cleared.grace_expires_at})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// seenStripeEvent — returns false before record, true after.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — seenStripeEvent flips false → true after recordStripeEvent');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const eventId = 'evt_abc_123';
+
+  const before = await store.seenStripeEvent(eventId);
+  assert(before === false, `seenStripeEvent === false before record (got ${before})`);
+
+  await store.recordStripeEvent(eventId);
+
+  const after = await store.seenStripeEvent(eventId);
+  assert(after === true, `seenStripeEvent === true after record (got ${after})`);
+
+  // Different event id still returns false.
+  const other = await store.seenStripeEvent('evt_xyz_999');
+  assert(other === false, `unrelated event id still false (got ${other})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// recordStripeEvent — double insert is a no-op (ON CONFLICT DO NOTHING).
+// Webhook idempotency: if Stripe redelivers the same event_id, the second
+// call must succeed silently and seenStripeEvent must still return true.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — recordStripeEvent is idempotent on duplicate event_id');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const eventId = 'evt_dup_001';
+
+  await store.recordStripeEvent(eventId);
+  // Second call must not throw.
+  let threw = null;
+  try { await store.recordStripeEvent(eventId); }
+  catch (e) { threw = e; }
+  assert(threw === null, `second recordStripeEvent did not throw (got ${threw && threw.message})`);
+
+  // seenStripeEvent still true after both calls.
+  assert(await store.seenStripeEvent(eventId) === true,
+    'seenStripeEvent still true after duplicate record');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// recordStripeEvent — returns void/undefined (mirrors in-memory).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — recordStripeEvent returns void/undefined');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const r = await store.recordStripeEvent('evt_void_001');
+  assert(r === undefined, `recordStripeEvent returns undefined (got ${r})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sanity — methods we DIDN'T implement in cycle 3 still throw
+// NOT_IMPLEMENTED so cycles 4-8 have somewhere to land.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 3 — cycles 4-8 territory still NOT_IMPLEMENTED');
 await runAsync(async () => {
   const { store } = await freshStore();
   let caught = null;
@@ -269,6 +465,12 @@ await runAsync(async () => {
   catch (e) { caught = e; }
   assert(caught && caught.code === 'NOT_IMPLEMENTED',
     'lookupAppBySubdomain still throws NOT_IMPLEMENTED');
+
+  caught = null;
+  try { await store.markAppDeployed({ tenantSlug: 'x', appSlug: 'y', scriptName: 'z' }); }
+  catch (e) { caught = e; }
+  assert(caught && caught.code === 'NOT_IMPLEMENTED',
+    'markAppDeployed still throws NOT_IMPLEMENTED');
 });
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
