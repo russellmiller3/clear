@@ -67,10 +67,13 @@ try {
   // ==========================================================================
   console.log('\n✏️  Editor');
 
-  assert(await page.locator('.cm-editor').isVisible(), 'CodeMirror editor visible');
+  // Scope to #editor-pane: once compile runs, a second .cm-editor (the read-only
+  // compiled view) is mounted in #preview-content, and a bare .cm-editor selector
+  // becomes ambiguous.
+  assert(await page.locator('#editor-pane .cm-editor').isVisible(), 'CodeMirror editor visible');
   assert(await page.locator('.cm-content').first().getAttribute('contenteditable') === 'true', 'editor is editable');
 
-  await page.locator('.cm-editor').click();
+  await page.locator('#editor-pane .cm-editor').click();
   await page.keyboard.type('x');
   await page.waitForTimeout(100);
   const typedText = await page.locator('.cm-content').first().innerText();
@@ -108,8 +111,12 @@ try {
   const picker = page.locator('#template-picker');
   assert(await picker.isVisible(), 'template picker visible');
 
+  // Picker is intentionally narrowed to FEATURED_TEMPLATES (Marcus 6 + Core 8 = 14)
+  // plus the placeholder option, so 15 total. The previous threshold of 40 dated
+  // from when the picker listed every app in apps/ — the narrowing is the design,
+  // not bit rot. Keep >= 14 so we catch the case where a featured app is dropped.
   const optCount = await picker.locator('option').count();
-  assert(optCount >= 40, `${optCount} templates loaded`);
+  assert(optCount >= 14, `${optCount} templates loaded (expected >= 14: 6 Marcus + 8 Core + placeholder)`);
 
   // Names should be Title Case with no dashes
   const firstOpt = await picker.locator('option:nth-child(2)').innerText();
@@ -135,9 +142,15 @@ try {
   await page.waitForTimeout(300);
 
   await page.locator('button[onclick="doCompile()"]').click();
-  await page.waitForTimeout(1000);
 
-  const status = await page.locator('#status').innerText();
+  // doCompile triggers a scan animation that can run up to ~5s before the status
+  // settles to "OK" (or "N error" / "OK (N warnings)"). Poll instead of fixed-wait.
+  let status = '';
+  for (let i = 0; i < 60; i++) { // up to 9s
+    status = await page.locator('#status').innerText();
+    if (status.startsWith('OK') || /error/i.test(status)) break;
+    await page.waitForTimeout(150);
+  }
   assert(status.startsWith('OK'), `status shows OK after compile (got: "${status}")`);
   assert(!(await page.locator('#compile-dot').getAttribute('class'))?.includes('err'), 'compile dot is green');
 
@@ -146,26 +159,89 @@ try {
   // ==========================================================================
   console.log('\n📑 Tabs');
 
-  const compiledTab = page.locator('button[onclick="showTab(\'compiled\')"]');
-  const outputTab   = page.locator('button[onclick="showTab(\'output\')"]');
-  const terminalTab = page.locator('button[onclick="showTab(\'terminal\')"]');
+  // Tab labels were renamed in Studio's IDE refresh: "Compiled Code" → "Code",
+  // "Output" → "Preview", "Terminal" stays. The onclick handlers kept their
+  // original keys ('compiled', 'output', 'terminal') so the locators still work.
+  const compiledTab = page.locator('button[onclick="showTab(\'compiled\')"]'); // labelled "Code"
+  const outputTab   = page.locator('button[onclick="showTab(\'output\')"]');   // labelled "Preview"
+  const terminalTab = page.locator('button[onclick="showTab(\'terminal\')"]'); // labelled "Terminal"
 
-  assert(await compiledTab.isVisible(), 'Compiled Code tab visible');
-  assert(await outputTab.isVisible(), 'Output tab visible');
+  assert(await compiledTab.isVisible(), 'Code tab visible');
+  assert(await outputTab.isVisible(), 'Preview tab visible');
   assert(await terminalTab.isVisible(), 'Terminal tab visible');
 
-  // Tab order: Compiled Code first
+  // Order check: Preview comes before Code, Code before Terminal. We use indexOf
+  // (not fixed positions) because the bar also has Data + API tabs that show/hide
+  // based on app shape, plus Tests/Flywheel/Supervisor afterwards.
   const tabs = await page.locator('.prev-tab').allInnerTexts();
-  assert(tabs[0] === 'Compiled Code', `first tab is "Compiled Code" (got "${tabs[0]}")`);
-  assert(tabs[1] === 'Output', `second tab is "Output" (got "${tabs[1]}")`);
-  assert(tabs[2] === 'Terminal', `third tab is "Terminal" (got "${tabs[2]}")`);
+  const previewIdx  = tabs.indexOf('Preview');
+  const codeIdx     = tabs.indexOf('Code');
+  const terminalIdx = tabs.indexOf('Terminal');
+  assert(previewIdx  >= 0, `"Preview" tab present (got tabs: ${tabs.join(', ')})`);
+  assert(codeIdx     >= 0, `"Code" tab present (got tabs: ${tabs.join(', ')})`);
+  assert(terminalIdx >= 0, `"Terminal" tab present (got tabs: ${tabs.join(', ')})`);
+  assert(previewIdx < codeIdx, `Preview tab is before Code tab`);
+  assert(codeIdx < terminalIdx, `Code tab is before Terminal tab`);
 
-  // Compiled Code tab shows source
+  // Code tab shows compiled source. Studio runs a scan animation that types the
+  // compiled JS into a CodeMirror as the source highlights — and while it's
+  // running, showCompiled() is suppressed (see the compileAnimRunning guard in
+  // ide.html). If we click the Code tab mid-animation, we end up looking at the
+  // animated JS, not the HTML output. So: wait for the animation to end, THEN
+  // click the tab so showCompiled rebuilds the sub-tab bar (HTML / Server JS /
+  // etc.) and defaults to HTML.
+  for (let i = 0; i < 80; i++) { // up to 12s — animation caps at ~5s
+    const running = await page.evaluate(() => window._debug?.()?.compileAnimRunning);
+    if (!running) break;
+    await page.waitForTimeout(150);
+  }
   await compiledTab.click();
+  await page.locator('#preview-content .cm-editor').waitFor({ timeout: 5000 });
   await page.waitForTimeout(300);
-  const compiledContent = await page.locator('#preview-content pre').innerText();
-  assert(compiledContent.length > 0, 'Compiled Code tab shows code');
-  assert(compiledContent.includes('<!DOCTYPE') || compiledContent.includes('<html'), 'Compiled Code has HTML output');
+  // Belt and suspenders: explicitly switch to the HTML sub-tab so we don't depend
+  // on outputs[0]'s ordering or on whatever sub-tab `compiledTab` was last set to.
+  await page.evaluate(() => { if (window.switchCodeTab) window.switchCodeTab('html'); });
+  await page.waitForTimeout(300);
+  const compiledContent = await page.evaluate(async () => {
+    const editor = document.querySelector('#preview-content .cm-editor');
+    const scroller = editor?.querySelector('.cm-scroller');
+    if (!editor || !scroller) return '';
+
+    // Path 1 — CM6 attaches the view ref on the editor / scroller / content DOM
+    // via `cmView` (used by EditorView.findFromDOM internals).
+    for (const el of [editor, scroller, editor.querySelector('.cm-content')]) {
+      const view = el?.cmView?.view;
+      if (view?.state?.doc?.toString) return view.state.doc.toString();
+    }
+
+    // Path 2 — paginate through the editor by scrolling, collecting line text
+    // keyed by each line's offsetTop so duplicates from overlapping scroll passes
+    // collapse cleanly. Sort by offsetTop at the end to recover doc order.
+    const seen = new Map();
+    const collect = () => {
+      editor.querySelectorAll('.cm-line').forEach(l => {
+        seen.set(l.offsetTop, l.textContent);
+      });
+    };
+    scroller.scrollTop = 0;
+    await new Promise(r => setTimeout(r, 100));
+    collect();
+    const step = Math.max(scroller.clientHeight - 30, 60);
+    while (scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight) {
+      scroller.scrollTop += step;
+      await new Promise(r => setTimeout(r, 60));
+      collect();
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, t]) => t)
+      .join('\n');
+  });
+  assert(compiledContent.length > 0, 'Code tab shows compiled output');
+  assert(
+    compiledContent.includes('<!DOCTYPE') || compiledContent.includes('<html'),
+    `Code tab shows HTML output (len=${compiledContent.length}, head: "${compiledContent.slice(0, 200).replace(/\n/g, '\\n')}", tail: "${compiledContent.slice(-200).replace(/\n/g, '\\n')}")`,
+  );
 
   // Output tab shows iframe for web app
   await outputTab.click();
@@ -198,16 +274,39 @@ try {
   // ==========================================================================
   console.log('\n⌨️  Keyboard shortcuts');
 
-  await page.locator('.cm-editor').click();
+  // Ctrl+S triggers a compile. Status flips through "Compiling..." → "OK ..." and,
+  // for backend apps (the scaffold has `javascript backend`), Studio also auto-runs
+  // the server, so the status may settle on "Starting..." or "Running :PORT" before
+  // we read it. Accept any of those — they all prove the keyboard shortcut fired.
+  const acceptableCompileStatus = (s) =>
+    s.startsWith('OK') ||
+    s.startsWith('Compiling') ||
+    s.startsWith('Starting') ||
+    s.startsWith('Running');
+  await page.locator('#editor-pane .cm-content').click();
   await page.keyboard.press('Control+s');
-  await page.waitForTimeout(1200);
-  const statusAfterCtrlS = await page.locator('#status').innerText();
-  assert(statusAfterCtrlS.startsWith('OK') || statusAfterCtrlS === 'Compiling...', 'Ctrl+S triggers compile');
+  let statusAfterCtrlS = '';
+  for (let i = 0; i < 60; i++) { // up to 9s
+    await page.waitForTimeout(150);
+    statusAfterCtrlS = await page.locator('#status').innerText();
+    if (acceptableCompileStatus(statusAfterCtrlS)) break;
+  }
+  assert(
+    acceptableCompileStatus(statusAfterCtrlS),
+    `Ctrl+S triggers compile (got: "${statusAfterCtrlS}")`,
+  );
 
+  // Ctrl+K used to focus chat-input unconditionally. New behavior: it toggles the
+  // Meph chat pane's collapsed state (focusing chat-input only when expanding from
+  // a previously-collapsed state). Test the toggle, since that's the wired behavior.
+  const wasCollapsed = await page.locator('#chat-pane').evaluate(el => el.classList.contains('collapsed'));
   await page.keyboard.press('Control+k');
-  await page.waitForTimeout(200);
-  const chatFocused = await page.locator('#chat-input').evaluate(el => el === document.activeElement);
-  assert(chatFocused, 'Ctrl+K focuses chat input');
+  await page.waitForTimeout(250);
+  const nowCollapsed = await page.locator('#chat-pane').evaluate(el => el.classList.contains('collapsed'));
+  assert(
+    wasCollapsed !== nowCollapsed,
+    `Ctrl+K toggles chat pane (was collapsed: ${wasCollapsed}, now: ${nowCollapsed})`,
+  );
 
   // ==========================================================================
   // THEME TOGGLE
@@ -236,13 +335,23 @@ try {
   // ==========================================================================
   console.log('\n🔴 Error display');
 
+  // Studio no longer auto-compiles on keystrokes — the user has to press Compile
+  // (or Ctrl+S). So after we inject broken code we explicitly trigger compile, then
+  // poll the status until it lands on "N error(s)" before checking the errors panel.
   await page.evaluate(() => window._editor.dispatch({
     changes: { from: 0, to: window._editor.state.doc.length, insert: "build for javascript backend\nresult = call 'NonExistentAgent' with data" }
   }));
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(200);
+  await page.evaluate(() => window.doCompile());
+  let errStatus = '';
+  for (let i = 0; i < 60; i++) { // up to 9s
+    await page.waitForTimeout(150);
+    errStatus = await page.locator('#status').innerText();
+    if (/error/i.test(errStatus)) break;
+  }
 
   const errText = await page.locator('#errors').innerText();
-  assert(errText.length > 0, 'errors panel shows compile errors');
+  assert(errText.length > 0, `errors panel shows compile errors (status: "${errStatus}", panel: "${errText}")`);
   assert((await page.locator('#compile-dot').getAttribute('class'))?.includes('err'), 'compile dot turns red on error');
 
   // ==========================================================================
@@ -250,7 +359,10 @@ try {
   // ==========================================================================
   console.log('\n🧹 Final JS error check');
 
-  const finalErrors = consoleErrors.filter(e => !e.includes('favicon'));
+  // Mirror the load-time filter: ignore favicon noise + the unauthenticated tenant
+  // fetch (401), which Studio expects when no tenant is signed in.
+  const finalErrors = consoleErrors.filter(e =>
+    !e.includes('favicon') && !e.includes('401'));
   assert(finalErrors.length === 0, `no JS errors throughout (got: ${finalErrors.join('; ') || 'none'})`);
 
 } catch (err) {
