@@ -7056,15 +7056,20 @@ ${pad}}`;
       const mockNodes = node.body.filter(n => n.type === NodeType.MOCK_AI);
       const nonMockBody = node.body.filter(n => n.type !== NodeType.MOCK_AI);
       if (ctx.lang === 'python') {
-        // Python test emission is staged behind a fuller test-harness port
-        // than a single session can justify. The JS target has a dedicated
-        // test-runner layer (BASE, AUTH_HEADERS, JWT token fixture,
-        // _expectStatus / _expectSuccess helpers, unique-counter fixtures)
-        // that doesn't yet exist for Python. Porting TEST_INTENT without
-        // that harness would produce code that can't actually run. Rather
-        // than ship dead code, we skip with an explicit signal. See
-        // ROADMAP "Python test-harness port" for the full scope.
-        return `${pad}def test_${sanitizeName(node.name)}():\n${pad}    import pytest\n${pad}    pytest.skip("Intent-based tests not yet ported to Python target — needs BASE url + auth fixture + expect-helpers port. Tracked in ROADMAP.")`;
+        // Python test port (Session 46+): emit `async def test_X():` with
+        // inline httpx calls. MOCK_AI is deferred — if the test body contains
+        // mocks, we emit a leading TODO comment and skip the mocks (Python
+        // mocking needs a separate pytest fixture layer).
+        const pyName = sanitizeName(node.name);
+        const pyPad = pad + '    ';
+        // Build body with inner indent — compileBody propagates ctx.lang
+        const pyCtx = { ...ctx, indent: (ctx.indent || 0) + 1 };
+        const pyBody = compileBody(nonMockBody, pyCtx, { declared: new Set() });
+        let header = `${pad}@pytest.mark.asyncio\n${pad}async def test_${pyName}():\n`;
+        if (mockNodes.length > 0) {
+          header += `${pyPad}# TODO: MOCK_AI fixture not yet ported to Python target (${mockNodes.length} mock${mockNodes.length === 1 ? '' : 's'} skipped)\n`;
+        }
+        return header + (pyBody || `${pyPad}pass`);
       }
       const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
       if (mockNodes.length > 0) {
@@ -7137,6 +7142,18 @@ ${pad}}`;
       const method = JSON.stringify(node.method);
       const path = JSON.stringify(node.path);
       const line = node.line || 0;
+      if (ctx.lang === 'python') {
+        const pyMethod = node.method.toLowerCase();
+        let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+        if (node.bodyFields && node.bodyFields.length > 0) {
+          const bodyObj = node.bodyFields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
+          code += `${pad}    _response = await _client.${pyMethod}(_base_url + ${path}, json={${bodyObj}}, headers={"Content-Type": "application/json"})\n`;
+        } else {
+          code += `${pad}    _response = await _client.${pyMethod}(_base_url + ${path})\n`;
+        }
+        code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None`;
+        return code;
+      }
       const record = `${pad}_lastCall = { method: ${method}, path: ${path}, line: ${line} };\n`;
       if (node.bodyFields && node.bodyFields.length > 0) {
         const bodyObj = node.bodyFields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
@@ -7156,6 +7173,36 @@ ${pad}}`;
     }
 
     case NodeType.EXPECT_RESPONSE: {
+      if (ctx.lang === 'python') {
+        if (node.property === 'status' && node.check === 'equals') {
+          return `${pad}assert _response.status_code == ${node.value}, f"Expected status ${node.value}, got {_response.status_code}"`;
+        }
+        if (node.property === 'status' && node.check === 'success') {
+          return `${pad}assert 200 <= _response.status_code < 300, f"Expected success, got {_response.status_code}"`;
+        }
+        if (node.property === 'status' && node.check === 'failure') {
+          return `${pad}assert _response.status_code >= 400, f"Expected failure, got {_response.status_code}"`;
+        }
+        if (node.property === 'body' && node.check === 'has_field') {
+          return `${pad}assert _responseBody is not None and ${JSON.stringify(node.field)} in _responseBody, f"Expected body to have field '${node.field}', got {_responseBody}"`;
+        }
+        if (node.property === 'body' && node.check === 'contains') {
+          return `${pad}assert json.dumps(_responseBody) .find(${JSON.stringify(String(node.value))}) >= 0, f"Expected body to contain '${node.value}', got {_responseBody}"`;
+        }
+        if (node.property === 'body' && node.check === 'error_contains') {
+          return `${pad}assert _response.status_code >= 400, f"Expected failure, got {_response.status_code}"\n${pad}assert json.dumps(_responseBody).find(${JSON.stringify(String(node.value))}) >= 0, f"Expected error message to contain '${node.value}'"`;
+        }
+        if (node.property === 'body' && node.check === 'length') {
+          if (node.value != null) {
+            return `${pad}assert len(_responseBody or []) == ${node.value}, f"Expected body length ${node.value}, got {len(_responseBody or [])}"`;
+          }
+          return `${pad}assert _responseBody, f"Expected non-empty body, got {_responseBody}"`;
+        }
+        if (node.property === 'variable' && node.check === 'contains') {
+          return `${pad}assert json.dumps(_responseBody).find(${JSON.stringify(String(node.value))}) >= 0, "${node.field} should contain ${String(node.value)}"`;
+        }
+        return `${pad}assert _response.status_code < 400`;
+      }
       if (node.property === 'status' && node.check === 'equals') {
         // _expectStatus produces a human-readable error like:
         //   "POST /api/notes returned 404 — that endpoint doesn't exist on the server [clear:87]"
@@ -7207,6 +7254,127 @@ ${pad}}`;
           return last === res || last === res + 's' || last.replace(/s$/, '') === res || last.replace(/ies$/, 'y') === res;
         });
       }
+
+      // --- Python target branches (TEST_INTENT) ---
+      if (ctx.lang === 'python') {
+        const commentPrefix = (msg) => `${pad}# ${msg}`;
+        const authHeaders = (ep) => ep && ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? '_auth_headers' : '{"Content-Type": "application/json"}';
+
+        if (node.intent === 'create') {
+          const ep = findEndpoint('POST');
+          if (!ep) return commentPrefix(`Could not find POST endpoint for ${node.resource}`);
+          const path = JSON.stringify(ep.path);
+          const headers = authHeaders(ep);
+          if (node.expectFailure) {
+            let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+            code += `${pad}    _response = await _client.post(_base_url + ${path}, json={}, headers=${headers})\n`;
+            code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None\n`;
+            code += `${pad}    assert _response.status_code == 400, f"Should reject incomplete data, got {_response.status_code}"`;
+            return code;
+          }
+          let payload = '{}';
+          if (node.fields.length > 0) {
+            const entries = node.fields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
+            payload = `{${entries}}`;
+          }
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          code += `${pad}    _response = await _client.post(_base_url + ${path}, json=${payload}, headers=${headers})\n`;
+          code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None\n`;
+          code += `${pad}    assert 200 <= _response.status_code < 300, f"Create should succeed, got {_response.status_code}"`;
+          return code;
+        }
+
+        if (node.intent === 'view') {
+          const ep = findEndpoint('GET');
+          if (!ep) return commentPrefix(`Could not find GET endpoint for ${node.resource}`);
+          const path = JSON.stringify(ep.path);
+          const headers = authHeaders(ep);
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          code += `${pad}    _response = await _client.get(_base_url + ${path}, headers=${headers})\n`;
+          code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None\n`;
+          code += `${pad}    assert _response.status_code == 200, f"View should return 200, got {_response.status_code}"`;
+          return code;
+        }
+
+        if (node.intent === 'search') {
+          const searchEp = endpoints.find(ep => ep.method === 'GET' && ep.path.includes('search'));
+          if (!searchEp) return commentPrefix('Could not find search endpoint');
+          const path = JSON.stringify(searchEp.path);
+          const headers = authHeaders(searchEp);
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          code += `${pad}    _response = await _client.get(_base_url + ${path}, headers=${headers})\n`;
+          code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None\n`;
+          code += `${pad}    assert _response.status_code == 200, f"Search should return 200, got {_response.status_code}"`;
+          return code;
+        }
+
+        if (node.intent === 'delete') {
+          const ep = findEndpoint('DELETE');
+          if (!ep) return commentPrefix(`Could not find DELETE endpoint for ${node.resource}`);
+          const path = ep.path.replace(/:(\w+)/g, '1');
+          const headers = authHeaders(ep);
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          code += `${pad}    _response = await _client.delete(_base_url + ${JSON.stringify(path)}, headers=${headers})\n`;
+          code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None`;
+          return code;
+        }
+
+        if (node.intent === 'require_login') {
+          const methodMap = { create: 'post', delete: 'delete', update: 'put', view: 'get' };
+          const method = methodMap[node.action] || 'post';
+          const methodUpper = method.toUpperCase();
+          const ep = findEndpoint(methodUpper);
+          if (!ep) return commentPrefix(`Could not find ${methodUpper} endpoint for ${node.resource}`);
+          const path = ep.path.replace(/:(\w+)/g, '1');
+          const unauthHeaders = '{"Content-Type": "application/json"}';
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          if (method === 'post' || method === 'put') {
+            code += `${pad}    _response = await _client.${method}(_base_url + ${JSON.stringify(path)}, json={"test": True}, headers=${unauthHeaders})\n`;
+          } else {
+            code += `${pad}    _response = await _client.${method}(_base_url + ${JSON.stringify(path)}, headers=${unauthHeaders})\n`;
+          }
+          code += `${pad}    assert _response.status_code == 401, f"Should require login, got {_response.status_code}"`;
+          return code;
+        }
+
+        if (node.intent === 'ask_agent') {
+          const agentEps = endpoints.filter(ep => ep.method === 'POST');
+          const callingEp = agentEps.find(ep => (ep.body || []).some(n =>
+            n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT && n.expression.agentName === node.resource));
+          if (!callingEp) return commentPrefix(`Could not find endpoint for agent '${node.resource}'`);
+          const headers = callingEp.hasAuth ? '_auth_headers' : '{"Content-Type": "application/json"}';
+          let payload = '{"message": "test"}';
+          if (node.fields.length > 0) {
+            const entries = node.fields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
+            payload = `{${entries}}`;
+          }
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          code += `${pad}    _response = await _client.post(_base_url + ${JSON.stringify(callingEp.path)}, json=${payload}, headers=${headers})\n`;
+          code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None\n`;
+          if (node.expectFailure) {
+            code += `${pad}    assert _response.status_code >= 400, f"Agent should reject this input, got {_response.status_code}"`;
+          } else {
+            code += `${pad}    assert 200 <= _response.status_code < 300, f"Agent should respond, got {_response.status_code}"`;
+          }
+          return code;
+        }
+
+        if (node.intent === 'shows') {
+          const ep = findEndpoint('GET');
+          if (!ep) return commentPrefix(`Could not find GET endpoint for ${node.resource}`);
+          const path = JSON.stringify(ep.path);
+          const headers = authHeaders(ep);
+          const needle = JSON.stringify(String(node.value));
+          let code = `${pad}async with httpx.AsyncClient() as _client:\n`;
+          code += `${pad}    _response = await _client.get(_base_url + ${path}, headers=${headers})\n`;
+          code += `${pad}    try: _responseBody = _response.json()\n${pad}    except Exception: _responseBody = None\n`;
+          code += `${pad}    assert json.dumps(_responseBody).find(${needle}) >= 0, "${node.resource} should show ${String(node.value)}"`;
+          return code;
+        }
+
+        return commentPrefix(`Unknown test intent: ${node.intent} ${node.resource}`);
+      }
+      // --- End Python target branches ---
 
       if (node.intent === 'create') {
         const ep = findEndpoint('POST');
@@ -12565,6 +12733,22 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     );
   }
   if (pyHasExternalFetch(body)) lines.push('import httpx');
+  // Test emission (Session 46+): TEST_DEF nodes need pytest + httpx + json
+  // for the async test harness. `_base_url` + `_auth_headers` are read from
+  // environment variables so the same compiled file works locally and in CI.
+  function pyHasTestDef(b) {
+    if (!Array.isArray(b)) return false;
+    return b.some(n => n && (
+      n.type === NodeType.TEST_DEF ||
+      (n.body && pyHasTestDef(n.body))
+    ));
+  }
+  const pyTestsPresent = pyHasTestDef(body);
+  if (pyTestsPresent) {
+    if (!pyHasExternalFetch(body)) lines.push('import httpx');
+    lines.push('import pytest');
+    // json is already imported at module top — don't re-import
+  }
   // Detect cron/background nodes for asyncio + lifespan
   const pyHasCronOrBg = body.some(n => n.type === NodeType.CRON || n.type === NodeType.BACKGROUND);
   if (pyHasCronOrBg) {
@@ -12576,6 +12760,13 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('');
   lines.push('app = FastAPI()');
   lines.push('');
+  if (pyTestsPresent) {
+    lines.push('# Test harness base URL + auth headers (env-driven so tests run the same');
+    lines.push('# locally and in CI; set BASE_URL + TEST_JWT in the test environment).');
+    lines.push('_base_url = os.environ.get("BASE_URL", "http://localhost:3000")');
+    lines.push('_auth_headers = {"Authorization": f"Bearer {os.environ.get(\'TEST_JWT\', \'\')}", "Content-Type": "application/json"}');
+    lines.push('');
+  }
   // JWT secret for auth — emit when any endpoint uses requires auth
   const pyHasAuth = body.some(n => n.type === NodeType.ENDPOINT && n.body && n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE));
   if (pyHasAuth) {
@@ -12830,7 +13021,7 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
       };
     }
   }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, dbBackend: pyDbBackend, _allNodes: body };
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, dbBackend: pyDbBackend, _astBody: body, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
