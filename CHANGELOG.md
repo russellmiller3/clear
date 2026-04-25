@@ -6,6 +6,31 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — One-click updates land + Cloudflare Publish wedge complete
+
+The Publish window in Studio is now a real product. Marcus opens the deal-desk app, clicks Publish, and sees a live `*.buildclear.dev` URL. Two minutes later he edits a heading, clicks Publish again, and the new bundle is live in about two seconds — no new database, no domain reattach, no full secret push. That's the wedge: the demo path that turns "I built it locally" into "it's on the internet" with no Docker, no Fly, no terminal.
+
+Two epics finished today, plus a destructive-edit safety story for LAE.
+
+**One-click updates — Phases 1-6 (this session, this commit cascades the docs).** Plan: `plans/plan-one-click-updates-04-23-2026.md`. Six phases, ~22 TDD cycles, every one green:
+
+- **Phase 1 — tenants schema for version history.** `getAppRecord`, `recordVersion`, `updateSecretKeys`, `markAppDeployed` extended with `versionId`/`sourceHash`/`migrationsHash`/`secretKeys`. Per-app `versions[]` capped at 20 entries (older versions stay queryable on Cloudflare's side via `listVersions`). Lands on both `playground/tenants.js` (in-memory) and the `playground/tenants-postgres.js` mirror (CC-1 cycle 5).
+- **Phase 2 — `_deployUpdate` incremental path.** `deploySource` now routes on `mode: 'deploy' | 'update'`. The update path skips `provisionD1`, `attachDomain`, and the full `setSecrets` push (only NEW keys not in `lastRecord.secretKeys` get sent), captures the fresh `versionId` via `_captureVersionId` round-trip to `listVersions`, and calls `recordVersion` instead of `markAppDeployed`. Wall clock ~2s vs ~12s.
+- **Phase 3 — schema-change confirm gate.** `migrationsDiffer(oldBundle, newBundle)` byte-compares every `migrations/*.sql` plus `wrangler.toml`. Differences return `{ ok: false, stage: 'migration-confirm-required', migrationDiff: [...] }` from the orchestrator. Re-call with `confirmMigration: true` applies the migration first, then uploads. SQLite has no atomic schema swap, so silently auto-applying mid-update would break in-flight requests; the explicit confirm is the safe default.
+- **Phase 4 — `/api/deploy` handler routing + new endpoints.** Handler reads `store.getAppRecord` before dispatching, sets `mode: 'update'` if a record exists, propagates `confirmMigration` flag, surfaces `migration-confirm-required` as `409 MIGRATION_REQUIRED`. New `GET /api/app-info/:appSlug` returns `{ deployed, lastVersion, versions, hostname, scriptName }` so the UI knows which mode to render before the user clicks. New `GET /api/deploy-history/:app` Cloudflare path uses `listVersions` with a tenants-db fallback if Cloudflare is briefly unreachable.
+- **Phase 5 — Studio Publish window swaps to "Update" mode.** Modal calls `/api/app-info` on open; if deployed, swaps the heading to "Update *deal-desk.buildclear.dev*", shows last-deployed-at, disables the button when source hash matches the live version ("No changes since last deploy"), shows the schema-change diff + "Apply migration + update" button on `409 MIGRATION_REQUIRED`, and renders a version-aware success message ("Updated to version v-abc-123").
+- **Phase 6 — Version history panel + one-click rollback.** `View version history` link inside the Update modal expands a panel listing the last 20 versions. Currently-live version has a "Current" label, all others have a Rollback button. Clicking Rollback calls `POST /api/rollback`, which uses Cloudflare's `/deployments` endpoint via `wfp-api.rollbackToVersion` to flip the live URL (~1-2s wall clock), then writes a tombstone `recordVersion` entry with `note: 'rollback-from-vN'` so the timeline reads chronologically. `VERSION_GONE` errors trigger an automatic refetch + re-render so out-of-band Cloudflare-dashboard deletes don't strand the UI.
+
+**CC-4 wedge complete.** With Phases 1-6 of one-click updates landing on top of the earlier CC-4 cycles 1-7, the Publish path is end-to-end: first deploy provisions everything, every subsequent deploy is the fast update path, and rollback to any of the last 20 versions is one click. ROADMAP item #1 (CC-4) struck through. Demo path is unblocked.
+
+**LAE Phase C — destructive ship safety.** Cycles 4-5 landed today: the destructive ship endpoint requires a typed-confirmation phrase ("I understand — ship and destroy") and audit-first ordering (audit row written `pending` BEFORE the ship attempt; marked `shipped` or `ship-failed` AFTER; ship is REFUSED if the audit append fails). The destructive-edit widget UX wraps the same gate. Compounds the "edit live app" pitch with the GDPR/CCPA/HIPAA accountability surface destructive deletes need.
+
+**Phase 85a operator checklist.** New `LAUNCH.md` at repo root — Russell's five gating items to first paying Marcus customer: register `buildclear.dev`, Fly Trust Verified app, Stripe live keys, Anthropic org key, Postgres provision. Items 1 and 2 unblock items 3-5. Cost ~$15/yr for the .dev TLD plus ~2 hrs of Russell's time.
+
+**Test bump:** No new compiler tests (Phases 1-6 are runtime + Studio + tests in their own suites). `playground/tenants.test.js`, `playground/deploy-cloudflare.test.js`, `playground/deploy.test.js`, `playground/ide.test.js` all green throughout. Eight core templates compile clean. No production-Anthropic API spend on this thread.
+
+---
+
 ## 2026-04-25 — Mid-day session: LAE Phase D write path, Ghost defaults to free, MCP descriptions fixed
 
 Same-day session continued from the overnight run. Five small ships, all green, $0 production-Anthropic API spend.

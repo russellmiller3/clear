@@ -76,6 +76,9 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
+- [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
+- [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
 - [Where does Ghost Meph live?](#where-does-ghost-meph-live)
 - [How does Ghost Meph route requests?](#how-does-ghost-meph-route-requests)
 - [Where does the Studio server run?](#where-does-the-studio-server-run)
@@ -158,6 +161,40 @@ If you want "what shipped this week?", check CHANGELOG. If you want "what's been
 **`ROADMAP.md` → `Auto-hosting by app type (v2, post-Clear-Cloud)`** — the v2 plan for compiler-driven routing to Cloudflare Workers + D1 (compatible apps), Modal (Python ETL), or Fly Docker (native binaries) once Clear Cloud is stable on Fly.
 
 Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as default**; Cloudflare auto-routing lands as v2 after Marcus is paying. Don't rebuild the hosting layer before shipping the product.
+
+---
+
+### Where is the incremental update logic for Cloudflare deploys?
+
+**`playground/deploy-cloudflare.js` → `_deployUpdate(opts)`** is the fast-path branch. The orchestrator `deploySource()` reads `opts.mode` — `'update'` routes to `_deployUpdate`, anything else falls through to the original `_deployInitial()` full-provision path. The dispatcher that decides which mode to pass lives one layer up in **`playground/deploy.js` → `/api/deploy` handler**, which calls `store.getAppRecord(tenantSlug, appSlug)` before invoking the orchestrator and sets `mode: 'update'` if a record comes back.
+
+**What `_deployUpdate` skips:** `provisionD1` (binding is permanent), `applyMigrations` (unless schema diff requires it — see below), `attachDomain` (already bound), and the full `setSecrets` push (only NEW keys not in `lastRecord.secretKeys` get sent).
+
+**What it adds:** `_captureVersionId` round-trip to `api.listVersions` after `uploadScript`, then `store.recordVersion` to append the new entry to the per-app `versions[]` array.
+
+**Schema-change gate:** `migrationsDiffer(oldBundle, newBundle)` byte-compares every `migrations/*.sql` file plus `wrangler.toml`. Any difference returns `{ ok: false, stage: 'migration-confirm-required', migrationDiff: [...] }` from the orchestrator, which the handler surfaces as `409 MIGRATION_REQUIRED`. Re-POST with `confirmMigration: true` unblocks: `applyMigrations` runs first, then `uploadScript`, then `recordVersion`.
+
+Tests: `playground/deploy-cloudflare.test.js` covers all of the above; `playground/deploy.test.js` covers the handler-level routing.
+
+---
+
+### How do I rollback a Cloudflare app?
+
+In Studio, open the **Publish** window on the app you want to roll back. The window has a **Version history** link — click it to expand the panel showing the last 20 versions with timestamps. Each non-current version has a **Rollback** button; the currently-live version has a "Current" label instead.
+
+Clicking Rollback calls `POST /api/rollback { appName, version }`, which uses Cloudflare's `/deployments` endpoint via `wfp-api.js:rollbackToVersion` to flip the live URL to the chosen version (~1-2s wall clock). The handler then writes a new `recordVersion` entry to tenants-db with `note: 'rollback-from-vN'` so the version timeline reads chronologically (no branching). Your data isn't touched — rollback only swaps the Worker bundle.
+
+If the version no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal shows "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel from `/api/app-info`.
+
+For older versions beyond the in-Studio cap of 20, call `wfp-api.listVersions({ scriptName })` directly — Cloudflare keeps versions until explicitly deleted.
+
+---
+
+### Why do schema changes require explicit confirmation during an update?
+
+**Because SQLite has no atomic schema swap.** D1 is SQLite under the hood. If Clear silently applied the new schema mid-update, there's a brief window where the schema has changed but the new code isn't serving yet — any in-flight request hits the OLD code against the NEW schema and errors. Worse, if the migration is destructive (drops a column, renames a table) and the upload-script step fails after the migration applies, the old code can't go back to reading the old schema because the column is gone.
+
+So Clear treats any change to `migrations/*.sql` or `wrangler.toml` as schema-class and pauses the update for explicit user confirmation. The Studio modal shows the diff and a button labelled "Apply migration + update" that re-POSTs with `confirmMigration: true`. Auto-rollback of failed schema changes is intentionally out of scope today — if the migration applies but upload-script fails, the user has to manually re-apply the old migration SQL via the D1 console. That tradeoff lives in `plans/plan-one-click-updates-04-23-2026.md` § Section 3 (D4) and § Section 9 (known follow-ups).
 
 ---
 

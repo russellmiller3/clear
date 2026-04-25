@@ -34,6 +34,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Same Clear file → Node + Express, or Python + FastAPI, or Cloudflare Workers + D1.
 - Cloudflare target gets cron triggers, Workflows for durable agents, Web Crypto auth automatically.
 - Deploy to Fly with one click from Studio; rollback to any prior version.
+- After the first deploy, every Publish click is an incremental update — new bundle live in ~2s, schema changes ask before reshaping the database, rollback to any of the last 20 versions is one click.
 
 **Edit your live app while users are using it (LAE)**
 - Open your deployed app in the browser → 🔧 widget → "add a region field" → ship in 4 seconds.
@@ -373,8 +374,10 @@ Conversational edits to a running, deployed Clear app. Owner authenticates, open
 | Owner-only authorization | `liveEditAuth` middleware checks JWT + owner role before allowing edits. |
 | Change classifier | Every diff classified `additive` / `reversible` / `destructive`. Additive ships instantly; reversible needs one-click confirm; destructive requires typed confirmation + reason string + audit entry (Phase C — not yet built). |
 | Cloud rollback | `/__meph__/api/cloud-rollback` — point cloud-deployed apps back to a prior version. Studio Ship + Undo route to cloud paths when on a deployed app. |
-| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. |
-| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — additive edits ship in seconds. |
+| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. Capped at 20 entries per app in tenants-db (older versions stay queryable on Cloudflare's side via `listVersions`). |
+| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — re-uploads bundle only, skips D1 reprovision + domain reattach + full secrets push. Wall clock ~2s vs ~12s for fresh deploy. |
+| Schema-change confirm gate | `migrationsDiffer()` byte-compares both `migrations/*.sql` and `wrangler.toml` between live + new bundles. Differences pause the update and return `409 MIGRATION_REQUIRED` with a per-file diff. Re-POST with `confirmMigration: true` applies the migration before uploading the new code. |
+| One-click rollback (Studio) | Version history panel inside the Publish window lists the last 20 versions with timestamps; Rollback button calls `/api/rollback`, records a tombstone version with `note: 'rollback-from-vN'`. Currently-live version shows "Current" label, no button. |
 
 ## Developer Tooling (Dave-first wedge — shipped 2026-04-24)
 

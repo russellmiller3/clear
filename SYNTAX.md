@@ -3041,4 +3041,6 @@ Deployment is a Studio feature, not a language primitive — you don't write dep
 
 **Rollback.** The Deploy History drawer lists the last 10 releases. Click Rollback on any of them.
 
+**Re-deploys are automatic incremental updates (Cloudflare target).** When you click Publish on an app that's already live, Studio takes the fast path: it re-uploads only the new Worker bundle and records a new version against the existing tenant — no fresh D1 database, no domain reattach, no full secret reset. Wall clock drops from ~12s (fresh deploy) to ~2s (update). Schema changes — anything that changes a `migrations/*.sql` file or `wrangler.toml` — pause the update and ask for an explicit "apply migration + update" click, because SQLite has no atomic schema swap and in-flight requests would briefly see the new schema against old code. The Publish window also exposes a one-click rollback to any of the last 20 versions.
+
 **Limits.** Pro plan: 25 apps, $10/mo of AI credits included, $99/mo. See `plans.js` for the source of truth.

@@ -2976,6 +2976,32 @@ If you typed a domain in the Deploy modal, Clear calls `flyctl certs create` for
 
 Every deploy produces a new release. Open the **Deploy History** drawer, pick any prior release, click Rollback. The live URL flips back to that version in seconds. Your data stays put — rollback only swaps the code.
 
+### One-click updates (after the first deploy)
+
+Most "deploys" after the first one aren't really deploys — they're updates. You changed three lines in the deal-desk app, you don't need a new database, a new domain, or new secrets. You just need the new code to be live.
+
+Clear handles this for you. The Publish button watches your tenant record, and the moment it sees that the app you're shipping is one you've already deployed, the button text changes from **Deploy** to **Update** and the modal swaps to a much shorter conversation:
+
+1. **Edit your code.** Change the heading, fix a typo, add a new endpoint, whatever.
+2. **Click Publish.** The modal opens with a green "Update *deal-desk.buildclear.dev*" header and the relative time of your last ship ("Last deployed 14 minutes ago"). If your edits didn't change anything compared to what's live, the button is disabled and tells you "No changes since last deploy" — Clear refuses to burn a version slot for a no-op.
+3. **Click Update.** The new bundle uploads, a fresh version id gets recorded against your tenant, and the modal flips to "Updated to version v-abc-123". Wall clock: about two seconds, versus twelve for the original deploy. Your URL doesn't change, your database doesn't change, your secrets don't change — only the code does.
+
+Behind the scenes Clear is doing the obvious-once-you-think-about-it thing: re-uploading just the Worker bundle and skipping every step that's already done. Your D1 database is already provisioned. Your domain is already attached. Your `JWT_SECRET` is already set. None of that needs to happen again.
+
+### When schema changes pause the update
+
+There's exactly one thing that puts the brakes on. If the edit you just made changed a table — added a column, dropped one, renamed it — Clear has to reshape the live database before the new code can run, and SQLite doesn't have an atomic way to do that. So instead of silently applying the change and risking that an in-flight request hits the new schema with the old code, Clear stops and asks.
+
+You'll see a yellow "Schema change detected" view in the modal with a list of what's different ("`migrations/001-init.sql` — changed"), and a button labeled **Apply migration + update**. Click it, the migration applies first, the new bundle uploads second, and a typical case is back online in under three seconds. If you're not ready to commit to the schema change yet, close the modal — nothing is live, your old version is still serving.
+
+### One-click rollback
+
+Inside the same Update modal there's a **Version history** link. Click it and the panel expands to show the last twenty versions of your app, newest first, each with the time it was uploaded and a Rollback button. The currently-live version doesn't have a button — it has a "Current" label so you can't roll back to where you already are.
+
+Click Rollback on, say, v-abc-118, and Clear flips the live URL back to that version in about a second. The previous live version is recorded as a new entry in your history with a `rollback-from-v-abc-122` note, so the timeline reads chronologically — no branching, no surprise. Your data is untouched, just like with the older Deploy History rollback above; this is the same primitive, surfaced in the same place where you actually live (the Publish modal) instead of buried in a separate drawer.
+
+If you click Rollback on a version that no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal tells you "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel so you're looking at reality.
+
 ### Plans
 
 - **Free** — 1 app, no AI credit. Good for learning.

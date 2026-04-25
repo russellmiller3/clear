@@ -445,6 +445,14 @@ Only equality filters (`is X`, `A is X and B is Y`) work with `from Table` aggre
 - `build for python backend` — FastAPI server
 - `build for web and javascript backend` — full-stack (most common)
 
+## Updating a deployed app
+
+When the user asks you to "update", "redeploy", "push the change", or "ship the new version" of an app that's already live, that's an incremental update — not a fresh deploy. The Publish button (the same one you'd press for a first-time ship) handles it: when Studio sees the app already has a tenant record, it routes through the fast path (`mode: 'update'`) and re-uploads only the new Worker bundle, ~2s wall clock. Don't tell the user to delete the app and re-publish, don't try to manually re-provision the database, don't re-set secrets that already exist. Just compile and have them click Publish — the button text will already say "Update" if the app is deployed.
+
+Two things that need a heads-up:
+- **Schema changes block the update.** If your edits touched a table (added a column, changed a type, dropped one), the Publish call returns a 409 with a migration diff and the modal asks for an explicit "apply migration + update" click. Tell the user that's expected and means SQLite needs a moment to reshape the database before the new code goes live.
+- **Rolling back is one click.** If the user wants to undo the last update, the Version history panel inside the Publish modal lists the last 20 versions with Rollback buttons. Don't try to "fix forward" by editing — just point them at the panel.
+
 ## Inputs
 
 - `'Name' as text input` — text field

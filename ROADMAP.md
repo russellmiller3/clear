@@ -110,7 +110,7 @@ Definition of launch: **first paying customer.** Not "we shipped a thing." Not "
 
 | # | Task | Owner | Days | Why it's next |
 |---|------|-------|------|---|
-| 1 | **CC-4 — Publish button → Clear Cloud.** Studio gets a "Publish" button that POSTs source to the existing `deploySourceCloudflare` flow, returns a live URL. Ships against `InMemoryTenantStore` first (durable Postgres backing comes after first customer per item 6). | agent | 1-2 | Without this, demos are local-only and there's nothing to sell. **First domino.** |
+| ~~1~~ | ~~**CC-4 — Publish button → Clear Cloud.**~~ **DONE 2026-04-25** — Studio Publish window now ships to Cloudflare end-to-end, plus the one-click-updates plan (Phases 1-6) landed on top: incremental update mode (~2s vs ~12s), version history panel, one-click rollback, byte-precise schema-change detector with 409 `MIGRATION_REQUIRED` confirmation gate. Touches `playground/deploy-cloudflare.js`, `playground/deploy.js`, `playground/tenants.js` + Postgres mirror, `playground/ide.html`. Demo path is unblocked. |
 | 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at item 1's Publish URL. | agent (parallel with #1) | 1 | Pitch surface. Lands when item 1 ships so the demo CTA isn't dead. |
 | 3 | **Demo recording.** Walkthrough of building deal-desk in 30 minutes from scratch on a hosted URL. Russell records voice-over; agent prepares the script + reference app + recording outline. | agent + Russell | 0.5 | What you DM with. Lossless evidence the workflow works. |
 | 4 | **Russell sells.** Cold pitch 5-10 sales-ops people on LinkedIn with the recording from #3. Goal: 1 paying customer at $200-500/mo. | Russell | 0.5 | The actual launch event. Everything above is setup. |
@@ -142,7 +142,7 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | **CC-1** | Multi-tenant routing — subdomain → Worker + D1 DB binding | **Open — biggest blocker** | 2-3 weeks |
 | CC-2 | Auth for `buildclear.dev` (accounts, sessions, teams) | Scaffolding shipped (CC-2b/c/d). Open: stitching into a logged-in dashboard UI. | ~1 week to wire up |
 | CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 week to wire up |
-| **CC-4** | "Publish" button wired to Clear Cloud (not test builder) | **Open — depends on CC-1** | 3 days |
+| ~~**CC-4**~~ | ~~"Publish" button wired to Clear Cloud (not test builder)~~ | **DONE 2026-04-25** — Publish window ships to Cloudflare, one-click updates (Phases 1-6) layered on top: incremental update path (~2s), version history, rollback, schema-change confirm gate. See `CHANGELOG.md` 2026-04-25. | — |
 | CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | ~1 week to wire up |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
