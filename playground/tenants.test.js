@@ -8,7 +8,7 @@
 //
 // Cycles 1.0-1.5 of plans/plan-live-editing-phase-b-cloud-04-23-2026.md.
 
-import { InMemoryTenantStore, newTenantSlug, overQuota, canDeploy } from './tenants.js';
+import { InMemoryTenantStore, PostgresTenantStore, newTenantSlug, overQuota, canDeploy } from './tenants.js';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -278,6 +278,115 @@ await runAsync(async () => {
   // lowercase by extractSubdomain, but the store should be defensive).
   const row = await s.lookupAppBySubdomain('ACME-DEALS');
   assert(row && row.scriptName === 'acme-deals', 'lookup is case-insensitive');
+});
+
+// ── LAE Phase D — LAE-8 audit log per app ─────────────────────────────────
+// Every widget ship (additive, reversible, destructive) writes an audit row.
+// Append-only — old entries never mutate. Phase C's destructive flow uses
+// this as the accountability surface (no data snapshot; the audit row is
+// the GDPR/CCPA/HIPAA receipt). Phase D adds the read-side UI; the write
+// path needs to land first so destructive ships can record their reason.
+console.log('\n📜 LAE-8 — audit log per app');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'acme', appSlug: 'deals',
+    scriptName: 'acme-deals', d1_database_id: 'd1',
+    hostname: 'acme-deals.buildclear.dev',
+  });
+  // Empty log on a fresh app.
+  const empty = await s.getAuditLog('acme', 'deals');
+  assert(Array.isArray(empty) && empty.length === 0,
+    'getAuditLog returns empty array on fresh app');
+});
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 'acme', appSlug: 'deals',
+    scriptName: 'acme-deals', d1_database_id: 'd1', hostname: 'h',
+  });
+  const res = await s.appendAuditEntry({
+    tenantSlug: 'acme', appSlug: 'deals',
+    actor: 'owner@example.com',
+    action: 'ship',
+    verdict: 'additive',
+    sourceHashBefore: 'aaa',
+    sourceHashAfter: 'bbb',
+    note: 'add priority field',
+  });
+  assert(res && res.ok === true, 'appendAuditEntry returns ok');
+  const log = await s.getAuditLog('acme', 'deals');
+  assert(log.length === 1, 'log now has 1 row');
+  assert(log[0].actor === 'owner@example.com', 'actor preserved');
+  assert(log[0].action === 'ship', 'action preserved');
+  assert(log[0].verdict === 'additive', 'verdict preserved');
+  assert(typeof log[0].ts === 'string' && log[0].ts.length > 0, 'ts auto-stamped (ISO string)');
+});
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  // appendAuditEntry on an unknown app returns APP_NOT_FOUND. Same shape
+  // as recordVersion. The widget-ship path knows the tenantSlug+appSlug
+  // from the running widget context, so this only fires on misconfig.
+  const res = await s.appendAuditEntry({
+    tenantSlug: 'ghost', appSlug: 'missing',
+    actor: 'x', action: 'ship', verdict: 'additive',
+  });
+  assert(res && res.ok === false && res.code === 'APP_NOT_FOUND',
+    'appendAuditEntry returns APP_NOT_FOUND for unknown app');
+});
+await runAsync(async () => {
+  // Appending many entries preserves ALL of them — log is append-only,
+  // never trimmed. (Compare versions[] which caps at MAX_VERSIONS_PER_APP;
+  // audit log has no cap because it's the legal-compliance surface.)
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 't', appSlug: 'a',
+    scriptName: 'ta', d1_database_id: 'd', hostname: 'h',
+  });
+  for (let i = 0; i < 50; i++) {
+    await s.appendAuditEntry({
+      tenantSlug: 't', appSlug: 'a',
+      actor: 'o', action: 'ship', verdict: 'additive', note: 'i=' + i,
+    });
+  }
+  const log = await s.getAuditLog('t', 'a');
+  assert(log.length === 50, 'all 50 entries kept (append-only, no trim)');
+  assert(log[0].note === 'i=0' && log[49].note === 'i=49',
+    'log preserves insertion order');
+});
+
+// ── CC-1 (Postgres path) — interface contract test ──────────────────────────
+// PostgresTenantStore is a Phase 85a-blocked stub. Until the real wire-up
+// lands, its only contract is: same method surface as InMemoryTenantStore,
+// every method throws NOT_IMPLEMENTED with the SQL the production version
+// will run. This locks the contract so a future PR can fill it in without
+// surprise renames.
+console.log('\n🐘 CC-1 — PostgresTenantStore interface contract');
+{
+  const inMem = new InMemoryTenantStore();
+  const pg = new PostgresTenantStore();
+  // Every async method on InMemoryTenantStore exists on PostgresTenantStore.
+  // Public methods only — private helpers (leading _) are implementation
+  // details. Postgres's equivalent helper would be a query builder, not the
+  // same in-memory key string.
+  const inMemMethods = Object.getOwnPropertyNames(InMemoryTenantStore.prototype)
+    .filter(m => m !== 'constructor' && !m.startsWith('_') && typeof inMem[m] === 'function');
+  const pgMethods = new Set(
+    Object.getOwnPropertyNames(PostgresTenantStore.prototype)
+      .filter(m => m !== 'constructor' && typeof pg[m] === 'function')
+  );
+  for (const m of inMemMethods) {
+    assert(pgMethods.has(m), `PostgresTenantStore implements ${m} (matches InMemoryTenantStore)`);
+  }
+}
+await runAsync(async () => {
+  const pg = new PostgresTenantStore();
+  let caught = null;
+  try { await pg.lookupAppBySubdomain('acme'); } catch (err) { caught = err; }
+  assert(caught && caught.code === 'NOT_IMPLEMENTED',
+    'PostgresTenantStore stub throws NOT_IMPLEMENTED');
+  assert(caught && /SQL:/.test(caught.message),
+    'NOT_IMPLEMENTED error includes the future SQL for grep-ability');
 });
 
 // ── Regression floor: existing Phase 7.7 behavior preserved ─────────────────

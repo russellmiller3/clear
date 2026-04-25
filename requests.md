@@ -256,7 +256,7 @@
 | 39 | ~~[PYTHON] External API — `httpx` not imported~~ **[DONE 2026-04-14]** (`import httpx` at top + `httpx.AsyncClient`) | Python | ✅ |
 | 40 | ~~[PYTHON] Python frontend serving — no static routes~~ **[DONE 2026-04-14]** (root route emitted) | Python | ✅ |
 | 41 | ~~CORS headers missing in JS backend~~ **[DONE 2026-04-14]** — OFF by default (explicit-over-implicit, per PHILOSOPHY.md). Opt in with `allow cross-origin requests` → emits `Access-Control-Allow-Origin` middleware + OPTIONS preflight | JS | ✅ |
-| 42 | Cookies broken — no `cookie-parser` in JS, no `Response` import in Python | Both | open |
+| 42 | ~~Cookies broken — no `cookie-parser` in JS~~ **[DONE 2026-04-25]** JS path complete: `set cookie` / `get cookie` / `set signed cookie` parse + compile, cookie-parser auto-wired when any cookie node exists, secure-by-default flags. Tests in clear.test.js → "TIER 2 #42 — cookies". Python backend stub remains (filed as separate Python-target follow-up). | JS ✅ / Python open |
 | 43 | ~~`data validation` server-side → comment~~ **[DONE 2026-04-14]** — `validate data:` block emits `_validate(data, rules)` call returning structured errors | Both | ✅ |
 | 44 | `transform data:` / `pick X from Y` → no keyword recognized (genuinely missing syntax) | Both | open |
 | 45 | ~~Aggregate functions (`sum of`, `avg of`)~~ **[DONE 2026-04-14]** — `sum of each x's amount in orders` emits `.reduce()` | JS | ✅ |
