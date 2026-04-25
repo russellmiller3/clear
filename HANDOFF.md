@@ -65,14 +65,16 @@ CC-1 finish (Postgres metadata DB) is item #6, phased AFTER first customer.
 
 ## In-flight epics (3 still mid-flight)
 
-| Epic | Cycles done / total | Next cycle (in flight or queued) |
+| Epic | Cycles done / total | Next cycle |
 |---|---|---|
-| CC-1 (Postgres metadata DB) | 2 / 9 | Cycle 3: small mutations + Stripe webhook dedup — **agent running** |
-| CC-4 (Publish to Clear Cloud) | 1 / 7 | Cycle 2: subdomain binding smoke test — **agent running** |
-| LAE Phase C (destructive ships) | 1 / 7 | Cycle 2: dispatcher wiring + tool description — **agent running** |
+| CC-1 (Postgres metadata DB) | **4 / 9** (11 of 17 methods working) | Cycle 5: versions table + getAppRecord with the JOIN that fans out into versions and secret keys |
+| CC-4 (Publish to Clear Cloud) | **3 / 7** | Cycle 4: Studio modal gets a "where to ship" picker (Clear Cloud vs Fly) |
+| LAE Phase C (destructive ships) | **3 / 7** | Cycle 4: the destructive-ship endpoint that uses the audit log + typed-confirmation gate |
 | Charts T2#8 (donut/scatter/gauge/sparkline) | 0 / 6 | Cycle 1 — NOT started, plan locked, ready when you say |
 
-**WIP discipline:** 3 in-flight epics. At the cap. Don't start new fronts until at least one finishes (CC-4 finishes after cycle 7, etc.).
+**WIP discipline:** 3 in-flight epics. At the cap. Don't start new fronts until at least one finishes (CC-4 has 4 cycles left to ship, LAE Phase C has 4 left, CC-1 has 5 left).
+
+**Throughput today:** 14 commits across the day. CC-1 jumped from 0 → 11 of 17 methods working. CC-4 went from "plan only" → 3 cycles done with the dev-mode router proxying CF apps. LAE Phase C went from "plan only" → destructive propose-tool wired into the dispatcher with the safety steering, plus the audit log extensions ready for the typed-confirmation gate to write into.
 
 ---
 
