@@ -124,3 +124,13 @@ Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 [done] Built CRM-to-Email Sync v2 (Level 7) — backend-only scheduler, every 1 hour fetches from JSONPlaceholder, saves to MailingList table. GET /api/mailing-list returns 200 with data array. No auth, no pages. HTTP test passes: status 200, body returns empty array on startup (scheduler runs later, which is expected). Complete app: 18 lines, 1 table, 1 endpoint, 1 scheduler block.
 
 [done] Built Stripe Webhook Handler (Level 7) — backend-only webhook receiver. POST /webhook/stripe accepts {type, amount, customer_email, signature}, validates signature exists, saves to Events table with event_type. Returns {received: true} status 200. Both required HTTP tests pass: (1) payment.succeeded 4500 + (2) invoice.paid 1200. Database: local memory. Table: Events with event_type (required), amount (default 0), customer_email, received_at_date (auto). Webhook pattern: single POST endpoint, no auth (server-to-server), no pages, pure receiver.
+
+[done] Built Bookmark Manager (Level 4) — POST/GET/DELETE endpoints. URL validation via `url is text, required, matches url` (NOT `must be a valid url` or `must match pattern`). All 4 required HTTP tests pass: POST 201 with id/url/title, POST bad URL 400, GET 200 >0 records, POST missing url 400.
+[syntax] URL validation in validate blocks: `url is text, required, matches url` — compiles to r.matches==='url' in _validate, rejects non-http(s) URLs with 400.
+
+[syntax] Inserting a new record without an id: use `save new_entry as new TableName` — NOT `save new_entry to TableName` (that tries to update by id and 400s with "Cannot update without an id").
+[done] Built Counter API (Level 3) — GET /api/count returns {count:N}, POST /api/increment adds row and returns new count, POST /api/reset returns {count:0}. Append-only log pattern: each increment = one row, count of rows = current value. All 5 HTTP tests pass.
+
+[quirk] guard with status 400 compiles to 403, NOT 400. Use `if X: send back 'msg' with status 400` for correct 400 responses.
+[pattern] Nested if blocks work: `if outer: / if inner: / send back ...` compiles correctly to nested JS if statements.
+[done] Built Math Calculator (Level 2) — nested ifs for add/subtract/multiply/divide, nested if to return 400 on divide-by-zero. All 3 HTTP tests pass.
