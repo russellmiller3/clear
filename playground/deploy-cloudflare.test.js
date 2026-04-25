@@ -785,3 +785,82 @@ describe('deploySource mode:update — LAE Phase B Cycle 2', () => {
 		expect(store._state.recordVersionCalls[0].via).toBe('widget');
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// One-click updates Phase 3 — migration safety gate.
+// Updates that would change D1 schema must require explicit user
+// confirmation. SQLite has no atomic schema swap, so silently auto-applying
+// a destructive migration mid-update can leave the live script wedged
+// against a half-applied schema. The gate detects schema-shape changes,
+// surfaces them to the UI, and only proceeds when the caller passes
+// confirmMigration:true.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('migrationsDiffer — Phase 3 Cycle 3.1', () => {
+	it('returns false when both bundles have identical migration files', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		expect(migrationsDiffer(a, b)).toBe(false);
+	});
+
+	it('returns true when a migration file content differs', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT, name TEXT)' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('returns true when the new bundle adds a migration file', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'migrations/002-add-b.sql': 'CREATE TABLE b (id INT)',
+		};
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('returns true when the new bundle removes a migration file', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'migrations/002-add-b.sql': 'CREATE TABLE b (id INT)',
+		};
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('returns true when a migration is renamed (set of filenames differs)', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = { 'migrations/001-renamed.sql': 'CREATE TABLE a (id INT)' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('ignores non-migration files (src/index.js, etc) when comparing', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'src/index.js': 'export default { fetch(){ return new Response("v1"); } }',
+		};
+		const b = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'src/index.js': 'export default { fetch(){ return new Response("v2-CHANGED"); } }',
+		};
+		expect(migrationsDiffer(a, b)).toBe(false);
+	});
+
+	it('treats a missing/empty oldBundle as no migrations (no diff if newBundle also empty)', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		expect(migrationsDiffer({}, {})).toBe(false);
+		expect(migrationsDiffer(null, null)).toBe(false);
+	});
+
+	it('treats an oldBundle with no migrations vs a newBundle with migrations as a diff', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'src/index.js': 'x' };
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)', 'src/index.js': 'x' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+});
