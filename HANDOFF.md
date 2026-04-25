@@ -62,8 +62,9 @@ If I get through 1-8 above, pull from ROADMAP P0/P1 in this order:
 - Strategic pivots — the Dave-first vs Marcus-first decision in ROADMAP is *Russell's* call, don't enact silently.
 
 **Authorized $0 work that's bonus value if you finish the queue early:**
-- **Ghost Meph sweeps** are explicitly fine — set `MEPH_BRAIN=cc-agent` (Claude Code sub-agents, free on org quota) or `MEPH_BRAIN=ollama:<model>` (fully local) or `MEPH_BRAIN=openrouter:qwen` (OpenRouter free tier). Sweeps via Ghost don't touch Anthropic billing. Each Factor DB row produced compounds the flywheel. See `FEATURES.md` → "Ghost Meph" + `playground/ghost-meph/` for the dispatch layer.
-- A Ghost sweep on the curriculum (`node playground/supervisor/curriculum-sweep.js --workers=3` with `MEPH_BRAIN` set) while you're working on other things is a perfectly reasonable use of overnight compute.
+- **Ghost Meph sweeps via cc-agent are explicitly fine** — set `MEPH_BRAIN=cc-agent` (Claude Code sub-agents, free on org quota). Sweeps via cc-agent don't touch Anthropic billing. Each Factor DB row produced compounds the flywheel.
+- A Ghost sweep on the curriculum (`MEPH_BRAIN=cc-agent node playground/supervisor/curriculum-sweep.js --workers=3`) while you're working on other things is a great use of overnight compute.
+- *Note:* Russell is not using Ollama or OpenRouter/Qwen yet. Don't suggest those backends — only cc-agent. He'll tell you when that changes.
 
 ---
 
