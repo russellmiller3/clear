@@ -607,4 +607,118 @@ when user requests data from /api/secret:
 			_setWfpApiForTest(null);
 		}
 	});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// CC-4 cycle 2 — multi-tenant subdomain binding is the load-bearing
+	// claim of CC-4. After /api/deploy returns 200 on the CF target, the
+	// store must hold a cfDeploys row keyed by subdomain that points at the
+	// right tenant + script + hostname. Cycle 1 proved routing; cycle 2
+	// proves the binding lands. Without these tests a future refactor could
+	// quietly decouple deploy from markAppDeployed and Marcus's app would
+	// publish to Cloudflare but be unreachable via deal-desk.buildclear.dev.
+	// ─────────────────────────────────────────────────────────────────────
+
+	const DEAL_DESK_MIN = `build for javascript backend\n\ncreate a Deals table:\n  name, required\n  amount, number\n\nwhen user requests data from /api/deals:\n  deals = get all Deals\n  send back deals\n`;
+
+	await runSeq('/api/deploy — CF success seeds lookupAppBySubdomain (cc-4 cycle 2)', async () => {
+		// Happy path: ship deal-desk, then verify the multi-tenant subdomain
+		// router can find it. This is the smoke gate — if this fails, the
+		// Publish button gets a URL the subdomain router will 404 on.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: DEAL_DESK_MIN, appSlug: 'deal-desk', target: 'cloudflare' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.url).toBe('https://deal-desk.buildclear.dev');
+
+				// The load-bearing assertion: the binding row exists and
+				// matches the tenant + script + hostname the response promised.
+				const row = await store.lookupAppBySubdomain('deal-desk');
+				expect(row).not.toBe(null);
+				expect(row.tenantSlug).toBe('clear-acme');
+				expect(row.appSlug).toBe('deal-desk');
+				expect(row.scriptName).toBe('deal-desk');
+				expect(row.hostname).toBe('deal-desk.buildclear.dev');
+				// deal-desk has a Deals table, so D1 was provisioned and the
+				// fake returns 'd1-test'. Locks in that the orchestrator
+				// passed d1_database_id through to markAppDeployed.
+				expect(row.d1_database_id).toBe('d1-test');
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — invalid slug 400s and writes nothing (cc-4 cycle 2)', async () => {
+		// Negative case: a malformed slug must fail at sanitize BEFORE the
+		// orchestrator runs. If sanitize is ever short-circuited and a bad
+		// slug pollutes cfDeploys, this test catches it.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: DEAL_DESK_MIN, appSlug: 'Deal Desk!', target: 'cloudflare' },
+				});
+				expect(r.status).toBe(400);
+				expect(r.body.ok).toBe(false);
+				expect(r.body.code).toBe('INVALID_APP_SLUG');
+
+				// Nothing in the binding index — sanitize fired before any
+				// orchestrator step. Also confirm the fake never saw a call.
+				const row = await store.lookupAppBySubdomain('deal-desk');
+				expect(row).toBe(null);
+				const rowRaw = await store.lookupAppBySubdomain('Deal Desk!');
+				expect(rowRaw).toBe(null);
+				expect(fake.calls.length).toBe(0);
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — Fly path does NOT seed CF subdomain index (cc-4 cycle 2)', async () => {
+		// Fly path is by design separate from the multi-tenant CF subdomain
+		// index. cfDeploys is a CF-only concept; Fly apps live in
+		// appsByTenant. This test locks in the separation so a future
+		// refactor can't accidentally cross-write.
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: TODO_SRC, appSlug: 'flyapp', target: 'fly' },
+				});
+				// Mock Fly builder returns 200 with jobId 'job-xyz'.
+				expect(r.status).toBe(200);
+				expect(r.body.jobId).toBe('job-xyz');
+
+				// The CF subdomain index must stay empty — Fly doesn't touch it.
+				const row = await store.lookupAppBySubdomain('flyapp');
+				expect(row).toBe(null);
+			} finally { await close(); }
+		} finally { /* env was already deleted at the top */ }
+	});
 })();

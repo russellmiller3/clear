@@ -338,6 +338,15 @@ export function wireDeploy(app, opts = {}) {
 				return res.status(502).json({ ok: false, stage: r.stage, error: r.error || 'Cloudflare deploy failed' });
 			}
 			await store.incrementAppsDeployed(tenant.slug);
+			// CC-4 cycle 2 — one-line tail for the smoke runbook. The orchestrator
+			// already wrote the cfDeploys row via markAppDeployed; this log is the
+			// "yes, the multi-tenant subdomain binding landed" breadcrumb. grep
+			// for `[cc-4] bound` in Studio's stdout to confirm the binding step
+			// fired before the response goes out.
+			try {
+				const boundHost = (r.url || '').replace(/^https?:\/\//, '');
+				console.log(`[cc-4] bound ${tenant.slug}/${appSlug} -> ${boundHost}`);
+			} catch { /* logging never breaks the response */ }
 			return res.json({ ok: true, jobId: r.jobId, url: r.url, degraded: r.degraded || false });
 		}
 
