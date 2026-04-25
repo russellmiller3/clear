@@ -1006,4 +1006,92 @@ when user requests data from /api/secret:
 			_setWfpApiForTest(null);
 		}
 	});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// One-click updates Phase 4 — handler branching + new endpoints.
+	// Cycle 4.1: when the tenant already has an app record for this slug,
+	// /api/deploy must call deploySourceCloudflare with mode:'update' +
+	// lastRecord populated, instead of running the full provision path.
+	// We assert the path taken via SIDE EFFECTS observable on the store:
+	//   - update path: store.recordVersion appends to versions[]
+	//   - deploy path: store.markAppDeployed (re-)writes the row from scratch
+	// The orchestrator surfaces { mode:'update', versionId } in the response
+	// on the update branch so the modal can render the post-update UX.
+	// ─────────────────────────────────────────────────────────────────────
+
+	const HELLO_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+
+	await runSeq('/api/deploy — second deploy of same slug routes to update path (one-click cycle 4.1)', async () => {
+		delete process.env.CLEAR_DEPLOY_TARGET;
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		// Fake whose uploadScript returns a fresh versionId on each call so
+		// the update path can recordVersion with a real id and we can assert
+		// it landed in versions[].
+		let uploadCallNum = 0;
+		const fake = {
+			calls: [],
+			provisionD1: async (p) => { fake.calls.push({ op: 'provisionD1' }); return { ok: true, d1_database_id: 'd1-test', name: `${p.tenantSlug}-${p.appSlug}` }; },
+			applyMigrations: async () => { fake.calls.push({ op: 'applyMigrations' }); return { ok: true }; },
+			uploadScript: async (p) => {
+				uploadCallNum++;
+				fake.calls.push({ op: 'uploadScript', scriptName: p.scriptName });
+				return { ok: true, result: { id: `v-${uploadCallNum}` } };
+			},
+			setSecrets: async () => { fake.calls.push({ op: 'setSecrets' }); return { ok: true, failed: [] }; },
+			attachDomain: async (p) => { fake.calls.push({ op: 'attachDomain', hostname: p.hostname }); return { ok: true }; },
+			deleteScript: async () => ({ ok: true }),
+			listVersions: async () => ({ ok: true, versions: [] }),
+			rollbackToVersion: async () => ({ ok: true }),
+		};
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				// First deploy — full path. markAppDeployed seeds an empty versions[]
+				// (orchestrator passes versionId:null on the seed).
+				const r1 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: HELLO_APP, appSlug: 'hello', target: 'cloudflare' },
+				});
+				expect(r1.status).toBe(200);
+				expect(r1.body.ok).toBe(true);
+				const rec1 = await store.getAppRecord('clear-acme', 'hello');
+				expect(rec1).not.toBe(null);
+				expect(Array.isArray(rec1.versions)).toBe(true);
+				expect(rec1.versions.length).toBe(0); // seed had versionId:null
+
+				// Count provisionD1 / attachDomain calls before second deploy.
+				const opsBefore = fake.calls.map(c => c.op);
+				const provBefore = opsBefore.filter(o => o === 'provisionD1').length;
+				const attachBefore = opsBefore.filter(o => o === 'attachDomain').length;
+
+				// Second deploy of same slug — must take the update path.
+				const r2 = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: HELLO_APP, appSlug: 'hello', target: 'cloudflare' },
+				});
+				expect(r2.status).toBe(200);
+				expect(r2.body.ok).toBe(true);
+				// Update-path response carries mode + versionId so the modal can render the post-update UX.
+				expect(r2.body.mode).toBe('update');
+				expect(typeof r2.body.versionId).toBe('string');
+
+				// Side-effect: provisionD1 + attachDomain are NOT called on update path.
+				const opsAfter = fake.calls.map(c => c.op);
+				const provAfter = opsAfter.filter(o => o === 'provisionD1').length;
+				const attachAfter = opsAfter.filter(o => o === 'attachDomain').length;
+				expect(provAfter).toBe(provBefore);
+				expect(attachAfter).toBe(attachBefore);
+
+				// Side-effect: store.recordVersion appended exactly one entry.
+				const rec2 = await store.getAppRecord('clear-acme', 'hello');
+				expect(rec2.versions.length).toBe(1);
+				expect(rec2.versions[0].versionId).toBe(r2.body.versionId);
+			} finally { await close(); }
+		} finally {
+			_setWfpApiForTest(null);
+		}
+	});
 })();

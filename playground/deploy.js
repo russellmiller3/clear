@@ -374,6 +374,14 @@ export function wireDeploy(app, opts = {}) {
 				});
 			}
 
+			// One-click updates Phase 4 cycle 4.1 — when an app record
+			// already exists for this (tenant, slug), route the orchestrator
+			// to its incremental-update path instead of re-running the full
+			// provision pipeline (D1, migrations, domain attach). Detection
+			// is a single store lookup BEFORE dispatch so the orchestrator
+			// stays a pure switch on `mode` (no decision logic inside).
+			const lastRecord = await store.getAppRecord(tenant.slug, appSlug);
+			const isRedeploy = !!lastRecord;
 			const r = await deploySourceCloudflare({
 				source,
 				tenantSlug: tenant.slug,
@@ -387,6 +395,7 @@ export function wireDeploy(app, opts = {}) {
 				// no-op so the rollback ladder still runs without throwing.
 				// Real delete is tracked in reconcile-wfp.js meanwhile.
 				deleteD1: async () => ({ ok: true, skipped: true }),
+				...(isRedeploy ? { mode: 'update', lastRecord } : {}),
 			});
 			// Stash the job snapshot so /api/deploy-status can serve it.
 			if (r.jobId) {
@@ -419,11 +428,17 @@ export function wireDeploy(app, opts = {}) {
 			// tell the owner "your custom domain was already in use; the app
 			// is reachable at <slug>.buildclear.dev" instead of a vague
 			// "degraded" label.
+			//
+			// One-click updates Phase 4 cycle 4.1 — surface mode + versionId
+			// from the orchestrator's update branch so the modal can render
+			// the post-update UX ("Updated to version v-abc-123 + history").
 			return res.json({
 				ok: true,
 				jobId: r.jobId,
 				url: r.url,
 				degraded: r.degraded || false,
+				...(r.mode ? { mode: r.mode } : {}),
+				...(r.versionId ? { versionId: r.versionId } : {}),
 				...(r.domainError ? { domainError: r.domainError } : {}),
 			});
 		}
