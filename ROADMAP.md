@@ -110,7 +110,7 @@ Ranked. Top of list = next session's pick.
 |---|------|-------|---|
 | 1 | **R7 — Fix `needs login` page guard.** Pages with `needs login` compile to blank white pages (JWT check hides everything, no login form, no redirect). Generate a login page or redirect to `/login`. | half-day, TDD-able, $0 API | Any Marcus app with auth on a page is broken right now. Blocks every demo. |
 | 2 | **R8 — Fix `for each` loop body in HTML.** `for each msg in messages: section: text msg's role` emits `+ msg +` (whole object as string) instead of expanding the child template. | half-day, TDD-able, $0 API | Loops over data are core Marcus territory (chat lists, approval queues, anything iterating). |
-| 3 | **GTM-1 — Build `apps/deal-desk/main.clear`.** Hero use case: discount approval workflow with agent draft. ~150 lines. | 1 session | The asset every landing-page dollar points at. No demo without this. |
+| ~~3~~ | ~~**GTM-1 — Build `apps/deal-desk/main.clear`.**~~ | **DONE 2026-04-25** | ~170 lines, 13/13 app tests pass, exercises R7+R8 fixes. Hero use case: discount approval workflow with AI-drafted CRO summaries. |
 | 4 | **Phase 85a — Provision the real cloud stack.** Register `buildclear.dev`, apply for Fly Trust Verified status with 10k-machine quota, Stripe live keys, Anthropic org key, Postgres for tenants DB. | external paperwork (Russell-blocking) | Deploy works in tests but has nowhere to deploy to until this lands. |
 | 5 | **CC-1 — Multi-tenant routing.** Wire the CC-2/3/5 scaffolding (already shipped: `listAppsForUser`, `assertCanAccessApp`, `app_domains`, `cloud-billing`, `cloud-quota`, `cloud-domains`, DNS poller, Stripe rollup) into a live subdomain router. `approvals.buildclear.dev` and `crm.buildclear.dev` route to different Workers with different D1 DBs. | 2-3 weeks | The missing piece. Without it the scaffolding doesn't ship traffic. |
 | 6 | **GTM-2 — Build `landing/marcus.html`.** GAN against the ASCII mock locked Session 35. Headline: "That backlog of internal tools nobody's going to build? Ship the first one this Friday." | 1 session | Pitch surface for first 5 Marcuses (item 7). |
@@ -145,7 +145,7 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 | # | Item | Status | Scope |
 |---|---|---|---|
-| GTM-1 | `apps/deal-desk/main.clear` — hero discount-approval workflow + agent draft, ~150 lines | Open | 1 session |
+| ~~GTM-1~~ | ~~`apps/deal-desk/main.clear`~~ | **DONE 2026-04-25** — 170 lines, 13/13 tests pass, login-gated `/cro` queue, AI draft endpoint wired (CRO button is the obvious next move) |
 | GTM-2 | `landing/marcus.html` — GAN against ASCII mock, "ship the first one this Friday" headline | Open | 1 session |
 | GTM-3 | `landing/pricing.html` — Free / Team $99 / Business $499 / Enterprise | Open | 1 session |
 | GTM-4 | Find 5 real Marcuses on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
@@ -158,12 +158,12 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 ## P0 — Critical bugs blocking real Clear apps
 
-| # | Bug | Symptom | Fix |
+| # | Bug | Symptom | Status |
 |---|---|---|---|
-| R7 | `needs login` on a page → blank white page | JWT check hides everything but doesn't show login form or redirect | Generate auto-login page OR redirect to `/login` |
-| R8 | `for each` in HTML doesn't expand child template | Emits whole object as string (`+ msg +`) instead of rendering loop body | Compiler walks loop body, emits per-iteration HTML |
+| ~~R7~~ | ~~`needs login` on a page → blank white page~~ | ~~JWT check hides everything but doesn't show login form or redirect~~ | **DONE 2026-04-25** — page-level guard now route-gated; emits `if (location.pathname === '/cro' && !token) location.href='/login'`. No more top-level `return;` SyntaxError. 4 TDD tests in clear.test.js → "R7: needs login". |
+| ~~R8~~ | ~~`for each` in HTML doesn't expand child template~~ | ~~Emits whole object as string (`+ msg +`) instead of rendering loop body~~ | **DONE 2026-04-25** — reactive renderer now recurses into `section`/`page` containers; empty fallback is a clean `''` instead of stringifying the row. 2 TDD tests in clear.test.js → "R8: for-each body expands". |
 
-Both are TDD-able, half-day each, $0 API. Sitting in `FAQ.md → "What are the known broken things?"` until fixed.
+Both shipped overnight 2026-04-25 along with the deal-desk app (GTM-1) that exercises both fixes end-to-end.
 
 ---
 
@@ -190,10 +190,10 @@ Competitive snapshot in `FAQ.md` → "Why does Clear Cloud beat Retool and Lovab
 
 Builder Mode v0.3 shipped (BM-1/2/3/4/5/6 — see `FEATURES.md` → Studio IDE row). What remains:
 
-| Item | What | Effort |
+| Item | What | Status |
 |------|------|--------|
-| Status bar | Users / agent spend / last ship chip — always visible at bottom | 3 days |
-| Default flip | Builder Mode becomes default for new users; `cmd+.` reveals 3-panel | 1 day, after status bar lands |
+| ~~Status bar~~ | ~~Users / agent spend / last ship chip — always visible at bottom~~ | **DONE 2026-04-25** — three live chips polled every 5s: compiles ok/total, app ▶/idle, last ship Xm ago. Backed by `_builderState` + `GET /api/builder-status`. |
+| Default flip | Builder Mode becomes default for new users; `cmd+.` reveals 3-panel | Open, 1 day |
 
 ---
 
@@ -203,7 +203,7 @@ Tracks whether the JS/Python/HTML the compiler emits is actually optimal. Today'
 
 | # | Tier | Status | Scope | Unlock |
 |---|------|--------|-------|--------|
-| CF-1 | **Runtime instrumentation** — compiled apps emit latency / error / memory beacons to a shared endpoint | Open (Factor DB tracks compile-time, not runtime) | 1 day | Data-driven compiler bug-reports |
+| ~~CF-1~~ | ~~**Runtime instrumentation** — compiled apps emit latency / error / memory beacons to a shared endpoint~~ | **DONE 2026-04-25** — `_clearBeacon` helper + endpoint_latency + endpoint_error events emitted in every compileToJSBackend. Receiver at `POST /api/flywheel/beacon` writes to `playground/flywheel-beacons.jsonl`. Silent no-op unless `CLEAR_FLYWHEEL_URL` + `CLEAR_COMPILE_ROW_ID` set. **Flywheel begins collecting the moment the env points anywhere.** Next: migrate JSONL into Factor DB `code_actions_runtime` table (plan in `plans/plan-compiler-flywheel-tier1-04-19-2026.md`). | 1 day | Data-driven compiler bug-reports |
 | CF-2 | **Candidate emitters + deterministic A/B** — top 10 emit patterns get 2-3 variants, deterministic at compile time, production picks winner | Open | 1 week | Quantitative answer to "best JS pattern for X" |
 | CF-3 | **Compiler-strategy reranker** — EBM trained on (archetype, app shape, runtime outcome) → emit variant | Open (after Meph reranker trained) | 2 weeks | Per-pattern emit auto-selects |
 | CF-4 | **GA-evolved compiler** (research) — mutate emit functions, fitness = curriculum pass rate + runtime perf | Open | 2+ months | The compiler becomes a learned artifact |
