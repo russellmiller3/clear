@@ -3240,6 +3240,10 @@ window.doDeploy = async function() {
         <button id="deploy-cancel-btn">Cancel</button>
         <button id="deploy-submit-btn" class="primary">Ship it</button>
       </div>
+      <div id="deploy-history-toggle" style="display:none;font-size:12px;margin-top:10px;text-align:right">
+        <a href="#" id="deploy-history-link" style="color:var(--ac1);cursor:pointer;text-decoration:underline">View version history</a>
+      </div>
+      <div id="deploy-history-panel" style="display:none;margin-top:8px;border:1px solid var(--bd);border-radius:6px;max-height:220px;overflow-y:auto"></div>
       <div id="deploy-progress"></div>
     </div>`;
   // Pre-select the detected / default theme.
@@ -3258,6 +3262,116 @@ window.doDeploy = async function() {
   const submitBtn = document.getElementById('deploy-submit-btn');
   let currentInfo = null;
 
+  // One-click updates Phase 6 — version history + rollback. The "View
+  // version history" link only shows when the slug points to a deployed
+  // app. Clicking expands a panel with the last 20 versions; each non-
+  // current version has a Rollback button that promotes it back to live.
+  const historyToggle = document.getElementById('deploy-history-toggle');
+  const historyLink = document.getElementById('deploy-history-link');
+  const historyPanel = document.getElementById('deploy-history-panel');
+
+  const renderHistory = (versions) => {
+    if (!Array.isArray(versions) || versions.length === 0) {
+      historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">No version history yet.</div>';
+      return;
+    }
+    // Normalize across the two response shapes: Cloudflare returns
+    // {id, created_on, ...}; the in-store fallback returns {versionId,
+    // uploadedAt, sourceHash, note}. Both flow into one list.
+    const norm = versions.map(v => ({
+      versionId: v.versionId || v.id || '',
+      uploadedAt: v.uploadedAt || v.created_on || '',
+      note: v.note || '',
+    })).filter(v => v.versionId).slice(0, 20);
+    norm.sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || ''));
+    historyPanel.innerHTML = norm.map((v, i) => {
+      const idShort = v.versionId.slice(0, 10);
+      const when = v.uploadedAt ? _formatTimeAgo(v.uploadedAt) : '';
+      const isCurrent = i === 0;
+      const rightSide = isCurrent
+        ? '<span style="color:var(--ac1);font-weight:600;font-size:11px">Current</span>'
+        : `<button class="deploy-rollback-btn" data-version="${escHtmlLocal(v.versionId)}" style="font-size:11px;padding:3px 10px;cursor:pointer">Rollback</button>`;
+      const noteHtml = v.note ? `<div style="font-size:10px;color:var(--tx2);margin-top:2px;font-style:italic">${escHtmlLocal(v.note)}</div>` : '';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--bd)">
+          <div style="min-width:0;flex:1">
+            <div style="font-family:ui-monospace,monospace;font-size:11px;color:var(--tx1)">${escHtmlLocal(idShort)}</div>
+            <div style="font-size:11px;color:var(--tx2)">${when}</div>
+            ${noteHtml}
+          </div>
+          ${rightSide}
+        </div>`;
+    }).join('');
+
+    // Wire up rollback buttons. Each one POSTs /api/rollback then refreshes
+    // both the deployed-state header and the history panel itself.
+    historyPanel.querySelectorAll('.deploy-rollback-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const versionId = btn.dataset.version;
+        const slug = slugInput.value.trim();
+        btn.textContent = '…';
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/rollback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appName: slug, version: versionId }),
+          });
+          let body = {};
+          try { body = await r.json(); } catch { /* empty body — fine */ }
+          if (r.ok && body.ok) {
+            await refreshFromInfo();
+            await openHistory();
+            return;
+          }
+          if (r.status === 404 || body.code === 'VERSION_GONE') {
+            historyPanel.innerHTML = '<div style="color:#664d03;background:#fff3cd;padding:10px;border-radius:4px;font-size:12px;margin:8px">This version no longer exists on Cloudflare. Refreshing the list…</div>';
+            setTimeout(() => openHistory(), 1500);
+            return;
+          }
+          btn.textContent = 'Rollback';
+          btn.disabled = false;
+          const errMsg = body.error || ('rollback failed (status ' + r.status + ')');
+          alert(errMsg + ' — try again or pick a different version');
+        } catch (e) {
+          btn.textContent = 'Rollback';
+          btn.disabled = false;
+          alert('Network error: ' + (e.message || 'unknown'));
+        }
+      };
+    });
+  };
+
+  const openHistory = async () => {
+    const slug = slugInput.value.trim();
+    if (!slug) return;
+    historyPanel.style.display = '';
+    historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">Loading…</div>';
+    try {
+      const r = await fetch('/api/deploy-history/' + encodeURIComponent(slug));
+      if (!r.ok) {
+        historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">No history available.</div>';
+        return;
+      }
+      const body = await r.json();
+      renderHistory(Array.isArray(body.versions) ? body.versions : []);
+    } catch (e) {
+      historyPanel.innerHTML = `<div style="color:#e74c3c;font-size:12px;padding:10px">Failed to load history: ${escHtmlLocal(e.message || '')}</div>`;
+    }
+  };
+
+  historyLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (historyPanel.style.display === 'none' || !historyPanel.style.display) {
+      openHistory();
+      historyLink.textContent = 'Hide version history';
+    } else {
+      historyPanel.style.display = 'none';
+      historyPanel.innerHTML = '';
+      historyLink.textContent = 'View version history';
+    }
+  });
+
   const refreshFromInfo = async () => {
     const slug = slugInput.value.trim();
     const info = slug ? await _fetchAppInfo(slug) : null;
@@ -3268,10 +3382,15 @@ window.doDeploy = async function() {
       const when = info.lastVersion && info.lastVersion.uploadedAt ? _formatTimeAgo(info.lastVersion.uploadedAt) : '';
       subtitleEl.textContent = when ? 'Last published ' + when : 'Already published';
       submitBtn.textContent = 'Update';
+      historyToggle.style.display = '';
     } else {
       titleEl.textContent = 'Publish to Clear Cloud';
       subtitleEl.textContent = '';
       submitBtn.textContent = 'Ship it';
+      historyToggle.style.display = 'none';
+      historyPanel.style.display = 'none';
+      historyPanel.innerHTML = '';
+      historyLink.textContent = 'View version history';
     }
   };
 
