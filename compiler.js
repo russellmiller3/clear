@@ -2826,7 +2826,11 @@ function generateE2ETests(body) {
   lines.push('// Requires: server running on localhost:3000');
   lines.push('');
   lines.push('const BASE = process.env.TEST_URL || "http://localhost:3000";');
-  lines.push('let passed = 0, failed = 0;');
+  // Lean Lesson 1 — placeholder skip support. A test that runs into a TBD
+  // marker (compiled to a "placeholder hit at line N" throw) reports as
+  // SKIPPED, not FAILED. Lets a partial program show "structure right,
+  // piece not filled in" instead of a noisy false failure.
+  lines.push('let passed = 0, failed = 0, skipped = 0;');
   lines.push('let _emailCounter = 0;');
   lines.push('let _uniqueCounter = 0;');
   // Module-level so both user tests and the _expectStatus helper can see them
@@ -2865,8 +2869,20 @@ function generateE2ETests(body) {
   lines.push('    passed++;');
   lines.push('    console.log("PASS:", name);');
   lines.push('  } catch (err) {');
-  lines.push('    failed++;');
-  lines.push('    console.log("FAIL:", name, "-", err.message);');
+  // Lean Lesson 1 — placeholder skip path. The compiler emits "placeholder
+  // hit at line N" exactly when execution reaches a TBD marker, so a test
+  // that wandered into a stub gets reported as SKIPPED with the same line
+  // info instead of being counted as a real failure. The marker string
+  // must match the compiler's exact emission so non-stub failures do not
+  // accidentally classify as skips.
+  lines.push('    const _msg = err && err.message ? String(err.message) : "";');
+  lines.push('    if (_msg.indexOf("placeholder hit at line") === 0) {');
+  lines.push('      skipped++;');
+  lines.push('      console.log("SKIP:", name, "-", _msg, "(this test exercises a stub)");');
+  lines.push('    } else {');
+  lines.push('      failed++;');
+  lines.push('      console.log("FAIL:", name, "-", _msg);');
+  lines.push('    }');
   lines.push('  }');
   lines.push('}');
   lines.push('');
@@ -3486,7 +3502,11 @@ function generateE2ETests(body) {
   }
 
   lines.push('  console.log("");');
-  lines.push('  console.log("Results:", passed, "passed,", failed, "failed");');
+  // Lean Lesson 1 — Results line distinguishes failed (real bugs) from
+  // skipped due to stub (structure right, piece not filled in). Skips do
+  // NOT trigger a non-zero exit code so a partial program can still be
+  // shipped through CI without blocking on its own placeholders.
+  lines.push('  console.log("Results:", passed, "passed,", failed, "failed,", skipped, "skipped due to stub");');
   lines.push('  process.exit(failed > 0 ? 1 : 0);');
   lines.push('}');
   lines.push('');

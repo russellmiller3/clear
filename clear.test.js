@@ -25344,6 +25344,66 @@ describe('AI helpers — exponential-backoff retry (Session 46)', () => {
 // Meph (or a human) leave one piece unfinished and keep iterating on the rest
 // instead of rewriting the whole program.
 
+describe('TBD placeholders — Phase 1.3 (test runner skips stub-bearing tests)', () => {
+  // For these tests we need a program with at least one ENDPOINT (so the
+  // compiler emits the test harness at all) plus a TBD inside one of the
+  // tests. The harness must catch the "placeholder hit" runtime error and
+  // count it as SKIPPED rather than FAILED, and the final results line
+  // must include a skip count.
+  const stubProgram = [
+    'build for javascript backend',
+    'create a Items table:',
+    '  name, required',
+    "when user requests data from /api/items:",
+    "  send back 'ok'",
+    "test 'placeholder skip example':",
+    '  set thing = TBD',
+    "  expect thing is 'whatever'",
+    '',
+  ].join('\n');
+
+  it('compiled test harness defines a `skipped` counter and a SKIP path', () => {
+    const r = compileProgram(stubProgram);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toBeTruthy();
+    // The harness must declare a skipped counter alongside passed/failed
+    expect(r.tests).toContain('let passed = 0, failed = 0, skipped = 0');
+    // And it must check for the placeholder marker in the thrown error
+    expect(r.tests).toContain('placeholder hit at line');
+    // And it must log a SKIP line when it catches one
+    expect(r.tests).toContain('SKIP:');
+  });
+
+  it('Results line reports skipped due to stub separately from failures', () => {
+    const r = compileProgram(stubProgram);
+    // The summary line must distinguish skipped from failed so a partial
+    // program does not look like a failing one.
+    expect(r.tests).toContain('skipped due to stub');
+  });
+
+  it('a non-stub thrown error still counts as FAILED, not SKIPPED', () => {
+    // Same program shape but the test asserts a real failure, NOT a TBD
+    const failProgram = [
+      'build for javascript backend',
+      'create a Items table:',
+      '  name, required',
+      "when user requests data from /api/items:",
+      "  send back 'ok'",
+      "test 'real failure example':",
+      '  set thing = 5',
+      "  expect thing is 99",
+      '',
+    ].join('\n');
+    const r = compileProgram(failProgram);
+    expect(r.errors).toHaveLength(0);
+    // The harness should still throw real assertion errors as FAIL — the
+    // skip path should ONLY trigger when the message starts with the
+    // exact "placeholder hit at line" marker so non-stub failures are not
+    // accidentally hidden.
+    expect(r.tests).toContain('FAIL:');
+  });
+});
+
 describe('TBD placeholders — Phase 1.2 (compiler stub + position tracking)', () => {
   it('a program with TBD compiles with zero errors', () => {
     const src = 'build for javascript backend\nset x = TBD\nshow x\n';
