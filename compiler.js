@@ -4216,7 +4216,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.AUTH_SCAFFOLD, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK,
   NodeType.CHECKOUT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
-  NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
+  NodeType.STREAM, NodeType.STREAM_AI, NodeType.GIVE_CLAUDE, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
   NodeType.AGENT, NodeType.WORKFLOW, NodeType.SKILL, NodeType.PIPELINE, NodeType.PARALLEL_AGENTS,
@@ -6364,6 +6364,32 @@ function _compileNodeInner(node, ctx) {
         return `${pad}${keyword}${name} = ${expr};`;
       }
       return `${pad}${name} = ${expr}`;
+    }
+
+    case NodeType.GIVE_CLAUDE: {
+      // Plan 2026-04-26 — canonical AI call. Maps to the same `_askAI`
+      // runtime helper that powers the assignment-form `ask claude`.
+      // Shape: give claude <data> [with prompt[:] '<X>'] [as <name>]
+      // Compiles to:  let <resultName> = await _askAI(<prompt>, <data>);
+      // Default <resultName> is `claude_reply`. The expression
+      // `claude's reply` is rewritten by exprToCode (MEMBER_ACCESS case)
+      // to read the same variable.
+      const data = exprToCode(node.data, ctx);
+      const prompt = node.prompt ? exprToCode(node.prompt, ctx) : null;
+      const resultName = sanitizeName(node.resultName || 'claude_reply');
+      const declared = ctx.declared && ctx.declared.has(resultName);
+      if (ctx.declared) ctx.declared.add(resultName);
+      // _askAI signature: (prompt/system, context/userMessage, schema, model)
+      // Map: prompt → system instructions, data → user-message payload.
+      // Always non-streaming at the GIVE_CLAUDE statement level — wrap in
+      // `stream:` if you want SSE streaming back to the client.
+      if (ctx.lang === 'python') {
+        const args = prompt ? `${prompt}, ${data}` : `'', ${data}`;
+        return `${pad}${resultName} = await _ask_ai(${args})`;
+      }
+      const args = prompt ? `${prompt}, ${data}` : `'', ${data}`;
+      const keyword = declared ? '' : 'let ';
+      return `${pad}${keyword}${resultName} = await _askAI(${args});`;
     }
 
     case NodeType.SHOW:
@@ -8627,6 +8653,16 @@ export function exprToCode(expr, ctx) {
         const key = exprToCode(expr.dynamicKey, ctx);
         if (ctx.lang === 'python') return `${obj}[${key}]`;
         return `${obj}[${key}]`;
+      }
+      // `claude's reply` — pseudo-actor possessive access. The
+      // GIVE_CLAUDE statement compiled the result to a local variable
+      // (default name `claude_reply`). Rewrite the member access to
+      // read that variable directly so users write the natural
+      // English form. Same pattern as `caller's id` reading req.user.id.
+      // Plan 2026-04-26.
+      if (expr.object && expr.object.type === NodeType.VARIABLE_REF &&
+          expr.object.name === 'claude' && expr.member === 'reply') {
+        return 'claude_reply';
       }
       if (ctx.lang === 'python') {
         const objCode = exprToCode(expr.object, ctx);
@@ -12173,7 +12209,7 @@ function _findUserFunctions(body) {
 
 function _findAsyncFunctions(body) {
   const ASYNC_NODE_TYPES = new Set([
-    NodeType.CRUD, NodeType.ASK_AI, NodeType.EXTERNAL_FETCH,
+    NodeType.CRUD, NodeType.ASK_AI, NodeType.GIVE_CLAUDE, NodeType.EXTERNAL_FETCH,
     NodeType.HTTP_REQUEST, NodeType.RUN_AGENT, NodeType.RUN_PIPELINE,
     NodeType.TRANSACTION
   ]);

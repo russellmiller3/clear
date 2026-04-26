@@ -438,6 +438,18 @@ const SYNONYM_TABLE = Object.freeze({
   refresh: Object.freeze(['refresh', 'reload']),
   ask: Object.freeze(['ask']),
   call: Object.freeze(['call']),
+  // give claude — canonical AI call form (replaces ask claude '...' with X).
+  // Multi-word synonym so the tokenizer matches "give claude" as one token,
+  // avoiding ambiguity with `give` used in other contexts. The verb is what
+  // WE (the program) do to Claude. `ask` stays reserved for what the USER
+  // does to the app (when user sends X to /api/...).
+  give_claude: Object.freeze(['give claude']),
+  // prompt — noun phrase introducing the instruction string in `give claude X
+  // with prompt: 'Y'`. Canonical with trailing colon, parser also accepts bare
+  // `with prompt 'X'`. The 14-year-old reads "with prompt 'foo'" as plain
+  // English; the colon just signals "block-like content follows" consistent
+  // with try:, validate:, etc.
+  prompt: Object.freeze(['prompt']),
   should: Object.freeze(['should', 'does']),
   search: Object.freeze(['search']),
   block_arguments: Object.freeze(['block arguments matching', 'block arguments that match']),
@@ -472,6 +484,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.33.0';
+const SYNONYM_VERSION = '0.34.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
