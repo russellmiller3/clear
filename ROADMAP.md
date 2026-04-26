@@ -51,18 +51,23 @@ If ROADMAP creeps past ~400 lines, stop and audit. Ask of every section: "is thi
 
 ## Critical path to first paying customer (2026-04-26 — read this FIRST)
 
-The product is meaningfully ready. The gating items are Russell's, not the compiler's.
+The product is meaningfully ready. The gating items are mostly setup work Russell owns. Each item explains what it does and why it's needed for the first paying customer.
 
-| # | Item | Owner | Status | Unblocks |
-|---|------|-------|--------|----------|
-| 1 | Push `feature/overnight-04-25-2026` to remote (76+ commits) | Russell | Local only | Everything below |
-| 2 | Register `buildclear.dev` domain | Russell | ✅ DONE 2026-04-26 | #4, #5 |
-| 3 | Fly.io Trust Verified app | Russell | Not done | #4 |
-| 4 | Stripe live keys | Russell | Gated on #2 + #3 | First paying customer |
-| 5 | Anthropic org key for paid Meph sessions | Russell | Not done | First customer |
-| 6 | Postgres provision (managed Fly or Neon) | Russell | Not done | First customer |
-| 7 | First Marcus conversation — real backlog of internal tools, willing to try | Russell | Not done | First paying customer |
-| 8 | Watch them build their first one — fix what bites | Russell + Claude | After #7 | Compounding flywheel |
+**1. Push `feature/overnight-04-25-2026` to remote.** 78+ commits ahead. Until we push, the new work only lives on this laptop — anyone visiting the live site sees yesterday's code. Push unblocks everything else. *~30 seconds.*
+
+**2. ✅ Register `buildclear.dev` domain — DONE 2026-04-26.** Means every customer app can have a real-looking URL like `their-deal-desk.buildclear.dev` instead of `random-id.fly.dev`. Looks like a product, not a demo. Stripe also verifies the domain matches the business when issuing live keys, so this had to land before #4.
+
+**3. Fly.io Trust Verified app.** Fly.io is the cloud where customer apps actually run. "Trust Verified" is a status Fly grants once they've reviewed Clear as a company — it stops payment processors and abuse-detection systems from flagging traffic through our customer apps as suspicious. Without it, real card payments through any customer app could get auto-declined. *Russell submits the form, Fly's review takes a day or two.*
+
+**4. Stripe live keys.** Test keys (which we have) accept fake credit card numbers for development. Live keys accept real cards. Gated on #2 (Stripe checks the domain) and #3 (so payments aren't flagged as suspicious). Without these, no actual money can change hands — the customer can sign up but not pay. *~30 min once #2 + #3 are done.*
+
+**5. Anthropic org key for paid Meph sessions.** When a customer's app calls Claude (the deal-desk asking Claude to summarize a contract, the helpdesk-agent answering a ticket), each call costs money. Today's keys are tied to Russell's personal billing — running customer usage on those would charge Russell for every customer's AI calls. An organization key with the customer usage billed back to Clear is needed before any customer can use the AI features. *~15 min in the Anthropic console.*
+
+**6. Postgres provision (managed Fly Postgres or Neon).** Every customer app needs its own real database for their data. The demo path uses SQLite, which lives inside the app's container and gets wiped on every restart. Real customer data needs a managed Postgres — automatic backups, doesn't lose anything on restart, scales as the app grows. Either Fly Postgres or Neon works. *~30 min to provision + 1-line config change in the tenants store.*
+
+**7. First Marcus conversation.** Someone with a real backlog of internal tools — deal desk, helpdesk, expense tracker, whatever real-business stuff — who'll let us put Clear on one. Without a real customer trying to do real work, there's no first paying customer. *Conversation move, not a code move.*
+
+**8. Watch them build their first one — fix what bites.** When the customer hits a compile error or a confusing bit of syntax, that's the highest-leverage signal Clear will get all year. Every fix compounds across every future customer because the compiler accumulates quality. *After #7, Russell + Claude pair.*
 
 **Not on the critical path** (depth/polish, valuable but not gating):
 
