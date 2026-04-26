@@ -105,6 +105,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
+- [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
@@ -612,6 +613,27 @@ Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:
 **Full spec:** `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
 
 ---
+
+### How do I add sidebar navigation to an app shell?
+
+Use explicit `nav section` and `nav item` rows inside `app_sidebar`.
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'Deal Desk'
+
+  nav section 'Approvals':
+    nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+    nav item 'Approved' to '/approved' with count approved_count with icon 'check-circle-2'
+
+  nav section 'System':
+    nav item 'Settings' to '/settings' with icon 'settings'
+```
+
+`with count` can be a page variable or literal. `with icon` uses Lucide icon names;
+quote hyphenated names. The compiled sidebar marks the matching route active.
+Legacy `text` and `link` children still render, but do not use them for real
+dashboard navigation.
 
 ### How do I add a new node type?
 

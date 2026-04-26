@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 125 node types. ~2540 compiler tests. Zero npm dependencies in the compiler.
+**Headline numbers:** 163 node types. 2616 compiler tests. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
@@ -17,7 +17,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
-- App shell (`app_layout`, `app_sidebar`, `app_main`, `app_header` presets) compiles to a polished slate-on-ivory chrome — semantic `<aside>`/`<main>`/`<header>`, 240px rail, 56px sticky header, brand/breadcrumb/action slots ready to wire.
+- App shell compiles to polished real app chrome — sidebar groups, linked nav rows, counts, icons, and route-aware active state.
 
 **Talk to Claude inside your code**
 - Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
@@ -137,6 +137,8 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | On scroll (throttled) | `on scroll every 100ms:` / `on scroll every 1 second:` | Leading-edge throttle; load-more-near-bottom pattern |
 | On page load | `on page load get todos from '/api/todos'` | Inline or block form |
 | Navigate | `go to '/dashboard'` | |
+| Sidebar nav section | `nav section 'Approvals':` | Labeled group inside `app_sidebar` |
+| Sidebar nav item | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` | Linked sidebar row; optional count + Lucide icon; active state follows the route |
 
 | Display Format | Syntax | Output |
 |----------------|--------|--------|

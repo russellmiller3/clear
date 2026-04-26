@@ -1,0 +1,22 @@
+{
+  "id": "dashboard-with-nav",
+  "level": 7,
+  "title": "Dashboard With Sidebar Navigation",
+  "description": "ARCHETYPE: dashboard. Build a web app page at '/' with an app shell. The left sidebar MUST use explicit `nav section` and `nav item` syntax, not plain text rows. Need: at least 3 nav sections, at least 6 nav items, at least 3 items with `with count`, and at least 4 items with `with icon`. The main area should show a header plus a simple dashboard content section.",
+  "skeleton": "build for web and javascript backend\n\n# Build one dashboard page with app_layout, app_sidebar, app_main, app_header, and app_content.\n# The sidebar must use nav section + nav item rows with counts and icons.\n\npage 'Operations Dashboard' at '/':\n  pending_count = 12\n  approved_count = 28\n  escalated_count = 3\n\n  # App shell here\n",
+  "steps": [
+    { "id": "page", "name": "Dashboard page at /", "sourceMatches": ["page\\s+['\"].*['\"]\\s+at\\s+['\"]/['\"]"] },
+    { "id": "shell", "name": "Uses app shell presets", "sourceMatches": ["style\\s+app_layout", "style\\s+app_sidebar", "style\\s+app_main", "style\\s+app_header", "style\\s+app_content"] },
+    { "id": "sections", "name": "Has 3 nav sections", "sourceMatches": ["nav\\s+section\\s+['\"][^'\"]+['\"][\\s\\S]*nav\\s+section\\s+['\"][^'\"]+['\"][\\s\\S]*nav\\s+section\\s+['\"][^'\"]+['\"]"] },
+    { "id": "items", "name": "Has 6 nav items", "sourceMatches": ["nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to[\\s\\S]*nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to[\\s\\S]*nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to[\\s\\S]*nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to[\\s\\S]*nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to[\\s\\S]*nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to"] },
+    { "id": "counts", "name": "Has counted nav items", "sourceMatches": ["with\\s+count\\s+\\w+[\\s\\S]*with\\s+count\\s+\\w+[\\s\\S]*with\\s+count\\s+\\w+"] },
+    { "id": "icons", "name": "Has icon nav items", "sourceMatches": ["with\\s+icon\\s+['\"]?[\\w-]+['\"]?[\\s\\S]*with\\s+icon\\s+['\"]?[\\w-]+['\"]?[\\s\\S]*with\\s+icon\\s+['\"]?[\\w-]+['\"]?[\\s\\S]*with\\s+icon\\s+['\"]?[\\w-]+['\"]?"] }
+  ],
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/",
+      "expect": { "status": 200, "bodyHas": ["Operations Dashboard"] }
+    }
+  ]
+}

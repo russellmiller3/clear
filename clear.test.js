@@ -16314,6 +16314,64 @@ page 'App' at '/':
     expect(r.errors).toHaveLength(0);
     expect(r.html).not.toContain('max-w-5xl');
   });
+
+  it('parses sidebar nav sections and nav items', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Deal Desk'
+      nav section 'Approvals':
+        nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_count with icon 'check-circle-2'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const layout = page.body.find(n => n.type === NodeType.SECTION && n.styleName === 'app_layout');
+    const sidebar = layout.body.find(n => n.type === NodeType.SECTION && n.styleName === 'app_sidebar');
+    const navSection = sidebar.body.find(n => n.type === 'nav_section');
+    expect(navSection.title).toBe('Approvals');
+    expect(navSection.body).toHaveLength(2);
+    expect(navSection.body[0].type).toBe('nav_item');
+    expect(navSection.body[0].title).toBe('Pending');
+    expect(navSection.body[0].path).toBe('/cro');
+    expect(navSection.body[0].count).toBe('pending_count');
+    expect(navSection.body[0].icon).toBe('inbox');
+  });
+
+  it('emits sidebar nav links with counts, icons, and route-based active state', () => {
+    const src = `build for web
+pending_count = 5
+approved_count = 12
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Deal Desk'
+      nav section 'Approvals':
+        nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_count with icon 'check-circle-2'
+    section 'Main' with style app_main:
+      text 'Queue'
+page 'Approved' at '/approved':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Deal Desk'
+      nav section 'Approvals':
+        nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_count with icon 'check-circle-2'
+    section 'Main' with style app_main:
+      text 'Approved'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('class="clear-nav-section-label"');
+    expect(r.html).toContain('data-nav-item="true"');
+    expect(r.html).toContain('href="/cro"');
+    expect(r.html).toContain('data-nav-path="/cro"');
+    expect(r.html).toContain('data-lucide="inbox"');
+    expect(r.html).toContain('class="clear-nav-count num" data-clear-tpl="{pending_count}"');
+    expect(r.html).toContain('location.pathname');
+    expect(r.html).toContain("classList.toggle('is-active'");
+    expect(r.html).toContain('lucide.createIcons');
+  });
 });
 
 describe('Complex app compilation: CRM with many tables', () => {
@@ -25828,4 +25886,3 @@ describe('SHELL-5: data tables — backwards compat with `with delete and edit`'
 });
 
 run();
-

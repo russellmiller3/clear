@@ -1705,7 +1705,7 @@ writing a custom style block.
 | `faq_section` | bg-base-100, py-16/24 | Accordion Q&A |
 | `page_footer` | bg-base-200, border-t, py-12/16 | Links, legal, copyright |
 
-#### App UI Presets (Phase 1 shell upgrade — 04-25-2026)
+#### App UI Presets (Phase 1-2 shell upgrade — 04-25-2026)
 
 The four shell presets emit semantic HTML5 tags + slate-on-ivory chrome
 matching `landing/marcus-app-target.html`. Sizes match the mock — 240px rail,
@@ -1735,6 +1735,22 @@ matching `landing/marcus-app-target.html`. Sizes match the mock — 240px rail,
 This means a Clear author writes `heading 'Dashboard'`, `text 'Workspace > X'`,
 and `button 'New'` inside `app_header:` and they appear in the right places —
 no manual slot wiring. The compiler does the layout.
+
+**`app_sidebar` nav rule** (prefer explicit nav rows):
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'Deal Desk'
+
+  nav section 'Main':
+    nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+    nav item 'Approvals' to '/approvals' with count pending_count with icon 'inbox'
+    nav item 'Settings' to '/settings' with icon 'settings'
+```
+
+Use `nav section` for sidebar groups and `nav item` for linked rows. Use
+`with count` only with values already defined on the page. Use quoted Lucide
+icon names when they contain hyphens. Do not use plain text rows for real app
+navigation anymore.
 
 #### Blog Presets (3)
 
@@ -1903,9 +1919,10 @@ page 'Dashboard' at '/':
   section 'Root' with style app_layout:
     section 'Sidebar' with style app_sidebar:
       show heading 'MyApp'
-      link 'Dashboard' to '/'
-      link 'Projects' to '/projects'
-      link 'Settings' to '/settings'
+      nav section 'Main':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Projects' to '/projects' with count project_count with icon 'folder'
+        nav item 'Settings' to '/settings' with icon 'settings'
 
     section 'Main' with style app_main:
       section 'Header' with style app_header:

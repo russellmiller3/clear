@@ -405,6 +405,7 @@ const SYNONYM_TABLE = Object.freeze({
   // 'database' has no .canonical and would need a separate RAW_DISPATCH map.
   database: Object.freeze(['database']),
   chart: Object.freeze(['chart']),
+  nav: Object.freeze(['nav', 'navigation']),
   bar: Object.freeze(['bar']),
   line: Object.freeze(['line']),
   pie: Object.freeze(['pie']),
@@ -475,6 +476,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.34.0';
+const SYNONYM_VERSION = '0.35.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

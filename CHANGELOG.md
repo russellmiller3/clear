@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 — Shell Upgrade Phase 2: sidebar nav becomes real navigation
+
+The left rail can now be authored directly in Clear instead of faking navigation with styled text. `nav section 'Approvals':` creates a labeled sidebar group. `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` creates a linked row with an optional badge, optional Lucide icon, and route-based active state.
+
+**What shipped:**
+
+- New parser support for `nav section` and `nav item`.
+- Sidebar output now emits real link rows with `data-nav-item`, `data-nav-path`, counts, icons, and active classes.
+- Runtime active-state sync follows `location.pathname`, click changes, hash changes, and browser history changes.
+- Meph/docs/curriculum surfaces now teach the explicit nav syntax instead of plain text/link sidebar rows.
+- 2 new compiler tests. 2614 → 2616 passing.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 2.
+
+---
+
 ## 2026-04-26 — Shell Phase 5: data tables get the polished slate-on-ivory shape
 
 `display X as table` now compiles to a hand-designed-looking table from the same one-line Clear input. Status fields render as `clear-pill-{value}` colored badges. Name / customer / email columns prepend an avatar circle with initials. Numeric money columns are right-aligned with `tabular-nums`. Headers carry `data-sortable` and click-to-toggle `is-sorted`. Rows toggle `is-selected` on click. New `with actions:` block lists labeled action buttons (`'Approve' is primary` / `'Reject' is danger`) rendered as hover-revealed icons in a new rightmost column. Backwards compat: legacy `with delete and edit` shorthand still works. Cell type detection lives in a single runtime helper so future column types are one helper-edit. Click + sort wiring is idempotent. 10 new tests; +10 to `clear.test.js` total. All 8 core templates compile clean.

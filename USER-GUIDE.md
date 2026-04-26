@@ -2844,27 +2844,30 @@ The `app_sidebar` preset is smart about its children. It splits them
 automatically:
 
 - The first `heading` becomes the brand/logo area at the top
-- `text` and `link` items become nav menu items (using DaisyUI's menu component)
-- Nested `section` blocks become labeled nav groups (the section title becomes
-  a group header)
+- `nav section` blocks become labeled nav groups
+- `nav item` rows become real sidebar links
+- `with count` adds a small badge on the right
+- `with icon` adds a Lucide icon on the left
+- The current route automatically marks the matching row active
 
 ```clear
 section 'Sidebar' with style app_sidebar:
   heading 'ProjectHub'
 
-  section 'Main':
-    text 'Dashboard'
-    text 'Projects'
-    text 'Team'
+  nav section 'Main':
+    nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+    nav item 'Projects' to '/projects' with count project_count with icon 'folder'
+    nav item 'Team' to '/team' with icon 'users'
 
-  section 'Settings':
-    text 'Account'
-    text 'Billing'
-    text 'Integrations'
+  nav section 'Settings':
+    nav item 'Account' to '/account' with icon 'user'
+    nav item 'Billing' to '/billing' with icon 'credit-card'
+    nav item 'Integrations' to '/integrations' with icon 'plug'
 ```
 
 That produces a sidebar with "ProjectHub" as the brand, then two labeled nav
-groups ("Main" and "Settings") with items under each.
+groups ("Main" and "Settings") with linked rows under each. Legacy `text` and
+`link` children still render, but new dashboards should use explicit nav rows.
 
 #### The Header
 
@@ -2969,13 +2972,13 @@ page 'ProjectHub' at '/':
 
     section 'Sidebar' with style app_sidebar:
       heading 'ProjectHub'
-      section 'Main':
-        text 'Dashboard'
-        text 'Projects'
-        text 'Team'
-      section 'Settings':
-        text 'Account'
-        text 'Billing'
+      nav section 'Main':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Projects' to '/projects' with count open_issues with icon 'folder'
+        nav item 'Team' to '/team' with icon 'users'
+      nav section 'Settings':
+        nav item 'Account' to '/account' with icon 'user'
+        nav item 'Billing' to '/billing' with icon 'credit-card'
 
     section 'Main' with style app_main:
 

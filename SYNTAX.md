@@ -999,15 +999,17 @@ section 'Footer' with style page_footer:
 
 ### App UI Presets
 
-> **Phase 1 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
+> **Phase 1-2 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
 > `app_sidebar`, `app_main`, `app_header` now emit polished slate-on-ivory chrome
 > matching `landing/marcus-app-target.html`. Sidebar is a 240px `<aside>`, header
-> is a 56px sticky `<header>` with brand/breadcrumb/actions slots.
+> is a 56px sticky `<header>` with brand/breadcrumb/actions slots. Sidebar nav
+> now has explicit `nav section` / `nav item` syntax with counts, icons, and
+> route-based active state.
 
 | Preset | HTML tag | Description | Typical children |
 |--------|----------|-------------|-----------------|
 | `app_layout` | `<div>` | Outermost shell. `flex min-h-screen` — page owns the scroll. | Two children: `app_sidebar` + a main column |
-| `app_sidebar` | `<aside>` | 240px rail. Hairline-right border, scroll-y, rail bg from `--clear-bg-rail`. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
+| `app_sidebar` | `<aside>` | 240px rail. Hairline-right border, scroll-y, rail bg from `--clear-bg-rail`. First heading = brand; `nav section` groups `nav item` rows. Legacy `text`/`link` children still render as simple nav rows. | `heading` (brand), `nav section`, `nav item` |
 | `app_main` | `<main>` | Right-side flex column that fills remaining space. `flex-1 min-w-0 flex flex-col`. | `app_header` + `app_content` |
 | `app_header` | `<header>` | 56px sticky top bar. Hairline-bottom, canvas bg. Auto-sorts children into three slots: `heading` → brand-slot, text → breadcrumb-slot, `button` → actions-slot (right-aligned). | `heading`, `text`, `button` |
 | `app_content` | `<div>` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
@@ -1019,6 +1021,24 @@ section 'Footer' with style page_footer:
 | `app_list` | Divided list with hover rows. First heading = list title, remaining children = row items. | `heading` (title), `text`/`link` items (one per row) |
 | `form` | Centered form card with max-width constraint. | inputs, `button` |
 
+#### Sidebar navigation
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'Deal Desk'
+
+  nav section 'Approvals':
+    nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+    nav item 'Approved' to '/approved' with count approved_count with icon 'check-circle-2'
+
+  nav section 'System':
+    nav item 'Settings' to '/settings' with icon 'settings'
+```
+
+Counts can be literal values or variables already available on the page.
+Quoted icon names map to Lucide icons; quote names with hyphens. The compiled
+sidebar marks the matching `data-nav-path` row active from the current route.
+
 #### App UI preset examples
 
 ```clear
@@ -1027,10 +1047,10 @@ section 'App' with style app_layout:
 
   section 'Sidebar' with style app_sidebar:
     heading 'MyApp'
-    section 'Main':
-      text 'Dashboard'
-      text 'Projects'
-      text 'Settings'
+    nav section 'Main':
+      nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+      nav item 'Projects' to '/projects' with count project_count with icon 'folder'
+      nav item 'Settings' to '/settings' with icon 'settings'
 
   section 'Main' with style app_main:
 

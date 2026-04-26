@@ -6835,6 +6835,10 @@ ${pad}}`;
       return `${pad}// Section: ${node.title}\n${bodyCode}`;
     }
 
+    case NodeType.NAV_SECTION:
+    case NodeType.NAV_ITEM:
+      return null;
+
     case NodeType.ASK_FOR: {
       if (ctx.mode === 'backend') return null; // frontend-only
       if (ctx.lang === 'python') return `${pad}# Input: ${node.label} (${node.inputType})`;
@@ -10465,6 +10469,10 @@ function buildHTML(body) {
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   // Source map: emit data-clear-line="N" on every HTML element for click-to-highlight
   const clAttr = (node) => node.line ? ` data-clear-line="${node.line}"` : '';
+  const attrEsc = (value) => String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
   let pageTitle = 'Clear App';
   let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   let hasMap = false;   // Track if any map display nodes exist (for Leaflet CDN)
@@ -10477,6 +10485,26 @@ function buildHTML(body) {
   // auto-inject a default signup+login form on `/login` pages so the user
   // doesn't end up with a "use the form above" dead-end.
   const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+
+  function navCountHTML(count) {
+    if (count === undefined || count === null || count === '') return '';
+    const raw = String(count);
+    const safe = attrEsc(raw);
+    if (/^[a-zA-Z_]\w*$/.test(raw)) {
+      return `<span class="clear-nav-count num" data-clear-tpl="{${safe}}">{${safe}}</span>`;
+    }
+    return `<span class="clear-nav-count num">${safe}</span>`;
+  }
+
+  function navItemHTML(node) {
+    const title = formatInlineText(node.title || '');
+    const href = attrEsc(node.path || '#');
+    const icon = node.icon
+      ? `<i data-lucide="${attrEsc(node.icon)}" aria-hidden="true"></i>`
+      : '';
+    const count = navCountHTML(node.count);
+    return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
+  }
 
   function walk(nodes) {
     for (const node of nodes) {
@@ -10777,6 +10805,10 @@ function buildHTML(body) {
                   // Skip dividers — brand border-b replaces them
                 } else if (isNavContent(child)) {
                   navNodes.push({ group: null, items: [child] });
+                } else if (child.type === NodeType.NAV_ITEM) {
+                  navNodes.push({ group: null, items: [child] });
+                } else if (child.type === NodeType.NAV_SECTION) {
+                  navNodes.push({ group: child.title, items: child.body || [] });
                 } else if (child.type === NodeType.FOR_EACH) {
                   navNodes.push({ group: null, items: [child] });
                 } else if (child.type === NodeType.SECTION && child.body && child.body.every(isNavContent)) {
@@ -10795,7 +10827,7 @@ function buildHTML(body) {
                 parts.push(`      <ul class="menu menu-md gap-0.5 p-0">`);
                 for (const entry of navNodes) {
                   if (entry.group) {
-                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-5 mb-1 px-3">${entry.group}</li>`);
+                    parts.push(`        <li class="clear-nav-section-label">${formatInlineText(entry.group || '')}</li>`);
                   }
                   walk(entry.items);
                 }
@@ -11606,6 +11638,15 @@ ${options}
           break;
         }
 
+        case NodeType.NAV_SECTION:
+          parts.push(`    <li class="clear-nav-section-label">${formatInlineText(node.title || '')}</li>`);
+          walk(node.body || []);
+          break;
+
+        case NodeType.NAV_ITEM:
+          parts.push(navItemHTML(node));
+          break;
+
         case NodeType.SHOW: {
           // Component call: show Card(name) OR show ui's Card(name) -> container div for reactive rendering
           // Only uppercase component names match (bare or as the namespace's member).
@@ -11687,6 +11728,7 @@ function formatInlineText(text) {
  */
 function compileToHTML(body, compiledJS) {
   const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR, hasRichText } = buildHTML(body);
+  const hasLucide = htmlBody.includes('data-lucide');
   // Live App Editing: whenever the app has login, emit the Meph edit widget
   // script. The widget self-gates on role === 'owner' in the JWT, so
   // including it for every auth-enabled app is safe — non-owners never see
@@ -11798,6 +11840,7 @@ _router();`;
 ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>' : ''}
 ${hasMap ? '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />\n  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"><\/script>' : ''}
 ${hasQR ? '  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"><\/script>' : ''}
+${hasLucide ? '  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"><\/script>' : ''}
 ${hasRichText ? '  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />\n  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.min.js"><\/script>\n  <style>.rich-text-editor{min-height:180px;border:none!important}.ql-toolbar{border:none!important;border-bottom:1px solid var(--color-base-300)!important;border-radius:0.375rem 0.375rem 0 0}.ql-container{border:none!important;font-family:inherit;font-size:15px}.rich-text-wrap .ql-editor{min-height:150px}</style>' : ''}
   <link rel="preconnect" href="https://rsms.me/" crossorigin>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
@@ -11815,6 +11858,8 @@ ${htmlBody}
   <script${scriptType}>
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
+${hasLucide ? `if (window.lucide && lucide.createIcons) lucide.createIcons();
+` : ''}
 ${hasRichText ? `
 // --- Rich text editors (Quill) ---
 // Auto-wire every [data-clear-rich-text] element: mount a Quill instance and
@@ -11852,12 +11897,32 @@ ${hasRichText ? `
 ` : ''}
   <\/script>
 ${htmlBody.includes('data-nav-item') ? `  <script>
-  document.querySelectorAll('[data-nav-item]').forEach(function(el) {
-    el.addEventListener('click', function() {
-      document.querySelectorAll('[data-nav-item]').forEach(function(e) { e.classList.remove('active'); });
-      el.classList.add('active');
+  (function _initClearNav() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\\/$/, '');
+      return raw || '/';
+    }
+    function currentPath() {
+      return normalize(location.pathname || '/');
+    }
+    function syncActiveNav() {
+      var current = currentPath();
+      document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+        var target = normalize(el.getAttribute('data-nav-path') || el.getAttribute('href') || '');
+        var active = target === current;
+        el.classList.toggle('is-active', active);
+        el.classList.toggle('active', active);
+      });
+    }
+    document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        setTimeout(syncActiveNav, 0);
+      });
     });
-  });
+    window.addEventListener('popstate', syncActiveNav);
+    window.addEventListener('hashchange', syncActiveNav);
+    syncActiveNav();
+  })();
   <\/script>` : ''}
 ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
   <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
@@ -14335,7 +14400,73 @@ const CSS_COMPONENTS = [
 }` },
   { class: 'clear-conditional', css: '.clear-conditional { }' },
   { class: 'clear-component', css: '.clear-component { }' },
-  { class: 'clear-nav-item', css: `.clear-nav-item.active { background: oklch(var(--color-base-content) / 0.1); color: oklch(var(--color-base-content)); font-weight: 500; }` },
+  { class: 'clear-nav-item', css: `.clear-nav-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clear-ink-subtle);
+  padding: 0 13px;
+  margin: 18px 0 6px;
+}
+.clear-nav-item {
+  position: relative;
+  min-height: 34px;
+  padding: 7px 10px 7px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--clear-ink-soft);
+  font-weight: 500;
+  transition: background-color 100ms ease, color 100ms ease;
+  cursor: pointer;
+}
+.clear-nav-item:hover {
+  background: var(--clear-bg-row-hover);
+  color: var(--clear-ink);
+}
+.clear-nav-item svg,
+.clear-nav-item i {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.clear-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clear-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--clear-ink-muted);
+  background: var(--clear-bg-chip);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-variant-numeric: tabular-nums;
+}
+.clear-nav-item.is-active,
+.clear-nav-item.active {
+  background: var(--clear-bg-active);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active .clear-nav-count,
+.clear-nav-item.active .clear-nav-count {
+  background: rgba(79,70,229,.10);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active::before,
+.clear-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--clear-accent);
+}` },
   { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }
 .clear-chat-head { padding: 12px 16px; border-bottom: 1px solid oklch(var(--color-base-content) / 0.1); display: flex; align-items: center; justify-content: space-between; }
 .clear-chat-title { font-size: 13px; font-weight: 600; color: oklch(var(--color-base-content) / 0.6); }

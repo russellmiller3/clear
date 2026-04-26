@@ -763,16 +763,20 @@ Use built-in presets: `app_layout`, `app_sidebar`, `app_main`, `app_card`, `app_
 ```clear
 section 'Dashboard' with style app_layout:
   section 'Sidebar' with style app_sidebar:
-    link 'Home' to '/'
+    heading 'Dashboard'
+    nav section 'Main':
+      nav item 'Home' to '/' with icon 'layout-dashboard'
+      nav item 'Reports' to '/reports' with count report_count with icon 'bar-chart-3'
   section 'Main' with style app_main:
     heading 'Dashboard'
 ```
 
-**App shell shape (Phase 1 polish, 2026-04-25).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
+**App shell shape (Phase 1-2 polish, 2026-04-25/26).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
 - `app_layout` → outer container with full-screen flex
 - `app_sidebar` → 240px-wide vertical rail
 - `app_main` → flexible content column
 - `app_header` → 56px sticky bar with three named regions: `brand` (heading children), `action` (button children, right-aligned), `breadcrumb` (everything else)
+- `nav section` / `nav item` → sidebar groups with real links, optional counts, optional Lucide icons, and route-based active state
 
 Don't reach for raw HTML / Tailwind to recreate the shell — the presets already do the right thing.
 

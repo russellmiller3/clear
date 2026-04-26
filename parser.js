@@ -82,6 +82,7 @@
 //   USE / IMPORT MODULES .............. parseUse()
 //   PAGE DECLARATION .................. parsePage()
 //   SECTION ........................... parseSection()
+//   SIDEBAR NAV ....................... parseNav()
 //   STYLE DEF ......................... parseStyleDef()
 //   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
 //   STATIC CONTENT ELEMENTS ........... parseContent(), parseImage(), parseMedia()
@@ -222,6 +223,8 @@ export const NodeType = Object.freeze({
 
   // Layout (Phase 7)
   SECTION: 'section',
+  NAV_SECTION: 'nav_section',
+  NAV_ITEM: 'nav_item',
 
   // Static content elements
   CONTENT: 'content',
@@ -608,6 +611,17 @@ function sectionNode(title, body, line, styleName) {
   const ui = { cssClass: classes.join(' '), title };
   const node = { type: NodeType.SECTION, title, body, line, ui };
   if (styleName) node.styleName = styleName;
+  return node;
+}
+
+function navSectionNode(title, body, line) {
+  return { type: NodeType.NAV_SECTION, title, body, line };
+}
+
+function navItemNode(title, path, line, count, icon) {
+  const node = { type: NodeType.NAV_ITEM, title, path, line };
+  if (count !== undefined) node.count = count;
+  if (icon) node.icon = icon;
   return node;
 }
 
@@ -1508,6 +1522,11 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['section', (ctx) => {
     const parsed = parseSection(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['nav', (ctx) => {
+    const parsed = parseNav(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -4974,6 +4993,101 @@ function parseSection(lines, startIdx, blockIndent, errors) {
   const node = sectionNode(title, body, line, styleName);
   if (inlineModifiers.length > 0) node.inlineModifiers = inlineModifiers;
   return { node, endIdx };
+}
+
+// =============================================================================
+// SIDEBAR NAV
+// =============================================================================
+// CANONICAL:
+//   nav section 'Approvals':
+//     nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+
+function _navTokenIs(token, value, canonical) {
+  if (!token) return false;
+  const raw = String(token.value || '').toLowerCase();
+  return raw === value || (canonical && token.canonical === canonical);
+}
+
+function _navCollectValue(tokens, start) {
+  const parts = [];
+  let pos = start;
+  while (pos < tokens.length &&
+      !_navTokenIs(tokens[pos], 'with', 'with') &&
+      tokens[pos].type !== TokenType.COLON) {
+    parts.push(String(tokens[pos].value));
+    pos++;
+  }
+  return { value: parts.join(''), end: pos };
+}
+
+function parseNav(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  const kind = tokens[1];
+
+  if (_navTokenIs(kind, 'section', 'section')) {
+    if (tokens.length < 3 || tokens[2].type !== TokenType.STRING) {
+      errors.push({ line, message: "A nav section needs a title in quotes. Example: nav section 'Approvals':" });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    const title = tokens[2].value;
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `The nav section '${title}' needs at least one nav item. Example:\n  nav section '${title}':\n    nav item 'Pending' to '/pending'` });
+      return { node: null, endIdx };
+    }
+    return { node: navSectionNode(title, body, line), endIdx };
+  }
+
+  if (_navTokenIs(kind, 'item')) {
+    if (tokens.length < 5 || tokens[2].type !== TokenType.STRING) {
+      errors.push({ line, message: "A nav item needs a title and destination. Example: nav item 'Pending' to '/pending'" });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    const title = tokens[2].value;
+    const toIdx = tokens.findIndex((t, idx) => idx > 2 && _navTokenIs(t, 'to', 'to_connector'));
+    if (toIdx === -1 || toIdx + 1 >= tokens.length) {
+      errors.push({ line, message: `The nav item '${title}' needs a destination after 'to'. Example: nav item '${title}' to '/pending'` });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    const pathValue = _navCollectValue(tokens, toIdx + 1);
+    const path = pathValue.value;
+    if (!path) {
+      errors.push({ line, message: `The nav item '${title}' needs a destination path. Example: nav item '${title}' to '/pending'` });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    let count;
+    let icon;
+    let pos = pathValue.end;
+    while (pos < tokens.length) {
+      if (!_navTokenIs(tokens[pos], 'with', 'with')) {
+        pos++;
+        continue;
+      }
+      pos++;
+      const option = tokens[pos];
+      if (_navTokenIs(option, 'count', 'length')) {
+        const countValue = _navCollectValue(tokens, pos + 1);
+        if (countValue.value) count = countValue.value;
+        pos = countValue.end;
+      } else if (_navTokenIs(option, 'icon')) {
+        const iconValue = _navCollectValue(tokens, pos + 1);
+        if (iconValue.value) icon = iconValue.value;
+        pos = iconValue.end;
+      } else {
+        pos++;
+      }
+    }
+
+    return { node: navItemNode(title, path, line, count, icon), endIdx: startIdx + 1 };
+  }
+
+  errors.push({ line, message: "Clear knows 'nav section' and 'nav item'. Example: nav item 'Pending' to '/pending'" });
+  return { node: null, endIdx: startIdx + 1 };
 }
 
 // =============================================================================

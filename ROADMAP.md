@@ -73,6 +73,7 @@ The product is meaningfully ready. The gating items are mostly setup work Russel
 
 - `give claude X with prompt: 'Y'` canonical syntax — Phase 1 done, Phases 2–7 pending. See `plans/plan-give-claude-canonical-form-04-26-2026.md`.
 - `live:` keyword revert + Path A defaults (while-cap, recursion-cap, email/DB timeouts) from `plans/plan-decidable-core-04-24-2026.md`.
+- Full shell upgrade remaining phases — page header/tab strip, stat cards, detail panel, and Marcus app port. See `plans/plan-full-shell-upgrade-04-25-2026.md`; Phase 3 is next.
 - Apply the sweep-diagnosis patch (`snapshots/sweep-diagnosis-04-26-2026.md`) — surfaces silent fast-fails in future sweeps.
 - Curate `playground/canonical-examples.md` (initial draft from winner-harvest waiting for human pass).
 - Lean Lesson 1 Phase 1.5 — the $10 measurement A/B sweep.
