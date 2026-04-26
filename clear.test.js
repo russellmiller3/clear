@@ -25334,6 +25334,48 @@ describe('AI helpers — exponential-backoff retry (Session 46)', () => {
   });
 });
 
+// =============================================================================
+// TBD PLACEHOLDERS — Lean Lesson 1
+// =============================================================================
+// `TBD` is Clear's "to-be-determined" marker. It works anywhere a value or a
+// statement can go. The compiler accepts it (program still compiles green),
+// records each placeholder line on the result, and emits code that throws a
+// clean stub error if the placeholder line is reached at runtime. This lets
+// Meph (or a human) leave one piece unfinished and keep iterating on the rest
+// instead of rewriting the whole program.
+
+describe('TBD placeholders — Phase 1.1 (grammar)', () => {
+  it('TBD in expression position parses as a placeholder literal', () => {
+    const src = 'set greeting = TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const stmt = ast.body[0];
+    expect(stmt.type).toBe(NodeType.ASSIGN);
+    expect(stmt.expression.type).toBe(NodeType.PLACEHOLDER);
+    expect(stmt.expression.line).toBe(1);
+  });
+
+  it('TBD as a standalone statement parses as a placeholder node', () => {
+    const src = 'TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(ast.body[0].line).toBe(1);
+  });
+
+  it('TBD inside a function body parses cleanly', () => {
+    const src = "to greet with name:\n  TBD\n";
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const fn = ast.body.find(n => n.type === NodeType.FUNCTION_DEF);
+    expect(fn).toBeTruthy();
+    expect(fn.body).toHaveLength(1);
+    expect(fn.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(fn.body[0].line).toBe(2);
+  });
+});
+
 // Live App Editing — Phase A test files
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');
