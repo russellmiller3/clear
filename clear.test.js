@@ -16372,6 +16372,89 @@ page 'Approved' at '/approved':
     expect(r.html).toContain("classList.toggle('is-active'");
     expect(r.html).toContain('lucide.createIcons');
   });
+
+  it('parses page headers with subtitle and actions', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+      button 'Export'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const header = page.body.find(n => n.type === 'page_header');
+    expect(header.title).toBe('CRO Review');
+    expect(header.subtitle).toBe('5 deals waiting');
+    expect(header.actions).toHaveLength(2);
+    expect(header.actions[0].ui.text).toBe('Refresh');
+  });
+
+  it('emits page headers with title, subtitle, and right-aligned actions', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+      button 'Export'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-page-header="true"');
+    expect(r.html).toContain('class="clear-page-title text-2xl"');
+    expect(r.html).toContain('CRO Review');
+    expect(r.html).toContain('5 deals waiting');
+    expect(r.html).toContain('data-page-header-actions="true"');
+    expect(r.html).toContain('Refresh');
+  });
+
+  it('parses tab strips with routed tabs and an active tab hint', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const strip = page.body.find(n => n.type === 'tab_strip');
+    expect(strip.activeTab).toBe('Pending');
+    expect(strip.tabs).toHaveLength(2);
+    expect(strip.tabs[0].title).toBe('Pending');
+    expect(strip.tabs[0].path).toBe('/cro');
+  });
+
+  it('emits routed tab strips with active state wiring', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-tab-strip="true"');
+    expect(r.html).toContain('data-tab-path="/cro"');
+    expect(r.html).toContain('class="clear-route-tab is-active"');
+    expect(r.html).toContain('location.pathname');
+    expect(r.html).toContain("classList.toggle('is-active'");
+  });
+
+  it('emits page header and tab strip together for app content chrome', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'CRO Review':
+          subtitle '5 deals waiting'
+          actions:
+            button 'Refresh'
+        tab strip:
+          tab 'Pending' to '/cro'
+          tab 'Approved' to '/approved'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-page-header="true"');
+    expect(r.html).toContain('data-tab-strip="true"');
+  });
 });
 
 describe('Complex app compilation: CRM with many tables', () => {

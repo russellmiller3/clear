@@ -1,0 +1,21 @@
+{
+  "id": "multi-tab-queue",
+  "level": 7,
+  "title": "Multi-Tab Approval Queue",
+  "description": "ARCHETYPE: queue_workflow. Build a web app page at '/cro' with an app shell. The main content MUST use `page header` with `subtitle` and `actions:` plus a `tab strip` with at least 3 routed tabs. The sidebar should still use explicit `nav section` / `nav item` syntax.",
+  "skeleton": "build for web and javascript backend\n\n# Build one CRO approval queue page with app_layout, app_sidebar, app_main, and app_content.\n# The content area must use page header + subtitle + actions, then tab strip.\n\npage 'CRO Review' at '/cro':\n  pending_count = 5\n  approved_count = 12\n  escalated_count = 2\n\n  # App shell here\n",
+  "steps": [
+    { "id": "page", "name": "CRO page at /cro", "sourceMatches": ["page\\s+['\"]CRO Review['\"]\\s+at\\s+['\"]/cro['\"]"] },
+    { "id": "shell", "name": "Uses app shell presets", "sourceMatches": ["style\\s+app_layout", "style\\s+app_sidebar", "style\\s+app_main", "style\\s+app_content"] },
+    { "id": "nav", "name": "Uses explicit sidebar nav", "sourceMatches": ["nav\\s+section\\s+['\"][^'\"]+['\"]", "nav\\s+item\\s+['\"][^'\"]+['\"]\\s+to"] },
+    { "id": "header", "name": "Uses page header with subtitle and actions", "sourceMatches": ["page\\s+header\\s+['\"]CRO Review['\"]", "subtitle\\s+['\"][^'\"]+['\"]", "actions\\s*:"] },
+    { "id": "tabs", "name": "Has 3 routed tabs", "sourceMatches": ["tab\\s+strip\\s*:", "tab\\s+['\"][^'\"]+['\"]\\s+to\\s+['\"][^'\"]+['\"][\\s\\S]*tab\\s+['\"][^'\"]+['\"]\\s+to\\s+['\"][^'\"]+['\"][\\s\\S]*tab\\s+['\"][^'\"]+['\"]\\s+to\\s+['\"][^'\"]+['\"]"] }
+  ],
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/cro",
+      "expect": { "status": 200, "bodyHas": ["CRO Review"] }
+    }
+  ]
+}

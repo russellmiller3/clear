@@ -106,6 +106,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
+- [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
@@ -634,6 +635,29 @@ section 'Sidebar' with style app_sidebar:
 quote hyphenated names. The compiled sidebar marks the matching route active.
 Legacy `text` and `link` children still render, but do not use them for real
 dashboard navigation.
+
+### How do I add a page header and routed tabs?
+
+Put `page header` and `tab strip` at the top of `app_content`.
+
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+      button 'Export'
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+    tab 'Escalated' to '/escalated'
+```
+
+`page header` renders the workbench title row. `tab strip` renders real route
+links and marks the current path active. Use this for queues, CRMs, and admin
+views with multiple states.
 
 ### How do I add a new node type?
 

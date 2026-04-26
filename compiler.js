@@ -6837,6 +6837,9 @@ ${pad}}`;
 
     case NodeType.NAV_SECTION:
     case NodeType.NAV_ITEM:
+    case NodeType.PAGE_HEADER:
+    case NodeType.TAB_STRIP:
+    case NodeType.ROUTE_TAB:
       return null;
 
     case NodeType.ASK_FOR: {
@@ -10506,6 +10509,42 @@ function buildHTML(body) {
     return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
   }
 
+  function pageHeaderHTML(node) {
+    const title = formatInlineText(node.title || '');
+    const subtitle = node.subtitle
+      ? `<p class="clear-page-subtitle text-sm text-base-content/55 mt-1">${formatInlineText(node.subtitle)}</p>`
+      : '';
+    const before = parts.length;
+    if (node.actions && node.actions.length > 0) {
+      walk(node.actions);
+    }
+    const actionHTML = parts.splice(before).join('\n');
+    const actions = actionHTML
+      ? `\n      <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">\n${actionHTML}\n      </div>`
+      : '';
+    return `    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true"${clAttr(node)}>
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">${title}</h1>
+        ${subtitle}
+      </div>${actions}
+    </div>`;
+  }
+
+  function routeTabStripHTML(node) {
+    const tabs = node.tabs || [];
+    const activeKey = String(node.activeTab || '').toLowerCase();
+    const hasActiveHint = !!activeKey;
+    const rows = tabs.map((tab, idx) => {
+      const title = formatInlineText(tab.title || '');
+      const href = attrEsc(tab.path || '#');
+      const matchTitle = String(tab.title || '').toLowerCase() === activeKey;
+      const matchPath = String(tab.path || '').toLowerCase() === activeKey;
+      const isActive = hasActiveHint ? (matchTitle || matchPath) : idx === 0;
+      return `      <a href="${href}" class="clear-route-tab${isActive ? ' is-active' : ''}" data-route-tab="true" data-tab-path="${href}">${title}</a>`;
+    }).join('\n');
+    return `    <nav class="clear-tab-strip" data-tab-strip="true"${clAttr(node)}>\n${rows}\n    </nav>`;
+  }
+
   function walk(nodes) {
     for (const node of nodes) {
       switch (node.type) {
@@ -11647,6 +11686,14 @@ ${options}
           parts.push(navItemHTML(node));
           break;
 
+        case NodeType.PAGE_HEADER:
+          parts.push(pageHeaderHTML(node));
+          break;
+
+        case NodeType.TAB_STRIP:
+          parts.push(routeTabStripHTML(node));
+          break;
+
         case NodeType.SHOW: {
           // Component call: show Card(name) OR show ui's Card(name) -> container div for reactive rendering
           // Only uppercase component names match (bare or as the namespace's member).
@@ -11922,6 +11969,31 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
     window.addEventListener('popstate', syncActiveNav);
     window.addEventListener('hashchange', syncActiveNav);
     syncActiveNav();
+  })();
+  <\/script>` : ''}
+${htmlBody.includes('data-tab-strip') ? `  <script>
+  (function _initClearRouteTabs() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\\/$/, '');
+      return raw || '/';
+    }
+    function syncActiveTabs() {
+      var current = normalize(location.pathname || '/');
+      document.querySelectorAll('[data-tab-strip]').forEach(function(strip) {
+        var tabs = Array.prototype.slice.call(strip.querySelectorAll('[data-route-tab]'));
+        var matched = false;
+        tabs.forEach(function(tab) {
+          var target = normalize(tab.getAttribute('data-tab-path') || tab.getAttribute('href') || '');
+          var active = target === current;
+          if (active) matched = true;
+          tab.classList.toggle('is-active', active);
+        });
+        if (!matched && tabs[0]) tabs[0].classList.add('is-active');
+      });
+    }
+    window.addEventListener('popstate', syncActiveTabs);
+    window.addEventListener('hashchange', syncActiveTabs);
+    syncActiveTabs();
   })();
   <\/script>` : ''}
 ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
@@ -14465,6 +14537,54 @@ const CSS_COMPONENTS = [
   bottom: 6px;
   width: 3px;
   border-radius: 0 3px 3px 0;
+  background: var(--clear-accent);
+}` },
+  { class: 'clear-page-header', css: `.clear-page-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-page-title {
+  color: var(--clear-ink);
+  line-height: 1.2;
+}
+.clear-page-subtitle {
+  line-height: 1.45;
+}
+.clear-page-actions .btn {
+  min-height: 34px;
+  height: 34px;
+}` },
+  { class: 'clear-tab-strip', css: `.clear-tab-strip {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-route-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  color: var(--clear-ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.clear-route-tab:hover {
+  color: var(--clear-ink);
+}
+.clear-route-tab.is-active {
+  color: var(--clear-ink);
+}
+.clear-route-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 9999px;
   background: var(--clear-accent);
 }` },
   { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }

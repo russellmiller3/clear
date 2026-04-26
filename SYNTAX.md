@@ -999,12 +999,13 @@ section 'Footer' with style page_footer:
 
 ### App UI Presets
 
-> **Phase 1-2 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
+> **Phase 1-3 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
 > `app_sidebar`, `app_main`, `app_header` now emit polished slate-on-ivory chrome
 > matching `landing/marcus-app-target.html`. Sidebar is a 240px `<aside>`, header
 > is a 56px sticky `<header>` with brand/breadcrumb/actions slots. Sidebar nav
 > now has explicit `nav section` / `nav item` syntax with counts, icons, and
-> route-based active state.
+> route-based active state. Main content now has `page header` and `tab strip`
+> primitives for queue/workbench pages.
 
 | Preset | HTML tag | Description | Typical children |
 |--------|----------|-------------|-----------------|
@@ -1038,6 +1039,27 @@ section 'Sidebar' with style app_sidebar:
 Counts can be literal values or variables already available on the page.
 Quoted icon names map to Lucide icons; quote names with hyphens. The compiled
 sidebar marks the matching `data-nav-path` row active from the current route.
+
+#### Page header and tab strip
+
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+      button 'Export'
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+    tab 'Escalated' to '/escalated'
+```
+
+`page header` emits the main title row, optional subtitle, and right-aligned
+actions. `tab strip` emits routed underline tabs and marks the matching path
+active from `location.pathname`.
 
 #### App UI preset examples
 

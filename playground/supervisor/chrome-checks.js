@@ -40,3 +40,46 @@ export function checkSidebarNavChrome(html, opts = {}) {
     violations,
   };
 }
+
+export function checkPageHeaderTabsChrome(html, opts = {}) {
+  const source = String(html || '');
+  const minTabs = opts.minTabs ?? 1;
+  const minActions = opts.minActions ?? 0;
+  const title = opts.title || null;
+  const activePath = opts.activePath || null;
+
+  const counts = {
+    pageHeaders: countMatches(source, /data-page-header="true"/g),
+    titleRows: countMatches(source, /class="clear-page-title text-2xl"/g),
+    subtitles: countMatches(source, /class="clear-page-subtitle/g),
+    actionSlots: countMatches(source, /data-page-header-actions="true"/g),
+    actions: countMatches(source, /<button class="[^"]*" id="btn_/g),
+    tabStrips: countMatches(source, /data-tab-strip="true"/g),
+    tabs: countMatches(source, /data-route-tab="true"/g),
+    activeTabs: countMatches(source, /class="clear-route-tab is-active"/g),
+  };
+
+  const hasTitle = !title || source.includes(`>${title}</h1>`);
+  const hasActivePath = !activePath || attrPattern('data-tab-path', activePath).test(source);
+  const hasActiveWiring = source.includes('location.pathname') && source.includes("classList.toggle('is-active'");
+
+  const violations = [];
+  if (counts.pageHeaders < 1) violations.push('missing page header');
+  if (counts.titleRows < 1) violations.push('missing text-2xl page title');
+  if (!hasTitle) violations.push(`missing page title ${title}`);
+  if (counts.subtitles < 1) violations.push('missing page subtitle');
+  if (counts.actionSlots < 1) violations.push('missing page header action slot');
+  if (counts.actions < minActions) violations.push('missing page header actions');
+  if (counts.tabStrips < 1) violations.push('missing tab strip');
+  if (counts.tabs < minTabs) violations.push('missing routed tabs');
+  if (counts.activeTabs < 1) violations.push('missing active tab');
+  if (!hasActivePath) violations.push(`missing active tab path ${activePath}`);
+  if (!hasActiveWiring) violations.push('missing tab active-state wiring');
+
+  return {
+    ok: violations.length === 0,
+    counts,
+    activePath: hasActivePath ? activePath : null,
+    violations,
+  };
+}

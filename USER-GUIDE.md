@@ -2881,6 +2881,29 @@ section 'Header' with style app_header:
     open the New Project modal
 ```
 
+#### The Page Header And Tabs
+
+`app_header` is the sticky chrome bar. Inside the scrollable content area, use
+`page header` for the actual workbench title, subtitle, and actions.
+
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+      button 'Export'
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+    tab 'Escalated' to '/escalated'
+```
+
+Use this for approval queues, CRMs, helpdesks, and dashboard subviews. The tabs
+are real links, and the current route automatically gets the underline state.
+
 #### Metric Cards
 
 For KPI rows at the top of dashboards, use `metric_card` inside a column grid:

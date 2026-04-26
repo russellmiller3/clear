@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 - Shell Upgrade Phase 3: page headers and routed tabs
+
+Main content areas can now use a first-class workbench header and routed tabs. `page header 'CRO Review':` creates the title row with optional `subtitle` and `actions:`. `tab strip:` creates underline-style route tabs with active state from the current path.
+
+**What shipped:**
+
+- New parser support for `page header`, `subtitle`, `actions:`, `tab strip`, `active tab is`, and routed tab rows.
+- HTML output now emits stable `data-page-header`, `data-page-header-actions`, `data-tab-strip`, and `data-route-tab` markers.
+- Runtime active-state sync follows `location.pathname`, hash changes, and browser history changes.
+- Meph/docs/curriculum surfaces now teach the page header + tab strip shape for queue/workbench pages.
+- 5 new compiler tests and 1 new chrome smoke check. 2616 -> 2621 passing.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 3.
+
+---
+
 ## 2026-04-26 — Shell Upgrade Phase 2: sidebar nav becomes real navigation
 
 The left rail can now be authored directly in Clear instead of faking navigation with styled text. `nav section 'Approvals':` creates a labeled sidebar group. `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` creates a linked row with an optional badge, optional Lucide icon, and route-based active state.

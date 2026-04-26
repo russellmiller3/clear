@@ -208,6 +208,9 @@ export const NodeType = Object.freeze({
   // Interactive layout patterns
   TAB_GROUP: 'tab_group',
   TAB: 'tab',
+  PAGE_HEADER: 'page_header',
+  TAB_STRIP: 'tab_strip',
+  ROUTE_TAB: 'route_tab',
   PANEL_ACTION: 'panel_action',  // toggle/open/close a panel or modal
   HIDE_ELEMENT: 'hide_element',  // hide X — toggle element visibility
   CLIPBOARD_COPY: 'clipboard_copy',  // copy X to clipboard
@@ -592,6 +595,7 @@ function buttonNode(label, body, line) {
     tag: 'button',
     id: `btn_${sanitizeForId(label.replace(/\s+/g, '_'))}`,
     label,
+    text: label,
   };
   return { type: NodeType.BUTTON, label, body, line, ui };
 }
@@ -1516,6 +1520,11 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['page', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'header') {
+      const parsed = parsePageHeader(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
     const parsed = parsePage(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
@@ -2595,6 +2604,11 @@ CANONICAL_DISPATCH.set('script', (ctx) => {
     return j;
 });
 CANONICAL_DISPATCH.set('tab', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'strip') {
+      const parsed = parseTabStrip(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const tabTitle = ctx.tokens[1].value;
     const { body: tabBody, endIdx: tabEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
@@ -5018,6 +5032,98 @@ function _navCollectValue(tokens, start) {
     pos++;
   }
   return { value: parts.join(''), end: pos };
+}
+
+function parsePageHeader(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  if (tokens.length < 3 || tokens[2].type !== TokenType.STRING) {
+    errors.push({ line, message: "A page header needs a title in quotes. Example: page header 'CRO Review':" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  const title = tokens[2].value;
+  let subtitle = null;
+  const actions = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const child = lines[j];
+    const childTokens = child.tokens || [];
+    if (childTokens.length === 0) { j++; continue; }
+    const first = String(childTokens[0].value || '').toLowerCase();
+    const canonical = childTokens[0].canonical;
+
+    if ((canonical === 'subheading' || first === 'subtitle') && childTokens[1]?.type === TokenType.STRING) {
+      subtitle = childTokens[1].value;
+      j++;
+      continue;
+    }
+
+    if (first === 'actions') {
+      const actionErrors = [];
+      const parsed = parseBlock(lines, j + 1, child.indent, actionErrors);
+      for (const actionError of actionErrors) {
+        if (!/The button ".*" has no action/.test(actionError.message || '')) {
+          errors.push(actionError);
+        }
+      }
+      actions.push(...parsed.body);
+      j = parsed.endIdx;
+      continue;
+    }
+
+    errors.push({ line: childTokens[0].line, message: "Inside page header, use subtitle 'Text' or actions: with indented buttons." });
+    j++;
+  }
+
+  return { node: { type: NodeType.PAGE_HEADER, title, subtitle, actions, line }, endIdx: j };
+}
+
+function parseTabStrip(lines, startIdx, blockIndent, errors) {
+  const line = lines[startIdx].tokens[0].line;
+  const tabs = [];
+  let activeTab = null;
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const { tokens } = lines[j];
+    if (!tokens || tokens.length === 0) { j++; continue; }
+    const first = String(tokens[0].value || '').toLowerCase();
+
+    if (first === 'active' && String(tokens[1]?.value || '').toLowerCase() === 'tab') {
+      const isIdx = tokens.findIndex((t, idx) => idx > 1 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+      if (isIdx >= 0 && isIdx + 1 < tokens.length) {
+        activeTab = tokens.slice(isIdx + 1).map(t => String(t.value)).join('');
+      }
+      j++;
+      continue;
+    }
+
+    if (_navTokenIs(tokens[0], 'tab', 'tab') && tokens[1]?.type === TokenType.STRING) {
+      const title = tokens[1].value;
+      const toIdx = tokens.findIndex((t, idx) => idx > 1 && _navTokenIs(t, 'to', 'to_connector'));
+      if (toIdx === -1 || toIdx + 1 >= tokens.length) {
+        errors.push({ line: tokens[0].line, message: `The tab '${title}' needs a destination after 'to'. Example: tab '${title}' to '/pending'` });
+        j++;
+        continue;
+      }
+      const pathValue = _navCollectValue(tokens, toIdx + 1);
+      tabs.push({ type: NodeType.ROUTE_TAB, title, path: pathValue.value, line: tokens[0].line });
+      j++;
+      continue;
+    }
+
+    errors.push({ line: tokens[0].line, message: "Inside tab strip, use tab 'Pending' to '/pending' or active tab is 'Pending'." });
+    j++;
+  }
+
+  if (tabs.length === 0) {
+    errors.push({ line, message: "A tab strip needs at least one tab. Example:\n  tab strip:\n    tab 'Pending' to '/pending'" });
+    return { node: null, endIdx: j };
+  }
+
+  return { node: { type: NodeType.TAB_STRIP, tabs, activeTab, line }, endIdx: j };
 }
 
 function parseNav(lines, startIdx, blockIndent, errors) {

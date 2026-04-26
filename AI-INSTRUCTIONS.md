@@ -764,6 +764,14 @@ section 'Root'  with style app_layout:   # flex h-screen
   section 'Main' with style app_main:    # flex-1 flex-col
     section 'Top'  with style app_header:  # sticky h-14 border-b
     section 'Body' with style app_content: # scrollable bg-base-200/30 p-6
+      page header 'Queue':
+        subtitle 'Open work and owner actions'
+        actions:
+          button 'Refresh'
+      tab strip:
+        active tab is 'Open'
+        tab 'Open' to '/'
+        tab 'Done' to '/done'
       section 'Card' with style app_card:  # bg-base-200 rounded-xl border shadow
 ```
 
@@ -1664,11 +1672,13 @@ section 'Nav' with style app_sidebar:        # dark panel, scrollable
 section 'Main' with style app_content:       # fills space, scrollable
 section 'Top' with style app_header:         # sticky top, shadow
 section 'Widget' with style app_card:        # bordered card
+page header 'Queue':                         # content title + subtitle + actions
+tab strip:                                   # routed underline tabs
 ```
 
 **When writing a landing page:** use `page_hero` and `page_section`/`page_section_dark` for alternating bands. Do NOT define custom styles unless the preset defaults need changing.
 
-**When writing an app:** use `app_sidebar`, `app_content`, `app_header` for layout structure. Use `app_card` for visual grouping of related content.
+**When writing an app:** use `app_sidebar`, `app_content`, `app_header` for layout structure. Put `page header` and `tab strip` at the top of `app_content` for queues, CRMs, approval workbenches, and dashboard subviews. Use `app_card` for visual grouping of related content.
 
 **Override a preset** by defining it in the file:
 ```
@@ -1705,7 +1715,7 @@ writing a custom style block.
 | `faq_section` | bg-base-100, py-16/24 | Accordion Q&A |
 | `page_footer` | bg-base-200, border-t, py-12/16 | Links, legal, copyright |
 
-#### App UI Presets (Phase 1-2 shell upgrade — 04-25-2026)
+#### App UI Presets (Phase 1-3 shell upgrade — 04-25-2026)
 
 The four shell presets emit semantic HTML5 tags + slate-on-ivory chrome
 matching `landing/marcus-app-target.html`. Sizes match the mock — 240px rail,
@@ -1751,6 +1761,23 @@ Use `nav section` for sidebar groups and `nav item` for linked rows. Use
 `with count` only with values already defined on the page. Use quoted Lucide
 icon names when they contain hyphens. Do not use plain text rows for real app
 navigation anymore.
+
+**`app_content` workbench rule** (prefer explicit content chrome):
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+```
+
+Use `page header` for the main work area title. Use `tab strip` for routed
+queue states, CRM views, helpdesk status buckets, and admin subviews.
 
 #### Blog Presets (3)
 

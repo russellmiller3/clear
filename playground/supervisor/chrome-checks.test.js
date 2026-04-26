@@ -1,6 +1,6 @@
 import { describe, it, expect, run } from '../../lib/testUtils.js';
 import { compileProgram } from '../../index.js';
-import { checkSidebarNavChrome } from './chrome-checks.js';
+import { checkPageHeaderTabsChrome, checkSidebarNavChrome } from './chrome-checks.js';
 
 const NAV_SOURCE = `build for web
 pending_count = 5
@@ -24,6 +24,22 @@ page 'Deals' at '/cro':
         heading 'Deals'
       section 'Body' with style app_content:
         text 'Queue'`;
+
+const PAGE_HEADER_TABS_SOURCE = `build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Body' with style app_content:
+        page header 'CRO Review':
+          subtitle '5 deals waiting'
+          actions:
+            button 'Refresh'
+            button 'Export'
+        tab strip:
+          active tab is 'Pending'
+          tab 'Pending' to '/cro'
+          tab 'Approved' to '/approved'
+          tab 'Escalated' to '/escalated'`;
 
 describe('chrome checks', () => {
   it('recognizes sidebar nav with sections, items, counts, icons, and active-state wiring', () => {
@@ -52,6 +68,18 @@ page 'Legacy' at '/':
     const check = checkSidebarNavChrome(legacy.html, { route: '/', minSections: 1, minItems: 2, minCounts: 1, minIcons: 1 });
     expect(check.ok).toEqual(false);
     expect(check.violations).toContain('missing data-nav-item rows');
+  });
+
+  it('recognizes page headers with subtitles, action slots, and routed tab strips', () => {
+    const result = compileProgram(PAGE_HEADER_TABS_SOURCE);
+    expect(result.errors).toHaveLength(0);
+
+    const check = checkPageHeaderTabsChrome(result.html, { title: 'CRO Review', activePath: '/cro', minTabs: 3, minActions: 2 });
+    expect(check.ok).toEqual(true);
+    expect(check.violations).toEqual([]);
+    expect(check.counts.pageHeaders).toEqual(1);
+    expect(check.counts.tabs).toEqual(3);
+    expect(check.activePath).toEqual('/cro');
   });
 });
 

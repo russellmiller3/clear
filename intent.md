@@ -487,7 +487,7 @@ the full token system.
 | `section_dark` | Same as `page_section_dark` |
 | `card` | `card bg-base-200 border border-base-300/50 rounded-xl p-6` |
 
-**App/dashboard presets** (Phase 1-2 shell upgrade — 04-25-2026, modeled on
+**App/dashboard presets** (Phase 1-3 shell upgrade — 04-25-2026, modeled on
 `landing/marcus-app-target.html`):
 
 | Preset | HTML tag | Classes + inline style |
@@ -506,6 +506,14 @@ the full token system.
 | `NAV_SECTION` | `nav section 'Approvals':` | Labeled group inside `app_sidebar` |
 | `NAV_ITEM` | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` | Linked sidebar row; optional count and Lucide icon; route-based active state |
 
+**Page content chrome nodes** (Phase 3 shell upgrade):
+
+| Node Type | Syntax | Notes |
+|-----------|--------|-------|
+| `PAGE_HEADER` | `page header 'CRO Review':` + `subtitle '5 deals waiting'` + `actions:` | Main content title row; optional subtitle and right-aligned button actions |
+| `TAB_STRIP` | `tab strip:` + `tab 'Pending' to '/cro'` | Routed content tabs with underline active state |
+| `ROUTE_TAB` | `tab 'Pending' to '/cro'` | One tab row inside a `tab strip`; optional `active tab is 'Pending'` hint |
+
 The shell tags use semantic HTML5 elements (`aside`, `main`, `header`) instead
 of generic divs — better accessibility and matches the polished slate-on-ivory
 mock chrome. CSS custom properties (`--clear-bg-rail`, `--clear-bg-canvas`,
@@ -518,7 +526,7 @@ presets) since they participate in flex layout.
 - text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
 - `button` children → `data-clear-slot="actions"` (right, ml-auto)
 
-Phase 3-7 of the shell upgrade plan add `stat card`, `detail panel`, etc. —
+Phase 4-7 of the shell upgrade plan add `stat card`, `detail panel`, etc. —
 see `plans/plan-full-shell-upgrade-04-25-2026.md`.
 
 ### Design System

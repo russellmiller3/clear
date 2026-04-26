@@ -31,6 +31,7 @@ const taskFiles = [
   // Marcus app shapes — business ops, the real target market
   'L7-approval-queue.json',
   'L7-dashboard-with-nav.json',
+  'L7-multi-tab-queue.json',
   'L7-lead-router.json',
   'L8-internal-request-queue.json',
   'L8-onboarding-tracker.json',
