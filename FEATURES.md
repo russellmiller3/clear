@@ -89,6 +89,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | If / else | `if x is 5:` ... `otherwise:` | Also inline: `if x is 5 then show 'yes'` |
 | Match / when | `match x:` + `when 'a':` + `otherwise:` | Pattern matching |
 | Try / catch | `try:` + `if error:` | Typed handlers: `if error 'not found':` (404) |
+| Live block (effect fence) | `live:` + indented body | Explicit label for code that talks to the world (`ask claude`, `call API`, `subscribe to`, timers). Permissive in Phase B-1 (2026-04-25); Phase B-2 will require effect-shaped calls to sit inside `live:`. See PHILOSOPHY Rule 18. |
 | Break / continue | `stop` / `skip` | |
 | Comments | `# text` | |
 | Modules | `use 'helpers'` | Namespaced, selective, or inline-all |

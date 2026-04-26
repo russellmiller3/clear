@@ -25337,6 +25337,124 @@ describe('AI helpers — exponential-backoff retry (Session 46)', () => {
   });
 });
 
+// =============================================================================
+// DECIDABLE CORE — Path B Phase 1: `live:` block keyword
+// =============================================================================
+// `live:` is the explicit effect fence. Body of a live block can contain calls
+// that talk to the world (`ask claude`, `call API`, `subscribe to`, timers).
+// Phase B-1 ships the keyword + parse + emit only — body compiles as-is, so
+// existing programs are untouched. Validator-side rejection of effect calls
+// OUTSIDE live blocks lands in Phase B-2 (separate chunk).
+//
+// Why this matters: a hallucinated `while there are more items` without a
+// decrementing index hangs a Meph sweep. Once we mark explicit fences, the
+// validator can statically prove the rest of the program is total. This chunk
+// is the foundation — the keyword has to exist before anything can require it.
+
+describe('decidable core — live: block (Path B Phase 1)', () => {
+  it('parses `live:` as a top-level block with body', () => {
+    const src = "build for javascript backend\nagent 'Replier' receiving d:\n  live:\n    answer = ask claude 'hi'\n    send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === 'agent');
+    expect(agent).toBeTruthy();
+    const liveBlock = agent.body.find(n => n.type === 'live_block');
+    expect(liveBlock).toBeTruthy();
+    expect(liveBlock.body.length).toBeGreaterThan(0);
+  });
+
+  it('parses `live:` inside an endpoint body', () => {
+    const src = "build for javascript backend\nwhen user sends note to /api/chat:\n  live:\n    reply = ask claude 'hi'\n  send back reply\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const ep = r.ast.body.find(n => n.type === 'endpoint');
+    expect(ep).toBeTruthy();
+    const liveBlock = ep.body.find(n => n.type === 'live_block');
+    expect(liveBlock).toBeTruthy();
+  });
+
+  it('live block body contains parsed children (e.g. ask_ai, respond)', () => {
+    const src = "build for javascript backend\nagent 'Replier' receiving d:\n  live:\n    answer = ask claude 'hi'\n    send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === 'agent');
+    const liveBlock = agent.body.find(n => n.type === 'live_block');
+    // The body should contain at least an assignment and a respond
+    const types = liveBlock.body.map(n => n.type);
+    expect(types).toContain('assign');
+    expect(types).toContain('respond');
+  });
+
+  it('compiles live: as a no-op wrapper — body code is emitted', () => {
+    const src = "build for javascript backend\nagent 'Replier' receiving d:\n  live:\n    answer = ask claude 'hi'\n    send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // The compiled output should still contain the AI call — live: is a fence,
+    // not a transformation. (Backend-only build emits to r.javascript;
+    // full-stack would put server code in r.serverJS.)
+    const out = r.javascript || r.serverJS || '';
+    expect(out).toMatch(/_askAI|callClaude|anthropic/);
+  });
+
+  it('compiled output marks the live: block with a comment so the fence is visible in JS too', () => {
+    const src = "build for javascript backend\nagent 'Replier' receiving d:\n  live:\n    answer = ask claude 'hi'\n    send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // A breadcrumb in the emitted JS that traces back to the live: fence in source.
+    const out = r.javascript || r.serverJS || '';
+    expect(out).toContain('// live:');
+  });
+
+  it('empty `live:` block is a parse error with a helpful fix-it message', () => {
+    const src = "build for javascript backend\nagent 'Replier' receiving d:\n  live:\n  send back 'ok'\n";
+    const r = compileProgram(src);
+    const err = r.errors.find(e => /live:/.test(e.message));
+    expect(err).toBeTruthy();
+    // Error must explain what to do — Rule 7 / Rule 16 of PHILOSOPHY.md.
+    expect(err.message.toLowerCase()).toMatch(/empty|indent|effect|world/);
+  });
+
+  it('a program without any `live:` block still compiles clean (zero regression)', () => {
+    const src = "build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('non-effectful code inside live: still works (live: is permissive in Phase B-1)', () => {
+    const src = "build for javascript backend\nagent 'T' receiving d:\n  live:\n    x = 1\n    y = 2\n    total = x + y\n    send back total\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === 'agent');
+    const liveBlock = agent.body.find(n => n.type === 'live_block');
+    expect(liveBlock.body.length).toBe(4);
+  });
+
+  it('live: works at the program top level (not just inside endpoints/agents)', () => {
+    const src = "build for javascript backend\nlive:\n  x = 1\n  show x\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const liveBlock = r.ast.body.find(n => n.type === 'live_block');
+    expect(liveBlock).toBeTruthy();
+    expect(liveBlock.body.length).toBe(2);
+  });
+
+  it('emits valid JS — compiled output parses as a function', () => {
+    const src = "build for javascript backend\nagent 'T' receiving d:\n  live:\n    answer = ask claude 'hi'\n    send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Throws if invalid JS
+    new Function(r.serverJS);
+  });
+
+  it('Python target also emits the live: block transparently', () => {
+    const src = "build for python backend\nagent 'T' receiving d:\n  live:\n    answer = ask claude 'hi'\n    send back answer\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Python emit should still contain the AI call inside the agent body
+    expect(r.python).toMatch(/_ask_ai|ask_claude|anthropic|live:/);
+  });
+});
+
 // Live App Editing — Phase A test files
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');

@@ -48,6 +48,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `CONTINUE` | `skip` / `continue` | `continue;` |
 | `COMMENT` | `# text` | `// text` / `# text` |
 | `TRY_HANDLE` | `try:` + `if error:` / `if error 'not found':` + optional `finally:` / `always do:` | `try { ... } catch (_err) { ... } finally { ... }` — typed handlers emit status checks; multiple handlers chain as `if/else if/else`; finally always runs |
+| `LIVE_BLOCK` | `live:` + indented body — explicit effect fence (Path B Phase 1, 2026-04-25). Body holds calls that talk to the world (`ask claude`, `call API`, `subscribe to`, timers). Phase B-1 is permissive: any statement is allowed inside. Phase B-2 will reject effect-shaped calls outside `live:`. See PHILOSOPHY.md Rule 18. | Body emits inline with a `// live: block — explicit effect fence` comment marker. No runtime semantics yet — fence is signal for the validator and the human reader. |
 | `THROW` | `send error 'message'` / `throw error` / `fail with` / `raise error` | `throw new Error('message')` (JS) / `raise Exception('message')` (Python) — custom errors from any context |
 | `LITERAL_STRING` (interpolated) | `'Hello, {name}!'` | `` `Hello, ${name}!` `` (JS) / `f"Hello, {name}!"` (Python) |
 | `USE` | `use 'helpers'` / `use double from 'helpers'` / `use everything from 'helpers'` / `use 'lib' from './lib.js'` | Module import (namespaced, selective, inline-all, or external JS) |

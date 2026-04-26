@@ -291,6 +291,48 @@ fail with 'Database connection failed'
 raise error 'Unauthorized access'
 ```
 
+## Live Blocks (Explicit Effect Fence)
+
+A `live:` block is the visible label for code that talks to the outside world —
+asking Claude, calling an API, opening a websocket, running a timer. Pure code
+(arithmetic, string handling, table reads, validation) doesn't need a fence;
+it lives wherever you write it. Effects belong inside `live:` so the reader
+(and the compiler) can see exactly where the program meets the world.
+
+```clear
+# Inside an endpoint
+when user sends note to /api/chat:
+  live:
+    reply is ask claude 'hi'
+  send back reply
+
+# Inside an agent
+agent 'Replier' receiving message:
+  live:
+    answer is ask claude message
+  send back answer
+
+# Live can sit anywhere a statement can — top level, inside endpoints,
+# inside agents, inside functions.
+```
+
+**What `live:` does today (Phase B-1, 2026-04-25):**
+
+- Marks the boundary between pure code and effect code.
+- Compiles permissively — any statement is allowed inside, body emits inline
+  with a `// live: block — explicit effect fence` comment in the output.
+- Is a *fence*, not a scope: variables created inside `live:` are still
+  visible to code that follows the block.
+
+**What `live:` will do next (Phase B-2):**
+
+- The compiler will start *requiring* effect-shaped calls (`ask claude`,
+  `call API`, `subscribe to`, `every N seconds`) to sit inside a `live:`
+  fence. Pure blocks become provably total — they cannot hang.
+
+See `PHILOSOPHY.md` Rule 18 (Total by Default, Effects by Label) for the
+design intent.
+
 ## Transactions
 
 ```clear

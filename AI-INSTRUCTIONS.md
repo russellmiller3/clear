@@ -2906,6 +2906,55 @@ closes the foot-gun for you. Declare your bounds explicitly when
 you want different defaults; otherwise trust the compiler to pick
 a sensible one.
 
+### Live Blocks — Explicit Effect Fences (Phase B-1, 2026-04-25)
+
+A `live:` block is the visible label for code that talks to the
+outside world: `ask claude`, `call API`, `subscribe to`, timers.
+Pure code — math, string handling, table reads, validation —
+doesn't need a fence. Effects belong inside `live:` so the reader
+sees exactly where the program meets the world.
+
+```
+when user sends note to /api/chat:
+  live:
+    reply is ask claude 'hi'
+  send back reply
+
+agent 'Replier' receiving message:
+  live:
+    answer is ask claude message
+  send back answer
+```
+
+**What `live:` does today:**
+
+- Marks the boundary between pure and effect code.
+- Permissive — any statement is allowed inside; body emits inline.
+- Not a scope: variables created inside `live:` are visible to
+  code that follows the block.
+- Empty `live:` blocks are a parse error with a fix-it hint.
+
+**What `live:` will do next (Phase B-2):**
+
+- The compiler will start *requiring* effect-shaped calls
+  (`ask claude`, `call API`, `subscribe to`, `every N seconds`)
+  to sit inside a `live:` fence. Pure blocks become provably
+  total — they cannot hang.
+
+**Meph guidance:** when you write a new endpoint or agent that
+calls Claude or an external API, wrap the call(s) in a `live:`
+block. Today it's optional; in Phase B-2 it'll be required.
+Writing it now means future Meph sessions don't have to migrate.
+
+```
+# Good — fence is visible
+live:
+  result is ask claude prompt
+
+# Tomorrow's compiler will reject:
+result is ask claude prompt   # outside any live: block
+```
+
 
 ## General-Purpose Language Features
 

@@ -327,6 +327,22 @@ Every loop, every recursion, every external call has a bound. The compiler emits
 
 - **`ask claude` / `call api`** — already wrapped in retry + timeout at the runtime layer (1s/2s/4s exponential backoff on 429/5xx/network errors). You don't have to write retry logic yourself.
 
+- **`live:` blocks (effect fences, Phase B-1, 2026-04-25)** — `live:` is the explicit label for code that talks to the world. When you write a new endpoint or agent that calls Claude or an external API, wrap the call(s) in a `live:` block. Today it's permissive (anything is allowed inside, code outside isn't restricted), but Phase B-2 will start *requiring* effect-shaped calls (`ask claude`, `call api`, `subscribe to`, `every N seconds`) to sit inside `live:`. Writing it that way now means future sessions don't have to migrate.
+
+  ```
+  when user sends note to /api/chat:
+    live:
+      reply is ask claude 'hi'
+    send back reply
+
+  agent 'Replier' receiving message:
+    live:
+      answer is ask claude message
+    send back answer
+  ```
+
+  An empty `live:` block is a parse error. `live:` is a fence, not a scope: variables created inside are visible to code that follows the block. See `SYNTAX.md` "Live Blocks" or `PHILOSOPHY.md` Rule 18.
+
 If you see a compile warning about `while`, recursion, or `send email` — the warning is telling you the default the compiler is using. You can accept it or declare explicitly. Both options are fine; the warning is a nudge, not an error.
 
 ## File Structure (MANDATORY)

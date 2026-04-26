@@ -1645,6 +1645,39 @@ with timeout 5 seconds:
   result = call api 'https://slow-api.com/data'
 ```
 
+### Live Blocks (Effect Fences)
+
+Some lines in your program talk to the outside world: asking Claude, calling
+an API, opening a websocket, running a timer. The rest is pure — math, string
+work, table reads. A `live:` block is the visible label for the part that
+talks to the world:
+
+```clear
+when user sends note to /api/chat:
+  live:
+    reply is ask claude 'hi'
+  send back reply
+```
+
+Why label them? Two reasons. First, it's easier to read — you can see at a
+glance which lines could be slow or could fail because the network is flaky.
+Second, the compiler can use that label to prove the rest of your program
+can't hang. Pure code (no `live:` block) is provably terminating.
+
+Today `live:` is permissive — anything is allowed inside, and code outside
+isn't restricted yet. In a future Clear release the compiler will start
+*requiring* effect-shaped calls (`ask claude`, `call api`, `subscribe to`,
+timers) to sit inside a `live:` fence. Writing it that way now means your
+apps will keep compiling cleanly when the rule tightens.
+
+```clear
+# Good — the fence makes the boundary obvious
+agent 'Replier' receiving message:
+  live:
+    answer is ask claude message
+  send back answer
+```
+
 ---
 
 ## Chapter 15: Modules (When One File Isn't Enough)
