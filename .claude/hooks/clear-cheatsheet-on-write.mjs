@@ -64,6 +64,23 @@ export function isClearFile(filePath) {
   return filePath.endsWith('.clear');
 }
 
+// Doc files that contain Clear-syntax examples a future Meph (or human)
+// will read and learn from. Bad examples here pollute every downstream
+// session. The hook fires on writes to any of these so the canonical
+// forms are fresh before the example gets typed.
+const SYNTAX_TEACHING_DOCS = [
+  /(^|[\\/])playground[\\/]system-prompt\.md$/,  // Meph reads this every session
+  /(^|[\\/])USER-GUIDE\.md$/,                     // user-facing tutorial
+  /(^|[\\/])AI-INSTRUCTIONS\.md$/,                // canonical conventions Meph reads
+  /(^|[\\/])SYNTAX\.md$/,                          // authoritative syntax reference
+  /(^|[\\/])intent\.md$/,                          // node-type spec
+];
+
+export function isSyntaxTeachingDoc(filePath) {
+  if (typeof filePath !== 'string') return false;
+  return SYNTAX_TEACHING_DOCS.some((re) => re.test(filePath));
+}
+
 export function extractSection(text, heading, maxLines) {
   if (typeof text !== 'string' || typeof heading !== 'string') return '';
   const lines = text.split('\n');
@@ -90,9 +107,19 @@ export function extractSection(text, heading, maxLines) {
 export function buildCheatsheet() {
   const docCache = new Map();
   const parts = [];
-  parts.push('# Clear cheat-sheet (injected at .clear-write time)');
+  parts.push('# Clear cheat-sheet (injected before this write)');
   parts.push('');
-  parts.push('You are about to Write or Edit a `.clear` file. Below are the highest-friction canonical forms from `SYNTAX.md` and `AI-INSTRUCTIONS.md`, freshly extracted. These forms account for the most common compile errors in the Factor DB. Cross-check your edit against them before writing.');
+  parts.push('You are about to Write or Edit a file that either IS Clear code (`.clear`) or TEACHES Clear (Meph\'s system prompt, USER-GUIDE.md, AI-INSTRUCTIONS.md, SYNTAX.md, intent.md). Below are the highest-friction canonical forms from `SYNTAX.md` and `AI-INSTRUCTIONS.md`, freshly extracted. Bad examples in teaching docs pollute every future Meph session — cross-check every code block in your edit against these canonical forms before saving.');
+  parts.push('');
+  parts.push('**Quick canonical patterns (the ones I get wrong most often):**');
+  parts.push('');
+  parts.push('- `ask claude` always takes two parts: instructions + data. Canonical: `response = ask claude \'You are a helpful assistant\' with message`. NOT `answer = ask claude question` (collapses both args into one — ambiguous).');
+  parts.push('- `=` for numbers, `is` for strings/booleans. `total = price + tax` (number). `name is \'Alice\'` (string).');
+  parts.push('- Receiving data: name it explicitly in the URL line. `when user sends post_data to /api/x:` then reference `post_data`. NOT `body`, NOT `data`, NOT `incoming`.');
+  parts.push('- URL params: `delete the User with this id` (use `this id`, not bare `id`).');
+  parts.push('- Retrieval verbs: `get all` / `look up`, NEVER `find`.');
+  parts.push('- Auth on every mutation: `requires login` as the FIRST line of any DELETE/POST body.');
+  parts.push('- No self-assignment: `subject is title` not `subject is subject`. Never write `x is x`.');
   parts.push('');
 
   for (const spec of SECTIONS_TO_EXTRACT) {
@@ -131,7 +158,7 @@ function main() {
   if (toolName !== 'Write' && toolName !== 'Edit') process.exit(0);
 
   const filePath = data?.tool_input?.file_path || '';
-  if (!isClearFile(filePath)) process.exit(0);
+  if (!isClearFile(filePath) && !isSyntaxTeachingDoc(filePath)) process.exit(0);
 
   const cheatsheet = buildCheatsheet();
   if (!cheatsheet) process.exit(0);

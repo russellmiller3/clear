@@ -348,20 +348,21 @@ it lives wherever you write it. Effects belong inside `live:` so the reader
 (and the compiler) can see exactly where the program meets the world.
 
 ```clear
-# Inside an endpoint
+# Inside an endpoint — canonical form: instructions string + with data
 when user sends note to /api/chat:
   live:
-    reply is ask claude 'hi'
+    reply = ask claude 'You are a helpful assistant' with note
   send back reply
 
-# Inside an agent
+# Inside an agent — same shape, different home
 agent 'Replier' receiving message:
   live:
-    answer is ask claude message
+    answer = ask claude 'Reply to the user politely' with message
   send back answer
 
 # Live can sit anywhere a statement can — top level, inside endpoints,
-# inside agents, inside functions.
+# inside agents, inside functions. The `'instructions' with <data>`
+# pattern is canonical for every effect call inside the fence.
 ```
 
 **What `live:` does today (Phase B-1, 2026-04-25):**
