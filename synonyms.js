@@ -148,15 +148,6 @@ const SYNONYM_TABLE = Object.freeze({
   finally: Object.freeze(['finally', 'always do', 'after everything']),
 
   // ---------------------------------------------------------------------------
-  // Decidable Core — explicit effect fence (Path B Phase 1, 2026-04-25)
-  // CANONICAL: live: + indented block. Body holds calls that talk to the
-  // outside world (ask claude, call API, subscribe, timers). The keyword
-  // makes the fence visible to the compiler so the rest of the program
-  // can be statically proved to be total. See PHILOSOPHY.md Rule 18.
-  // ---------------------------------------------------------------------------
-  live: Object.freeze(['live']),
-
-  // ---------------------------------------------------------------------------
   // Modules (Phase 3)
   // CANONICAL: use "helpers"
   // ---------------------------------------------------------------------------

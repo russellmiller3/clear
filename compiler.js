@@ -6734,20 +6734,6 @@ ${pad}}`;
       return jsCode;
     }
 
-    case NodeType.LIVE_BLOCK: {
-      // Decidable Core Path B Phase 1 (2026-04-25). The `live:` block is an
-      // explicit effect fence — it tells the reader (and, in Phase B-2, the
-      // validator) that the body talks to the world. Emit the body inline
-      // with a comment marker so the fence is visible in the compiled output
-      // too. No runtime semantics yet — that's the point. The validator
-      // gains rejection power on top of this in the next chunk.
-      const liveBody = compileBody(node.body, ctx, { indent: ctx.indent });
-      if (ctx.lang === 'python') {
-        return `${pad}# live: block — explicit effect fence\n${liveBody}`;
-      }
-      return `${pad}// live: block — explicit effect fence\n${liveBody}`;
-    }
-
     case NodeType.RETRY: {
       const n = node.count || 3;
       const retryBody = compileBody(node.body, ctx);
