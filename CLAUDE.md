@@ -353,6 +353,9 @@ Landing pages (`landing/*.html`) must never use emoji characters. Use Lucide ico
 ## Rich Chat Output (MANDATORY)
 Studio chat (Meph) should support SVG diagrams and markdown rendering as standard output. When Meph explains architecture, data flow, or relationships, render them as inline SVG diagrams in the chat — not ASCII art. Markdown formatting (headers, bold, code blocks, lists) should render properly in chat bubbles.
 
+## Wide SVG Chat Mocks (MANDATORY)
+When outputting SVG mockups directly in chat, use a wide artboard that fills the chat renderer. Default to at least `1800px` wide for page mocks and avoid centered narrow canvases that leave gray gutters. Never let the product mock overlap hero text unless the text is deliberately layered above a background image and remains fully legible. Keep the hero copy and product mock in separate lanes or stacked rows by default. If the mock contains UI text, size the typography for the rendered chat preview, not the raw SVG coordinate system. The test is simple: Russell should be able to read the mock in the chat screenshot without zooming.
+
 ## Test Before Declaring Done (MANDATORY)
 Test everything you build before declaring it done. "The variable updated" is not verification — verify the user-visible outcome. For UI: check rendered content, not just DOM state. For flows: drive the flow end-to-end and assert the final result. If you can't test it, say so explicitly instead of claiming success. A route selector that updates `iframe.src` is not tested until you've confirmed the rendered page content actually changed.
 
