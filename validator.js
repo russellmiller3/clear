@@ -503,6 +503,13 @@ function validateForwardReferences(body, errors) {
             checkNode(node.handleBody, localDefined);
           }
           break;
+        case NodeType.LIVE_BLOCK:
+          // Decidable Core Path B Phase 1 (2026-04-25). The `live:` block is
+          // a fence, not a scope — variables created inside it are visible
+          // to code that follows the block. Walk the body in the SAME
+          // localDefined set so assignments leak out as expected.
+          checkNode(node.body, localDefined);
+          break;
         case NodeType.ENDPOINT: {
           // Endpoint body gets its own scope
           const epScope = new Set(localDefined);

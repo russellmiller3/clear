@@ -6,6 +6,29 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — Decidable Core Path B Phase 1: `live:` keyword lands
+
+Decidable Core started in late April with the minimalist Path A — surgical validator rules + runtime caps that already rejected naked `while` and uncapped recursion (Phase 7 closed 2026-04-24, $0 spent). Path B is the bigger move: a real keyword that names the effect boundary explicitly, so the compiler can prove the rest of the program is total.
+
+Phase B-1 is the foundation: the `live:` keyword exists, parses, and emits. Body holds calls that talk to the world (`ask claude`, `call API`, `subscribe to`, timers). Today it's permissive — anything is allowed inside, code outside isn't restricted — but the fence is now visible to readers and to the compiler. Phase B-2 (separate chunk) adds the validator rule that *requires* effect-shaped calls to sit inside a `live:` fence; once that lands, pure blocks become provably total.
+
+**What shipped:**
+
+- New `LIVE_BLOCK` node type in `parser.js` with a parse function that mirrors `parseTryHandle` (block opener + indented body, empty-body parse error with a fix-it hint).
+- `live` keyword registered in `synonyms.js` (single-word, no synonyms — canonical form is `live:`). `SYNONYM_VERSION` bumped to `0.33.0`.
+- Compiler case in `compiler.js` emits the body inline with a `// live: block — explicit effect fence` comment marker so the fence is visible in the JS/Python output too.
+- Validator handles `LIVE_BLOCK` as a fence, not a scope: variables defined inside leak out to the enclosing scope (consistent with how `try:` treats forward-referenced bindings inside its body).
+- 11 new tests in `clear.test.js` under `describe('decidable core — live: block (Path B Phase 1)')`. Cover: parse at top-level / inside endpoint / inside agent, body content propagation, no-op compile, comment marker emit, empty-body parse error, JS-validity check, Python parity, and a "no `live:` block in source = zero regression" guard.
+- 2586 → 2597 tests passing (no regressions). All 8 core templates compile clean (0 errors).
+
+**Doc cascade:** `intent.md` (new node-type row), `SYNTAX.md` (new "Live Blocks" section under Error Handling), `AI-INSTRUCTIONS.md` (new subsection under Termination Rules — Meph reads this), `USER-GUIDE.md` (Chapter 14 Effect Fence subsection), `FEATURES.md` (new row in Core Language), `playground/system-prompt.md` (Meph guidance).
+
+**Why this chunk shape.** The `live:` keyword had to land before any validator rule could require effect calls to sit inside one. Splitting Phase B-1 (keyword + parse + emit, permissive) from Phase B-2 (validator rejection of effects outside `live:`) means: zero template migration this commit, zero risk of breaking apps Meph just learned, and the keyword is ready to be tightened in a separate small chunk.
+
+Plan: `plans/plan-decidable-core-04-24-2026.md` Phase B-1.
+
+---
+
 ## 2026-04-25 — One-click updates land + Cloudflare Publish wedge complete
 
 The Publish window in Studio is now a real product. Marcus opens the deal-desk app, clicks Publish, and sees a live `*.buildclear.dev` URL. Two minutes later he edits a heading, clicks Publish again, and the new bundle is live in about two seconds — no new database, no domain reattach, no full secret push. That's the wedge: the demo path that turns "I built it locally" into "it's on the internet" with no Docker, no Fly, no terminal.

@@ -105,6 +105,7 @@
 //   RESPOND ........................... parseRespond()
 //   MATH-STYLE FUNCTION DEFS .......... parseMathStyleFunction()
 //   TRY / HANDLE ...................... parseTryHandle()
+//   LIVE BLOCK ........................ parseLiveBlock() — explicit effect fence (Path B Phase 1)
 //   INCREASE / DECREASE ............... parseIncDec()
 //   OBJECT DEFINITION ................. tryParseObjectDef()
 //   LINE-LEVEL PARSERS ................ parseTarget, parseAssignment, parseIfThen,
@@ -149,6 +150,12 @@ export const NodeType = Object.freeze({
 
   // Error handling (Phase 3)
   TRY_HANDLE: 'try_handle',
+
+  // Decidable Core — explicit effect fence (Path B Phase 1, 2026-04-25)
+  // `live:` block marks code that talks to the world (ask claude, call API,
+  // subscribe, timers). Body emits as-is for now; the fence makes the
+  // boundary visible to the compiler and the reader. See PHILOSOPHY.md Rule 18.
+  LIVE_BLOCK: 'live_block',
 
   // GP Phase 1: Map iteration
   MAP_KEYS: 'map_keys',
@@ -630,6 +637,14 @@ function tryHandleNode(tryBody, handlers, line, finallyBody) {
   const node = { type: NodeType.TRY_HANDLE, tryBody, handlers, line };
   if (finallyBody) node.finallyBody = finallyBody;
   return node;
+}
+
+// Decidable Core — explicit effect fence (Path B Phase 1, 2026-04-25)
+// `live:` block whose body holds calls that talk to the world. Compiler emits
+// the body inline with a comment marker; the fence is signal for the
+// validator (Phase B-2) and the human reader (now).
+function liveBlockNode(body, line) {
+  return { type: NodeType.LIVE_BLOCK, body, line };
 }
 
 function deployNode(platform, line) {
@@ -1457,6 +1472,14 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['try', (ctx) => {
     const parsed = parseTryHandle(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['live', (ctx) => {
+    // Decidable Core Path B Phase 1 (2026-04-25) — explicit effect fence.
+    // Body is parsed permissively; Phase B-2 adds validator rejection of
+    // effect-shaped calls outside live: blocks. See PHILOSOPHY.md Rule 18.
+    const parsed = parseLiveBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -7655,6 +7678,37 @@ function parseTryHandle(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: tryHandleNode(tryBody, handlers, line, finallyBody), endIdx: i };
+}
+
+// =============================================================================
+// LIVE BLOCK — Decidable Core Path B Phase 1 (2026-04-25)
+// =============================================================================
+// `live:` + indented block. The body holds calls that talk to the world
+// (ask claude, call API, subscribe, timers). The keyword makes the fence
+// visible to the compiler so the rest of the program can be statically
+// proved to be total. See PHILOSOPHY.md Rule 18.
+//
+// In Phase B-1 the body is permissive: any statement is allowed inside.
+// Phase B-2 will add a validator rule that REJECTS effect-shaped calls
+// outside `live:` fences. Splitting it this way means the keyword can
+// land alone — no template migration required, no template breakage.
+
+function parseLiveBlock(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+
+  // Parse the indented body
+  const bodyResult = parseBlock(lines, startIdx + 1, blockIndent, errors);
+  const body = bodyResult.body;
+
+  if (body.length === 0) {
+    errors.push({
+      line,
+      message: "The live: block is empty — it needs effect code inside (calls to the outside world). Indent some code below it. Example:\n  live:\n    answer is ask claude 'hi'\n    send back answer"
+    });
+  }
+
+  return { node: liveBlockNode(body, line), endIdx: bodyResult.endIdx };
 }
 
 // =============================================================================
