@@ -130,6 +130,23 @@ Each unit below has a self-contained briefing the parent session can copy into a
 **Briefing:**
 > Per ROADMAP.md "Builder Mode polish — Default flip" item: Builder Mode becomes the default for new users. `cmd+.` reveals the 3-panel view. Find the toggle code in `playground/server.js` or `playground/ide.html`. Flip the default. Add a test asserting new users land in builder mode.
 
+### P3 — Winner-harvesting loop, Phase 1 + 5 (1 worktree, ~half day, RESEARCH — only if P0/P1 are done)
+
+**Why this exists:** Russell pulled in `plans/plan-winner-harvest-04-26-2026.md` from a side branch. It closes the symmetry gap in Clear's training-signal architecture: today, ERROR data compounds permanently (the friction script + compiler-edit auto-log) but WIN data is ephemeral (the ranker only sees it for one call). The plan promotes the cleanest passing apps into a canonical-examples library that Meph reads every session — durable, cumulative.
+
+**Critical-path note:** EXPLICITLY off the path to first paying Marcus customer. ONLY pick this up if P0 + P1 have all completed cleanly. Russell flagged this as research-tier — runs after launch, or in an evening when Marcus blockers are clear.
+
+**Briefing (Phase 1 + Phase 5 only — Phases 2-4 require human curation):**
+> Read `plans/plan-winner-harvest-04-26-2026.md` end-to-end. Execute Phase 1 (score winning rows) and Phase 5 (carve off held-out test set). They are independent and parallel-safe with each other.
+>
+> **Phase 1 deliverable:** a CLI tool at `scripts/score-winning-runs.mjs` that reads every `test_pass=1` row from the Factor DB and ranks by an "exemplariness" score combining (a) lines of Clear divided by milestones reached (compactness), (b) attempts-to-green (first-try cleanness), (c) bonus for archetype × feature combos no existing example covers (uniqueness). Output a ranked list to `snapshots/winner-rankings-04-26-2026.txt`. Add a unit test exercising the scoring math on synthetic rows.
+>
+> **Phase 5 deliverable:** pick 5 of the existing 35 curriculum tasks and tag them `held-out: true` in the curriculum index. Document which 5 in the commit message. They never seed the retriever or the canonical-examples library (when Phases 2-4 land later). Update `playground/supervisor/curriculum-sweep.js` to skip held-out tasks from the seeding step but still run them for grading.
+>
+> Do NOT execute Phase 2 (hand-curating the canonical examples file), Phase 3 (the $10 A/B sweep), or Phase 4 (auto-promotion). Those need human judgment + Russell's go on the spend.
+>
+> Constraints: NO API spend (gm only). NO push to remote. Commit in your worktree. Final commit message states which 5 tasks were tagged held-out so the next session can verify.
+
 ---
 
 ## How to spawn agents safely
