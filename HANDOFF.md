@@ -8,7 +8,7 @@ Everything below was done overnight while you slept. Nothing was pushed to remot
 
 ## TL;DR — what landed
 
-Nine pieces of work, all committed and merged into the overnight branch:
+Eleven pieces of work, all committed and merged into the overnight branch:
 
 1. **Sweep fix.** The "duplicate session id" bug that broke yesterday's training runs is fixed. New helper drops stale rows before any new sweep starts. 4 new tests cover it.
 2. **App shell phase 1 — the polished sidebar/header/main chrome.** The four building blocks every app uses (`app_layout`, `app_sidebar`, `app_main`, `app_header`) now compile to the slate-on-ivory shape from the Marcus mock. 240px sidebar, 56px sticky header with brand/breadcrumb/action regions, semantic page tags. Five new tests, all eight reference apps still build clean.
@@ -19,6 +19,8 @@ Nine pieces of work, all committed and merged into the overnight branch:
 7. **Friction snapshot saved.** `snapshots/friction-baseline-04-25-2026.txt` is the BEFORE-numbers dump for the next round of compiler error improvements. Top class is "you used X before it's defined" firing on language keywords (`body`, `text`, `current_user`, `the`) — one rewrite of that error class could compound across many sessions.
 8. **Winner-harvest scorer landed.** New tool ranks every passing build in the Factor DB by how clean / compact / first-try it is. Top winners turn out to be 3-line first-try API services — that's the shape canonical examples should target. Snapshot at `snapshots/winner-rankings-04-26-2026.txt`. 19 new tests.
 9. **Held-out test set carved off.** Five curriculum tasks (`echo`, `todo-crud`, `contact-book`, `webhook-stripe`, `agent-summary`) tagged held-out — they still get graded by every sweep but never feed the hint retriever. Gives us an uncontaminated measurement signal as the training pipeline grows. Diverse mix of difficulties (L2 → L9) and shapes.
+10. **Cold-start import-side-effect bug fixed.** The cold-start helper used to run a full Factor DB seed pass any time someone imported it (a test wanting to call helpers, a tool just wanting access to a function). Now it only runs when invoked directly via the command line. The 13 gold rows the winner-harvest worker accidentally inserted are valid and preserved.
+11. **RESEARCH.md updated.** New session row in the timeline covering all overnight work; the "Read This First" bullets refresh the row counts (107/38 → 1771/701) and add two new bullets about the winner-harvest scorer + held-out set. Closes the last open doc-cascade surface for the winner-harvest epic.
 
 ## Still in flight at handoff time
 
@@ -26,7 +28,7 @@ Nine pieces of work, all committed and merged into the overnight branch:
 
 ## Numbers
 
-- **Compiler tests:** 2605/0 (was 2586 at session start; +19 from this overnight run)
+- **Compiler tests:** 2605/0 (was 2586 at session start; +19 from the new tests added across this overnight run)
 - **Scorer tests:** 19/19 green (new in this run)
 - **All 8 reference apps:** still compile clean
 - **API spend:** $0 (every worker ran on the free local Claude Code path; no Anthropic API calls billed)
