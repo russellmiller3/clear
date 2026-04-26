@@ -6073,6 +6073,7 @@ function compileDataShape(node, ctx, pad) {
     if (f.auto) props.push('auto: true');
     if (f.fk) props.push(`ref: "${f.fk}"`);
     if (f.hidden) props.push('hidden: true');
+    if (f.renamedTo) props.push(`renamedTo: ${JSON.stringify(f.renamedTo)}`);
     return `  ${sanitizeName(f.name)}: { ${props.join(', ')} }`;
   }).join(',\n');
   const tableName = pluralizeName(node.name);

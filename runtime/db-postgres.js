@@ -51,6 +51,7 @@ function getPool() {
 const _schemas = {};
 // Track which tables have been created in Postgres (avoids re-running CREATE TABLE)
 const _tablesCreated = new Set();
+const IDENT_RE = /^[a-z_][a-z0-9_]*$/i;
 
 // =============================================================================
 // TYPE HELPERS
@@ -72,6 +73,33 @@ function toPgDefault(config) {
   if (config.type === 'boolean') return ' DEFAULT ' + (config.default ? 'TRUE' : 'FALSE');
   if (config.type === 'number') return ' DEFAULT ' + config.default;
   return " DEFAULT '" + String(config.default).replace(/'/g, "''") + "'";
+}
+
+function stripHidden(row, schema) {
+  if (!row || !schema) return row;
+  var out = Object.assign({}, row);
+  for (var field in schema) {
+    if (!schema.hasOwnProperty(field)) continue;
+    if (schema[field] && schema[field].hidden) delete out[field];
+  }
+  return out;
+}
+
+async function backfillRenamedFields(tableName, schema, existing) {
+  if (!IDENT_RE.test(tableName) || !schema) return;
+  for (var fromField in schema) {
+    if (!schema.hasOwnProperty(fromField)) continue;
+    var config = schema[fromField];
+    var toField = config && config.renamedTo;
+    if (!config || !config.hidden || !toField) continue;
+    if (!IDENT_RE.test(fromField) || !IDENT_RE.test(toField)) continue;
+    if (!existing.has(fromField) || !existing.has(toField)) continue;
+    await getPool().query(
+      'UPDATE ' + tableName +
+      ' SET "' + toField + '" = "' + fromField + '"' +
+      ' WHERE "' + toField + '" IS NULL AND "' + fromField + '" IS NOT NULL'
+    );
+  }
 }
 
 // =============================================================================
@@ -180,8 +208,10 @@ async function ensureTable(tableName) {
     if (!schema.hasOwnProperty(field2)) continue;
     if (!existing.has(field2)) {
       await getPool().query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS "' + field2 + '" ' + toPgType(schema[field2]) + toPgDefault(schema[field2]));
+      existing.add(field2);
     }
   }
+  await backfillRenamedFields(tableName, schema, existing);
   _tablesCreated.add(tableName);
 }
 
@@ -238,6 +268,8 @@ function parseOffset(n) {
 async function findAll(table, filter, options) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
+  var schema = _schemas[tableName] || {};
+  var includeHidden = !!(options && options.includeHidden);
   var w = buildWhere(filter);
   var sql = 'SELECT * FROM ' + tableName + ' ' + w.clause;
   if (options && options.limit) {
@@ -249,15 +281,18 @@ async function findAll(table, filter, options) {
     if (off) sql += ' OFFSET ' + off;
   }
   var res = await getPool().query(sql, w.params);
-  return res.rows;
+  return includeHidden ? res.rows : res.rows.map(function(row) { return stripHidden(row, schema); });
 }
 
-async function findOne(table, filter) {
+async function findOne(table, filter, options) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
+  var schema = _schemas[tableName] || {};
+  var includeHidden = !!(options && options.includeHidden);
   var w = buildWhere(filter);
   var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
-  return res.rows[0] || null;
+  if (!res.rows[0]) return null;
+  return includeHidden ? res.rows[0] : stripHidden(res.rows[0], schema);
 }
 
 function validateAggregateArgs(fn, field) {

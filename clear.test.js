@@ -4646,6 +4646,13 @@ describe('Compiler - data shape with constraints (JS)', () => {
     expect(result.javascript).toContain('required: true');
     expect(result.javascript).toContain('name');
   });
+
+  it('preserves renamed field metadata in generated schemas', () => {
+    const result = compileProgram("target: backend\ncreate data shape User:\n  notes, hidden, renamed to reason\n  reason");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('hidden: true');
+    expect(result.javascript).toContain('renamedTo: "reason"');
+  });
 });
 
 // =============================================================================
