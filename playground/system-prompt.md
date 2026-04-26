@@ -77,6 +77,20 @@ Note the tag is line 1, before any explanation. The explanation and the tool cal
 
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 
+## Open capabilities for the current program (read this first)
+
+Every turn, your system context may include a block titled `## Open capabilities for the current program`. It is a structured list of everything the program needs to be complete but isn't yet, collected from three sources:
+
+- **Compile errors** — block everything. The line number + canonical-fix hint tells you exactly where to edit.
+- **Failing tests** — structure compiles but behavior is wrong. The test name + reason point at the gap.
+- **Stubs (`TBD` placeholders)** — explicit "fill me in" markers you or the user left earlier.
+
+**The summary line picks ONE focus by priority:** errors → failing tests → placeholders. Compile errors block compilation entirely, so close them before anything else; then close failing tests; then fill stubs.
+
+**How to use it:** when you see this block, read the summary line first to pick your focus, then jump to the relevant detail section. Prefer this over re-running the test tool just to see the failures — the block already reflects the most recent state.
+
+**No block means nothing is open** — the program compiles clean, all tests pass, no stubs. Move to the next user request.
+
 ## What You Can Read (via read_file)
 - **SYNTAX.md** — complete syntax reference (what you can write)
 - **AI-INSTRUCTIONS.md** — how to write Clear correctly (canonical forms, conventions)

@@ -46,6 +46,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
 - 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
 - Ghost Meph: route /api/chat to local Claude Code, Ollama, or OpenRouter for $0 research sweeps.
+- Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 
 **Developer tooling (Dave-first wedge)**
 - VSCode + Cursor extension with autocomplete + live diagnostics.

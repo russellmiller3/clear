@@ -252,6 +252,10 @@ This is the compounding loop that makes Clear's Meph smarter over time — witho
 
 The mechanical quality signals bootstrap this loop. They produce deterministic quality scores on day 1 — before any ML is trained. See the next section.
 
+### Lean lesson 3 — open-capability visibility (2026-04-26)
+
+Lean's prover always shows the writer "what's left to prove" — a structured to-do of unmet goals. Clear today made Meph re-derive that himself from raw test output every cycle: parse the failures, remember which compile errors haven't been fixed, scan for `TBD` placeholders, decide where to focus. Slow and error-prone. The fix is a pure surface change — no new grammar, no compiler change — that collects three sources of "still open" work into one structured block in Meph's per-turn system prompt: TBD placeholders (from Lesson 1's `result.placeholders`), failing tests (from the most recent test snapshot), and unresolved compile errors paired with their canonical-fix hint (text-matched against the curated INTENT_HINTS keyword table). The summary line picks ONE focal item by priority — errors block compilation entirely, so they go first; failing tests next; placeholders last. Stays under 200 chars when nothing is open, under 1KB when the program is fully red. Lives in a separate volatile prompt block so the stable-prefix cache stays hot. The hypothesis: Meph's wasted-work cycles drop because he stops re-deriving "what's still missing" every turn — same A/B framing as the rest of the flywheel work. Module + 18 unit tests live at `playground/supervisor/open-capabilities.{js,test.js}`; wire-up is in `playground/server.js` `buildSystemWithContext`. Implements Lesson 3 of `plans/plan-lean-lessons-04-26-2026.md`. Measurement (Phase 3.3) deferred until budgeted.
+
 ---
 
 ## The Compiler Flywheel (Second-Order Moat)
