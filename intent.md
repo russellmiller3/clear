@@ -485,20 +485,32 @@ the full token system.
 | `section_dark` | Same as `page_section_dark` |
 | `card` | `card bg-base-200 border border-base-300/50 rounded-xl p-6` |
 
-**App/dashboard presets:**
+**App/dashboard presets** (Phase 1 shell upgrade — 04-25-2026, modeled on
+`landing/marcus-app-target.html`):
 
-| Preset | DaisyUI/Tailwind Classes |
-|--------|------------------------|
-| `app_layout` | `h-screen flex bg-base-100` (flex container for sidebar + main) |
-| `app_sidebar` | `menu p-4 w-60 min-h-full bg-base-200 border-r border-base-300/50 text-sm` |
-| `app_main` | `flex flex-col flex-1 min-w-0` (column wrapper for header + content) |
-| `app_content` | `flex-1 p-6 bg-base-100 overflow-y-auto` |
-| `app_header` | `navbar bg-base-200 border-b border-base-300/50 px-4 h-14 sticky top-0 z-30` |
-| `app_card` | `card bg-base-200 border border-base-300/50 rounded-xl p-5` |
+| Preset | HTML tag | Classes + inline style |
+|--------|----------|------------------------|
+| `app_layout` | `<div>` | `flex min-h-screen` (full-screen flex shell — page owns scroll) |
+| `app_sidebar` | `<aside>` | `hairline-r flex-shrink-0 flex flex-col scroll-y` + `style="width:240px;background:var(--clear-bg-rail);"` |
+| `app_main` | `<main>` | `flex-1 min-w-0 flex flex-col` |
+| `app_header` | `<header>` | `hairline-b sticky top-0 z-30 flex items-center gap-4 px-5` + `style="height:56px;background:var(--clear-bg-canvas);"` (3 slots: brand / breadcrumb / actions, exposed via `data-clear-slot=`) |
+| `app_content` | `<div>` | `flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6` |
+| `app_card` | `<div>` | `bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5` |
 
-App presets skip the max-width inner wrapper (unlike landing page presets) since they
-participate in flex layout. When app presets are detected, the outer `<main>` gets no
-constraining class and `<body>` uses `bg-base-100`.
+The shell tags use semantic HTML5 elements (`aside`, `main`, `header`) instead
+of generic divs — better accessibility and matches the polished slate-on-ivory
+mock chrome. CSS custom properties (`--clear-bg-rail`, `--clear-bg-canvas`,
+`--clear-line`) come from the design tokens block in `compiler.js`'s
+`CSS_RESET`. App presets skip the max-width inner wrapper (unlike landing page
+presets) since they participate in flex layout.
+
+`app_header` body content is auto-sorted into three slots when emitted:
+- `heading` children → `data-clear-slot="brand"` (left)
+- text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
+- `button` children → `data-clear-slot="actions"` (right, ml-auto)
+
+Phase 2-7 of the shell upgrade plan add `nav item`, `stat card`, `detail
+panel`, etc. — see `plans/plan-full-shell-upgrade-04-25-2026.md`.
 
 ### Design System
 

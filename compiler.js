@@ -10587,7 +10587,27 @@ function buildHTML(body) {
             ];
             const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
             const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
-            parts.push(`    <div class="${cls}"${heroInlineStyle}${clAttr(node)}>`);
+            // Phase 1 shell upgrade: app_* presets emit semantic HTML5 tags
+            // (aside / main / header) instead of generic <div>. The mock at
+            // landing/marcus-app-target.html is the visual target. We also
+            // attach inline styles for tokens utilities can't express.
+            const APP_SHELL_TAGS = {
+              app_sidebar: 'aside',
+              app_main:    'main',
+              app_header:  'header',
+            };
+            const APP_SHELL_INLINE_STYLES = {
+              // 240px rail bg from --clear-bg-rail (matches mock)
+              app_sidebar: 'width:240px;background:var(--clear-bg-rail);',
+              // 56px sticky bar with canvas bg
+              app_header:  'height:56px;background:var(--clear-bg-canvas);',
+            };
+            const shellTag = APP_SHELL_TAGS[node.styleName] || 'div';
+            const shellInline = APP_SHELL_INLINE_STYLES[node.styleName] || '';
+            const inlineStyleAttr = shellInline
+              ? ` style="${shellInline}"`
+              : heroInlineStyle;
+            parts.push(`    <${shellTag} class="${cls}"${inlineStyleAttr}${clAttr(node)}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -10868,6 +10888,30 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
                 parts.push(`    </div>`);
               }
+            } else if (node.styleName === 'app_header') {
+              // Phase 1 shell upgrade: app_header is a 56px sticky bar with three
+              // semantic slots — brand (heading), breadcrumb (text), actions
+              // (buttons). Children get sorted into the right slot. This lets
+              // page header / breadcrumb / action primitives in later phases
+              // target a stable scaffold instead of a flat row.
+              const headerBody = node.body || [];
+              const isHeading = c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading');
+              const isButton  = c => c.type === NodeType.BUTTON;
+              const isLink    = c => c.type === NodeType.CONTENT && (c.contentType === 'link' || c.ui?.contentType === 'link');
+              const brandKids      = headerBody.filter(isHeading);
+              const actionKids     = headerBody.filter(isButton);
+              const breadcrumbKids = headerBody.filter(c => !isHeading(c) && !isButton(c) && !isLink(c) && c.type === NodeType.CONTENT);
+              const otherKids      = headerBody.filter(c => !isHeading(c) && !isButton(c) && !breadcrumbKids.includes(c));
+              parts.push(`      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">`);
+              if (brandKids.length > 0) walk(brandKids);
+              parts.push(`      </div>`);
+              parts.push(`      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">`);
+              if (breadcrumbKids.length > 0) walk(breadcrumbKids);
+              parts.push(`      </nav>`);
+              parts.push(`      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">`);
+              if (actionKids.length > 0) walk(actionKids);
+              if (otherKids.length > 0) walk(otherKids);
+              parts.push(`      </div>`);
             } else if (node.styleName === 'app_list') {
               // app_list: header content above, each child wrapped as a list item row
               const listHeader = node.body.filter(c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading'));
@@ -10900,7 +10944,8 @@ function buildHTML(body) {
             }
             sectionStack.pop();
             if (needsWrapper) parts.push(`      </div>`);
-            parts.push(`    </div>`);
+            // Close the matching shell tag (aside / main / header / div)
+            parts.push(`    </${shellTag}>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style: resolve semantic tokens to Tailwind, rest to CSS class
             const styleDef = node.styleName
@@ -13629,12 +13674,17 @@ const BUILTIN_PRESET_CLASSES = {
   faq_section:            'bg-base-100 py-16 lg:py-24 px-6',
   page_footer:            'bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6',
 
-  // --- App/dashboard presets ---
-  app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-100 border-r border-base-300/50 overflow-hidden',
-  app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
+  // --- App/dashboard presets (Phase 1 shell upgrade — 04-25-2026) ---
+  // Modeled on landing/marcus-app-target.html. Each preset emits a semantic
+  // HTML5 tag (see APP_SHELL_TAGS below) and reads --clear-* design tokens
+  // for hairline borders + rail/canvas backgrounds. Class strings here cover
+  // layout/sizing; inline style attribute carries the token references the
+  // utility-only setup can't express (custom-property reads need style="").
+  app_layout:        'flex min-h-screen',
+  app_sidebar:       'hairline-r flex-shrink-0 flex flex-col scroll-y',
+  app_main:          'flex-1 min-w-0 flex flex-col',
   app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
+  app_header:        'hairline-b sticky top-0 z-30 flex items-center gap-4 px-5',
   app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
   app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
 

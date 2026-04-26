@@ -1477,17 +1477,20 @@ describe('theme directive', () => {
 // =============================================================================
 
 describe('app layout presets', () => {
-  it('app_layout preset produces h-screen flex container', () => {
+  it('app_layout preset produces a full-screen flex container', () => {
+    // Phase 1 shell upgrade: outer shell is flex.min-h-screen so the page
+    // owns the scroll, not the layout. (Was h-screen overflow-hidden.)
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
     text 'Hello'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex h-screen overflow-hidden');
+    expect(result.html).toContain('flex min-h-screen');
   });
 
-  it('app_sidebar preset produces menu with fixed width', () => {
+  it('app_sidebar preset produces a 240px <aside> rail', () => {
+    // Phase 1 shell upgrade: 240px rail, hairline-r, scroll-y.
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1495,10 +1498,11 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-64 shrink-0');
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bhairline-r\b/);
   });
 
-  it('app_main preset produces flex column', () => {
+  it('app_main preset produces a flex column <main>', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1506,10 +1510,10 @@ page 'App' at '/':
       text 'Content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex-1 flex flex-col overflow-hidden min-w-0');
+    expect(result.html).toMatch(/<main\b[^>]*class="[^"]*\bflex-1\b[^"]*\bmin-w-0\b/);
   });
 
-  it('app_header preset produces sticky navbar', () => {
+  it('app_header preset produces a 56px sticky <header>', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1518,7 +1522,8 @@ page 'App' at '/':
         heading 'Dashboard'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('sticky top-0 z-20');
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bsticky\b[^"]*\btop-0\b/);
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
   });
 
   it('app_content preset produces scrollable area', () => {
@@ -1549,9 +1554,9 @@ page 'App' at '/':
   section 'Nav' with style app_sidebar:
     text 'Menu'`;
     const result = compileProgram(source);
-    // app_sidebar should NOT have max-w-5xl wrapper
-    const sidebarIdx = result.html.indexOf('w-64 shrink-0');
-    const nearbyHtml = result.html.slice(sidebarIdx - 100, sidebarIdx + 200);
+    // app_sidebar should NOT have a max-w-5xl content wrapper inside it
+    const sidebarIdx = result.html.indexOf('<aside');
+    const nearbyHtml = result.html.slice(sidebarIdx, sidebarIdx + 400);
     expect(nearbyHtml).not.toContain('max-w-5xl');
   });
 
@@ -1582,11 +1587,164 @@ page 'Dashboard' at '/':
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
-    expect(result.html).toContain('flex h-screen');
-    expect(result.html).toContain('w-64');
-    expect(result.html).toContain('sticky top-0');
+    // Phase 1 shell upgrade: full-screen flex shell, 240px aside, 56px header
+    expect(result.html).toContain('flex min-h-screen');
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    expect(result.html).toMatch(/<main[^>]*flex-1 min-w-0 flex flex-col/);
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
     expect(result.html).toContain('overflow-y-auto');
     expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
+  });
+});
+
+// =============================================================================
+// APP SHELL UPGRADE (Phase 1 — 04-25-2026)
+// Section presets app_layout / app_sidebar / app_main / app_header now emit
+// the polished slate-on-ivory chrome that matches landing/marcus-app-target.html.
+// Each preset uses a semantic HTML5 tag and the project's --clear-* design
+// tokens for hairline borders + rail/canvas backgrounds.
+// =============================================================================
+
+describe('app shell upgrade — Phase 1', () => {
+  it('app_layout emits a flex min-h-screen wrapper div (full-screen shell)', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    text 'hi'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    // Container is a div.flex.min-h-screen — the OUTER body shell
+    expect(result.html).toMatch(/<div[^>]*class="[^"]*\bflex\b[^"]*\bmin-h-screen\b/);
+    // Old emit ('h-screen overflow-hidden') is gone — full window scroll, not viewport-clipped
+    expect(result.html).not.toContain('h-screen overflow-hidden');
+  });
+
+  it('app_sidebar emits an <aside> with 240px width and rail-bg + hairline-r tokens', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Menu'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<aside\b[^>]*>/);
+    // 240px rail (was 256px / w-64) — matches mock
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    // Reads --clear-bg-rail and --clear-line tokens
+    expect(result.html).toContain('var(--clear-bg-rail)');
+    expect(result.html).toContain('var(--clear-line)');
+    // Hairline-right border + flex-shrink-0 + scroll-y for nav overflow
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bhairline-r\b/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bflex-shrink-0\b/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bscroll-y\b/);
+  });
+
+  it('app_main emits a <main> with flex-1 min-w-0 flex flex-col', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      text 'Panel'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<main\b[^>]*class="[^"]*\bflex-1\b[^"]*\bmin-w-0\b[^"]*\bflex\b[^"]*\bflex-col\b/);
+    // Closing tag matches
+    expect(result.html).toContain('</main>');
+  });
+
+  it('app_header emits a sticky <header> with 56px height + canvas bg + hairline-b', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<header\b[^>]*>/);
+    // 56px height (was 64px / h-16)
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
+    // sticky top-0, hairline-b, canvas bg from token
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bsticky\b[^"]*\btop-0\b/);
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bhairline-b\b/);
+    expect(result.html).toContain('var(--clear-bg-canvas)');
+  });
+
+  it('app_header carries brand / breadcrumb / action slot data attributes', () => {
+    // The header must advertise its three slots so children + Phase 3 page-header
+    // primitive can target them. Uses data-clear-slot for forward-compatible CSS.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/data-clear-slot="brand"/);
+    expect(result.html).toMatch(/data-clear-slot="breadcrumb"/);
+    expect(result.html).toMatch(/data-clear-slot="actions"/);
+  });
+
+  it('app shell tags nest correctly: aside + main both inside the layout div', () => {
+    // Critical regression check — child sections must close with the right tag,
+    // and the layout's </div> must come after both children.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Menu'
+    section 'Right' with style app_main:
+      text 'Body'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const html = result.html;
+    const layoutOpen = html.indexOf('flex min-h-screen');
+    const asideOpen  = html.indexOf('<aside');
+    const asideClose = html.indexOf('</aside>');
+    const mainOpen   = html.indexOf('<main', html.indexOf('id="app"') + 1); // skip the body-level <main id="app">
+    const mainClose  = html.indexOf('</main>', mainOpen);
+    expect(layoutOpen).toBeGreaterThan(-1);
+    expect(asideOpen).toBeGreaterThan(layoutOpen);
+    expect(asideClose).toBeGreaterThan(asideOpen);
+    expect(mainOpen).toBeGreaterThan(asideClose);
+    expect(mainClose).toBeGreaterThan(mainOpen);
+  });
+
+  it('sidebar with no nav children still renders a usable rail (no empty <ul> orphan)', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'MyApp'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    // Brand still emits — heading lives inside the aside
+    expect(result.html).toMatch(/<aside[^>]*>[\s\S]*MyApp[\s\S]*<\/aside>/);
+  });
+
+  it('app_layout + app_main + app_header produce the canonical 3-tag nesting', () => {
+    // div.layout > main > header — closing order matters for browser parsing.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      text 'body content'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const html = result.html;
+    // The body-level <main id="app"> wrapper exists; we want our nested <main> to live inside it
+    const appMainOpen = html.indexOf('id="app"');
+    const ourMainOpen = html.indexOf('<main', appMainOpen + 1);
+    const headerOpen  = html.indexOf('<header', ourMainOpen);
+    const headerClose = html.indexOf('</header>', headerOpen);
+    const ourMainClose = html.indexOf('</main>', headerClose);
+    expect(ourMainOpen).toBeGreaterThan(appMainOpen);
+    expect(headerOpen).toBeGreaterThan(ourMainOpen);
+    expect(headerClose).toBeGreaterThan(headerOpen);
+    expect(ourMainClose).toBeGreaterThan(headerClose);
   });
 });
 

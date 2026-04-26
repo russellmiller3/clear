@@ -1659,22 +1659,36 @@ writing a custom style block.
 | `faq_section` | bg-base-100, py-16/24 | Accordion Q&A |
 | `page_footer` | bg-base-200, border-t, py-12/16 | Links, legal, copyright |
 
-#### App UI Presets (8)
+#### App UI Presets (Phase 1 shell upgrade — 04-25-2026)
 
-| Preset | What it does | Use for |
-|--------|-------------|---------|
-| `app_layout` | `flex h-screen overflow-hidden` | Root wrapper for any dashboard |
-| `app_sidebar` | w-56, bg-base-200/60, border-r, flex-col | Navigation sidebar |
-| `app_header` | Sticky, h-16, backdrop blur, border-b, flex between | Top bar with title + actions |
-| `app_main` | flex-1 flex-col, overflow hidden | Right-side container (header + content) |
-| `app_content` | flex-1, overflow-y-auto, p-6, flex-col gap-5 | Scrollable main content area |
-| `app_card` | bg-base-200, rounded-xl, border, shadow-md, p-5 | Any content card in a dashboard |
-| `metric_card` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
-| `app_table` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
-| `app_modal` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
-| `empty_state` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
-| `app_list` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
-| `form` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+The four shell presets emit semantic HTML5 tags + slate-on-ivory chrome
+matching `landing/marcus-app-target.html`. Sizes match the mock — 240px rail,
+56px sticky header — and read `--clear-bg-rail`, `--clear-bg-canvas`,
+`--clear-line` design tokens.
+
+| Preset | HTML tag | What it produces | Use for |
+|--------|----------|------------------|---------|
+| `app_layout` | `<div>` | `flex min-h-screen` (page owns scroll, not viewport-clipped) | Root wrapper for any dashboard |
+| `app_sidebar` | `<aside>` | 240px rail, hairline-r, scroll-y, rail bg | Navigation sidebar |
+| `app_header` | `<header>` | 56px sticky bar, hairline-b, canvas bg, three slots: brand / breadcrumb / actions | Top bar with title + actions |
+| `app_main` | `<main>` | `flex-1 min-w-0 flex flex-col` | Right-side container (header + content) |
+| `app_content` | `<div>` | flex-1, overflow-y-auto, p-6 | Scrollable main content area |
+| `app_card` | `<div>` | bg-base-100, rounded-xl, border, shadow-sm, p-5 | Any content card in a dashboard |
+| `metric_card` | `<div>` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
+| `app_table` | `<div>` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
+| `app_modal` | `<div>` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
+| `empty_state` | `<div>` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
+| `app_list` | `<div>` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
+| `form` | `<div>` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+
+**`app_header` slot rule** (auto-sorted at compile time):
+- `heading` children land in `data-clear-slot="brand"` (left)
+- text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
+- `button` children → `data-clear-slot="actions"` (right, ml-auto)
+
+This means a Clear author writes `heading 'Dashboard'`, `text 'Workspace > X'`,
+and `button 'New'` inside `app_header:` and they appear in the right places —
+no manual slot wiring. The compiler does the layout.
 
 #### Blog Presets (3)
 

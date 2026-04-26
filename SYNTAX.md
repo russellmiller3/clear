@@ -908,14 +908,19 @@ section 'Footer' with style page_footer:
 
 ### App UI Presets
 
-| Preset | Description | Typical children |
-|--------|-------------|-----------------|
-| `app_layout` | Outermost wrapper. `flex h-screen overflow-hidden`. | Two children: `app_sidebar` + a main column |
-| `app_sidebar` | Fixed-width sidebar with nav menu. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
-| `app_main` | Right-side flex column that fills remaining space. | `app_header` + `app_content` |
-| `app_header` | Sticky top bar with split layout (title left, actions right). | `heading`, `button` |
-| `app_content` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
-| `app_card` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
+> **Phase 1 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
+> `app_sidebar`, `app_main`, `app_header` now emit polished slate-on-ivory chrome
+> matching `landing/marcus-app-target.html`. Sidebar is a 240px `<aside>`, header
+> is a 56px sticky `<header>` with brand/breadcrumb/actions slots.
+
+| Preset | HTML tag | Description | Typical children |
+|--------|----------|-------------|-----------------|
+| `app_layout` | `<div>` | Outermost shell. `flex min-h-screen` — page owns the scroll. | Two children: `app_sidebar` + a main column |
+| `app_sidebar` | `<aside>` | 240px rail. Hairline-right border, scroll-y, rail bg from `--clear-bg-rail`. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
+| `app_main` | `<main>` | Right-side flex column that fills remaining space. `flex-1 min-w-0 flex flex-col`. | `app_header` + `app_content` |
+| `app_header` | `<header>` | 56px sticky top bar. Hairline-bottom, canvas bg. Auto-sorts children into three slots: `heading` → brand-slot, text → breadcrumb-slot, `button` → actions-slot (right-aligned). | `heading`, `text`, `button` |
+| `app_content` | `<div>` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
+| `app_card` | `<div>` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
 | `metric_card` | Compact stat card for KPI rows. | `display X as number called 'Label'` or `heading` + `text` |
 | `app_table` | Table container with rounded corners and border. Overflow hidden. | `display X as table showing ...` |
 | `app_modal` | Centered modal dialog card with ring shadow. | `heading`, inputs, `button` |
