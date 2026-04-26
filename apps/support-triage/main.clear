@@ -1,4 +1,16 @@
 /*
+Support Triage - support queue workbench
+
+LAYOUT:
++-------------+----------------------------------------------+
+| Sidebar     | Top bar                                      |
+| - Open      +----------------------------------------------+
+| - Categories| Page header                                  |
+| - Priority  | Stats: open tickets, categories, priorities  |
+|             | Ticket form                                  |
+|             | Ticket table + selected ticket detail panel  |
++-------------+----------------------------------------------+
+
 Support Triage — AI-assisted ticket classification and routing
 
   ┌──────────┐  submit   ┌──────────┐  classify  ┌──────────┐
@@ -103,23 +115,72 @@ page 'Support Triage' at '/':
     send nothing to '/api/seed'
     get tickets from '/api/tickets/open'
 
-  section 'Header' centered, padded:
-    heading 'Support Triage'
-    total = count of tickets
-    text '{total} open tickets'
+  total = count of tickets
+  category_count = 6
+  priority_count = 4
 
-  section 'New Ticket' with style card_bordered:
-    'Subject' as text input saves to subject
-    'Body' as text input saves to body
-    'Your email' as text input saves to from_email
-    button 'Submit ticket':
-      send subject, body, and from_email to '/api/tickets'
-      get tickets from '/api/tickets/open'
-      subject is ''
-      body is ''
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Support Triage'
+      nav section 'Queues':
+        nav item 'Open tickets' to '/' with count total with icon 'inbox'
+      nav section 'Triage':
+        nav item 'Categories' to '/' with count category_count with icon 'tags'
+        nav item 'Priorities' to '/' with count priority_count with icon 'flame'
 
-  section 'Open Tickets':
-    display tickets as table showing subject, category, priority, from_email
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Support Triage'
+        text 'Customer ops / AI routing'
+
+      section 'Content' with style app_content:
+        page header 'Open support queue':
+          subtitle '{total} tickets waiting for triage'
+          actions:
+            button 'Refresh':
+              get tickets from '/api/tickets/open'
+
+        stat strip:
+          stat card 'Open Tickets':
+            value total
+            delta 'Waiting for owner pickup'
+            sparkline [2, 3, 5, 4, 3]
+            icon 'inbox'
+          stat card 'Categories':
+            value category_count
+            delta 'Billing to general'
+            icon 'tags'
+          stat card 'Priority Levels':
+            value priority_count
+            delta 'Urgent through low'
+            icon 'flame'
+
+        section 'New Ticket' with style app_card:
+          subheading 'Submit ticket'
+          'Subject' as text input saves to subject
+          'Body' as text input saves to body
+          'Your email' as text input saves to from_email
+          button 'Submit ticket':
+            send subject, body, and from_email to '/api/tickets'
+            get tickets from '/api/tickets/open'
+            subject is ''
+            body is ''
+            from_email is ''
+
+        section 'Ticket Workbench' as 2 columns:
+          section 'Open Tickets' with style app_table:
+            display tickets as table showing subject, category, priority, from_email
+
+          detail panel for selected_ticket:
+            small text 'Select a ticket to inspect the triage decision.'
+            text selected_ticket's subject
+            text selected_ticket's category
+            text selected_ticket's priority
+            text selected_ticket's from_email
+            actions:
+              button 'Escalate'
+              button 'Assign'
+              button 'Close'
 
 # Tests
 

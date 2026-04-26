@@ -75,6 +75,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 /* Toolbar */
 #toolbar select { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: var(--font); cursor: pointer; transition: border-color .15s; }
 #toolbar select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#builder-theme-picker { min-width: 92px; }
 .toolbar-sep { width: 1px; height: 22px; background: var(--bd2); }
 .toolbar-btn { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all .15s; }
 .toolbar-btn:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); transform: translateY(-1px); }
@@ -591,6 +592,7 @@ body.builder-mode.show-source #editor-pane {
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
     <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show/hide .clear source" style="display:none">Show Source ◀</button>
+    <select id="builder-theme-picker" title="Preview theme" style="display:none"></select>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
@@ -879,6 +881,7 @@ show 'Hello, Clear!'
       }
       if (update.docChanged) {
         updateEditorTOC(update.state.doc.toString());
+        syncBuilderThemePicker(update.state.doc.toString());
         // Persist editor content to survive crashes
         try { localStorage.setItem('clear_editor_content', update.state.doc.toString()); } catch (_) {}
       }
@@ -3174,6 +3177,40 @@ function _applyTheme(src, themeName) {
   return `theme '${themeName}'\n\n${src}`;
 }
 
+function initBuilderThemePicker() {
+  const picker = document.getElementById('builder-theme-picker');
+  if (!picker || picker.dataset.ready === 'true') return;
+  picker.innerHTML = window.__CLEAR_CURATED_THEMES
+    .map(t => `<option value="${escHtmlLocal(t.name)}">${escHtmlLocal(t.label)}</option>`)
+    .join('');
+  picker.addEventListener('change', () => applyBuilderTheme(picker.value));
+  picker.dataset.ready = 'true';
+  syncBuilderThemePicker();
+}
+
+function syncBuilderThemePicker(src = null) {
+  const picker = document.getElementById('builder-theme-picker');
+  if (!picker || picker.dataset.ready !== 'true') return;
+  const source = src ?? editor.state.doc.toString();
+  const current = _detectTheme(source) || 'ivory';
+  if ([...picker.options].some(opt => opt.value === current)) picker.value = current;
+}
+
+window.applyBuilderTheme = async function(themeName) {
+  if (!themeName) return;
+  const source = editor.state.doc.toString();
+  const next = _applyTheme(source, themeName);
+  syncBuilderThemePicker(next);
+  if (next === source) return;
+  suppressAutoCompile = true;
+  editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: next } });
+  suppressAutoCompile = false;
+  await autoCompile();
+  compileAnimCancel = true;
+  compileAnimRunning = false;
+  showTab('output');
+};
+
 // One-click updates Phase 5 — fetch the deployed-state for an app slug so the
 // Publish window can swap to "Update <hostname>" / show "Last published N min
 // ago" / change button text. Returns null on any failure (network, 404, etc.)
@@ -5314,6 +5351,12 @@ function detectStudioMode() {
   if (srcBtn) {
     srcBtn.style.display = (mode === 'builder') ? '' : 'none';
     if (mode !== 'builder') body.classList.remove('show-source');
+  }
+  const themePicker = document.getElementById('builder-theme-picker');
+  if (themePicker) {
+    initBuilderThemePicker();
+    themePicker.style.display = (mode === 'builder') ? '' : 'none';
+    syncBuilderThemePicker();
   }
   if (mode === 'builder') {
     let shipCount = 0;

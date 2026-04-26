@@ -1,16 +1,18 @@
 /*
-Onboarding Tracker — multi-step progress for each new customer
+LAYOUT:
++-------------+---------------------------------------------+
+| Sidebar     | Header                                      |
+| Queue links +---------------------------------------------+
+|             | Page header + KPI strip                     |
+|             | Customer table + row detail panel           |
+|             | New-customer form + step table              |
++-------------+---------------------------------------------+
 
-  ┌──────────┐            ┌──────────┐  has many   ┌──────────┐
-  │  Ops     │ ─► CRUD ─► │Customers │ ──────────► │  Steps   │
-  └──────────┘            └──────────┘             └──────────┘
-       │                       │
-       │                       │ progress % computed from
-       │                       │ completed_steps / total_steps
-       │                       │
-       └── view ────────────►  │
-                               │
-                      Status: onboarding / active / churned
+DATAFLOW:
+Browser --> /api/seed --> Customers + OnboardingSteps
+Browser --> /api/customers/onboarding --> customer queue
+Browser --> /api/steps --> checklist table
+Browser --> /api/customers --> create or update customers
 */
 
 build for web and javascript backend
@@ -135,27 +137,85 @@ page 'Onboarding Tracker' at '/':
     get customers from '/api/customers/onboarding'
     get steps from '/api/steps'
 
-  section 'Header' centered, padded:
-    heading 'Onboarding Tracker'
-    total = count of customers
-    text '{total} customers actively onboarding'
+  total = count of customers
+  step_total = count of steps
 
-  section 'New Customer' with style card_bordered:
-    'Customer name' as text input saves to name
-    'Company' as text input saves to company
-    'Email' as text input saves to email
-    'Account manager' as text input saves to account_manager
-    button 'Add Customer':
-      send name, company, email, and account_manager to '/api/customers'
-      get customers from '/api/customers/onboarding'
-      name is ''
-      company is ''
+  section 'Layout' with style app_layout:
 
-  section 'Onboarding Customers':
-    display customers as table showing company, name, account_manager, status
+    section 'Sidebar' with style app_sidebar:
+      heading 'Onboarding'
 
-  section 'All Steps':
-    display steps as table showing customer_id, step_name, completed
+      nav section 'Queue':
+        nav item 'Dashboard' to '/' with count total with icon 'layout-dashboard'
+        nav item 'Customers' to '/' with count total with icon 'users'
+        nav item 'Steps' to '/' with count step_total with icon 'list-checks'
+
+      nav section 'Team':
+        nav item 'Managers' to '/' with icon 'user-check'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        heading 'Customer Success'
+        text 'Onboarding command center'
+
+      section 'Content' with style app_content:
+
+        page header 'Customer Onboarding':
+          subtitle 'Active setup queue for new accounts'
+          actions:
+            button 'Refresh':
+              get customers from '/api/customers/onboarding'
+              get steps from '/api/steps'
+
+        stat strip:
+          stat card 'Active Customers':
+            value total
+            delta '+2 this week'
+            sparkline [2, 3, 3, 4, 5]
+            icon 'users'
+          stat card 'Open Steps':
+            value step_total
+            delta '-1 overdue'
+            sparkline [6, 6, 5, 5, 4]
+            icon 'list-checks'
+          stat card 'Managers':
+            value 2
+            delta 'Sarah and Mike'
+            sparkline [1, 1, 2, 2, 2]
+            icon 'user-check'
+
+        text '{total} customers actively onboarding'
+
+        section 'Customer Workbench' as 2 columns:
+          section 'Customers' with style app_table:
+            display customers as table showing company, name, account_manager, status
+
+          detail panel for selected_customer:
+            text selected_customer's company
+            text selected_customer's name
+            text selected_customer's email
+            text selected_customer's account_manager
+            text selected_customer's status
+            actions:
+              button 'Mark Active'
+              button 'Escalate'
+              button 'Email'
+
+        section 'New Customer' with style app_card:
+          heading 'New Customer'
+          'Customer name' as text input saves to name
+          'Company' as text input saves to company
+          'Email' as text input saves to email
+          'Account manager' as text input saves to account_manager
+          button 'Add Customer':
+            send name, company, email, and account_manager to '/api/customers'
+            get customers from '/api/customers/onboarding'
+            name is ''
+            company is ''
+
+        section 'All Steps' with style app_table:
+          display steps as table showing customer_id, step_name, completed
 
 # Tests
 

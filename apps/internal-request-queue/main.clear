@@ -1,24 +1,20 @@
 /*
-Internal Request Queue — employees submit requests, ops triages and assigns
+LAYOUT:
++----------------+-----------------------------------------------+
+| Request Queue  | Header: triage workspace                       |
+|                +-----------------------------------------------+
+| Queues         | New requests + KPI strip                       |
+| - New          | +-------------------------+ +---------------+ |
+| - All requests | | new request table       | | detail panel  | |
+| Teams          | | category / priority     | | triage view   | |
+| - IT / HR      | +-------------------------+ +---------------+ |
+|                | Submit request form                           |
++----------------+-----------------------------------------------+
 
-  ┌──────────┐  submit   ┌──────────┐    save    ┌──────────┐
-  │ Employee │ ────────► │  Server  │ ─────────► │ Requests │
-  └──────────┘           └──────────┘            └──────────┘
-                                                       │
-                                                       │ filter by category
-                                                       │
-                          ┌──────────┐                 │
-                          │    IT    │ ◄───────────────┤
-                          └──────────┘                 │
-                          ┌──────────┐                 │
-                          │    HR    │ ◄───────────────┤
-                          └──────────┘                 │
-                          ┌──────────┐                 │
-                          │   Ops    │ ◄───────────────┘
-                          └──────────┘
-
-                   Categories: IT, HR, Facilities, Finance
-                   Status: new → in_progress → resolved
+DATAFLOW:
+Employee -> POST /api/requests -> Requests table
+Ops team -> GET /api/requests/new -> table -> detail panel
+Ops team -> PUT /api/requests/:id -> assigned or resolved
 */
 
 build for web and javascript backend
@@ -72,7 +68,7 @@ when user updates request at /api/requests/:id:
 
 when user sends seed to /api/seed:
   create r1:
-    title is 'New laptop — mine is overheating'
+    title is 'New laptop - mine is overheating'
     description is 'MacBook keeps shutting down during video calls. Replacement needed.'
     category is 'IT'
     priority is 'High'
@@ -111,29 +107,99 @@ when user sends seed to /api/seed:
 # Frontend
 
 page 'Request Queue' at '/':
+  new_requests is an empty list
+  all_requests is an empty list
+
   on page load:
     send nothing to '/api/seed'
     get new_requests from '/api/requests/new'
+    get all_requests from '/api/requests'
 
-  section 'Header' centered, padded:
-    heading 'Internal Request Queue'
-    total = count of new_requests
-    text '{total} new requests awaiting triage'
+  new_count = count of new_requests
+  all_count = count of all_requests
+  team_count = 4
 
-  section 'Submit Request' with style card_bordered:
-    'Title' as text input saves to title
-    'Description' as text input saves to description
-    'Category' is a dropdown with ['IT', 'HR', 'Facilities', 'Finance'] saved as a category
-    'Priority' is a dropdown with ['Urgent', 'High', 'Normal', 'Low'] saved as a priority
-    'Your name' as text input saves to submitter
-    button 'Submit':
-      send title, description, category, priority, and submitter to '/api/requests'
-      get new_requests from '/api/requests/new'
-      title is ''
-      description is ''
+  section 'App' with style app_layout:
 
-  section 'New Requests':
-    display new_requests as table showing title, category, priority, submitter
+    section 'Sidebar' with style app_sidebar:
+      heading 'Requests'
+
+      nav section 'Queues':
+        nav item 'New' to '/' with count new_count with icon 'inbox'
+        nav item 'All requests' to '/' with count all_count with icon 'list-checks'
+
+      nav section 'Teams':
+        nav item 'IT' to '/' with icon 'monitor'
+        nav item 'HR' to '/' with icon 'users'
+        nav item 'Facilities' to '/' with icon 'building-2'
+        nav item 'Finance' to '/' with icon 'receipt'
+
+    section 'Main' with style app_main:
+
+      section 'Top' with style app_header:
+        heading 'Internal Request Queue'
+        text 'Operations / Employee intake'
+        button 'Refresh':
+          get new_requests from '/api/requests/new'
+          get all_requests from '/api/requests'
+
+      section 'Body' with style app_content:
+
+        page header 'New Request Triage':
+          subtitle '{new_count} requests awaiting owner assignment'
+          actions:
+            button 'Refresh':
+              get new_requests from '/api/requests/new'
+              get all_requests from '/api/requests'
+
+        stat strip:
+          stat card 'New':
+            value new_count
+            delta 'Needs first response'
+            sparkline [2, 3, 2, 4, 2]
+            icon 'inbox'
+          stat card 'All Requests':
+            value all_count
+            delta 'Across open and resolved work'
+            sparkline [3, 4, 5, 5, 4]
+            icon 'list-checks'
+          stat card 'Teams':
+            value team_count
+            delta 'IT, HR, Facilities, Finance'
+            sparkline [4, 4, 4, 4, 4]
+            icon 'users'
+
+        section 'Triage Workbench' as 2 columns:
+          section 'New Requests' with style app_table:
+            display new_requests as table showing title, category, priority, submitter
+
+          detail panel for selected_request:
+            small text 'Select a request to inspect the triage facts.'
+            text selected_request's title
+            text selected_request's description
+            text selected_request's category
+            text selected_request's priority
+            text selected_request's submitter
+            text selected_request's status
+            actions:
+              button 'Assign':
+                show toast 'Sign in to assign this request'
+              button 'Resolve':
+                show toast 'Sign in to resolve this request'
+
+        section 'Submit Request' with style app_card:
+          subheading 'Submit Request'
+          'Title' as text input saves to title
+          'Description' as text input saves to description
+          'Category' is a dropdown with ['IT', 'HR', 'Facilities', 'Finance'] saved as a category
+          'Priority' is a dropdown with ['Urgent', 'High', 'Normal', 'Low'] saved as a priority
+          'Your name' as text input saves to submitter
+          button 'Submit':
+            send title, description, category, priority, and submitter to '/api/requests'
+            get new_requests from '/api/requests/new'
+            get all_requests from '/api/requests'
+            title is ''
+            description is ''
 
 # Tests
 

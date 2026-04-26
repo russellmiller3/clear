@@ -1,28 +1,15 @@
 /*
-Deal Desk — discount approval workflow with AI-drafted summaries
+LAYOUT:
++----------------+-----------------------------------+---------------+
+| Sidebar        | Pending queue workbench           | Deal details  |
+| Approvals      | Header, tabs, stats, table        | AI summary    |
+| Pipeline       | Row actions and sortable columns  | Sticky actions|
++----------------+-----------------------------------+---------------+
 
-A sales rep submits a discount request. Anything 20% or under is auto-approved
-right away. Anything over 20% goes to the CRO queue. The CRO sees the queue,
-clicks "draft AI summary" on a deal, and gets a one-paragraph recommendation
-with a risk score. Then approve or reject in one click.
-
-  ┌──────────┐ POST /api/deals             ┌──────────┐
-  │   Rep    │ ──────────────────────────> │  Server  │
-  │  (form)  │ <──────────────────────────  │          │
-  └──────────┘   response                   └────┬─────┘
-                                                 │ save
-                                                 v
-  ┌──────────┐ GET /api/deals/pending      ┌─────────┐
-  │   CRO    │ <────────────────────────── │  Deals  │
-  │  (queue) │ POST /api/deals/draft       │  table  │
-  │          │ PATCH /api/deals/:id        └─────────┘
-  └────┬─────┘
-       │  draft button
-       v
-  ┌──────────┐ ask claude  ┌─────┐
-  │ Drafter  │ ──────────> │ AI  │
-  │  Agent   │ <────────── │     │
-  └──────────┘             └─────┘
+DATAFLOW:
+Rep form -> POST /api/deals -> Deals table
+CRO queue -> GET /api/deals/pending -> table + selected detail panel
+Detail panel -> draft summary, risk, recommendation, approve/counter/reject
 */
 
 build for web and javascript backend
@@ -33,12 +20,20 @@ database is local memory
 create a Deals table:
   rep_name, required
   customer, required
+  account_segment
+  deal_type
   list_price (number), default 0
   discount_percent (number), default 0
-  status, default 'pending_cro'
+  status, default 'pending'
   summary
   recommendation
   risk_score (number), default 0
+  submitted_label
+  approval_rule
+  term
+  effective_date
+  health_signal
+  precedent_note
   created_at_date, auto
 
 # Backend
@@ -66,7 +61,7 @@ define function draft_approval(deal_data):
 # Endpoints
 
 when user requests data from /api/deals/pending:
-  send back all Deals where status is 'pending_cro'
+  send back all Deals where status is 'pending'
 
 when user sends deal to /api/deals:
   validate deal:
@@ -75,9 +70,9 @@ when user sends deal to /api/deals:
     list_price is number, min 0
     discount_percent is number, min 0, max 100
   if deal's discount_percent is greater than 20:
-    deal's status is 'pending_cro'
+    deal's status is 'pending'
   otherwise:
-    deal's status is 'auto_approved'
+    deal's status is 'approved'
     deal's recommendation is 'auto'
   new_deal = save deal as new Deal
   send back new_deal with success message
@@ -96,25 +91,117 @@ when user updates deal at /api/deals/:id:
 
 when user sends seed to /api/seed:
   create d1:
-    rep_name is 'sarah.j'
-    customer is 'Acme Corp — 3-year renewal'
-    list_price = 240000
-    discount_percent = 25
+    rep_name is 'Sarah Chen'
+    customer is 'Acme Corp'
+    account_segment is 'Enterprise'
+    deal_type is 'Renewal'
+    list_price = 84000
+    discount_percent = 28
+    status is 'pending'
+    summary is 'Acme is renewing for a third year and asks for a 28 percent discount against a competing bid. Payment health is green and seat growth is steady.'
+    recommendation is 'Approve with a 25 percent counter.'
+    risk_score = 2
+    submitted_label is '2h ago'
+    approval_rule is 'CRO above 25 percent'
+    term is '3 years, annual'
+    effective_date is 'May 1, 2026'
+    health_signal is 'Green health, 84 score'
+    precedent_note is 'Last renewal 22 percent. Enterprise average 24 percent.'
   save d1 as new Deal
   create d2:
-    rep_name is 'mike.l'
-    customer is 'Beta Industries — new logo'
-    list_price = 80000
-    discount_percent = 35
+    rep_name is 'Marcus Wong'
+    customer is 'Globex Industries'
+    account_segment is 'Mid-market'
+    deal_type is 'New logo'
+    list_price = 42500
+    discount_percent = 18
+    status is 'pending'
+    summary is 'Globex wants an entry discount to start this quarter. The ask is below the CRO threshold but bundled services make margin worth a quick review.'
+    recommendation is 'Approve as written.'
+    risk_score = 3
+    submitted_label is '3h ago'
+    approval_rule is 'Review bundled services'
+    term is '1 year, annual'
+    effective_date is 'May 15, 2026'
+    health_signal is 'New logo, clean procurement'
+    precedent_note is 'Similar new-logo deals average 19 percent.'
   save d2 as new Deal
   create d3:
-    rep_name is 'alex.p'
-    customer is 'Gamma LLC — expansion'
-    list_price = 36000
-    discount_percent = 15
-    status is 'auto_approved'
-    recommendation is 'auto'
+    rep_name is 'Priya Patel'
+    customer is 'Initech'
+    account_segment is 'Mid-market'
+    deal_type is 'Expansion'
+    list_price = 118000
+    discount_percent = 35
+    status is 'pending'
+    summary is 'Initech is expanding into two departments but wants a deep discount to offset rollout risk. The value is high enough to justify a counter.'
+    recommendation is 'Counter at 30 percent.'
+    risk_score = 6
+    submitted_label is '5h ago'
+    approval_rule is 'CRO above 25 percent'
+    term is '2 years, annual'
+    effective_date is 'June 1, 2026'
+    health_signal is 'Expansion intent, medium risk'
+    precedent_note is 'Expansion deals over 100K average 29 percent.'
   save d3 as new Deal
+  create d4:
+    rep_name is 'Daniel Kim'
+    customer is 'Hooli'
+    account_segment is 'Enterprise'
+    deal_type is 'New logo'
+    list_price = 96800
+    discount_percent = 22
+    status is 'pending'
+    summary is 'Hooli is late-stage and procurement is pushing for a standard enterprise concession. The request is close to normal range.'
+    recommendation is 'Approve if signature lands this month.'
+    risk_score = 4
+    submitted_label is '7h ago'
+    approval_rule is 'CRO review for enterprise new logo'
+    term is '2 years, annual'
+    effective_date is 'May 20, 2026'
+    health_signal is 'Late-stage, legal nearly done'
+    precedent_note is 'Enterprise new-logo average is 23 percent.'
+  save d4 as new Deal
+  create d5:
+    rep_name is 'Elena Jimenez'
+    customer is 'Pied Piper'
+    account_segment is 'SMB'
+    deal_type is 'New logo'
+    list_price = 26400
+    discount_percent = 12
+    status is 'pending'
+    summary is 'Pied Piper is a small new logo with a modest discount request. The ask is low, but the team wants CRO visibility because it is a strategic account.'
+    recommendation is 'Approve.'
+    risk_score = 2
+    submitted_label is 'yesterday'
+    approval_rule is 'Strategic account review'
+    term is '1 year, annual'
+    effective_date is 'May 8, 2026'
+    health_signal is 'Founder-led, fast close'
+    precedent_note is 'SMB new-logo average is 14 percent.'
+  save d5 as new Deal
+  create d6:
+    rep_name is 'Sarah Chen'
+    customer is 'Soylent Co'
+    account_segment is 'Mid-market'
+    deal_type is 'Renewal'
+    list_price = 54200
+    discount_percent = 15
+    status is 'approved'
+    submitted_label is '23m ago'
+    recommendation is 'approved'
+  save d6 as new Deal
+  create d7:
+    rep_name is 'Marcus Wong'
+    customer is 'Dunder Industries'
+    account_segment is 'SMB'
+    deal_type is 'New logo'
+    list_price = 31000
+    discount_percent = 42
+    status is 'rejected'
+    submitted_label is '1h ago'
+    recommendation is 'rejected'
+  save d7 as new Deal
   send back 'seeded' with success message
 
 # Frontend
@@ -122,12 +209,114 @@ when user sends seed to /api/seed:
 page 'Deal Desk' at '/':
   on page load:
     send nothing to '/api/seed'
+    get pending from '/api/deals/pending'
 
+  pending_count = count of pending
+  approved_today_count = 12
+  rejected_count = 3
+  awaiting_count = 7
+  total_deals_count = 148
+  rep_count = 22
+  average_discount is '22.4%'
+  value_at_stake is '$348K'
+  approvals_week_count = 38
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_today_count with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with count rejected_count with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with count awaiting_count with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with count total_deals_count with icon 'layers'
+        nav item 'Reps' to '/reps' with count rep_count with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Clear'
+        text 'Workspace / Deal Desk / Pending Queue'
+
+      section 'Content' with style app_content:
+        page header 'Pending CRO approval':
+          subtitle '{pending_count} deals waiting on you. Oldest submitted 2 hours ago.'
+          actions:
+            button 'Refresh'
+            button 'Export'
+            button 'New deal'
+
+        tab strip:
+          active tab is 'Pending'
+          tab 'Pending' to '/'
+          tab 'My approvals' to '/approved'
+          tab 'All' to '/all'
+
+        stat strip:
+          stat card 'Pending count':
+            value pending_count
+            delta 'same as yesterday'
+            icon 'inbox'
+          stat card 'Avg discount':
+            value average_discount
+            delta '+1.8 pts vs last week'
+            icon 'percent'
+          stat card 'Value at stake':
+            value value_at_stake
+            delta '+12% vs last week'
+            icon 'dollar-sign'
+          stat card 'Approvals - 7-day':
+            value approvals_week_count
+            delta '+6 vs prior 7 days'
+            sparkline [4, 6, 5, 8, 7, 10, 9]
+
+        section 'Queue Workbench' side by side, fills remaining space:
+          section 'Pending Queue' with style app_table, fills remaining space:
+            display pending as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label with actions:
+              'Review' is secondary
+              'Approve' is primary
+
+          detail panel for selected_deal:
+            heading 'Deal details'
+            text selected_deal's customer
+            text selected_deal's summary
+            display selected_deal's list_price as dollars called 'List price'
+            display selected_deal's discount_percent as percent called 'Discount'
+            display selected_deal's risk_score as number called 'Risk score'
+            text selected_deal's recommendation
+            text selected_deal's approval_rule
+            text selected_deal's term
+            text selected_deal's health_signal
+            text selected_deal's precedent_note
+            actions:
+              button 'Reject'
+              button 'Counter'
+              button 'Approve'
+
+        section 'Footer' as row:
+          small text '{pending_count} pending'
+          small text 'synced 12 sec ago'
+          small text 'Clear Cloud'
+
+page 'New discount request' at '/new':
   section 'Header' centered, padded:
-    heading 'Deal Desk'
+    heading 'New discount request'
     text 'Submit a discount request. Over 20 percent goes to the CRO queue.'
 
-  section 'New discount request' with style card_bordered:
+  section 'New discount request' with style form:
     'Your name' as text input saves to rep_name
     'Customer' as text input saves to customer
     'List price ($)' as number input saves to list_price
@@ -139,19 +328,7 @@ page 'Deal Desk' at '/':
       list_price = 0
       discount_percent = 0
 
-  text 'CRO? Sign in to review the pending queue.'
-
-page 'CRO Queue' at '/cro':
-  needs login
-
-  on page load:
-    get pending from '/api/deals/pending'
-
-  section 'Pending CRO approval' centered, padded:
-    heading 'Pending CRO approval'
-    pending_count = count of pending
-    text '{pending_count} deals awaiting CRO approval'
-    display pending as cards showing customer, rep_name, discount_percent, recommendation, summary
+  link 'Back to queue' goes to '/'
 
 page 'Sign in' at '/login':
   section 'Sign in' centered, padded:

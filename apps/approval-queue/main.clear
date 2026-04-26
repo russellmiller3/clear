@@ -1,15 +1,20 @@
 /*
-Approval Queue — submit requests, route to approver, approve or reject
+LAYOUT:
++----------------+-----------------------------------------------+
+| Approval Queue | Header: intake workspace                       |
+|                +-----------------------------------------------+
+| Queues         | Pending approvals + KPI strip                  |
+| - Pending      | +-------------------------+ +---------------+ |
+| - All requests | | pending table           | | detail panel  | |
+|                | | requester / amount      | | decision view | |
+|                | +-------------------------+ +---------------+ |
+|                | Submit request form                           |
++----------------+-----------------------------------------------+
 
-  ┌──────────┐  submit   ┌──────────┐  save   ┌──────────┐
-  │ Submitter│ ────────► │  Server  │ ──────► │ Requests │
-  └──────────┘           └──────────┘         └──────────┘
-  ┌──────────┐  approve  ┌──────────┐  request      │
-  │ Approver │ ────────► │  Server  │ ─────────────┘
-  └──────────┘           └──────────┘
-                                 │
-                           Auth (JWT)
-                           Status: pending → approved / rejected
+DATAFLOW:
+Submitter -> POST /api/requests -> Requests table
+Approver  -> GET /api/requests/pending -> table -> detail panel
+Approver  -> PUT /api/requests/:id -> approved or rejected
 */
 
 build for web and javascript backend
@@ -58,21 +63,21 @@ when user updates request at /api/requests/:id:
 
 when user sends seed to /api/seed:
   create r1:
-    title is 'Quarterly software budget — Acme Corp'
+    title is 'Quarterly software budget - Acme Corp'
     description is 'Standard renewal, 15 seats'
     amount is 4500
     status is 'pending'
     requester is 'sarah.j'
   save r1 as new Request
   create r2:
-    title is 'Travel expenses — sales conference'
+    title is 'Travel expenses - sales conference'
     description is 'Airfare and hotel for 2 reps'
     amount is 2800
     status is 'pending'
     requester is 'mike.l'
   save r2 as new Request
   create r3:
-    title is 'Contractor engagement — design'
+    title is 'Contractor engagement - design'
     description is 'Design contractor, 3 months'
     amount is 18000
     status is 'pending'
@@ -97,29 +102,92 @@ when user sends seed to /api/seed:
 # Frontend
 
 page 'Approval Queue' at '/':
+  pending is an empty list
+  all_requests is an empty list
+
   on page load:
     send nothing to '/api/seed'
     get pending from '/api/requests/pending'
+    get all_requests from '/api/requests'
 
-  section 'Header' centered, padded:
-    heading 'Approval Queue'
-    total = count of pending
-    text '{total} pending requests'
+  pending_count = count of pending
+  all_count = count of all_requests
+  pending_amount = sum of amount in pending
 
-  section 'New Request' with style card_bordered:
-    'Title' as text input saves to title
-    'Description' as text input saves to description
-    'Amount ($)' as number input saves to amount
-    'Requester' as text input saves to requester
-    button 'Submit':
-      send title, description, amount, and requester to '/api/requests'
-      get pending from '/api/requests/pending'
-      title is ''
-      description is ''
-      amount is 0
+  section 'App' with style app_layout:
 
-  section 'Pending Requests':
-    display pending as table showing title, requester, amount, description
+    section 'Sidebar' with style app_sidebar:
+      heading 'Approvals'
+
+      nav section 'Queues':
+        nav item 'Pending' to '/' with count pending_count with icon 'inbox'
+        nav item 'All requests' to '/' with count all_count with icon 'list-checks'
+
+    section 'Main' with style app_main:
+
+      section 'Top' with style app_header:
+        heading 'Approval Queue'
+        text 'Operations / Request approvals'
+        button 'Refresh':
+          get pending from '/api/requests/pending'
+          get all_requests from '/api/requests'
+
+      section 'Body' with style app_content:
+
+        page header 'Pending Approvals':
+          subtitle '{pending_count} requests need a decision'
+          actions:
+            button 'Refresh':
+              get pending from '/api/requests/pending'
+              get all_requests from '/api/requests'
+
+        stat strip:
+          stat card 'Pending':
+            value pending_count
+            delta 'Awaiting approver'
+            sparkline [3, 4, 5, 4, 3]
+            icon 'inbox'
+          stat card 'Requested Amount':
+            value pending_amount
+            delta 'Open request value'
+            sparkline [6, 7, 8, 6, 9]
+            icon 'dollar-sign'
+          stat card 'All Requests':
+            value all_count
+            delta 'Across every status'
+            sparkline [2, 3, 4, 5, 5]
+            icon 'list-checks'
+
+        section 'Review Workbench' as 2 columns:
+          section 'Pending Requests' with style app_table:
+            display pending as table showing title, requester, amount, status
+
+          detail panel for selected_request:
+            small text 'Select a request to inspect it.'
+            text selected_request's title
+            text selected_request's description
+            display selected_request's amount as dollars called 'Amount'
+            text selected_request's requester
+            text selected_request's status
+            actions:
+              button 'Approve':
+                show toast 'Sign in to approve this request'
+              button 'Reject':
+                show toast 'Sign in to reject this request'
+
+        section 'New Request' with style app_card:
+          subheading 'Submit Request'
+          'Title' as text input saves to title
+          'Description' as text input saves to description
+          'Amount ($)' as number input saves to amount
+          'Requester' as text input saves to requester
+          button 'Submit':
+            send title, description, amount, and requester to '/api/requests'
+            get pending from '/api/requests/pending'
+            get all_requests from '/api/requests'
+            title is ''
+            description is ''
+            amount is 0
 
 # Tests
 

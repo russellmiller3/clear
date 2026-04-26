@@ -266,6 +266,70 @@ try {
   );
 
   // ==========================================================================
+  // PHASE 4.5 — Builder theme picker
+  // ==========================================================================
+  console.log('\n🎨 Phase 4.5 — Builder theme picker');
+
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  await page.evaluate(() => {
+    const src = `build for web
+
+page 'Theme Test' at '/':
+  show 'Theme Test'
+`;
+    window._editorView.dispatch({
+      changes: { from: 0, to: window._editorView.state.doc.length, insert: src },
+    });
+  });
+
+  assert(
+    await page.locator('#builder-theme-picker').isVisible(),
+    'theme picker visible in builder mode'
+  );
+
+  await page.locator('#builder-theme-picker').selectOption('dusk');
+  await page.waitForFunction(() => document.getElementById('status')?.textContent?.includes('OK'), null, { timeout: 5000 });
+  const duskSource = await page.evaluate(() => window._editorView.state.doc.toString());
+  assert(
+    /^theme 'dusk'$/m.test(duskSource),
+    'selecting dusk inserts the theme line into source'
+  );
+
+  await page.evaluate(() => {
+    const src = `theme 'ivory'
+
+build for web
+
+page 'Theme Test' at '/':
+  show 'Theme Test'
+`;
+    window._editorView.dispatch({
+      changes: { from: 0, to: window._editorView.state.doc.length, insert: src },
+    });
+  });
+  await page.locator('#builder-theme-picker').selectOption('vault');
+  await page.waitForFunction(() => document.getElementById('status')?.textContent?.includes('OK'), null, { timeout: 5000 });
+  await page.waitForSelector('#preview-content iframe', { timeout: 5000 });
+  const vaultSource = await page.evaluate(() => window._editorView.state.doc.toString());
+  assert(
+    /^theme 'vault'$/m.test(vaultSource) && !/^theme 'ivory'$/m.test(vaultSource),
+    'selecting vault replaces the existing theme line'
+  );
+  const previewTheme = await page.evaluate(() => {
+    const iframe = document.querySelector('#preview-content iframe');
+    return iframe?.srcdoc?.match(/data-theme="([^"]+)"/)?.[1]
+      || iframe?.contentDocument?.documentElement?.getAttribute('data-theme')
+      || '';
+  });
+  assert(previewTheme === 'vault', `toolbar theme recompiles preview with vault theme (got "${previewTheme}")`);
+
+  await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
+  assert(
+    !(await page.locator('#builder-theme-picker').isVisible()),
+    'theme picker hidden in classic mode'
+  );
+
+  // ==========================================================================
   // PHASE 5 — Chat empty-state placeholder
   // ==========================================================================
   console.log('\n💬 Phase 5 — Chat placeholder');

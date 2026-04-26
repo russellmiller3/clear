@@ -1,4 +1,16 @@
 /*
+Lead Router - sales intake workbench
+
+LAYOUT:
++-------------+----------------------------------------------+
+| Sidebar     | Top bar                                      |
+| - New queue +----------------------------------------------+
+| - Routing   | Page header                                  |
+| - Owners    | Stats: new leads, owners, rules              |
+|             | Intake form                                  |
+|             | Lead table + selected lead detail panel      |
++-------------+----------------------------------------------+
+
 Lead Router — intake form, apply rules, assign to owner
 
   ┌──────────┐  submit   ┌──────────┐   rules    ┌──────────┐
@@ -115,26 +127,75 @@ page 'Lead Router' at '/':
     send nothing to '/api/seed'
     get new_leads from '/api/leads/new'
 
-  section 'Header' centered, padded:
-    heading 'Lead Router'
-    total = count of new_leads
-    text '{total} new leads awaiting follow-up'
+  total = count of new_leads
+  owner_count = 3
+  rule_count = 3
 
-  section 'New Lead' with style card_bordered:
-    'Name' as text input saves to name
-    'Email' as text input saves to email
-    'Company' as text input saves to company
-    'Size' is a dropdown with ['SMB', 'Mid-market', 'Enterprise'] saved as a size
-    'Source' as text input saves to source
-    button 'Add Lead':
-      send name, email, company, size, and source to '/api/leads'
-      get new_leads from '/api/leads/new'
-      name is ''
-      email is ''
-      company is ''
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Lead Router'
+      nav section 'Queues':
+        nav item 'New leads' to '/' with count total with icon 'inbox'
+      nav section 'Operations':
+        nav item 'Routing rules' to '/' with count rule_count with icon 'route'
+        nav item 'Owners' to '/' with count owner_count with icon 'users'
 
-  section 'New Leads':
-    display new_leads as table showing name, company, size, source, assigned_to
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Lead Router'
+        text 'Sales ops / intake'
+
+      section 'Content' with style app_content:
+        page header 'New lead queue':
+          subtitle '{total} leads awaiting follow-up'
+          actions:
+            button 'Refresh':
+              get new_leads from '/api/leads/new'
+
+        stat strip:
+          stat card 'New Leads':
+            value total
+            delta 'Live intake queue'
+            sparkline [1, 2, 3, 3, 4]
+            icon 'inbox'
+          stat card 'Owners':
+            value owner_count
+            delta 'Alice, Bob, Charlie'
+            icon 'users'
+          stat card 'Routing Rules':
+            value rule_count
+            delta 'Size based assignment'
+            icon 'route'
+
+        section 'New Lead' with style app_card:
+          subheading 'Add lead'
+          'Name' as text input saves to name
+          'Email' as text input saves to email
+          'Company' as text input saves to company
+          'Size' is a dropdown with ['SMB', 'Mid-market', 'Enterprise'] saved as a size
+          'Source' as text input saves to source
+          button 'Add Lead':
+            send name, email, company, size, and source to '/api/leads'
+            get new_leads from '/api/leads/new'
+            name is ''
+            email is ''
+            company is ''
+            source is ''
+
+        section 'Lead Workbench' as 2 columns:
+          section 'New Leads' with style app_table:
+            display new_leads as table showing name, company, size, source, assigned_to
+
+          detail panel for selected_lead:
+            small text 'Select a lead to inspect the routing decision.'
+            text selected_lead's name
+            text selected_lead's company
+            text selected_lead's source
+            text selected_lead's assigned_to
+            actions:
+              button 'Assign'
+              button 'Route'
+              button 'Archive'
 
 # Tests
 
