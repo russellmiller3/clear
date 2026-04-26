@@ -29,12 +29,14 @@ Sixteen pieces of work, all committed and merged into the overnight branch:
 
 ## Still in flight at handoff time
 
-**Shell phase 5 (data tables).** A worker has been running the polished-tables work (status pills, hover-revealed row actions, sortable headers, selectable rows) for ~30 minutes. May or may not return cleanly before you wake. If it lands and merges clean, that's a 10th piece of work. If it doesn't, the parent session left it isolated in its worktree branch — it can be reviewed and merged on demand.
+**Nothing.** All 16 spawned workers either landed cleanly (most of them), produced salvageable work I committed on their behalf (the canonical-examples draft), or were declared stuck and re-spawned with tighter briefs (Shell Phase 5 took two attempts — the redo landed cleanly).
 
 ## Numbers
 
-- **Compiler tests:** 2605/0 (was 2586 at session start; +19 from the new tests added across this overnight run)
-- **Scorer tests:** 19/19 green (new in this run)
+- **Compiler tests:** 2625/0 (was 2586 at session start; +39 from this overnight run across all features)
+- **Scorer tests:** 19/19 green (new — winner-harvest)
+- **Shape-matcher tests:** 17/17 green (new — Lean Lesson 2)
+- **Open-capability tests:** 18/18 green (new — Lean Lesson 3)
 - **All 8 reference apps:** still compile clean
 - **API spend:** $0 (every worker ran on the free local Claude Code path; no Anthropic API calls billed)
 
