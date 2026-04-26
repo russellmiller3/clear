@@ -124,7 +124,7 @@ Seven hooks in this repo as of 2026-04-25. Each fires automatically on a specifi
 
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
-_Last refresh: 2026-04-24_
+_Last refresh: 2026-04-26_
 
 ### CLAUDE.md rules (project-level, this repo)
 
@@ -182,7 +182,11 @@ _Last refresh: 2026-04-24_
 - **check-doc-drift.cjs** — Files we care about — the canonical docs that must agree with each other.
 - **cross-target-smoke.mjs** — scripts/cross-target-smoke.mjs
 - **decidable-core-replay.mjs** — scripts/decidable-core-replay.mjs
+- **doc-drift.mjs** — scripts/doc-drift.mjs
+- **doc-drift.test.mjs** — scripts/doc-drift.test.mjs
 - **factor-db-summary.mjs** — Quick read-only summary of the Factor DB.
+- **log-compiler-edits.mjs** — Post-commit hook: scan the last commit's diff for error-message-shaped
+- **log-compiler-edits.test.mjs** — Unit tests for the compiler-edit diff parser.
 - **reconcile-wfp.js** — Weekly reconcile job.
 - **smoke-cf-target.mjs** — Spot-check the --target cloudflare emission end-to-end for a representative
 - **top-friction-errors.mjs** — top-friction-errors — mine Factor DB for compile errors that cost the most
