@@ -9794,6 +9794,36 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
   }
 
+  // Render text templates: replace {varname} with current values from
+  // _recompute()'s closure scope (locals like `pending_count = count of pending`)
+  // or from _state. Walk the AST to discover which variable names are referenced
+  // in any text/heading content node so we can list them at compile time —
+  // arrow-function callbacks can't reach closure vars dynamically by string.
+  const _tplVars = new Set();
+  const _tplVarRe = /\{([a-zA-Z_]\w*)\}/g;
+  for (const _node of flatNodes) {
+    if (_node.type === NodeType.CONTENT && typeof _node.text === 'string') {
+      let _m;
+      _tplVarRe.lastIndex = 0;
+      while ((_m = _tplVarRe.exec(_node.text)) !== null) _tplVars.add(_m[1]);
+    }
+  }
+  if (_tplVars.size > 0) {
+    lines.push(`  // Substitute {varname} in text templates`);
+    lines.push(`  const _tplCtx = Object.assign({}, _state || {});`);
+    for (const _v of _tplVars) {
+      const _sv = sanitizeName(_v);
+      lines.push(`  if (typeof ${_sv} !== 'undefined') _tplCtx[${JSON.stringify(_v)}] = ${_sv};`);
+    }
+    lines.push(`  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {`);
+    lines.push(`    const _tpl = _el.getAttribute('data-clear-tpl');`);
+    lines.push(`    _el.textContent = _tpl.replace(/\\{(\\w+)\\}/g, (_m, _v) => {`);
+    lines.push(`      const _val = _tplCtx[_v];`);
+    lines.push(`      return (_val == null) ? '' : String(_val);`);
+    lines.push(`    });`);
+    lines.push(`  });`);
+  }
+
   lines.push('}');
 
   // 4b. Chat component event listeners
@@ -10166,6 +10196,121 @@ const INLINE_LAYOUT_MODIFIERS = {
   'rounded':             { prop: 'border-radius', val: '12px' },
 };
 
+// Default signup+login form auto-injected on /login pages when
+// `allow signup and login` is in source and the user didn't write their own
+// form. POSTs to /auth/login or /auth/signup, stores the JWT, redirects to
+// `?next=` (or '/'). Self-contained — no dependency on _state or _recompute().
+const AUTH_LOGIN_FORM_HTML = `    <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-base-content tracking-tight mb-2">Welcome back</h1>
+        <p class="text-sm text-base-content/60">Sign in or create an account to continue</p>
+      </div>
+      <div class="bg-base-100 border border-base-300/50 shadow-sm rounded-box p-8 flex flex-col gap-6">
+        <div class="flex p-1 bg-base-200 rounded-lg" role="tablist">
+          <button type="button" data-auth-tab="login" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors bg-base-100 text-base-content shadow-sm">Sign in</button>
+          <button type="button" data-auth-tab="signup" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors text-base-content/60 hover:text-base-content">Sign up</button>
+        </div>
+        <div data-auth-panel="login" class="flex flex-col gap-4">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_login_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_login_password" type="password" autocomplete="current-password" class="input input-bordered w-full" placeholder="••••••••" />
+          </fieldset>
+          <button id="auth_login_submit" type="button" class="btn btn-primary w-full">Sign in</button>
+          <p id="auth_login_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+        <div data-auth-panel="signup" class="flex flex-col gap-4" style="display:none">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_signup_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_signup_password" type="password" autocomplete="new-password" class="input input-bordered w-full" placeholder="At least 8 characters" />
+          </fieldset>
+          <button id="auth_signup_submit" type="button" class="btn btn-primary w-full">Create account</button>
+          <p id="auth_signup_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var tabs = document.querySelectorAll('[data-auth-tab]');
+      var panels = document.querySelectorAll('[data-auth-panel]');
+      function setActive(which) {
+        tabs.forEach(function (t) {
+          var on = t.getAttribute('data-auth-tab') === which;
+          t.classList.toggle('bg-base-100', on);
+          t.classList.toggle('text-base-content', on);
+          t.classList.toggle('shadow-sm', on);
+          t.classList.toggle('text-base-content/60', !on);
+        });
+        panels.forEach(function (p) {
+          p.style.display = p.getAttribute('data-auth-panel') === which ? 'flex' : 'none';
+        });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { setActive(t.getAttribute('data-auth-tab')); }); });
+      function nextDest() {
+        try {
+          var n = new URL(window.location.href).searchParams.get('next');
+          return (n && n.charAt(0) === '/') ? n : '/';
+        } catch (e) { return '/'; }
+      }
+      async function submit(path, emailEl, passwordEl, errEl, btn) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        var email = (emailEl.value || '').trim();
+        var password = passwordEl.value || '';
+        if (!email || !password) {
+          errEl.textContent = 'Email and password are required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        btn.disabled = true;
+        try {
+          var res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, password: password })
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) {}
+          if (!res.ok) {
+            errEl.textContent = (data && data.error) ? data.error : 'Sign in failed. Please try again.';
+            errEl.style.display = 'block';
+            return;
+          }
+          if (data && data.token) localStorage.setItem('token', data.token);
+          window.location.href = nextDest();
+        } catch (e) {
+          errEl.textContent = 'Network error. Please try again.';
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      var loginBtn = document.getElementById('auth_login_submit');
+      if (loginBtn) loginBtn.addEventListener('click', function () {
+        submit('/auth/login',
+          document.getElementById('auth_login_email'),
+          document.getElementById('auth_login_password'),
+          document.getElementById('auth_login_error'),
+          loginBtn);
+      });
+      var signupBtn = document.getElementById('auth_signup_submit');
+      if (signupBtn) signupBtn.addEventListener('click', function () {
+        submit('/auth/signup',
+          document.getElementById('auth_signup_email'),
+          document.getElementById('auth_signup_password'),
+          document.getElementById('auth_signup_error'),
+          signupBtn);
+      });
+    })();
+    </script>`;
+
 function buildHTML(body) {
   const parts = [];
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
@@ -10180,6 +10325,10 @@ function buildHTML(body) {
   let hasChat = false;  // Track if any chat display nodes exist (for chat CSS)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
+  // True when `allow signup and login` is in source — the compiler can then
+  // auto-inject a default signup+login form on `/login` pages so the user
+  // doesn't end up with a "use the form above" dead-end.
+  const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
 
   function walk(nodes) {
     for (const node of nodes) {
@@ -10188,6 +10337,26 @@ function buildHTML(body) {
           pageTitle = node.title;
           if (node.route) {
             pages.push({ title: node.title, route: node.route, startIdx: parts.length });
+          }
+          // Auto-inject a default signup+login form when the page is at /login,
+          // `allow signup and login` is in source, and the user didn't already
+          // write their own input form. Avoids the "use the form above"
+          // dead-end where a sign-in page renders just a heading and copy.
+          if (hasAuthScaffold && node.route && /^\/+login\/?$/i.test(String(node.route))) {
+            const _bodyAll = (function _coll(ns) {
+              const out = [];
+              for (const _n of (ns || [])) {
+                out.push(_n);
+                if (_n && Array.isArray(_n.body)) out.push(..._coll(_n.body));
+              }
+              return out;
+            })(node.body || []);
+            const _hasOwnForm = _bodyAll.some(n =>
+              n && (n.type === NodeType.ASK_FOR || n.type === NodeType.LOGIN_ACTION)
+            );
+            if (!_hasOwnForm) {
+              parts.push(AUTH_LOGIN_FORM_HTML);
+            }
           }
           walk(node.body);
           if (node.route) {
@@ -11023,8 +11192,20 @@ ${options}
           ];
           const inDarkCard = COLORED_CARD_PRESETS.includes(parentPreset);
           const _clContent = clAttr(node);
-          // Inject data-clear-line into the first tag of whatever content is pushed
-          const _pushContent = (html) => { parts.push(_clContent ? html.replace(/>/, _clContent + '>') : html); };
+          // Detect {varname} templates in the formatted content. When present,
+          // emit a data-clear-tpl attribute holding the original template so
+          // _recompute() can re-substitute the variables on every render.
+          const _hasTpl = typeof formatted === 'string' && /\{[a-zA-Z_]\w*\}/.test(formatted);
+          const _clTpl = _hasTpl
+            ? ` data-clear-tpl="${formatted.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"`
+            : '';
+          // Inject data-clear-line + data-clear-tpl into the first tag of whatever content is pushed
+          const _pushContent = (html) => {
+            let _out = html;
+            if (_clTpl) _out = _out.replace(/>/, _clTpl + '>');
+            if (_clContent) _out = _out.replace(/>/, _clContent + '>');
+            parts.push(_out);
+          };
           const _pc = _pushContent; // short alias
           switch (ui.contentType) {
             case 'heading':
@@ -11404,7 +11585,11 @@ _router();`;
     css.includes('full_height') || css.includes('column_layout') || css.includes('grid') ||
     css.includes('flex-direction: row') || css.includes('side_by_side');
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
-  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8 flex flex-col gap-6';
+  // The default page wrapper used to be `max-w-2xl mx-auto p-8` — a 600px column
+  // that made every Marcus app look like a 2018 single-column-form site. Widen
+  // to a 5xl container with breathing room. Apps that opt into landing/app
+  // presets bypass this. See landing/marcus-app-target.html for the visual bar.
+  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6';
 
   // Use module script if compiled code uses dynamic import (await import)
   const scriptType = compiledJS.includes('await import(') ? ' type="module"' : '';
@@ -11421,9 +11606,11 @@ ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts
 ${hasMap ? '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />\n  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"><\/script>' : ''}
 ${hasQR ? '  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"><\/script>' : ''}
 ${hasRichText ? '  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />\n  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.min.js"><\/script>\n  <style>.rich-text-editor{min-height:180px;border:none!important}.ql-toolbar{border:none!important;border-bottom:1px solid var(--color-base-300)!important;border-radius:0.375rem 0.375rem 0 0}.ql-container{border:none!important;font-family:inherit;font-size:15px}.rich-text-wrap .ql-editor{min-height:150px}</style>' : ''}
+  <link rel="preconnect" href="https://rsms.me/" crossorigin>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <style>${css}</style>
 </head>
 <body class="min-h-screen bg-base-100">
@@ -11480,7 +11667,8 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
   });
   <\/script>` : ''}
 ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
-  <script src="/__meph__/widget.js" defer><\/script>` : ''}
+  <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
+  <script src="/__meph__/widget.js" defer onerror="this.remove()"><\/script>` : ''}
   <!-- ============================================================== -->
   <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
   <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
@@ -13583,13 +13771,62 @@ function stylesToCSS(styles, vars = {}) {
 // Inspired by Linear/Vercel/Raycast aesthetic: clean, muted, professional
 // =============================================================================
 
-const CSS_RESET = `/* Clear design system v2 */
+const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tabular nums */
 *, *::before, *::after { box-sizing: border-box; }
-body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
-.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
-.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+:root {
+  /* Slate chrome layered on top of DaisyUI base/primary tokens. Modeled on
+     the 2026 RevOps mock — see landing/marcus-app-target.html. Compiled apps
+     read these for hairlines, status pills, stat cards, sidebar nav. */
+  --clear-bg-app:        oklch(98% 0.005 240);
+  --clear-bg-canvas:     oklch(100% 0 0);
+  --clear-bg-rail:       oklch(99% 0.005 240);
+  --clear-bg-row-hover:  oklch(96% 0.008 240);
+  --clear-bg-active:     oklch(96% 0.025 258);
+  --clear-bg-chip:       oklch(95% 0.01 240);
+  --clear-line:          oklch(91% 0.012 240);
+  --clear-line-strong:   oklch(83% 0.015 240);
+  --clear-ink:           oklch(15% 0.025 255);
+  --clear-ink-soft:      oklch(35% 0.02 255);
+  --clear-ink-muted:     oklch(54% 0.018 255);
+  --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-good:          oklch(50% 0.16 152);
+  --clear-good-soft:     oklch(96% 0.05 152);
+  --clear-warn:          oklch(58% 0.14 65);
+  --clear-warn-soft:     oklch(96% 0.05 80);
+  --clear-bad:           oklch(54% 0.21 25);
+  --clear-bad-soft:      oklch(96% 0.04 25);
+}
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: "cv11","ss01","ss03";
+  -webkit-font-smoothing: antialiased;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+  margin: 0;
+}
+@supports (font-variation-settings: normal) {
+  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+}
+.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
 #app { margin: 0 auto; }
-::selection { background: oklch(var(--color-primary) / 0.15); }`;
+::selection { background: oklch(var(--color-primary) / 0.15); }
+/* Hairline borders — drop-in alternative to combo border+shadow */
+.hairline   { border: 1px solid var(--clear-line); }
+.hairline-b { border-bottom: 1px solid var(--clear-line); }
+.hairline-r { border-right: 1px solid var(--clear-line); }
+.hairline-t { border-top: 1px solid var(--clear-line); }
+/* Status pills — uppercase semibold colored on tinted bg */
+.clear-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+}
+.clear-pill-pending  { background: var(--clear-warn-soft); color: var(--clear-warn); }
+.clear-pill-approved { background: var(--clear-good-soft); color: var(--clear-good); }
+.clear-pill-rejected { background: var(--clear-bad-soft);  color: var(--clear-bad); }
+.clear-pill-neutral  { background: var(--clear-bg-chip);    color: var(--clear-ink-soft); }`;
 
 const THEME_CSS = {
   midnight: `[data-theme="midnight"] {

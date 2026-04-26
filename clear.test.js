@@ -16131,17 +16131,20 @@ page 'App' at '/':
     expect(r.html).toContain('h-screen');
   });
 
-  it('app with no layout modifiers gets max-w-2xl', () => {
+  it('app with no layout modifiers gets the wide app-shell wrapper', () => {
     const src = `build for web
 page 'Simple' at '/':
   heading 'Hello'
   text 'World'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).toContain('max-w-2xl');
+    // Default page wrapper: 5xl container with breathing room (was max-w-2xl
+    // but the 600px column made every Marcus app look 2018-bootstrap).
+    expect(r.html).toContain('max-w-5xl');
+    expect(r.html).toContain('mx-auto');
   });
 
-  it('app_layout preset gets empty class (no max-w-2xl)', () => {
+  it('app_layout preset gets empty class (no default wrapper)', () => {
     const src = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -16151,7 +16154,7 @@ page 'App' at '/':
       text 'Content'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).not.toContain('max-w-5xl');
   });
 });
 
