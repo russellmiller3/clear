@@ -1,5 +1,6 @@
 {
   "id": "echo",
+  "held_out": true,
   "level": 2,
   "title": "Echo Server",
   "description": "Write a POST /api/echo endpoint that returns whatever JSON body was sent to it.",
