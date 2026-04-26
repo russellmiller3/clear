@@ -90,6 +90,30 @@ The next session MUST apply these — skim if not already internalized:
 5. **Note any env/config changes.** New env vars, new dependencies, new migrations that haven't been applied.
 6. **The resume prompt should be self-contained.** Someone should be able to paste it into a fresh Claude session and get productive in under 30 seconds.
 
+## MANDATORY context-capture sections (added after the 2026-04-25 visual-audit miss)
+
+The handoff that misses one of these is the handoff that costs the next session a debugging hour. Every handoff MUST include all of these, even if some are short:
+
+### 7. Tested-vs-Assumed
+Two columns. Left: things I literally drove and saw work (with evidence — test output line counts, screenshot paths, curl responses). Right: things I claimed worked but only inferred from green tests / type-checks / "should work" reasoning. **The right column is where the next session looks for surprise bugs.**
+
+### 8. Visual state (when ANY UI was touched)
+For every UI surface modified or claimed-to-work this session, one line: "Looked at it: yes/no. Polish grade vs target: A/B/C/D/F. What looks broken." Take screenshots if the UI was touched and stash paths in this section. **No "demo ready" claim is valid without an A or B grade here.**
+
+### 9. Gotchas found too late
+Every gotcha that surfaced AFTER I claimed something worked. The point is the meta-pattern — what should I have tested earlier? Don't bury this in narrative; bullet-list it so the next session can scan and avoid the same misses.
+
+### 10. User mood + decision tone
+Quick read of the user's energy + how directive they were today. Examples:
+- "Direct, calling-out tone — caught a quality miss. Wants tighter visual standard going forward."
+- "Tired (typos, short messages by end). Take more initiative; ask less."
+- "Excited about a specific direction — locked X over Y. Don't re-litigate."
+
+This isn't gossip — it's calibration so the next session matches the right register.
+
+### 11. What I'd do differently (one-liner self-critique)
+The single biggest process miss this session, in plain English. Write it so future-me reads it and changes behavior. Not "I should improve" — concrete: "should have screenshotted before claiming demo-ready."
+
 ## After writing
 
 Tell the user: "Handoff saved to `HANDOFF.md`. Start next session with: `Read HANDOFF.md and continue from where we left off.`"
