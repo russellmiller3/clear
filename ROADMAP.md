@@ -205,7 +205,7 @@ Builder Mode v0.3 shipped (BM-1/2/3/4/5/6 — see `FEATURES.md` → Studio IDE r
 | Item | What | Status |
 |------|------|--------|
 | ~~Status bar~~ | ~~Users / agent spend / last ship chip — always visible at bottom~~ | **DONE 2026-04-25** — three live chips polled every 5s: compiles ok/total, app ▶/idle, last ship Xm ago. Backed by `_builderState` + `GET /api/builder-status`. |
-| Default flip | Builder Mode becomes default for new users; `cmd+.` reveals 3-panel | Open, 1 day |
+| ~~Default flip~~ | ~~Builder Mode becomes default for new users; `cmd+.` reveals 3-panel~~ | **DONE 2026-04-25** — `STUDIO_MODE_DEFAULT = 'builder'` in `playground/ide.html` `detectStudioMode()`. Existing users with a saved `studio-mode-pref` (builder OR classic) keep what they had; only fresh users (no preference) get the new default. `?studio-mode=classic` opts back. Tests in `playground/builder-mode.test.js` cover: fresh user → builder, classic-pref preserved, builder-pref preserved, unknown URL value falls back to builder. |
 
 ---
 

@@ -5247,12 +5247,15 @@ loadTemplates();
 })();
 
 // ==========================================================================
-// STUDIO MODE (builder / classic) — Builder Mode v0.1
-// ?studio-mode=builder flips Studio to Marcus-first layout (preview hero +
-// chat driver). Opt-in via URL param; preference persists in localStorage.
+// STUDIO MODE (builder / classic) — Builder Mode v0.3 default
+// Builder Mode is the default for new users (Marcus-first layout: preview
+// hero + chat driver). Existing users with a saved preference keep their
+// preference. ?studio-mode=classic opts back into the 3-panel editor view.
+// `cmd+.` reveals the 3-panel layout from inside Builder Mode.
 // Full spec: plans/plan-builder-mode-v0.1-04-21-2026.md
 // ==========================================================================
 const STUDIO_MODES = ['builder', 'classic'];
+const STUDIO_MODE_DEFAULT = 'builder';
 function detectStudioMode() {
   const body = document.body;
 
@@ -5263,11 +5266,13 @@ function detectStudioMode() {
     if (p !== null) {
       const norm = String(p).trim().toLowerCase();
       if (STUDIO_MODES.includes(norm)) urlMode = norm;
-      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to classic`);
+      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to ${STUDIO_MODE_DEFAULT}`);
     }
   } catch (e) { /* URLSearchParams always works in a browser, defensive only */ }
 
-  // 2. Read localStorage (best-effort — private browsing throws)
+  // 2. Read localStorage (best-effort — private browsing throws). Existing
+  // users with a saved preference (either 'builder' or 'classic') keep what
+  // they had. Only fresh users (no saved value) get the new default.
   let storedMode = null;
   try {
     const s = localStorage.getItem('studio-mode-pref');
@@ -5276,8 +5281,8 @@ function detectStudioMode() {
     console.warn('[studio-mode] localStorage unavailable; mode will not persist across sessions');
   }
 
-  // 3. Resolve: URL param wins, else stored, else classic
-  const mode = urlMode || storedMode || 'classic';
+  // 3. Resolve: URL param wins, else stored, else default (builder).
+  const mode = urlMode || storedMode || STUDIO_MODE_DEFAULT;
 
   // 4. Persist URL-param choice (best-effort)
   if (urlMode) {
