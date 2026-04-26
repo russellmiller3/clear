@@ -183,7 +183,9 @@ Plan: `plans/plan-decidable-core-04-24-2026.md` Phase B-1.
 
 The Publish window in Studio is now a real product. Marcus opens the deal-desk app, clicks Publish, and sees a live `*.buildclear.dev` URL. Two minutes later he edits a heading, clicks Publish again, and the new bundle is live in about two seconds — no new database, no domain reattach, no full secret push. That's the wedge: the demo path that turns "I built it locally" into "it's on the internet" with no Docker, no Fly, no terminal.
 
-Two epics finished today, plus a destructive-edit safety story for LAE.
+Two epics finished today, plus a destructive-edit safety story for LAE, plus the app-shell preset upgrade kicked off overnight.
+
+**App shell preset upgrade (overnight phase 1, this commit).** `app_header` now auto-splits children into brand / breadcrumb / action slots, each wrapped in its own div with `data-slot="..."` attributes — heading nodes go to brand, button nodes get right-aligned in action via `ml-auto`, everything else lands in breadcrumb. Combined with the polished slate-on-ivory PRESET_STYLES table (h-screen flex container, w-64 shrink-0 sidebar, sticky-top z-20 header, scrollable main), every dashboard built with `app_*` presets now ships a real product shell instead of stacked divs. 5 regression tests lock the shape in. All 8 core templates: 0 errors. Total tests: 2587.
 
 **One-click updates — Phases 1-6 (this session, this commit cascades the docs).** Plan: `plans/plan-one-click-updates-04-23-2026.md`. Six phases, ~22 TDD cycles, every one green:
 

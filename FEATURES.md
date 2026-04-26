@@ -130,6 +130,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | File input | `'Upload' is a file input saved as doc` | |
 | Buttons | `button 'Save':` + action block | |
 | Sections | `section 'Results':` | With style presets |
+| App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs) |
 | Tabs | `tab 'Settings':` | Auto-grouped |
 | Components | `define component Card receiving content:` | Reusable, parameterized |
 | Conditional UI | `if logged_in:` + content block | |
