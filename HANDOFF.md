@@ -1,336 +1,208 @@
-# Handoff — 2026-04-25 (session 47, end-of-day)
+# Handoff — 2026-04-25 (session 47, end-of-day, AUTONOMOUS-MODE OVERNIGHT RUN)
 
-## 🎯 Next Session: Compiler-level visual overhaul so Marcus apps look 2026 (READ THIS FIRST)
+## 🌙 NEXT SESSION: AUTONOMOUS RUN — Russell is asleep (~8 hours)
 
-**The agent-side of Clear Cloud is shipped. What's broken is the look.** Today
-shipped Publish, one-click updates, LAE safety, the ops checklist — all
-mechanically working. Then I screenshotted the 5 Marcus apps and they look
-like 2018 single-column-form startup landing pages. Russell graded them
-D quality vs the 2026 Retool / Linear bar. He's right.
+**Read this whole file first. Russell is asleep and wants the next session to spawn parallel background agents to work the priority list below for 8+ hours, then write a fresh handoff before he wakes up.**
 
-**The fix is at the compiler level — NOT individual app polish.** Per the
-project's "compiler accumulates quality" rule, we redesign the compiler's
-HTML emitters once and every app — including future apps Marcus or the AI
-build — gets the new look on recompile. That's the leverage.
-
-**One single-session goal.** No multi-day work. Three tracks below run in
-parallel where possible.
-
-### Track 1 — Quick bug fixes in the compiler (~30 min)
-1. `{total}` template variable in headings doesn't interpolate. See Lead
-   Router heading: `"{total} new leads awaiting follow-up"`. Should be the
-   actual count.
-2. Auth-gated home page redirects to `/login`, but the `/login` page has
-   only "Use the form above" text with no actual signup/login form. The
-   compiler should auto-inject the auth form on `/login` when
-   `allow signup and login` is in source.
-3. `apps/<name>/package.json` after `clear build` is just
-   `{"type":"commonjs"}` — no dependencies. So the built app can't `node
-   server.js` standalone. Fix: `clear build` should write the deps + run
-   `npm install` (the test runner already does this — port that logic to
-   build).
-4. LAE widget script returns 404 when the app runs standalone because the
-   widget is served by Studio. Either inline the widget or make standalone
-   apps gracefully skip the script tag.
-
-Track 1 unblocks visual polish — broken bugs make the screenshots harder
-to grade.
-
-### Track 2 — Build the visual target mock (~45 min)
-Single static HTML file at `landing/marcus-app-target.html`. Pure HTML +
-Tailwind + DaisyUI, no compiler involvement. ~250-400 lines. This is the
-discriminator the compiler-output is graded against.
-
-**Copy-paste prompt** (works for Claude in another tab, V0, Lovable, or
-a human designer brief):
-
-```
-Build a single static HTML page that visualizes the "Deal Desk" app
-for a RevOps director at a $5-30M ARR SaaS company. This is the
-visual target a compiler will be tweaked to match.
-
-PERSONA
-The user is "Marcus" — RevOps director, mid-30s, tech-aware but not a
-developer. Lives in spreadsheets and dashboards all day. Compares this
-to Retool, Linear, Notion, Mercury, Stripe Dashboard. He'll close the
-tab in 5 seconds if it looks like a 2015 Bootstrap site.
-
-THE APP
-"Deal Desk" — a discount-approval workflow. CRO sees pending discount
-requests from sales reps, reviews AI-drafted summaries, approves or
-rejects. The page shown is the CRO's main queue view at /cro after
-login.
-
-MUST INCLUDE
-- Top nav: brand left ("Clear" or "Deal Desk"), breadcrumb center
-  ("Deal Desk › Pending Queue"), user avatar + tenant switcher right.
-  ~56px tall. Subtle border-bottom, not heavy.
-- Left sidebar: 240px wide, light bg (slightly darker than main).
-  Sections: "Pending (5)", "Approved Today (12)", "All Deals", "Reps",
-  "Reports", "Settings". Counts in muted badges. Active section
-  highlighted with a soft background and a left-border accent.
-- Main panel:
-  - Page header row: "Pending CRO Approval" h1 left; "Refresh" +
-    "Export" + "+ New Deal" buttons right. The +New is primary blue.
-  - Metric strip: 4 cards in a row — Pending Count, Avg Discount,
-    Total Value At Stake, This Week vs Last Week (with sparkline).
-    Numbers big + bold, labels small + uppercase muted, optional chart
-    icon top-right of each card.
-  - Data table: Customer, Rep, List Price, Discount %, Status badge
-    (yellow Pending / green Approved / red Rejected), Submitted
-    (relative time), Actions (Review / Approve / Reject inline buttons).
-    Sortable column headers. Hover state on rows. Status badges
-    colored, not just text.
-- Right rail (~360px, only when a row is selected): deal detail card
-  with the AI-drafted summary, recommendation, risk score, customer
-  history, prior discount precedent, and Approve / Reject / Counter
-  buttons. Card has padding + subtle shadow.
-- Empty state for the table when no pending: friendly illustration,
-  "Nothing pending. Last approved deal was 23 minutes ago." + a CTA
-  to view approved.
-- Footer: small status line — "5 pending · synced 12 sec ago · Clear
-  Cloud · v2.4.1"
-
-STACK
-- Pure static HTML
-- Tailwind CSS via CDN
-- DaisyUI 5 via CDN (theme: ivory)
-- Lucide icons via CDN
-- ZERO JavaScript except the bare minimum to make a tab switcher and
-  a sortable header look real
-
-BAR
-Should look at home next to a tab of Linear, Retool, Stripe Dashboard,
-or Notion. If a designer would say "yeah, that's what 2026 SaaS looks
-like" — done. If they'd say "solid but feels 2022," iterate. If they'd
-say "that looks 2018 / Bootstrap-y" — start over.
-
-DELIVERABLE
-A single self-contained .html file at landing/marcus-app-target.html.
-Open in a browser, looks finished. ~250-400 lines. No build step.
-```
-
-Reference points to study before drafting: Linear (sidebar + density),
-Retool (right-rail panel), Stripe Dashboard (stat cards + table density),
-Notion 2024 redesign (calm typography), Mercury (forms that don't look
-like forms).
-
-### Track 3 — GAN the compiler against the mock (~2 hours, the big one)
-Iterate one section of the page-scaffold at a time. Each round:
-1. Edit one of the compiler's HTML emit sites in `compiler.js` (the page
-   scaffold, the section block, the form-card, the table renderer, the
-   heading)
-2. Recompile `apps/deal-desk/main.clear`
-3. Spawn it on a port + screenshot
-4. Compare side-by-side to the mock
-5. Repeat until 95% visual parity
-
-When deal-desk hits the bar, **all 6 Marcus apps get the new look for free
-on recompile**. Then re-screenshot all 6 + Studio in builder mode, grade
-each.
+The right pattern: spawn 4-6 background agents in **isolated worktrees** (one per workstream), each with a self-contained briefing, each committing in its own worktree. When agents complete, the parent session merges their branches and writes a FINAL handoff.
 
 ---
 
-## Session rules in effect (summarized from ~/.claude/CLAUDE.md)
+## Today's wins (commits already on main)
 
-The next session MUST apply these:
+- **`0a10f63`** — visual track 1: 4 compiler bug fixes + design tokens upgrade
+  - `{varname}` template interpolation in heading/text content (7 apps benefited)
+  - Auto-injected signup/login form on `/login` pages
+  - `clear build` writes deps + runs `npm install` (built apps spawn standalone)
+  - LAE widget bundle copies into `clear-runtime/` + `onerror=this.remove()` on the script tag
+  - Body font: DM Sans → Inter (cv11/ss01/ss03 features)
+  - Slate chrome tokens, hairline classes, status pill helpers
+  - Default page wrapper widened from `max-w-2xl` → `max-w-5xl`
 
-- **Big-picture framing on every narration.** Every chunk says what + why-for-session-goal + what-it-unlocks. Under 25 words.
-- **Phase-boundary big picture.** End of every phase fire `/bigpicture` or emit a 60-second narrative.
-- **Work in parallel by default.** Batch independent tool calls in one message.
-- **Time calibration: 10x off.** Above tracks are sized for one long session, not "a week."
-- **Budget-first on API spend.** $0 work this whole session — keep it that way.
-- **TDD red-first.** Doesn't apply to visual GAN — it's screenshot-driven instead. But fix-the-bugs work IS TDD.
-- **Plain English to Russell. No code jargon. Self-check every message.**
+- **`3e19826`** — flywheel docs: `flywheel-overview-04-25-2026.md` + `plan-flywheel-hardening-04-25-2026.md`
+
+- **`cea511c`** — flywheel hardening jobs A + C
+  - **Job A:** runtime beacons land in Factor DB (`code_actions_runtime` table) — receiver dual-writes JSONL + DB
+  - **Job C:** every compile-error rewrite drops a row in `compiler_edits` table via post-commit hook
+  - 5 new tests in `factor-db.test.js`, 9 new tests in `scripts/log-compiler-edits.test.mjs`
+
+**Mock built:** `landing/marcus-app-target.html` (562 lines, slate palette aligned to Clear's ivory theme, 340px right rail, table overflow safety net) — the visual target every shell-upgrade phase grades against.
+
+**Tests:** 2586/0 in `clear.test.js`. Factor DB integration tests green.
 
 ---
 
-## Current State
-- **Branch:** `main` (synced to remote `github.com/russellmiller3/clear`)
-- **Last commit:** `baf8741` — `docs+build: demo-readiness audit (GAPS.md + HANDOFF refresh) + build the 3 unbuilt Marcus apps`
-- **Working tree:** dirty — `.claude/launch.json` (added 7 entries for Marcus apps + Studio builder mode), `.claude/settings.local.json`, `playground/supervisor/curriculum-sweep.js` (untouched-since-session-start). Untracked: GAPS.md, LAUNCH.md (committed but the Untracked list shows untracked artifacts like .meph-build/, temp-*.clear, etc. — none are mine).
+## CRITICAL BUG TO FIX FIRST (Job D blocker)
 
-## What Was Done This Session
+**Sweep failed with:** `UNIQUE constraint failed: sessions.id`
 
-- **CC-4 epic complete** (7/7 cycles): Studio Publish window ships any Clear
-  app to a Cloudflare URL in 3-5 seconds. Multi-tenant routing, custom
-  domain, slug uniqueness, runbook.
-- **One-click updates plan complete** (Phases 1-7): edit a deployed app, hit
-  Publish, ships in 2 seconds with version history + rollback + database
-  schema-change safety gate.
-- **LAE Phase C cycles 4+5**: destructive edits via the live widget require
-  typed confirmation + reason + audit-first ordering.
-- **CC-1 cycle 5**: version history of every Publish lands in Postgres
-  (paused after this — off critical path until first paying customer).
-- **LAUNCH.md**: 5-item Phase 85a checklist for Russell.
-- **GAPS.md (initial pass)**: documented test verification — needs revision
-  per the visual miss (see Section 11 below).
-- **18+ commits today, all pushed.**
+**Where:** `playground/supervisor/registry.js:4` (the `sessions` table — `TEXT PRIMARY KEY` on `id`).
 
-## What's In Progress
+**Root cause hypothesis:** Stale rows from a previous abnormal exit. The `sessions` table has `TEXT PRIMARY KEY id`, no auto-cleanup, so a previously-spawned worker's row remains and the new sweep tries to insert with the same id and trips the UNIQUE constraint.
 
-- **Visual GAN of the compiler (NEW — discovered this session, not started).**
-  Tracks 1-3 above. This is the entire next session's work.
-- **LAE Phase C cycles 6+7** (cloud destructive ship + rename detection)
-  — NOT blocking demo, parked.
-- **CC-1 cycles 6-9** (durable Postgres for tenants) — paused per plan,
-  needed only after first paying customer.
+**Fix options:**
+1. Clean up stale `sessions` rows at sweep start (delete rows older than N minutes OR with state ≠ 'running')
+2. Use `INSERT OR REPLACE` in `registry.js:create()`
+3. Append a timestamp suffix to session ids so they're guaranteed unique
 
-## Key Decisions Made
+**Recommended:** option 1 — add a `cleanupStale()` helper to `SessionRegistry`, call it from the sweep harness before workers start. Delete rows whose `state` is `idle` or `done` regardless of age, plus anything older than 1 hour. Preserves any genuinely-running sessions.
 
-- **Studio is Clear-Cloud-only.** Russell killed the Fly/Cloud picker today
-  — every Publish ships to Cloudflare. Don't re-introduce a target picker.
-- **No more "demo ready" claims without screenshots.** Tests are not enough
-  evidence. Russell called this out.
-- **Visual fix is compiler-level, not per-app.** Per the project's
-  "compiler accumulates quality" philosophy. Don't redesign the 6 apps
-  individually.
-- **Database directive syntax change** (`local memory` → `sqlite`) — Russell
-  picked IMPLICIT (target picks the driver). Multi-hour work. Defer until
-  after launch.
-- **Phase 7 docs** now match reality (cascade across 11 surfaces shipped
-  today).
+**After the fix:** run `node playground/supervisor/curriculum-sweep.js --workers=3` (no args = gm = $0). When it finishes, run `node scripts/top-friction-errors.mjs --top=20 > snapshots/friction-baseline-04-25-2026.txt` and save the sweep summary to `snapshots/sweep-baseline-04-25-2026.json`. Commit both.
 
-## Known Issues / Bugs
+---
 
-- `{total}` template variable not interpolated in compiled headings. Lead
-  Router shows literal `{total} new leads awaiting follow-up`.
-- `/login` page generates "Use the form above" text with no form above.
-  Compiler bug — `allow signup and login` doesn't auto-inject the form.
-- `clear build` writes a `package.json` without dependencies, so built apps
-  can't spawn standalone. The test runner has the fix at lines ~474-498 of
-  `cli/clear.js` — port to build.
-- LAE widget script 404s when apps run standalone (expected by source but
-  served only by Studio).
-- 2 pre-existing compiler-generated DELETE-without-auth tests fail in
-  `playground/server.test.js`. Not from today.
-- Studio IDE Playwright suite has rotted (renamed tabs, changed template
-  count). Cleanup chip waiting in Russell's queue.
+## Priority-ordered work catalog for the autonomous run
 
-## Files to Read First
+Each unit below has a self-contained briefing the parent session can copy into an `Agent` tool call with `isolation: "worktree"` + `run_in_background: true`. **Read each briefing carefully before spawning — they're written for an agent with no shared context.**
+
+### P0 — Sweep fix + baseline (1 worktree, ~30-45 min)
+
+**Briefing:**
+> Fix the UNIQUE-constraint bug in `playground/supervisor/registry.js` and run the baseline curriculum sweep so we have BEFORE-numbers for the shell upgrade.
+>
+> Context: yesterday a sweep failed with `UNIQUE constraint failed: sessions.id`. Root cause: stale rows in the sessions table. Add a `cleanupStale()` helper to `SessionRegistry` that deletes rows where `state` is `idle` or `done`, plus rows whose `updated_at` is older than 1 hour. Call it from the sweep harness (`playground/supervisor/curriculum-sweep.js`) before workers spawn. Add a unit test in `playground/supervisor/registry.test.js`.
+>
+> Then run `node playground/supervisor/curriculum-sweep.js --workers=3` (defaults to gm = `$0`, no API spend). When it completes, run `node scripts/top-friction-errors.mjs --top=20 > snapshots/friction-baseline-04-25-2026.txt`. Save sweep summary as `snapshots/sweep-baseline-04-25-2026.json` (parse the curriculum-sweep stdout for pass-rate-per-archetype). Commit all four files. Verify `clear.test.js` still 2586/0.
+>
+> Constraints: NO API spend (gm only). NO push to remote. Commit in your worktree, report worktree path + branch when done.
+
+### P1 — Shell Upgrade Phase 1: app_* preset polish (1 worktree, ~60-90 min)
+
+**Briefing:**
+> Read `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 1 in full. Read `landing/marcus-app-target.html` end-to-end — that's the visual target.
+>
+> Find the existing emit for `app_layout` / `app_sidebar` / `app_main` / `app_header` in `compiler.js` (grep `app_layout` and trace the section preset emitters). Upgrade each emit to match the mock chrome:
+> - `app_layout` → `<div class="flex min-h-screen">` with proper sizing
+> - `app_sidebar` → 240px rail using the new `--clear-bg-rail`, `--clear-line` tokens, hairline-r border, scroll-y, room for section labels + nav items
+> - `app_main` → `<main class="flex-1 min-w-0 flex flex-col">`
+> - `app_header` → 56px sticky header with brand-slot + breadcrumb-slot + action-slot
+>
+> TDD: add 5-8 tests to `clear.test.js` BEFORE editing the emit. Run them red. Then make them green. Run all of `clear.test.js` — must stay 2586/0 except for your new passes.
+>
+> Land the 4 flywheel deliverables (per the plan):
+> 1. Compiler delta (above) + tests
+> 2. Doc cascade — update `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `FEATURES.md`, `CHANGELOG.md` (skip the others if you're tight on time, list which surfaces you skipped in the commit message)
+> 3. Meph delta — update `playground/system-prompt.md` with the new emit shape
+> 4. Curriculum delta — add a task `app-shell-basics` to `playground/supervisor/curriculum-tasks/` (or wherever curriculum lives — find it) requiring all 4 presets
+> 5. Eval delta — add a chrome-check in the eval harness that asserts `<aside ... 240px>` AND `<header ... 56px>`
+>
+> Acceptance: a hand-written test app using all 4 presets compiles to a page within 70% of the mock. Commit, report worktree path + branch.
+
+### P1 — Decidable Core next phase (1 worktree, ~60-90 min)
+
+**Briefing:**
+> Read `plans/plan-decidable-core-04-24-2026.md` end-to-end. Identify which phase is next — phase 0 was foundational; check git log for "decidable" commits and `RESEARCH.md` for what landed.
+>
+> Execute ONE well-scoped chunk of the next open phase. Probably either:
+> - The validator rule that REJECTS `ask claude` / `call API` / `subscribe to` / `every N seconds` outside `live:` blocks (Phase 1 keyword)
+> - The `live:` keyword itself (parser + node type + emit no-op wrapper)
+>
+> TDD-driven. Tests stay green (2586+/0 with new tests added). Don't skip the doc cascade for new syntax — the rule still applies.
+>
+> Constraints: NO push to remote. Commit in your worktree.
+
+### P1 — Shell Upgrade Phase 5: data tables (1 worktree, ~90-120 min)
+
+**Briefing:**
+> Read `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 5. Read `landing/marcus-app-target.html` table section in full. Read the existing `display X as table` emit in `compiler.js` (grep `display.*table` and trace).
+>
+> Upgrade emit:
+> - Auto-detect column types: `status` field → render with `.clear-pill-{pending|approved|rejected}`; name/email/customer → avatar circle; numeric money → tabular nums right-aligned
+> - New row-action syntax: `with actions: approve, reject, review` — render hover-revealed icon buttons in the rightmost column
+> - Sortable headers: `<th>` with click-to-sort
+> - Selectable rows: clicking adds `is-selected` class to the row (Phase 6 will wire this up to the right rail later — for now just the toggle)
+>
+> TDD: 12+ new tests covering pills / avatars / actions / sort / selection. Land all 5 flywheel deliverables (compiler + doc cascade + Meph delta + curriculum delta + eval delta).
+>
+> Important: Phase 5 is independent of Phases 2/3/4 (they touch sidebar/header/stat cards, not tables). It can run in parallel with the Phase 1 worktree without conflict.
+>
+> Constraints: NO push. Commit in your worktree.
+
+### P2 — GTM-2: Marcus landing polish (1 worktree, ~30-45 min)
+
+**Briefing:**
+> Open `landing/marcus.html`. Tighten the headline to "ship the first one this Friday" or similar (per ROADMAP.md GTM-2). Add an embed of the deal-desk demo screenshot (mock or real).
+>
+> Constraints: don't break existing landing tests (`landing/*.test.*` if any). NO push.
+
+### P2 — Builder Mode default flip (1 worktree, ~20-30 min, optional)
+
+**Briefing:**
+> Per ROADMAP.md "Builder Mode polish — Default flip" item: Builder Mode becomes the default for new users. `cmd+.` reveals the 3-panel view. Find the toggle code in `playground/server.js` or `playground/ide.html`. Flip the default. Add a test asserting new users land in builder mode.
+
+---
+
+## How to spawn agents safely
+
+In the parent session, spawn each unit above with one tool call (you can batch up to 4-6 in a single message for max parallelism):
+
+```
+Agent({
+  description: "P1 — Shell Phase 1: app_* preset polish",
+  isolation: "worktree",
+  run_in_background: true,
+  prompt: "<the full briefing from above, copy-pasted verbatim>",
+  subagent_type: "general-purpose",
+})
+```
+
+**Key rules:**
+- **`isolation: "worktree"`** — each agent gets a fresh copy of the repo at HEAD. No conflicts between agents.
+- **`run_in_background: true`** — the agent works while you do other things. You'll be notified when it completes; the result returns the worktree path + branch.
+- **NO push to remote** — every briefing says this. Each agent commits in its worktree only. The parent session reviews + merges later.
+- **gm only** — if any agent runs sweeps, they default to gm ($0). Don't pass `--real`.
+- **Each agent owns its full epic.** Don't try to chain agents in mid-flight; if Phase 1 needs to land before Phase 2, spawn Phase 1 alone first.
+
+After all agents complete, the parent session:
+1. Inspects each worktree's branch via `git log --oneline branch-name`
+2. Merges branches one at a time into `main` (in priority order, P0 first, then P1, then P2)
+3. Resolves any conflicts (most won't conflict because they touch different files)
+4. Runs `clear.test.js` after each merge to verify
+5. Writes a fresh `HANDOFF.md` describing what landed
+6. Commits the handoff
+7. Optionally pushes when Russell wakes up
+
+---
+
+## Constraints for the autonomous run
+
+- **NO API spend.** All sweeps via gm (cc-agent). Anthropic API stays at $0. If an agent's briefing requires `--real`, escalate by writing a note in the worktree branch's commit message and let Russell decide on wakeup.
+- **NO push to remote.** Russell can push manually after reviewing the merged work. Avoids force-push or mistake exposure overnight.
+- **NO destructive ops.** No `git reset --hard`, no `git push --force`, no deleting branches without checking first. If a worktree has commits, preserve them.
+- **NO new dependencies** unless the work explicitly needs one and the package is well-known (express, ws, etc).
+- **Tests must stay green.** Every agent must end with `clear.test.js` 2586+/0 (more is fine if they added passes; fewer is a fail).
+- **Doc cascade discipline.** The 11 surfaces are listed in `CLAUDE.md`. Skipping is OK if time-boxed; commit message must list which surfaces were skipped so the next sweep catches up.
+
+---
+
+## End-of-shift template (the FINAL handoff the autonomous session writes before Russell wakes)
+
+The parent session ends by overwriting this `HANDOFF.md` with a fresh one that has:
+
+1. **What landed** — bulleted list of merged commits, sorted by impact
+2. **Test status** — `clear.test.js` count, factor-db.test.js count, any new test files
+3. **Open agent worktrees** — any branches that didn't merge cleanly, what's blocking
+4. **Priority list for the next session** — what's the very next move when Russell sits down
+5. **Any cost actually incurred** (should be $0 — gm only — but verify)
+
+If an agent failed mid-task, document the failure cleanly: what it tried, what error it hit, where it stopped.
+
+---
+
+## Files to read first (next session)
 
 | File | Why |
 |------|-----|
-| `HANDOFF.md` (this) | Where things stand |
-| `GAPS.md` | Test-side audit (note: visual section was understated) |
-| `LAUNCH.md` | Russell's 5-item paperwork checklist |
-| `landing/marcus.html` | Reference for what the marketing CLAIMS the apps look like — currently a gap vs reality |
-| `apps/deal-desk/main.clear` | The hero demo source — read first when tracking bugs |
-| `playground/cc-4-runbook.md` | Click-by-click for the first real Publish |
-| `compiler.js` | Where Track 1 + Track 3 work happens |
-| `plans/plan-one-click-updates-04-23-2026.md` | The plan that shipped today |
+| `HANDOFF.md` (this) | The orchestration playbook |
+| `plans/plan-full-shell-upgrade-04-25-2026.md` | The 7-phase shell upgrade with flywheel touchpoints |
+| `plans/plan-flywheel-hardening-04-25-2026.md` | The 3 hardening jobs (A + C done, D blocked on sweep fix) |
+| `plans/flywheel-overview-04-25-2026.md` | The 3-streams + 2-loops diagram |
+| `plans/plan-decidable-core-04-24-2026.md` | The decidable-core multi-phase plan |
+| `landing/marcus-app-target.html` | The visual target every shell-upgrade phase grades against |
+| `RESEARCH.md` | The flywheel architecture doc |
 
 ---
 
-## 7. Tested-vs-Assumed (NEW MANDATORY SECTION)
+## Resume prompt for the parent session that spawns the autonomous run
 
-| Tested (saw work, with evidence) | Assumed (claimed but didn't verify) |
-|---|---|
-| All 5 Marcus apps `clear test`: **66 / 0** | "App looks polished" — D-grade, not B |
-| `playground/deploy.test.js`: **48 / 0** | Builder mode looks Marcus-friendly — never opened it |
-| `playground/server.test.js`: **212 / 2** (2 pre-existing) | The compiled apps spawn standalone — they don't (npm install gap) |
-| `playground/deploy-cloudflare.test.js`: full green | The /login page has a working form — it's a heading + lying paragraph |
-| `lib/edit-api.test.js`: full green | Demo recording would look professional — false |
-| `runtime/meph-widget.test.mjs`: full green | The LAE widget renders on a standalone running app — 404s the script |
-| `node clear.test.js`: **2586 / 0** | Templates like `{total}` interpolate at runtime — at least one doesn't |
-| 18+ commits push to remote: success | All apps in dropdown work end-to-end visually — never opened most |
-| Deal Desk + Approval Queue + Lead Router screenshots show actual rendering | Studio loads at `/?studio-mode=builder` correctly — never tested |
-
-**Right column is where the next session looks for surprise bugs.**
-
-## 8. Visual state — apps + Studio (NEW MANDATORY SECTION)
-
-Screenshotted today (port 4101+):
-
-| Surface | Looked at | Polish grade | What looks broken |
-|---|---|---|---|
-| Deal Desk home | ✅ via preview_screenshot | **D** | Single 600px column, no nav, no sidebar, miles of whitespace below, looks 2018 |
-| Deal Desk /login | ✅ | **F** | Heading + paragraph saying "Use the form above" — no form exists |
-| Approval Queue home | ✅ | **D** | Form rendered tiny in upper-left, ~20% of viewport, rest white |
-| Lead Router home | ✅ via snapshot | **D** | Has real data (Priya/Marcus/Jenna table), but `{total}` not interpolated, single-column shape |
-| Onboarding Tracker | ❌ skipped (same pattern) | — | — |
-| Internal Request Queue | ❌ skipped | — | — |
-| Support Triage | ❌ skipped | — | — |
-| Studio in builder mode | ❌ NEVER OPENED | unknown | needs eyeballs |
-
-**No "demo ready" claim is valid until every D/F here is at B or A.** The
-visual target mock + GAN of the compiler is the cure.
-
-## 9. Gotchas found too late (NEW MANDATORY SECTION)
-
-Each one I should have caught earlier in the session:
-
-- **Built apps can't spawn standalone.** `clear build` writes shield
-  `package.json`, not deps. Found when first `preview_start` of deal-desk
-  threw `Cannot find module 'jsonwebtoken'`. Should have tested
-  `node apps/deal-desk/server.js` BEFORE writing the GAPS.md "demo ready"
-  claim.
-- **Auth-gated home redirects to /login but /login has no form.** Found at
-  the very first screenshot. The Marcus app would 404-feel for any visitor
-  who isn't already logged in. Should have screenshotted from a fresh
-  browser session as part of Phase 1 of any audit.
-- **Template `{total}` not interpolated.** Found in Lead Router heading.
-  Compiler bug, missed by every test because tests check status codes /
-  presence-of-elements, not text-content of headings.
-- **Tests don't catch ugly.** 66 test passes ≠ demo-ready. Pages can render
-  without errors and still look like 2014. Need a "screenshot every page"
-  step in any future audit.
-- **The standalone widget script 404s.** Apps reference `/__meph__/widget.js`
-  which only Studio serves. Either inline the widget code at compile time
-  (deploys still get the live editing chat from a hosted Meph) or make the
-  script tag conditional.
-
-**Meta-pattern**: I trusted compiler+test green as proof of "ready." It's
-proof of "passes the test contract" only. Visual evidence is an
-independent axis.
-
-## 10. User mood + decision tone (NEW MANDATORY SECTION)
-
-- **Direct, calling-out tone late in session.** Caught the visual miss
-  fairly: "shitty right?" / "lots of bugs hm?" / "whats the plan stan."
-  Tired but sharp.
-- **Pushed for higher visual bar today.** Compared Clear to Retool, said
-  "should look 2026, not bootstrap 2012." Take this as the new floor for
-  any future "ready" claim.
-- **Appreciated being challenged on the picker.** Killed it decisively. No
-  re-litigating.
-- **Doesn't want me to defer or ask "should I."** Lead more, ask less. Make
-  the call, narrate it, go. He'll redirect if wrong.
-- **Was tired enough to typo "/shipand," type single-word answers, drop
-  punctuation.** Match shorter responses. Don't dump walls of text.
-
-**Calibration for next session**: lead with concrete next move, screenshots
-of progress, and short sentences. Don't promise; show.
-
-## 11. What I'd do differently (NEW MANDATORY SECTION)
-
-**One sentence**: Should have spawned + screenshotted at least one Marcus
-app in the FIRST round of the audit, before writing GAPS.md and pushing
-"demo ready except paperwork."
-
-The visual miss cost ~30 minutes of correction + Russell's confidence.
-Cheap fix going forward: any audit that touches user-facing surfaces
-opens at least one screenshot before claiming readiness.
-
----
-
-## Resume Prompt
-
-> Read `HANDOFF.md` and continue from where we left off. The single goal
-> for this session is the compiler-level visual overhaul so Marcus apps
-> look 2026, not 2018. Three tracks (Track 1: 4 quick compiler bug fixes;
-> Track 2: build the static HTML mock at `landing/marcus-app-target.html`;
-> Track 3: GAN the compiler emitters against the mock until deal-desk hits
-> 95% visual parity, then re-screenshot all 6 Marcus apps + Studio in
-> builder mode). All in one long session. Apply the rules: big-picture
-> framing every narration, parallel tool calls by default, plain English
-> always, screenshot before claiming "ready," lead more / ask less. Main
-> is at commit `baf8741` and pushed to remote.
-
----
-
-## Maintenance rule
-
-Cap ~250 lines (raised from 150 — the new mandatory sections need room).
-Rewrite "Status right now" + "What was done" + "Visual state" + "Gotchas"
-each session. Detailed per-cycle history goes to `CHANGELOG.md`.
+> It's overnight. Russell is asleep. Read this HANDOFF.md end-to-end. Read `plans/plan-full-shell-upgrade-04-25-2026.md` and `plans/plan-decidable-core-04-24-2026.md`. Then spawn 4-6 background agents in worktrees per the briefings above, in priority order (P0 first, then P1s in parallel, then P2s if there's budget). Wait for them to complete (you'll get notifications). Merge their branches into main one at a time, P0 first. Run `clear.test.js` after each merge. Rewrite HANDOFF.md with the final state. Do NOT push to remote. Russell reviews + pushes after waking.
