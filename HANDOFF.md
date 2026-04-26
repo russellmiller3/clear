@@ -38,24 +38,82 @@ to grade.
 
 ### Track 2 — Build the visual target mock (~45 min)
 Single static HTML file at `landing/marcus-app-target.html`. Pure HTML +
-Tailwind + DaisyUI, no compiler involvement. ~250 lines. This is the
+Tailwind + DaisyUI, no compiler involvement. ~250-400 lines. This is the
 discriminator the compiler-output is graded against.
 
-What it must show:
-- Top nav: brand left, app name center, user menu right, ~56px tall
-- Left sidebar: ~240px wide, sections like "Pending", "Approved", "All
-  deals", with counts in muted badges
-- Main panel: header row with breadcrumb + primary action button on the
-  right; metrics row (4 colored stat cards, density like Stripe dashboard);
-  then a sortable data table with status badges + inline action buttons
-  per row; right-side panel for detail/actions
-- Footer: small status line ("18 deals · synced 2 min ago")
-- Empty state when no data: useful illustration + "create your first" CTA,
-  not white nothing
+**Copy-paste prompt** (works for Claude in another tab, V0, Lovable, or
+a human designer brief):
 
-Reference points: Linear (sidebar + density), Retool (right-rail panel),
-Stripe Dashboard (stat cards + table density), Notion 2024 redesign (calm
-typography), Mercury (forms that don't look like forms).
+```
+Build a single static HTML page that visualizes the "Deal Desk" app
+for a RevOps director at a $5-30M ARR SaaS company. This is the
+visual target a compiler will be tweaked to match.
+
+PERSONA
+The user is "Marcus" — RevOps director, mid-30s, tech-aware but not a
+developer. Lives in spreadsheets and dashboards all day. Compares this
+to Retool, Linear, Notion, Mercury, Stripe Dashboard. He'll close the
+tab in 5 seconds if it looks like a 2015 Bootstrap site.
+
+THE APP
+"Deal Desk" — a discount-approval workflow. CRO sees pending discount
+requests from sales reps, reviews AI-drafted summaries, approves or
+rejects. The page shown is the CRO's main queue view at /cro after
+login.
+
+MUST INCLUDE
+- Top nav: brand left ("Clear" or "Deal Desk"), breadcrumb center
+  ("Deal Desk › Pending Queue"), user avatar + tenant switcher right.
+  ~56px tall. Subtle border-bottom, not heavy.
+- Left sidebar: 240px wide, light bg (slightly darker than main).
+  Sections: "Pending (5)", "Approved Today (12)", "All Deals", "Reps",
+  "Reports", "Settings". Counts in muted badges. Active section
+  highlighted with a soft background and a left-border accent.
+- Main panel:
+  - Page header row: "Pending CRO Approval" h1 left; "Refresh" +
+    "Export" + "+ New Deal" buttons right. The +New is primary blue.
+  - Metric strip: 4 cards in a row — Pending Count, Avg Discount,
+    Total Value At Stake, This Week vs Last Week (with sparkline).
+    Numbers big + bold, labels small + uppercase muted, optional chart
+    icon top-right of each card.
+  - Data table: Customer, Rep, List Price, Discount %, Status badge
+    (yellow Pending / green Approved / red Rejected), Submitted
+    (relative time), Actions (Review / Approve / Reject inline buttons).
+    Sortable column headers. Hover state on rows. Status badges
+    colored, not just text.
+- Right rail (~360px, only when a row is selected): deal detail card
+  with the AI-drafted summary, recommendation, risk score, customer
+  history, prior discount precedent, and Approve / Reject / Counter
+  buttons. Card has padding + subtle shadow.
+- Empty state for the table when no pending: friendly illustration,
+  "Nothing pending. Last approved deal was 23 minutes ago." + a CTA
+  to view approved.
+- Footer: small status line — "5 pending · synced 12 sec ago · Clear
+  Cloud · v2.4.1"
+
+STACK
+- Pure static HTML
+- Tailwind CSS via CDN
+- DaisyUI 5 via CDN (theme: ivory)
+- Lucide icons via CDN
+- ZERO JavaScript except the bare minimum to make a tab switcher and
+  a sortable header look real
+
+BAR
+Should look at home next to a tab of Linear, Retool, Stripe Dashboard,
+or Notion. If a designer would say "yeah, that's what 2026 SaaS looks
+like" — done. If they'd say "solid but feels 2022," iterate. If they'd
+say "that looks 2018 / Bootstrap-y" — start over.
+
+DELIVERABLE
+A single self-contained .html file at landing/marcus-app-target.html.
+Open in a browser, looks finished. ~250-400 lines. No build step.
+```
+
+Reference points to study before drafting: Linear (sidebar + density),
+Retool (right-rail panel), Stripe Dashboard (stat cards + table density),
+Notion 2024 redesign (calm typography), Mercury (forms that don't look
+like forms).
 
 ### Track 3 — GAN the compiler against the mock (~2 hours, the big one)
 Iterate one section of the page-scaffold at a time. Each round:
