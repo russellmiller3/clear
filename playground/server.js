@@ -2056,9 +2056,11 @@ app.post('/api/fetch', async (req, res) => {
 
 // =============================================================================
 // CF-1 — Compiler Flywheel beacon receiver. Compiled apps POST runtime events
-// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server. We
-// drop them into a JSONL file at playground/flywheel-beacons.jsonl. A future
-// session migrates this into the Factor DB (see plans/plan-compiler-flywheel-tier1).
+// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server.
+// Dual-write: append to JSONL (durable backup, easy to grep) AND insert a row
+// into the Factor DB's code_actions_runtime table so the friction script,
+// trainer, and ranker can all query runtime data the same way they query
+// compile-time rows. JSONL is preserved as belt-and-suspenders backup.
 // Per-compile_row_id rate-limit: 100 events/s, drop-and-count overflow.
 // =============================================================================
 const _beaconLog = join(__dirname, 'flywheel-beacons.jsonl');
@@ -2075,9 +2077,15 @@ app.post('/api/flywheel/beacon', (req, res) => {
   } else {
     _beaconRate.set(id, { sec, count: 1 });
   }
+  // 1) JSONL append — legacy, preserved as durable backup
   try {
     appendFileSync(_beaconLog, JSON.stringify({ ...ev, received_at: Date.now() }) + '\n');
   } catch {}
+  // 2) Factor DB insert — queryable copy. Fail-open: if the DB is offline
+  //    or unavailable, the JSONL still has the data and we keep serving.
+  if (_factorDB) {
+    try { _factorDB.logRuntimeBeacon(ev); } catch (e) { /* swallow — backup file has it */ }
+  }
   res.json({ ok: true });
 });
 
