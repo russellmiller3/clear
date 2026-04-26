@@ -60,14 +60,40 @@ try {
     'builder-mode class applied for uppercase value (E-1 case-insensitivity)'
   );
 
-  // Unknown value → classic (E-2). Clear localStorage first to isolate the URL-invalid case;
-  // otherwise stored preference from prior tests leaks through (which is correct behavior but
-  // not what E-2 is exercising).
+  // Unknown value → falls back to default (builder, post-flip). Clear localStorage first to
+  // isolate the URL-invalid case; otherwise stored preference from prior tests leaks through
+  // (which is correct behavior but not what this case is exercising).
   await page.evaluate(() => { try { localStorage.clear(); } catch {} });
   await page.goto(`${BASE}/?studio-mode=xyz`, { waitUntil: 'networkidle' });
   assert(
+    await page.evaluate(() => document.body.classList.contains('builder-mode')),
+    'unknown URL value falls back to builder default when no stored preference (E-2 post-default-flip)'
+  );
+
+  // Default flip — fresh user (no URL param, no localStorage) lands in Builder Mode.
+  // Existing users keep whatever they had; this only changes the new-user default.
+  await page.evaluate(() => { try { localStorage.clear(); } catch {} });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  assert(
+    await page.evaluate(() => document.body.classList.contains('builder-mode')),
+    'fresh user (no URL param, no saved preference) lands in Builder Mode (Default flip)'
+  );
+
+  // Existing classic-preference user is preserved across the flip — they don't get
+  // surprise-flipped to builder just because the default changed.
+  await page.evaluate(() => { try { localStorage.setItem('studio-mode-pref', 'classic'); } catch {} });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  assert(
     await page.evaluate(() => !document.body.classList.contains('builder-mode')),
-    'unknown value defaults to classic when no stored preference (E-2)'
+    'existing user with classic preference is preserved (no surprise flip on Default flip)'
+  );
+
+  // Existing builder-preference user stays in builder.
+  await page.evaluate(() => { try { localStorage.setItem('studio-mode-pref', 'builder'); } catch {} });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  assert(
+    await page.evaluate(() => document.body.classList.contains('builder-mode')),
+    'existing user with builder preference stays in builder (no regression on Default flip)'
   );
 
   // localStorage persistence
