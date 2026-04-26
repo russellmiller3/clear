@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lead Router</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+
+
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- Inline Layout --- */
+.section-header { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+    <div class="section-header" data-clear-line="118">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="119">Lead Router</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="121">{total} new leads awaiting follow-up</p>
+    </div>
+    <div class="bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4" data-clear-line="123">
+    <fieldset class="fieldset" data-clear-line="124">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
+      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Name">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="125">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="126">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
+      <input id="input_company" class="input input-bordered w-full" type="text" placeholder="Company">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="127">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Size</legend>
+      <input id="input_size" class="input input-bordered w-full" type="select" placeholder="Size">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="128">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Source</legend>
+      <input id="input_source" class="input input-bordered w-full" type="text" placeholder="Source">
+    </fieldset>
+    <button class="btn btn-primary w-full" id="btn_Add_Lead" data-clear-line="129">Add Lead</button>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6" data-clear-line="136">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">New Leads</h2>
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_New_Leads" data-clear-line="137">
+      <div class="px-6 py-4 border-b border-base-300/40">
+        <h3 class="text-sm font-semibold text-base-content">New Leads</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_New_Leads_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Leads: name*, email*, company, size, source, assigned_to, status, created_at_date (line 25)
+
+ ENDPOINTS:
+   GET /api/leads (line 45)
+   GET /api/leads/new (line 48)
+   POST /api/leads (line 51)
+   PUT /api/leads/:id [auth] (line 65)
+   POST /api/seed (line 72)
+
+ PAGES:
+   'Lead Router' at / (line 113)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function _clear_render_table(tableEl, data, renderHead, renderRow) {
+  if (!tableEl) return;
+  var thead = tableEl.querySelector('thead tr');
+  var tbody = tableEl.querySelector('tbody');
+  if (!Array.isArray(data) || data.length === 0) {
+    if (thead) thead.innerHTML = '';
+    if (tbody) tbody.innerHTML = '';
+    return;
+  }
+  if (thead) thead.innerHTML = renderHead(data);
+  var VIRT_THRESHOLD = 100;
+  if (data.length <= VIRT_THRESHOLD) {
+    tbody.innerHTML = data.map(renderRow).join('');
+    return;
+  }
+  var ROW_HEIGHT = 40;
+  var BUFFER = 5;
+  var scroller = tableEl.parentElement;
+  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  scroller.style.maxHeight = '560px';
+  scroller.style.overflowY = 'auto';
+  function paint() {
+    var top = scroller.scrollTop;
+    var h = scroller.clientHeight || 560;
+    var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
+    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var topPad = first * ROW_HEIGHT;
+    var botPad = (data.length - last) * ROW_HEIGHT;
+    var html = '';
+    if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
+    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
+    tbody.innerHTML = html;
+  }
+  if (!scroller._clear_virt_bound) {
+    scroller._clear_virt_bound = true;
+    scroller.addEventListener('scroll', paint, { passive: true });
+  }
+  paint();
+}
+document.title = "Lead Router";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  name: "",
+  email: "",
+  company: "",
+  size: "",
+  source: "",
+  new_leads: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:21
+  // Database: local memory (JSON file backup)
+  // clear:120
+  let total = _clear_len(_state.new_leads);
+  _clear_render_table(
+    document.getElementById('output_New_Leads_table'),
+    _state.new_leads,
+    function(d) { var _keys = ["name","company","size","source","assigned_to"]; return _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join(''); },
+    function(row) { var _keys = ["name","company","size","source","assigned_to"]; return '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>'; }
+  );
+  document.getElementById('input_name').value = _state.name;
+  document.getElementById('input_email').value = _state.email;
+  document.getElementById('input_company').value = _state.company;
+  document.getElementById('input_size').value = _state.size;
+  document.getElementById('input_source').value = _state.source;
+}
+
+// --- Input listeners ---
+document.getElementById('input_name').addEventListener('input', function(e) {
+  _state.name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_email').addEventListener('input', function(e) {
+  _state.email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_company').addEventListener('input', function(e) {
+  _state.company = e.target.value;
+  _recompute();
+});
+document.getElementById('input_size').addEventListener('input', function(e) {
+  _state.size = e.target.value;
+  _recompute();
+});
+document.getElementById('input_source').addEventListener('input', function(e) {
+  _state.source = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add_Lead').addEventListener('click', async function() {
+    if (_state.name === '' || _state.name == null) { _toast('name is required', 'error'); return; }
+    if (_state.email === '' || _state.email == null) { _toast('email is required', 'error'); return; }
+    if (_state.company === '' || _state.company == null) { _toast('company is required', 'error'); return; }
+    if (_state.size === '' || _state.size == null) { _toast('size is required', 'error'); return; }
+    if (_state.source === '' || _state.source == null) { _toast('source is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Lead');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/leads", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: _state.name, email: _state.email, company: _state.company, size: _state.size, source: _state.source }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/leads] [clear:130]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:131]', e.message); return _state.new_leads; });
+    _state.name = "";
+    _state.email = "";
+    _state.company = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- On Page Load ---
+_recompute(); // initial render with default state
+(async () => {
+  try {
+    { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:115]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:116]', e.message); return _state.new_leads; });
+  _recompute();
+  } catch(e) { console.error("Page load error:", e); }
+})();
+
+
+  </script>
+
+  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
+  <script src="/__meph__/widget.js" defer></script>
+  <!-- ============================================================== -->
+  <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
+  <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
+  <!-- ============================================================== -->
+  <script>
+  (function() {
+    if (window === window.parent) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
+    var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    function __selectorFor(el) {
+      if (!el || el === document) return null;
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/s+/).join('.') : '';
+      var txt = (el.textContent || '').trim().slice(0, 30);
+      if (tag === 'button' && txt) return tag + ':has-text("' + txt + '")';
+      return tag + cls;
+    }
+    function __post(msg) {
+      try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
+    }
+    // Capture user actions and forward to Studio
+    document.addEventListener('click', function(e) {
+      __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
+    }, true);
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') {
+        __post({ type: 'user-action', action: 'input', selector: __selectorFor(t), value: String(t.value || '').slice(0, 200), ts: Date.now() });
+      }
+    }, true);
+    document.addEventListener('submit', function(e) {
+      __post({ type: 'user-action', action: 'submit', selector: __selectorFor(e.target), ts: Date.now() });
+    }, true);
+    // Listen for commands from Meph
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.target !== 'clear-bridge') return;
+      var reply = { source: 'clear-bridge', replyTo: msg.id };
+      try {
+        if (msg.cmd === 'click') {
+          var el = document.querySelector(msg.selector);
+          if (!el) { reply.error = 'Element not found: ' + msg.selector; }
+          else { el.click(); reply.ok = true; reply.html = document.body.innerHTML.slice(0, 4000); }
+        } else if (msg.cmd === 'fill') {
+          var input = document.querySelector(msg.selector);
+          if (!input) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter) nativeSetter.set.call(input, msg.value);
+            else input.value = msg.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            reply.ok = true; reply.value = input.value;
+          }
+        } else if (msg.cmd === 'inspect') {
+          var target = document.querySelector(msg.selector);
+          if (!target) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var cs = window.getComputedStyle(target);
+            var rect = target.getBoundingClientRect();
+            reply.ok = true;
+            reply.tag = target.tagName.toLowerCase();
+            reply.text = (target.textContent || '').slice(0, 200);
+            reply.styles = { color: cs.color, backgroundColor: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, padding: cs.padding, border: cs.border };
+            reply.box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        } else if (msg.cmd === 'read-dom') {
+          reply.ok = true;
+          reply.html = document.body.innerHTML.slice(0, 8000);
+          reply.state = window._state ? JSON.parse(JSON.stringify(window._state)) : null;
+          reply.url = location.href;
+        } else if (msg.cmd === 'read-storage') {
+          var ls = {}, ss = {};
+          for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+          for (var j = 0; j < sessionStorage.length; j++) { var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2); }
+          reply.ok = true; reply.localStorage = ls; reply.sessionStorage = ss;
+        }
+      } catch (err) {
+        reply.error = err.message;
+      }
+      __post(reply);
+    });
+    __post({ type: 'bridge-ready', url: location.href });
+  })();
+  </script>
+</body>
+</html>
