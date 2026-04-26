@@ -109,11 +109,40 @@ function compileProgram(source, options = {}) {
   result.ast = ast;
   // Expose database backend so CLI commands (package, deploy) can pick the right adapter
   result.dbBackend = ast.body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
+  // Lean Lesson 1 — collect every TBD line in the program so the test runner,
+  // the canonical-examples library, and Lesson 3 (open-capability visibility)
+  // can find them. The compiler emits runtime stubs at these lines; this list
+  // tells callers WHICH lines are stubs without re-walking the AST.
+  result.placeholders = collectPlaceholders(ast);
   // Structured eval stats for RL + observability
   const stats = computeStats(ast, source, result.warnings);
   stats.ok = result.errors.length === 0;
   result.stats = stats;
   return result;
+}
+
+// Walk the AST and gather every PLACEHOLDER node (TBD marker). Returns
+// `[{ line: N }]` sorted by line. Used by `result.placeholders` so external
+// tools (test runner, harvest scorer, hint pipeline) can introspect the
+// program's open holes without parsing source themselves.
+function collectPlaceholders(ast) {
+  const found = [];
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (node.type === NodeType.PLACEHOLDER && typeof node.line === 'number') {
+      found.push({ line: node.line });
+    }
+    // Recurse into every child property — tolerant of unknown node shapes
+    // so it picks up placeholders nested inside agents, workflows, pages,
+    // etc. without needing a hand-maintained type table.
+    for (const key of Object.keys(node)) {
+      const v = node[key];
+      if (v && typeof v === 'object') walk(v);
+    }
+  }
+  walk(ast.body || []);
+  return found.sort((a, b) => a.line - b.line);
 }
 
 export {

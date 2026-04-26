@@ -441,6 +441,14 @@ const SYNONYM_TABLE = Object.freeze({
   should: Object.freeze(['should', 'does']),
   search: Object.freeze(['search']),
   block_arguments: Object.freeze(['block arguments matching', 'block arguments that match']),
+
+  // TBD placeholder (Lean Lesson 1) — drop this anywhere a value or a block can
+  // go. The compiler accepts it, records the line on the result, and emits a
+  // tagged stub at runtime. Lets Meph leave one piece unfinished and keep
+  // iterating on the rest of the program. Canonical is lowercase `tbd` because
+  // tokenizer compares case-insensitively; Clear convention is "TBD" all-caps
+  // in source so it stands out visually.
+  tbd: Object.freeze(['tbd']),
 });
 
 // Build the reverse lookup: synonym string → canonical token

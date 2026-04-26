@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 — Lean Lesson 1: TBD placeholders ship (compiler + test runner + Meph guidance)
+
+Russell asleep, autonomous overnight worker. Lean Lesson 1 phases 1.1–1.4 landed in a single sequence of TDD commits. Phase 1.5 (the $10 measurement A/B sweep) is queued for Russell when he wakes — pure compiler + docs work today, no API spend.
+
+**The pitch.** Lean's `sorry` is the "to be determined" mark in proof assistants — drop it anywhere a proof step belongs and the rest of the file still type-checks. Clear gets the same primitive in plain English: `TBD`. Drop it anywhere a value or a step belongs, the program compiles green, runtime throws "placeholder hit at line N" if execution reaches it, and `clear test` catches that exact error and reports SKIPPED instead of FAILED. Lets Meph (or Russell) leave one piece unfinished and keep iterating on the rest instead of rewriting the whole program.
+
+**Phase 1.1 — grammar.** `tbd` registered in `synonyms.js` (canonical lowercase, source-form `TBD` flows through case-insensitive lookup), `SYNONYM_VERSION` 0.32.0 → 0.33.0. New `PLACEHOLDER` node type in `parser.js`. Statement dispatch entry in `CANONICAL_DISPATCH` so a bare `TBD` line parses cleanly. Expression-position handling in `parsePrimary` so any expression can be a placeholder. Three TDD tests: TBD in expression position, TBD as a standalone statement, TBD inside a function body.
+
+**Phase 1.2 — compiler stub.** `_compileNodeInner` PLACEHOLDER case (statement form) emits `throw new Error("placeholder hit at line N — fill it in or remove it")`. `exprToCode` PLACEHOLDER case (expression form) emits a self-throwing IIFE so any READ of the placeholder explodes with the same message. Both JS and Python backends covered. `compileProgram` walks the AST and exposes `result.placeholders` as `[{ line: N }]` sorted by line. Three TDD tests.
+
+**Phase 1.3 — test runner skip path.** Generated test harness now declares `let passed = 0, failed = 0, skipped = 0`. The `test()` helper's catch block inspects the thrown error: if `err.message` starts with the exact `"placeholder hit at line"` prefix the compiler emits, count as SKIPPED + log "SKIP:". Otherwise count as FAILED + log "FAIL:". Results line reads `X passed, Y failed, Z skipped due to stub`. Skipped tests do NOT trigger a non-zero exit code — partial programs can still ship CI without their own placeholders blocking. Three TDD tests.
+
+**Phase 1.4 — doc cascade + Meph guidance.** Updated `intent.md` (PLACEHOLDER row in expression nodes table), `SYNTAX.md` (canonical TBD section), `AI-INSTRUCTIONS.md` (TBD conventions section), `USER-GUIDE.md` (worked example in Chapter 17 Testing showing skip output), `FEATURES.md` (one row in Core Language table), and `playground/system-prompt.md` (Meph guidance). All documents emphasize: use TBD when the spec is genuinely open, do NOT use it to dodge hard parts, do NOT ship placeholders into production code, skipped tests are not coverage.
+
+**Test bump:** `clear.test.js` +9 from this work (TBD coverage). All 8 core templates compile clean throughout, `placeholders=0` on every template (no false positives on real apps).
+
+**What ships next:** Phase 1.5 measurement when Russell wakes. A/B sweep, 5 curriculum tasks × 5 trials × 2 conditions. ~$10 budget. Decision rules in `plans/plan-lean-lessons-04-26-2026.md`.
+
+---
+
 ## 2026-04-25 — Shell Upgrade Phase 1: `app_*` presets get the slate-on-ivory polish
 
 The shell that wraps every app — sidebar + header + main — got the visual overhaul the Marcus-target mock has been calling for. Same Clear source (`section 'Sidebar' with style app_sidebar:` etc.), upgraded compiled output: semantic HTML5 tags, 240px rail, 56px sticky header with brand/breadcrumb/action data slots, slate-on-ivory token palette aligned with `landing/marcus-app-target.html`.

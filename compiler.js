@@ -2826,7 +2826,11 @@ function generateE2ETests(body) {
   lines.push('// Requires: server running on localhost:3000');
   lines.push('');
   lines.push('const BASE = process.env.TEST_URL || "http://localhost:3000";');
-  lines.push('let passed = 0, failed = 0;');
+  // Lean Lesson 1 — placeholder skip support. A test that runs into a TBD
+  // marker (compiled to a "placeholder hit at line N" throw) reports as
+  // SKIPPED, not FAILED. Lets a partial program show "structure right,
+  // piece not filled in" instead of a noisy false failure.
+  lines.push('let passed = 0, failed = 0, skipped = 0;');
   lines.push('let _emailCounter = 0;');
   lines.push('let _uniqueCounter = 0;');
   // Module-level so both user tests and the _expectStatus helper can see them
@@ -2865,8 +2869,20 @@ function generateE2ETests(body) {
   lines.push('    passed++;');
   lines.push('    console.log("PASS:", name);');
   lines.push('  } catch (err) {');
-  lines.push('    failed++;');
-  lines.push('    console.log("FAIL:", name, "-", err.message);');
+  // Lean Lesson 1 — placeholder skip path. The compiler emits "placeholder
+  // hit at line N" exactly when execution reaches a TBD marker, so a test
+  // that wandered into a stub gets reported as SKIPPED with the same line
+  // info instead of being counted as a real failure. The marker string
+  // must match the compiler's exact emission so non-stub failures do not
+  // accidentally classify as skips.
+  lines.push('    const _msg = err && err.message ? String(err.message) : "";');
+  lines.push('    if (_msg.indexOf("placeholder hit at line") === 0) {');
+  lines.push('      skipped++;');
+  lines.push('      console.log("SKIP:", name, "-", _msg, "(this test exercises a stub)");');
+  lines.push('    } else {');
+  lines.push('      failed++;');
+  lines.push('      console.log("FAIL:", name, "-", _msg);');
+  lines.push('    }');
   lines.push('  }');
   lines.push('}');
   lines.push('');
@@ -3486,7 +3502,11 @@ function generateE2ETests(body) {
   }
 
   lines.push('  console.log("");');
-  lines.push('  console.log("Results:", passed, "passed,", failed, "failed");');
+  // Lean Lesson 1 — Results line distinguishes failed (real bugs) from
+  // skipped due to stub (structure right, piece not filled in). Skips do
+  // NOT trigger a non-zero exit code so a partial program can still be
+  // shipped through CI without blocking on its own placeholders.
+  lines.push('  console.log("Results:", passed, "passed,", failed, "failed,", skipped, "skipped due to stub");');
   lines.push('  process.exit(failed > 0 ? 1 : 0);');
   lines.push('}');
   lines.push('');
@@ -6167,6 +6187,18 @@ function _compileNodeInner(node, ctx) {
     case NodeType.THEME:
       return null;
 
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` as a standalone statement. Emit a runtime
+      // throw with the source line baked in. Compile stays clean; only the
+      // running code fails the moment execution reaches the line. Python
+      // and JS branches both produce the same human-readable message so
+      // Meph (or Russell) can grep "fill it in or remove it" across logs.
+      const msg = `placeholder hit at line ${node.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') return `${pad}raise Exception(${safeMsg})`;
+      return `${pad}throw new Error(${safeMsg});`;
+    }
+
     case NodeType.SCRIPT:
       // Raw JavaScript/Python escape hatch — emit code as-is
       return node.code.split('\n').map(l => pad + l).join('\n');
@@ -8469,6 +8501,22 @@ export function exprToCode(expr, ctx) {
     case NodeType.LITERAL_BOOLEAN:
       if (ctx.lang === 'python') return expr.value ? 'True' : 'False';
       return expr.value ? 'true' : 'false';
+
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` in expression position. The expression node
+      // produces an inline self-throwing helper so the moment any code
+      // tries to READ the value (assign it, return it, log it, pass it
+      // anywhere), it explodes with a clean message naming the line.
+      // Statement-position `TBD` is handled in _compileNodeInner above.
+      const msg = `placeholder hit at line ${expr.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') {
+        // Python: a thunk that always raises when invoked. Wrap in `(lambda: ...)()`
+        // so it evaluates at use-site, not at definition.
+        return `(_ for _ in ()).throw(Exception(${safeMsg}))`;
+      }
+      return `(()=>{throw new Error(${safeMsg});})()`;
+    }
 
     case NodeType.LITERAL_NOTHING:
       return ctx.lang === 'python' ? 'None' : 'null';

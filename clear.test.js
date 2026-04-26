@@ -25610,6 +25610,138 @@ describe('decidable core — live: block (Path B Phase 1)', () => {
     expect(r.errors).toHaveLength(0);
     // Python emit should still contain the AI call inside the agent body
     expect(r.python).toMatch(/_ask_ai|ask_claude|anthropic|live:/);
+
+// =============================================================================
+// TBD PLACEHOLDERS — Lean Lesson 1
+// =============================================================================
+// `TBD` is Clear's "to-be-determined" marker. It works anywhere a value or a
+// statement can go. The compiler accepts it (program still compiles green),
+// records each placeholder line on the result, and emits code that throws a
+// clean stub error if the placeholder line is reached at runtime. This lets
+// Meph (or a human) leave one piece unfinished and keep iterating on the rest
+// instead of rewriting the whole program.
+
+describe('TBD placeholders — Phase 1.3 (test runner skips stub-bearing tests)', () => {
+  // For these tests we need a program with at least one ENDPOINT (so the
+  // compiler emits the test harness at all) plus a TBD inside one of the
+  // tests. The harness must catch the "placeholder hit" runtime error and
+  // count it as SKIPPED rather than FAILED, and the final results line
+  // must include a skip count.
+  const stubProgram = [
+    'build for javascript backend',
+    'create a Items table:',
+    '  name, required',
+    "when user requests data from /api/items:",
+    "  send back 'ok'",
+    "test 'placeholder skip example':",
+    '  set thing = TBD',
+    "  expect thing is 'whatever'",
+    '',
+  ].join('\n');
+
+  it('compiled test harness defines a `skipped` counter and a SKIP path', () => {
+    const r = compileProgram(stubProgram);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toBeTruthy();
+    // The harness must declare a skipped counter alongside passed/failed
+    expect(r.tests).toContain('let passed = 0, failed = 0, skipped = 0');
+    // And it must check for the placeholder marker in the thrown error
+    expect(r.tests).toContain('placeholder hit at line');
+    // And it must log a SKIP line when it catches one
+    expect(r.tests).toContain('SKIP:');
+  });
+
+  it('Results line reports skipped due to stub separately from failures', () => {
+    const r = compileProgram(stubProgram);
+    // The summary line must distinguish skipped from failed so a partial
+    // program does not look like a failing one.
+    expect(r.tests).toContain('skipped due to stub');
+  });
+
+  it('a non-stub thrown error still counts as FAILED, not SKIPPED', () => {
+    // Same program shape but the test asserts a real failure, NOT a TBD
+    const failProgram = [
+      'build for javascript backend',
+      'create a Items table:',
+      '  name, required',
+      "when user requests data from /api/items:",
+      "  send back 'ok'",
+      "test 'real failure example':",
+      '  set thing = 5',
+      "  expect thing is 99",
+      '',
+    ].join('\n');
+    const r = compileProgram(failProgram);
+    expect(r.errors).toHaveLength(0);
+    // The harness should still throw real assertion errors as FAIL — the
+    // skip path should ONLY trigger when the message starts with the
+    // exact "placeholder hit at line" marker so non-stub failures are not
+    // accidentally hidden.
+    expect(r.tests).toContain('FAIL:');
+  });
+});
+
+describe('TBD placeholders — Phase 1.2 (compiler stub + position tracking)', () => {
+  it('a program with TBD compiles with zero errors', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('compiler exposes placeholder positions on the result', () => {
+    const src = 'build for javascript backend\nset x = TBD\nset y = 7\nset z = TBD\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.placeholders).toBeTruthy();
+    // Two TBDs on lines 2 and 4
+    expect(r.placeholders).toHaveLength(2);
+    const lines = r.placeholders.map(p => p.line).sort((a, b) => a - b);
+    expect(lines[0]).toBe(2);
+    expect(lines[1]).toBe(4);
+  });
+
+  it('compiled output throws a clean stub error mentioning the line number', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const code = r.javascript || r.serverJS || '';
+    // The compiled stub must mention the line number AND a "fill it in" hint
+    // so the runtime error tells Meph (or Russell) exactly what to fix.
+    expect(code).toContain('placeholder');
+    expect(code).toMatch(/line 2/);
+    expect(code).toContain('fill it in or remove it');
+  });
+});
+
+describe('TBD placeholders — Phase 1.1 (grammar)', () => {
+  it('TBD in expression position parses as a placeholder literal', () => {
+    const src = 'set greeting = TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const stmt = ast.body[0];
+    expect(stmt.type).toBe(NodeType.ASSIGN);
+    expect(stmt.expression.type).toBe(NodeType.PLACEHOLDER);
+    expect(stmt.expression.line).toBe(1);
+  });
+
+  it('TBD as a standalone statement parses as a placeholder node', () => {
+    const src = 'TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(ast.body[0].line).toBe(1);
+  });
+
+  it('TBD inside a function body parses cleanly', () => {
+    const src = "to greet with name:\n  TBD\n";
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const fn = ast.body.find(n => n.type === NodeType.FUNCTION_DEF);
+    expect(fn).toBeTruthy();
+    expect(fn.body).toHaveLength(1);
+    expect(fn.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(fn.body[0].line).toBe(2);
   });
 });
 

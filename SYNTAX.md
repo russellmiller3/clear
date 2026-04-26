@@ -22,6 +22,54 @@ define total as: price + tax
 items is an empty list
 ```
 
+## TBD Placeholders (Lean Lesson 1)
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs and you have not decided yet. The compiler accepts it, the program
+still compiles green, and only the line that holds the placeholder fails
+at runtime — every other piece keeps working.
+
+```clear
+# As a value
+greeting = TBD
+plan_for_thursday = TBD
+
+# As a whole step (a line on its own)
+to greet with name:
+  TBD
+
+# Mixed in a real workflow
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                       # the auth + audit log piece is for later
+  send back lead
+```
+
+What runs:
+- A program with one or more `TBD` markers compiles with **zero compile errors**.
+- The compiler emits a clean line-tagged stub at every `TBD`. If running code
+  reaches a placeholder it throws `placeholder hit at line N — fill it in or remove it`.
+- The compiled test harness catches that exact error and reports the test as
+  **SKIPPED** (not FAILED), with the line number. Skips do not fail the build.
+- The Results line reads: `X passed, Y failed, Z skipped due to stub`.
+- `compileProgram(source).placeholders` returns `[{ line: N }, ...]` — every
+  line that still holds a stub.
+
+When to use it:
+- The spec is ambiguous about one piece (auth flow, edge case, error message).
+  Drop a `TBD`, ship the rest, ask Russell, fill it in next session.
+- You are sketching the structure of a program and want compiler feedback on
+  the parts that ARE written without being blocked by the parts that are not.
+
+When NOT to use it:
+- Do not use `TBD` to dodge a hard part. The placeholder is a bookmark for a
+  decision that is genuinely open, not a way to hide a piece you do not want
+  to write. Programs with leftover `TBD`s in shipped code are a smell.
+
 ## Math
 
 ```clear

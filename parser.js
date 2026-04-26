@@ -391,6 +391,12 @@ export const NodeType = Object.freeze({
   BINARY_OP: 'binary_op',
   UNARY_OP: 'unary_op',
   CALL: 'call',
+
+  // Lean Lesson 1 — placeholder marker. Goes anywhere a value or a statement
+  // can. Compiler emits a tagged stub that throws a clean runtime error if
+  // execution ever reaches it. Keeps a partial program compiling instead of
+  // forcing a rewrite of the whole file.
+  PLACEHOLDER: 'placeholder',
 });
 
 // =============================================================================
@@ -501,6 +507,15 @@ function unaryOp(operator, operand, line) {
 
 function callNode(name, args, line) {
   return { type: NodeType.CALL, name, args, line };
+}
+
+// Lean Lesson 1 — placeholder marker. Drops into either expression position
+// (e.g. `set greeting = TBD`) or statement position (a line that's just `TBD`).
+// Both shapes record the source line so the compiler can emit a "this part
+// hasn't been filled in yet" stub at runtime and so the test runner can mark
+// any test that exercises the line as SKIPPED instead of FAILED.
+function placeholderNode(line) {
+  return { type: NodeType.PLACEHOLDER, line };
 }
 
 // Phase 3: Modules
@@ -882,6 +897,11 @@ function resolveCanonical(token, zone) {
 // Canonical-keyword handlers (keyed on firstToken.canonical)
 const CANONICAL_DISPATCH = new Map([
   // --- Simple single-line nodes ---
+  // Lean Lesson 1 — `TBD` as a standalone statement. Records the line so the
+  // compiler can emit a tagged stub and the test runner can skip any test
+  // that exercises it. Expression-position TBD (e.g. `set x = TBD`) is
+  // handled in parsePrimary below.
+  ['tbd', (ctx) => { ctx.body.push(placeholderNode(ctx.line)); return ctx.i + 1; }],
   ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
   ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
   ['auth_scaffold', (ctx) => { ctx.body.push({ type: NodeType.AUTH_SCAFFOLD, line: ctx.line }); return ctx.i + 1; }],
@@ -8974,6 +8994,14 @@ function parsePrimary(tokens, pos, line, end) {
 
   if (tok.canonical === 'nothing') {
     return { node: literalNothing(line), nextPos: pos + 1 };
+  }
+
+  // Lean Lesson 1 — `TBD` in expression position. Drops a placeholder marker
+  // wherever a value goes (`set greeting = TBD`, `respond TBD`, etc). The
+  // compiler emits a runtime stub that throws a "this part hasn't been filled
+  // in yet" error if the value is ever read.
+  if (tok.canonical === 'tbd') {
+    return { node: placeholderNode(line), nextPos: pos + 1 };
   }
 
   // "today" → date expression for start of current day

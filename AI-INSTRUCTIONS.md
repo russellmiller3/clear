@@ -673,6 +673,52 @@ A few plain English words look like keyword typos to Clear's tokenizer. Using th
 | `login` as a variable | Reserved keyword context | `login_attempt`, `login_event` |
 | `search` as a bare variable | Looks like a forward-reference | define it first OR use `query_text` |
 
+## TBD — Placeholder Marker (use sparingly, on purpose)
+
+`TBD` lets you leave one piece of a program unfinished and keep the rest
+working. The compiler accepts it anywhere a value or a step belongs, the
+program still compiles green, and only the line with the placeholder
+fails at runtime — every other piece runs.
+
+**Use `TBD` when:**
+- The spec is ambiguous about ONE piece (auth flow, edge case, error message
+  copy, audit log shape) and you want compiler feedback on the rest now.
+- You are sketching the structure of a program and want the parser + validator
+  to check what is written without being blocked by what is not.
+- You are working with Russell and he says "leave the X part for now, focus
+  on the Y part." Drop a `TBD` for X, ship Y, ask later.
+
+**Do NOT use `TBD` to:**
+- Dodge a hard part you do not feel like writing. The placeholder is a
+  bookmark for a decision that is genuinely OPEN, not a hiding spot.
+- Skip a piece a test will exercise. Tests that hit a `TBD` report as
+  SKIPPED, which looks fine in the pass count but means the test did
+  not actually verify anything. Coverage you skip is coverage you do not have.
+
+**How it behaves:**
+- Compiles with zero compile errors. Programs with one or more `TBD`s ship.
+- Runtime hits the line → throws `placeholder hit at line N — fill it in or remove it`.
+- `clear test` catches that exact error and reports the test as SKIPPED, not
+  FAILED. Results line: `X passed, Y failed, Z skipped due to stub`.
+- `compileProgram(src).placeholders` returns every `TBD` line — useful for
+  the canonical-examples library and any "open holes" view.
+
+```clear
+# Value position
+greeting = TBD
+
+# Step position (a whole line)
+to greet with name:
+  TBD
+
+# Realistic mid-program use
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                       # audit log piece is for next session
+  send back lead
+```
+
 ## Common Mistakes (read this before writing Clear)
 
 | Wrong | Right | Why |

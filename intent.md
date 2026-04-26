@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (126 total)
+## Node Types (127 total)
 
 ### Core Language
 
@@ -84,6 +84,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `LITERAL_STRING` | `'hello'` | Single or double quotes |
 | `LITERAL_BOOLEAN` | `true`, `false` | |
 | `LITERAL_NOTHING` | `nothing` | `null` / `None` |
+| `PLACEHOLDER` | `TBD` (statement OR expression) | Lean Lesson 1 — drop anywhere a value or block can go. Compiles green. Runtime emits `throw new Error("placeholder hit at line N — fill it in or remove it")` (or `raise Exception(...)` in Python). Test harness catches that exact message and reports SKIPPED, not FAILED. `result.placeholders` lists every TBD line. |
 | `LITERAL_LIST` | `['a', 'b']` | |
 | `LITERAL_RECORD` | `create person:` + fields | Object literal |
 | `VARIABLE_REF` | `name` | |
