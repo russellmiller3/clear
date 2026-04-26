@@ -49,6 +49,23 @@
             "statusMessage": "Checking plans referenced in this brief were Read this session..."
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/clear-cheatsheet-on-write.mjs",
+            "timeout": 5,
+            "statusMessage": "Injecting Clear canonical-syntax cheat sheet..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/landing-design-on-write.mjs",
+            "timeout": 5,
+            "statusMessage": "Injecting landing-page design constraints..."
+          }
+        ]
       }
     ],
     "SessionStart": [
