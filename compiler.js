@@ -6167,6 +6167,18 @@ function _compileNodeInner(node, ctx) {
     case NodeType.THEME:
       return null;
 
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` as a standalone statement. Emit a runtime
+      // throw with the source line baked in. Compile stays clean; only the
+      // running code fails the moment execution reaches the line. Python
+      // and JS branches both produce the same human-readable message so
+      // Meph (or Russell) can grep "fill it in or remove it" across logs.
+      const msg = `placeholder hit at line ${node.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') return `${pad}raise Exception(${safeMsg})`;
+      return `${pad}throw new Error(${safeMsg});`;
+    }
+
     case NodeType.SCRIPT:
       // Raw JavaScript/Python escape hatch — emit code as-is
       return node.code.split('\n').map(l => pad + l).join('\n');
@@ -8455,6 +8467,22 @@ export function exprToCode(expr, ctx) {
     case NodeType.LITERAL_BOOLEAN:
       if (ctx.lang === 'python') return expr.value ? 'True' : 'False';
       return expr.value ? 'true' : 'false';
+
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` in expression position. The expression node
+      // produces an inline self-throwing helper so the moment any code
+      // tries to READ the value (assign it, return it, log it, pass it
+      // anywhere), it explodes with a clean message naming the line.
+      // Statement-position `TBD` is handled in _compileNodeInner above.
+      const msg = `placeholder hit at line ${expr.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') {
+        // Python: a thunk that always raises when invoked. Wrap in `(lambda: ...)()`
+        // so it evaluates at use-site, not at definition.
+        return `(_ for _ in ()).throw(Exception(${safeMsg}))`;
+      }
+      return `(()=>{throw new Error(${safeMsg});})()`;
+    }
 
     case NodeType.LITERAL_NOTHING:
       return ctx.lang === 'python' ? 'None' : 'null';

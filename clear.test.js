@@ -25344,6 +25344,38 @@ describe('AI helpers — exponential-backoff retry (Session 46)', () => {
 // Meph (or a human) leave one piece unfinished and keep iterating on the rest
 // instead of rewriting the whole program.
 
+describe('TBD placeholders — Phase 1.2 (compiler stub + position tracking)', () => {
+  it('a program with TBD compiles with zero errors', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('compiler exposes placeholder positions on the result', () => {
+    const src = 'build for javascript backend\nset x = TBD\nset y = 7\nset z = TBD\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.placeholders).toBeTruthy();
+    // Two TBDs on lines 2 and 4
+    expect(r.placeholders).toHaveLength(2);
+    const lines = r.placeholders.map(p => p.line).sort((a, b) => a - b);
+    expect(lines[0]).toBe(2);
+    expect(lines[1]).toBe(4);
+  });
+
+  it('compiled output throws a clean stub error mentioning the line number', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const code = r.javascript || r.serverJS || '';
+    // The compiled stub must mention the line number AND a "fill it in" hint
+    // so the runtime error tells Meph (or Russell) exactly what to fix.
+    expect(code).toContain('placeholder');
+    expect(code).toMatch(/line 2/);
+    expect(code).toContain('fill it in or remove it');
+  });
+});
+
 describe('TBD placeholders — Phase 1.1 (grammar)', () => {
   it('TBD in expression position parses as a placeholder literal', () => {
     const src = 'set greeting = TBD\n';
