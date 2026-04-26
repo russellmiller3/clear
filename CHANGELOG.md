@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 — Lean Lesson 3: open-capability visibility for Meph
+
+Overnight worker session (Russell asleep). Single focused commit, no API spend, no push.
+
+**Lean Lesson 3 shipped — open-capability surface.** Lean's prover always shows the writer "what's left to prove." Clear today made Meph re-derive that himself from raw test output every cycle. New module `playground/supervisor/open-capabilities.js` collects three sources of "still open" work — TBD placeholders (from Lesson 1's `result.placeholders`), failing tests (from the most recent `clear test` snapshot), and unresolved compile errors (text-matched against the curated INTENT_HINTS canonical-fix table) — into one structured report that gets injected into Meph's per-turn system context BEFORE he writes code. Stays under 200 chars when nothing is open, under 1KB when fully populated. Lives in a separate volatile prompt block so it doesn't invalidate the stable-prefix cache.
+
+**Tests:** 18 unit tests in `playground/supervisor/open-capabilities.test.js` covering the empty case, each of the three sources in isolation, the summary heuristic (errors > failing tests > placeholders priority), and the all-three-at-once integration. All 8 core templates compile clean. Server boots clean.
+
+**Wired into:** `playground/server.js` `buildSystemWithContext` — new optional params `editorSource` and `lastCompileResult`, with belt-and-suspenders try/catch so a malformed compile result never blocks a chat turn.
+
+**Doc cascade:** FEATURES.md (one row), RESEARCH.md (paragraph under flywheel), `playground/system-prompt.md` (tells Meph what the new block means).
+
+---
+
 ## 2026-04-26 — Lean Lesson 1: TBD placeholders ship (compiler + test runner + Meph guidance)
 
 Russell asleep, autonomous overnight worker. Lean Lesson 1 phases 1.1–1.4 landed in a single sequence of TDD commits. Phase 1.5 (the $10 measurement A/B sweep) is queued for Russell when he wakes — pure compiler + docs work today, no API spend.
