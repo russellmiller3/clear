@@ -171,7 +171,18 @@ async function run() {
   db.close();
 }
 
-run().catch(err => {
-  console.error('Cold start failed:', err.message);
-  process.exit(1);
-});
+// Only kick off the cold-start when this file is the main entry — never on
+// import. Without this guard, anyone who imports cold-start.js (e.g. a test
+// that wants to call `run()` itself, or a tool that just wants the helper
+// functions) accidentally triggers a full Factor DB seed pass. Caught
+// 2026-04-25 when a winner-harvest worker imported the module to verify
+// `trainingTasks()` wiring and inadvertently inserted 13 gold rows.
+const __isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (__isMain) {
+  run().catch(err => {
+    console.error('Cold start failed:', err.message);
+    process.exit(1);
+  });
+}
+
+export { run };
