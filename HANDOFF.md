@@ -8,7 +8,7 @@ Everything below was done overnight while you slept. Nothing was pushed to remot
 
 ## TL;DR — what landed
 
-Fourteen pieces of work, all committed and merged into the overnight branch:
+Fifteen pieces of work, all committed and merged into the overnight branch:
 
 1. **Sweep fix.** The "duplicate session id" bug that broke yesterday's training runs is fixed. New helper drops stale rows before any new sweep starts. 4 new tests cover it.
 2. **App shell phase 1 — the polished sidebar/header/main chrome.** The four building blocks every app uses (`app_layout`, `app_sidebar`, `app_main`, `app_header`) now compile to the slate-on-ivory shape from the Marcus mock. 240px sidebar, 56px sticky header with brand/breadcrumb/action regions, semantic page tags. Five new tests, all eight reference apps still build clean.
@@ -24,6 +24,7 @@ Fourteen pieces of work, all committed and merged into the overnight branch:
 12. **Initial canonical-examples draft (RLVR Phase 2).** A starter set of ~10 winning-row examples from the friction-snapshot top, covering a diverse archetype × line-count grid. Each example pulls real Clear source from the Factor DB. NOT yet wired into Meph (Phase 4 of the plan does that) — file is at `playground/canonical-examples.md` for you to refine when you wake. Includes a "keep / improve / swap / drop" curation path so you don't start from a blank page.
 13. **Lean Lesson 1 — TBD placeholders.** New keyword: drop `TBD` anywhere a value or a step belongs. Program still compiles green; runtime throws a clean "fill it in or remove it" error if execution reaches the placeholder; tests that exercise a stub report SKIPPED instead of FAILED. Phases 1.1–1.4 shipped (grammar + compiler stub + test-runner skip + 7-surface doc cascade). +9 compiler tests. Phase 1.5 (the $10 measurement A/B sweep) is queued for you when you wake.
 14. **Lean Lesson 3 — open-capability visibility for Meph.** New module collects three sources of "still open" work — TBD placeholders, failing tests, unresolved compile errors — into one structured report Meph sees in his per-turn context BEFORE he writes code. Mirrors how Lean's prover always shows the writer "what's left to prove." 18 unit tests. Stays under 1KB even when fully populated, lives in a separate volatile prompt block so it doesn't break prompt caching.
+15. **Lean Lesson 2 — shape-search retrieval.** Every Meph compile (success or failure) now also retrieves canonical worked examples whose program shape matches what he's writing — same archetype, similar table/endpoint mix. Layered on top of the existing error-text retriever, never replaces it. Combined hint cap stays at 5. Disabled via `CLEAR_HINT_DISABLE=1` for clean A/B against the hint-off arm. 17 new tests for the matcher.
 
 ## Still in flight at handoff time
 
