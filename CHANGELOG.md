@@ -6,6 +6,12 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 — Shell Phase 5: data tables get the polished slate-on-ivory shape
+
+`display X as table` now compiles to a hand-designed-looking table from the same one-line Clear input. Status fields render as `clear-pill-{value}` colored badges. Name / customer / email columns prepend an avatar circle with initials. Numeric money columns are right-aligned with `tabular-nums`. Headers carry `data-sortable` and click-to-toggle `is-sorted`. Rows toggle `is-selected` on click. New `with actions:` block lists labeled action buttons (`'Approve' is primary` / `'Reject' is danger`) rendered as hover-revealed icons in a new rightmost column. Backwards compat: legacy `with delete and edit` shorthand still works. Cell type detection lives in a single runtime helper so future column types are one helper-edit. Click + sort wiring is idempotent. 10 new tests; +10 to `clear.test.js` total. All 8 core templates compile clean.
+
+---
+
 ## 2026-04-26 — Lean Lesson 2: shape-search retrieval for canonical examples
 
 Russell asleep. Lean Lesson 2 from `plans/plan-lean-lessons-04-26-2026.md` shipped behind the existing text-match hint pipeline as an additive layer.

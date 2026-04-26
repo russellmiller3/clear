@@ -25795,5 +25795,150 @@ await import('./playground/deploy-cloudflare.test.js');
 // LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
 await import('./runtime/meph-widget.test.mjs');
 
+// =============================================================================
+// SHELL-5: Data tables emit upgrade — pills, avatars, money, actions, sort, select
+// =============================================================================
+describe('SHELL-5: data tables — auto-detected status pills', () => {
+  it('wraps a status field in <span class="clear-pill clear-pill-pending">', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-pill');
+    expect(out).toContain('clear-pill-');
+  });
+
+  it('lowercases status value for class name (Pending → clear-pill-pending)', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toMatch(/toLowerCase\(\)/);
+  });
+});
+
+describe('SHELL-5: data tables — avatar circle for name/customer/email columns', () => {
+  it('renders an avatar wrapper around a customer column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-avatar');
+  });
+
+  it('renders an avatar wrapper around a name column', () => {
+    const src = `build for web
+page 'App':
+  on page load get users from '/api/users'
+  display users as table showing name, role`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-avatar');
+  });
+});
+
+describe('SHELL-5: data tables — money columns get tabular-nums + right alignment', () => {
+  it('right-aligns and tabular-nums-formats a price column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, price`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('text-right');
+    expect(out).toContain('tabular-nums');
+  });
+
+  it('right-aligns an amount column', () => {
+    const src = `build for web
+page 'App':
+  on page load get expenses from '/api/expenses'
+  display expenses as table showing description, amount`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('tabular-nums');
+  });
+});
+
+describe('SHELL-5: data tables — new `with actions:` block syntax', () => {
+  it('parses an indented actions block under display table', () => {
+    const ast = parse(`page 'App':
+  display deals as table showing customer, status with actions:
+    'Approve' is primary
+    'Reject' is danger`);
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(Array.isArray(disp.actionButtons)).toBe(true);
+    expect(disp.actionButtons.length).toBe(2);
+    expect(disp.actionButtons[0].label).toBe('Approve');
+    expect(disp.actionButtons[0].style).toBe('primary');
+    expect(disp.actionButtons[1].label).toBe('Reject');
+    expect(disp.actionButtons[1].style).toBe('danger');
+  });
+
+  it('compiles action buttons into a hover-revealed row-actions column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status with actions:
+    'Approve' is primary
+    'Review' is ghost`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-row-actions');
+    expect(out).toContain('Approve');
+    expect(out).toContain('Review');
+  });
+});
+
+describe('SHELL-5: data tables — sortable headers', () => {
+  it('every <th> carries a data-sortable attribute', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, price`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('data-sortable');
+  });
+});
+
+describe('SHELL-5: data tables — row selection', () => {
+  it('row click toggles is-selected on the <tr>', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('is-selected');
+  });
+});
+
+describe('SHELL-5: data tables — backwards compat with `with delete and edit`', () => {
+  it('existing actions API still works (delete/edit shorthand)', () => {
+    const ast = parse(`page 'App':
+  display contacts as table showing name, email with delete and edit`);
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+});
+
 run();
 

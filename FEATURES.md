@@ -140,7 +140,8 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 
 | Display Format | Syntax | Output |
 |----------------|--------|--------|
-| Table | `display X as table showing col1, col2` | HTML table |
+| Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows |
+| Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
 | Cards | `display X as cards showing name, description` | Card grid |
 | List | `display X as list` | Bullet list |
 | Currency | `display X as dollars` | `$1,234.56` |
