@@ -64,6 +64,7 @@ when user requests data from /api/deals/pending:
   send back all Deals where status is 'pending'
 
 when user sends deal to /api/deals:
+  requires login
   validate deal:
     rep_name is text, required, min 1, max 100
     customer is text, required, min 1, max 200
@@ -347,3 +348,6 @@ test:
 
 test:
   updating a deal should require login
+
+test:
+  creating a deal should require login

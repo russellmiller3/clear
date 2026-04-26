@@ -2886,6 +2886,30 @@ page 'Test' at '/':
     // Field sent from state
     expect(js).toContain('question: _state.question');
   });
+
+  it('send-to button includes auth header when target endpoint requires login', () => {
+    const source = `build for web and javascript backend
+allow signup and login
+
+create a Deals table:
+  customer, required
+
+when user sends deal to /api/deals:
+  requires login
+  validate deal:
+    customer is text, required
+  save deal as new Deal
+  send back deal with success message
+
+page 'New deal' at '/new':
+  'Customer' as text input saves to customer
+  button 'Submit':
+    send customer to '/api/deals'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('fetch("/api/deals"');
+    expect(result.javascript).toContain("'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')");
+  });
 });
 
 // =============================================================================
@@ -16521,6 +16545,16 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('data-stat-card="true"');
     expect(r.html).toContain('Pending Count');
     expect(r.html).toContain('clear-stat-value');
+  });
+
+  it('emits stat cards without whitespace-only lines when optional slots are empty', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value 5`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html.split('\n').filter(line => /^\s+$/.test(line))).toHaveLength(0);
   });
 
   it('emits stat card deltas with positive and negative classes', () => {

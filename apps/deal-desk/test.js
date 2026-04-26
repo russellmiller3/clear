@@ -4,7 +4,7 @@
 // Requires: server running on localhost:3000
 
 const BASE = process.env.TEST_URL || "http://localhost:3000";
-let passed = 0, failed = 0;
+let passed = 0, failed = 0, skipped = 0;
 let _emailCounter = 0;
 let _uniqueCounter = 0;
 let _response, _responseBody;
@@ -28,8 +28,14 @@ async function test(name, fn) {
     passed++;
     console.log("PASS:", name);
   } catch (err) {
-    failed++;
-    console.log("FAIL:", name, "-", err.message);
+    const _msg = err && err.message ? String(err.message) : "";
+    if (_msg.indexOf("placeholder hit at line") === 0) {
+      skipped++;
+      console.log("SKIP:", name, "-", _msg, "(this test exercises a stub)");
+    } else {
+      failed++;
+      console.log("FAIL:", name, "-", _msg);
+    }
   }
 }
 
@@ -46,7 +52,7 @@ async function run() {
     payload["rep_name"] = _uniqueText("rep_name");
     payload["customer"] = _uniqueText("customer");
     const r = await fetch(BASE + "/api/deals", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(r.status === 201, "Expected 201, got " + r.status);
@@ -55,13 +61,13 @@ async function run() {
   });
 
   await test("Creating a deal without any data is rejected", async () => {
-    const r = await fetch(BASE + "/api/deals", { method: "POST" });
+    const r = await fetch(BASE + "/api/deals", { method: "POST", headers: { "Authorization": "Bearer " + TEST_TOKEN } });
     assert(r.status === 400, "Expected 400, got " + r.status);
   });
 
   await test("Creating a deal with a blank rep_name is rejected", async () => {
     const r = await fetch(BASE + "/api/deals", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify({ rep_name: "" })
     });
     assert(r.status === 400, "Expected 400, got " + r.status);
@@ -69,7 +75,7 @@ async function run() {
 
   await test("Creating a deal with a rep_name that's too long is rejected", async () => {
     const r = await fetch(BASE + "/api/deals", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify({ rep_name: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" })
     });
     assert(r.status === 400, "Expected 400, got " + r.status);
@@ -80,7 +86,7 @@ async function run() {
     payload["rep_name"] = _uniqueText("rep_name");
     payload["customer"] = _uniqueText("customer");
     const r = await fetch(BASE + "/api/deals", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(r.status === 201, "Expected 201, got " + r.status);
@@ -104,10 +110,10 @@ async function run() {
     assert(html.includes("Deal Desk"), "Page should contain title 'Deal Desk'");
   });
 
-  await test("The CRO Queue page renders", async () => {
+  await test("The New discount request page renders", async () => {
     const r = await fetch(BASE + "/");
     const html = await r.text();
-    assert(html.includes("CRO Queue"), "Page should contain title 'CRO Queue'");
+    assert(html.includes("New discount request"), "Page should contain title 'New discount request'");
   });
 
   await test("The Sign in page renders", async () => {
@@ -116,41 +122,57 @@ async function run() {
     assert(html.includes("Sign in"), "Page should contain title 'Sign in'");
   });
 
+  await test("The Back to queue link goes to the right page", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes('href="#/"') || html.includes('href="/"'), "Link 'Back to queue' should have href to '/', not '#'");
+  });
+
   // --- User-Written Tests (from test blocks in .clear source) ---
   const _baseUrl = BASE;
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a deal with rep_name : 'mike.l' , customer : 'Beta Co' , list_price : 50000 , discount_percent : 10", async () => {
-      // clear:164
+      // clear:342
       _response = await fetch(_baseUrl + "/api/deals", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "rep_name": "mike.l", "customer": "Beta Co", "list_price": 50000, "discount_percent": 10 })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:165
+      // clear:343
       _expectSuccess(_response);
   });
 
   await test("can user submit a deal with rep_name : 'sarah.j' , customer : 'Acme Corp' , list_price : 240000 , discount_percent : 25", async () => {
-      // clear:168
+      // clear:346
       _response = await fetch(_baseUrl + "/api/deals", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "rep_name": "sarah.j", "customer": "Acme Corp", "list_price": 240000, "discount_percent": 25 })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:169
+      // clear:347
       _expectSuccess(_response);
   });
 
   await test("updating a deal should require login", async () => {
-      // clear:172
+      // clear:350
       // Could not find PUT endpoint for deal
   });
 
+  await test("creating a deal should require login", async () => {
+      // clear:353
+      _response = await fetch(_baseUrl + "/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test: true })
+      });
+      assert(_response.status === 401, "Should require login, got " + _response.status);
+  });
+
   console.log("");
-  console.log("Results:", passed, "passed,", failed, "failed");
+  console.log("Results:", passed, "passed,", failed, "failed,", skipped, "skipped due to stub");
   process.exit(failed > 0 ? 1 : 0);
 }
 

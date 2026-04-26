@@ -8173,6 +8173,18 @@ ${pad}}`;
     case NodeType.API_CALL: {
       const url = JSON.stringify(node.url);
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
+      const jsonHeaders = "{ 'Content-Type': 'application/json' }";
+      const authHeaders = "{ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }";
+      const browserHeadersFor = (method, path = node.url) => {
+        const key = `${String(method || 'GET').toUpperCase()} ${path}`;
+        return ctx.authEndpoints && ctx.authEndpoints.has(key) ? authHeaders : jsonHeaders;
+      };
+      const browserGetOptionsFor = (method, path = node.url) => {
+        const key = `${String(method || 'GET').toUpperCase()} ${path}`;
+        return ctx.authEndpoints && ctx.authEndpoints.has(key)
+          ? `, { headers: ${authHeaders} }`
+          : '';
+      };
 
       // Auto-upgrade: if the endpoint streams, use the streaming reader
       // regardless of whether the user wrote `stream ...` or `get ... from`.
@@ -8188,7 +8200,7 @@ ${pad}}`;
       if (node.method === 'GET' && !streamsFromAst && !isSendAndReceive) {
         const target = node.targetVar ? sanitizeName(node.targetVar) : 'response';
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
-        return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
+        return `${pad}_state.${target} = await fetch(${url}${browserGetOptionsFor('GET')}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
       if (isSendAndReceive) {
         // POST with fields, parse JSON response into _state[targetVar]
@@ -8196,7 +8208,7 @@ ${pad}}`;
         const fieldObj = '{ ' + node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ') + ' }';
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         const lines = [];
-        lines.push(`${pad}{ const _r = await fetch(${url}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${fieldObj}) });`);
+        lines.push(`${pad}{ const _r = await fetch(${url}, { method: 'POST', headers: ${browserHeadersFor('POST')}, body: JSON.stringify(${fieldObj}) });`);
         lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST ${node.url}]${srcInfo}', _e.error || 'request failed'); throw new Error(_e.error || 'request failed'); }`);
         lines.push(`${pad}  const _d = await _r.json();`);
         lines.push(`${pad}  _state.${target} = (_d && typeof _d === 'object' && 'text' in _d) ? _d.text : _d;`);
@@ -8218,7 +8230,7 @@ ${pad}}`;
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         const lines = [];
         lines.push(`${pad}{ _state.${target} = ''; _recompute();`);
-        lines.push(`${pad}  const _r = await fetch(${url}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${fieldObj}) });`);
+        lines.push(`${pad}  const _r = await fetch(${url}, { method: 'POST', headers: ${browserHeadersFor('POST')}, body: JSON.stringify(${fieldObj}) });`);
         lines.push(`${pad}  if (!_r.ok) { const _e = await _r.text().catch(() => ''); console.error('[STREAM ${node.url}]${srcInfo}', _e); throw new Error('Stream request failed: ' + _r.status); }`);
         lines.push(`${pad}  const _reader = _r.body.getReader();`);
         lines.push(`${pad}  const _dec = new TextDecoder();`);
@@ -8264,9 +8276,9 @@ ${pad}}`;
       }
       // Helper: compile a fetch call with error checking
       const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
-      const fetchWithErrorCheck = (fetchUrl, method, body) => {
+      const fetchWithErrorCheck = (fetchUrl, method, body, endpointPath = node.url) => {
         const lines = [];
-        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${body}) });`);
+        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: ${browserHeadersFor(method, endpointPath)}, body: JSON.stringify(${body}) });`);
         lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[${method} ${node.url}]${srcInfo}', _e.error || '${method} failed'); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
         return lines.join('\n');
       };
@@ -8280,7 +8292,7 @@ ${pad}}`;
           if (upInfo) {
             const lines = [];
             lines.push(`${pad}if (_state._editing_id) {`);
-            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr));
+            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr, upInfo.path || node.url));
             lines.push(`${pad}  _state._editing_id = null;`);
             lines.push(`${pad}} else {`);
             lines.push(fetchWithErrorCheck(url, node.method, bodyExpr));
@@ -9427,6 +9439,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const deleteEndpoints = {};
   const updateEndpoints = {};
   const getRefreshUrls = {};
+  const authEndpoints = new Set();
   // Endpoints whose response is an SSE stream. Any `ask claude`/`ask ai` or
   // `stream ask claude` inside a POST endpoint emits text/event-stream, so the
   // frontend should use a streaming reader (not a plain JSON fetch) when
@@ -9445,6 +9458,13 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
     return false;
   }
+  function hasAuthBody(nodes) {
+    return (nodes || []).some(n =>
+      n.type === NodeType.REQUIRES_AUTH ||
+      n.type === NodeType.REQUIRES_ROLE ||
+      (n.body && hasAuthBody(n.body))
+    );
+  }
   function scanForEndpoints(nodes) {
     for (const n of nodes) {
       if (n.type === NodeType.ENDPOINT && n.path) {
@@ -9452,8 +9472,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         if (match) {
           const resource = match[1].toLowerCase();
           if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
-          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method };
+          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method, path: n.path };
         }
+        if (hasAuthBody(n.body)) authEndpoints.add(`${String(n.method || 'GET').toUpperCase()} ${n.path}`);
         if (hasStreamBody(n.body)) streamingEndpoints.add(n.path);
       }
       if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
@@ -10126,7 +10147,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined, streamingEndpoints };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined, streamingEndpoints, authEndpoints };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL || (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.API_CALL));
       const asyncKw = hasApiCall ? 'async ' : '';
@@ -10232,7 +10253,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push('(async () => {');
     lines.push('  try {');
     for (const loadNode of loadNodes) {
-      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web', streamingEndpoints };
+      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web', streamingEndpoints, authEndpoints };
       for (const child of loadNode.body) {
         const compiled = compileNode(child, loadCtx);
         if (compiled) lines.push(compiled);
@@ -10633,19 +10654,24 @@ function buildHTML(body) {
   function statCardHTML(card) {
     const label = formatInlineText(card.label || '');
     const icon = card.icon
-      ? `<i class="clear-stat-icon" data-lucide="${attrEsc(card.icon)}" aria-hidden="true"></i>`
-      : '';
+      ? `          <i class="clear-stat-icon" data-lucide="${attrEsc(card.icon)}" aria-hidden="true"></i>`
+      : null;
     const delta = statDeltaHTML(card.delta);
     const sparkline = statSparklineHTML(card.sparkline);
-    return `      <div class="clear-stat-card" data-stat-card="true"${clAttr(card)}>
-        <div class="clear-stat-card-top">
-          <div class="clear-stat-label">${label}</div>
-          ${icon}
-        </div>
-        <div class="clear-stat-value tabular-nums">${statValueHTML(card.value)}</div>
-        ${delta}
-        ${sparkline}
-      </div>`;
+    const lines = [
+      `      <div class="clear-stat-card" data-stat-card="true"${clAttr(card)}>`,
+      '        <div class="clear-stat-card-top">',
+      `          <div class="clear-stat-label">${label}</div>`,
+    ];
+    if (icon) lines.push(icon);
+    lines.push(
+      '        </div>',
+      `        <div class="clear-stat-value tabular-nums">${statValueHTML(card.value)}</div>`
+    );
+    if (delta) lines.push(`        ${delta}`);
+    if (sparkline) lines.push(`        ${sparkline}`);
+    lines.push('      </div>');
+    return lines.join('\n');
   }
 
   function statStripHTML(node) {
