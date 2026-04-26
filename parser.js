@@ -1661,7 +1661,33 @@ const CANONICAL_DISPATCH = new Map([
     if (hasDisplayModifiers(ctx.tokens)) {
       const parsed = parseDisplay(ctx.tokens, ctx.line);
       if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-      else ctx.body.push(parsed.node);
+      else {
+        // SHELL-5: harvest indented `with actions:` block — each child line is
+        // `'Label' is style` where style ∈ primary|ghost|danger|secondary.
+        if (parsed.node._actionsBlockFollows) {
+          delete parsed.node._actionsBlockFollows;
+          parsed.node.actionButtons = [];
+          let j = ctx.i + 1;
+          while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+            const aTokens = ctx.lines[j].tokens;
+            if (aTokens && aTokens.length >= 3 && aTokens[0].type === TokenType.STRING) {
+              const label = aTokens[0].value;
+              let stylePos = -1;
+              for (let k = 1; k < aTokens.length; k++) {
+                if (aTokens[k].canonical === 'is' || aTokens[k].value === 'is') { stylePos = k + 1; break; }
+              }
+              const style = (stylePos >= 0 && stylePos < aTokens.length)
+                ? aTokens[stylePos].value.toLowerCase()
+                : 'ghost';
+              parsed.node.actionButtons.push({ label, style });
+            }
+            j++;
+          }
+          ctx.body.push(parsed.node);
+          return j;
+        }
+        ctx.body.push(parsed.node);
+      }
       return ctx.i + 1;
     }
     // Plain show
@@ -6445,25 +6471,37 @@ function parseDisplay(tokens, line) {
   }
 
   // Optional: with delete / with edit / with delete and edit
+  // Optional (SHELL-5): with actions:  + indented block of 'Label' is style.
+  // Tokenizer strips the trailing block-opener colon, so we detect SHELL-5
+  // form by `with actions` being the last two tokens. The caller harvests
+  // the indented child lines into node.actionButtons.
   let actions = null;
+  let actionsBlockFollows = false;
   if (pos < tokens.length && tokens[pos].canonical === 'with') {
     pos++;
-    actions = [];
-    while (pos < tokens.length) {
-      const resolved = resolveCanonical(tokens[pos], 'ui');
-      if (resolved === 'action_delete' || resolved === 'remove') {
-        actions.push('delete');
-      } else if (tokens[pos].value.toLowerCase() === 'edit') {
-        actions.push('edit');
-      }
+    if (pos < tokens.length && tokens[pos].value && tokens[pos].value.toLowerCase() === 'actions'
+        && pos === tokens.length - 1) {
+      actionsBlockFollows = true;
       pos++;
-      if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+    } else {
+      actions = [];
+      while (pos < tokens.length) {
+        const resolved = resolveCanonical(tokens[pos], 'ui');
+        if (resolved === 'action_delete' || resolved === 'remove') {
+          actions.push('delete');
+        } else if (tokens[pos].value.toLowerCase() === 'edit') {
+          actions.push('edit');
+        }
+        pos++;
+        if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+      }
     }
   }
 
   const node = displayNode(expr.node, format, label, line);
   node.columns = columns;
   if (actions && actions.length > 0) node.actions = actions;
+  if (actionsBlockFollows) node._actionsBlockFollows = true;
   return { node };
 }
 

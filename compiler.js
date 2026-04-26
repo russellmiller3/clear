@@ -254,6 +254,60 @@ export const UTILITY_FUNCTIONS = [
   }
   paint();
 }`, deps: [] },
+  // SHELL-5: per-cell type detection. Each table cell goes through this so
+  // the same compiled code yields a status pill, an avatar circle, or a
+  // right-aligned money column purely based on the column key. No CSS in
+  // .clear required — the column NAME drives the styling.
+  { name: '_clear_cell', code: `function _clear_cell(key, val) {
+  var k = String(key).toLowerCase();
+  var v = val == null ? '' : String(val);
+  if (k === 'status' || k === 'state' || k === 'stage') {
+    var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+  }
+  if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\\$/.test(v)) {
+    var formatted = v;
+    if (typeof val === 'number' || /^-?\\d+(\\.\\d+)?$/.test(v)) {
+      var n = Number(val);
+      formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+    }
+    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+  }
+  if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
+    var parts = v.trim().split(/[\\s@.]+/).filter(Boolean);
+    var initials = parts.length >= 2
+      ? (parts[0][0] || '') + (parts[1][0] || '')
+      : v.slice(0, 2);
+    initials = initials.toUpperCase();
+    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+  }
+  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+}`, deps: ['_esc'] },
+  // SHELL-5: one-time wiring per table — click-to-select on rows, sort
+  // toggling on header clicks. Idempotent (guarded via _clear_init flag) so
+  // reactive re-renders don't double-bind.
+  { name: '_clear_table_init', code: `function _clear_table_init(tableEl) {
+  if (!tableEl || tableEl._clear_init) return;
+  tableEl._clear_init = true;
+  tableEl.addEventListener('click', function(e) {
+    var th = e.target.closest('th[data-sortable]');
+    if (th) {
+      var col = th.getAttribute('data-sortable');
+      var prev = tableEl.getAttribute('data-sort-col');
+      var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
+      tableEl.setAttribute('data-sort-col', col);
+      tableEl.setAttribute('data-sort-dir', dir);
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      th.classList.add('is-sorted');
+      return;
+    }
+    var tr = e.target.closest('tbody tr');
+    if (tr && !e.target.closest('button') && !e.target.closest('a')) {
+      tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
+      tr.classList.toggle('is-selected');
+    }
+  });
+}`, deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
@@ -9505,48 +9559,58 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     _dispUsedIds.add(outputId);
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if user explicitly requested action buttons via "with delete" / "with edit"
+      // SHELL-5: polished table emit. Each cell goes through _clear_cell()
+      // which detects the column type from the key name and produces the
+      // right HTML — status pill, avatar circle, money cell, or plain text.
+      // Headers carry data-sortable so the helper wires sort on click.
+      // Row click toggles is-selected. Actions either come from the legacy
+      // `with delete/edit` shorthand or the new `with actions:` block.
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
       const resourceKey = varName.toLowerCase();
       const actions = disp.actions || [];
       const hasDelete = actions.includes('delete');
       const hasUpdate = actions.includes('edit');
-      const hasActions = hasDelete || hasUpdate;
+      const hasShorthandActions = hasDelete || hasUpdate;
+      const actionButtons = Array.isArray(disp.actionButtons) ? disp.actionButtons : [];
+      const hasBlockActions = actionButtons.length > 0;
+      const hasActions = hasShorthandActions || hasBlockActions;
 
-      // Reactive table: delegate to _clear_render_table which handles virtual
-      // scrolling for large datasets (100+ rows). Head renderer produces the
-      // <th> row, row renderer produces one <tr> per item.
-      // Column keys: either explicit list or Object.keys of first row.
-      // The row renderer needs to derive keys from its OWN row (since data
-      // may be empty in the helper's no-op path). Two separate expressions.
       const headKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(d[0])';
       const rowKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(row)';
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
-      const tdClass = 'text-sm text-base-content';
-      const trClass = 'border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5';
-      const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
-      const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      const headCols = `_keys.map(function(k) { return '<th class="${thClass}" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join('')`;
+      const dataCols = `_keys.map(function(k) { return _clear_cell(k, row[k]); }).join('')`;
       let rowHtmlExpr;
       if (hasActions) {
-        let actionBtns = '';
+        const buttonExprs = [];
         if (hasUpdate) {
-          actionBtns += `'<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`;
+          buttonExprs.push(`'<button class="btn-tiny" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`);
         }
         if (hasDelete) {
-          if (actionBtns) actionBtns += ` + ' ' + `;
-          actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
+          buttonExprs.push(`'<button class="btn-tiny is-danger" data-delete-id="' + _esc(row.id) + '">Delete</button>'`);
         }
-        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>'`;
+        for (const btn of actionButtons) {
+          const styleClass = btn.style === 'primary' ? 'btn-tiny is-primary'
+            : btn.style === 'danger' ? 'btn-tiny is-danger'
+            : btn.style === 'secondary' ? 'btn-tiny is-secondary'
+            : 'btn-tiny';
+          const labelEsc = btn.label.replace(/'/g, "\\'");
+          const slugAttr = btn.label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          buttonExprs.push(`'<button class="${styleClass}" data-action="${slugAttr}" data-row-id="' + _esc(row.id) + '">${labelEsc}</button>'`);
+        }
+        const buttonsExpr = buttonExprs.length > 0 ? buttonExprs.join(` + ' ' + `) : `''`;
+        rowHtmlExpr = `'<tr>' + ${dataCols} + '<td><div class="clear-row-actions">' + ${buttonsExpr} + '</div></td>' + '</tr>'`;
       } else {
-        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '</tr>'`;
+        rowHtmlExpr = `'<tr>' + ${dataCols} + '</tr>'`;
       }
-      const extraHead = hasActions ? ` + '<th class="${thClass}"></th>'` : '';
+      const extraHead = hasActions ? ` + '<th class="${thClass}" style="width:1%"></th>'` : '';
       lines.push(`  _clear_render_table(`);
       lines.push(`    document.getElementById('${outputId}_table'),`);
       lines.push(`    ${val},`);
       lines.push(`    function(d) { var _keys = ${headKeysExpr}; return ${headCols}${extraHead}; },`);
       lines.push(`    function(row) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
       lines.push(`  );`);
+      lines.push(`  _clear_table_init(document.getElementById('${outputId}_table'));`);
     } else if (disp.format === 'cards') {
       // Reactive card grid: render array of objects as styled cards
       lines.push(`  {`);
