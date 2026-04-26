@@ -1,0 +1,9 @@
+{
+  "id": "1776979361943-063bbb",
+  "task": "Build this app in Clear:\n\n**Personal Greeting** (Level 1)\n\nWrite a GET /api/greet/:name endpoint that returns { greeting: 'Hello, {name}!' } using the name from the URL.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - GET /api/greet/Alice → expect {\"status\":200,\"bodyHas\":[\"greeting\"]}\n  - GET /api/greet/Bob → expect {\"status\":200,\"bodyHas\":[\"greeting\"]}\n\nSteps:\n1. Use edit_code to write the complete Clear source\n2. Use com",
+  "started_at": 1776979361,
+  "ended_at": 1776979408,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\nwhen user calls GET /api/greet/:name:\n  greeting is 'Hello, ' + this name + '!'\n  send back { greeting: greeting }\n"
+}

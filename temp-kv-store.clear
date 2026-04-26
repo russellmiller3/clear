@@ -1,0 +1,28 @@
+build for javascript backend
+database is local memory
+
+create a Store table:
+  key, unique
+  value
+
+when user sends entry to /api/store:
+  existing = look up Store where key is entry's key
+  if existing not found:
+    saved = save entry as new Store
+    send back saved
+  existing's value is entry's value
+  save existing to Store
+  send back existing
+
+when user calls GET /api/store/:key:
+  entry = look up Store where key is this key
+  if entry not found:
+    send back 'not found' with status 404
+  send back entry
+
+when user calls DELETE /api/store/:key:
+  entry = look up Store where key is this key
+  if entry not found:
+    send back 'not found' with status 404
+  remove entry from Store
+  send back 'ok'

@@ -1,0 +1,9 @@
+{
+  "id": "1776981297900-4lrvgh",
+  "task": "Build this app in Clear:\n\n**Role-Based Access Control** (Level 8)\n\nBuild an API with role-based access. Users have roles (admin/editor/viewer). POST /api/articles creates articles (editors and admins only). DELETE /api/articles/:id deletes (admins only). GET /api/articles lists all (anyone with auth). Viewers can read but not create or delete.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  role, required\n\ncreate a",
+  "started_at": 1776981297,
+  "ended_at": 1776981477,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

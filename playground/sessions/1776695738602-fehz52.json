@@ -1,0 +1,9 @@
+{
+  "id": "1776695738602-fehz52",
+  "task": "Set your task list to: \"check syntax\", \"compile\", \"run tests\". Use the todo tool.\n\nAfter the tool has run and you see the result, finish your response with one more line in this exact format:\n\nSELF-REPORT: <one sentence on whether the todo tool worked correctly, returned useful data, or felt broken in any way. Be honest — if it returned an error, said \"Unknown tool\", gave garbage, or was empty, say so specifically.>",
+  "started_at": 1776695738,
+  "ended_at": 1776695742,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript web and javascript backend\n\ncreate a Todos table:\n  title, required\n  done, boolean, default false\n\nwhen user calls GET /api/todos:\n  todos = look up all Todos\n  send back todos\n\nwhen user calls POST /api/todos receiving data:\n  validate data:\n    title must not be empty\n  save data to Todos\n  send back data with status 201\n\nwhen user calls DELETE /api/todos/:id:\n  requires login\n  delete Todo with this id\n  send back 'ok' with status 204\n\npage 'Todo App':\n  heading 'My Todos'\n  section:\n    'Title' as text input saves to new_title\n    button 'Add':\n      send new_title to '/api/todos'\n\ntest 'posting a todo works':\n  call POST /api/todos with title is 'Buy milk'\n  expect response status is 201\n  expect response body has id\n"
+}

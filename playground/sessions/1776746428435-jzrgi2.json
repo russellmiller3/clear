@@ -1,0 +1,9 @@
+{
+  "id": "1776746428435-jzrgi2",
+  "task": "Build this app in Clear:\n\n**Key-Value Store** (Level 3)\n\nBuild an in-memory key-value store. POST /api/store receives { key, value } and saves it. GET /api/store/:key returns { key, value } or 404 if not found. DELETE /api/store/:key removes the key.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/store with body {\"key\":\"color\",\"value\":\"blue\"} → expect {\"status\":200}\n  - GET /api/store/color → expect {\"status\":20",
+  "started_at": 1776746428,
+  "ended_at": 1776746503,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\ndatabase is local memory\n\ncreate a Store table:\n  key, required, unique\n  value, required\n\nwhen user sends pair to /api/store:\n  requires login\n  saved = save pair to Store\n  send back saved with status 200\n\nwhen user calls GET /api/store/:key:\n  items = get all Store where key is this key\n  if items is empty:\n    send back 'Not found' with status 404\n  send back items[0]\n\nwhen user calls DELETE /api/store/:key:\n  requires login\n  delete from Store where key is this key\n  send back 'deleted' with status 200\n"
+}

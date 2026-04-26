@@ -1,0 +1,9 @@
+{
+  "id": "1776775753953-84cnsj",
+  "task": "Build this app in Clear:\n\n**Bookmark Manager** (Level 4)\n\nBuild a CRUD API for bookmarks. Each bookmark has: url (required, must be a URL), title (required), tags (text). POST /api/bookmarks creates, GET /api/bookmarks lists all, DELETE /api/bookmarks/:id removes. Validate that url is actually a URL format.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Bookmarks table:\n  url, required\n  title, required\n  tags\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n",
+  "started_at": 1776775753,
+  "ended_at": 1776775818,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Bookmarks table:\n  url, required\n  title, required\n  tags\n\nwhen user sends bookmark to /api/bookmarks:\n  validate bookmark:\n    url must not be empty\n    title must not be empty\n  url_valid = bookmark's url contains 'http://' or bookmark's url contains 'https://'\n  guard url_valid or 'Invalid URL format'\n  send back saved with status 201\n\nwhen user calls GET /api/bookmarks:\n  send back all Bookmarks\n\nwhen user calls DELETE /api/bookmarks/:id:\n  requires login\n  remove from Bookmarks with this id\n  send back 'deleted'\n\ntest 'POST with valid bookmark':\n  call POST /api/bookmarks sending url: 'https://example.com', title: 'Example'\n  expect response status is 201\n  expect response has id\n  expect response has url\n  expect response has title\n\ntest 'POST with invalid URL':\n  call POST /api/bookmarks sending url: 'not-a-url', title: 'Bad'\n  expect response status is 400\n\ntest 'GET all bookmarks':\n  call GET /api/bookmarks\n  expect response status is 200\n\ntest 'POST without URL':\n  call POST /api/bookmarks sending title: 'No URL'\n  expect response status is 400\n"
+}

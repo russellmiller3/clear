@@ -1,0 +1,11 @@
+build for web
+
+create a Tasks table:
+  title, required
+
+page 'Dashboard' at '/':
+  needs login
+  heading 'Welcome back'
+
+page 'Login' at '/login':
+  heading 'Sign in'

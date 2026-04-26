@@ -1,0 +1,9 @@
+{
+  "id": "1776774754207-5bdzli",
+  "task": "Build this app in Clear:\n\n**Hello World API** (Level 1)\n\nWrite a GET /api/hello endpoint that returns { message: 'hello world' }\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - GET /api/hello → expect {\"status\":200,\"bodyHas\":[\"message\"]}\n\nSteps:\n1. Use edit_code to write the complete Clear source\n2. Use compile to verify it compiles without errors\n3. Use run_app to start it, then http_request to check the endpoints\n4. Fix ",
+  "started_at": 1776774754,
+  "ended_at": 1776774788,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\nwhen user calls GET /api/hello:\n  send back { message: 'hello world' }\n"
+}

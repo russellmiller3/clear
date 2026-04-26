@@ -1,0 +1,9 @@
+{
+  "id": "1776976473077-iwjltf",
+  "task": "Build this app in Clear:\n\n**User Profiles** (Level 5)\n\nBuild a user registration/login system with profiles. POST /api/register (email, password, name). POST /api/login returns token. GET /api/me returns current user profile (requires auth). PUT /api/me updates profile name.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  name, required\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/",
+  "started_at": 1776976473,
+  "ended_at": 1776976490,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

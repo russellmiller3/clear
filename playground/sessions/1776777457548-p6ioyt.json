@@ -1,0 +1,9 @@
+{
+  "id": "1776777457548-p6ioyt",
+  "task": "Build this app in Clear:\n\n**Rate-Limited API** (Level 7)\n\nBuild any CRUD API with rate limiting. POST /api/items creates items (name required). GET /api/items lists all. Apply rate limiting: max 5 requests per minute. The 6th request within a minute should return 429.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Items table:\n  name, required\n\n# Your endpoints here\n# Hint: rate limit 5 per minute\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/items with body {\"name",
+  "started_at": 1776777457,
+  "ended_at": 1776777537,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Items table:\n  name, required\n\ncreate a RateLimit table:\n  timestamp\n\nwhen user calls POST /api/items sending item_data:\n  validate item_data:\n    name must not be empty\n  \n  # Check rate limit\n  recent = get every RateLimit where timestamp is not empty\n  \n  if length of recent is greater than 5:\n    send back 'Too Many Requests' with status 429\n  \n  # Log this request\n  log_entry is an empty list\n  now_time = current time\n  log_entry's timestamp is now_time\n  save log_entry as new RateLimit\n  \n  # Save the item\n  saved = save item_data to Items\n  send back saved with status 201\n\nwhen user calls GET /api/items:\n  # Check rate limit\n  recent = get every RateLimit where timestamp is not empty\n  \n  if length of recent is greater than 5:\n    send back 'Too Many Requests' with status 429\n  \n  # Log this request\n  log_entry is an empty list\n  now_time = current time\n  log_entry's timestamp is now_time\n  save log_entry as new RateLimit\n  \n  items = get all Items\n  send back items\n"
+}

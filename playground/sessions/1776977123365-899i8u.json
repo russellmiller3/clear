@@ -1,0 +1,9 @@
+{
+  "id": "1776977123365-899i8u",
+  "task": "Build this app in Clear:\n\n**Admin Panel — Moderate User-Submitted Content** (Level 7)\n\nARCHETYPE: admin_tool. Shape: auth-gated admin app for reviewing + moderating user-submitted records. The CORE is that EVERY mutation endpoint has `requires role 'admin'` (not just `requires login`). An admin can list pending reviews, approve them, reject them. NOT a generic CRUD — the admin role gating is the differentiator. Include: POST /api/reviews (public — anyone can submit), GET /api/reviews/pending (ad",
+  "started_at": 1776977123,
+  "ended_at": 1776977149,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

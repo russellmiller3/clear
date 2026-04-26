@@ -1,0 +1,9 @@
+{
+  "id": "1776707140481-83nzav",
+  "task": "Build this app in Clear:\n\n**Blog with Search** (Level 6)\n\nBuild a blog API. Posts table with title, body, author. POST /api/posts creates. GET /api/posts lists all (support ?search= query param for title search). GET /api/posts/:id gets one post. Validate title and body are required, title max 200 chars.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Posts table:\n  title, required, max 200\n  body, required\n  author\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP te",
+  "started_at": 1776707140,
+  "ended_at": 1776707200,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ncreate a Posts table:\n  title, required, max 200\n  body, required\n  author\n\nwhen user sends data to /api/posts:\n  validate data:\n    title is required\n    title must not be empty\n    body is required\n    body must not be empty\n  saved = save data to Posts\n  send back saved with status 201\n\nwhen user calls GET /api/posts:\n  posts = get all Posts\n  search = get query param 'search'\n  if search is not empty:\n    posts = get all Posts where title includes search\n  send back posts\n\nwhen user calls GET /api/posts/:id:\n  post = look up Post with this id\n  send back post\n"
+}

@@ -1,0 +1,61 @@
+/*
+Authenticated Todo API — JWT-protected per-user todos
+
+  ┌─────────┐  POST  ┌──────────┐                ┌─────────┐
+  │ Client  │ ─────► │ /api/    │ proxies to ──► │ /auth/  │
+  │         │        │ register │                │ signup  │
+  │         │ ─────► │ /api/    │ proxies to ──► │ /auth/  │
+  │         │        │ login    │                │ login   │
+  │         │  GET   │ /api/    │ requires JWT   │ Todos   │
+  │         │ ─────► │ todos    │ scoped to ───► │ table   │
+  │         │  POST  │          │ caller's id    │         │
+  └─────────┘        └──────────┘                └─────────┘
+*/
+
+build for javascript backend
+database is local memory
+
+# Auth scaffold gives us /auth/signup and /auth/login — we proxy
+# /api/register and /api/login to those so the JWT and password
+# hashing logic is all reused.
+allow signup and login
+
+# Database
+
+create a Users table:
+  email, required, unique
+  password, required
+
+create a Todos table:
+  title, required
+  done, default false
+  user_id, required
+
+# Backend
+
+when user sends credentials to /api/register:
+  port = env('PORT')
+  result = call api 'http://localhost:' + port + '/auth/signup':
+    method is 'POST'
+    header 'Content-Type' is 'application/json'
+    body is credentials
+  send back result with status 201
+
+when user sends credentials to /api/login:
+  port = env('PORT')
+  result = call api 'http://localhost:' + port + '/auth/login':
+    method is 'POST'
+    header 'Content-Type' is 'application/json'
+    body is credentials
+  send back result
+
+when user calls GET /api/todos:
+  requires login
+  mine = get all Todos where user_id is caller's id
+  send back mine
+
+when user sends todo to /api/todos:
+  requires login
+  todo's user_id is caller's id
+  saved = save todo as new Todo
+  send back saved with status 201

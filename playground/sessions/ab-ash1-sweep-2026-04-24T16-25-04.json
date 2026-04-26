@@ -1,0 +1,727 @@
+{
+  "startedAt": "2026-04-24T16:25:04.142Z",
+  "elapsedMs": 6988943,
+  "taskIds": [
+    "counter",
+    "todo-crud",
+    "auth-todo",
+    "contact-book",
+    "validated-forms"
+  ],
+  "trialsPerCondition": 5,
+  "workers": 1,
+  "timeoutMs": 180000,
+  "strict": true,
+  "backend": "cc-agent",
+  "factorDb": {
+    "before": {
+      "total": 1722,
+      "passing": 667
+    },
+    "after": {
+      "total": 1771,
+      "passing": 701
+    },
+    "rowsAdded": 49,
+    "passingAdded": 34
+  },
+  "summary": {
+    "counter": {
+      "tools_on": {
+        "trials": 5,
+        "passes": 0,
+        "timedOut": 4,
+        "elapsedMsTotal": 899765,
+        "passRate": 0,
+        "avgElapsedMs": 179953
+      },
+      "tools_off": {
+        "trials": 5,
+        "passes": 4,
+        "timedOut": 1,
+        "elapsedMsTotal": 851882,
+        "passRate": 0.8,
+        "avgElapsedMs": 170376.4
+      },
+      "lift": -0.8
+    },
+    "todo-crud": {
+      "tools_on": {
+        "trials": 5,
+        "passes": 0,
+        "timedOut": 4,
+        "elapsedMsTotal": 898526,
+        "passRate": 0,
+        "avgElapsedMs": 179705.2
+      },
+      "tools_off": {
+        "trials": 5,
+        "passes": 5,
+        "timedOut": 0,
+        "elapsedMsTotal": 312393,
+        "passRate": 1,
+        "avgElapsedMs": 62478.6
+      },
+      "lift": -1
+    },
+    "auth-todo": {
+      "tools_on": {
+        "trials": 5,
+        "passes": 0,
+        "timedOut": 5,
+        "elapsedMsTotal": 900033,
+        "passRate": 0,
+        "avgElapsedMs": 180006.6
+      },
+      "tools_off": {
+        "trials": 5,
+        "passes": 0,
+        "timedOut": 5,
+        "elapsedMsTotal": 900041,
+        "passRate": 0,
+        "avgElapsedMs": 180008.2
+      },
+      "lift": 0
+    },
+    "contact-book": {
+      "tools_on": {
+        "trials": 5,
+        "passes": 5,
+        "timedOut": 0,
+        "elapsedMsTotal": 567427,
+        "passRate": 1,
+        "avgElapsedMs": 113485.4
+      },
+      "tools_off": {
+        "trials": 5,
+        "passes": 5,
+        "timedOut": 0,
+        "elapsedMsTotal": 687468,
+        "passRate": 1,
+        "avgElapsedMs": 137493.6
+      },
+      "lift": 0
+    },
+    "validated-forms": {
+      "tools_on": {
+        "trials": 5,
+        "passes": 5,
+        "timedOut": 0,
+        "elapsedMsTotal": 418432,
+        "passRate": 1,
+        "avgElapsedMs": 83686.4
+      },
+      "tools_off": {
+        "trials": 5,
+        "passes": 5,
+        "timedOut": 0,
+        "elapsedMsTotal": 536936,
+        "passRate": 1,
+        "avgElapsedMs": 107387.2
+      },
+      "lift": 0
+    }
+  },
+  "trials": [
+    {
+      "taskId": "counter",
+      "trialIdx": 0,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": false,
+      "elapsedMs": 180016,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 1,
+      "condition": "tools_off",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180014,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 2,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 142426,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 3,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 170988,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 4,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 178438,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 0,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 45076,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 1,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 63740,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 2,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 67158,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 3,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 71097,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 4,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 65322,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 0,
+      "condition": "tools_off",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180015,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 1,
+      "condition": "tools_off",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180006,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 2,
+      "condition": "tools_off",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180010,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 3,
+      "condition": "tools_off",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180002,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 4,
+      "condition": "tools_off",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180008,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 0,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 67746,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 1,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 175592,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 2,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": false,
+      "elapsedMs": 180011,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 3,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": false,
+      "elapsedMs": 180006,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 4,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 84113,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 0,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 88594,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 1,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 112742,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 2,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": false,
+      "elapsedMs": 180003,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 3,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 61777,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 4,
+      "condition": "tools_off",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 93820,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 0,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180020,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 1,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180005,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 2,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180015,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 3,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180003,
+      "error": null
+    },
+    {
+      "taskId": "counter",
+      "trialIdx": 4,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 179722,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 0,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180019,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 1,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180009,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 2,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180003,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 3,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180005,
+      "error": null
+    },
+    {
+      "taskId": "todo-crud",
+      "trialIdx": 4,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 178490,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 0,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180005,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 1,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180003,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 2,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180006,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 3,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180004,
+      "error": null
+    },
+    {
+      "taskId": "auth-todo",
+      "trialIdx": 4,
+      "condition": "tools_on",
+      "ok": false,
+      "timedOut": true,
+      "stuck": false,
+      "dbPassed": false,
+      "saidTaskComplete": false,
+      "elapsedMs": 180015,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 0,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 56901,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 1,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": false,
+      "elapsedMs": 180008,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 2,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 116729,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 3,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 154000,
+      "error": null
+    },
+    {
+      "taskId": "contact-book",
+      "trialIdx": 4,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 59789,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 0,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 97456,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 1,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 99280,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 2,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 47064,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 3,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 85662,
+      "error": null
+    },
+    {
+      "taskId": "validated-forms",
+      "trialIdx": 4,
+      "condition": "tools_on",
+      "ok": true,
+      "timedOut": false,
+      "stuck": false,
+      "dbPassed": true,
+      "saidTaskComplete": true,
+      "elapsedMs": 88970,
+      "error": null
+    }
+  ]
+}

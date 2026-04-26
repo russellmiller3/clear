@@ -1,0 +1,10 @@
+build for javascript backend
+
+create pro_plan_checkout:
+  price is 'price_pro_monthly'
+  mode is 'subscription'
+  success_url is '/billing/success'
+  cancel_url is '/pricing'
+
+when user requests data from /api/checkout/config:
+  send back pro_plan_checkout

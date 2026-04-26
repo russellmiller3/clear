@@ -1,0 +1,9 @@
+{
+  "id": "1776777727469-8hdu8t",
+  "task": "Build this app in Clear:\n\n**Sales KPI Page** (Level 7)\n\nARCHETYPE: kpi. Shape: ONE web page with 3+ big headline numbers (aggregates) and AT MOST ONE chart. This is NOT a dashboard (2+ charts = dashboard). This is NOT a crud_app (no create/update forms on the main page). The CORE is big-number displays driven by SQL aggregates from a Sales table. Page layout: heading, 3 big stat displays (total revenue, order count, avg order size), optionally one trend chart, nothing else. DO NOT add filters. D",
+  "started_at": 1776777727,
+  "ended_at": 1776777815,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for web and javascript backend\n\ndatabase is local memory\n\ncreate a Sales table:\n  amount (number), required\n  region\n  sold_at_date, auto\n\nwhen user sends seed to /api/seed:\n  create s1:\n    amount = 120\n    region is 'West'\n  save s1 as new Sale\n  create s2:\n    amount = 340\n    region is 'East'\n  save s2 as new Sale\n  send back 'seeded'\n\nwhen user calls GET /api/stats:\n  total_revenue = sum of amount from Sales\n  order_count = count of id from Sales\n  avg_order_size = avg of amount from Sales\n  send back { total_revenue is total_revenue, order_count is order_count, avg_order_size is avg_order_size }\n\npage 'KPIs' at '/':\n  stats = {}\n  heading 'Sales KPIs'\n  on page load:\n    response = call api GET '/api/stats'\n    stats = response\n  \n  section 'Total Revenue':\n    display stats's total_revenue\n  \n  section 'Order Count':\n    display stats's order_count\n  \n  section 'Average Order Size':\n    display stats's avg_order_size\n"
+}

@@ -11,7 +11,16 @@
       "mcp__computer-use__*",
       "mcp__Claude_in_Chrome__*",
       "Skill(do)",
-      "Skill(do:*)"
+      "Skill(do:*)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId=20748 OR ProcessId=61176 OR ProcessId=17220\" | Select-Object ProcessId,ParentProcessId,@{Name='Cmd';Expression={$_.CommandLine.Substring\\(0, [Math]::Min\\(180, $_.CommandLine.Length\\)\\)}} | Format-Table -AutoSize -Wrap)",
+      "Skill(pres)",
+      "Skill(pres:*)",
+      "Bash(node .claude/hooks/propose-new-hooks.mjs)",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\(0,'utf8'\\); if\\(!s.trim\\(\\)\\){console.log\\('\\(silent\\)'\\);process.exit\\(0\\);} try{console.log\\(JSON.parse\\(s\\).hookSpecificOutput.additionalContext.slice\\(0,3000\\)\\);}catch\\(e\\){console.log\\('raw:',s.slice\\(0,500\\)\\);}\")",
+      "Bash(node .claude/hooks/meta-learnings-updater.mjs)",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\(0,'utf8'\\); if\\(!s.trim\\(\\)\\){console.log\\('\\(silent\\)'\\);process.exit\\(0\\);} try{const d=JSON.parse\\(s\\); console.log\\('systemMessage:',d.systemMessage\\);}catch\\(e\\){console.log\\('raw:',s.slice\\(0,300\\)\\);}\")",
+      "Bash(node .claude/hooks/propose-new-tools.mjs)",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\(0,'utf8'\\); if\\(!s.trim\\(\\)\\){console.log\\('\\(silent\\)'\\);process.exit\\(0\\);} try{console.log\\(JSON.parse\\(s\\).hookSpecificOutput.additionalContext.slice\\(0,2000\\)\\);}catch\\(e\\){console.log\\('raw:',s.slice\\(0,300\\)\\);}\")"
     ]
   }
 }

@@ -1,0 +1,9 @@
+{
+  "id": "1776939115405-3pg51g",
+  "task": "Build this app in Clear:\n\n**Approval Queue** (Level 7)\n\nBuild an approval queue. Employees submit requests (title, description, amount). The request starts as 'pending'. A logged-in approver can update the status to 'approved' or 'rejected' (this requires auth). Need: POST /api/requests (public submit), GET /api/requests (list all), GET /api/requests/pending (filtered list), PUT /api/requests/:id (update, auth required).\n\nStarting skeleton:\n```clear\nbuild for web and javascript backend\n\ncreate a",
+  "started_at": 1776939115,
+  "ended_at": 1776939295,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

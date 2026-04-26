@@ -1,0 +1,9 @@
+{
+  "id": "1776774922341-7ilag5",
+  "task": "Build this app in Clear:\n\n**Validated Registration Form** (Level 7)\n\nBuild a registration endpoint POST /api/register with strict validation: email (required, valid email format), password (required, min 8 chars), name (required, max 100 chars), age (number, min 13). Return detailed error messages on 400.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required, min 8\n  name, required, max 100\n  age, number\n\n# Your end",
+  "started_at": 1776774922,
+  "ended_at": 1776774991,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required, min 8\n  name, required, max 100\n  age, number\n\nwhen user calls POST /api/register sending registration:\n  if registration's email is empty:\n    send back 'Email is required' with status 400\n  \n  if registration's password is empty:\n    send back 'Password is required' with status 400\n  \n  if registration's name is empty:\n    send back 'Name is required' with status 400\n  \n  if length of registration's password is less than 8:\n    send back 'Password must be at least 8 characters' with status 400\n  \n  if length of registration's name is greater than 100:\n    send back 'Name must be at most 100 characters' with status 400\n  \n  if registration's age is not empty:\n    if registration's age is less than 13:\n      send back 'Age must be at least 13' with status 400\n  \n  user = save registration to Users\n  send back user with status 201\n"
+}

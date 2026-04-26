@@ -1,0 +1,9 @@
+{
+  "id": "1776979225470-evj9aa",
+  "task": "What is 3+3? Answer briefly.",
+  "started_at": 1776979225,
+  "ended_at": 1776979235,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

@@ -1,0 +1,9 @@
+{
+  "id": "1776774776245-ad2pfa",
+  "task": "Build this app in Clear:\n\n**Counter API** (Level 3)\n\nBuild a stateful counter. GET /api/count returns { count: N }. POST /api/increment increases count by 1 and returns the new count. POST /api/reset sets count to 0.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/reset → expect {\"status\":200}\n  - GET /api/count → expect {\"status\":200,\"bodyHas\":[\"count\"]}\n  - POST /api/increment → expect {\"status\":200,\"bodyHas\":[",
+  "started_at": 1776774776,
+  "ended_at": 1776774842,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\ndatabase is local memory\n\ncreate a Counter table:\n  value, default 0\n\nwhen user calls GET /api/count:\n  counter = look up Counter with id 1\n  if counter is empty:\n    counter = save {value is 0} to Counter\n  send back {count is counter's value}\n\nwhen user calls POST /api/increment:\n  counter = look up Counter with id 1\n  if counter is empty:\n    counter = save {value is 0} to Counter\n  counter's value = counter's value + 1\n  save counter to Counter\n  send back {count is counter's value}\n\nwhen user calls POST /api/reset:\n  counter = look up Counter with id 1\n  if counter is empty:\n    counter = save {value is 0} to Counter\n  counter's value = 0\n  save counter to Counter\n  send back {count is counter's value}\n"
+}

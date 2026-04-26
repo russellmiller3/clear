@@ -1,0 +1,9 @@
+{
+  "id": "1776891518821-8i5s3g",
+  "task": "Build this app in Clear:\n\n**Admin Panel — Moderate User-Submitted Content** (Level 7)\n\nARCHETYPE: admin_tool. Shape: auth-gated admin app for reviewing + moderating user-submitted records. The CORE is that EVERY mutation endpoint has `requires role 'admin'` (not just `requires login`). An admin can list pending reviews, approve them, reject them. NOT a generic CRUD — the admin role gating is the differentiator. Include: POST /api/reviews (public — anyone can submit), GET /api/reviews/pending (ad",
+  "started_at": 1776891518,
+  "ended_at": 1776891556,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\nallow signup and login\nowner is 'admin@example.com'\n\ncreate a Reviews table:\n  author_email, required\n  content, required, min 1, max 500\n  status, default 'pending'\n  created_at_date, auto\n\nwhen user sends review to /api/reviews:\n  validate review:\n    author_email must not be empty\n    content must not be empty\n  saved = save review to Reviews\n  send back saved with status 201\n\nwhen user calls GET /api/reviews/pending:\n  requires role 'admin'\n  reviews = get all Reviews where status is 'pending'\n  send back reviews\n\nwhen user calls PUT /api/reviews/:id/approve:\n  requires role 'admin'\n  review = look up Review with this id\n  review's status is 'approved'\n  save review to Reviews\n  send back review\n\nwhen user calls PUT /api/reviews/:id/reject:\n  requires role 'admin'\n  review = look up Review with this id\n  review's status is 'rejected'\n  save review to Reviews\n  send back review\n"
+}

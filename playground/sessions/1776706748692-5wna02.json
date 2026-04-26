@@ -1,0 +1,9 @@
+{
+  "id": "1776706748692-5wna02",
+  "task": "This Clear code has a compile error. Please call compile, read any hints in the result, then fix the code. Follow your normal hint-announcement protocol.\n\nCode:\n```clear\nbuild for javascript backend with html frontend\n\ntable Sales:\n  amount is number\n  region is text\n\npage Overview:\n  show bar chart of Sales grouped by region as revenue_chart\n  show pie chart of Sales grouped by region as region_chart\n  total_rev = sum of amounts where amount > 100\n  show total_rev\n\n```\n",
+  "started_at": 1776706748,
+  "ended_at": 1776706759,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend with html frontend\n\ncreate a Sales table:\n  amount, type number\n  region, type text\n\npage 'Overview' at '/':\n  on page load get sales from '/api/sales'\n  display sales as table\n  total_rev = sum of amount from Sales where amount > 100\n  display total_rev\n"
+}

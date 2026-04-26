@@ -1,0 +1,9 @@
+{
+  "id": "1776891913779-jtn3qn",
+  "task": "Build this app in Clear:\n\n**Full SaaS: Project Tracker** (Level 10)\n\nBuild a project management API. Users register/login. Projects have name, description, status (active/archived). Tasks belong to projects with title, description, status (todo/in_progress/done), assignee_id. Auth required. Users can only see projects they own. Full CRUD on both resources.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required\n  name",
+  "started_at": 1776891913,
+  "ended_at": 1776892093,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

@@ -1,0 +1,9 @@
+{
+  "id": "1776776288510-k7zic5",
+  "task": "Build this app in Clear:\n\n**AI Ticket Categorizer** (Level 9)\n\nBuild an AI agent that categorizes support tickets. Define a Categorizer agent that returns { category, priority, suggested_action }. Tickets table stores the result. POST /api/tickets receives { subject, description } and returns the categorized ticket.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Tickets table:\n  subject, required\n  description\n  category\n  priority\n\n# Define a Categorizer agent\n# POST /api/t",
+  "started_at": 1776776288,
+  "ended_at": 1776776353,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ncreate a Tickets table:\n  subject, required\n  description\n  category\n  priority\n  suggested_action\n\nagent 'Categorizer' receives ticket_text:\n  result = ask claude 'You are a support ticket categorizer. Analyze the ticket and return a structured response.' with ticket_text returning JSON text:\n    category\n    priority\n    suggested_action\n  send back result\n\nwhen user sends ticket to /api/tickets:\n  combined = (ticket's subject + ' ' + ticket's description)\n  categorized = call 'Categorizer' with combined\n  ticket's category is categorized's category\n  ticket's priority is categorized's priority\n  ticket's suggested_action is categorized's suggested_action\n  saved = save ticket to Tickets\n  send back saved with status 201\n\nwhen user calls GET /api/tickets:\n  tickets = get all Tickets\n  send back tickets\n"
+}

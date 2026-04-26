@@ -1,0 +1,9 @@
+{
+  "id": "1776741359321-wepdzk",
+  "task": "Build this app in Clear:\n\n**Nightly Cleanup Batch Job** (Level 7)\n\nARCHETYPE: batch_job. Shape: backend-only (no pages, no auth), driven by a CRON schedule block (every day at 2am), NO external API calls, NO transforms — just pure cleanup. DO NOT call any external URL (that would make this a data_sync or etl). DO NOT build a dashboard. DO NOT build multiple endpoints — only POST /api/logs (for test setup) and GET /api/logs (for verification). The CORE of this task is the scheduled job: `every da",
+  "started_at": 1776741359,
+  "ended_at": 1776741387,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Logs table:\n  message, required\n  level, default 'info'\n  created_at_date, auto\n\nevery day at 2am:\n  delete from Logs where created_at_date is older than 30 days\n\nwhen user calls POST /api/logs sending message_data:\n  validate message_data:\n    message is text, required\n  saved = save message_data to Logs\n  send back saved with status 201\n\nwhen user calls GET /api/logs:\n  logs = get all Logs\n  send back logs\n"
+}

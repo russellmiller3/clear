@@ -1,0 +1,5 @@
+build for javascript backend
+
+when user calls GET /api/greet/:name:
+  greeting = ('Hello, ' + this name + '!')
+  send back { greeting is greeting }

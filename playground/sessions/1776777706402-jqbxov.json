@@ -1,0 +1,9 @@
+{
+  "id": "1776777706402-jqbxov",
+  "task": "Build this app in Clear:\n\n**Daily Report ETL** (Level 8)\n\nARCHETYPE: etl_pipeline. Shape: backend-only (no pages, no auth), CRON schedule (every day at 6am), FETCH from external URL, TRANSFORM each record (not pass-through — derive a new field), SAVE to a destination table. The distinguishing signal from data_sync: the transform step is meaningful (here: extract title + compute body_length from raw posts). DO NOT build a dashboard or a multi-chart page. DO NOT add auth. Only one verification end",
+  "started_at": 1776777706,
+  "ended_at": 1776777754,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a DailyReports table:\n  source_id (number)\n  title\n  body_length (number)\n  fetched_at_date, auto\n\nevery day at 6am:\n  all_posts = fetch from 'https://jsonplaceholder.typicode.com/posts'\n  for each post in all_posts:\n    body_length = length of post's body\n    save { source_id is post's id, title is post's title, body_length } to DailyReports\n\nwhen user calls GET /api/reports:\n  send back all DailyReports\n"
+}

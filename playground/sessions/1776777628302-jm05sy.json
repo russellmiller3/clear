@@ -1,0 +1,9 @@
+{
+  "id": "1776777628302-jm05sy",
+  "task": "Build this app in Clear:\n\n**Support Triage (AI-assisted)** (Level 9)\n\nBuild a support ticket triage system. Tickets have subject, body, from_email, category, priority, status. Use a Claude agent named 'Triage' that receives a ticket and returns a JSON object with {category, priority}. When a new ticket is POSTed, call the Triage agent to classify it before saving. Need: POST /api/tickets (auto-classifies), GET /api/tickets (list), GET /api/tickets/open.\n\nStarting skeleton:\n```clear\nbuild for web",
+  "started_at": 1776777628,
+  "ended_at": 1776777710,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for web and javascript backend\n\nowner is 'admin@support.com'\nallow signup and login\n\ndatabase is local memory\n\ncreate a Tickets table:\n  subject, required\n  body\n  from_email\n  category, default 'General'\n  priority, default 'Normal'\n  status, default 'open'\n\nagent 'Triage' receives ticket:\n  result = ask claude 'Analyze this support ticket and determine its category and priority level. Respond with JSON.' with ticket returning JSON text:\n    category\n    priority\n  send back result\n\nwhen user calls POST /api/tickets sending ticket_data:\n  triage_result = call 'Triage' with ticket_data\n  ticket_data's category is triage_result's category\n  ticket_data's priority is triage_result's priority\n  saved = save ticket_data to Tickets\n  send back saved with status 201\n\nwhen user calls GET /api/tickets:\n  send back all Tickets\n\nwhen user calls GET /api/tickets/open:\n  send back all Tickets where status is 'open'\n\npage 'Inbox' at '/':\n  on page load get tickets from '/api/tickets/open'\n  heading 'Support Inbox'\n  display tickets as table\n"
+}

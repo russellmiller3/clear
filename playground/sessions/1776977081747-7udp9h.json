@@ -1,0 +1,9 @@
+{
+  "id": "1776977081747-7udp9h",
+  "task": "Build this app in Clear:\n\n**ETL: Fetch External API into Local Table** (Level 8)\n\nARCHETYPE: etl_pipeline. Shape: scheduled job fetches data from a third-party API and transforms + writes to a local table. The CORE is `call api 'URL'` + data transform + save. NOT a batch_job (batch is pure local cleanup). NOT a dashboard (no UI). Backend-only. Schedule: every 1 hour, fetch weather from 'https://api.weather-mock.example.com/current?city=SF', extract { temp, humidity, conditions }, save to Weather",
+  "started_at": 1776977081,
+  "ended_at": 1776977123,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

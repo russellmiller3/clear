@@ -1,0 +1,9 @@
+{
+  "id": "1776775253086-d49l2i",
+  "task": "Build this app in Clear:\n\n**AI Summary Agent** (Level 9)\n\nBuild an AI agent that summarizes text. Define a Summarizer agent with a system prompt. POST /api/summarize receives { text } and returns a summary from the agent. The agent should return a structured response with 'summary' and 'key_points' fields.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Define a Summarizer agent\n# POST /api/summarize endpoint that uses the agent\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /ap",
+  "started_at": 1776775253,
+  "ended_at": 1776775292,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\nagent 'Summarizer' receives text:\n  response = ask claude 'Summarize the following text concisely' with text returning JSON text:\n    summary\n    key_points\n  send back response\n\nwhen user sends request to /api/summarize:\n  result = call 'Summarizer' with request's text\n  send back result\n"
+}

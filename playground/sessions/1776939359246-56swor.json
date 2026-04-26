@@ -1,0 +1,9 @@
+{
+  "id": "1776939359246-56swor",
+  "task": "Build this app in Clear:\n\n**Analytics Dashboard API** (Level 10)\n\nBuild an analytics dashboard backend. Events table tracks page_url, event_type (pageview/click/signup), user_id, timestamp. POST /api/events logs events. GET /api/stats returns aggregated stats: total events, unique users, events per type. GET /api/stats/daily returns counts grouped by day. Auth required for stats endpoints.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique,",
+  "started_at": 1776939359,
+  "ended_at": 1776939539,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

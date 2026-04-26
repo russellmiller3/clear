@@ -1,0 +1,9 @@
+{
+  "id": "1776978408814-c0261w",
+  "task": "What is 2+2?",
+  "started_at": 1776978408,
+  "ended_at": 1776978409,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

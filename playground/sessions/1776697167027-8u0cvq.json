@@ -1,0 +1,9 @@
+{
+  "id": "1776697167027-8u0cvq",
+  "task": "I wrote this Clear code and it has a compile error. Please:\n\n1. Call the compile tool to see the error.\n2. If the compile result includes a 'hints' field with past-fix references, ANNOUNCE what you saw using this exact format before fixing:\n   HINTS: saw <N> references, top tier=<tier label>, <one-sentence opinion on whether they look useful>\n3. If hints were NOT included, say: HINTS: none\n4. Then fix the code and show me the corrected version.\n5. Finish with: WAS_HINT_HELPFUL: yes / no / partia",
+  "started_at": 1776697167,
+  "ended_at": 1776697175,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\nwhen user calls POST /api/broadcast:\n  message is the request data\n  broadcast message to all\n  send back 'sent'\n\nwhen user subscribes to updates:\n  send last 10 messages from undefined_log\n"
+}

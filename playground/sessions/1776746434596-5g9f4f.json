@@ -1,0 +1,9 @@
+{
+  "id": "1776746434596-5g9f4f",
+  "task": "Build this app in Clear:\n\n**Counter API** (Level 3)\n\nBuild a stateful counter. GET /api/count returns { count: N }. POST /api/increment increases count by 1 and returns the new count. POST /api/reset sets count to 0.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/reset → expect {\"status\":200}\n  - GET /api/count → expect {\"status\":200,\"bodyHas\":[\"count\"]}\n  - POST /api/increment → expect {\"status\":200,\"bodyHas\":[",
+  "started_at": 1776746434,
+  "ended_at": 1776746496,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\ndatabase is local memory\n\ncreate a Counter table:\n  count (number), default 0\n\nwhen user calls GET /api/count:\n  counters = get all Counter\n  if length of counters is 0:\n    counter = look up Counter with id is 1\n    if counter is null:\n      new_counter = save to Counter with count = 0\n      send back new_counter\n  counter = first of counters\n  send back counter\n\nwhen user calls POST /api/increment:\n  counters = get all Counter\n  if length of counters is 0:\n    new_counter = save to Counter with count = 1\n    send back new_counter\n  counter = first of counters\n  counter's count = counter's count + 1\n  save counter to Counter\n  send back counter\n\nwhen user calls POST /api/reset:\n  counters = get all Counter\n  if length of counters is 0:\n    new_counter = save to Counter with count = 0\n    send back new_counter\n  counter = first of counters\n  counter's count = 0\n  save counter to Counter\n  send back counter\n"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "1776976764063-2xquoz",
+  "task": "Build this app in Clear:\n\n**Internal Request Queue** (Level 8)\n\nBuild an internal request queue for IT/HR/Facilities/Finance tickets. Employees submit a request (title, description, category, priority, submitter). Ops staff can update requests (requires login) — change status, assign to a team, add resolution notes. Need: POST /api/requests (public), GET /api/requests (list), GET /api/requests/new (filter by status='new'), PUT /api/requests/:id (auth required).\n\nStarting skeleton:\n```clear\nbuild",
+  "started_at": 1776976764,
+  "ended_at": 1776976944,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

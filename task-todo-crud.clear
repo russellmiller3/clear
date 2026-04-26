@@ -1,0 +1,25 @@
+build for javascript backend
+
+create a Todos table:
+  title, required
+  done, default false
+
+when user calls POST /api/todos sending todo:
+  validate todo:
+    title must not be empty
+  saved = save todo to Todos
+  send back saved with status 201
+
+when user calls GET /api/todos:
+  send back all Todos
+
+when user calls GET /api/todos/:id:
+  send back the Todo with this id
+
+when user calls PUT /api/todos/:id sending changes:
+  save changes to Todos
+  send back changes
+
+when user calls DELETE /api/todos/:id:
+  delete Todo with this id
+  send back 'ok' with status 204

@@ -1,0 +1,9 @@
+{
+  "id": "1776706676941-o4kwwr",
+  "task": "This Clear code has a compile error. Please call compile, read any hints in the result, then fix the code. Follow your normal hint-announcement protocol.\n\nCode:\n```clear\nbuild for javascript backend\n\nwhen user calls POST /api/todo:\n  create a todo:\n    title is body's title\n  send back 'saved'\n\n```\n",
+  "started_at": 1776706676,
+  "ended_at": 1776706692,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Todos table:\n  title, required\n\nwhen user sends todo_data to /api/todo:\n  requires login\n  saved = save todo_data to Todos\n  send back saved with status 201\n"
+}

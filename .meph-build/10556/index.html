@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+
+
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="flex h-screen overflow-hidden" data-clear-line="23">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="chart_Orders_by_Status">
+      <h3 class="text-base font-semibold text-base-content mb-4">Orders by Status</h3>
+      <div id="chart_Orders_by_Status_canvas" style="width:100%;height:350px;"></div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="chart_Orders_Over_Time">
+      <h3 class="text-base font-semibold text-base-content mb-4">Orders Over Time</h3>
+      <div id="chart_Orders_Over_Time_canvas" style="width:100%;height:350px;"></div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="chart_Amount_by_Status">
+      <h3 class="text-base font-semibold text-base-content mb-4">Amount by Status</h3>
+      <div id="chart_Amount_by_Status_canvas" style="width:100%;height:350px;"></div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Orders: amount*, status, created_at_date (line 3)
+
+ ENDPOINTS:
+   GET /api/orders (line 11)
+   POST /api/orders [auth] (line 15)
+
+ PAGES:
+   'Dashboard' at / (line 20)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+document.title = "Dashboard";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  orders: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  console.log(/* ERROR */);
+  if (!localStorage.getItem('token')) { window.location.href = '/login'; return; }
+  {
+    const _chartEl = document.getElementById('chart_Orders_by_Status_canvas');
+    const _data = _state.orders;
+    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.status || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, series: [{ type: 'pie', radius: ['40%', '70%'], itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, label: { color: '#6b7280' }, data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Orders_Over_Time_canvas');
+    const _data = _state.orders;
+    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.created_at_date || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _xData = Object.keys(_counts);
+      const _yData = Object.values(_counts);
+      const _series = [{ name: 'created_at_date', type: 'line', data: _yData, smooth: true }];
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: undefined, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Amount_by_Status_canvas');
+    const _data = _state.orders;
+    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.amount || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _xData = Object.keys(_counts);
+      const _yData = Object.values(_counts);
+      const _series = [{ name: 'amount', type: 'bar', data: _yData, itemStyle: { borderRadius: [4, 4, 0, 0] }, barMaxWidth: 32, smooth: true }];
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: undefined, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);
+    }
+  }
+}
+
+// --- Input listeners ---
+
+// --- On Page Load ---
+_recompute(); // initial render with default state
+(async () => {
+  try {
+    _state.orders = await fetch("/api/orders").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/orders] [clear:22]', e.message); return _state.orders; });
+  _recompute();
+  } catch(e) { console.error("Page load error:", e); }
+})();
+
+
+  </script>
+
+  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
+  <script src="/__meph__/widget.js" defer></script>
+  <!-- ============================================================== -->
+  <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
+  <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
+  <!-- ============================================================== -->
+  <script>
+  (function() {
+    if (window === window.parent) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
+    var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    function __selectorFor(el) {
+      if (!el || el === document) return null;
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/s+/).join('.') : '';
+      var txt = (el.textContent || '').trim().slice(0, 30);
+      if (tag === 'button' && txt) return tag + ':has-text("' + txt + '")';
+      return tag + cls;
+    }
+    function __post(msg) {
+      try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
+    }
+    // Capture user actions and forward to Studio
+    document.addEventListener('click', function(e) {
+      __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
+    }, true);
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') {
+        __post({ type: 'user-action', action: 'input', selector: __selectorFor(t), value: String(t.value || '').slice(0, 200), ts: Date.now() });
+      }
+    }, true);
+    document.addEventListener('submit', function(e) {
+      __post({ type: 'user-action', action: 'submit', selector: __selectorFor(e.target), ts: Date.now() });
+    }, true);
+    // Listen for commands from Meph
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.target !== 'clear-bridge') return;
+      var reply = { source: 'clear-bridge', replyTo: msg.id };
+      try {
+        if (msg.cmd === 'click') {
+          var el = document.querySelector(msg.selector);
+          if (!el) { reply.error = 'Element not found: ' + msg.selector; }
+          else { el.click(); reply.ok = true; reply.html = document.body.innerHTML.slice(0, 4000); }
+        } else if (msg.cmd === 'fill') {
+          var input = document.querySelector(msg.selector);
+          if (!input) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter) nativeSetter.set.call(input, msg.value);
+            else input.value = msg.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            reply.ok = true; reply.value = input.value;
+          }
+        } else if (msg.cmd === 'inspect') {
+          var target = document.querySelector(msg.selector);
+          if (!target) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var cs = window.getComputedStyle(target);
+            var rect = target.getBoundingClientRect();
+            reply.ok = true;
+            reply.tag = target.tagName.toLowerCase();
+            reply.text = (target.textContent || '').slice(0, 200);
+            reply.styles = { color: cs.color, backgroundColor: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, padding: cs.padding, border: cs.border };
+            reply.box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        } else if (msg.cmd === 'read-dom') {
+          reply.ok = true;
+          reply.html = document.body.innerHTML.slice(0, 8000);
+          reply.state = window._state ? JSON.parse(JSON.stringify(window._state)) : null;
+          reply.url = location.href;
+        } else if (msg.cmd === 'read-storage') {
+          var ls = {}, ss = {};
+          for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+          for (var j = 0; j < sessionStorage.length; j++) { var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2); }
+          reply.ok = true; reply.localStorage = ls; reply.sessionStorage = ss;
+        }
+      } catch (err) {
+        reply.error = err.message;
+      }
+      __post(reply);
+    });
+    __post({ type: 'bridge-ready', url: location.href });
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+
+
+
+  <link rel="preconnect" href="https://rsms.me/" crossorigin>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v3 — Inter base + slate chrome + tabular nums */
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  /* Slate chrome layered on top of DaisyUI base/primary tokens. Modeled on
+     the 2026 RevOps mock — see landing/marcus-app-target.html. Compiled apps
+     read these for hairlines, status pills, stat cards, sidebar nav. */
+  --clear-bg-app:        oklch(98% 0.005 240);
+  --clear-bg-canvas:     oklch(100% 0 0);
+  --clear-bg-rail:       oklch(99% 0.005 240);
+  --clear-bg-row-hover:  oklch(96% 0.008 240);
+  --clear-bg-active:     oklch(96% 0.025 258);
+  --clear-bg-chip:       oklch(95% 0.01 240);
+  --clear-line:          oklch(91% 0.012 240);
+  --clear-line-strong:   oklch(83% 0.015 240);
+  --clear-ink:           oklch(15% 0.025 255);
+  --clear-ink-soft:      oklch(35% 0.02 255);
+  --clear-ink-muted:     oklch(54% 0.018 255);
+  --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-good:          oklch(50% 0.16 152);
+  --clear-good-soft:     oklch(96% 0.05 152);
+  --clear-warn:          oklch(58% 0.14 65);
+  --clear-warn-soft:     oklch(96% 0.05 80);
+  --clear-bad:           oklch(54% 0.21 25);
+  --clear-bad-soft:      oklch(96% 0.04 25);
+}
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: "cv11","ss01","ss03";
+  -webkit-font-smoothing: antialiased;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+  margin: 0;
+}
+@supports (font-variation-settings: normal) {
+  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+}
+.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+/* Hairline borders — drop-in alternative to combo border+shadow */
+.hairline   { border: 1px solid var(--clear-line); }
+.hairline-b { border-bottom: 1px solid var(--clear-line); }
+.hairline-r { border-right: 1px solid var(--clear-line); }
+.hairline-t { border-top: 1px solid var(--clear-line); }
+/* Status pills — uppercase semibold colored on tinted bg */
+.clear-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+}
+.clear-pill-pending  { background: var(--clear-warn-soft); color: var(--clear-warn); }
+.clear-pill-approved { background: var(--clear-good-soft); color: var(--clear-good); }
+.clear-pill-rejected { background: var(--clear-bad-soft);  color: var(--clear-bad); }
+.clear-pill-neutral  { background: var(--clear-bg-chip);    color: var(--clear-ink-soft); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+
+
+/* --- Inline Layout --- */
+.section-header { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }
+.section-pending_cro_approval { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }
+.section-sign_in { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6">
+<div id="page_Deal_Desk">
+    <div class="section-header" data-clear-line="126">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="127">Deal Desk</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="128">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
+    </div>
+    <div class="bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4" data-clear-line="130">
+    <fieldset class="fieldset" data-clear-line="131">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your name</legend>
+      <input id="input_rep_name" class="input input-bordered w-full" type="text" placeholder="Your name">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="132">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer</legend>
+      <input id="input_customer" class="input input-bordered w-full" type="text" placeholder="Customer">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="133">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">List price ($)</legend>
+      <input id="input_list_price" class="input input-bordered w-full" type="number" step="any" placeholder="List price ($)">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="134">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Discount %</legend>
+      <input id="input_discount_percent" class="input input-bordered w-full" type="number" step="any" placeholder="Discount %">
+    </fieldset>
+    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-line="135">Submit for approval</button>
+    </div>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="142">CRO? Sign in to review the pending queue.</p>
+</div>
+<div id="page_CRO_Queue" style="display:none">
+    <div class="section-pending_cro_approval" data-clear-line="150">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="151">Pending CRO approval</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-tpl="{pending_count} deals awaiting CRO approval" data-clear-line="153">{pending_count} deals awaiting CRO approval</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto" id="output_Pending_cards"></div>
+    </div>
+</div>
+<div id="page_Sign_in" style="display:none">
+    <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-base-content tracking-tight mb-2">Welcome back</h1>
+        <p class="text-sm text-base-content/60">Sign in or create an account to continue</p>
+      </div>
+      <div class="bg-base-100 border border-base-300/50 shadow-sm rounded-box p-8 flex flex-col gap-6">
+        <div class="flex p-1 bg-base-200 rounded-lg" role="tablist">
+          <button type="button" data-auth-tab="login" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors bg-base-100 text-base-content shadow-sm">Sign in</button>
+          <button type="button" data-auth-tab="signup" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors text-base-content/60 hover:text-base-content">Sign up</button>
+        </div>
+        <div data-auth-panel="login" class="flex flex-col gap-4">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_login_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_login_password" type="password" autocomplete="current-password" class="input input-bordered w-full" placeholder="••••••••" />
+          </fieldset>
+          <button id="auth_login_submit" type="button" class="btn btn-primary w-full">Sign in</button>
+          <p id="auth_login_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+        <div data-auth-panel="signup" class="flex flex-col gap-4" style="display:none">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_signup_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_signup_password" type="password" autocomplete="new-password" class="input input-bordered w-full" placeholder="At least 8 characters" />
+          </fieldset>
+          <button id="auth_signup_submit" type="button" class="btn btn-primary w-full">Create account</button>
+          <p id="auth_signup_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var tabs = document.querySelectorAll('[data-auth-tab]');
+      var panels = document.querySelectorAll('[data-auth-panel]');
+      function setActive(which) {
+        tabs.forEach(function (t) {
+          var on = t.getAttribute('data-auth-tab') === which;
+          t.classList.toggle('bg-base-100', on);
+          t.classList.toggle('text-base-content', on);
+          t.classList.toggle('shadow-sm', on);
+          t.classList.toggle('text-base-content/60', !on);
+        });
+        panels.forEach(function (p) {
+          p.style.display = p.getAttribute('data-auth-panel') === which ? 'flex' : 'none';
+        });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { setActive(t.getAttribute('data-auth-tab')); }); });
+      function nextDest() {
+        try {
+          var n = new URL(window.location.href).searchParams.get('next');
+          return (n && n.charAt(0) === '/') ? n : '/';
+        } catch (e) { return '/'; }
+      }
+      async function submit(path, emailEl, passwordEl, errEl, btn) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        var email = (emailEl.value || '').trim();
+        var password = passwordEl.value || '';
+        if (!email || !password) {
+          errEl.textContent = 'Email and password are required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        btn.disabled = true;
+        try {
+          var res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, password: password })
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) {}
+          if (!res.ok) {
+            errEl.textContent = (data && data.error) ? data.error : 'Sign in failed. Please try again.';
+            errEl.style.display = 'block';
+            return;
+          }
+          if (data && data.token) localStorage.setItem('token', data.token);
+          window.location.href = nextDest();
+        } catch (e) {
+          errEl.textContent = 'Network error. Please try again.';
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      var loginBtn = document.getElementById('auth_login_submit');
+      if (loginBtn) loginBtn.addEventListener('click', function () {
+        submit('/auth/login',
+          document.getElementById('auth_login_email'),
+          document.getElementById('auth_login_password'),
+          document.getElementById('auth_login_error'),
+          loginBtn);
+      });
+      var signupBtn = document.getElementById('auth_signup_submit');
+      if (signupBtn) signupBtn.addEventListener('click', function () {
+        submit('/auth/signup',
+          document.getElementById('auth_signup_email'),
+          document.getElementById('auth_signup_password'),
+          document.getElementById('auth_signup_error'),
+          signupBtn);
+      });
+    })();
+    </script>
+    <div class="section-sign_in" data-clear-line="157">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="158">Sign in to the CRO console</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="159">Use the signup or login form above. After signing in, head to /cro.</p>
+    </div>
+</div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Deals: rep_name*, customer*, list_price, discount_percent, status, summary, recommendation, risk_score, created_at_date (line 33)
+
+ ENDPOINTS:
+   GET /api/deals/pending (line 68)
+   POST /api/deals (line 71)
+   POST /api/deals/draft [auth] (line 85)
+   PUT /api/deals/:id [auth] (line 90)
+   POST /api/seed (line 97)
+
+ PAGES:
+   'Deal Desk' at / (line 122)
+   'CRO Queue' at /cro (line 144)
+   'Sign in' at /login (line 156)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+async function _askAI(prompt, context, schema, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  let content = context ? prompt + "\n\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  if (schema) {
+    const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\n");
+    content += "\n\nRespond with ONLY a JSON object in this exact shape, no other text:\n{\n" + fields + "\n}";
+  }
+  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
+  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  function parseResult(text) {
+    if (!schema) return text;
+    // Extract JSON from response (may have markdown fences)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
+    try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
+  }
+  // Fetch with exponential-backoff retry on 429 / 5xx / network timeouts.
+  // Delays: 1s, 2s, 4s (capped at 8s). 4xx user errors surface immediately.
+  let lastFetchErr = null;
+  for (let _attempt = 0; _attempt <= 3; _attempt++) {
+    try {
+      const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(30000) });
+      if (r.ok) { const data = await r.json(); return parseResult(data.content[0].text); }
+      if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e);
+    } catch (err) {
+      lastFetchErr = err;
+      const transient = err.name === 'AbortError' || err.code === 'ECONNRESET' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+      if (_attempt < 3 && transient) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      break;
+    }
+  }
+  // Proxy fallback: fetch may not respect HTTP_PROXY, fall back to curl.
+  if (!process.env.HTTP_PROXY && !process.env.HTTPS_PROXY && !process.env.http_proxy) throw lastFetchErr;
+  const { execSync } = require("child_process");
+  const tmp = "/tmp/_askAI_" + Date.now() + ".json";
+  require("fs").writeFileSync(tmp, payload);
+  try {
+    const hdr = Object.entries(headers).map(([k,v]) => '-H "' + k + ": " + v + '"').join(" ");
+    const out = execSync('curl -s -X POST ' + hdr + ' -d @' + tmp + ' "' + endpoint + '"', { encoding: "utf8", timeout: 30000 });
+    require("fs").unlinkSync(tmp);
+    const data = JSON.parse(out);
+    if (data.error) throw new Error("AI error: " + data.error.message);
+    return parseResult(data.content[0].text);
+  } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
+}
+document.title = "Deal Desk";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  rep_name: "",
+  customer: "",
+  list_price: 0,
+  discount_percent: 0,
+  pending: null
+};
+
+// clear:59
+async function draft_approval(deal_data) {
+  // clear:60
+  let drafted = await _askAI("You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.", deal_data, [{"name":"summary","type":"text"},{"name":"recommendation","type":"text"},{"name":"risk_score","type":"number"}], null);
+  // clear:64
+  return drafted;
+}
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:29
+  // Database: local memory (JSON file backup)
+  // clear:59
+  async function draft_approval(deal_data) {
+    let drafted = await _askAI("You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.", deal_data, [{"name":"summary","type":"text"},{"name":"recommendation","type":"text"},{"name":"risk_score","type":"number"}], null);
+    return drafted;
+  }
+  // clear:145
+  { const _path = (location.pathname || '/').replace(/\/$/, '') || '/'; const _want = "/cro".replace(/\/$/, '') || '/'; if (_path === _want && !localStorage.getItem('token')) window.location.href = '/login'; }
+  // clear:152
+  let pending_count = _clear_len(_state.pending);
+  {
+    const _cardsEl = document.getElementById('output_Pending_cards');
+    const _data = _state.pending;
+    if (_cardsEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["customer","rep_name","discount_percent","recommendation","summary"];
+      _cardsEl.innerHTML = _data.map(row => {
+        let _img = '', _badge = '', _title = '', _body = '', _meta = '';
+        for (const k of _keys) {
+          const v = row[k] != null ? String(row[k]) : '';
+          if (!v) continue;
+          if ((k.includes('image') || k.includes('avatar') || k.includes('photo') || k.includes('url') || k.includes('img') || k.includes('thumbnail')) && (v.startsWith('http') || v.startsWith('/'))) {
+            if (k.includes('avatar')) { _meta += '<img src="' + _esc(v) + '" alt="" class="w-10 h-10 rounded-full object-cover" />'; }
+            else { _img = '<img src="' + _esc(v) + '" alt="" class="w-full h-48 object-cover" loading="lazy" />'; }
+          } else if (k.includes('category') || k.includes('tag') || k.includes('type') || k.includes('badge') || k.includes('status')) {
+            _badge = '<span class="badge badge-info badge-sm">' + _esc(v) + '</span>';
+          } else if (k.includes('author') || k.includes('date') || k.includes('created')) {
+            _meta += '<span class="text-xs text-base-content/50 uppercase">' + _esc(v) + '</span>';
+          } else if (k.includes('title') || k.includes('name') || k.includes('heading')) {
+            _title = '<h3 class="text-lg font-semibold text-base-content mt-2">' + _esc(v) + '</h3>';
+          } else if (k.includes('excerpt') || k.includes('description') || k.includes('summary') || k.includes('body')) {
+            const _short = v.length > 120 ? v.substring(0, 120) + '...' : v;
+            _body = '<p class="text-sm text-base-content/60 mt-2">' + _esc(_short) + '</p>';
+          } else if (!_title) {
+            _title = '<h3 class="text-lg font-semibold text-base-content mt-2">' + _esc(v) + '</h3>';
+          } else if (!_body) {
+            const _short = v.length > 120 ? v.substring(0, 120) + '...' : v;
+            _body = '<p class="text-sm text-base-content/60 mt-2">' + _esc(_short) + '</p>';
+          }
+        }
+        const _metaRow = _meta ? '<div class="flex items-center gap-3 mt-4">' + _meta + '</div>' : '';
+        return '<div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">' + _img + '<div class="p-6 flex flex-col flex-1">' + _badge + _title + _body + _metaRow + '</div></div>';
+      }).join('');
+    } else if (_cardsEl) {
+      _cardsEl.innerHTML = '';
+    }
+  }
+  document.getElementById('input_rep_name').value = _state.rep_name;
+  document.getElementById('input_customer').value = _state.customer;
+  document.getElementById('input_list_price').value = _state.list_price;
+  document.getElementById('input_discount_percent').value = _state.discount_percent;
+  // Substitute {varname} in text templates
+  const _tplCtx = Object.assign({}, _state || {});
+  if (typeof pending_count !== 'undefined') _tplCtx["pending_count"] = pending_count;
+  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
+    const _tpl = _el.getAttribute('data-clear-tpl');
+    _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
+      const _val = _tplCtx[_v];
+      return (_val == null) ? '' : String(_val);
+    });
+  });
+}
+
+// --- Input listeners ---
+document.getElementById('input_rep_name').addEventListener('input', function(e) {
+  _state.rep_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_customer').addEventListener('input', function(e) {
+  _state.customer = e.target.value;
+  _recompute();
+});
+document.getElementById('input_list_price').addEventListener('input', function(e) {
+  _state.list_price = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_discount_percent').addEventListener('input', function(e) {
+  _state.discount_percent = Number(e.target.value) || 0;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Submit_for_approval').addEventListener('click', async function() {
+    if (_state.rep_name === '' || _state.rep_name == null) { _toast('rep name is required', 'error'); return; }
+    if (_state.customer === '' || _state.customer == null) { _toast('customer is required', 'error'); return; }
+    if (_state.list_price === '' || _state.list_price == null) { _toast('list price is required', 'error'); return; }
+    if (_state.discount_percent === '' || _state.discount_percent == null) { _toast('discount percent is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Submit_for_approval');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/deals", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rep_name: _state.rep_name, customer: _state.customer, list_price: _state.list_price, discount_percent: _state.discount_percent }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:136]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.rep_name = "";
+    _state.customer = "";
+    _state.list_price = 0;
+    _state.discount_percent = 0;
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- On Page Load ---
+_recompute(); // initial render with default state
+(async () => {
+  try {
+    { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:124]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:148]', e.message); return _state.pending; });
+  _recompute();
+  } catch(e) { console.error("Page load error:", e); }
+})();
+
+// --- Router ---
+// Reads both location.pathname (server-side navigation, direct URLs, route
+// selector) and location.hash (in-iframe clicks). Pathname wins when set,
+// hash is the fallback so hash-style links keep working. Also intercepts
+// <a href> clicks to same-origin routes so we don't hit the server on each
+// click (SPA feel while still supporting refresh/direct-URL).
+const _routes = {
+  '/': 'Deal_Desk',
+  '/cro': 'CRO_Queue',
+  '/login': 'Sign_in'
+};
+function _currentRoute() {
+  const p = (location.pathname || '/').replace(/\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
+  const h = (location.hash || '').slice(1);
+  if (h && _routes.hasOwnProperty(h)) return h;
+  return Object.keys(_routes)[0]; // first declared route (usually '/')
+}
+function _router() {
+  const current = _currentRoute();
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (route === current) ? 'block' : 'none';
+  }
+  document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+}
+window.addEventListener('popstate', _router);
+window.addEventListener('hashchange', _router);
+document.addEventListener('click', function(e) {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
+  if (_routes.hasOwnProperty(href)) {
+    e.preventDefault();
+    history.pushState({}, '', href);
+    _router();
+  }
+});
+_router();
+
+  </script>
+
+  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
+  <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
+  <script src="/__meph__/widget.js" defer onerror="this.remove()"></script>
+  <!-- ============================================================== -->
+  <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
+  <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
+  <!-- ============================================================== -->
+  <script>
+  (function() {
+    if (window === window.parent) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
+    var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    function __selectorFor(el) {
+      if (!el || el === document) return null;
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/s+/).join('.') : '';
+      var txt = (el.textContent || '').trim().slice(0, 30);
+      if (tag === 'button' && txt) return tag + ':has-text("' + txt + '")';
+      return tag + cls;
+    }
+    function __post(msg) {
+      try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
+    }
+    // Capture user actions and forward to Studio
+    document.addEventListener('click', function(e) {
+      __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
+    }, true);
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') {
+        __post({ type: 'user-action', action: 'input', selector: __selectorFor(t), value: String(t.value || '').slice(0, 200), ts: Date.now() });
+      }
+    }, true);
+    document.addEventListener('submit', function(e) {
+      __post({ type: 'user-action', action: 'submit', selector: __selectorFor(e.target), ts: Date.now() });
+    }, true);
+    // Listen for commands from Meph
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.target !== 'clear-bridge') return;
+      var reply = { source: 'clear-bridge', replyTo: msg.id };
+      try {
+        if (msg.cmd === 'click') {
+          var el = document.querySelector(msg.selector);
+          if (!el) { reply.error = 'Element not found: ' + msg.selector; }
+          else { el.click(); reply.ok = true; reply.html = document.body.innerHTML.slice(0, 4000); }
+        } else if (msg.cmd === 'fill') {
+          var input = document.querySelector(msg.selector);
+          if (!input) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter) nativeSetter.set.call(input, msg.value);
+            else input.value = msg.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            reply.ok = true; reply.value = input.value;
+          }
+        } else if (msg.cmd === 'inspect') {
+          var target = document.querySelector(msg.selector);
+          if (!target) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var cs = window.getComputedStyle(target);
+            var rect = target.getBoundingClientRect();
+            reply.ok = true;
+            reply.tag = target.tagName.toLowerCase();
+            reply.text = (target.textContent || '').slice(0, 200);
+            reply.styles = { color: cs.color, backgroundColor: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, padding: cs.padding, border: cs.border };
+            reply.box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        } else if (msg.cmd === 'read-dom') {
+          reply.ok = true;
+          reply.html = document.body.innerHTML.slice(0, 8000);
+          reply.state = window._state ? JSON.parse(JSON.stringify(window._state)) : null;
+          reply.url = location.href;
+        } else if (msg.cmd === 'read-storage') {
+          var ls = {}, ss = {};
+          for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+          for (var j = 0; j < sessionStorage.length; j++) { var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2); }
+          reply.ok = true; reply.localStorage = ls; reply.sessionStorage = ss;
+        }
+      } catch (err) {
+        reply.error = err.message;
+      }
+      __post(reply);
+    });
+    __post({ type: 'bridge-ready', url: location.href });
+  })();
+  </script>
+</body>
+</html>

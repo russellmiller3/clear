@@ -1,0 +1,9 @@
+{
+  "id": "1776885041820-05i7j0",
+  "task": "Build this app in Clear:\n\n**Booking Calendar with Conflict Detection** (Level 6)\n\nARCHETYPE: booking_app. Shape: a Bookings table with date + time + guest_name fields, endpoints to create and list bookings, with a GUARD that prevents double-booking (same date + time slot). The guard is the CORE differentiator — this is what makes it a booking_app, not a generic CRUD. DO NOT skip the guard. Include: POST /api/bookings (creates, guards against conflicts), GET /api/bookings (lists all). The guard s",
+  "started_at": 1776885041,
+  "ended_at": 1776885221,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

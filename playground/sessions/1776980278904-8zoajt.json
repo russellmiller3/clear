@@ -1,0 +1,9 @@
+{
+  "id": "1776980278904-8zoajt",
+  "task": "Build this app in Clear:\n\n**Validated Registration Form** (Level 7)\n\nBuild a registration endpoint POST /api/register with strict validation: email (required, valid email format), password (required, min 8 chars), name (required, max 100 chars), age (number, min 13). Return detailed error messages on 400.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required, min 8\n  name, required, max 100\n  age, number\n\n# Your end",
+  "started_at": 1776980278,
+  "ended_at": 1776980360,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Users table:\n  email, required, unique, email\n  password, required, min 8\n  name, required, max 100\n  age, number\n\nwhen user sends data to /api/register:\n  validate data:\n    email is text, required, matches email\n    password is text, required, min 8\n    name is text, required, max 100\n    age is number, min 13\n  saved = save data as new Users\n  send back saved with status 201\n"
+}

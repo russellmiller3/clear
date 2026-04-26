@@ -1,0 +1,16 @@
+build for javascript backend
+
+create a Users table:
+  email, required, unique, email
+  password, required, min 8
+  name, required, max 100
+  age, number, min 13
+
+when user sends person to /api/register:
+  validate person:
+    email is text, required, matches email
+    password is text, required, min 8
+    name is text, required, max 100
+    age is number, min 13
+  saved = save person to Users
+  send back saved with status 201

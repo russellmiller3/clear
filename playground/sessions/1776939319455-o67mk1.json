@@ -1,0 +1,9 @@
+{
+  "id": "1776939319455-o67mk1",
+  "task": "Build this app in Clear:\n\n**Metrics Dashboard** (Level 8)\n\nARCHETYPE: dashboard. Shape: web + backend, has a PAGE, and that page MUST contain 3 CHART nodes (2 is the threshold for 'dashboard' archetype; this task deliberately wants 3 to stress it). The distinguishing signal from kpi: multiple charts, not headline numbers. DO NOT build a KPI page with just `display sum_of_amount` — you must use actual `chart 'Title' as pie showing data` / `chart 'Title' as line showing data` / `chart 'Title' as b",
+  "started_at": 1776939319,
+  "ended_at": 1776939499,
+  "weak_assertion_count": 0,
+  "red_step_observed": false,
+  "final_source": ""
+}

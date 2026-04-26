@@ -1,0 +1,8 @@
+{
+  "type": "commonjs",
+  "dependencies": {
+    "express": "*",
+    "bcryptjs": "*",
+    "jsonwebtoken": "*"
+  }
+}
