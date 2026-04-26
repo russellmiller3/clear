@@ -49,6 +49,33 @@ If ROADMAP creeps past ~400 lines, stop and audit. Ask of every section: "is thi
 
 ---
 
+## Critical path to first paying customer (2026-04-26 — read this FIRST)
+
+The product is meaningfully ready. The gating items are Russell's, not the compiler's.
+
+| # | Item | Owner | Status | Unblocks |
+|---|------|-------|--------|----------|
+| 1 | Push `feature/overnight-04-25-2026` to remote (76+ commits) | Russell | Local only | Everything below |
+| 2 | Register `buildclear.dev` domain | Russell | Not done | #4, #5 |
+| 3 | Fly.io Trust Verified app | Russell | Not done | #4 |
+| 4 | Stripe live keys | Russell | Gated on #2 + #3 | First paying customer |
+| 5 | Anthropic org key for paid Meph sessions | Russell | Not done | First customer |
+| 6 | Postgres provision (managed Fly or Neon) | Russell | Not done | First customer |
+| 7 | First Marcus conversation — real backlog of internal tools, willing to try | Russell | Not done | First paying customer |
+| 8 | Watch them build their first one — fix what bites | Russell + Claude | After #7 | Compounding flywheel |
+
+**Not on the critical path** (depth/polish, valuable but not gating):
+
+- `give claude X with prompt: 'Y'` canonical syntax — Phase 1 done, Phases 2–7 pending. See `plans/plan-give-claude-canonical-form-04-26-2026.md`.
+- `live:` keyword revert + Path A defaults (while-cap, recursion-cap, email/DB timeouts) from `plans/plan-decidable-core-04-24-2026.md`.
+- Apply the sweep-diagnosis patch (`snapshots/sweep-diagnosis-04-26-2026.md`) — surfaces silent fast-fails in future sweeps.
+- Curate `playground/canonical-examples.md` (initial draft from winner-harvest waiting for human pass).
+- Lean Lesson 1 Phase 1.5 — the $10 measurement A/B sweep.
+
+**Honest call:** items #2–#6 are about $30–50 + 2–3 hours of Russell's time. Item #7 is a conversation, not a code move. Item #1 is 30 seconds. Everything else compounds quality but does not unblock the first customer.
+
+---
+
 ## Strategic pivot under review (2026-04-24) — Dave-first wedge
 
 > **Status: PENDING RUSSELL DECISION.** The Marcus-first North Star (locked 2026-04-21) is being reassessed, not deleted. Until Russell commits to the pivot or rejects it, both threads stay alive in this file. The Marcus priorities below remain as written — do NOT silently demote them.

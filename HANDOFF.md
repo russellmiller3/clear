@@ -1,5 +1,33 @@
 # Handoff — 2026-04-25 night → 2026-04-26 morning (autonomous overnight run, FINAL)
 
+## Critical path to first paying customer (read this FIRST)
+
+The product is meaningfully ready. The gating items are Russell's, not the compiler's.
+
+| # | Item | Owner | Status | Unblocks |
+|---|------|-------|--------|----------|
+| 1 | Push `feature/overnight-04-25-2026` to remote (76+ commits ahead) | Russell | Local only | Everything below |
+| 2 | Register `buildclear.dev` domain | Russell | Not done | #4, #5 |
+| 3 | Fly.io Trust Verified app | Russell | Not done | #4 |
+| 4 | Stripe live keys | Russell | Gated on #2 + #3 | First paying customer |
+| 5 | Anthropic org key for paid Meph sessions | Russell | Not done | First customer |
+| 6 | Postgres provision (managed Fly Postgres or Neon) | Russell | Not done | First customer |
+| 7 | First Marcus conversation — someone with a real backlog of internal tools | Russell | Not done | First paying customer |
+| 8 | Watch them build their first one — fix what bites | Russell + Claude | After #7 | Compounding flywheel |
+
+**Not on the critical path** (depth/polish work — high value but doesn't gate the first customer):
+
+- `give claude X with prompt: 'Y'` canonical syntax — Phase 1 (synonyms) done tonight, Phases 2–7 pending. Plan: `plans/plan-give-claude-canonical-form-04-26-2026.md`.
+- `live:` keyword revert + Path A (while-cap, recursion-cap, email/DB timeouts) from `plans/plan-decidable-core-04-24-2026.md` — pending.
+- Curriculum sweep diagnosis — done (root cause: fourth "Failed" bucket the summary doesn't count + cascade fast-fail when workers crash). 6-line patch sitting in `snapshots/sweep-diagnosis-04-26-2026.md`. Apply when convenient.
+- Curate `playground/canonical-examples.md` (initial draft from winner-harvest waiting for refinement).
+- Lean Lesson 1 Phase 1.5 — the $10 measurement A/B sweep. Russell's call when ready to spend.
+
+**The honest call:** keep shipping polish at night, but the launch is a Russell-day action. Items #2–#6 are about $30–50 in cash plus 2–3 hours of Russell's time, total. Item #7 is a relationship-and-conversation move, not a code move. Item #1 is 30 seconds.
+
+---
+
+
 ## Where you are when you sit down
 
 You are on branch **`feature/overnight-04-25-2026`**, NOT `main`.
