@@ -79,6 +79,8 @@ The product is meaningfully ready. The gating items are mostly setup work you ow
 
 3. **Run the UAT checklist below** before you sit Marcus down. Each app needs to actually work end-to-end, not just compile clean.
 
+4. **Write the Cloud Studio plan (no code yet, just the plan file).** Today the editor runs only on Russell's laptop. Cloud Studio = a customer opens `studio.buildclear.dev` in their browser and uses Studio without installing anything. Multi-session epic when it comes time to build, but the plan itself is one session of work. Cover at minimum: hosted Studio environment, per-customer authentication, per-customer sandboxes for app preview (so two customers don't collide), how Meph's local-AI path translates to a hosted setup, billing wiring, free-tier vs paid-tier boundaries. Use the `write-plan` skill — it'll save to `plans/plan-cloud-studio-MM-DD-YYYY.md` with a load-bearing Phase Order block at the top. Cloud Studio is **NOT** on the critical path to the first paying Marcus customer (he uses the deployed deal-desk app, not Studio), but the plan needs to exist before we can scope it for after-launch.
+
 ---
 
 ## UAT — features Marcus will actually use, testable per-app
