@@ -18,6 +18,7 @@ Updated: **2026-04-26 (shell Phase 6 detail-panel docs/curriculum prep added; ov
 | **49** | **2026-04-26** | **Shell Upgrade Phase 2 closes the sidebar navigation gap.** `nav section` and `nav item` now compile to grouped left-rail links with counts, Lucide icons, and route-based active state. The important flywheel bit: docs, Meph prompt, curriculum, and deterministic chrome checks now ask for the primitive, so future sweeps can measure whether Meph actually uses the polished shell instead of falling back to text rows. 2614 → 2616 compiler tests green. |
 | **50** | **2026-04-26** | **Shell Upgrade Phase 3 closes the workbench header/tab gap.** `page header` now emits the main title row with subtitle and action slot, while `tab strip` emits routed underline tabs with active state. The flywheel bit matches Phase 2: docs, Meph prompt, curriculum, and chrome checks now make polished queue/workbench pages measurable instead of aesthetic folklore. 2616 → 2621 compiler tests green. |
 | **51** | **2026-04-26** | **Shell Upgrade Phase 4 closes the KPI-card gap.** `stat strip` and `stat card` now give dashboards first-class headline metrics with value, delta, sparkline, and icon fields. The curriculum adds `kpi-dashboard`, so sweeps can measure whether Meph uses the polished primitive instead of rebuilding KPI cards from raw sections. 2621 → 2629 compiler tests green. |
+| **53** | **2026-04-26** | **Sweep integrity closes the local-AI write hole.** cc-agent/MCP endpoint wins now create the missing Factor DB row before `http_request` marks `test_pass=1`, so Meph wins compound even when he relies on `edit_code` auto-compile. Sweeps also mark ECONNRESET-style worker death as `worker-died` instead of generic failed tasks, skip the rest of that dead worker's bucket, and expose `--per-level-stats` for level-by-level timeout diagnosis. |
 
 The document below is structured **theory → architecture → current state → path forward**. Start with "Read This First" for the plain-English summary; dive into the specific section that matches your question.
 
@@ -629,6 +630,7 @@ Every `/api/chat` Meph session now writes rows:
 1. `edit_code` / `patch_code` tool → updates `_sourceBeforeEdit` snapshot
 2. `compile` tool → classifier runs, row inserted with `{archetype, error_sig, compile_ok, source_before}`, `_lastFactorRowId` stored
 3. `run_tests` tool → `_lastFactorRowId` row updated with `{test_pass, test_score}`
+4. `http_request` 2xx → `_lastFactorRowId` row marked passing; in cc-agent/MCP mode, endpoint verification now creates the missing clean-compile row first when Meph used `edit_code` auto-compile instead of calling `compile` explicitly
 
 Non-fatal: if the DB fails to open at server boot, sessions continue without logging.
 
@@ -654,6 +656,7 @@ const hints = db.querySimilar({
 - BM25 retrieval active
 - **Step-decomposition labeling active** — every compile row stamped with which task milestone Meph has hit
 - **Sweep grader uses DB signal, not chat-stream phrase-matching** — catches ~12 more ✅s per 30-task sweep that would otherwise be undercounted
+- **Sweep harness separates worker death from task failure** — ECONNRESET-style worker death is reported as `worker-died`, remaining tasks assigned to that worker are skipped, and `--per-level-stats` shows which curriculum levels are timing out or losing workers
 - **Haiku 4.5 is the default model** (via `MEPH_MODEL` env var) — 3× cheaper per row than Sonnet, within 6% of Sonnet's completion rate on `eval-meph` (15/16 vs 16/16)
 - **Parser accepts inline records** `{ a is 1 }` — was a silent blocker for every webhook task pre-Session 38
 - **CLI won't clobber repo root `package.json`** during Meph's `clear build` — was silently corrupting the worktree

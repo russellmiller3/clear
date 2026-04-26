@@ -267,6 +267,35 @@ function buildHelpers() {
 // If a Claude Code user needs richer schemas (for tool-call UX), the
 // schemas can grow later without changing the wire contract.
 
+function ensureFactorRowBeforeEndpointVerification(ctx) {
+  if (!ctx.factorDB || ctx.hintState?.lastFactorRowId) return;
+  if (!ctx.isAppRunning()) return;
+  if (!currentSource || !currentSource.trim()) return;
+  const compiled = ctx.lastCompileResult;
+  if (!compiled || (Array.isArray(compiled.errors) && compiled.errors.length > 0)) return;
+
+  try {
+    const step = currentStep(currentSource, ctx.sessionSteps);
+    ctx.hintState.lastFactorRowId = ctx.factorDB.logAction({
+      session_id: ctx.sessionId,
+      archetype: safeArchetype(currentSource),
+      task_type: 'compile_cycle',
+      error_sig: null,
+      file_state_hash: sha1(currentSource),
+      source_before: currentSource.slice(0, 5000),
+      patch_ops: [],
+      patch_summary: `Clean auto-compile before endpoint verification (${currentSource.split('\n').length} lines)`,
+      compile_ok: 1,
+      test_pass: 0,
+      test_score: 0.0,
+      score_delta: 0.0,
+      step_id: step?.id || null,
+      step_index: step?.index ?? null,
+      step_name: step?.name || null,
+    });
+  } catch { /* non-fatal */ }
+}
+
 const MEPH_TOOLS = [
   { name: 'edit_code',         desc: 'Read, write, or undo the current Clear source. Input: { action: "read"|"write"|"undo", code?: string }.' },
   { name: 'read_file',         desc: 'Read a Clear repo doc (SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, meph-memory.md). Input: { filename, startLine?, endLine? }.' },
@@ -333,6 +362,12 @@ function buildHandler(mephName) {
     const ctx = buildMephContext();
     const helpers = buildHelpers();
     try {
+      // edit_code auto-compiles, so cc-agent can run and verify an app
+      // without ever calling compile. Create the row that http_request marks
+      // as passing when that endpoint verification succeeds.
+      if (mephName === 'http_request') {
+        ensureFactorRowBeforeEndpointVerification(ctx);
+      }
       const result = await dispatchTool(mephName, args, ctx, helpers);
       // Mirror state the tools mutated on ctx back to module vars.
       if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;

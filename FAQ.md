@@ -538,7 +538,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 | `playground/supervisor/factor-db.js` | Factor DB — code_actions, ga_runs, ga_candidates, reranker_feedback |
 | `playground/supervisor/archetype.js` | Shape-of-work classifier (15 categories) |
 | `playground/supervisor/cold-start.js` | Seeds Factor DB with 13 gold templates + 25 curriculum skeletons |
-| `playground/supervisor/curriculum-sweep.js` | Drives all 25 curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150`. Has pre-flight API check. |
+| `playground/supervisor/curriculum-sweep.js` | Drives curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150 --per-level-stats`. Has pre-flight API check, worker-death classification, and per-level sweep rollups. |
 | `playground/supervisor/export-training-data.js` | Exports Factor DB to JSONL for XGBoost training. `--stats` for summary. |
 | `playground/supervisor/train_reranker.py` | Python XGBoost trainer. Refuses below 200 passing rows with clear message. |
 | `playground/supervisor/db-stats.js` | Standalone DB stats reporter (CLI, prints archetype breakdown) |
@@ -553,7 +553,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 - `GET /api/supervisor/sessions` — aggregated session list
 - `GET /api/supervisor/session/:id` — full trajectory for one session
 - `POST /api/supervisor/start-sweep` / `GET /sweep-progress` / `POST /clear-sweep` — Studio-triggered sweeps
-- Factor DB write hook in `/api/chat`: every `compile` tool call → row; every `run_tests` OR `http_request` 2xx → row marked passing
+- Factor DB write hook in `/api/chat` and cc-agent/MCP: every `compile` tool call → row; every `run_tests` OR `http_request` 2xx → row marked passing. MCP endpoint verification creates the missing row first when Meph used `edit_code` auto-compile.
 - Factor DB hint injection: compile errors pull 3 tier-ranked past examples into the compile tool result's `hints` field
 
 **Phase status (see PROGRESS.md for full HITL fix table):**

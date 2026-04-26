@@ -6,6 +6,19 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 - Sweep integrity: local wins now feed the flywheel
+
+Local-AI sweeps now separate harness failure from Meph failure. Endpoint wins on the cc-agent/MCP path write through to Factor DB, dead workers are marked as `worker-died`, and `--per-level-stats` exposes which curriculum levels are timing out.
+
+**What shipped:**
+
+- MCP `http_request` verification creates the missing compile row when Meph relies on `edit_code` auto-compile, then marks the successful endpoint check as `test_pass=1`.
+- Curriculum sweeps stop sending tasks to a worker after ECONNRESET-style death and mark remaining assigned tasks as skipped `worker-died`.
+- Sweep summaries can print level-by-level pass, timeout, stuck, worker-death, failed, and skipped counts.
+- Regression tests cover the local-AI Factor DB write-through and dead-worker bucket behavior.
+
+---
+
 ## 2026-04-26 - Shell Upgrade Phase 6 docs/curriculum prep: right detail panel
 
 Phase 6 now has its teaching surface before the compiler merge finishes. The canonical form is `detail panel for selected_deal:` with normal content lines and a sticky `actions:` bar for Reject / Counter / Approve.
