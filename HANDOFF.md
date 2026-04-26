@@ -1,10 +1,12 @@
-# Handoff — 2026-04-26 (overnight branch merged to main, all shipped)
+# Handoff — 2026-04-26 (Phase 2 sidebar nav committed, ready to merge)
 
 ## Where you are when you sit down
 
-You're on **main**. The overnight branch (`feature/overnight-04-25-2026`) merged in cleanly at commit `8d431dd` and is now on remote — your day-prior cleanup work at 89189d1 is preserved underneath it.
+You're on **`feature/shell-upgrade-phase-2`** — Codex built Phase 2 (sidebar nav with counts, icons, route-based active state) overnight. I reviewed it, it was ship-quality, I committed it (`b554007`) and pushed the branch to remote. **Not yet merged to main** — Russell decides whether to ship it via `/ship` or merge manually.
 
-Tests **2614/0** in `clear.test.js`. All 8 reference apps compile clean. **$0 API spend** across the entire 12+ hour overnight + morning run.
+The cloud-one-click branch (`origin/cloud-one-click-04-26-2026`) was already merged into main as part of the overnight branch — no-op.
+
+Tests **2616/0** in `clear.test.js` + **2/0** in the new `chrome-checks.test.js`. All 8 reference apps compile clean. Pre-commit hook ran the full suite green.
 
 ## Critical path to first paying customer
 
@@ -67,13 +69,12 @@ The product is meaningfully ready. The gating items are mostly setup work you ow
 
 ## Next session priority order
 
-1. **Shell upgrade phases 2–7 (the visual polish for Marcus).** Plan: `plans/plan-full-shell-upgrade-04-25-2026.md`. Phase 1 (slate-on-ivory chrome) and Phase 5 (data tables) are done. The five remaining phases all matter for "deal-desk looks like Linear, not a tech demo":
-   - **Phase 2** — sidebar nav items + counts + active state (one session)
+1. **Merge Phase 2 to main, then keep going on phases 3–7.** Plan: `plans/plan-full-shell-upgrade-04-25-2026.md`. Phase 1 (slate-on-ivory chrome), Phase 2 (sidebar nav — committed on `feature/shell-upgrade-phase-2`, awaiting merge), and Phase 5 (data tables) are done. Phase 2 was Codex's work — quality high, hit all 5 plan deliverables (compiler + 11-doc cascade + Meph prompt + curriculum task + chrome-check eval signal), one improvement over plan (route-based active state listens to back-button + hash changes, not just clicks). Run `/ship` to merge to main. The four remaining phases all matter for "deal-desk looks like Linear, not a tech demo":
    - **Phase 3** — page header + tab strip (one session)
    - **Phase 4** — stat cards + sparkline (one session)
    - **Phase 6** — right detail panel (one session)
    - **Phase 7** — Marcus app port + visual matching the mock to 95% (one session — the final pass that makes the demo look real)
-   Order matters: 2 → 3 → 4 → 6 → 7. Phase 7 is the highest-leverage but depends on the others being done. Run the plan through red-team-plan first, then execute-plan.
+   Order matters: 3 → 4 → 6 → 7. Phase 7 is the highest-leverage but depends on the others being done. Run the plan through red-team-plan first, then execute-plan.
 
 2. **Fix the sweep three-fer (after shell upgrade).** See "Sweep is broken in three real ways" below. The training pipeline is silent until #1 (the database-write hole) gets fixed. But the shell upgrade is the higher critical-path move — Marcus has to want to use the product before the training-signal flywheel matters.
 
