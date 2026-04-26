@@ -2024,6 +2024,71 @@ clear eval main.clear              # Schema checks (fast, no API calls)
 clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
 ```
 
+### Leaving a piece for later: `TBD`
+
+Sometimes you know the shape of the program but you have not decided one
+piece yet. Maybe the spec is ambiguous, maybe Russell told you to "leave
+the auth for later, focus on the queue," maybe you are sketching a structure
+and want compiler feedback on the parts that ARE written.
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs. The compiler accepts it. The program still compiles green. Only
+the line that holds the placeholder fails at runtime — every other piece
+keeps working.
+
+```clear
+build for javascript backend
+
+create a Leads table:
+  name, required
+  email, required
+
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+    email, required
+  TBD                       # the audit log piece is for next session
+  saved_lead = save lead as new Lead
+  send back saved_lead with success message
+
+test 'creating a lead works':
+  set new_lead = TBD        # exact payload not decided yet
+  send new_lead to /api/leads
+  expect response status is 200
+```
+
+Compile and run the tests:
+
+```bash
+clear test main.clear
+```
+
+You will see something like:
+
+```
+PASS: Creating a new lead succeeds
+SKIP: creating a lead works - placeholder hit at line 17 — fill it in or remove it (this test exercises a stub)
+
+Results: 1 passed, 0 failed, 1 skipped due to stub
+```
+
+The skipped test does not fail the build — `clear test` exits 0 because no
+real assertion failed. The skip count tells you "structure right, piece not
+filled in yet" so you know exactly which holes are still open.
+
+Three rules of thumb:
+1. **Use `TBD` for genuinely open decisions.** Ambiguous spec, deferred piece,
+   sketching a structure. Not for things you do not feel like writing — that
+   is just hiding the hard part.
+2. **Do not ship `TBD`s in production code.** The placeholder is a bookmark,
+   not a finished piece. If your final commit still has open `TBD`s, you have
+   not finished the feature.
+3. **Skipped tests are not coverage.** A test that hits a `TBD` did not
+   actually verify anything. Refill the placeholder before you trust the test.
+
 ---
 
 ## Chapter 18: Going Live (Deploying Your App)

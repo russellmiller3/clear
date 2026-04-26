@@ -301,6 +301,51 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - Possessive access: `person's name` (never person.name)
 - Colons signal blocks: anything with `:` at the end has an indented body below
 
+## TBD — Use Placeholders When the Spec Is Open (Lean Lesson 1)
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a step belongs
+and you have NOT decided yet. The compiler accepts it, the program still
+compiles green, and only the line that holds the placeholder fails at
+runtime — every other piece keeps working.
+
+```clear
+greeting = TBD                     # value position
+
+to greet with name:                # step position (a line on its own)
+  TBD
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                              # audit log piece is for next session
+  saved = save lead as new Lead
+  send back saved
+```
+
+**Use TBD when:**
+- The spec is ambiguous about ONE piece (auth flow, edge case, error copy,
+  audit shape) and you want compiler feedback on the rest now.
+- Russell says "leave the X part for now, focus on Y." Drop a TBD for X,
+  ship Y, ask later.
+- You are sketching the structure of a program and want validation on what
+  is written without being blocked by what is not.
+
+**Do NOT use TBD to:**
+- Dodge a hard part you don't feel like writing. The placeholder is a
+  bookmark for a decision that is genuinely OPEN, not a hiding spot.
+- Skip a piece a test will exercise. Tests that hit a TBD report as
+  SKIPPED — looks fine in pass count but means the test verified nothing.
+  Skipped tests are not coverage.
+
+**Behavior:**
+- Compiles with zero compile errors. Programs with TBDs ship.
+- Runtime hits the line → throws `placeholder hit at line N — fill it in or remove it`.
+- `clear test` catches that exact error and reports the test SKIPPED, not
+  FAILED. Results line: `X passed, Y failed, Z skipped due to stub`.
+- Skipped tests do NOT trigger non-zero exit — partial programs ship CI.
+
+**Before you finish a feature, grep your `.clear` for `TBD` and refill every one.**
+
 ## Termination Rules (PHILOSOPHY Rule 18 — "Total by Default")
 
 Every loop, every recursion, every external call has a bound. The compiler emits them so you don't have to think about hangs.
