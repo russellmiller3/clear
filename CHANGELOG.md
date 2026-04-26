@@ -6,6 +6,12 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — Overnight session: SHELL-5 data tables emit upgrade
+
+**`display X as table` produces a polished slate-on-ivory shape.** Same one-line Clear input now compiles to a hand-designed-looking table — status pills (`clear-pill-pending` / `clear-pill-approved` / etc.), avatar circles with initials for name/customer/email columns, right-aligned tabular-nums money columns, sortable headers (`data-sortable` + click-to-toggle is-sorted), single-select rows (`is-selected` on tr click). New `with actions:` block lists labeled action buttons (`'Approve' is primary` / `'Reject' is danger`) rendered in a hover-revealed rightmost column. Cell type detection lives in `_clear_cell` so future column types are one helper-edit. Click + sort wiring in `_clear_table_init`, idempotent. Backwards-compat: legacy `with delete and edit` shorthand still works. 10 new SHELL-5 tests; 2544 pass / 0 fail. All 8 core templates compile clean.
+
+---
+
 ## 2026-04-25 — Mid-day session: LAE Phase D write path, Ghost defaults to free, MCP descriptions fixed
 
 Same-day session continued from the overnight run. Five small ships, all green, $0 production-Anthropic API spend.
