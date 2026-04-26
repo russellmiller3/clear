@@ -7,7 +7,7 @@ The product is meaningfully ready. The gating items are Russell's, not the compi
 | # | Item | Owner | Status | Unblocks |
 |---|------|-------|--------|----------|
 | 1 | Push `feature/overnight-04-25-2026` to remote (76+ commits ahead) | Russell | Local only | Everything below |
-| 2 | Register `buildclear.dev` domain | Russell | Not done | #4, #5 |
+| 2 | Register `buildclear.dev` domain | Russell | ✅ DONE 2026-04-26 | #4, #5 |
 | 3 | Fly.io Trust Verified app | Russell | Not done | #4 |
 | 4 | Stripe live keys | Russell | Gated on #2 + #3 | First paying customer |
 | 5 | Anthropic org key for paid Meph sessions | Russell | Not done | First customer |

@@ -465,6 +465,12 @@ export async function runSweep({
     console.log(`  Completed: ${flatResults.filter(r => r.ok).length}`);
     console.log(`  Stuck: ${flatResults.filter(r => r.stuck).length}`);
     console.log(`  Timed out: ${flatResults.filter(r => r.timedOut).length}`);
+    const failed = flatResults.filter(r => !r.ok && !r.stuck && !r.timedOut);
+    console.log(`  Failed: ${failed.length}`);
+    if (failed.length > 0) {
+      const errSample = failed.filter(r => r.error).slice(0, 3).map(r => `${r.task}: ${r.error}`);
+      if (errSample.length > 0) console.log(`    sample errors: ${errSample.join(' | ')}`);
+    }
     console.log(`  Factor DB: ${startStats.total} → ${endStats.total} rows (+${endStats.total - startStats.total})`);
     console.log(`  Passing rows: ${startStats.passing} → ${endStats.passing} (+${endStats.passing - startStats.passing})`);
 
