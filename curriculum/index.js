@@ -77,3 +77,21 @@ export function getLevel(level) {
 export function listTasks() {
   return tasks.map(t => ({ id: t.id, level: t.level, title: t.title, tests: t.tests.length }));
 }
+
+// Held-out test set support — Phase 5 of plans/plan-winner-harvest-04-26-2026.md.
+// Held-out tasks are still graded by sweeps (so we can measure pass-rate lift)
+// but are EXCLUDED from anything that feeds the hint retriever or the future
+// canonical-examples library. That keeps the A/B measurement honest — without
+// the held-out split, "did intervention X improve Meph?" collapses into "did
+// Meph memorize the curriculum?"
+export function isHeldOut(task) {
+  return !!(task && task.held_out === true);
+}
+
+export function trainingTasks() {
+  return tasks.filter(t => !isHeldOut(t));
+}
+
+export function heldOutTasks() {
+  return tasks.filter(t => isHeldOut(t));
+}
