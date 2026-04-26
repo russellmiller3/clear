@@ -54,6 +54,7 @@ The document below is structured **theory → architecture → current state →
 - A classifier that tags each app by shape (16 archetypes including the new `kpi` bucket) so retrieval can filter by app type
 - 5 new template apps that match what Marcus's team actually builds
 - Haiku 4.5 is the default model — 3× cheaper per training row than Sonnet at ~94% of Sonnet's completion rate
+- **Shape-search retrieval (2026-04-25):** every compile (not just errors) also retrieves canonical worked examples whose program shape matches what Meph is writing — same archetype, similar table/endpoint mix. Layered on top of error-text retrieval, not replacing it.
 
 **What this buys you.** Meph makes the same mistake once, then never again — the fix is stored and returned to future sessions automatically. You don't manually teach him. The more people use Clear, the smarter Meph gets for everyone.
 
@@ -251,6 +252,14 @@ This is the compounding loop that makes Clear's Meph smarter over time — witho
 **Important:** the model being trained is NOT Claude. It's an **Explainable Boosting Machine (EBM)** — a Generalized Additive Model that learns one shape function per feature (plus pairwise interactions). Each shape function is plottable: you can literally see "feature X contributed +0.4 to this score." That ranks retrieved examples transparently. Claude/Meph stays exactly the same. The hints Meph receives get better; Meph's ability to follow hints was always there.
 
 The mechanical quality signals bootstrap this loop. They produce deterministic quality scores on day 1 — before any ML is trained. See the next section.
+
+### Shape-search retrieval (Lean Lesson 2 — additive layer, 2026-04-25)
+
+The flywheel diagram above shows hint retrieval triggered on compile errors — text-match (BM25 over `error_sig`) finds past sessions that hit the same error and fixed it. That misses a class of bad code that **never errors** — programs that compile and run but don't match the spec. Lean's `library_search` / premise selection has the same shape: given a partial proof, search the whole library for lemmas whose *type signature* matches what's needed, BEFORE the compile checker fires. Lean's lesson is that the type lattice is the right index for retrieval in a deterministic-grader system.
+
+The Clear translation: every compile (success or failure) computes a small deterministic signature of the program — `archetype`, node-type histogram (endpoints, tables, agents, pages, charts, validate, guard, service calls, websockets), presence flags (auth, db, charts, agents, realtime, cron, external services), leading feature path. Jaccard similarity over a sparse-binary token set; same-archetype gets a +1.0 gate bonus so the retrieval respects archetype boundaries (an `agent_workflow` query never returns an `api_service` example as #1, even when keywords overlap). The top 2 canonical examples are layered onto whatever the text-match path returned. Both layers run; combined cap stays at 5 hints; the shape signal lands in `result.hints.shape_*` so observability can track it independently. CLI driver at `scripts/match-shape.mjs` doubles as the importable `loadCanonicalExamples()` + `matchShape()` for the wiring in `playground/meph-tools.js`. Disabled by `CLEAR_HINT_DISABLE=1` for clean A/B against the hint-off arm.
+
+This is Phase 2 of the Lean Lessons plan — shipped before the A/B sweep that would prove lift on time-to-green. The plan's decision rule (kill if no signal, layer-only if mixed, ship if >10% time-to-green improvement at <30% prompt-cost increase) gates the next step, not this commit.
 
 ---
 

@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — Lean Lesson 2: shape-search retrieval for canonical examples (overnight)
+
+Russell asleep. Lean Lesson 2 from `plans/plan-lean-lessons-04-26-2026.md` shipped behind the existing text-match hint pipeline as an additive layer.
+
+**What changed.** Every Meph compile now retrieves canonical worked examples by program SHAPE — archetype + node-type histogram (endpoints, tables, agents, pages, cron, charts, validate, guard, service calls, api calls, websockets) + presence flags (auth, db, charts, agents, realtime, cron, external services) + leading-feature path. Jaccard similarity over a sparse-binary token set; same-archetype gets a +1.0 gate bonus so a real api_service match always out-ranks a cross-archetype match that happens to share keywords.
+
+**Why an additive layer.** Text-match (`querySuggestions`) only fires on compile errors. Half the bad code never errors — it compiles and runs but doesn't match the spec. Shape-search reaches Meph BEFORE the wall, on every compile, by showing him canonical examples that look structurally like what he's writing. Both layers run; combined hint cap stays at 5; the off-arm via `CLEAR_HINT_DISABLE=1` skips both for clean A/B.
+
+**New surfaces.**
+- `playground/supervisor/program-shape.js` — `computeShape()`, `shapeTokens()`, `jaccard()`, `shapeSimilarity()` over a parsed Clear program.
+- `scripts/match-shape.mjs` — CLI driver and importable `loadCanonicalExamples()` + `matchShape()`. Reads `playground/canonical-examples.md` once per process, caches signatures on the example record so subsequent compiles are microseconds.
+- `scripts/match-shape.test.mjs` — 17 tests: feature-vector correctness, Jaccard math, archetype gate, identity match, archetype-match-beats-keyword-match.
+- Wired into `playground/meph-tools.js` `compileTool` right after the text-match block. Fires on every compile (success or failure). Output goes into `result.hints.shape_text` + `result.hints.shape_count` + `result.hints.shape_top_archetype` so the observability log can see shape signal independently from text-match.
+
+**Test bump.** `clear.test.js` 2533 unchanged. `playground/meph-tools.test.js` 277 unchanged. `scripts/match-shape.test.mjs` 17 / 17 new. All 8 core templates compile clean.
+
+---
+
 ## 2026-04-25 — Mid-day session: LAE Phase D write path, Ghost defaults to free, MCP descriptions fixed
 
 Same-day session continued from the overnight run. Five small ships, all green, $0 production-Anthropic API spend.
