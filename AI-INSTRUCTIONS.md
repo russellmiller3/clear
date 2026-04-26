@@ -1779,6 +1779,20 @@ section 'Content' with style app_content:
 Use `page header` for the main work area title. Use `tab strip` for routed
 queue states, CRM views, helpdesk status buckets, and admin subviews.
 
+**KPI strip rule** (prefer explicit stat cards):
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+Use `stat strip` directly under `app_content`, usually after `page header` and
+tabs. Use one `value` line per card. Add `delta`, `sparkline`, and `icon` only
+when the source data exists.
+
 #### Blog Presets (3)
 
 | Preset | What it does | Use for |

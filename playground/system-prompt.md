@@ -777,9 +777,15 @@ section 'Dashboard' with style app_layout:
         active tab is 'Home'
         tab 'Home' to '/'
         tab 'Reports' to '/reports'
+      stat strip:
+        stat card 'Pending Count':
+          value pending_count
+          delta '+1.8 pts vs last week'
+          sparkline [3, 4, 6, 5, 8]
+          icon 'inbox'
 ```
 
-**App shell shape (Phase 1-3 polish, 2026-04-25/26).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
+**App shell shape (Phase 1-4 polish, 2026-04-25/26).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
 - `app_layout` → outer container with full-screen flex
 - `app_sidebar` → 240px-wide vertical rail
 - `app_main` → flexible content column
@@ -787,6 +793,7 @@ section 'Dashboard' with style app_layout:
 - `nav section` / `nav item` → sidebar groups with real links, optional counts, optional Lucide icons, and route-based active state
 - `page header` → main content title, subtitle, and right-aligned action buttons
 - `tab strip` → routed underline tabs with active state from `location.pathname`
+- `stat strip` / `stat card` → KPI rows with value, optional delta, sparkline, and Lucide icon
 
 Don't reach for raw HTML / Tailwind to recreate the shell — the presets already do the right thing.
 

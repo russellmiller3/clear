@@ -6840,6 +6840,8 @@ ${pad}}`;
     case NodeType.PAGE_HEADER:
     case NodeType.TAB_STRIP:
     case NodeType.ROUTE_TAB:
+    case NodeType.STAT_STRIP:
+    case NodeType.STAT_CARD:
       return null;
 
     case NodeType.ASK_FOR: {
@@ -10545,6 +10547,74 @@ function buildHTML(body) {
     return `    <nav class="clear-tab-strip" data-tab-strip="true"${clAttr(node)}>\n${rows}\n    </nav>`;
   }
 
+  function statValueHTML(expr) {
+    if (!expr) return '';
+    if (expr.type === NodeType.LITERAL_NUMBER || expr.type === NodeType.LITERAL_BOOLEAN) {
+      return formatInlineText(String(expr.value));
+    }
+    if (expr.type === NodeType.LITERAL_STRING) {
+      return formatInlineText(expr.value || '');
+    }
+    if (expr.type === NodeType.VARIABLE_REF) {
+      const name = attrEsc(expr.name || '');
+      return `<span data-clear-tpl="{${name}}">{${name}}</span>`;
+    }
+    return formatInlineText(exprToCode(expr, { lang: 'javascript' }));
+  }
+
+  function statDeltaHTML(delta) {
+    if (!delta) return '';
+    const raw = String(delta);
+    const tone = raw.trim().startsWith('-') ? 'negative' : 'positive';
+    return `<div class="clear-stat-delta clear-stat-delta-${tone}">${formatInlineText(raw)}</div>`;
+  }
+
+  function statSparklineHTML(expr) {
+    if (!expr) return '';
+    if (expr.type !== NodeType.LITERAL_LIST) {
+      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
+    }
+    const nums = (expr.elements || [])
+      .filter(item => item && item.type === NodeType.LITERAL_NUMBER)
+      .map(item => Number(item.value));
+    if (nums.length === 0) {
+      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
+    }
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    const span = max - min || 1;
+    const step = nums.length === 1 ? 0 : 92 / (nums.length - 1);
+    const points = nums.map((num, idx) => {
+      const x = 2 + idx * step;
+      const y = 24 - ((num - min) / span) * 20;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="${attrEsc(points)}"></polyline></svg>`;
+  }
+
+  function statCardHTML(card) {
+    const label = formatInlineText(card.label || '');
+    const icon = card.icon
+      ? `<i class="clear-stat-icon" data-lucide="${attrEsc(card.icon)}" aria-hidden="true"></i>`
+      : '';
+    const delta = statDeltaHTML(card.delta);
+    const sparkline = statSparklineHTML(card.sparkline);
+    return `      <div class="clear-stat-card" data-stat-card="true"${clAttr(card)}>
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">${label}</div>
+          ${icon}
+        </div>
+        <div class="clear-stat-value tabular-nums">${statValueHTML(card.value)}</div>
+        ${delta}
+        ${sparkline}
+      </div>`;
+  }
+
+  function statStripHTML(node) {
+    const cards = (node.cards || []).map(statCardHTML).join('\n');
+    return `    <div class="clear-stat-strip" data-stat-strip="true"${clAttr(node)}>\n${cards}\n    </div>`;
+  }
+
   function walk(nodes) {
     for (const node of nodes) {
       switch (node.type) {
@@ -11692,6 +11762,10 @@ ${options}
 
         case NodeType.TAB_STRIP:
           parts.push(routeTabStripHTML(node));
+          break;
+
+        case NodeType.STAT_STRIP:
+          parts.push(statStripHTML(node));
           break;
 
         case NodeType.SHOW: {
@@ -14586,6 +14660,72 @@ const CSS_COMPONENTS = [
   height: 2px;
   border-radius: 9999px;
   background: var(--clear-accent);
+}` },
+  { class: 'clear-stat-strip', css: `.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: var(--clear-bg-panel);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+}
+.clear-stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.clear-stat-label {
+  color: var(--clear-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.clear-stat-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--clear-ink-muted);
+  flex: 0 0 auto;
+}
+.clear-stat-value {
+  margin-top: 10px;
+  color: var(--clear-ink);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.clear-stat-delta {
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.clear-stat-delta-positive {
+  color: #15803d;
+}
+.clear-stat-delta-negative {
+  color: #b42318;
+}
+.clear-stat-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 10px;
+  overflow: visible;
+}
+.clear-stat-sparkline polyline {
+  fill: none;
+  stroke: var(--clear-accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }` },
   { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }
 .clear-chat-head { padding: 12px 16px; border-bottom: 1px solid oklch(var(--color-base-content) / 0.1); display: flex; align-items: center; justify-content: space-between; }

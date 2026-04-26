@@ -999,13 +999,13 @@ section 'Footer' with style page_footer:
 
 ### App UI Presets
 
-> **Phase 1-3 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
+> **Phase 1-4 shell upgrade (04-25/26-2026):** the four shell presets `app_layout`,
 > `app_sidebar`, `app_main`, `app_header` now emit polished slate-on-ivory chrome
 > matching `landing/marcus-app-target.html`. Sidebar is a 240px `<aside>`, header
 > is a 56px sticky `<header>` with brand/breadcrumb/actions slots. Sidebar nav
 > now has explicit `nav section` / `nav item` syntax with counts, icons, and
 > route-based active state. Main content now has `page header` and `tab strip`
-> primitives for queue/workbench pages.
+> primitives for queue/workbench pages, plus `stat strip` / `stat card` for KPI rows.
 
 | Preset | HTML tag | Description | Typical children |
 |--------|----------|-------------|-----------------|
@@ -1060,6 +1060,20 @@ section 'Content' with style app_content:
 `page header` emits the main title row, optional subtitle, and right-aligned
 actions. `tab strip` emits routed underline tabs and marks the matching path
 active from `location.pathname`.
+
+#### Stat strip and stat card
+
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+`stat strip` wraps a responsive row of KPI cards. Each `stat card` needs one
+`value` line. `delta`, `sparkline`, and `icon` are optional.
 
 #### App UI preset examples
 

@@ -16455,6 +16455,116 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('data-page-header="true"');
     expect(r.html).toContain('data-tab-strip="true"');
   });
+
+  it('parses stat strips with multiple stat cards', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value pending_count
+    stat card 'Avg Discount':
+      value discount_rate`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const strip = page.body.find(n => n.type === 'stat_strip');
+    expect(strip.cards).toHaveLength(2);
+    expect(strip.cards[0].label).toBe('Pending Count');
+  });
+
+  it('parses stat cards with value, delta, sparkline, and icon', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value pending_count
+      delta '+1.8 pts vs last week'
+      sparkline [3, 4, 6, 5, 8]
+      icon 'inbox'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const card = page.body.find(n => n.type === 'stat_strip').cards[0];
+    expect(card.value.name).toBe('pending_count');
+    expect(card.delta).toBe('+1.8 pts vs last week');
+    expect(card.sparkline.type).toBe(NodeType.LITERAL_LIST);
+    expect(card.icon).toBe('inbox');
+  });
+
+  it('rejects stat strips without stat cards', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    text 'Empty'`);
+    expect(ast.errors.length > 0).toBe(true);
+    expect(ast.errors[0].message).toContain('stat card');
+  });
+
+  it('rejects stat cards without values', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      delta '+1.8 pts vs last week'`);
+    expect(ast.errors.length > 0).toBe(true);
+    expect(ast.errors[0].message).toContain('value');
+  });
+
+  it('emits stat strips with stat card chrome markers', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value 5
+    stat card 'Avg Discount':
+      value 12`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-stat-strip="true"');
+    expect(r.html).toContain('data-stat-card="true"');
+    expect(r.html).toContain('Pending Count');
+    expect(r.html).toContain('clear-stat-value');
+  });
+
+  it('emits stat card deltas with positive and negative classes', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Approval Rate':
+      value 72
+      delta '+4 pts'
+    stat card 'Risk':
+      value 3
+      delta '-2 pts'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('clear-stat-delta-positive');
+    expect(r.html).toContain('clear-stat-delta-negative');
+  });
+
+  it('emits stat cards with icons and sparkline svgs', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value 5
+      sparkline [3, 4, 6, 5, 8]
+      icon 'inbox'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-lucide="inbox"');
+    expect(r.html).toContain('class="clear-stat-sparkline"');
+    expect(r.html).toContain('<polyline');
+  });
+
+  it('emits stat strips inside app content chrome', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        stat strip:
+          stat card 'Pending Count':
+            value 5`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-stat-strip="true"');
+    expect(r.html).toContain('data-stat-card="true"');
+  });
 });
 
 describe('Complex app compilation: CRM with many tables', () => {

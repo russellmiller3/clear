@@ -211,6 +211,8 @@ export const NodeType = Object.freeze({
   PAGE_HEADER: 'page_header',
   TAB_STRIP: 'tab_strip',
   ROUTE_TAB: 'route_tab',
+  STAT_STRIP: 'stat_strip',
+  STAT_CARD: 'stat_card',
   PANEL_ACTION: 'panel_action',  // toggle/open/close a panel or modal
   HIDE_ELEMENT: 'hide_element',  // hide X — toggle element visibility
   CLIPBOARD_COPY: 'clipboard_copy',  // copy X to clipboard
@@ -2614,6 +2616,14 @@ CANONICAL_DISPATCH.set('tab', (ctx) => {
     const { body: tabBody, endIdx: tabEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
     ctx.body.push({ type: NodeType.TAB, title: tabTitle, body: tabBody, line: ctx.line });
     return tabEnd;
+});
+CANONICAL_DISPATCH.set('stat', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'strip') {
+      const parsed = parseStatStrip(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
+    return undefined;
 });
 CANONICAL_DISPATCH.set('retry', (ctx) => {
     if (ctx.tokens.length < 3) return undefined;
@@ -5124,6 +5134,101 @@ function parseTabStrip(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: { type: NodeType.TAB_STRIP, tabs, activeTab, line }, endIdx: j };
+}
+
+function parseStatCard(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  if (tokens.length < 3 || String(tokens[1]?.value || '').toLowerCase() !== 'card' || tokens[2].type !== TokenType.STRING) {
+    errors.push({ line, message: "A stat card needs a label in quotes. Example: stat card 'Pending Count':" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  const label = tokens[2].value;
+  const card = { type: NodeType.STAT_CARD, label, value: null, delta: null, sparkline: null, icon: null, line };
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const childTokens = lines[j].tokens || [];
+    if (childTokens.length === 0) { j++; continue; }
+    const first = String(childTokens[0].value || '').toLowerCase();
+    const childLine = childTokens[0].line;
+
+    if (first === 'value') {
+      const parsed = parseExpression(childTokens, 1, childLine);
+      if (parsed.error) errors.push({ line: childLine, message: parsed.error });
+      else card.value = parsed.node;
+      j++;
+      continue;
+    }
+
+    if (first === 'delta') {
+      if (childTokens[1]?.type === TokenType.STRING) {
+        card.delta = childTokens[1].value;
+      } else {
+        errors.push({ line: childLine, message: `The stat card '${label}' delta needs quoted text. Example: delta '+1.8 pts vs last week'` });
+      }
+      j++;
+      continue;
+    }
+
+    if (first === 'sparkline') {
+      const parsed = parseExpression(childTokens, 1, childLine);
+      if (parsed.error) errors.push({ line: childLine, message: parsed.error });
+      else card.sparkline = parsed.node;
+      j++;
+      continue;
+    }
+
+    if (first === 'icon') {
+      if (childTokens[1]?.type === TokenType.STRING || childTokens[1]?.type === TokenType.IDENTIFIER || childTokens[1]?.type === TokenType.KEYWORD) {
+        card.icon = String(childTokens[1].value);
+      } else {
+        errors.push({ line: childLine, message: `The stat card '${label}' icon needs a name. Example: icon 'inbox'` });
+      }
+      j++;
+      continue;
+    }
+
+    errors.push({ line: childLine, message: "Inside a stat card, use value EXPR, delta 'TEXT', sparkline [1, 2, 3], or icon 'name'." });
+    j++;
+  }
+
+  if (!card.value) {
+    errors.push({ line, message: `The stat card '${label}' needs a value line. Example:\n  stat card '${label}':\n    value pending_count` });
+  }
+
+  return { node: card.value ? card : null, endIdx: j };
+}
+
+function parseStatStrip(lines, startIdx, blockIndent, errors) {
+  const line = lines[startIdx].tokens[0].line;
+  const cards = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const { tokens } = lines[j];
+    if (!tokens || tokens.length === 0) { j++; continue; }
+    const first = String(tokens[0].value || '').toLowerCase();
+    const second = String(tokens[1]?.value || '').toLowerCase();
+
+    if (first === 'stat' && second === 'card') {
+      const parsed = parseStatCard(lines, j, lines[j].indent, errors);
+      if (parsed.node) cards.push(parsed.node);
+      j = parsed.endIdx;
+      continue;
+    }
+
+    errors.push({ line: tokens[0].line, message: "Inside stat strip, use stat card 'Label': with indented value, delta, sparkline, and icon lines." });
+    j++;
+  }
+
+  if (cards.length === 0) {
+    errors.push({ line, message: "A stat strip needs at least one stat card. Example:\n  stat strip:\n    stat card 'Pending Count':\n      value pending_count" });
+    return { node: null, endIdx: j };
+  }
+
+  return { node: { type: NodeType.STAT_STRIP, cards, line }, endIdx: j };
 }
 
 function parseNav(lines, startIdx, blockIndent, errors) {

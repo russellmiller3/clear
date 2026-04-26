@@ -413,6 +413,7 @@ const SYNONYM_TABLE = Object.freeze({
   agent: Object.freeze(['agent']),
   script: Object.freeze(['script']),
   tab: Object.freeze(['tab']),
+  stat: Object.freeze(['stat']),
   retry: Object.freeze(['retry']),
   first: Object.freeze(['first']),
   background: Object.freeze(['background']),

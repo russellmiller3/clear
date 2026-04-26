@@ -47,6 +47,7 @@ const taskFiles = [
   'L5-realtime-broadcast.json',
   'L6-booking-calendar.json',
   'L7-kpi-sales.json',
+  'L7-kpi-dashboard.json',
   'L8-routing-engine.json',
   'L8-etl-api-ingest.json',
   // Session-41 round 2: remaining archetype gaps. Takes coverage from 12/16

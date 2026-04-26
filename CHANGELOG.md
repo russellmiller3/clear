@@ -6,6 +6,21 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 - Shell Upgrade Phase 4: stat cards and sparklines
+
+Dashboard KPI rows can now use first-class stat cards instead of hand-built card grids. `stat strip:` wraps the row. `stat card 'Pending Count':` accepts `value`, optional `delta`, optional `sparkline`, and optional `icon`.
+
+**What shipped:**
+
+- New stat-card doc cascade across intent, syntax, AI instructions, user guide, FAQ, features, roadmap, research, and Meph prompt.
+- New `kpi-dashboard` curriculum task teaches the exact shell primitive.
+- Phase 4 is marked landed; Phase 6 detail panel is the next shell primitive.
+- Accounting updated to 168 node types and 2629 compiler tests.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 4.
+
+---
+
 ## 2026-04-26 - Shell Upgrade Phase 3: page headers and routed tabs
 
 Main content areas can now use a first-class workbench header and routed tabs. `page header 'CRO Review':` creates the title row with optional `subtitle` and `actions:`. `tab strip:` creates underline-style route tabs with active state from the current path.

@@ -83,3 +83,36 @@ export function checkPageHeaderTabsChrome(html, opts = {}) {
     violations,
   };
 }
+
+export function checkStatCardsChrome(html, opts = {}) {
+  const source = String(html || '');
+  const minCards = opts.minCards ?? 1;
+  const minSparklines = opts.minSparklines ?? 0;
+  const minDeltas = opts.minDeltas ?? 0;
+  const minIcons = opts.minIcons ?? 0;
+
+  const counts = {
+    strips: countMatches(source, /data-stat-strip="true"/g),
+    cards: countMatches(source, /data-stat-card="true"/g),
+    values: countMatches(source, /class="clear-stat-value tabular-nums"/g),
+    positiveDeltas: countMatches(source, /clear-stat-delta-positive/g),
+    negativeDeltas: countMatches(source, /clear-stat-delta-negative/g),
+    sparklines: countMatches(source, /class="clear-stat-sparkline"/g),
+    icons: countMatches(source, /class="clear-stat-icon" data-lucide="/g),
+  };
+  counts.deltas = counts.positiveDeltas + counts.negativeDeltas;
+
+  const violations = [];
+  if (counts.strips < 1) violations.push('missing stat strip');
+  if (counts.cards < minCards) violations.push('missing stat cards');
+  if (counts.values < minCards) violations.push('missing tabular stat values');
+  if (counts.deltas < minDeltas) violations.push('missing stat deltas');
+  if (counts.sparklines < minSparklines) violations.push('missing stat sparklines');
+  if (counts.icons < minIcons) violations.push('missing stat icons');
+
+  return {
+    ok: violations.length === 0,
+    counts,
+    violations,
+  };
+}

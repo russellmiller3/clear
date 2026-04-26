@@ -2904,24 +2904,21 @@ section 'Content' with style app_content:
 Use this for approval queues, CRMs, helpdesks, and dashboard subviews. The tabs
 are real links, and the current route automatically gets the underline state.
 
-#### Metric Cards
+#### Stat Cards
 
-For KPI rows at the top of dashboards, use `metric_card` inside a column grid:
+For KPI rows at the top of dashboards, use `stat strip` with `stat card`:
 
 ```clear
-section 'Stats' as 4 columns:
-  section 'Revenue' with style metric_card:
-    display revenue as dollars called 'Revenue'
-  section 'Users' with style metric_card:
-    display active_users as number called 'Active Users'
-  section 'Orders' with style metric_card:
-    display order_count as number called 'Orders'
-  section 'Growth' with style metric_card:
-    display growth_rate as percent called 'Growth'
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
 ```
 
-The `as 4 columns` modifier on the parent creates a CSS grid. Each `metric_card`
-gets a compact card treatment with the number prominently displayed.
+Each `stat card` needs one `value` line. Use `delta` for trend copy,
+`sparkline` for a tiny trend line, and `icon` for a Lucide symbol.
 
 #### Tables
 

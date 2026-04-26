@@ -1,0 +1,28 @@
+{
+  "id": "kpi-dashboard",
+  "level": 7,
+  "title": "KPI Dashboard With Stat Cards",
+  "description": "ARCHETYPE: dashboard. Shape: ONE app shell page with sidebar navigation, page header, routed tabs, and a stat strip containing 4 stat cards. The core primitive is stat strip + stat card, not hand-built metric_card sections. Include a seed endpoint so tests have data.",
+  "skeleton": "build for javascript backend and web\n\ncreate a Deals table:\n  title, required\n  amount (number), required\n  status, required\n  created_at, auto\n\nwhen user sends seed to /api/seed:\n  create d1:\n    title is 'Acme renewal'\n    amount = 12000\n    status is 'pending'\n  save d1 as new Deal\n  create d2:\n    title is 'Globex expansion'\n    amount = 24000\n    status is 'approved'\n  save d2 as new Deal\n  send back 'seeded'\n\n# Build a shell dashboard at / with this exact KPI syntax:\n# stat strip:\n#   stat card 'Pending Count':\n#     value pending_count\n#     delta '+1.8 pts vs last week'\n#     sparkline [3, 4, 6, 5, 8]\n#     icon 'inbox'\n",
+  "steps": [
+    { "id": "table", "name": "Deals table defined", "sourceMatches": ["create\\s+a?\\s*Deals\\s+table"] },
+    { "id": "shell", "name": "App shell used", "sourceMatches": ["app_layout", "app_sidebar", "app_main", "app_content"] },
+    { "id": "header", "name": "Page header included", "sourceMatches": ["page\\s+header\\s+['\"]"] },
+    { "id": "tabs", "name": "Tab strip included", "sourceMatches": ["tab\\s+strip\\s*:"] },
+    { "id": "stat_strip", "name": "Stat strip included", "sourceMatches": ["stat\\s+strip\\s*:"] },
+    { "id": "stat_cards", "name": "Four stat cards included", "sourceMatches": ["stat\\s+card\\s+['\"][^'\"]+['\"]\\s*:[\\s\\S]*stat\\s+card\\s+['\"][^'\"]+['\"]\\s*:[\\s\\S]*stat\\s+card\\s+['\"][^'\"]+['\"]\\s*:[\\s\\S]*stat\\s+card\\s+['\"][^'\"]+['\"]\\s*:"] },
+    { "id": "stat_fields", "name": "Stat cards use value, delta, sparkline, and icon", "sourceMatches": ["value\\s+pending_count", "delta\\s+['\"]\\+1\\.8 pts vs last week['\"]", "sparkline\\s+\\[3,\\s*4,\\s*6,\\s*5,\\s*8\\]", "icon\\s+['\"]inbox['\"]"] }
+  ],
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/seed",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "expect": { "status": 200 }
+    }
+  ]
+}

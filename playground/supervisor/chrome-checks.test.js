@@ -1,6 +1,6 @@
 import { describe, it, expect, run } from '../../lib/testUtils.js';
 import { compileProgram } from '../../index.js';
-import { checkPageHeaderTabsChrome, checkSidebarNavChrome } from './chrome-checks.js';
+import { checkPageHeaderTabsChrome, checkSidebarNavChrome, checkStatCardsChrome } from './chrome-checks.js';
 
 const NAV_SOURCE = `build for web
 pending_count = 5
@@ -41,6 +41,35 @@ page 'Deals' at '/cro':
           tab 'Approved' to '/approved'
           tab 'Escalated' to '/escalated'`;
 
+const STAT_CARDS_SOURCE = `build for web
+pending_count = 5
+avg_discount = 12
+value_at_stake = 890000
+approval_rate = 72
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Body' with style app_content:
+        stat strip:
+          stat card 'Pending Count':
+            value pending_count
+            delta '+1.8 pts vs last week'
+            sparkline [3, 4, 6, 5, 8]
+            icon 'inbox'
+          stat card 'Avg Discount':
+            value avg_discount
+            delta '-2 pts'
+            sparkline [10, 9, 8, 7]
+            icon 'percent'
+          stat card 'Value At Stake':
+            value value_at_stake
+            delta '+$120k'
+            icon 'badge-dollar-sign'
+          stat card '7-day Approvals':
+            value approval_rate
+            sparkline [40, 45, 55, 72]
+            icon 'trending-up'`;
+
 describe('chrome checks', () => {
   it('recognizes sidebar nav with sections, items, counts, icons, and active-state wiring', () => {
     const result = compileProgram(NAV_SOURCE);
@@ -80,6 +109,17 @@ page 'Legacy' at '/':
     expect(check.counts.pageHeaders).toEqual(1);
     expect(check.counts.tabs).toEqual(3);
     expect(check.activePath).toEqual('/cro');
+  });
+
+  it('recognizes stat strips with cards, values, deltas, icons, and sparklines', () => {
+    const result = compileProgram(STAT_CARDS_SOURCE);
+    expect(result.errors).toHaveLength(0);
+
+    const check = checkStatCardsChrome(result.html, { minCards: 4, minDeltas: 3, minSparklines: 3, minIcons: 4 });
+    expect(check.ok).toEqual(true);
+    expect(check.violations).toEqual([]);
+    expect(check.counts.cards).toEqual(4);
+    expect(check.counts.values).toEqual(4);
   });
 });
 

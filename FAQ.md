@@ -107,6 +107,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
 - [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
+- [How do I add KPI stat cards?](#how-do-i-add-kpi-stat-cards)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
@@ -658,6 +659,22 @@ section 'Content' with style app_content:
 `page header` renders the workbench title row. `tab strip` renders real route
 links and marks the current path active. Use this for queues, CRMs, and admin
 views with multiple states.
+
+### How do I add KPI stat cards?
+
+Use `stat strip` under `app_content`, usually after the page header and tabs.
+
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+Each `stat card` needs one `value` line. `delta`, `sparkline`, and `icon` are
+optional. Use quoted Lucide icon names.
 
 ### How do I add a new node type?
 
