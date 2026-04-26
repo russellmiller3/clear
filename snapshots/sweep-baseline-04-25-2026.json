@@ -1,16 +1,22 @@
 {
   "date": "2026-04-25",
   "command": "node playground/supervisor/curriculum-sweep.js --workers=3",
-  "backend": "gm",
+  "backend": "gm (cc-agent)",
+  "wallClockSeconds": 1595.5,
   "totalTasks": 38,
-  "totalPassed": null,
-  "totalFailed": null,
-  "passRateOverall": null,
-  "byArchetype": null,
-  "status": "failed",
-  "failureReason": "Sweep failed: opts is not defined",
-  "failureLocation": "playground/supervisor/curriculum-sweep.js:357 — references opts.real, but the variable opts is only defined in the CLI entry block (line 507), not inside runSweep(). Dry-run path returns at line 354 before hitting the bug, which is why the sanity check passed.",
-  "headCommit": "dd2df74",
-  "branch": "worktree-agent-a9fddd9f0696d9729 (off feature/overnight-04-25-2026)",
-  "rawSweepOutputTail": "GM-6: defaulted MEPH_BRAIN=cc-agent (no API spend). Pass --real to opt into the production Anthropic API.\n\n=== Curriculum Sweep ===\n  Tasks: 38\n  Workers: 3\n  Timeout per task: 180s\n  Dry run: false\n\n  worker-1 (port 3490): hello-world, calculator, todo-crud, user-profiles, rate-limited-api, lead-router, support-triage, data-sync, realtime-broadcast, routing-engine, company-directory, rbac-api, full-saas\n  worker-2 (port 3491): greeting, counter, bookmark-manager, blog-search, validated-forms, internal-request-queue, webhook-stripe, etl-daily-report, booking-calendar, etl-api-ingest, admin-panel, agent-summary, dashboard-api\n  worker-3 (port 3492): echo, key-value-store, auth-todo, contact-book, approval-queue, onboarding-tracker, batch-cleanup, dashboard-metrics, kpi-sales, batch-prune, multi-tenant, agent-categorizer\nSweep failed: opts is not defined"
+  "totalPassed": 6,
+  "totalTimedOut": 20,
+  "totalFailed": 12,
+  "passRateOverall": 0.158,
+  "factorDbRowsAdded": 0,
+  "factorDbBefore": 1817,
+  "factorDbAfter": 1817,
+  "passedTasks": [
+    "validated-forms (L7)",
+    "lead-router (L7)",
+    "approval-queue (L7)",
+    "etl-daily-report (L8)"
+  ],
+  "note": "Factor DB rows-added=0 is suspicious — sweep ran but no new rows landed. Likely the cc-agent path writes via MCP and the row counter only sees direct writes. Worth investigating before treating these numbers as authoritative for a delta against future runs.",
+  "nextStepIfRunningAgain": "Run again after fixing the row-write path; treat THIS run as wall-clock + pass-rate truth, not Factor-DB-delta truth."
 }
