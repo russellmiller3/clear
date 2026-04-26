@@ -25610,6 +25610,8 @@ describe('decidable core — live: block (Path B Phase 1)', () => {
     expect(r.errors).toHaveLength(0);
     // Python emit should still contain the AI call inside the agent body
     expect(r.python).toMatch(/_ask_ai|ask_claude|anthropic|live:/);
+  });
+});
 
 // =============================================================================
 // TBD PLACEHOLDERS — Lean Lesson 1
