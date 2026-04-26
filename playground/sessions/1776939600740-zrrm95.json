@@ -1,9 +1,0 @@
-{
-  "id": "1776939600740-zrrm95",
-  "task": "Build this app in Clear:\n\n**Multi-Tenant Workspaces** (Level 8)\n\nUsers belong to workspaces. POST /api/workspaces creates a workspace. POST /api/workspaces/:id/members adds a user to a workspace. GET /api/workspaces/:id/items returns only items that belong to that workspace. Items are scoped to workspace — you can't see items from other workspaces.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Workspaces table:\n  name, required\n\ncreate a Members table:\n  workspace_id, requi",
-  "started_at": 1776939600,
-  "ended_at": 1776939671,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Workspaces table:\n  name, required\n\ncreate a Members table:\n  workspace_id, required\n  user_id, required\n\ncreate a Items table:\n  title, required\n  workspace_id, required\n\nwhen user sends workspace to /api/workspaces:\n  saved = save workspace to Workspaces\n  send back saved with status 201\n\nwhen user calls GET /api/workspaces:\n  send back all Workspaces\n\nwhen user sends member to /api/workspaces/:id/members:\n  member's workspace_id is this id\n  saved = save member to Members\n  send back saved with status 201\n\nwhen user calls GET /api/workspaces/:id/items:\n  items = get all Items where workspace_id is this id\n  send back items\n"
-}

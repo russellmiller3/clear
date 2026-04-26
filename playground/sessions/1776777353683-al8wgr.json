@@ -1,9 +1,0 @@
-{
-  "id": "1776777353683-al8wgr",
-  "task": "Build this app in Clear:\n\n**Todo CRUD API** (Level 4)\n\nBuild a full CRUD API for a Todos table with fields: title (required, text), done (boolean, defaults to false). POST /api/todos creates, GET /api/todos lists all, GET /api/todos/:id gets one, PUT /api/todos/:id updates, DELETE /api/todos/:id removes.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Todos table:\n  title, required\n  done\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/todos wit",
-  "started_at": 1776777353,
-  "ended_at": 1776777426,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\ndatabase is local memory\nallow signup and login\n\ncreate a Todos table:\n  title, required\n  done, default false\n\nwhen user calls POST /api/todos sending todo:\n  requires login\n  validate todo:\n    title must not be empty\n  saved = save todo to Todos\n  send back saved with status 201\n\nwhen user calls GET /api/todos:\n  todos = get all Todos\n  send back todos\n\nwhen user calls GET /api/todos/:id:\n  todo = look up Todo with this id\n  send back todo\n\nwhen user calls PUT /api/todos/:id sending changes:\n  requires login\n  save changes to Todos\n  send back 'ok'\n\nwhen user calls DELETE /api/todos/:id:\n  requires login\n  delete Todo with this id\n  send back 'ok'\n"
-}

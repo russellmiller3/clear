@@ -1,9 +1,0 @@
-{
-  "id": "1776774940160-uzh58k",
-  "task": "Build this app in Clear:\n\n**Rate-Limited API** (Level 7)\n\nBuild any CRUD API with rate limiting. POST /api/items creates items (name required). GET /api/items lists all. Apply rate limiting: max 5 requests per minute. The 6th request within a minute should return 429.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Items table:\n  name, required\n\n# Your endpoints here\n# Hint: rate limit 5 per minute\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/items with body {\"name",
-  "started_at": 1776774940,
-  "ended_at": 1776775004,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "/*\nDATAFLOW:\n┌──────────────┐  POST /api/items   ┌──────────────┐  save    ┌────────┐\n│   Client     │ ──────────────────> │   Backend    │ ────────> │   DB   │\n│  (requests)  │ <────────────────── │  (server)    │ <──────── │(memory)│\n└──────────────┘  GET /api/items    └──────────────┘   query   └────────┘\n     │                                     │\n     │ Rate: max 5 per minute              │ 6th request → 429\n     │ Tracked by IP                       │\n*/\n\nbuild for javascript backend\n\ndatabase is local memory\n\nrate limit 5 per minute\n\ncreate a Items table:\n  name, required\n\n# Create a new item\nwhen user sends entry to /api/items:\n  validate entry:\n    name must not be empty\n  saved = save entry to Items\n  send back saved with status 201\n\n# List all items\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n"
-}

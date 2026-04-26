@@ -1,9 +1,0 @@
-{
-  "id": "1776747341157-p40bwl",
-  "task": "Build this app in Clear:\n\n**Echo Server** (Level 2)\n\nWrite a POST /api/echo endpoint that returns whatever JSON body was sent to it.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/echo with body {\"message\":\"ping\"} → expect {\"status\":200,\"bodyHas\":[\"message\"]}\n  - POST /api/echo with body {\"foo\":\"bar\",\"num\":42} → expect {\"status\":200,\"bodyHas\":[\"foo\",\"num\"]}\n\nSteps:\n1. Use edit_code to write the complete Clear so",
-  "started_at": 1776747341,
-  "ended_at": 1776747364,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\nwhen user sends payload to /api/echo:\n  send back payload\n"
-}

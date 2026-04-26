@@ -1,9 +1,0 @@
-{
-  "id": "1776776210966-zq767w",
-  "task": "Build this app in Clear:\n\n**Lead Routing Engine** (Level 8)\n\nARCHETYPE: routing_engine. Shape: the app CLASSIFIES an incoming record into one of N buckets via rules, then assigns it. The CORE is a branching if/else ladder or a rules table — NOT generic CRUD. An incoming lead is assigned to a rep based on company size: Enterprise → 'alice', Mid-Market → 'bob', SMB → 'charlie'. The routing logic must appear in the POST handler (not as a database column default). DO NOT just accept and save — the R",
-  "started_at": 1776776210,
-  "ended_at": 1776776250,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ncreate a Leads table:\n  company, required\n  email, required\n  size, required\n  assigned_to\n  created_at_date, auto\n\ndefine function get_assigned_person(size):\n  if size is 'Enterprise':\n    send back 'alice'\n  else if size is 'Mid-Market':\n    send back 'bob'\n  else if size is 'SMB':\n    send back 'charlie'\n  send back 'unassigned'\n\nwhen user sends lead to /api/leads:\n  validate lead:\n    company must not be empty\n    email must not be empty\n    size must not be empty\n  assigned = get_assigned_person(lead's size)\n  lead's assigned_to is assigned\n  saved = save lead to Leads\n  send back saved with status 201\n\nwhen user calls GET /api/leads:\n  leads = get all Leads\n  send back leads\n\nwhen user calls GET /api/leads/by/:rep:\n  leads = get all Leads where assigned_to is this rep\n  send back leads\n"
-}

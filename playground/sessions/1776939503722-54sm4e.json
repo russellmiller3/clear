@@ -1,9 +1,0 @@
-{
-  "id": "1776939503722-54sm4e",
-  "task": "Build this app in Clear:\n\n**Company Directory with Search** (Level 6)\n\nARCHETYPE: directory_app. Shape: a searchable/filterable catalog of records — the CORE is the search endpoint, not CRUD. Users browse (read-only for the public) but only admins can add/edit. Include: GET /api/companies (lists all), GET /api/companies/search?q= (full-text search over name + industry fields), GET /api/companies/:id (single record). POST /api/companies exists for admin seeding but the star of the show is SEARCH.",
-  "started_at": 1776939503,
-  "ended_at": 1776939513,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

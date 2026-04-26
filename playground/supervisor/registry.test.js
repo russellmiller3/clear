@@ -1,8 +1,11 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { SessionRegistry } from './registry.js';
-import { unlinkSync } from 'fs';
+import { mkdirSync, unlinkSync } from 'fs';
+import { join } from 'path';
 
-const TEST_DB = '/tmp/registry-test.db';
+const TEST_DIR = join(process.cwd(), '.tmp');
+mkdirSync(TEST_DIR, { recursive: true });
+const TEST_DB = join(TEST_DIR, 'registry-test.db');
 function cleanup() { try { unlinkSync(TEST_DB); } catch {} }
 
 describe('SessionRegistry', () => {

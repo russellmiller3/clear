@@ -1,9 +1,0 @@
-{
-  "id": "1776976621532-3ab0nk",
-  "task": "Build this app in Clear:\n\n**CRM-to-Email Sync** (Level 7)\n\nARCHETYPE: data_sync. Shape: backend-only (no pages, no auth), CRON schedule (every 1 hour), FETCH from an external HTTPS URL, transform each record, SAVE to a destination table. This is distinct from batch_job (no external fetch) and from etl_pipeline (data_sync implies source→destination with 2+ external systems or an obvious source-of-truth relationship — here 'CRM users' → 'mailing list'). DO NOT build a dashboard. DO NOT add auth. D",
-  "started_at": 1776976621,
-  "ended_at": 1776976647,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

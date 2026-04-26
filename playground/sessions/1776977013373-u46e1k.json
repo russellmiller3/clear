@@ -1,9 +1,0 @@
-{
-  "id": "1776977013373-u46e1k",
-  "task": "Build this app in Clear:\n\n**AI Ticket Categorizer** (Level 9)\n\nBuild an AI agent that categorizes support tickets. Define a Categorizer agent that returns { category, priority, suggested_action }. Tickets table stores the result. POST /api/tickets receives { subject, description } and returns the categorized ticket.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Tickets table:\n  subject, required\n  description\n  category\n  priority\n\n# Define a Categorizer agent\n# POST /api/t",
-  "started_at": 1776977013,
-  "ended_at": 1776977073,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

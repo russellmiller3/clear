@@ -1,9 +1,0 @@
-{
-  "id": "1776976969275-6851kc",
-  "task": "Build this app in Clear:\n\n**Multi-Tenant Workspaces** (Level 8)\n\nUsers belong to workspaces. POST /api/workspaces creates a workspace. POST /api/workspaces/:id/members adds a user to a workspace. GET /api/workspaces/:id/items returns only items that belong to that workspace. Items are scoped to workspace — you can't see items from other workspaces.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Workspaces table:\n  name, required\n\ncreate a Members table:\n  workspace_id, requi",
-  "started_at": 1776976969,
-  "ended_at": 1776977013,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

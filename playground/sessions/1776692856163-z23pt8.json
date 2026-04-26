@@ -1,9 +1,0 @@
-{
-  "id": "1776692856163-z23pt8",
-  "task": "Hi Meph. In one sentence, what is Clear?",
-  "started_at": 1776692856,
-  "ended_at": 1776692859,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\nwhen user calls GET /api/hello:\n  send back 'ok'\n"
-}

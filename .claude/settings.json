@@ -38,6 +38,19 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/require-plan-read.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking plans referenced in this brief were Read this session..."
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

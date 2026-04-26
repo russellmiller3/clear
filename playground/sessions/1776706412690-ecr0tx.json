@@ -1,9 +1,0 @@
-{
-  "id": "1776706412690-ecr0tx",
-  "task": "This Clear code has a compile error. Please call compile, read any hints in the result, then fix the code. Follow your normal hint-announcement protocol.\n\nCode:\n```clear\nbuild for javascript backend with html frontend\n\ntable Notes:\n  title is text\n  body is text\n\nwhen user calls GET /api/notes:\n  list = all Notes\n  send back list\n\nwhen user calls POST /api/notes:\n  note_data is the request data\n  save note_data to Notes\n  send back note_data\n\npage Home:\n  show Notes's titles for every row\n\n```\n",
-  "started_at": 1776706412,
-  "ended_at": 1776706426,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend with html frontend\n\ndatabase is local memory\n\ncreate a Notes table:\n  title, required\n  body, required\n\nwhen user calls GET /api/notes:\n  list = get all Notes\n  send back list\n\nwhen user calls POST /api/notes sending data:\n  requires login\n  save data to Notes\n  send back data\n\npage 'Home' at '/':\n  notes = get all Notes\n  section 'Notes':\n    display notes as table\n"
-}

@@ -1,9 +1,0 @@
-{
-  "id": "1777052288263-5f8icm",
-  "task": "Build this app in Clear:\n\n**Todo CRUD API** (Level 4)\n\nBuild a full CRUD API for a Todos table with fields: title (required, text), done (boolean, defaults to false). POST /api/todos creates, GET /api/todos lists all, GET /api/todos/:id gets one, PUT /api/todos/:id updates, DELETE /api/todos/:id removes.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Todos table:\n  title, required\n  done\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/todos wit",
-  "started_at": 1777052288,
-  "ended_at": 1777052468,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

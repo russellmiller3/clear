@@ -1,4 +1,0 @@
-build for javascript backend
-
-when user calls GET /api/hello:
-  send back { message: 'hello world' }

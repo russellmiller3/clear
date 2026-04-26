@@ -1,9 +1,0 @@
-{
-  "id": "1777049442379-7bv8qh",
-  "task": "Build this app in Clear:\n\n**Authenticated Todo API** (Level 5)\n\nBuild a Todo API that requires JWT authentication. POST /api/register creates a user (email, password). POST /api/login returns a token. All /api/todos endpoints require auth. Users can only see their own todos.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n\ncreate a Todos table:\n  title, required\n  done\n  user_id, required\n\n# Your endpoints here\n\n```\n",
-  "started_at": 1777049442,
-  "ended_at": 1777049622,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

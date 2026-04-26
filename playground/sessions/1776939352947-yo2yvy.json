@@ -1,9 +1,0 @@
-{
-  "id": "1776939352947-yo2yvy",
-  "task": "Build this app in Clear:\n\n**Support Triage (AI-assisted)** (Level 9)\n\nBuild a support ticket triage system. Tickets have subject, body, from_email, category, priority, status. Use a Claude agent named 'Triage' that receives a ticket and returns a JSON object with {category, priority}. When a new ticket is POSTed, call the Triage agent to classify it before saving. Need: POST /api/tickets (auto-classifies), GET /api/tickets (list), GET /api/tickets/open.\n\nStarting skeleton:\n```clear\nbuild for web",
-  "started_at": 1776939352,
-  "ended_at": 1776939426,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

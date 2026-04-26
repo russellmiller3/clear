@@ -1,9 +1,0 @@
-{
-  "id": "1776741149037-h1zn3d",
-  "task": "Build this app in Clear:\n\n**Bookmark Manager** (Level 4)\n\nBuild a CRUD API for bookmarks. Each bookmark has: url (required, must be a URL), title (required), tags (text). POST /api/bookmarks creates, GET /api/bookmarks lists all, DELETE /api/bookmarks/:id removes. Validate that url is actually a URL format.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Bookmarks table:\n  url, required\n  title, required\n  tags\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n",
-  "started_at": 1776741149,
-  "ended_at": 1776741221,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Bookmarks table:\n  url, required\n  title, required\n  tags\n\nwhen user calls POST /api/bookmarks sending bookmark:\n  validate bookmark:\n    title must not be empty\n    url must not be empty\n    url must match url\n  saved = save bookmark to Bookmarks\n  send back saved with status 201\n\nwhen user calls GET /api/bookmarks:\n  send back all Bookmarks\n\nwhen user calls DELETE /api/bookmarks/:id:\n  requires login\n  delete Bookmark with this id\n  send back 'deleted'\n"
-}

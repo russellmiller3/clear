@@ -1,9 +1,0 @@
-{
-  "id": "1776775068340-r72656",
-  "task": "Build this app in Clear:\n\n**Stripe Webhook Handler** (Level 7)\n\nARCHETYPE: webhook_handler. Shape: backend-only (no pages, no login/signup scaffold), one POST endpoint on a /webhook/* path, saves incoming payload to an Events table, returns { received: true }. DO NOT build auth, pages, or CRUD endpoints — this is a single-purpose receiver, not an app. Path: POST /webhook/stripe. Incoming body: { type, amount, customer_email, signature }. Check that a 'signature' field exists on the request (that",
-  "started_at": 1776775068,
-  "ended_at": 1776775105,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Events table:\n  event_type, required\n  amount (number), default 0\n  customer_email\n  received_at_date, auto\n\nwhen user sends webhook to /webhook/stripe:\n  guard webhook's signature exists or 'Missing signature'\n  event_data is { event_type: webhook's type, amount: webhook's amount, customer_email: webhook's customer_email }\n  save event_data to Events\n  send back { received is true }\n"
-}

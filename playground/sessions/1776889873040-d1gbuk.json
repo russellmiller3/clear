@@ -1,9 +1,0 @@
-{
-  "id": "1776889873040-d1gbuk",
-  "task": "Build this app in Clear:\n\n**Pure Batch Cron (No Endpoints)** (Level 6)\n\nARCHETYPE: batch_job. Shape: backend-only, the ENTIRE app is one scheduled cron block — no HTTP endpoints, no pages, no auth. This is the purest form of batch_job. Schedule: every day at '03:00 AM': find and delete Sessions older than 7 days. ONE auxiliary endpoint GET /api/session-count so tests can verify rows exist (required for test runner) — but the CORE of this task is the cron block. DO NOT add endpoints for creating ",
-  "started_at": 1776889873,
-  "ended_at": 1776889910,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ncreate a Sessions table:\n  user_id, required\n  token, required\n  created_at_date, auto\n\nevery day at '3am':\n  old_sessions = get every Session where created_at_date is older than 7 days\n  for each old_session in old_sessions:\n    remove old_session from Sessions\n\nwhen user calls GET /api/session-count:\n  total = count of id from Sessions\n  send back { count: total }\n"
-}

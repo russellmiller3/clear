@@ -1,6 +1,0 @@
-build for javascript backend
-
-# Echo Server — returns whatever JSON body was sent to it
-
-when user sends payload to /api/echo:
-  send back payload

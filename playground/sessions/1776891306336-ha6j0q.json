@@ -1,9 +1,0 @@
-{
-  "id": "1776891306336-ha6j0q",
-  "task": "Build this app in Clear:\n\n**CRM-to-Email Sync** (Level 7)\n\nARCHETYPE: data_sync. Shape: backend-only (no pages, no auth), CRON schedule (every 1 hour), FETCH from an external HTTPS URL, transform each record, SAVE to a destination table. This is distinct from batch_job (no external fetch) and from etl_pipeline (data_sync implies source→destination with 2+ external systems or an obvious source-of-truth relationship — here 'CRM users' → 'mailing list'). DO NOT build a dashboard. DO NOT add auth. D",
-  "started_at": 1776891306,
-  "ended_at": 1776891349,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ncreate a MailingList table:\n  name, required\n  email, required\n  tag, default 'imported'\n  synced_at_date, auto\n\nevery 1 hour:\n  users = get users from 'https://jsonplaceholder.typicode.com/users'\n  for each user in users:\n    entry's name is user's name\n    entry's email is user's email\n    entry's tag is 'imported'\n    save entry to MailingList\n\nwhen user calls GET /api/mailing-list:\n  send back all MailingList\n"
-}

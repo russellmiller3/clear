@@ -1,9 +1,0 @@
-{
-  "id": "1776747462489-k8dd07",
-  "task": "Build this app in Clear:\n\n**User Profiles** (Level 5)\n\nBuild a user registration/login system with profiles. POST /api/register (email, password, name). POST /api/login returns token. GET /api/me returns current user profile (requires auth). PUT /api/me updates profile name.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  name, required\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/",
-  "started_at": 1776747462,
-  "ended_at": 1776747512,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  name, required\n\nwhen user sends credentials to /api/register:\n  validate credentials:\n    email is text, required, matches email\n    password is text, required\n    name is text, required\n  saved_user = save credentials to Users\n  send back saved_user with status 201\n\nwhen user sends credentials to /api/login:\n  validate credentials:\n    email is text, required\n    password is text, required\n  user = look up Users where email is credentials's email\n  guard user exists or 'Invalid email or password'\n  guard user's password is credentials's password or 'Invalid email or password'\n  token_value is 'auth_token_' + user's id\n  send back { token is token_value } with status 200\n\nwhen user calls GET /api/me:\n  requires login\n  send back caller with status 200\n\nwhen user sends changes to /api/me:\n  requires login\n  save changes to Users\n  send back caller with status 200\n"
-}

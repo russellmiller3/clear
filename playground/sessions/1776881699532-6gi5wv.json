@@ -1,9 +1,0 @@
-{
-  "id": "1776881699532-6gi5wv",
-  "task": "Build this app in Clear:\n\n**Math Calculator** (Level 2)\n\nWrite a POST /api/calculate endpoint that receives 'a', 'b', and 'operation' (add/subtract/multiply/divide) and returns { result: <number> }. Return 400 for division by zero.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/calculate with body {\"a\":10,\"b\":3,\"operation\":\"add\"} → expect {\"status\":200,\"bodyHas\":[\"result\"]}\n  - POST /api/calculate with body {\"a\"",
-  "started_at": 1776881699,
-  "ended_at": 1776881770,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\nwhen user sends calc to /api/calculate:\n  num_a = calc's a\n  num_b = calc's b\n  operation = calc's operation\n  is_divide = operation is 'divide'\n  is_zero = num_b is 0\n  if is_divide and is_zero:\n    send back { error: 'Division by zero' } with status 400\n  result = 0\n  if operation is 'add':\n    result = num_a + num_b\n  if operation is 'subtract':\n    result = num_a - num_b\n  if operation is 'multiply':\n    result = num_a * num_b\n  if operation is 'divide':\n    result = num_a / num_b\n  send back { result: result }\n"
-}

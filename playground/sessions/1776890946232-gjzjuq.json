@@ -1,9 +1,0 @@
-{
-  "id": "1776890946232-gjzjuq",
-  "task": "Build this app in Clear:\n\n**Lead Router** (Level 7)\n\nBuild a lead routing API. Prospects submit leads (name, email, company, size). The server applies routing rules: SMB → alice, Mid-market → bob, Enterprise → charlie — set assigned_to automatically before saving. Need: POST /api/leads (submit + auto-route), GET /api/leads (list), GET /api/leads/new (only status='new').\n\nStarting skeleton:\n```clear\nbuild for web and javascript backend\n\ncreate a Leads table:\n  name, required\n  email, required\n  s",
-  "started_at": 1776890946,
-  "ended_at": 1776891126,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

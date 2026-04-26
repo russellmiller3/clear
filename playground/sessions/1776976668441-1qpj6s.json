@@ -1,9 +1,0 @@
-{
-  "id": "1776976668441-1qpj6s",
-  "task": "Build this app in Clear:\n\n**Lead Routing Engine** (Level 8)\n\nARCHETYPE: routing_engine. Shape: the app CLASSIFIES an incoming record into one of N buckets via rules, then assigns it. The CORE is a branching if/else ladder or a rules table — NOT generic CRUD. An incoming lead is assigned to a rep based on company size: Enterprise → 'alice', Mid-Market → 'bob', SMB → 'charlie'. The routing logic must appear in the POST handler (not as a database column default). DO NOT just accept and save — the R",
-  "started_at": 1776976668,
-  "ended_at": 1776976712,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

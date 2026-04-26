@@ -1,9 +1,0 @@
-{
-  "id": "1776776263549-emxwr7",
-  "task": "Build this app in Clear:\n\n**Analytics Dashboard API** (Level 10)\n\nBuild an analytics dashboard backend. Events table tracks page_url, event_type (pageview/click/signup), user_id, timestamp. POST /api/events logs events. GET /api/stats returns aggregated stats: total events, unique users, events per type. GET /api/stats/daily returns counts grouped by day. Auth required for stats endpoints.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Users table:\n  email, required, unique,",
-  "started_at": 1776776263,
-  "ended_at": 1776776320,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\ndatabase is local memory\n\ncreate a Users table:\n  email, required, unique, email\n  password, required\n\ncreate a Events table:\n  page_url, required\n  event_type, required\n  user_id\n  timestamp, auto timestamp\n\nwhen user calls POST /api/events sending event:\n  validate event:\n    page_url must not be empty\n    event_type must not be empty\n  saved = save event to Events\n  send back saved with status 201\n\nwhen user calls GET /api/stats:\n  requires login\n  total_events = count of id from Events\n  pageview_count = count of id from Events where event_type is 'pageview'\n  click_count = count of id from Events where event_type is 'click'\n  signup_count = count of id from Events where event_type is 'signup'\n  unique_users = count of id from Events\n  send back { total_events is total_events, pageview_count is pageview_count, click_count is click_count, signup_count is signup_count, unique_users is unique_users } with status 200\n\nwhen user calls GET /api/stats/daily:\n  requires login\n  all_events = look up every Event\n  send back all_events with status 200\n"
-}

@@ -1,9 +1,0 @@
-{
-  "id": "1776774764966-9fallf",
-  "task": "Build this app in Clear:\n\n**Counter API** (Level 3)\n\nBuild a stateful counter. GET /api/count returns { count: N }. POST /api/increment increases count by 1 and returns the new count. POST /api/reset sets count to 0.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\n# Your code here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/reset → expect {\"status\":200}\n  - GET /api/count → expect {\"status\":200,\"bodyHas\":[\"count\"]}\n  - POST /api/increment → expect {\"status\":200,\"bodyHas\":[",
-  "started_at": 1776774764,
-  "ended_at": 1776774807,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\n/*\nDATAFLOW:\n┌──────────────────┐\n│   Counter API    │\n├──────────────────┤\n│ In-memory state: │\n│   count = 0      │\n├──────────────────┤\n│ Endpoints:       │\n│ GET /count       │\n│ POST /increment  │\n│ POST /reset      │\n└──────────────────┘\n*/\n\ncreate state:\n  count = 0\n\nwhen user calls GET /api/count:\n  send back state\n\nwhen user calls POST /api/increment:\n  state's count = state's count + 1\n  send back state\n\nwhen user calls POST /api/reset:\n  state's count = 0\n  send back state\n"
-}

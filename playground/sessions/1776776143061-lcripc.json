@@ -1,9 +1,0 @@
-{
-  "id": "1776776143061-lcripc",
-  "task": "Build this app in Clear:\n\n**Realtime Broadcast Notifications** (Level 5)\n\nARCHETYPE: realtime_app. Shape: backend-only WebSocket server (no pages, no CRUD scaffold, no auth). Subscribe + broadcast are the CORE — not a POST endpoint wrapper. DO NOT build HTTP endpoints for messages. DO NOT build pages. DO NOT use requires login. The ENTIRE app is one `subscribe to 'channel':` block that listens for incoming messages on the 'notifications' channel and broadcasts them to all connected clients. Pers",
-  "started_at": 1776776143,
-  "ended_at": 1776776210,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\ndatabase is local memory\n\ncreate a Messages table:\n  text, required\n  created_at_date, auto\n\nsubscribe to 'notifications':\n  broadcast to all message\n  save message to Messages\n\nwhen user calls GET /api/history:\n  messages = get all Messages\n  send back messages\n"
-}

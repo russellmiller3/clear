@@ -1,9 +1,0 @@
-{
-  "id": "1776777692927-wxu6hs",
-  "task": "Build this app in Clear:\n\n**Sales KPI Page** (Level 7)\n\nARCHETYPE: kpi. Shape: ONE web page with 3+ big headline numbers (aggregates) and AT MOST ONE chart. This is NOT a dashboard (2+ charts = dashboard). This is NOT a crud_app (no create/update forms on the main page). The CORE is big-number displays driven by SQL aggregates from a Sales table. Page layout: heading, 3 big stat displays (total revenue, order count, avg order size), optionally one trend chart, nothing else. DO NOT add filters. D",
-  "started_at": 1776777692,
-  "ended_at": 1776777747,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for web and javascript backend\n\ncreate a Sales table:\n  amount (number), required\n  region\n  sold_at_date, auto\n\n# Seed endpoint so tests have data:\nwhen user sends seed to /api/seed:\n  create s1:\n    amount = 120\n    region is 'West'\n  save s1 as new Sale\n  create s2:\n    amount = 340\n    region is 'East'\n  save s2 as new Sale\n  send back 'seeded'\n\n# KPI Page\npage 'KPIs' at '/':\n  total_revenue = 0\n  order_count = 0\n  avg_order_size = 0\n  \n  on page load:\n    total_revenue = sum of amount from Sales\n    order_count = count of id from Sales\n    avg_order_size = avg of amount from Sales\n  \n  section 'Sales KPI Dashboard':\n    heading 'Sales KPI Dashboard'\n    \n    section 'Stats':\n      section 'Revenue Card':\n        heading 'Total Revenue'\n        display total_revenue as number\n      \n      section 'Order Count Card':\n        heading 'Total Orders'\n        display order_count as number\n      \n      section 'Avg Size Card':\n        heading 'Average Order Size'\n        display avg_order_size as number\n"
-}

@@ -1,9 +1,0 @@
-{
-  "id": "1776867900873-pkqu3u",
-  "task": "Write a tiny Clear app with one GET / endpoint that sends \"hello\". One line of source is fine.",
-  "started_at": 1776867900,
-  "ended_at": 1776867902,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": ""
-}

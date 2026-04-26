@@ -1,9 +1,0 @@
-{
-  "id": "1776776122941-5i5qwe",
-  "task": "Build this app in Clear:\n\n**Booking Calendar with Conflict Detection** (Level 6)\n\nARCHETYPE: booking_app. Shape: a Bookings table with date + time + guest_name fields, endpoints to create and list bookings, with a GUARD that prevents double-booking (same date + time slot). The guard is the CORE differentiator — this is what makes it a booking_app, not a generic CRUD. DO NOT skip the guard. Include: POST /api/bookings (creates, guards against conflicts), GET /api/bookings (lists all). The guard s",
-  "started_at": 1776776122,
-  "ended_at": 1776776188,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ncreate a Bookings table:\n  guest_name, required\n  date, required\n  time, required\n  notes\n  created_at_date, auto\n\nwhen user sends booking to /api/bookings:\n  existing = get all Bookings where date is booking's date and time is booking's time\n  if length of existing is greater than 0:\n    send back 'Slot already booked' with status 400\n  saved = save booking to Bookings\n  send back saved with status 201\n\nwhen user calls GET /api/bookings:\n  bookings = get all Bookings\n  send back bookings\n"
-}

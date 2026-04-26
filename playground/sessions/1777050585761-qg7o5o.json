@@ -1,9 +1,0 @@
-{
-  "id": "1777050585761-qg7o5o",
-  "task": "Build this app in Clear:\n\n**Contact Book** (Level 6)\n\nBuild a contacts API. Contacts table with name (required), email (must be valid email, unique), phone, notes. Full CRUD. POST /api/contacts validates email format and uniqueness. GET /api/contacts lists all.\n\nStarting skeleton:\n```clear\nbuild for javascript backend\n\ncreate a Contacts table:\n  name, required\n  email, required, unique, email\n  phone\n  notes\n\n# Your endpoints here\n\n```\n\nThe app must pass these HTTP tests:\n  - POST /api/contacts ",
-  "started_at": 1777050585,
-  "ended_at": 1777050669,
-  "weak_assertion_count": 0,
-  "red_step_observed": false,
-  "final_source": "build for javascript backend\n\ndatabase is local memory\n\ncreate a Contacts table:\n  name, required\n  email, required, unique, email\n  phone\n  notes\n\nwhen user sends contact to /api/contacts:\n  validate contact:\n    name is text, required\n    email is text, required, matches email\n  saved = save contact as new Contacts\n  send back saved with status 201\n\nwhen user calls GET /api/contacts:\n  contacts = get all Contacts\n  send back contacts\n\nwhen user calls GET /api/contacts/:id:\n  contact = look up Contact with this id\n  send back contact\n\nwhen user sends changes to /api/contacts/:id:\n  requires login\n  save changes to Contacts\n  send back 'updated'\n\nwhen user calls DELETE /api/contacts/:id:\n  requires login\n  remove from Contacts with this id\n  send back 'deleted'\n"
-}
