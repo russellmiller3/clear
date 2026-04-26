@@ -80,6 +80,10 @@ const BUILTINS = new Set([
   // to the same `_current_user` canonical token). `user` is legacy shorthand
   // that still resolves to req.user UNLESS a local `user` binding shadows it.
   '_current_user', 'user', 'caller',
+  // AI pseudo-actor — `claude's reply` reads the result of the most-recent
+  // `give claude X with prompt: 'Y'` statement (compiled to `claude_reply`).
+  // Same shape as `caller's id` reading req.user.id. Plan 2026-04-26.
+  'claude',
 ]);
 
 /**

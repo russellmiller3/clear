@@ -124,7 +124,7 @@ Seven hooks in this repo as of 2026-04-25. Each fires automatically on a specifi
 
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
-_Last refresh: 2026-04-24_
+_Last refresh: 2026-04-26_
 
 ### CLAUDE.md rules (project-level, this repo)
 
@@ -157,6 +157,7 @@ _Last refresh: 2026-04-24_
 - **parallel-thinking.mjs** — .claude/hooks/parallel-thinking.mjs
 - **propose-new-hooks.mjs** — .claude/hooks/propose-new-hooks.mjs
 - **propose-new-tools.mjs** — .claude/hooks/propose-new-tools.mjs
+- **require-plan-read.mjs** — .claude/hooks/require-plan-read.mjs
 - **validator-friction.mjs** — .claude/hooks/validator-friction.mjs
 
 ### `.claude/skills/` — user-invocable slash commands
@@ -167,9 +168,9 @@ _Last refresh: 2026-04-24_
 - **/eval-meph** — Run the Meph tool eval as a regression net. Trigger when changes touch playground/server.js (especially TOOLS array, executeTool, validat…
 - **/execute-plan** — Use when executing a multi-phase implementation plan. Trigger when user says "execute this plan", "implement this plan", "start building"…
 - **/handoff** — Create or update HANDOFF.md to pass context between sessions. Use when ending a session, switching tasks, or when the user says "handoff"…
-- **/pres** — "PRES = Plan → Red-team → Execute → Ship. Full build cycle with no manual handoffs. Use when the user says '/pres [feature]', 'pres this'…
+- **/pres** — (no description)
 - **/red-team-code** — Use when stress-testing code AFTER it has been written and compiles. Trigger when user says "/rt", "/red-team-code", "red team this code"…
-- **/red-team-plan** — Use when stress-testing any implementation plan before coding begins. Trigger when user says "red team this", "bulletproof this plan", "r…
+- **/red-team-plan** — **Announce:** "I'm using the red-team-plan skill to bulletproof `[plan-name]`." 
 - **/rule** — Add a rule to the project-level CLAUDE.md. Use when the user says "/rule [text]" or "add a project rule" or "make this a rule". Appends a…
 - **/ship** — Ship a Clear feature: update all docs, commit, merge to main, push. Updates learnings, roadmap, philosophy, syntax, handoff, and readme.
 - **/update-learnings** — Update learnings.md with lessons from completed work. Trigger when: user says "update learnings", "add to learnings", "document what we l…
@@ -182,8 +183,16 @@ _Last refresh: 2026-04-24_
 - **check-doc-drift.cjs** — Files we care about — the canonical docs that must agree with each other.
 - **cross-target-smoke.mjs** — scripts/cross-target-smoke.mjs
 - **decidable-core-replay.mjs** — scripts/decidable-core-replay.mjs
+- **doc-drift.mjs** — scripts/doc-drift.mjs
+- **doc-drift.test.mjs** — scripts/doc-drift.test.mjs
 - **factor-db-summary.mjs** — Quick read-only summary of the Factor DB.
+- **log-compiler-edits.mjs** — Post-commit hook: scan the last commit's diff for error-message-shaped
+- **log-compiler-edits.test.mjs** — Unit tests for the compiler-edit diff parser.
+- **match-shape.mjs** — Shape-search retrieval over canonical-examples.md.
+- **match-shape.test.mjs** — Tests for shape-search retrieval (Lean Lesson 2).
 - **reconcile-wfp.js** — Weekly reconcile job.
+- **score-winning-runs.mjs** — score-winning-runs — rank every test_pass=1 row in the Factor DB by an
+- **score-winning-runs.test.mjs** — Tests for scripts/score-winning-runs.mjs — the winner-harvest scorer.
 - **smoke-cf-target.mjs** — Spot-check the --target cloudflare emission end-to-end for a representative
 - **top-friction-errors.mjs** — top-friction-errors — mine Factor DB for compile errors that cost the most
 

@@ -29,6 +29,41 @@ This rule is **Rule 0** because violating it makes every subsequent step useless
 
 ---
 
+## Step 0.5: Phase Order block at the top of every plan (LOAD-BEARING)
+
+**Every plan must open with a `## Phase Order (load-bearing)` block immediately after the title and one-line summary.** This is the structured anchor that downstream tooling (the `require-plan-read` hook, the `write-plan` reviewer, future executors) reads to know which work comes first and what gates the rest. Buried "Path A first" sentences in plan prose are too easy to miss — the metadata block makes the order load-bearing in plain sight.
+
+**Required shape:**
+
+```markdown
+## Phase Order (load-bearing)
+
+**Default track:** Path A — phases 1-7 (the cheap minimalist fix).
+**Escalation:** Path B — only if Path A's measurement (Phase 7) shows it wasn't enough.
+**Why:** ship the cheapest fix that demonstrably helps before paying migration cost speculatively.
+
+| Phase | Path | Depends on | Status |
+|-------|------|------------|--------|
+| 1 | A | — | required |
+| 2 | A | Phase 1 | required |
+| ... | ... | ... | ... |
+| B-1 | B | Phase 7 measurement showing Path A insufficient | gated |
+```
+
+**Rules for the block:**
+
+- **State the default track explicitly.** "Path A" / "Path B" naming is fine; the point is one named track is the default and the rest are gated.
+- **Every gated phase names its gate.** "Gated on Phase 7 measurement" or "Gated on Russell's go on the spend" or "Requires Path A complete."
+- **One sentence on why this ordering.** No long rationale — that lives later in the plan. The header just orients the reader.
+- **Use a table when there are >3 phases.** Otherwise a bulleted list is fine.
+- **Mark held-out / research-tier phases distinctly.** "Off the critical path" or "research-tier" if they're explicitly not on the launch path.
+
+**Why this matters:** plans are written once and read many times — by Claude when spawning workers, by humans when reviewing, by future tooling when building agent harnesses. A buried "do this first" sentence is a foot-gun every read pays. A structured block at the top gets read by anything that opens the file.
+
+**Retrofit policy for existing plans:** when you touch an existing plan that lacks this block, add it. Don't bulk-retrofit every plan in `plans/` at once — do it as plans get edited.
+
+---
+
 ## Step 1: Assess scope (skip if user already said)
 
 If the user hasn't indicated size, ask:

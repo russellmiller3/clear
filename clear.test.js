@@ -1477,17 +1477,20 @@ describe('theme directive', () => {
 // =============================================================================
 
 describe('app layout presets', () => {
-  it('app_layout preset produces h-screen flex container', () => {
+  it('app_layout preset produces a full-screen flex container', () => {
+    // Phase 1 shell upgrade: outer shell is flex.min-h-screen so the page
+    // owns the scroll, not the layout. (Was h-screen overflow-hidden.)
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
     text 'Hello'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex h-screen overflow-hidden');
+    expect(result.html).toContain('flex min-h-screen');
   });
 
-  it('app_sidebar preset produces menu with fixed width', () => {
+  it('app_sidebar preset produces a 240px <aside> rail', () => {
+    // Phase 1 shell upgrade: 240px rail, hairline-r, scroll-y.
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1495,10 +1498,11 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-64 shrink-0');
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bhairline-r\b/);
   });
 
-  it('app_main preset produces flex column', () => {
+  it('app_main preset produces a flex column <main>', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1506,10 +1510,10 @@ page 'App' at '/':
       text 'Content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex-1 flex flex-col overflow-hidden min-w-0');
+    expect(result.html).toMatch(/<main\b[^>]*class="[^"]*\bflex-1\b[^"]*\bmin-w-0\b/);
   });
 
-  it('app_header preset produces sticky navbar', () => {
+  it('app_header preset produces a 56px sticky <header>', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1518,7 +1522,8 @@ page 'App' at '/':
         heading 'Dashboard'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('sticky top-0 z-20');
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bsticky\b[^"]*\btop-0\b/);
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
   });
 
   it('app_content preset produces scrollable area', () => {
@@ -1549,9 +1554,9 @@ page 'App' at '/':
   section 'Nav' with style app_sidebar:
     text 'Menu'`;
     const result = compileProgram(source);
-    // app_sidebar should NOT have max-w-5xl wrapper
-    const sidebarIdx = result.html.indexOf('w-64 shrink-0');
-    const nearbyHtml = result.html.slice(sidebarIdx - 100, sidebarIdx + 200);
+    // app_sidebar should NOT have a max-w-5xl content wrapper inside it
+    const sidebarIdx = result.html.indexOf('<aside');
+    const nearbyHtml = result.html.slice(sidebarIdx, sidebarIdx + 400);
     expect(nearbyHtml).not.toContain('max-w-5xl');
   });
 
@@ -1582,11 +1587,164 @@ page 'Dashboard' at '/':
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
-    expect(result.html).toContain('flex h-screen');
-    expect(result.html).toContain('w-64');
-    expect(result.html).toContain('sticky top-0');
+    // Phase 1 shell upgrade: full-screen flex shell, 240px aside, 56px header
+    expect(result.html).toContain('flex min-h-screen');
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    expect(result.html).toMatch(/<main[^>]*flex-1 min-w-0 flex flex-col/);
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
     expect(result.html).toContain('overflow-y-auto');
     expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
+  });
+});
+
+// =============================================================================
+// APP SHELL UPGRADE (Phase 1 — 04-25-2026)
+// Section presets app_layout / app_sidebar / app_main / app_header now emit
+// the polished slate-on-ivory chrome that matches landing/marcus-app-target.html.
+// Each preset uses a semantic HTML5 tag and the project's --clear-* design
+// tokens for hairline borders + rail/canvas backgrounds.
+// =============================================================================
+
+describe('app shell upgrade — Phase 1', () => {
+  it('app_layout emits a flex min-h-screen wrapper div (full-screen shell)', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    text 'hi'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    // Container is a div.flex.min-h-screen — the OUTER body shell
+    expect(result.html).toMatch(/<div[^>]*class="[^"]*\bflex\b[^"]*\bmin-h-screen\b/);
+    // Old emit ('h-screen overflow-hidden') is gone — full window scroll, not viewport-clipped
+    expect(result.html).not.toContain('h-screen overflow-hidden');
+  });
+
+  it('app_sidebar emits an <aside> with 240px width and rail-bg + hairline-r tokens', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Menu'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<aside\b[^>]*>/);
+    // 240px rail (was 256px / w-64) — matches mock
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    // Reads --clear-bg-rail and --clear-line tokens
+    expect(result.html).toContain('var(--clear-bg-rail)');
+    expect(result.html).toContain('var(--clear-line)');
+    // Hairline-right border + flex-shrink-0 + scroll-y for nav overflow
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bhairline-r\b/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bflex-shrink-0\b/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bscroll-y\b/);
+  });
+
+  it('app_main emits a <main> with flex-1 min-w-0 flex flex-col', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      text 'Panel'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<main\b[^>]*class="[^"]*\bflex-1\b[^"]*\bmin-w-0\b[^"]*\bflex\b[^"]*\bflex-col\b/);
+    // Closing tag matches
+    expect(result.html).toContain('</main>');
+  });
+
+  it('app_header emits a sticky <header> with 56px height + canvas bg + hairline-b', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<header\b[^>]*>/);
+    // 56px height (was 64px / h-16)
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
+    // sticky top-0, hairline-b, canvas bg from token
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bsticky\b[^"]*\btop-0\b/);
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bhairline-b\b/);
+    expect(result.html).toContain('var(--clear-bg-canvas)');
+  });
+
+  it('app_header carries brand / breadcrumb / action slot data attributes', () => {
+    // The header must advertise its three slots so children + Phase 3 page-header
+    // primitive can target them. Uses data-clear-slot for forward-compatible CSS.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/data-clear-slot="brand"/);
+    expect(result.html).toMatch(/data-clear-slot="breadcrumb"/);
+    expect(result.html).toMatch(/data-clear-slot="actions"/);
+  });
+
+  it('app shell tags nest correctly: aside + main both inside the layout div', () => {
+    // Critical regression check — child sections must close with the right tag,
+    // and the layout's </div> must come after both children.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Menu'
+    section 'Right' with style app_main:
+      text 'Body'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const html = result.html;
+    const layoutOpen = html.indexOf('flex min-h-screen');
+    const asideOpen  = html.indexOf('<aside');
+    const asideClose = html.indexOf('</aside>');
+    const mainOpen   = html.indexOf('<main', html.indexOf('id="app"') + 1); // skip the body-level <main id="app">
+    const mainClose  = html.indexOf('</main>', mainOpen);
+    expect(layoutOpen).toBeGreaterThan(-1);
+    expect(asideOpen).toBeGreaterThan(layoutOpen);
+    expect(asideClose).toBeGreaterThan(asideOpen);
+    expect(mainOpen).toBeGreaterThan(asideClose);
+    expect(mainClose).toBeGreaterThan(mainOpen);
+  });
+
+  it('sidebar with no nav children still renders a usable rail (no empty <ul> orphan)', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'MyApp'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    // Brand still emits — heading lives inside the aside
+    expect(result.html).toMatch(/<aside[^>]*>[\s\S]*MyApp[\s\S]*<\/aside>/);
+  });
+
+  it('app_layout + app_main + app_header produce the canonical 3-tag nesting', () => {
+    // div.layout > main > header — closing order matters for browser parsing.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      text 'body content'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const html = result.html;
+    // The body-level <main id="app"> wrapper exists; we want our nested <main> to live inside it
+    const appMainOpen = html.indexOf('id="app"');
+    const ourMainOpen = html.indexOf('<main', appMainOpen + 1);
+    const headerOpen  = html.indexOf('<header', ourMainOpen);
+    const headerClose = html.indexOf('</header>', headerOpen);
+    const ourMainClose = html.indexOf('</main>', headerClose);
+    expect(ourMainOpen).toBeGreaterThan(appMainOpen);
+    expect(headerOpen).toBeGreaterThan(ourMainOpen);
+    expect(headerClose).toBeGreaterThan(headerOpen);
+    expect(ourMainClose).toBeGreaterThan(headerClose);
   });
 });
 
@@ -16131,17 +16289,20 @@ page 'App' at '/':
     expect(r.html).toContain('h-screen');
   });
 
-  it('app with no layout modifiers gets max-w-2xl', () => {
+  it('app with no layout modifiers gets the wide app-shell wrapper', () => {
     const src = `build for web
 page 'Simple' at '/':
   heading 'Hello'
   text 'World'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).toContain('max-w-2xl');
+    // Default page wrapper: 5xl container with breathing room (was max-w-2xl
+    // but the 600px column made every Marcus app look 2018-bootstrap).
+    expect(r.html).toContain('max-w-5xl');
+    expect(r.html).toContain('mx-auto');
   });
 
-  it('app_layout preset gets empty class (no max-w-2xl)', () => {
+  it('app_layout preset gets empty class (no default wrapper)', () => {
     const src = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -16151,7 +16312,7 @@ page 'App' at '/':
       text 'Content'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).not.toContain('max-w-5xl');
   });
 });
 
@@ -25334,6 +25495,145 @@ describe('AI helpers — exponential-backoff retry (Session 46)', () => {
   });
 });
 
+// REMOVED 2026-04-26: live: keyword tests deleted with the keyword. Path A defaults
+// (while-cap, recursion-cap, email/DB timeouts) per plans/plan-decidable-core-04-24-2026.md
+// are already shipped — see FEATURES.md "Hostile to bugs by construction" section.
+// Old work preserved on branch save/live-keyword-04-25-2026.
+
+// =============================================================================
+// TBD PLACEHOLDERS — Lean Lesson 1
+// =============================================================================
+// `TBD` is Clear's "to-be-determined" marker. It works anywhere a value or a
+// statement can go. The compiler accepts it (program still compiles green),
+// records each placeholder line on the result, and emits code that throws a
+// clean stub error if the placeholder line is reached at runtime. This lets
+// Meph (or a human) leave one piece unfinished and keep iterating on the rest
+// instead of rewriting the whole program.
+
+describe('TBD placeholders — Phase 1.3 (test runner skips stub-bearing tests)', () => {
+  // For these tests we need a program with at least one ENDPOINT (so the
+  // compiler emits the test harness at all) plus a TBD inside one of the
+  // tests. The harness must catch the "placeholder hit" runtime error and
+  // count it as SKIPPED rather than FAILED, and the final results line
+  // must include a skip count.
+  const stubProgram = [
+    'build for javascript backend',
+    'create a Items table:',
+    '  name, required',
+    "when user requests data from /api/items:",
+    "  send back 'ok'",
+    "test 'placeholder skip example':",
+    '  set thing = TBD',
+    "  expect thing is 'whatever'",
+    '',
+  ].join('\n');
+
+  it('compiled test harness defines a `skipped` counter and a SKIP path', () => {
+    const r = compileProgram(stubProgram);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toBeTruthy();
+    // The harness must declare a skipped counter alongside passed/failed
+    expect(r.tests).toContain('let passed = 0, failed = 0, skipped = 0');
+    // And it must check for the placeholder marker in the thrown error
+    expect(r.tests).toContain('placeholder hit at line');
+    // And it must log a SKIP line when it catches one
+    expect(r.tests).toContain('SKIP:');
+  });
+
+  it('Results line reports skipped due to stub separately from failures', () => {
+    const r = compileProgram(stubProgram);
+    // The summary line must distinguish skipped from failed so a partial
+    // program does not look like a failing one.
+    expect(r.tests).toContain('skipped due to stub');
+  });
+
+  it('a non-stub thrown error still counts as FAILED, not SKIPPED', () => {
+    // Same program shape but the test asserts a real failure, NOT a TBD
+    const failProgram = [
+      'build for javascript backend',
+      'create a Items table:',
+      '  name, required',
+      "when user requests data from /api/items:",
+      "  send back 'ok'",
+      "test 'real failure example':",
+      '  set thing = 5',
+      "  expect thing is 99",
+      '',
+    ].join('\n');
+    const r = compileProgram(failProgram);
+    expect(r.errors).toHaveLength(0);
+    // The harness should still throw real assertion errors as FAIL — the
+    // skip path should ONLY trigger when the message starts with the
+    // exact "placeholder hit at line" marker so non-stub failures are not
+    // accidentally hidden.
+    expect(r.tests).toContain('FAIL:');
+  });
+});
+
+describe('TBD placeholders — Phase 1.2 (compiler stub + position tracking)', () => {
+  it('a program with TBD compiles with zero errors', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('compiler exposes placeholder positions on the result', () => {
+    const src = 'build for javascript backend\nset x = TBD\nset y = 7\nset z = TBD\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.placeholders).toBeTruthy();
+    // Two TBDs on lines 2 and 4
+    expect(r.placeholders).toHaveLength(2);
+    const lines = r.placeholders.map(p => p.line).sort((a, b) => a - b);
+    expect(lines[0]).toBe(2);
+    expect(lines[1]).toBe(4);
+  });
+
+  it('compiled output throws a clean stub error mentioning the line number', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const code = r.javascript || r.serverJS || '';
+    // The compiled stub must mention the line number AND a "fill it in" hint
+    // so the runtime error tells Meph (or Russell) exactly what to fix.
+    expect(code).toContain('placeholder');
+    expect(code).toMatch(/line 2/);
+    expect(code).toContain('fill it in or remove it');
+  });
+});
+
+describe('TBD placeholders — Phase 1.1 (grammar)', () => {
+  it('TBD in expression position parses as a placeholder literal', () => {
+    const src = 'set greeting = TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const stmt = ast.body[0];
+    expect(stmt.type).toBe(NodeType.ASSIGN);
+    expect(stmt.expression.type).toBe(NodeType.PLACEHOLDER);
+    expect(stmt.expression.line).toBe(1);
+  });
+
+  it('TBD as a standalone statement parses as a placeholder node', () => {
+    const src = 'TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(ast.body[0].line).toBe(1);
+  });
+
+  it('TBD inside a function body parses cleanly', () => {
+    const src = "to greet with name:\n  TBD\n";
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const fn = ast.body.find(n => n.type === NodeType.FUNCTION_DEF);
+    expect(fn).toBeTruthy();
+    expect(fn.body).toHaveLength(1);
+    expect(fn.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(fn.body[0].line).toBe(2);
+  });
+});
+
 // Live App Editing — Phase A test files
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');
@@ -25378,6 +25678,154 @@ await import('./playground/wfp-api.test.js');
 
 // Cloudflare Workers for Platforms target — Phase 7.7 (deploy orchestration + lock)
 await import('./playground/deploy-cloudflare.test.js');
+
+// LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
+await import('./runtime/meph-widget.test.mjs');
+
+// =============================================================================
+// SHELL-5: Data tables emit upgrade — pills, avatars, money, actions, sort, select
+// =============================================================================
+describe('SHELL-5: data tables — auto-detected status pills', () => {
+  it('wraps a status field in <span class="clear-pill clear-pill-pending">', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-pill');
+    expect(out).toContain('clear-pill-');
+  });
+
+  it('lowercases status value for class name (Pending → clear-pill-pending)', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toMatch(/toLowerCase\(\)/);
+  });
+});
+
+describe('SHELL-5: data tables — avatar circle for name/customer/email columns', () => {
+  it('renders an avatar wrapper around a customer column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-avatar');
+  });
+
+  it('renders an avatar wrapper around a name column', () => {
+    const src = `build for web
+page 'App':
+  on page load get users from '/api/users'
+  display users as table showing name, role`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-avatar');
+  });
+});
+
+describe('SHELL-5: data tables — money columns get tabular-nums + right alignment', () => {
+  it('right-aligns and tabular-nums-formats a price column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, price`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('text-right');
+    expect(out).toContain('tabular-nums');
+  });
+
+  it('right-aligns an amount column', () => {
+    const src = `build for web
+page 'App':
+  on page load get expenses from '/api/expenses'
+  display expenses as table showing description, amount`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('tabular-nums');
+  });
+});
+
+describe('SHELL-5: data tables — new `with actions:` block syntax', () => {
+  it('parses an indented actions block under display table', () => {
+    const ast = parse(`page 'App':
+  display deals as table showing customer, status with actions:
+    'Approve' is primary
+    'Reject' is danger`);
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(Array.isArray(disp.actionButtons)).toBe(true);
+    expect(disp.actionButtons.length).toBe(2);
+    expect(disp.actionButtons[0].label).toBe('Approve');
+    expect(disp.actionButtons[0].style).toBe('primary');
+    expect(disp.actionButtons[1].label).toBe('Reject');
+    expect(disp.actionButtons[1].style).toBe('danger');
+  });
+
+  it('compiles action buttons into a hover-revealed row-actions column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status with actions:
+    'Approve' is primary
+    'Review' is ghost`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-row-actions');
+    expect(out).toContain('Approve');
+    expect(out).toContain('Review');
+  });
+});
+
+describe('SHELL-5: data tables — sortable headers', () => {
+  it('every <th> carries a data-sortable attribute', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, price`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('data-sortable');
+  });
+});
+
+describe('SHELL-5: data tables — row selection', () => {
+  it('row click toggles is-selected on the <tr>', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('is-selected');
+  });
+});
+
+describe('SHELL-5: data tables — backwards compat with `with delete and edit`', () => {
+  it('existing actions API still works (delete/edit shorthand)', () => {
+    const ast = parse(`page 'App':
+  display contacts as table showing name, email with delete and edit`);
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+});
 
 run();
 

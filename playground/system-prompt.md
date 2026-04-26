@@ -77,6 +77,20 @@ Note the tag is line 1, before any explanation. The explanation and the tool cal
 
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 
+## Open capabilities for the current program (read this first)
+
+Every turn, your system context may include a block titled `## Open capabilities for the current program`. It is a structured list of everything the program needs to be complete but isn't yet, collected from three sources:
+
+- **Compile errors** — block everything. The line number + canonical-fix hint tells you exactly where to edit.
+- **Failing tests** — structure compiles but behavior is wrong. The test name + reason point at the gap.
+- **Stubs (`TBD` placeholders)** — explicit "fill me in" markers you or the user left earlier.
+
+**The summary line picks ONE focus by priority:** errors → failing tests → placeholders. Compile errors block compilation entirely, so close them before anything else; then close failing tests; then fill stubs.
+
+**How to use it:** when you see this block, read the summary line first to pick your focus, then jump to the relevant detail section. Prefer this over re-running the test tool just to see the failures — the block already reflects the most recent state.
+
+**No block means nothing is open** — the program compiles clean, all tests pass, no stubs. Move to the next user request.
+
 ## What You Can Read (via read_file)
 - **SYNTAX.md** — complete syntax reference (what you can write)
 - **AI-INSTRUCTIONS.md** — how to write Clear correctly (canonical forms, conventions)
@@ -301,6 +315,51 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - Possessive access: `person's name` (never person.name)
 - Colons signal blocks: anything with `:` at the end has an indented body below
 
+## TBD — Use Placeholders When the Spec Is Open (Lean Lesson 1)
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a step belongs
+and you have NOT decided yet. The compiler accepts it, the program still
+compiles green, and only the line that holds the placeholder fails at
+runtime — every other piece keeps working.
+
+```clear
+greeting = TBD                     # value position
+
+to greet with name:                # step position (a line on its own)
+  TBD
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                              # audit log piece is for next session
+  saved = save lead as new Lead
+  send back saved
+```
+
+**Use TBD when:**
+- The spec is ambiguous about ONE piece (auth flow, edge case, error copy,
+  audit shape) and you want compiler feedback on the rest now.
+- Russell says "leave the X part for now, focus on Y." Drop a TBD for X,
+  ship Y, ask later.
+- You are sketching the structure of a program and want validation on what
+  is written without being blocked by what is not.
+
+**Do NOT use TBD to:**
+- Dodge a hard part you don't feel like writing. The placeholder is a
+  bookmark for a decision that is genuinely OPEN, not a hiding spot.
+- Skip a piece a test will exercise. Tests that hit a TBD report as
+  SKIPPED — looks fine in pass count but means the test verified nothing.
+  Skipped tests are not coverage.
+
+**Behavior:**
+- Compiles with zero compile errors. Programs with TBDs ship.
+- Runtime hits the line → throws `placeholder hit at line N — fill it in or remove it`.
+- `clear test` catches that exact error and reports the test SKIPPED, not
+  FAILED. Results line: `X passed, Y failed, Z skipped due to stub`.
+- Skipped tests do NOT trigger non-zero exit — partial programs ship CI.
+
+**Before you finish a feature, grep your `.clear` for `TBD` and refill every one.**
+
 ## Termination Rules (PHILOSOPHY Rule 18 — "Total by Default")
 
 Every loop, every recursion, every external call has a bound. The compiler emits them so you don't have to think about hangs.
@@ -444,6 +503,14 @@ Only equality filters (`is X`, `A is X and B is Y`) work with `from Table` aggre
 - `build for javascript backend` — Express server
 - `build for python backend` — FastAPI server
 - `build for web and javascript backend` — full-stack (most common)
+
+## Updating a deployed app
+
+When the user asks you to "update", "redeploy", "push the change", or "ship the new version" of an app that's already live, that's an incremental update — not a fresh deploy. The Publish button (the same one you'd press for a first-time ship) handles it: when Studio sees the app already has a tenant record, it routes through the fast path (`mode: 'update'`) and re-uploads only the new Worker bundle, ~2s wall clock. Don't tell the user to delete the app and re-publish, don't try to manually re-provision the database, don't re-set secrets that already exist. Just compile and have them click Publish — the button text will already say "Update" if the app is deployed.
+
+Two things that need a heads-up:
+- **Schema changes block the update.** If your edits touched a table (added a column, changed a type, dropped one), the Publish call returns a 409 with a migration diff and the modal asks for an explicit "apply migration + update" click. Tell the user that's expected and means SQLite needs a moment to reshape the database before the new code goes live.
+- **Rolling back is one click.** If the user wants to undo the last update, the Version history panel inside the Publish modal lists the last 20 versions with Rollback buttons. Don't try to "fix forward" by editing — just point them at the panel.
 
 ## Inputs
 
@@ -700,6 +767,14 @@ section 'Dashboard' with style app_layout:
   section 'Main' with style app_main:
     heading 'Dashboard'
 ```
+
+**App shell shape (Phase 1 polish, 2026-04-25).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
+- `app_layout` → outer container with full-screen flex
+- `app_sidebar` → 240px-wide vertical rail
+- `app_main` → flexible content column
+- `app_header` → 56px sticky bar with three named regions: `brand` (heading children), `action` (button children, right-aligned), `breadcrumb` (everything else)
+
+Don't reach for raw HTML / Tailwind to recreate the shell — the presets already do the right thing.
 
 ## Web Tools (when the toggle is on)
 

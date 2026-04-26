@@ -1,0 +1,22 @@
+{
+  "date": "2026-04-25",
+  "command": "node playground/supervisor/curriculum-sweep.js --workers=3",
+  "backend": "gm (cc-agent)",
+  "wallClockSeconds": 1595.5,
+  "totalTasks": 38,
+  "totalPassed": 6,
+  "totalTimedOut": 20,
+  "totalFailed": 12,
+  "passRateOverall": 0.158,
+  "factorDbRowsAdded": 0,
+  "factorDbBefore": 1817,
+  "factorDbAfter": 1817,
+  "passedTasks": [
+    "validated-forms (L7)",
+    "lead-router (L7)",
+    "approval-queue (L7)",
+    "etl-daily-report (L8)"
+  ],
+  "note": "Factor DB rows-added=0 is suspicious — sweep ran but no new rows landed. Likely the cc-agent path writes via MCP and the row counter only sees direct writes. Worth investigating before treating these numbers as authoritative for a delta against future runs.",
+  "nextStepIfRunningAgain": "Run again after fixing the row-write path; treat THIS run as wall-clock + pass-rate truth, not Factor-DB-delta truth."
+}

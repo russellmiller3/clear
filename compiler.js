@@ -254,6 +254,60 @@ export const UTILITY_FUNCTIONS = [
   }
   paint();
 }`, deps: [] },
+  // SHELL-5: per-cell type detection. Each table cell goes through this so
+  // the same compiled code yields a status pill, an avatar circle, or a
+  // right-aligned money column purely based on the column key. No CSS in
+  // .clear required — the column NAME drives the styling.
+  { name: '_clear_cell', code: `function _clear_cell(key, val) {
+  var k = String(key).toLowerCase();
+  var v = val == null ? '' : String(val);
+  if (k === 'status' || k === 'state' || k === 'stage') {
+    var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+  }
+  if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\\$/.test(v)) {
+    var formatted = v;
+    if (typeof val === 'number' || /^-?\\d+(\\.\\d+)?$/.test(v)) {
+      var n = Number(val);
+      formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+    }
+    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+  }
+  if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
+    var parts = v.trim().split(/[\\s@.]+/).filter(Boolean);
+    var initials = parts.length >= 2
+      ? (parts[0][0] || '') + (parts[1][0] || '')
+      : v.slice(0, 2);
+    initials = initials.toUpperCase();
+    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+  }
+  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+}`, deps: ['_esc'] },
+  // SHELL-5: one-time wiring per table — click-to-select on rows, sort
+  // toggling on header clicks. Idempotent (guarded via _clear_init flag) so
+  // reactive re-renders don't double-bind.
+  { name: '_clear_table_init', code: `function _clear_table_init(tableEl) {
+  if (!tableEl || tableEl._clear_init) return;
+  tableEl._clear_init = true;
+  tableEl.addEventListener('click', function(e) {
+    var th = e.target.closest('th[data-sortable]');
+    if (th) {
+      var col = th.getAttribute('data-sortable');
+      var prev = tableEl.getAttribute('data-sort-col');
+      var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
+      tableEl.setAttribute('data-sort-col', col);
+      tableEl.setAttribute('data-sort-dir', dir);
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      th.classList.add('is-sorted');
+      return;
+    }
+    var tr = e.target.closest('tbody tr');
+    if (tr && !e.target.closest('button') && !e.target.closest('a')) {
+      tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
+      tr.classList.toggle('is-selected');
+    }
+  });
+}`, deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
@@ -2826,7 +2880,11 @@ function generateE2ETests(body) {
   lines.push('// Requires: server running on localhost:3000');
   lines.push('');
   lines.push('const BASE = process.env.TEST_URL || "http://localhost:3000";');
-  lines.push('let passed = 0, failed = 0;');
+  // Lean Lesson 1 — placeholder skip support. A test that runs into a TBD
+  // marker (compiled to a "placeholder hit at line N" throw) reports as
+  // SKIPPED, not FAILED. Lets a partial program show "structure right,
+  // piece not filled in" instead of a noisy false failure.
+  lines.push('let passed = 0, failed = 0, skipped = 0;');
   lines.push('let _emailCounter = 0;');
   lines.push('let _uniqueCounter = 0;');
   // Module-level so both user tests and the _expectStatus helper can see them
@@ -2865,8 +2923,20 @@ function generateE2ETests(body) {
   lines.push('    passed++;');
   lines.push('    console.log("PASS:", name);');
   lines.push('  } catch (err) {');
-  lines.push('    failed++;');
-  lines.push('    console.log("FAIL:", name, "-", err.message);');
+  // Lean Lesson 1 — placeholder skip path. The compiler emits "placeholder
+  // hit at line N" exactly when execution reaches a TBD marker, so a test
+  // that wandered into a stub gets reported as SKIPPED with the same line
+  // info instead of being counted as a real failure. The marker string
+  // must match the compiler's exact emission so non-stub failures do not
+  // accidentally classify as skips.
+  lines.push('    const _msg = err && err.message ? String(err.message) : "";');
+  lines.push('    if (_msg.indexOf("placeholder hit at line") === 0) {');
+  lines.push('      skipped++;');
+  lines.push('      console.log("SKIP:", name, "-", _msg, "(this test exercises a stub)");');
+  lines.push('    } else {');
+  lines.push('      failed++;');
+  lines.push('      console.log("FAIL:", name, "-", _msg);');
+  lines.push('    }');
   lines.push('  }');
   lines.push('}');
   lines.push('');
@@ -3486,7 +3556,11 @@ function generateE2ETests(body) {
   }
 
   lines.push('  console.log("");');
-  lines.push('  console.log("Results:", passed, "passed,", failed, "failed");');
+  // Lean Lesson 1 — Results line distinguishes failed (real bugs) from
+  // skipped due to stub (structure right, piece not filled in). Skips do
+  // NOT trigger a non-zero exit code so a partial program can still be
+  // shipped through CI without blocking on its own placeholders.
+  lines.push('  console.log("Results:", passed, "passed,", failed, "failed,", skipped, "skipped due to stub");');
   lines.push('  process.exit(failed > 0 ? 1 : 0);');
   lines.push('}');
   lines.push('');
@@ -4142,7 +4216,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.AUTH_SCAFFOLD, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK,
   NodeType.CHECKOUT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
-  NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
+  NodeType.STREAM, NodeType.STREAM_AI, NodeType.GIVE_CLAUDE, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
   NodeType.AGENT, NodeType.WORKFLOW, NodeType.SKILL, NodeType.PIPELINE, NodeType.PARALLEL_AGENTS,
@@ -6167,6 +6241,18 @@ function _compileNodeInner(node, ctx) {
     case NodeType.THEME:
       return null;
 
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` as a standalone statement. Emit a runtime
+      // throw with the source line baked in. Compile stays clean; only the
+      // running code fails the moment execution reaches the line. Python
+      // and JS branches both produce the same human-readable message so
+      // Meph (or Russell) can grep "fill it in or remove it" across logs.
+      const msg = `placeholder hit at line ${node.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') return `${pad}raise Exception(${safeMsg})`;
+      return `${pad}throw new Error(${safeMsg});`;
+    }
+
     case NodeType.SCRIPT:
       // Raw JavaScript/Python escape hatch — emit code as-is
       return node.code.split('\n').map(l => pad + l).join('\n');
@@ -6278,6 +6364,32 @@ function _compileNodeInner(node, ctx) {
         return `${pad}${keyword}${name} = ${expr};`;
       }
       return `${pad}${name} = ${expr}`;
+    }
+
+    case NodeType.GIVE_CLAUDE: {
+      // Plan 2026-04-26 — canonical AI call. Maps to the same `_askAI`
+      // runtime helper that powers the assignment-form `ask claude`.
+      // Shape: give claude <data> [with prompt[:] '<X>'] [as <name>]
+      // Compiles to:  let <resultName> = await _askAI(<prompt>, <data>);
+      // Default <resultName> is `claude_reply`. The expression
+      // `claude's reply` is rewritten by exprToCode (MEMBER_ACCESS case)
+      // to read the same variable.
+      const data = exprToCode(node.data, ctx);
+      const prompt = node.prompt ? exprToCode(node.prompt, ctx) : null;
+      const resultName = sanitizeName(node.resultName || 'claude_reply');
+      const declared = ctx.declared && ctx.declared.has(resultName);
+      if (ctx.declared) ctx.declared.add(resultName);
+      // _askAI signature: (prompt/system, context/userMessage, schema, model)
+      // Map: prompt → system instructions, data → user-message payload.
+      // Always non-streaming at the GIVE_CLAUDE statement level — wrap in
+      // `stream:` if you want SSE streaming back to the client.
+      if (ctx.lang === 'python') {
+        const args = prompt ? `${prompt}, ${data}` : `'', ${data}`;
+        return `${pad}${resultName} = await _ask_ai(${args})`;
+      }
+      const args = prompt ? `${prompt}, ${data}` : `'', ${data}`;
+      const keyword = declared ? '' : 'let ';
+      return `${pad}${keyword}${resultName} = await _askAI(${args});`;
     }
 
     case NodeType.SHOW:
@@ -8456,6 +8568,22 @@ export function exprToCode(expr, ctx) {
       if (ctx.lang === 'python') return expr.value ? 'True' : 'False';
       return expr.value ? 'true' : 'false';
 
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` in expression position. The expression node
+      // produces an inline self-throwing helper so the moment any code
+      // tries to READ the value (assign it, return it, log it, pass it
+      // anywhere), it explodes with a clean message naming the line.
+      // Statement-position `TBD` is handled in _compileNodeInner above.
+      const msg = `placeholder hit at line ${expr.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') {
+        // Python: a thunk that always raises when invoked. Wrap in `(lambda: ...)()`
+        // so it evaluates at use-site, not at definition.
+        return `(_ for _ in ()).throw(Exception(${safeMsg}))`;
+      }
+      return `(()=>{throw new Error(${safeMsg});})()`;
+    }
+
     case NodeType.LITERAL_NOTHING:
       return ctx.lang === 'python' ? 'None' : 'null';
 
@@ -8511,6 +8639,16 @@ export function exprToCode(expr, ctx) {
         const key = exprToCode(expr.dynamicKey, ctx);
         if (ctx.lang === 'python') return `${obj}[${key}]`;
         return `${obj}[${key}]`;
+      }
+      // `claude's reply` — pseudo-actor possessive access. The
+      // GIVE_CLAUDE statement compiled the result to a local variable
+      // (default name `claude_reply`). Rewrite the member access to
+      // read that variable directly so users write the natural
+      // English form. Same pattern as `caller's id` reading req.user.id.
+      // Plan 2026-04-26.
+      if (expr.object && expr.object.type === NodeType.VARIABLE_REF &&
+          expr.object.name === 'claude' && expr.member === 'reply') {
+        return 'claude_reply';
       }
       if (ctx.lang === 'python') {
         const objCode = exprToCode(expr.object, ctx);
@@ -9505,48 +9643,58 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     _dispUsedIds.add(outputId);
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if user explicitly requested action buttons via "with delete" / "with edit"
+      // SHELL-5: polished table emit. Each cell goes through _clear_cell()
+      // which detects the column type from the key name and produces the
+      // right HTML — status pill, avatar circle, money cell, or plain text.
+      // Headers carry data-sortable so the helper wires sort on click.
+      // Row click toggles is-selected. Actions either come from the legacy
+      // `with delete/edit` shorthand or the new `with actions:` block.
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
       const resourceKey = varName.toLowerCase();
       const actions = disp.actions || [];
       const hasDelete = actions.includes('delete');
       const hasUpdate = actions.includes('edit');
-      const hasActions = hasDelete || hasUpdate;
+      const hasShorthandActions = hasDelete || hasUpdate;
+      const actionButtons = Array.isArray(disp.actionButtons) ? disp.actionButtons : [];
+      const hasBlockActions = actionButtons.length > 0;
+      const hasActions = hasShorthandActions || hasBlockActions;
 
-      // Reactive table: delegate to _clear_render_table which handles virtual
-      // scrolling for large datasets (100+ rows). Head renderer produces the
-      // <th> row, row renderer produces one <tr> per item.
-      // Column keys: either explicit list or Object.keys of first row.
-      // The row renderer needs to derive keys from its OWN row (since data
-      // may be empty in the helper's no-op path). Two separate expressions.
       const headKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(d[0])';
       const rowKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(row)';
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
-      const tdClass = 'text-sm text-base-content';
-      const trClass = 'border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5';
-      const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
-      const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      const headCols = `_keys.map(function(k) { return '<th class="${thClass}" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join('')`;
+      const dataCols = `_keys.map(function(k) { return _clear_cell(k, row[k]); }).join('')`;
       let rowHtmlExpr;
       if (hasActions) {
-        let actionBtns = '';
+        const buttonExprs = [];
         if (hasUpdate) {
-          actionBtns += `'<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`;
+          buttonExprs.push(`'<button class="btn-tiny" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`);
         }
         if (hasDelete) {
-          if (actionBtns) actionBtns += ` + ' ' + `;
-          actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
+          buttonExprs.push(`'<button class="btn-tiny is-danger" data-delete-id="' + _esc(row.id) + '">Delete</button>'`);
         }
-        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>'`;
+        for (const btn of actionButtons) {
+          const styleClass = btn.style === 'primary' ? 'btn-tiny is-primary'
+            : btn.style === 'danger' ? 'btn-tiny is-danger'
+            : btn.style === 'secondary' ? 'btn-tiny is-secondary'
+            : 'btn-tiny';
+          const labelEsc = btn.label.replace(/'/g, "\\'");
+          const slugAttr = btn.label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          buttonExprs.push(`'<button class="${styleClass}" data-action="${slugAttr}" data-row-id="' + _esc(row.id) + '">${labelEsc}</button>'`);
+        }
+        const buttonsExpr = buttonExprs.length > 0 ? buttonExprs.join(` + ' ' + `) : `''`;
+        rowHtmlExpr = `'<tr>' + ${dataCols} + '<td><div class="clear-row-actions">' + ${buttonsExpr} + '</div></td>' + '</tr>'`;
       } else {
-        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '</tr>'`;
+        rowHtmlExpr = `'<tr>' + ${dataCols} + '</tr>'`;
       }
-      const extraHead = hasActions ? ` + '<th class="${thClass}"></th>'` : '';
+      const extraHead = hasActions ? ` + '<th class="${thClass}" style="width:1%"></th>'` : '';
       lines.push(`  _clear_render_table(`);
       lines.push(`    document.getElementById('${outputId}_table'),`);
       lines.push(`    ${val},`);
       lines.push(`    function(d) { var _keys = ${headKeysExpr}; return ${headCols}${extraHead}; },`);
       lines.push(`    function(row) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
       lines.push(`  );`);
+      lines.push(`  _clear_table_init(document.getElementById('${outputId}_table'));`);
     } else if (disp.format === 'cards') {
       // Reactive card grid: render array of objects as styled cards
       lines.push(`  {`);
@@ -9792,6 +9940,36 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
+  }
+
+  // Render text templates: replace {varname} with current values from
+  // _recompute()'s closure scope (locals like `pending_count = count of pending`)
+  // or from _state. Walk the AST to discover which variable names are referenced
+  // in any text/heading content node so we can list them at compile time —
+  // arrow-function callbacks can't reach closure vars dynamically by string.
+  const _tplVars = new Set();
+  const _tplVarRe = /\{([a-zA-Z_]\w*)\}/g;
+  for (const _node of flatNodes) {
+    if (_node.type === NodeType.CONTENT && typeof _node.text === 'string') {
+      let _m;
+      _tplVarRe.lastIndex = 0;
+      while ((_m = _tplVarRe.exec(_node.text)) !== null) _tplVars.add(_m[1]);
+    }
+  }
+  if (_tplVars.size > 0) {
+    lines.push(`  // Substitute {varname} in text templates`);
+    lines.push(`  const _tplCtx = Object.assign({}, _state || {});`);
+    for (const _v of _tplVars) {
+      const _sv = sanitizeName(_v);
+      lines.push(`  if (typeof ${_sv} !== 'undefined') _tplCtx[${JSON.stringify(_v)}] = ${_sv};`);
+    }
+    lines.push(`  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {`);
+    lines.push(`    const _tpl = _el.getAttribute('data-clear-tpl');`);
+    lines.push(`    _el.textContent = _tpl.replace(/\\{(\\w+)\\}/g, (_m, _v) => {`);
+    lines.push(`      const _val = _tplCtx[_v];`);
+    lines.push(`      return (_val == null) ? '' : String(_val);`);
+    lines.push(`    });`);
+    lines.push(`  });`);
   }
 
   lines.push('}');
@@ -10166,6 +10344,121 @@ const INLINE_LAYOUT_MODIFIERS = {
   'rounded':             { prop: 'border-radius', val: '12px' },
 };
 
+// Default signup+login form auto-injected on /login pages when
+// `allow signup and login` is in source and the user didn't write their own
+// form. POSTs to /auth/login or /auth/signup, stores the JWT, redirects to
+// `?next=` (or '/'). Self-contained — no dependency on _state or _recompute().
+const AUTH_LOGIN_FORM_HTML = `    <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-base-content tracking-tight mb-2">Welcome back</h1>
+        <p class="text-sm text-base-content/60">Sign in or create an account to continue</p>
+      </div>
+      <div class="bg-base-100 border border-base-300/50 shadow-sm rounded-box p-8 flex flex-col gap-6">
+        <div class="flex p-1 bg-base-200 rounded-lg" role="tablist">
+          <button type="button" data-auth-tab="login" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors bg-base-100 text-base-content shadow-sm">Sign in</button>
+          <button type="button" data-auth-tab="signup" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors text-base-content/60 hover:text-base-content">Sign up</button>
+        </div>
+        <div data-auth-panel="login" class="flex flex-col gap-4">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_login_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_login_password" type="password" autocomplete="current-password" class="input input-bordered w-full" placeholder="••••••••" />
+          </fieldset>
+          <button id="auth_login_submit" type="button" class="btn btn-primary w-full">Sign in</button>
+          <p id="auth_login_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+        <div data-auth-panel="signup" class="flex flex-col gap-4" style="display:none">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_signup_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_signup_password" type="password" autocomplete="new-password" class="input input-bordered w-full" placeholder="At least 8 characters" />
+          </fieldset>
+          <button id="auth_signup_submit" type="button" class="btn btn-primary w-full">Create account</button>
+          <p id="auth_signup_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var tabs = document.querySelectorAll('[data-auth-tab]');
+      var panels = document.querySelectorAll('[data-auth-panel]');
+      function setActive(which) {
+        tabs.forEach(function (t) {
+          var on = t.getAttribute('data-auth-tab') === which;
+          t.classList.toggle('bg-base-100', on);
+          t.classList.toggle('text-base-content', on);
+          t.classList.toggle('shadow-sm', on);
+          t.classList.toggle('text-base-content/60', !on);
+        });
+        panels.forEach(function (p) {
+          p.style.display = p.getAttribute('data-auth-panel') === which ? 'flex' : 'none';
+        });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { setActive(t.getAttribute('data-auth-tab')); }); });
+      function nextDest() {
+        try {
+          var n = new URL(window.location.href).searchParams.get('next');
+          return (n && n.charAt(0) === '/') ? n : '/';
+        } catch (e) { return '/'; }
+      }
+      async function submit(path, emailEl, passwordEl, errEl, btn) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        var email = (emailEl.value || '').trim();
+        var password = passwordEl.value || '';
+        if (!email || !password) {
+          errEl.textContent = 'Email and password are required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        btn.disabled = true;
+        try {
+          var res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, password: password })
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) {}
+          if (!res.ok) {
+            errEl.textContent = (data && data.error) ? data.error : 'Sign in failed. Please try again.';
+            errEl.style.display = 'block';
+            return;
+          }
+          if (data && data.token) localStorage.setItem('token', data.token);
+          window.location.href = nextDest();
+        } catch (e) {
+          errEl.textContent = 'Network error. Please try again.';
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      var loginBtn = document.getElementById('auth_login_submit');
+      if (loginBtn) loginBtn.addEventListener('click', function () {
+        submit('/auth/login',
+          document.getElementById('auth_login_email'),
+          document.getElementById('auth_login_password'),
+          document.getElementById('auth_login_error'),
+          loginBtn);
+      });
+      var signupBtn = document.getElementById('auth_signup_submit');
+      if (signupBtn) signupBtn.addEventListener('click', function () {
+        submit('/auth/signup',
+          document.getElementById('auth_signup_email'),
+          document.getElementById('auth_signup_password'),
+          document.getElementById('auth_signup_error'),
+          signupBtn);
+      });
+    })();
+    </script>`;
+
 function buildHTML(body) {
   const parts = [];
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
@@ -10180,6 +10473,10 @@ function buildHTML(body) {
   let hasChat = false;  // Track if any chat display nodes exist (for chat CSS)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
+  // True when `allow signup and login` is in source — the compiler can then
+  // auto-inject a default signup+login form on `/login` pages so the user
+  // doesn't end up with a "use the form above" dead-end.
+  const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
 
   function walk(nodes) {
     for (const node of nodes) {
@@ -10188,6 +10485,26 @@ function buildHTML(body) {
           pageTitle = node.title;
           if (node.route) {
             pages.push({ title: node.title, route: node.route, startIdx: parts.length });
+          }
+          // Auto-inject a default signup+login form when the page is at /login,
+          // `allow signup and login` is in source, and the user didn't already
+          // write their own input form. Avoids the "use the form above"
+          // dead-end where a sign-in page renders just a heading and copy.
+          if (hasAuthScaffold && node.route && /^\/+login\/?$/i.test(String(node.route))) {
+            const _bodyAll = (function _coll(ns) {
+              const out = [];
+              for (const _n of (ns || [])) {
+                out.push(_n);
+                if (_n && Array.isArray(_n.body)) out.push(..._coll(_n.body));
+              }
+              return out;
+            })(node.body || []);
+            const _hasOwnForm = _bodyAll.some(n =>
+              n && (n.type === NodeType.ASK_FOR || n.type === NodeType.LOGIN_ACTION)
+            );
+            if (!_hasOwnForm) {
+              parts.push(AUTH_LOGIN_FORM_HTML);
+            }
           }
           walk(node.body);
           if (node.route) {
@@ -10418,7 +10735,27 @@ function buildHTML(body) {
             ];
             const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
             const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
-            parts.push(`    <div class="${cls}"${heroInlineStyle}${clAttr(node)}>`);
+            // Phase 1 shell upgrade: app_* presets emit semantic HTML5 tags
+            // (aside / main / header) instead of generic <div>. The mock at
+            // landing/marcus-app-target.html is the visual target. We also
+            // attach inline styles for tokens utilities can't express.
+            const APP_SHELL_TAGS = {
+              app_sidebar: 'aside',
+              app_main:    'main',
+              app_header:  'header',
+            };
+            const APP_SHELL_INLINE_STYLES = {
+              // 240px rail bg from --clear-bg-rail (matches mock)
+              app_sidebar: 'width:240px;background:var(--clear-bg-rail);',
+              // 56px sticky bar with canvas bg
+              app_header:  'height:56px;background:var(--clear-bg-canvas);',
+            };
+            const shellTag = APP_SHELL_TAGS[node.styleName] || 'div';
+            const shellInline = APP_SHELL_INLINE_STYLES[node.styleName] || '';
+            const inlineStyleAttr = shellInline
+              ? ` style="${shellInline}"`
+              : heroInlineStyle;
+            parts.push(`    <${shellTag} class="${cls}"${inlineStyleAttr}${clAttr(node)}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -10699,6 +11036,30 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
                 parts.push(`    </div>`);
               }
+            } else if (node.styleName === 'app_header') {
+              // Phase 1 shell upgrade: app_header is a 56px sticky bar with three
+              // semantic slots — brand (heading), breadcrumb (text), actions
+              // (buttons). Children get sorted into the right slot. This lets
+              // page header / breadcrumb / action primitives in later phases
+              // target a stable scaffold instead of a flat row.
+              const headerBody = node.body || [];
+              const isHeading = c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading');
+              const isButton  = c => c.type === NodeType.BUTTON;
+              const isLink    = c => c.type === NodeType.CONTENT && (c.contentType === 'link' || c.ui?.contentType === 'link');
+              const brandKids      = headerBody.filter(isHeading);
+              const actionKids     = headerBody.filter(isButton);
+              const breadcrumbKids = headerBody.filter(c => !isHeading(c) && !isButton(c) && !isLink(c) && c.type === NodeType.CONTENT);
+              const otherKids      = headerBody.filter(c => !isHeading(c) && !isButton(c) && !breadcrumbKids.includes(c));
+              parts.push(`      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">`);
+              if (brandKids.length > 0) walk(brandKids);
+              parts.push(`      </div>`);
+              parts.push(`      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">`);
+              if (breadcrumbKids.length > 0) walk(breadcrumbKids);
+              parts.push(`      </nav>`);
+              parts.push(`      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">`);
+              if (actionKids.length > 0) walk(actionKids);
+              if (otherKids.length > 0) walk(otherKids);
+              parts.push(`      </div>`);
             } else if (node.styleName === 'app_list') {
               // app_list: header content above, each child wrapped as a list item row
               const listHeader = node.body.filter(c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading'));
@@ -10731,7 +11092,8 @@ function buildHTML(body) {
             }
             sectionStack.pop();
             if (needsWrapper) parts.push(`      </div>`);
-            parts.push(`    </div>`);
+            // Close the matching shell tag (aside / main / header / div)
+            parts.push(`    </${shellTag}>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style: resolve semantic tokens to Tailwind, rest to CSS class
             const styleDef = node.styleName
@@ -11023,8 +11385,20 @@ ${options}
           ];
           const inDarkCard = COLORED_CARD_PRESETS.includes(parentPreset);
           const _clContent = clAttr(node);
-          // Inject data-clear-line into the first tag of whatever content is pushed
-          const _pushContent = (html) => { parts.push(_clContent ? html.replace(/>/, _clContent + '>') : html); };
+          // Detect {varname} templates in the formatted content. When present,
+          // emit a data-clear-tpl attribute holding the original template so
+          // _recompute() can re-substitute the variables on every render.
+          const _hasTpl = typeof formatted === 'string' && /\{[a-zA-Z_]\w*\}/.test(formatted);
+          const _clTpl = _hasTpl
+            ? ` data-clear-tpl="${formatted.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"`
+            : '';
+          // Inject data-clear-line + data-clear-tpl into the first tag of whatever content is pushed
+          const _pushContent = (html) => {
+            let _out = html;
+            if (_clTpl) _out = _out.replace(/>/, _clTpl + '>');
+            if (_clContent) _out = _out.replace(/>/, _clContent + '>');
+            parts.push(_out);
+          };
           const _pc = _pushContent; // short alias
           switch (ui.contentType) {
             case 'heading':
@@ -11404,7 +11778,11 @@ _router();`;
     css.includes('full_height') || css.includes('column_layout') || css.includes('grid') ||
     css.includes('flex-direction: row') || css.includes('side_by_side');
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
-  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8 flex flex-col gap-6';
+  // The default page wrapper used to be `max-w-2xl mx-auto p-8` — a 600px column
+  // that made every Marcus app look like a 2018 single-column-form site. Widen
+  // to a 5xl container with breathing room. Apps that opt into landing/app
+  // presets bypass this. See landing/marcus-app-target.html for the visual bar.
+  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6';
 
   // Use module script if compiled code uses dynamic import (await import)
   const scriptType = compiledJS.includes('await import(') ? ' type="module"' : '';
@@ -11421,9 +11799,11 @@ ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts
 ${hasMap ? '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />\n  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"><\/script>' : ''}
 ${hasQR ? '  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"><\/script>' : ''}
 ${hasRichText ? '  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />\n  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.min.js"><\/script>\n  <style>.rich-text-editor{min-height:180px;border:none!important}.ql-toolbar{border:none!important;border-bottom:1px solid var(--color-base-300)!important;border-radius:0.375rem 0.375rem 0 0}.ql-container{border:none!important;font-family:inherit;font-size:15px}.rich-text-wrap .ql-editor{min-height:150px}</style>' : ''}
+  <link rel="preconnect" href="https://rsms.me/" crossorigin>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <style>${css}</style>
 </head>
 <body class="min-h-screen bg-base-100">
@@ -11480,7 +11860,8 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
   });
   <\/script>` : ''}
 ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
-  <script src="/__meph__/widget.js" defer><\/script>` : ''}
+  <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
+  <script src="/__meph__/widget.js" defer onerror="this.remove()"><\/script>` : ''}
   <!-- ============================================================== -->
   <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
   <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
@@ -11814,7 +12195,7 @@ function _findUserFunctions(body) {
 
 function _findAsyncFunctions(body) {
   const ASYNC_NODE_TYPES = new Set([
-    NodeType.CRUD, NodeType.ASK_AI, NodeType.EXTERNAL_FETCH,
+    NodeType.CRUD, NodeType.ASK_AI, NodeType.GIVE_CLAUDE, NodeType.EXTERNAL_FETCH,
     NodeType.HTTP_REQUEST, NodeType.RUN_AGENT, NodeType.RUN_PIPELINE,
     NodeType.TRANSACTION
   ]);
@@ -13441,12 +13822,17 @@ const BUILTIN_PRESET_CLASSES = {
   faq_section:            'bg-base-100 py-16 lg:py-24 px-6',
   page_footer:            'bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6',
 
-  // --- App/dashboard presets ---
-  app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-100 border-r border-base-300/50 overflow-hidden',
-  app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
+  // --- App/dashboard presets (Phase 1 shell upgrade — 04-25-2026) ---
+  // Modeled on landing/marcus-app-target.html. Each preset emits a semantic
+  // HTML5 tag (see APP_SHELL_TAGS below) and reads --clear-* design tokens
+  // for hairline borders + rail/canvas backgrounds. Class strings here cover
+  // layout/sizing; inline style attribute carries the token references the
+  // utility-only setup can't express (custom-property reads need style="").
+  app_layout:        'flex min-h-screen',
+  app_sidebar:       'hairline-r flex-shrink-0 flex flex-col scroll-y',
+  app_main:          'flex-1 min-w-0 flex flex-col',
   app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
+  app_header:        'hairline-b sticky top-0 z-30 flex items-center gap-4 px-5',
   app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
   app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
 
@@ -13583,13 +13969,62 @@ function stylesToCSS(styles, vars = {}) {
 // Inspired by Linear/Vercel/Raycast aesthetic: clean, muted, professional
 // =============================================================================
 
-const CSS_RESET = `/* Clear design system v2 */
+const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tabular nums */
 *, *::before, *::after { box-sizing: border-box; }
-body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
-.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
-.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+:root {
+  /* Slate chrome layered on top of DaisyUI base/primary tokens. Modeled on
+     the 2026 RevOps mock — see landing/marcus-app-target.html. Compiled apps
+     read these for hairlines, status pills, stat cards, sidebar nav. */
+  --clear-bg-app:        oklch(98% 0.005 240);
+  --clear-bg-canvas:     oklch(100% 0 0);
+  --clear-bg-rail:       oklch(99% 0.005 240);
+  --clear-bg-row-hover:  oklch(96% 0.008 240);
+  --clear-bg-active:     oklch(96% 0.025 258);
+  --clear-bg-chip:       oklch(95% 0.01 240);
+  --clear-line:          oklch(91% 0.012 240);
+  --clear-line-strong:   oklch(83% 0.015 240);
+  --clear-ink:           oklch(15% 0.025 255);
+  --clear-ink-soft:      oklch(35% 0.02 255);
+  --clear-ink-muted:     oklch(54% 0.018 255);
+  --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-good:          oklch(50% 0.16 152);
+  --clear-good-soft:     oklch(96% 0.05 152);
+  --clear-warn:          oklch(58% 0.14 65);
+  --clear-warn-soft:     oklch(96% 0.05 80);
+  --clear-bad:           oklch(54% 0.21 25);
+  --clear-bad-soft:      oklch(96% 0.04 25);
+}
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: "cv11","ss01","ss03";
+  -webkit-font-smoothing: antialiased;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+  margin: 0;
+}
+@supports (font-variation-settings: normal) {
+  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+}
+.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
 #app { margin: 0 auto; }
-::selection { background: oklch(var(--color-primary) / 0.15); }`;
+::selection { background: oklch(var(--color-primary) / 0.15); }
+/* Hairline borders — drop-in alternative to combo border+shadow */
+.hairline   { border: 1px solid var(--clear-line); }
+.hairline-b { border-bottom: 1px solid var(--clear-line); }
+.hairline-r { border-right: 1px solid var(--clear-line); }
+.hairline-t { border-top: 1px solid var(--clear-line); }
+/* Status pills — uppercase semibold colored on tinted bg */
+.clear-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+}
+.clear-pill-pending  { background: var(--clear-warn-soft); color: var(--clear-warn); }
+.clear-pill-approved { background: var(--clear-good-soft); color: var(--clear-good); }
+.clear-pill-rejected { background: var(--clear-bad-soft);  color: var(--clear-bad); }
+.clear-pill-neutral  { background: var(--clear-bg-chip);    color: var(--clear-ink-soft); }`;
 
 const THEME_CSS = {
   midnight: `[data-theme="midnight"] {

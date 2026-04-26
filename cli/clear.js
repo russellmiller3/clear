@@ -358,41 +358,92 @@ async function buildCommand(args) {
   mkdirSync(dir, { recursive: true });
   const files = [];
 
-  // Safely write a package.json commonjs shield.
-  // Never clobber a pre-existing real package.json. If one exists and is NOT
-  // our own sentinel (`{"type":"commonjs"}`), we're in a real project's dir
-  // (like the Clear repo root) and overwriting would break the parent project.
-  // This bug silently corrupted the repo root package.json every time Meph
-  // ran `clear build temp-app.clear` from the worktree root.
-  const SHIELD = '{"type":"commonjs"}\n';
-  function writePackageJsonShield() {
-    const pkgPath = resolve(dir, 'package.json');
-    if (existsSync(pkgPath)) {
-      const existing = readFileSync(pkgPath, 'utf8');
-      if (existing.trim() === SHIELD.trim()) return; // idempotent, our own file
-      if (!flags.quiet) {
-        console.warn(`  Warning: package.json already exists at ${dir} — not overwriting. If you're building inside an ESM project, use --out <subdir> to isolate the build output.`);
-      }
-      return;
+  // Safely write a package.json that's both a CommonJS shield AND lists the
+  // runtime dependencies the compiled server needs (express, ws, bcryptjs,
+  // jsonwebtoken, nodemailer, multer). Without deps the built app can't run
+  // standalone — `node server.js` throws "Cannot find module 'jsonwebtoken'".
+  // Never clobber a pre-existing real package.json (would break the parent
+  // project's setup). Idempotent on re-builds: re-run only updates the deps
+  // block when serverCode requires new modules.
+  const CJS_SHIELD_KEYS = new Set(['type', 'dependencies']); // package.json keys we own
+  function packageJsonForServer(serverCode) {
+    const deps = {};
+    if (serverCode && serverCode.length > 0) {
+      // Express + ws are emitted by the compiler whenever it generates a
+      // server. The other 4 are conditional based on runtime helpers used.
+      if (serverCode.includes("require('express')")) deps.express = '*';
+      if (serverCode.includes("require('ws')")) deps.ws = '*';
+      if (serverCode.includes("require('bcryptjs')")) deps.bcryptjs = '*';
+      if (serverCode.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
+      if (serverCode.includes("require('nodemailer')")) deps.nodemailer = '*';
+      if (serverCode.includes("require('multer')")) deps.multer = '*';
+      if (serverCode.includes("require('pg')")) deps.pg = '*';
+      if (serverCode.includes("require('better-sqlite3')")) deps['better-sqlite3'] = '*';
     }
-    writeFileSync(pkgPath, SHIELD);
+    const pkg = { type: 'commonjs' };
+    if (Object.keys(deps).length > 0) pkg.dependencies = deps;
+    return pkg;
+  }
+  function writePackageJsonShield(serverCode) {
+    const pkgPath = resolve(dir, 'package.json');
+    const desired = packageJsonForServer(serverCode || '');
+    if (existsSync(pkgPath)) {
+      let existing;
+      try { existing = JSON.parse(readFileSync(pkgPath, 'utf8')); } catch (_e) { existing = null; }
+      // Owner check: only overwrite if every key in the existing file is one
+      // of ours. If it has "name", "scripts", etc. we're inside a real project.
+      const ownsIt = existing && typeof existing === 'object'
+        && Object.keys(existing).every(k => CJS_SHIELD_KEYS.has(k));
+      if (!ownsIt) {
+        if (!flags.quiet) {
+          console.warn(`  Warning: package.json already exists at ${dir} and isn't a Clear-built file — not overwriting. If you're building inside an ESM project, use --out <subdir> to isolate the build output.`);
+        }
+        return;
+      }
+    }
+    writeFileSync(pkgPath, JSON.stringify(desired, null, 2) + '\n');
     if (!files.includes('package.json')) files.push('package.json');
+  }
+  // Run npm install when deps are present and node_modules is missing the
+  // listed packages. Fails open: if npm is slow or offline we warn but don't
+  // fail the build (user can install manually). Skipped via --skip-install
+  // for repeat builds where deps haven't changed.
+  function maybeInstallDeps(serverCode) {
+    if (flags.skipInstall || flags.stdout) return;
+    const desired = packageJsonForServer(serverCode || '');
+    if (!desired.dependencies || Object.keys(desired.dependencies).length === 0) return;
+    const nodeModules = resolve(dir, 'node_modules');
+    const need = Object.keys(desired.dependencies).some(d => !existsSync(resolve(nodeModules, d)));
+    if (!need) return;
+    const installTimeoutMs = Math.max(15000, Number(process.env.CLEAR_NPM_INSTALL_TIMEOUT_MS) || 60000);
+    if (!flags.quiet) console.log('  Installing dependencies (' + Object.keys(desired.dependencies).join(', ') + ')...');
+    try {
+      execSync('npm install --production --silent', { cwd: dir, timeout: installTimeoutMs, stdio: 'pipe' });
+    } catch (e) {
+      const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
+      if (!flags.quiet) {
+        if (timedOut) console.log(`  (npm install timed out after ${Math.round(installTimeoutMs / 1000)}s — run "npm install" inside ${dir} before "node server.js")`);
+        else console.log(`  (npm install failed: ${(e.message || '').slice(0, 140)} — run "npm install" inside ${dir} before "node server.js")`);
+      }
+    }
   }
 
   if (result.serverJS) {
     writeFileSync(resolve(dir, 'server.js'), result.serverJS);
     files.push('server.js');
-    // P5: ensure Node treats server.js as CommonJS even if the parent project's
-    // package.json declares "type": "module". Without this shield, the user
-    // gets "require is not defined in ES module scope" when they clear serve
-    // inside an ESM project.
-    writePackageJsonShield();
+    // Write package.json with deps so `node server.js` works standalone, then
+    // npm-install them. Without this the test runner installs deps via its
+    // own throwaway build dir but `clear build` left users with a missing
+    // jsonwebtoken module.
+    writePackageJsonShield(result.serverJS);
+    maybeInstallDeps(result.serverJS);
   } else if (result.javascript) {
     const jsName = result.javascript.includes('express') ? 'server.js' : `${name}.js`;
     writeFileSync(resolve(dir, jsName), result.javascript);
     files.push(jsName);
     if (jsName === 'server.js' || result.javascript.includes('require(')) {
-      writePackageJsonShield();
+      writePackageJsonShield(result.javascript);
+      maybeInstallDeps(result.javascript);
     }
   }
   if (result.html) {
@@ -415,11 +466,19 @@ async function buildCommand(args) {
 
   // Copy runtime if needed
   const allJS = (result.javascript || '') + (result.serverJS || '');
-  if (allJS.includes("require('./clear-runtime/")) {
+  // Detect whether the LAE widget bundle is referenced (the compiler emits the
+  // /__meph__/widget.js Express route + script tag whenever `allow signup and
+  // login` is in source). Without copying meph-widget.js the widget script
+  // 404s — harmless with onerror, but copying lets it work when STUDIO_PORT is
+  // set in the environment.
+  const needsWidget = (result.serverJS || '').includes("'/__meph__/widget.js'");
+  if (allJS.includes("require('./clear-runtime/") || needsWidget) {
     const runtimeDir = resolve(dir, 'clear-runtime');
     mkdirSync(runtimeDir, { recursive: true });
     const runtimeSrc = resolve(__dirname, '..', 'runtime');
-    for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+    const runtimeFiles = ['db.js', 'auth.js', 'rateLimit.js'];
+    if (needsWidget) runtimeFiles.push('meph-widget.js');
+    for (const f of runtimeFiles) {
       const src = resolve(runtimeSrc, f);
       if (existsSync(src)) { copyFileSync(src, resolve(runtimeDir, f)); }
     }

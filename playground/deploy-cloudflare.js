@@ -84,6 +84,86 @@ function _hashMigrations(bundle) {
 	return h.digest('hex');
 }
 
+/**
+ * migrationsDiffer — byte-precise schema-change detector.
+ *
+ * Compares the "schema-shaped" files in two compiled worker bundles. The
+ * scope is broader than just SQL migrations — Cloudflare's wrangler.toml
+ * declares Durable Object namespaces, [[workflows]] entries, KV bindings,
+ * and other resource declarations. Re-binding a DO namespace mid-update
+ * is the toml equivalent of dropping a SQL table — same blast radius. So
+ * we treat both file kinds the same way.
+ *
+ * The set of "schema-ish" files this scans:
+ *   - any file whose path starts with `migrations/` (D1 SQL)
+ *   - `wrangler.toml` (DO bindings, workflows, KV, queues, etc.)
+ *
+ * Returns true when:
+ *   - the SET of schema-ish filenames differs (added, removed, renamed), OR
+ *   - any same-named schema-ish file's content differs by even one byte.
+ *
+ * The compare is intentionally dumb (string equality, not SQL/TOML semantics).
+ * A false positive costs Marcus one extra confirm click. A false negative
+ * could wedge a live D1 against a half-applied schema OR rebind a Durable
+ * Object namespace mid-flight. Strict default; both kinds are gated.
+ *
+ * Exported for unit tests + reuse by the /api/deploy handler in Phase 4.
+ */
+export function migrationsDiffer(oldBundle, newBundle) {
+	const oldKeys = _schemaishFileKeys(oldBundle);
+	const newKeys = _schemaishFileKeys(newBundle);
+	if (oldKeys.length !== newKeys.length) return true;
+	for (let i = 0; i < oldKeys.length; i++) {
+		if (oldKeys[i] !== newKeys[i]) return true;
+	}
+	for (const k of oldKeys) {
+		if (String(oldBundle[k] || '') !== String(newBundle[k] || '')) return true;
+	}
+	return false;
+}
+
+// Schema-ish files = anything whose presence or content shape impacts a
+// running deploy's bound resources. SQL migrations + wrangler.toml today;
+// we'll add more here if Cloudflare exposes new binding-declaration files.
+function _schemaishFileKeys(bundle) {
+	if (!bundle || typeof bundle !== 'object') return [];
+	return Object.keys(bundle)
+		.filter((k) => k.startsWith('migrations/') || k === 'wrangler.toml')
+		.sort();
+}
+
+/**
+ * _describeMigrationDiff — structured diff for the UI gate.
+ *
+ * Returns an array of { file, kind } where kind is 'added' | 'removed' | 'changed'.
+ * Mirrors migrationsDiffer's "schema-ish" scope (migrations/* AND wrangler.toml).
+ * Used by _deployUpdate to populate the migration-confirm-required response so
+ * the Studio modal can show Marcus what's changing before he confirms.
+ *
+ * Empty array on no diff. Exported for unit tests + reuse by handlers.
+ */
+export function _describeMigrationDiff(oldBundle, newBundle) {
+	const oldKeys = new Set(_schemaishFileKeys(oldBundle));
+	const newKeys = new Set(_schemaishFileKeys(newBundle));
+	const out = [];
+	// Added: in new but not in old.
+	for (const k of newKeys) {
+		if (!oldKeys.has(k)) out.push({ file: k, kind: 'added' });
+	}
+	// Removed: in old but not in new.
+	for (const k of oldKeys) {
+		if (!newKeys.has(k)) out.push({ file: k, kind: 'removed' });
+	}
+	// Changed: in both, content differs.
+	for (const k of oldKeys) {
+		if (!newKeys.has(k)) continue;
+		if (String(oldBundle[k] || '') !== String(newBundle[k] || '')) {
+			out.push({ file: k, kind: 'changed' });
+		}
+	}
+	return out;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // DeployLockManager — in-memory double-click guard
 // ──────────────────────────────────────────────────────────────────────
@@ -217,6 +297,7 @@ export async function deploySource({
 	mode = 'deploy',
 	lastRecord = null,
 	via,
+	confirmMigration,
 }) {
 	// 0. Idempotency lock — covers both deploy and update modes.
 	const lockKey = `${tenantSlug}:${appSlug}`;
@@ -246,6 +327,7 @@ export async function deploySource({
 				api, store, rootDomain,
 				lastRecord, via, jobId,
 				knowledgeBase, knowledgeCache,
+				confirmMigration,
 			});
 		} finally {
 			_lockManager.release(lockKey);
@@ -396,6 +478,7 @@ async function _deployUpdate({
 	api, store, rootDomain,
 	lastRecord, via, jobId,
 	knowledgeBase, knowledgeCache,
+	confirmMigration,
 }) {
 	// 1. Compile.
 	const compileOpts = { target: 'cloudflare' };
@@ -404,6 +487,49 @@ async function _deployUpdate({
 	const compiled = compileProgram(source, compileOpts);
 	if (compiled.errors && compiled.errors.length) {
 		return { ok: false, stage: 'compile', jobId, errors: compiled.errors, mode: 'update' };
+	}
+
+	// 1b. Migration safety gate (Phase 3 Cycle 3.2). If the new compile changed
+	// any migrations/* file vs the bundle stored on lastRecord, refuse to upload
+	// until the caller passes confirmMigration:true. This blocks silent
+	// destructive schema changes — SQLite has no atomic schema swap, so a
+	// half-applied migration mid-update can wedge a live D1.
+	const oldBundleForGate = (lastRecord && lastRecord.lastBundle) || null;
+	const newBundleForGate = compiled.workerBundle || {};
+	const schemaChanged = oldBundleForGate && migrationsDiffer(oldBundleForGate, newBundleForGate);
+	if (schemaChanged && confirmMigration !== true) {
+		return {
+			ok: false,
+			stage: 'migration-confirm-required',
+			jobId,
+			mode: 'update',
+			migrationDiff: _describeMigrationDiff(oldBundleForGate, newBundleForGate),
+		};
+	}
+
+	// 1c. Apply migrations (Phase 3 Cycle 3.3). Only fires when schema actually
+	// changed AND the caller explicitly confirmed. Run BEFORE upload so a
+	// migration error keeps the live script untouched — old code stays bound to
+	// the old schema, no half-applied state. If applyMigrations succeeds but
+	// upload later fails, the schema IS half-applied; auto-rollback of schema
+	// changes is a known followup (out of scope per the plan).
+	if (schemaChanged && confirmMigration === true) {
+		const newMigrationSql = newBundleForGate['migrations/001-init.sql'] || '';
+		const d1Id = lastRecord && lastRecord.d1_database_id;
+		if (d1Id && newMigrationSql) {
+			try {
+				await api.applyMigrations({ d1_database_id: d1Id, sql: newMigrationSql });
+			} catch (e) {
+				return {
+					ok: false,
+					stage: 'migrations',
+					jobId,
+					mode: 'update',
+					status: e.status || 500,
+					error: e.message,
+				};
+			}
+		}
 	}
 
 	// 2. Filter secrets — only set keys that aren't already on the record.

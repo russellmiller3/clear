@@ -6,6 +6,130 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 — Shell Phase 5: data tables get the polished slate-on-ivory shape
+
+`display X as table` now compiles to a hand-designed-looking table from the same one-line Clear input. Status fields render as `clear-pill-{value}` colored badges. Name / customer / email columns prepend an avatar circle with initials. Numeric money columns are right-aligned with `tabular-nums`. Headers carry `data-sortable` and click-to-toggle `is-sorted`. Rows toggle `is-selected` on click. New `with actions:` block lists labeled action buttons (`'Approve' is primary` / `'Reject' is danger`) rendered as hover-revealed icons in a new rightmost column. Backwards compat: legacy `with delete and edit` shorthand still works. Cell type detection lives in a single runtime helper so future column types are one helper-edit. Click + sort wiring is idempotent. 10 new tests; +10 to `clear.test.js` total. All 8 core templates compile clean.
+
+---
+
+## 2026-04-26 — Lean Lesson 2: shape-search retrieval for canonical examples
+
+Russell asleep. Lean Lesson 2 from `plans/plan-lean-lessons-04-26-2026.md` shipped behind the existing text-match hint pipeline as an additive layer.
+
+**What changed.** Every Meph compile now retrieves canonical worked examples by program SHAPE — archetype + node-type histogram (endpoints, tables, agents, pages, cron, charts, validate, guard, service calls, api calls, websockets) + presence flags (auth, db, charts, agents, realtime, cron, external services) + leading-feature path. Jaccard similarity over a sparse-binary token set; same-archetype gets a +1.0 gate bonus so a real api_service match always out-ranks a cross-archetype match that happens to share keywords.
+
+**Why an additive layer.** Text-match (`querySuggestions`) only fires on compile errors. Half the bad code never errors — it compiles and runs but doesn't match the spec. Shape-search reaches Meph BEFORE the wall, on every compile, by showing him canonical examples that look structurally like what he's writing. Both layers run; combined hint cap stays at 5; the off-arm via `CLEAR_HINT_DISABLE=1` skips both for clean A/B.
+
+**New surfaces.**
+- `playground/supervisor/program-shape.js` — `computeShape()`, `shapeTokens()`, `jaccard()`, `shapeSimilarity()` over a parsed Clear program.
+- `scripts/match-shape.mjs` — CLI driver and importable `loadCanonicalExamples()` + `matchShape()`. Reads `playground/canonical-examples.md` once per process, caches signatures on the example record so subsequent compiles are microseconds.
+- `scripts/match-shape.test.mjs` — 17 tests: feature-vector correctness, Jaccard math, archetype gate, identity match, archetype-match-beats-keyword-match.
+- Wired into `playground/meph-tools.js` `compileTool` right after the text-match block. Fires on every compile (success or failure). Output goes into `result.hints.shape_text` + `result.hints.shape_count` + `result.hints.shape_top_archetype` so the observability log can see shape signal independently from text-match.
+
+**Test bump.** `scripts/match-shape.test.mjs` 17/17 new. All 8 core templates compile clean.
+
+---
+
+## 2026-04-26 — Lean Lesson 3: open-capability visibility for Meph
+
+Overnight worker session (Russell asleep). Single focused commit, no API spend, no push.
+
+**Lean Lesson 3 shipped — open-capability surface.** Lean's prover always shows the writer "what's left to prove." Clear today made Meph re-derive that himself from raw test output every cycle. New module `playground/supervisor/open-capabilities.js` collects three sources of "still open" work — TBD placeholders (from Lesson 1's `result.placeholders`), failing tests (from the most recent `clear test` snapshot), and unresolved compile errors (text-matched against the curated INTENT_HINTS canonical-fix table) — into one structured report that gets injected into Meph's per-turn system context BEFORE he writes code. Stays under 200 chars when nothing is open, under 1KB when fully populated. Lives in a separate volatile prompt block so it doesn't invalidate the stable-prefix cache.
+
+**Tests:** 18 unit tests in `playground/supervisor/open-capabilities.test.js` covering the empty case, each of the three sources in isolation, the summary heuristic (errors > failing tests > placeholders priority), and the all-three-at-once integration. All 8 core templates compile clean. Server boots clean.
+
+**Wired into:** `playground/server.js` `buildSystemWithContext` — new optional params `editorSource` and `lastCompileResult`, with belt-and-suspenders try/catch so a malformed compile result never blocks a chat turn.
+
+**Doc cascade:** FEATURES.md (one row), RESEARCH.md (paragraph under flywheel), `playground/system-prompt.md` (tells Meph what the new block means).
+
+---
+
+## 2026-04-26 — Lean Lesson 1: TBD placeholders ship (compiler + test runner + Meph guidance)
+
+Russell asleep, autonomous overnight worker. Lean Lesson 1 phases 1.1–1.4 landed in a single sequence of TDD commits. Phase 1.5 (the $10 measurement A/B sweep) is queued for Russell when he wakes — pure compiler + docs work today, no API spend.
+
+**The pitch.** Lean's `sorry` is the "to be determined" mark in proof assistants — drop it anywhere a proof step belongs and the rest of the file still type-checks. Clear gets the same primitive in plain English: `TBD`. Drop it anywhere a value or a step belongs, the program compiles green, runtime throws "placeholder hit at line N" if execution reaches it, and `clear test` catches that exact error and reports SKIPPED instead of FAILED. Lets Meph (or Russell) leave one piece unfinished and keep iterating on the rest instead of rewriting the whole program.
+
+**Phase 1.1 — grammar.** `tbd` registered in `synonyms.js` (canonical lowercase, source-form `TBD` flows through case-insensitive lookup), `SYNONYM_VERSION` 0.32.0 → 0.33.0. New `PLACEHOLDER` node type in `parser.js`. Statement dispatch entry in `CANONICAL_DISPATCH` so a bare `TBD` line parses cleanly. Expression-position handling in `parsePrimary` so any expression can be a placeholder. Three TDD tests: TBD in expression position, TBD as a standalone statement, TBD inside a function body.
+
+**Phase 1.2 — compiler stub.** `_compileNodeInner` PLACEHOLDER case (statement form) emits `throw new Error("placeholder hit at line N — fill it in or remove it")`. `exprToCode` PLACEHOLDER case (expression form) emits a self-throwing IIFE so any READ of the placeholder explodes with the same message. Both JS and Python backends covered. `compileProgram` walks the AST and exposes `result.placeholders` as `[{ line: N }]` sorted by line. Three TDD tests.
+
+**Phase 1.3 — test runner skip path.** Generated test harness now declares `let passed = 0, failed = 0, skipped = 0`. The `test()` helper's catch block inspects the thrown error: if `err.message` starts with the exact `"placeholder hit at line"` prefix the compiler emits, count as SKIPPED + log "SKIP:". Otherwise count as FAILED + log "FAIL:". Results line reads `X passed, Y failed, Z skipped due to stub`. Skipped tests do NOT trigger a non-zero exit code — partial programs can still ship CI without their own placeholders blocking. Three TDD tests.
+
+**Phase 1.4 — doc cascade + Meph guidance.** Updated `intent.md` (PLACEHOLDER row in expression nodes table), `SYNTAX.md` (canonical TBD section), `AI-INSTRUCTIONS.md` (TBD conventions section), `USER-GUIDE.md` (worked example in Chapter 17 Testing showing skip output), `FEATURES.md` (one row in Core Language table), and `playground/system-prompt.md` (Meph guidance). All documents emphasize: use TBD when the spec is genuinely open, do NOT use it to dodge hard parts, do NOT ship placeholders into production code, skipped tests are not coverage.
+
+**Test bump:** `clear.test.js` +9 from this work (TBD coverage). All 8 core templates compile clean throughout, `placeholders=0` on every template (no false positives on real apps).
+
+**What ships next:** Phase 1.5 measurement when Russell wakes. A/B sweep, 5 curriculum tasks × 5 trials × 2 conditions. ~$10 budget. Decision rules in `plans/plan-lean-lessons-04-26-2026.md`.
+
+---
+
+## 2026-04-25 — Shell Upgrade Phase 1: `app_*` presets get the slate-on-ivory polish
+
+The shell that wraps every app — sidebar + header + main — got the visual overhaul the Marcus-target mock has been calling for. Same Clear source (`section 'Sidebar' with style app_sidebar:` etc.), upgraded compiled output: semantic HTML5 tags, 240px rail, 56px sticky header with brand/breadcrumb/action data slots, slate-on-ivory token palette aligned with `landing/marcus-app-target.html`.
+
+**What shipped:**
+
+- `app_layout` now emits `<div class="flex min-h-screen">` (page owns the scroll, not the layout — was `h-screen overflow-hidden`).
+- `app_sidebar` now emits `<aside>` with 240px width, hairline-r border, vertical scroll, slate background tokens.
+- `app_main` now emits `<main class="flex-1 min-w-0 flex flex-col">`.
+- `app_header` now emits `<header>` at 56px sticky with `data-brand-slot` / `data-breadcrumb-slot` / `data-action-slot` attributes that later phases will use to wire selection state.
+- 5 new tests in `clear.test.js`. 2589 → 2594 passing. All 8 core templates compile clean (0 errors).
+
+**Doc cascade:** `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md` updated with the new emit shapes; `FEATURES.md` and `playground/system-prompt.md` updated this commit. The rest of the cascade (USER-GUIDE.md tutorial, FAQ "where the shell lives", landing page parity) pending since the chunk is small and the visual story is what users care about — chrome stops looking generic and starts looking like a product.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 1.
+
+---
+
+## 2026-04-25 — Decidable Core Path B Phase 1: `live:` keyword lands
+
+Decidable Core started in late April with the minimalist Path A — surgical validator rules + runtime caps that already rejected naked `while` and uncapped recursion (Phase 7 closed 2026-04-24, $0 spent). Path B is the bigger move: a real keyword that names the effect boundary explicitly, so the compiler can prove the rest of the program is total.
+
+Phase B-1 is the foundation: the `live:` keyword exists, parses, and emits. Body holds calls that talk to the world (`ask claude`, `call API`, `subscribe to`, timers). Today it's permissive — anything is allowed inside, code outside isn't restricted — but the fence is now visible to readers and to the compiler. Phase B-2 (separate chunk) adds the validator rule that *requires* effect-shaped calls to sit inside a `live:` fence; once that lands, pure blocks become provably total.
+
+**What shipped:**
+
+- New `LIVE_BLOCK` node type in `parser.js` with a parse function that mirrors `parseTryHandle` (block opener + indented body, empty-body parse error with a fix-it hint).
+- `live` keyword registered in `synonyms.js` (single-word, no synonyms — canonical form is `live:`). `SYNONYM_VERSION` bumped to `0.33.0`.
+- Compiler case in `compiler.js` emits the body inline with a `// live: block — explicit effect fence` comment marker so the fence is visible in the JS/Python output too.
+- Validator handles `LIVE_BLOCK` as a fence, not a scope: variables defined inside leak out to the enclosing scope (consistent with how `try:` treats forward-referenced bindings inside its body).
+- 11 new tests in `clear.test.js` under `describe('decidable core — live: block (Path B Phase 1)')`. Cover: parse at top-level / inside endpoint / inside agent, body content propagation, no-op compile, comment marker emit, empty-body parse error, JS-validity check, Python parity, and a "no `live:` block in source = zero regression" guard.
+- 2586 → 2597 tests passing (no regressions). All 8 core templates compile clean (0 errors).
+
+**Doc cascade:** `intent.md` (new node-type row), `SYNTAX.md` (new "Live Blocks" section under Error Handling), `AI-INSTRUCTIONS.md` (new subsection under Termination Rules — Meph reads this), `USER-GUIDE.md` (Chapter 14 Effect Fence subsection), `FEATURES.md` (new row in Core Language), `playground/system-prompt.md` (Meph guidance).
+
+**Why this chunk shape.** The `live:` keyword had to land before any validator rule could require effect calls to sit inside one. Splitting Phase B-1 (keyword + parse + emit, permissive) from Phase B-2 (validator rejection of effects outside `live:`) means: zero template migration this commit, zero risk of breaking apps Meph just learned, and the keyword is ready to be tightened in a separate small chunk.
+
+Plan: `plans/plan-decidable-core-04-24-2026.md` Phase B-1.
+
+---
+
+## 2026-04-25 — One-click updates land + Cloudflare Publish wedge complete
+
+The Publish window in Studio is now a real product. Marcus opens the deal-desk app, clicks Publish, and sees a live `*.buildclear.dev` URL. Two minutes later he edits a heading, clicks Publish again, and the new bundle is live in about two seconds — no new database, no domain reattach, no full secret push. That's the wedge: the demo path that turns "I built it locally" into "it's on the internet" with no Docker, no Fly, no terminal.
+
+Two epics finished today, plus a destructive-edit safety story for LAE.
+
+**One-click updates — Phases 1-6 (this session, this commit cascades the docs).** Plan: `plans/plan-one-click-updates-04-23-2026.md`. Six phases, ~22 TDD cycles, every one green:
+
+- **Phase 1 — tenants schema for version history.** `getAppRecord`, `recordVersion`, `updateSecretKeys`, `markAppDeployed` extended with `versionId`/`sourceHash`/`migrationsHash`/`secretKeys`. Per-app `versions[]` capped at 20 entries (older versions stay queryable on Cloudflare's side via `listVersions`). Lands on both `playground/tenants.js` (in-memory) and the `playground/tenants-postgres.js` mirror (CC-1 cycle 5).
+- **Phase 2 — `_deployUpdate` incremental path.** `deploySource` now routes on `mode: 'deploy' | 'update'`. The update path skips `provisionD1`, `attachDomain`, and the full `setSecrets` push (only NEW keys not in `lastRecord.secretKeys` get sent), captures the fresh `versionId` via `_captureVersionId` round-trip to `listVersions`, and calls `recordVersion` instead of `markAppDeployed`. Wall clock ~2s vs ~12s.
+- **Phase 3 — schema-change confirm gate.** `migrationsDiffer(oldBundle, newBundle)` byte-compares every `migrations/*.sql` plus `wrangler.toml`. Differences return `{ ok: false, stage: 'migration-confirm-required', migrationDiff: [...] }` from the orchestrator. Re-call with `confirmMigration: true` applies the migration first, then uploads. SQLite has no atomic schema swap, so silently auto-applying mid-update would break in-flight requests; the explicit confirm is the safe default.
+- **Phase 4 — `/api/deploy` handler routing + new endpoints.** Handler reads `store.getAppRecord` before dispatching, sets `mode: 'update'` if a record exists, propagates `confirmMigration` flag, surfaces `migration-confirm-required` as `409 MIGRATION_REQUIRED`. New `GET /api/app-info/:appSlug` returns `{ deployed, lastVersion, versions, hostname, scriptName }` so the UI knows which mode to render before the user clicks. New `GET /api/deploy-history/:app` Cloudflare path uses `listVersions` with a tenants-db fallback if Cloudflare is briefly unreachable.
+- **Phase 5 — Studio Publish window swaps to "Update" mode.** Modal calls `/api/app-info` on open; if deployed, swaps the heading to "Update *deal-desk.buildclear.dev*", shows last-deployed-at, disables the button when source hash matches the live version ("No changes since last deploy"), shows the schema-change diff + "Apply migration + update" button on `409 MIGRATION_REQUIRED`, and renders a version-aware success message ("Updated to version v-abc-123").
+- **Phase 6 — Version history panel + one-click rollback.** `View version history` link inside the Update modal expands a panel listing the last 20 versions. Currently-live version has a "Current" label, all others have a Rollback button. Clicking Rollback calls `POST /api/rollback`, which uses Cloudflare's `/deployments` endpoint via `wfp-api.rollbackToVersion` to flip the live URL (~1-2s wall clock), then writes a tombstone `recordVersion` entry with `note: 'rollback-from-vN'` so the timeline reads chronologically. `VERSION_GONE` errors trigger an automatic refetch + re-render so out-of-band Cloudflare-dashboard deletes don't strand the UI.
+
+**CC-4 wedge complete.** With Phases 1-6 of one-click updates landing on top of the earlier CC-4 cycles 1-7, the Publish path is end-to-end: first deploy provisions everything, every subsequent deploy is the fast update path, and rollback to any of the last 20 versions is one click. ROADMAP item #1 (CC-4) struck through. Demo path is unblocked.
+
+**LAE Phase C — destructive ship safety.** Cycles 4-5 landed today: the destructive ship endpoint requires a typed-confirmation phrase ("I understand — ship and destroy") and audit-first ordering (audit row written `pending` BEFORE the ship attempt; marked `shipped` or `ship-failed` AFTER; ship is REFUSED if the audit append fails). The destructive-edit widget UX wraps the same gate. Compounds the "edit live app" pitch with the GDPR/CCPA/HIPAA accountability surface destructive deletes need.
+
+**Phase 85a operator checklist.** New `LAUNCH.md` at repo root — Russell's five gating items to first paying Marcus customer: register `buildclear.dev`, Fly Trust Verified app, Stripe live keys, Anthropic org key, Postgres provision. Items 1 and 2 unblock items 3-5. Cost ~$15/yr for the .dev TLD plus ~2 hrs of Russell's time.
+
+**Test bump:** No new compiler tests (Phases 1-6 are runtime + Studio + tests in their own suites). `playground/tenants.test.js`, `playground/deploy-cloudflare.test.js`, `playground/deploy.test.js`, `playground/ide.test.js` all green throughout. Eight core templates compile clean. No production-Anthropic API spend on this thread.
+
+---
+
 ## 2026-04-25 — Mid-day session: LAE Phase D write path, Ghost defaults to free, MCP descriptions fixed
 
 Same-day session continued from the overnight run. Five small ships, all green, $0 production-Anthropic API spend.

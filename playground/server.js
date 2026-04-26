@@ -13,6 +13,7 @@ import { wireDeploy, getDeployDeps } from './deploy.js';
 import { deploySource as deploySourceCloudflare } from './deploy-cloudflare.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
+import { getOpenCapabilities, formatReportForMeph } from './supervisor/open-capabilities.js';
 import {
   loadBundle as _loadEBM,
   rank as _rankEBM,
@@ -2056,9 +2057,11 @@ app.post('/api/fetch', async (req, res) => {
 
 // =============================================================================
 // CF-1 — Compiler Flywheel beacon receiver. Compiled apps POST runtime events
-// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server. We
-// drop them into a JSONL file at playground/flywheel-beacons.jsonl. A future
-// session migrates this into the Factor DB (see plans/plan-compiler-flywheel-tier1).
+// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server.
+// Dual-write: append to JSONL (durable backup, easy to grep) AND insert a row
+// into the Factor DB's code_actions_runtime table so the friction script,
+// trainer, and ranker can all query runtime data the same way they query
+// compile-time rows. JSONL is preserved as belt-and-suspenders backup.
 // Per-compile_row_id rate-limit: 100 events/s, drop-and-count overflow.
 // =============================================================================
 const _beaconLog = join(__dirname, 'flywheel-beacons.jsonl');
@@ -2075,9 +2078,15 @@ app.post('/api/flywheel/beacon', (req, res) => {
   } else {
     _beaconRate.set(id, { sec, count: 1 });
   }
+  // 1) JSONL append — legacy, preserved as durable backup
   try {
     appendFileSync(_beaconLog, JSON.stringify({ ...ev, received_at: Date.now() }) + '\n');
   } catch {}
+  // 2) Factor DB insert — queryable copy. Fail-open: if the DB is offline
+  //    or unavailable, the JSONL still has the data and we keep serving.
+  if (_factorDB) {
+    try { _factorDB.logRuntimeBeacon(ev); } catch (e) { /* swallow — backup file has it */ }
+  }
   res.json({ ok: true });
 });
 
@@ -2700,7 +2709,7 @@ app.post('/api/write-file', (req, res) => {
 // (it's a user preference, not per-request data). If it actually changes
 // per request, each unique personality becomes its own cache entry —
 // acceptable overhead.
-function buildSystemWithContext(baseSystem, personality, testSnapshot) {
+function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSource, lastCompileResult) {
   const head = personality
     ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n'
     : '';
@@ -2725,6 +2734,25 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot) {
       parts.push(`All tests passing.\n`);
     }
     blocks.push({ type: 'text', text: '\n\n---\n\n' + parts.join('') });
+  }
+
+  // Lean Lesson 3 — open-capability visibility. Surface placeholders, failing
+  // tests, and unresolved compile errors to Meph as ONE structured list before
+  // he writes code, instead of forcing him to re-derive "what's still missing"
+  // from raw test output every cycle. Mirrors Lean's goal display. Cheap surface
+  // change — under 200 chars when nothing is open, under 1KB even when fully
+  // populated. Lives in a separate volatile block so it doesn't invalidate the
+  // stable cache.
+  try {
+    const report = getOpenCapabilities(editorSource || '', testSnapshot, lastCompileResult);
+    const formatted = formatReportForMeph(report);
+    if (formatted) {
+      blocks.push({ type: 'text', text: '\n\n---\n\n' + formatted });
+    }
+  } catch (err) {
+    // Belt and suspenders — never let the open-capabilities surface block a
+    // chat turn. Log and continue if the report builder hits something weird.
+    console.warn('[open-capabilities] report build failed:', err && err.message);
   }
 
   return blocks;
@@ -3025,7 +3053,7 @@ app.post('/api/chat', async (req, res) => {
         model: MEPH_MODEL,
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
-        system: buildSystemWithContext(systemPrompt, personality, testSnapshot),
+        system: buildSystemWithContext(systemPrompt, personality, testSnapshot, currentSource, lastCompileResult),
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: cachedMessages,

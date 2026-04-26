@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 124 node types. ~2500 compiler tests. Zero npm dependencies in the compiler.
+**Headline numbers:** 125 node types. ~2540 compiler tests. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
@@ -17,6 +17,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
+- App shell (`app_layout`, `app_sidebar`, `app_main`, `app_header` presets) compiles to a polished slate-on-ivory chrome — semantic `<aside>`/`<main>`/`<header>`, 240px rail, 56px sticky header, brand/breadcrumb/action slots ready to wire.
 
 **Talk to Claude inside your code**
 - Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
@@ -34,6 +35,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Same Clear file → Node + Express, or Python + FastAPI, or Cloudflare Workers + D1.
 - Cloudflare target gets cron triggers, Workflows for durable agents, Web Crypto auth automatically.
 - Deploy to Fly with one click from Studio; rollback to any prior version.
+- After the first deploy, every Publish click is an incremental update — new bundle live in ~2s, schema changes ask before reshaping the database, rollback to any of the last 20 versions is one click.
 
 **Edit your live app while users are using it (LAE)**
 - Open your deployed app in the browser → 🔧 widget → "add a region field" → ship in 4 seconds.
@@ -46,6 +48,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
 - 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
 - Ghost Meph: route /api/chat to local Claude Code, Ollama, or OpenRouter for $0 research sweeps.
+- Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 
 **Developer tooling (Dave-first wedge)**
 - VSCode + Cursor extension with autocomplete + live diagnostics.
@@ -88,11 +91,13 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | If / else | `if x is 5:` ... `otherwise:` | Also inline: `if x is 5 then show 'yes'` |
 | Match / when | `match x:` + `when 'a':` + `otherwise:` | Pattern matching |
 | Try / catch | `try:` + `if error:` | Typed handlers: `if error 'not found':` (404) |
+| Live block (effect fence) | `live:` + indented body | Explicit label for code that talks to the world (`ask claude`, `call API`, `subscribe to`, timers). Permissive in Phase B-1 (2026-04-25); Phase B-2 will require effect-shaped calls to sit inside `live:`. See PHILOSOPHY Rule 18. |
 | Break / continue | `stop` / `skip` | |
 | Comments | `# text` | |
 | Modules | `use 'helpers'` | Namespaced, selective, or inline-all |
 | Script escape | `script:` + raw JS | For anything Clear doesn't cover |
 | Transactions | `as one operation:` / `atomically:` / `transaction:` / `begin:` | BEGIN/COMMIT/ROLLBACK |
+| TBD placeholder | `set greeting = TBD` / a line that's just `TBD` | Lean Lesson 1 — leave one piece unfinished, ship the rest. Compiles green, runtime throws "placeholder hit at line N — fill it in or remove it" when reached. Tests that exercise a stub report SKIPPED, not FAILED. `result.placeholders[]` lists every open hole. |
 
 ## Expressions
 
@@ -135,7 +140,8 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 
 | Display Format | Syntax | Output |
 |----------------|--------|--------|
-| Table | `display X as table showing col1, col2` | HTML table |
+| Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows |
+| Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
 | Cards | `display X as cards showing name, description` | Card grid |
 | List | `display X as list` | Bullet list |
 | Currency | `display X as dollars` | `$1,234.56` |
@@ -362,6 +368,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Builder Mode (v0.3) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. v0.2 added a Marcus-first tile gallery on empty preview (5 featured apps + "See more"). v0.3 added a 3-ship counter (source pane defaults visible for first 3 successful Publishes, hidden after) + click-to-edit (clicking an iframe element prefills the chat input with `Change the "<text>" button/link — `). |
 | First-visit onboarding | localStorage `clear-onboarding-seen` | Studio shows a one-time welcome card prepended to the chat on first load + auto-focuses chat input. Per-mode copy. Dismissed on first keystroke or × click. |
 | Ghost Meph (chat backend dispatch) | `MEPH_BRAIN` env var | Routes /api/chat to local backends instead of Anthropic. Backends: `cc-agent` (spawns local `claude` CLI; text-only MVP, tool support pending), `ollama:<model>` (local Ollama daemon at `OLLAMA_HOST`), `openrouter` / `openrouter:qwen` (OpenRouter API, requires `OPENROUTER_API_KEY`). All return Anthropic-shaped SSE so /api/chat is unchanged. See `playground/ghost-meph/` and `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`. |
+| Shape-search retrieval (Lean Lesson 2) | Every Meph compile retrieves canonical worked examples whose program SHAPE matches the source — archetype, table/endpoint/agent histogram, presence flags (auth, db, charts, agents). Layered next to (not replacing) the existing text-match `querySuggestions` pipeline; combined hint cap stays at 5. CLI driver at `scripts/match-shape.mjs` reads `playground/canonical-examples.md`. Disabled by `CLEAR_HINT_DISABLE=1` for clean A/B. See `playground/supervisor/program-shape.js`. |
 
 ## Live App Editing (LAE — Phase A + B shipped)
 
@@ -373,8 +380,10 @@ Conversational edits to a running, deployed Clear app. Owner authenticates, open
 | Owner-only authorization | `liveEditAuth` middleware checks JWT + owner role before allowing edits. |
 | Change classifier | Every diff classified `additive` / `reversible` / `destructive`. Additive ships instantly; reversible needs one-click confirm; destructive requires typed confirmation + reason string + audit entry (Phase C — not yet built). |
 | Cloud rollback | `/__meph__/api/cloud-rollback` — point cloud-deployed apps back to a prior version. Studio Ship + Undo route to cloud paths when on a deployed app. |
-| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. |
-| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — additive edits ship in seconds. |
+| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. Capped at 20 entries per app in tenants-db (older versions stay queryable on Cloudflare's side via `listVersions`). |
+| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — re-uploads bundle only, skips D1 reprovision + domain reattach + full secrets push. Wall clock ~2s vs ~12s for fresh deploy. |
+| Schema-change confirm gate | `migrationsDiffer()` byte-compares both `migrations/*.sql` and `wrangler.toml` between live + new bundles. Differences pause the update and return `409 MIGRATION_REQUIRED` with a per-file diff. Re-POST with `confirmMigration: true` applies the migration before uploading the new code. |
+| One-click rollback (Studio) | Version history panel inside the Publish window lists the last 20 versions with timestamps; Rollback button calls `/api/rollback`, records a tombstone version with `note: 'rollback-from-vN'`. Currently-live version shows "Current" label, no button. |
 
 ## Developer Tooling (Dave-first wedge — shipped 2026-04-24)
 

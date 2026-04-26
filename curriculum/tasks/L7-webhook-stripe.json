@@ -1,5 +1,6 @@
 {
   "id": "webhook-stripe",
+  "held_out": true,
   "level": 7,
   "title": "Stripe Webhook Handler",
   "description": "ARCHETYPE: webhook_handler. Shape: backend-only (no pages, no login/signup scaffold), one POST endpoint on a /webhook/* path, saves incoming payload to an Events table, returns { received: true }. DO NOT build auth, pages, or CRUD endpoints — this is a single-purpose receiver, not an app. Path: POST /webhook/stripe. Incoming body: { type, amount, customer_email, signature }. Check that a 'signature' field exists on the request (that's enough — no real HMAC needed for the test). Persist with fields event_type, amount, customer_email, received_at (auto). Respond with { received: true }.",

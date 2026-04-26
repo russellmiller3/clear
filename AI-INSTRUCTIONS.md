@@ -673,6 +673,52 @@ A few plain English words look like keyword typos to Clear's tokenizer. Using th
 | `login` as a variable | Reserved keyword context | `login_attempt`, `login_event` |
 | `search` as a bare variable | Looks like a forward-reference | define it first OR use `query_text` |
 
+## TBD — Placeholder Marker (use sparingly, on purpose)
+
+`TBD` lets you leave one piece of a program unfinished and keep the rest
+working. The compiler accepts it anywhere a value or a step belongs, the
+program still compiles green, and only the line with the placeholder
+fails at runtime — every other piece runs.
+
+**Use `TBD` when:**
+- The spec is ambiguous about ONE piece (auth flow, edge case, error message
+  copy, audit log shape) and you want compiler feedback on the rest now.
+- You are sketching the structure of a program and want the parser + validator
+  to check what is written without being blocked by what is not.
+- You are working with Russell and he says "leave the X part for now, focus
+  on the Y part." Drop a `TBD` for X, ship Y, ask later.
+
+**Do NOT use `TBD` to:**
+- Dodge a hard part you do not feel like writing. The placeholder is a
+  bookmark for a decision that is genuinely OPEN, not a hiding spot.
+- Skip a piece a test will exercise. Tests that hit a `TBD` report as
+  SKIPPED, which looks fine in the pass count but means the test did
+  not actually verify anything. Coverage you skip is coverage you do not have.
+
+**How it behaves:**
+- Compiles with zero compile errors. Programs with one or more `TBD`s ship.
+- Runtime hits the line → throws `placeholder hit at line N — fill it in or remove it`.
+- `clear test` catches that exact error and reports the test as SKIPPED, not
+  FAILED. Results line: `X passed, Y failed, Z skipped due to stub`.
+- `compileProgram(src).placeholders` returns every `TBD` line — useful for
+  the canonical-examples library and any "open holes" view.
+
+```clear
+# Value position
+greeting = TBD
+
+# Step position (a whole line)
+to greet with name:
+  TBD
+
+# Realistic mid-program use
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                       # audit log piece is for next session
+  send back lead
+```
+
 ## Common Mistakes (read this before writing Clear)
 
 | Wrong | Right | Why |
@@ -1659,22 +1705,36 @@ writing a custom style block.
 | `faq_section` | bg-base-100, py-16/24 | Accordion Q&A |
 | `page_footer` | bg-base-200, border-t, py-12/16 | Links, legal, copyright |
 
-#### App UI Presets (8)
+#### App UI Presets (Phase 1 shell upgrade — 04-25-2026)
 
-| Preset | What it does | Use for |
-|--------|-------------|---------|
-| `app_layout` | `flex h-screen overflow-hidden` | Root wrapper for any dashboard |
-| `app_sidebar` | w-56, bg-base-200/60, border-r, flex-col | Navigation sidebar |
-| `app_header` | Sticky, h-16, backdrop blur, border-b, flex between | Top bar with title + actions |
-| `app_main` | flex-1 flex-col, overflow hidden | Right-side container (header + content) |
-| `app_content` | flex-1, overflow-y-auto, p-6, flex-col gap-5 | Scrollable main content area |
-| `app_card` | bg-base-200, rounded-xl, border, shadow-md, p-5 | Any content card in a dashboard |
-| `metric_card` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
-| `app_table` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
-| `app_modal` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
-| `empty_state` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
-| `app_list` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
-| `form` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+The four shell presets emit semantic HTML5 tags + slate-on-ivory chrome
+matching `landing/marcus-app-target.html`. Sizes match the mock — 240px rail,
+56px sticky header — and read `--clear-bg-rail`, `--clear-bg-canvas`,
+`--clear-line` design tokens.
+
+| Preset | HTML tag | What it produces | Use for |
+|--------|----------|------------------|---------|
+| `app_layout` | `<div>` | `flex min-h-screen` (page owns scroll, not viewport-clipped) | Root wrapper for any dashboard |
+| `app_sidebar` | `<aside>` | 240px rail, hairline-r, scroll-y, rail bg | Navigation sidebar |
+| `app_header` | `<header>` | 56px sticky bar, hairline-b, canvas bg, three slots: brand / breadcrumb / actions | Top bar with title + actions |
+| `app_main` | `<main>` | `flex-1 min-w-0 flex flex-col` | Right-side container (header + content) |
+| `app_content` | `<div>` | flex-1, overflow-y-auto, p-6 | Scrollable main content area |
+| `app_card` | `<div>` | bg-base-100, rounded-xl, border, shadow-sm, p-5 | Any content card in a dashboard |
+| `metric_card` | `<div>` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
+| `app_table` | `<div>` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
+| `app_modal` | `<div>` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
+| `empty_state` | `<div>` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
+| `app_list` | `<div>` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
+| `form` | `<div>` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+
+**`app_header` slot rule** (auto-sorted at compile time):
+- `heading` children land in `data-clear-slot="brand"` (left)
+- text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
+- `button` children → `data-clear-slot="actions"` (right, ml-auto)
+
+This means a Clear author writes `heading 'Dashboard'`, `text 'Workspace > X'`,
+and `button 'New'` inside `app_header:` and they appear in the right places —
+no manual slot wiring. The compiler does the layout.
 
 #### Blog Presets (3)
 
@@ -2906,7 +2966,6 @@ closes the foot-gun for you. Declare your bounds explicitly when
 you want different defaults; otherwise trust the compiler to pick
 a sensible one.
 
-
 ## General-Purpose Language Features
 
 ### String Interpolation
@@ -3052,3 +3111,4 @@ Apps Meph builds should be deploy-ready out of the box. The Deploy button in Stu
 - **Name apps with lowercase alphanumeric + hyphens.** Studio rejects anything else before talking to the builder. 3–32 chars. No shell metacharacters, no spaces.
 - **Plan for secrets the app will need.** `requires login` auto-gets a `JWT_SECRET`. `use stripe` / `use twilio` / `use sendgrid` prompt the customer for the matching key in the Deploy modal.
 - **Avoid direct `use '@anthropic-ai/sdk'`.** The `ask claude` helper is the canonical way to call Claude — direct SDK use bypasses metering and the customer's own Anthropic key gets billed instead of their plan credit.
+- **Re-deploys are incremental updates.** If Marcus has already deployed an app, editing the source and clicking the Publish button takes the fast update path — Studio re-uploads only the new bundle and stamps a new version against the existing tenant. No new D1 database, no domain reattach, no full secrets push. Wall-clock is ~2s instead of ~12s. The only thing that pauses the update is a schema change (any `migrations/*.sql` or `wrangler.toml` byte differs from the last shipped version) — Studio responds with a 409 `MIGRATION_REQUIRED`, shows the diff, and asks for an explicit "apply migration + update" click before proceeding. So: don't tell Marcus to "redeploy from scratch" or "delete the app and ship again" to push a small change — the Publish button already does the right thing. Use the Version history panel inside Publish to roll back to any of the last 20 versions in one click.

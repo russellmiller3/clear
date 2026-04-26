@@ -20,7 +20,7 @@
 import { SessionRegistry } from './registry.js';
 import { WorkerSpawner } from './spawner.js';
 import { FactorDB } from './factor-db.js';
-import { tasks as allTasks } from '../../curriculum/index.js';
+import { tasks as allTasks, isHeldOut } from '../../curriculum/index.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync, unlinkSync, realpathSync, existsSync } from 'fs';
@@ -327,10 +327,21 @@ export async function runSweep({
   timeoutPerTaskMs = 180_000,
   dryRun = false,
   strict = false,
+  real = false,
+  excludeHeldOut = false,
 } = {}) {
-  const filtered = taskFilter
+  // Held-out tasks (Phase 5 of plans/plan-winner-harvest-04-26-2026.md) are
+  // STILL graded by sweeps — that's the whole point of the held-out split,
+  // it gives us an uncontaminated measurement signal. They are SKIPPED only
+  // by the seeding step (cold-start.js Pass 2) and any future promotion
+  // pipeline (Phase 4). Pass `excludeHeldOut: true` if you specifically
+  // want a training-only sweep (rare; mostly useful for debugging seeding).
+  let filtered = taskFilter
     ? allTasks.filter(t => taskFilter.includes(t.id))
     : allTasks;
+  if (excludeHeldOut) {
+    filtered = filtered.filter(t => !isHeldOut(t));
+  }
 
   if (filtered.length === 0) {
     console.log('No tasks match the filter.');
@@ -339,22 +350,27 @@ export async function runSweep({
 
   const buckets = partitionTasks(filtered, workers);
 
+  const heldOutCount = filtered.filter(isHeldOut).length;
   console.log(`\n=== Curriculum Sweep ===`);
-  console.log(`  Tasks: ${filtered.length}`);
+  console.log(`  Tasks: ${filtered.length}${heldOutCount ? ` (${heldOutCount} held-out — graded but not seeded)` : ''}`);
   console.log(`  Workers: ${workers}`);
   console.log(`  Timeout per task: ${timeoutPerTaskMs / 1000}s`);
   console.log(`  Dry run: ${dryRun}`);
   console.log();
   buckets.forEach((bucket, i) => {
-    console.log(`  worker-${i + 1} (port ${WORKER_BASE_PORT + i}): ${bucket.map(t => t.id).join(', ') || '—'}`);
+    const labelled = bucket.map(t => isHeldOut(t) ? `${t.id}*` : t.id);
+    console.log(`  worker-${i + 1} (port ${WORKER_BASE_PORT + i}): ${labelled.join(', ') || '—'}`);
   });
+  if (heldOutCount > 0) {
+    console.log(`  (* = held-out; never feeds the hint retriever or canonical-examples library)`);
+  }
 
   if (dryRun) {
     console.log('\n[DRY RUN] Would process above. Exiting.');
     return { tasksRun: 0, rowsAdded: 0, dryRun: true };
   }
 
-  const pre = validateSweepPreconditions(process.env, { real: !!opts.real });
+  const pre = validateSweepPreconditions(process.env, { real: !!real });
   if (!pre.ok) {
     throw new Error(pre.reason);
   }
@@ -392,6 +408,16 @@ export async function runSweep({
   try { unlinkSync(SWEEP_REGISTRY_PATH); } catch {}
   const registry = new SessionRegistry(SWEEP_REGISTRY_PATH);
   const spawner = new WorkerSpawner(registry);
+
+  // Belt-and-suspenders: even though we just unlinked the registry file,
+  // a sibling sweep using a non-default CLEAR_SWEEP_REGISTRY path could
+  // share this DB. Drop any leftover idle/done rows + anything older than
+  // 1h before we INSERT new worker rows — otherwise abnormal exits leave
+  // stale rows that trip `UNIQUE constraint failed: sessions.id`.
+  const staleRemoved = registry.cleanupStale();
+  if (staleRemoved > 0) {
+    console.log(`Cleared ${staleRemoved} stale session row(s) from previous run.`);
+  }
 
   try {
     console.log(`Spawning ${workers} workers...`);
@@ -439,6 +465,12 @@ export async function runSweep({
     console.log(`  Completed: ${flatResults.filter(r => r.ok).length}`);
     console.log(`  Stuck: ${flatResults.filter(r => r.stuck).length}`);
     console.log(`  Timed out: ${flatResults.filter(r => r.timedOut).length}`);
+    const failed = flatResults.filter(r => !r.ok && !r.stuck && !r.timedOut);
+    console.log(`  Failed: ${failed.length}`);
+    if (failed.length > 0) {
+      const errSample = failed.filter(r => r.error).slice(0, 3).map(r => `${r.task}: ${r.error}`);
+      if (errSample.length > 0) console.log(`    sample errors: ${errSample.join(' | ')}`);
+    }
     console.log(`  Factor DB: ${startStats.total} → ${endStats.total} rows (+${endStats.total - startStats.total})`);
     console.log(`  Passing rows: ${startStats.passing} → ${endStats.passing} (+${endStats.passing - startStats.passing})`);
 
@@ -499,6 +531,10 @@ if (_thisFile === _entryFile) {
   // rest of the pipeline sees the same backend it would on an explicit
   // export.
   const real = argv.includes('--real');
+  // --exclude-held-out: skip the 5 held-out test-set tasks for this sweep.
+  // Default: held-out tasks ARE included (they get GRADED — that's their
+  // purpose). Pass this flag if you specifically want a training-only sweep.
+  const excludeHeldOut = argv.includes('--exclude-held-out');
   if (!real && !process.env.MEPH_BRAIN) {
     process.env.MEPH_BRAIN = 'cc-agent';
     console.log('GM-6: defaulted MEPH_BRAIN=cc-agent (no API spend). Pass --real to opt into the production Anthropic API.');
@@ -511,6 +547,7 @@ if (_thisFile === _entryFile) {
     dryRun,
     strict,
     real,
+    excludeHeldOut,
   };
 
   runSweep(opts)

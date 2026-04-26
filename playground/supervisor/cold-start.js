@@ -12,7 +12,7 @@ import { compileProgram } from '../../index.js';
 import { parse } from '../../parser.js';
 import { FactorDB } from './factor-db.js';
 import { classifyArchetype } from './archetype.js';
-import { tasks } from '../../curriculum/index.js';
+import { tasks, trainingTasks, isHeldOut } from '../../curriculum/index.js';
 import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -117,9 +117,15 @@ async function run() {
   // =========================================================================
   // Pass 2: Curriculum skeletons (compile attempts — mostly partial/failing)
   // =========================================================================
-  console.log('\n=== Pass 2: Curriculum skeletons ===\n');
+  // Held-out tasks (Phase 5 of plans/plan-winner-harvest-04-26-2026.md) are
+  // EXCLUDED from seeding — their skeletons must not feed the hint retriever
+  // or the future canonical-examples library, otherwise the A/B measurement
+  // becomes a memorization test. They still get GRADED by curriculum-sweep
+  // so we can measure pass-rate lift on uncontaminated tasks.
+  const heldOutCount = tasks.length - trainingTasks().length;
+  console.log(`\n=== Pass 2: Curriculum skeletons === (${heldOutCount} held-out tasks skipped from seeding)\n`);
 
-  for (const task of tasks) {
+  for (const task of trainingTasks()) {
     const source = task.skeleton || `build for javascript backend\n\n# ${task.title}\n`;
     const result = compileProgram(source);
     const compileOk = result.errors.length === 0 ? 1 : 0;
@@ -165,7 +171,18 @@ async function run() {
   db.close();
 }
 
-run().catch(err => {
-  console.error('Cold start failed:', err.message);
-  process.exit(1);
-});
+// Only kick off the cold-start when this file is the main entry — never on
+// import. Without this guard, anyone who imports cold-start.js (e.g. a test
+// that wants to call `run()` itself, or a tool that just wants the helper
+// functions) accidentally triggers a full Factor DB seed pass. Caught
+// 2026-04-25 when a winner-harvest worker imported the module to verify
+// `trainingTasks()` wiring and inadvertently inserted 13 gold rows.
+const __isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (__isMain) {
+  run().catch(err => {
+    console.error('Cold start failed:', err.message);
+    process.exit(1);
+  });
+}
+
+export { run };

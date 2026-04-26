@@ -96,6 +96,20 @@ export function _setWfpApiForTest(api) {
 	_wfpApi = api;
 }
 
+// One-click updates Phase 4 — test hook that lets a test substitute the
+// deploySource function so it can assert exactly which opts the handler
+// passes (mode, confirmMigration, lastRecord, etc). Without this hook,
+// integration tests can only verify side-effects on the WfpApi fake which
+// doesn't see the orchestrator-level opts. Pass null to restore the real one.
+let _deployFnForTest = null;
+export function _setDeployFnForTest(fn) {
+	_deployFnForTest = fn;
+}
+function _deployCloudflare(opts) {
+	const fn = _deployFnForTest || deploySourceCloudflare;
+	return fn(opts);
+}
+
 // -------- tarball packing (pure Node, matches the builder's tar parser) --------
 function posixTarBlock(name, body, typeflag = '0') {
 	const block = Buffer.alloc(512);
@@ -228,6 +242,26 @@ export async function deploySource({ source, tenantSlug, appSlug, secrets = {}, 
 	return { ok: true, jobId: builderRes.json?.jobId, needsSecrets: pkgRes.needsSecrets, aiCallsDetected: pkgRes.aiCallsDetected };
 }
 
+// One-click updates Phase 4 cycle 4.4 — shape the /api/app-info response
+// consistently for every caller (modal "Update vs Deploy" branch, history
+// panel, rollback button). When `record` is null, the app was never
+// deployed under (tenant, slug); return deployed:false so the modal can
+// render the "Deploy" branch on a single response shape. When present,
+// surface hostname / scriptName / versions[] (newest-first per
+// getAppRecord) plus a one-line lastVersion shortcut.
+function _appInfoResponse(record) {
+	if (!record) return { ok: true, deployed: false };
+	const versions = Array.isArray(record.versions) ? record.versions : [];
+	return {
+		ok: true,
+		deployed: true,
+		hostname: record.hostname || null,
+		scriptName: record.scriptName || null,
+		versions,
+		lastVersion: versions.length > 0 ? versions[0] : null,
+	};
+}
+
 // -------- shared deploy deps (for sibling modules that need the same
 // store + CF API the /api/deploy route uses). Populated by wireDeploy.
 // Used by the Live App Editing widget's cloud-ship path so it doesn't
@@ -270,6 +304,48 @@ export function wireDeploy(app, opts = {}) {
 		res.json({ ok: true, slug });
 	});
 
+	// CC-4 cycle 5 — test-only endpoint to install a built-in fake WfpApi
+	// inside this running server's _wfpApi singleton. Without this the deploy
+	// path tries to talk to real Cloudflare and 503s when the API token is
+	// missing. Body {reset:true} clears the singleton back to the real lazy
+	// getter; otherwise the default fake walks the orchestrator pipeline
+	// (provisionD1 → applyMigrations → uploadScript → setSecrets →
+	// attachDomain) and returns the same shape the real wrapper does. The
+	// fake is HARD-CODED here on purpose — accepting arbitrary fake bodies
+	// over the wire would let any caller in test mode redirect deploys to
+	// arbitrary code. Mirrors makeFakeWfpApiForDeployTest in deploy.test.js.
+	app.post('/api/_test/inject-wfp-api', async (req, res) => {
+		if (process.env.NODE_ENV !== 'test' && !process.env.CLEAR_ALLOW_SEED) return res.status(404).end();
+		if (req.body && req.body.reset === true) {
+			_setWfpApiForTest(null);
+			return res.json({ ok: true, reset: true });
+		}
+		const calls = [];
+		const fake = {
+			calls,
+			provisionD1: async (p) => { calls.push({ op: 'provisionD1', tenantSlug: p.tenantSlug, appSlug: p.appSlug }); return { ok: true, d1_database_id: 'd1-test', name: `${p.tenantSlug}-${p.appSlug}` }; },
+			applyMigrations: async () => { calls.push({ op: 'applyMigrations' }); return { ok: true }; },
+			uploadScript: async (p) => { calls.push({ op: 'uploadScript', scriptName: p.scriptName }); return { ok: true, result: { id: 'script-id' } }; },
+			setSecrets: async () => { calls.push({ op: 'setSecrets' }); return { ok: true, failed: [] }; },
+			attachDomain: async (p) => { calls.push({ op: 'attachDomain', hostname: p.hostname }); return { ok: true }; },
+			deleteScript: async () => ({ ok: true }),
+			listVersions: async () => ({ ok: true, versions: [] }),
+			rollbackToVersion: async () => ({ ok: true }),
+		};
+		_setWfpApiForTest(fake);
+		res.json({ ok: true, injected: true });
+	});
+
+	// CC-4 cycle 5 — test-only endpoint to read the multi-tenant subdomain
+	// binding the orchestrator wrote during deploy. Returns the same JSON
+	// the dev-mode subdomain router would resolve against, so the smoke test
+	// can assert the binding landed without reaching into module state.
+	app.get('/api/_test/lookup-subdomain/:sub', async (req, res) => {
+		if (process.env.NODE_ENV !== 'test' && !process.env.CLEAR_ALLOW_SEED) return res.status(404).end();
+		const row = await store.lookupAppBySubdomain(req.params.sub);
+		res.json(row);
+	});
+
 	// Deploy
 	app.post('/api/deploy', async (req, res) => {
 		const tenant = await requireTenant(req, res);
@@ -307,7 +383,46 @@ export function wireDeploy(app, opts = {}) {
 			let api;
 			try { api = getWfpApi(); }
 			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
-			const r = await deploySourceCloudflare({
+
+			// CC-4 cycle 6 — cross-tenant slug uniqueness gate. The hostname
+			// <slug>.buildclear.dev is a global namespace; only one tenant can
+			// own 'deals.buildclear.dev'. Per-tenant uniqueness already lives
+			// in cfDeploys keyed by tenantSlug/appSlug — the orchestrator's
+			// mode:'update' path handles same-tenant redeploy. This pre-flight
+			// catches the cross-tenant case ONLY: another tenant already owns
+			// this hostname → 409 with a one-click recovery suggestion.
+			//
+			// Suggested slug is <slug>-<tenant_short>, where tenant_short is
+			// the tenant slug minus the leading 'clear-' prefix, capped at 6
+			// chars. Predictable + readable; the modal can render it as
+			// "Use 'deals-globex' instead?" and Russell can revise the shape
+			// later (the test fixture allows either <tenant> or <random>).
+			const collision = await store.lookupAppBySubdomain(appSlug);
+			if (collision && collision.tenantSlug !== tenant.slug) {
+				const tenantShort = String(tenant.slug || '').replace(/^clear-/, '').slice(0, 6) || 'mine';
+				return res.status(409).json({
+					ok: false,
+					error: 'slug taken',
+					hint: `Another tenant owns ${appSlug}.${cloudflareRootDomain()}. Pick a different name.`,
+					suggestedSlug: `${appSlug}-${tenantShort}`,
+				});
+			}
+
+			// One-click updates Phase 4 cycle 4.1 — when an app record
+			// already exists for this (tenant, slug), route the orchestrator
+			// to its incremental-update path instead of re-running the full
+			// provision pipeline (D1, migrations, domain attach). Detection
+			// is a single store lookup BEFORE dispatch so the orchestrator
+			// stays a pure switch on `mode` (no decision logic inside).
+			const lastRecord = await store.getAppRecord(tenant.slug, appSlug);
+			const isRedeploy = !!lastRecord;
+			// One-click updates Phase 4 cycle 4.2 — confirmMigration flows
+			// from the modal's "Apply migration + update" button down to the
+			// orchestrator's gate. When the schema differs and confirmMigration
+			// is absent, the orchestrator returns 409 (cycle 4.3); when present,
+			// it applies the new schema then uploads the script.
+			const confirmMigration = req.body && req.body.confirmMigration === true;
+			const r = await _deployCloudflare({
 				source,
 				tenantSlug: tenant.slug,
 				appSlug,
@@ -320,6 +435,8 @@ export function wireDeploy(app, opts = {}) {
 				// no-op so the rollback ladder still runs without throwing.
 				// Real delete is tracked in reconcile-wfp.js meanwhile.
 				deleteD1: async () => ({ ok: true, skipped: true }),
+				...(isRedeploy ? { mode: 'update', lastRecord } : {}),
+				...(confirmMigration ? { confirmMigration: true } : {}),
 			});
 			// Stash the job snapshot so /api/deploy-status can serve it.
 			if (r.jobId) {
@@ -330,6 +447,18 @@ export function wireDeploy(app, opts = {}) {
 			if (!r.ok) {
 				if (r.conflict) return res.status(409).json({ ok: false, existingJobId: r.existingJobId, hint: r.hint });
 				if (r.stage === 'compile') return res.status(400).json({ ok: false, stage: 'compile', errors: r.errors });
+				// One-click updates Phase 4 cycle 4.3 — schema change blocked
+				// pending explicit user confirmation. 409 (not 400) = "this
+				// request is valid but conflicts with current state." The UI
+				// renders the migration diff and offers "Apply migration +
+				// update" which re-POSTs with confirmMigration:true.
+				if (r.stage === 'migration-confirm-required') {
+					return res.status(409).json({
+						ok: false,
+						code: 'MIGRATION_REQUIRED',
+						migrationDiff: r.migrationDiff || [],
+					});
+				}
 				if (r.stage === 'record') {
 					// Partial success — app IS live, just not recorded yet. UI shows
 					// the URL and tells user to refresh after reconcile catches up.
@@ -347,7 +476,24 @@ export function wireDeploy(app, opts = {}) {
 				const boundHost = (r.url || '').replace(/^https?:\/\//, '');
 				console.log(`[cc-4] bound ${tenant.slug}/${appSlug} -> ${boundHost}`);
 			} catch { /* logging never breaks the response */ }
-			return res.json({ ok: true, jobId: r.jobId, url: r.url, degraded: r.degraded || false });
+			// CC-4 cycle 7 — pass domainError through when a custom domain
+			// failed (e.g. DOMAIN_TAKEN). The modal needs the code so it can
+			// tell the owner "your custom domain was already in use; the app
+			// is reachable at <slug>.buildclear.dev" instead of a vague
+			// "degraded" label.
+			//
+			// One-click updates Phase 4 cycle 4.1 — surface mode + versionId
+			// from the orchestrator's update branch so the modal can render
+			// the post-update UX ("Updated to version v-abc-123 + history").
+			return res.json({
+				ok: true,
+				jobId: r.jobId,
+				url: r.url,
+				degraded: r.degraded || false,
+				...(r.mode ? { mode: r.mode } : {}),
+				...(r.versionId ? { versionId: r.versionId } : {}),
+				...(r.domainError ? { domainError: r.domainError } : {}),
+			});
 		}
 
 		// Legacy Fly builder path.
@@ -421,10 +567,63 @@ export function wireDeploy(app, opts = {}) {
 		res.status(r.status || 200).json(r.json || { ok: false });
 	});
 
+	// One-click updates Phase 4 cycle 4.4 — the modal's "is this slug
+	// already deployed?" lookup. Drives whether the Deploy button reads
+	// "Deploy" (fresh) or "Update" (incremental) and seeds the version
+	// history panel. Unknown slugs return deployed:false at 200, NOT 404,
+	// so the client branches on a single JSON shape instead of also
+	// handling fetch-error codes.
+	app.get('/api/app-info/:appSlug', async (req, res) => {
+		const tenant = await requireTenant(req, res);
+		if (!tenant) return;
+		const appSlug = req.params.appSlug;
+		try { sanitizeAppSlug(appSlug); }
+		catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
+		const record = await store.getAppRecord(tenant.slug, appSlug);
+		return res.json(_appInfoResponse(record));
+	});
+
 	app.get('/api/deploy-history/:app', async (req, res) => {
 		const tenant = await requireTenant(req, res);
 		if (!tenant) return;
 		const appName = req.params.app;
+		// One-click updates Phase 4 cycle 4.5 — Cloudflare path uses the
+		// per-tenant store for ownership (no global tenant prefix on CF script
+		// names) and asks CF for the version list. If CF is unreachable, fall
+		// back to the store's versions[]; degraded history beats no history
+		// when the modal is asking for it. The Fly branch stays unchanged so
+		// existing tests still pass.
+		if (deployTarget() === 'cloudflare') {
+			try { sanitizeAppSlug(appName); }
+			catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
+			const record = await store.getAppRecord(tenant.slug, appName);
+			if (!record) return res.status(404).json({ ok: false, error: 'app not deployed for this tenant' });
+			let api;
+			try { api = getWfpApi(); }
+			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+			const scriptName = record.scriptName || appName;
+			try {
+				const lv = await api.listVersions({ scriptName });
+				if (lv && lv.ok && Array.isArray(lv.versions)) {
+					return res.json({ ok: true, source: 'cloudflare', versions: lv.versions });
+				}
+				// listVersions returned non-ok shape — treat like a soft failure
+				// and fall back to the store's versions[].
+				return res.json({
+					ok: true,
+					source: 'store',
+					versions: record.versions || [],
+					degradedReason: 'listVersions returned non-ok response',
+				});
+			} catch (e) {
+				return res.json({
+					ok: true,
+					source: 'store',
+					versions: record.versions || [],
+					degradedReason: e.message || 'listVersions threw',
+				});
+			}
+		}
 		try { sanitizeAppName(appName); assertOwnership(tenant.slug, appName); }
 		catch (e) { return res.status(e.code === 'CROSS_TENANT' ? 403 : 400).json({ ok: false, code: errorCode(e) }); }
 		const r = await postToBuilder(`/releases/${encodeURIComponent(appName)}`, 'GET', {

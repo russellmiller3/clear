@@ -1645,6 +1645,39 @@ with timeout 5 seconds:
   result = call api 'https://slow-api.com/data'
 ```
 
+### Live Blocks (Effect Fences)
+
+Some lines in your program talk to the outside world: asking Claude, calling
+an API, opening a websocket, running a timer. The rest is pure — math, string
+work, table reads. A `live:` block is the visible label for the part that
+talks to the world:
+
+```clear
+when user sends note to /api/chat:
+  live:
+    reply is ask claude 'hi'
+  send back reply
+```
+
+Why label them? Two reasons. First, it's easier to read — you can see at a
+glance which lines could be slow or could fail because the network is flaky.
+Second, the compiler can use that label to prove the rest of your program
+can't hang. Pure code (no `live:` block) is provably terminating.
+
+Today `live:` is permissive — anything is allowed inside, and code outside
+isn't restricted yet. In a future Clear release the compiler will start
+*requiring* effect-shaped calls (`ask claude`, `call api`, `subscribe to`,
+timers) to sit inside a `live:` fence. Writing it that way now means your
+apps will keep compiling cleanly when the rule tightens.
+
+```clear
+# Good — the fence makes the boundary obvious
+agent 'Replier' receiving message:
+  live:
+    answer is ask claude message
+  send back answer
+```
+
 ---
 
 ## Chapter 15: Modules (When One File Isn't Enough)
@@ -2023,6 +2056,71 @@ For more thorough agent testing, use evals:
 clear eval main.clear              # Schema checks (fast, no API calls)
 clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
 ```
+
+### Leaving a piece for later: `TBD`
+
+Sometimes you know the shape of the program but you have not decided one
+piece yet. Maybe the spec is ambiguous, maybe Russell told you to "leave
+the auth for later, focus on the queue," maybe you are sketching a structure
+and want compiler feedback on the parts that ARE written.
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs. The compiler accepts it. The program still compiles green. Only
+the line that holds the placeholder fails at runtime — every other piece
+keeps working.
+
+```clear
+build for javascript backend
+
+create a Leads table:
+  name, required
+  email, required
+
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+    email, required
+  TBD                       # the audit log piece is for next session
+  saved_lead = save lead as new Lead
+  send back saved_lead with success message
+
+test 'creating a lead works':
+  set new_lead = TBD        # exact payload not decided yet
+  send new_lead to /api/leads
+  expect response status is 200
+```
+
+Compile and run the tests:
+
+```bash
+clear test main.clear
+```
+
+You will see something like:
+
+```
+PASS: Creating a new lead succeeds
+SKIP: creating a lead works - placeholder hit at line 17 — fill it in or remove it (this test exercises a stub)
+
+Results: 1 passed, 0 failed, 1 skipped due to stub
+```
+
+The skipped test does not fail the build — `clear test` exits 0 because no
+real assertion failed. The skip count tells you "structure right, piece not
+filled in yet" so you know exactly which holes are still open.
+
+Three rules of thumb:
+1. **Use `TBD` for genuinely open decisions.** Ambiguous spec, deferred piece,
+   sketching a structure. Not for things you do not feel like writing — that
+   is just hiding the hard part.
+2. **Do not ship `TBD`s in production code.** The placeholder is a bookmark,
+   not a finished piece. If your final commit still has open `TBD`s, you have
+   not finished the feature.
+3. **Skipped tests are not coverage.** A test that hits a `TBD` did not
+   actually verify anything. Refill the placeholder before you trust the test.
 
 ---
 
@@ -2975,6 +3073,32 @@ If you typed a domain in the Deploy modal, Clear calls `flyctl certs create` for
 ### Rollback
 
 Every deploy produces a new release. Open the **Deploy History** drawer, pick any prior release, click Rollback. The live URL flips back to that version in seconds. Your data stays put — rollback only swaps the code.
+
+### One-click updates (after the first deploy)
+
+Most "deploys" after the first one aren't really deploys — they're updates. You changed three lines in the deal-desk app, you don't need a new database, a new domain, or new secrets. You just need the new code to be live.
+
+Clear handles this for you. The Publish button watches your tenant record, and the moment it sees that the app you're shipping is one you've already deployed, the button text changes from **Deploy** to **Update** and the modal swaps to a much shorter conversation:
+
+1. **Edit your code.** Change the heading, fix a typo, add a new endpoint, whatever.
+2. **Click Publish.** The modal opens with a green "Update *deal-desk.buildclear.dev*" header and the relative time of your last ship ("Last deployed 14 minutes ago"). If your edits didn't change anything compared to what's live, the button is disabled and tells you "No changes since last deploy" — Clear refuses to burn a version slot for a no-op.
+3. **Click Update.** The new bundle uploads, a fresh version id gets recorded against your tenant, and the modal flips to "Updated to version v-abc-123". Wall clock: about two seconds, versus twelve for the original deploy. Your URL doesn't change, your database doesn't change, your secrets don't change — only the code does.
+
+Behind the scenes Clear is doing the obvious-once-you-think-about-it thing: re-uploading just the Worker bundle and skipping every step that's already done. Your D1 database is already provisioned. Your domain is already attached. Your `JWT_SECRET` is already set. None of that needs to happen again.
+
+### When schema changes pause the update
+
+There's exactly one thing that puts the brakes on. If the edit you just made changed a table — added a column, dropped one, renamed it — Clear has to reshape the live database before the new code can run, and SQLite doesn't have an atomic way to do that. So instead of silently applying the change and risking that an in-flight request hits the new schema with the old code, Clear stops and asks.
+
+You'll see a yellow "Schema change detected" view in the modal with a list of what's different ("`migrations/001-init.sql` — changed"), and a button labeled **Apply migration + update**. Click it, the migration applies first, the new bundle uploads second, and a typical case is back online in under three seconds. If you're not ready to commit to the schema change yet, close the modal — nothing is live, your old version is still serving.
+
+### One-click rollback
+
+Inside the same Update modal there's a **Version history** link. Click it and the panel expands to show the last twenty versions of your app, newest first, each with the time it was uploaded and a Rollback button. The currently-live version doesn't have a button — it has a "Current" label so you can't roll back to where you already are.
+
+Click Rollback on, say, v-abc-118, and Clear flips the live URL back to that version in about a second. The previous live version is recorded as a new entry in your history with a `rollback-from-v-abc-122` note, so the timeline reads chronologically — no branching, no surprise. Your data is untouched, just like with the older Deploy History rollback above; this is the same primitive, surfaced in the same place where you actually live (the Publish modal) instead of buried in a separate drawer.
+
+If you click Rollback on a version that no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal tells you "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel so you're looking at reality.
 
 ### Plans
 

@@ -22,6 +22,54 @@ define total as: price + tax
 items is an empty list
 ```
 
+## TBD Placeholders (Lean Lesson 1)
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs and you have not decided yet. The compiler accepts it, the program
+still compiles green, and only the line that holds the placeholder fails
+at runtime — every other piece keeps working.
+
+```clear
+# As a value
+greeting = TBD
+plan_for_thursday = TBD
+
+# As a whole step (a line on its own)
+to greet with name:
+  TBD
+
+# Mixed in a real workflow
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                       # the auth + audit log piece is for later
+  send back lead
+```
+
+What runs:
+- A program with one or more `TBD` markers compiles with **zero compile errors**.
+- The compiler emits a clean line-tagged stub at every `TBD`. If running code
+  reaches a placeholder it throws `placeholder hit at line N — fill it in or remove it`.
+- The compiled test harness catches that exact error and reports the test as
+  **SKIPPED** (not FAILED), with the line number. Skips do not fail the build.
+- The Results line reads: `X passed, Y failed, Z skipped due to stub`.
+- `compileProgram(source).placeholders` returns `[{ line: N }, ...]` — every
+  line that still holds a stub.
+
+When to use it:
+- The spec is ambiguous about one piece (auth flow, edge case, error message).
+  Drop a `TBD`, ship the rest, ask Russell, fill it in next session.
+- You are sketching the structure of a program and want compiler feedback on
+  the parts that ARE written without being blocked by the parts that are not.
+
+When NOT to use it:
+- Do not use `TBD` to dodge a hard part. The placeholder is a bookmark for a
+  decision that is genuinely open, not a way to hide a piece you do not want
+  to write. Programs with leftover `TBD`s in shipped code are a smell.
+
 ## Math
 
 ```clear
@@ -290,6 +338,49 @@ throw error 'Invalid input'
 fail with 'Database connection failed'
 raise error 'Unauthorized access'
 ```
+
+## Live Blocks (Explicit Effect Fence)
+
+A `live:` block is the visible label for code that talks to the outside world —
+asking Claude, calling an API, opening a websocket, running a timer. Pure code
+(arithmetic, string handling, table reads, validation) doesn't need a fence;
+it lives wherever you write it. Effects belong inside `live:` so the reader
+(and the compiler) can see exactly where the program meets the world.
+
+```clear
+# Inside an endpoint — canonical form: instructions string + with data
+when user sends note to /api/chat:
+  live:
+    reply = ask claude 'You are a helpful assistant' with note
+  send back reply
+
+# Inside an agent — same shape, different home
+agent 'Replier' receiving message:
+  live:
+    answer = ask claude 'Reply to the user politely' with message
+  send back answer
+
+# Live can sit anywhere a statement can — top level, inside endpoints,
+# inside agents, inside functions. The `'instructions' with <data>`
+# pattern is canonical for every effect call inside the fence.
+```
+
+**What `live:` does today (Phase B-1, 2026-04-25):**
+
+- Marks the boundary between pure code and effect code.
+- Compiles permissively — any statement is allowed inside, body emits inline
+  with a `// live: block — explicit effect fence` comment in the output.
+- Is a *fence*, not a scope: variables created inside `live:` are still
+  visible to code that follows the block.
+
+**What `live:` will do next (Phase B-2):**
+
+- The compiler will start *requiring* effect-shaped calls (`ask claude`,
+  `call API`, `subscribe to`, `every N seconds`) to sit inside a `live:`
+  fence. Pure blocks become provably total — they cannot hang.
+
+See `PHILOSOPHY.md` Rule 18 (Total by Default, Effects by Label) for the
+design intent.
 
 ## Transactions
 
@@ -908,14 +999,19 @@ section 'Footer' with style page_footer:
 
 ### App UI Presets
 
-| Preset | Description | Typical children |
-|--------|-------------|-----------------|
-| `app_layout` | Outermost wrapper. `flex h-screen overflow-hidden`. | Two children: `app_sidebar` + a main column |
-| `app_sidebar` | Fixed-width sidebar with nav menu. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
-| `app_main` | Right-side flex column that fills remaining space. | `app_header` + `app_content` |
-| `app_header` | Sticky top bar with split layout (title left, actions right). | `heading`, `button` |
-| `app_content` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
-| `app_card` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
+> **Phase 1 shell upgrade (04-25-2026):** the four shell presets `app_layout`,
+> `app_sidebar`, `app_main`, `app_header` now emit polished slate-on-ivory chrome
+> matching `landing/marcus-app-target.html`. Sidebar is a 240px `<aside>`, header
+> is a 56px sticky `<header>` with brand/breadcrumb/actions slots.
+
+| Preset | HTML tag | Description | Typical children |
+|--------|----------|-------------|-----------------|
+| `app_layout` | `<div>` | Outermost shell. `flex min-h-screen` — page owns the scroll. | Two children: `app_sidebar` + a main column |
+| `app_sidebar` | `<aside>` | 240px rail. Hairline-right border, scroll-y, rail bg from `--clear-bg-rail`. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
+| `app_main` | `<main>` | Right-side flex column that fills remaining space. `flex-1 min-w-0 flex flex-col`. | `app_header` + `app_content` |
+| `app_header` | `<header>` | 56px sticky top bar. Hairline-bottom, canvas bg. Auto-sorts children into three slots: `heading` → brand-slot, text → breadcrumb-slot, `button` → actions-slot (right-aligned). | `heading`, `text`, `button` |
+| `app_content` | `<div>` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
+| `app_card` | `<div>` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
 | `metric_card` | Compact stat card for KPI rows. | `display X as number called 'Label'` or `heading` + `text` |
 | `app_table` | Table container with rounded corners and border. Overflow hidden. | `display X as table showing ...` |
 | `app_modal` | Centered modal dialog card with ring shadow. | `heading`, inputs, `button` |
@@ -3040,5 +3136,7 @@ Deployment is a Studio feature, not a language primitive — you don't write dep
 **Custom domain.** Type your domain in the Deploy modal — Studio calls `flyctl certs create` and returns the DNS records to point at Fly. Certs auto-renew.
 
 **Rollback.** The Deploy History drawer lists the last 10 releases. Click Rollback on any of them.
+
+**Re-deploys are automatic incremental updates (Cloudflare target).** When you click Publish on an app that's already live, Studio takes the fast path: it re-uploads only the new Worker bundle and records a new version against the existing tenant — no fresh D1 database, no domain reattach, no full secret reset. Wall clock drops from ~12s (fresh deploy) to ~2s (update). Schema changes — anything that changes a `migrations/*.sql` file or `wrangler.toml` — pause the update and ask for an explicit "apply migration + update" click, because SQLite has no atomic schema swap and in-flight requests would briefly see the new schema against old code. The Publish window also exposes a one-click rollback to any of the last 20 versions.
 
 **Limits.** Pro plan: 25 apps, $10/mo of AI credits included, $99/mo. See `plans.js` for the source of truth.

@@ -49,6 +49,38 @@ If ROADMAP creeps past ~400 lines, stop and audit. Ask of every section: "is thi
 
 ---
 
+## Critical path to first paying customer (2026-04-26 — read this FIRST)
+
+The product is meaningfully ready. The gating items are mostly setup work Russell owns. Each item explains what it does and why it's needed for the first paying customer.
+
+**1. Push `feature/overnight-04-25-2026` to remote.** 78+ commits ahead. Until we push, the new work only lives on this laptop — anyone visiting the live site sees yesterday's code. Push unblocks everything else. *~30 seconds.*
+
+**2. ✅ Register `buildclear.dev` domain — DONE 2026-04-26.** Means every customer app can have a real-looking URL like `their-deal-desk.buildclear.dev` instead of `random-id.fly.dev`. Looks like a product, not a demo. Stripe also verifies the domain matches the business when issuing live keys, so this had to land before #4.
+
+**3. Fly.io Trust Verified app.** Fly.io is the cloud where customer apps actually run. "Trust Verified" is a status Fly grants once they've reviewed Clear as a company — it stops payment processors and abuse-detection systems from flagging traffic through our customer apps as suspicious. Without it, real card payments through any customer app could get auto-declined. *Russell submits the form, Fly's review takes a day or two.*
+
+**4. Stripe live keys.** Test keys (which we have) accept fake credit card numbers for development. Live keys accept real cards. Gated on #2 (Stripe checks the domain) and #3 (so payments aren't flagged as suspicious). Without these, no actual money can change hands — the customer can sign up but not pay. *~30 min once #2 + #3 are done.*
+
+**5. Anthropic org key for paid Meph sessions.** When a customer's app calls Claude (the deal-desk asking Claude to summarize a contract, the helpdesk-agent answering a ticket), each call costs money. Today's keys are tied to Russell's personal billing — running customer usage on those would charge Russell for every customer's AI calls. An organization key with the customer usage billed back to Clear is needed before any customer can use the AI features. *~15 min in the Anthropic console.*
+
+**6. Postgres provision (managed Fly Postgres or Neon).** Every customer app needs its own real database for their data. The demo path uses SQLite, which lives inside the app's container and gets wiped on every restart. Real customer data needs a managed Postgres — automatic backups, doesn't lose anything on restart, scales as the app grows. Either Fly Postgres or Neon works. *~30 min to provision + 1-line config change in the tenants store.*
+
+**7. First Marcus conversation.** Someone with a real backlog of internal tools — deal desk, helpdesk, expense tracker, whatever real-business stuff — who'll let us put Clear on one. Without a real customer trying to do real work, there's no first paying customer. *Conversation move, not a code move.*
+
+**8. Watch them build their first one — fix what bites.** When the customer hits a compile error or a confusing bit of syntax, that's the highest-leverage signal Clear will get all year. Every fix compounds across every future customer because the compiler accumulates quality. *After #7, Russell + Claude pair.*
+
+**Not on the critical path** (depth/polish, valuable but not gating):
+
+- `give claude X with prompt: 'Y'` canonical syntax — Phase 1 done, Phases 2–7 pending. See `plans/plan-give-claude-canonical-form-04-26-2026.md`.
+- `live:` keyword revert + Path A defaults (while-cap, recursion-cap, email/DB timeouts) from `plans/plan-decidable-core-04-24-2026.md`.
+- Apply the sweep-diagnosis patch (`snapshots/sweep-diagnosis-04-26-2026.md`) — surfaces silent fast-fails in future sweeps.
+- Curate `playground/canonical-examples.md` (initial draft from winner-harvest waiting for human pass).
+- Lean Lesson 1 Phase 1.5 — the $10 measurement A/B sweep.
+
+**Honest call:** items #2–#6 are about $30–50 + 2–3 hours of Russell's time. Item #7 is a conversation, not a code move. Item #1 is 30 seconds. Everything else compounds quality but does not unblock the first customer.
+
+---
+
 ## Strategic pivot under review (2026-04-24) — Dave-first wedge
 
 > **Status: PENDING RUSSELL DECISION.** The Marcus-first North Star (locked 2026-04-21) is being reassessed, not deleted. Until Russell commits to the pivot or rejects it, both threads stay alive in this file. The Marcus priorities below remain as written — do NOT silently demote them.
@@ -110,7 +142,7 @@ Definition of launch: **first paying customer.** Not "we shipped a thing." Not "
 
 | # | Task | Owner | Days | Why it's next |
 |---|------|-------|------|---|
-| 1 | **CC-4 — Publish button → Clear Cloud.** Studio gets a "Publish" button that POSTs source to the existing `deploySourceCloudflare` flow, returns a live URL. Ships against `InMemoryTenantStore` first (durable Postgres backing comes after first customer per item 6). | agent | 1-2 | Without this, demos are local-only and there's nothing to sell. **First domino.** |
+| ~~1~~ | ~~**CC-4 — Publish button → Clear Cloud.**~~ **DONE 2026-04-25** — Studio Publish window now ships to Cloudflare end-to-end, plus the one-click-updates plan (Phases 1-6) landed on top: incremental update mode (~2s vs ~12s), version history panel, one-click rollback, byte-precise schema-change detector with 409 `MIGRATION_REQUIRED` confirmation gate. Touches `playground/deploy-cloudflare.js`, `playground/deploy.js`, `playground/tenants.js` + Postgres mirror, `playground/ide.html`. Demo path is unblocked. |
 | 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at item 1's Publish URL. | agent (parallel with #1) | 1 | Pitch surface. Lands when item 1 ships so the demo CTA isn't dead. |
 | 3 | **Demo recording.** Walkthrough of building deal-desk in 30 minutes from scratch on a hosted URL. Russell records voice-over; agent prepares the script + reference app + recording outline. | agent + Russell | 0.5 | What you DM with. Lossless evidence the workflow works. |
 | 4 | **Russell sells.** Cold pitch 5-10 sales-ops people on LinkedIn with the recording from #3. Goal: 1 paying customer at $200-500/mo. | Russell | 0.5 | The actual launch event. Everything above is setup. |
@@ -142,7 +174,7 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | **CC-1** | Multi-tenant routing — subdomain → Worker + D1 DB binding | **Open — biggest blocker** | 2-3 weeks |
 | CC-2 | Auth for `buildclear.dev` (accounts, sessions, teams) | Scaffolding shipped (CC-2b/c/d). Open: stitching into a logged-in dashboard UI. | ~1 week to wire up |
 | CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 week to wire up |
-| **CC-4** | "Publish" button wired to Clear Cloud (not test builder) | **Open — depends on CC-1** | 3 days |
+| ~~**CC-4**~~ | ~~"Publish" button wired to Clear Cloud (not test builder)~~ | **DONE 2026-04-25** — Publish window ships to Cloudflare, one-click updates (Phases 1-6) layered on top: incremental update path (~2s), version history, rollback, schema-change confirm gate. See `CHANGELOG.md` 2026-04-25. | — |
 | CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | ~1 week to wire up |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
@@ -205,7 +237,7 @@ Builder Mode v0.3 shipped (BM-1/2/3/4/5/6 — see `FEATURES.md` → Studio IDE r
 | Item | What | Status |
 |------|------|--------|
 | ~~Status bar~~ | ~~Users / agent spend / last ship chip — always visible at bottom~~ | **DONE 2026-04-25** — three live chips polled every 5s: compiles ok/total, app ▶/idle, last ship Xm ago. Backed by `_builderState` + `GET /api/builder-status`. |
-| Default flip | Builder Mode becomes default for new users; `cmd+.` reveals 3-panel | Open, 1 day |
+| ~~Default flip~~ | ~~Builder Mode becomes default for new users; `cmd+.` reveals 3-panel~~ | **DONE 2026-04-25** — `STUDIO_MODE_DEFAULT = 'builder'` in `playground/ide.html` `detectStudioMode()`. Existing users with a saved `studio-mode-pref` (builder OR classic) keep what they had; only fresh users (no preference) get the new default. `?studio-mode=classic` opts back. Tests in `playground/builder-mode.test.js` cover: fresh user → builder, classic-pref preserved, builder-pref preserved, unknown URL value falls back to builder. |
 
 ---
 

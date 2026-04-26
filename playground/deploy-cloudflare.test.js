@@ -785,3 +785,447 @@ describe('deploySource mode:update — LAE Phase B Cycle 2', () => {
 		expect(store._state.recordVersionCalls[0].via).toBe('widget');
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// One-click updates Phase 3 — migration safety gate.
+// Updates that would change D1 schema must require explicit user
+// confirmation. SQLite has no atomic schema swap, so silently auto-applying
+// a destructive migration mid-update can leave the live script wedged
+// against a half-applied schema. The gate detects schema-shape changes,
+// surfaces them to the UI, and only proceeds when the caller passes
+// confirmMigration:true.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('migrationsDiffer — Phase 3 Cycle 3.1', () => {
+	it('returns false when both bundles have identical migration files', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		expect(migrationsDiffer(a, b)).toBe(false);
+	});
+
+	it('returns true when a migration file content differs', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT, name TEXT)' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('returns true when the new bundle adds a migration file', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'migrations/002-add-b.sql': 'CREATE TABLE b (id INT)',
+		};
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('returns true when the new bundle removes a migration file', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'migrations/002-add-b.sql': 'CREATE TABLE b (id INT)',
+		};
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('returns true when a migration is renamed (set of filenames differs)', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)' };
+		const b = { 'migrations/001-renamed.sql': 'CREATE TABLE a (id INT)' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+
+	it('ignores non-migration files (src/index.js, etc) when comparing', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'src/index.js': 'export default { fetch(){ return new Response("v1"); } }',
+		};
+		const b = {
+			'migrations/001-init.sql': 'CREATE TABLE a (id INT)',
+			'src/index.js': 'export default { fetch(){ return new Response("v2-CHANGED"); } }',
+		};
+		expect(migrationsDiffer(a, b)).toBe(false);
+	});
+
+	it('treats a missing/empty oldBundle as no migrations (no diff if newBundle also empty)', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		expect(migrationsDiffer({}, {})).toBe(false);
+		expect(migrationsDiffer(null, null)).toBe(false);
+	});
+
+	it('treats an oldBundle with no migrations vs a newBundle with migrations as a diff', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const a = { 'src/index.js': 'x' };
+		const b = { 'migrations/001-init.sql': 'CREATE TABLE a (id INT)', 'src/index.js': 'x' };
+		expect(migrationsDiffer(a, b)).toBe(true);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 3 Cycle 3.2 — update mode blocks when migrations differ.
+// The new compile changed schema; without an explicit confirm flag, refuse
+// the upload and hand the UI a structured diff so it can prompt the user.
+// Each test uses a UNIQUE appSlug because the lock manager + describe block
+// fire all testAsyncs concurrently — sharing 'items' across tests races.
+// ─────────────────────────────────────────────────────────────────────────
+
+// .clear source whose schema diff vs SIMPLE_APP forces the gate to fire.
+// SIMPLE_APP creates Items with name; ITEMS_SCHEMA_V2 adds price, which
+// changes the compiled CREATE TABLE in migrations/001-init.sql.
+const ITEMS_SCHEMA_V2 = `build for javascript backend
+
+create a Items table:
+  name, required
+  price, number
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+describe('deploySource mode:update — migration-safety gate (Cycle 3.2)', () => {
+	testAsync('returns migration-confirm-required when compiled migrations differ from lastRecord', async () => {
+		_resetLockManagerForTest();
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		const api = makeFakeWfpApi();
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'gate-fires',
+				d1_database_id: 'd1-prior',
+				hostname: 'gate-fires.buildclear.dev',
+				versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'gate-fires',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(false);
+		expect(r.stage).toBe('migration-confirm-required');
+		expect(Array.isArray(r.migrationDiff)).toBe(true);
+		expect(r.migrationDiff.length).toBeGreaterThan(0);
+		const entry = r.migrationDiff.find((d) => d.file === 'migrations/001-init.sql');
+		expect(entry).toBeDefined();
+		expect(entry.kind).toBe('changed');
+		// Critical: no upload happened — old code keeps serving until confirm.
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('uploadScript')).toBe(false);
+	});
+
+	testAsync('proceeds normally when migrations are identical (no gate fires)', async () => {
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		const api = makeFakeWfpApi({
+			uploadScript: async (args) => {
+				api.calls.push({ op: 'uploadScript', scriptName: args.scriptName });
+				return { ok: true, result: { id: 'v-same-schema' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'no-gate', d1_database_id: 'd1', hostname: 'h',
+				versions: [], secretKeys: [], lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: SIMPLE_APP, // SAME source = same migrations
+			tenantSlug: 'clear-acme',
+			appSlug: 'no-gate',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(true);
+		expect(r.stage).toBeUndefined();
+		const ops = api.calls.map((c) => c.op);
+		expect(ops.includes('uploadScript')).toBe(true);
+	});
+
+	testAsync('records added/removed/changed kinds in migrationDiff', async () => {
+		// Pure helper test — no deploySource invocation, no lock manager use.
+		const { _describeMigrationDiff } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'migrations/002-old.sql': 'CREATE TABLE old_one',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a-CHANGED', // changed
+			'migrations/003-fresh.sql': 'CREATE TABLE fresh',     // added
+			// 002-old.sql removed
+		};
+		const diff = _describeMigrationDiff(oldB, newB);
+		const byFile = Object.fromEntries(diff.map((d) => [d.file, d.kind]));
+		expect(byFile['migrations/001-init.sql']).toBe('changed');
+		expect(byFile['migrations/002-old.sql']).toBe('removed');
+		expect(byFile['migrations/003-fresh.sql']).toBe('added');
+	});
+
+	testAsync('returns an empty migrationDiff when nothing differs (helper exposes [], not null)', async () => {
+		const { _describeMigrationDiff } = await import('./deploy-cloudflare.js');
+		const a = { 'migrations/001-init.sql': 'X' };
+		const b = { 'migrations/001-init.sql': 'X' };
+		expect(_describeMigrationDiff(a, b)).toEqual([]);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 3 Cycle 3.3 — confirmMigration:true unblocks AND applies migrations.
+//
+// When the user clicks "Apply migration + update," the handler re-POSTs
+// with confirmMigration:true. _deployUpdate must:
+//   1. skip the gate,
+//   2. call api.applyMigrations BEFORE api.uploadScript,
+//   3. if applyMigrations fails, return { ok:false, stage:'migrations' }
+//      and DO NOT upload — old code keeps serving against old schema.
+//
+// Each test uses a UNIQUE appSlug (mig-confirm / mig-sql / mig-fails)
+// to avoid lock-manager collisions when sibling testAsyncs run concurrently.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('deploySource mode:update — confirmMigration applies schema (Cycle 3.3)', () => {
+	testAsync('confirmMigration:true runs applyMigrations BEFORE uploadScript', async () => {
+		_resetLockManagerForTest();
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		const api = makeFakeWfpApi({
+			uploadScript: async (args) => {
+				api.calls.push({ op: 'uploadScript', scriptName: args.scriptName });
+				return { ok: true, result: { id: 'v-after-migration' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'mig-confirm',
+				d1_database_id: 'd1-prior',
+				hostname: 'mig-confirm.buildclear.dev',
+				versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'mig-confirm',
+			mode: 'update',
+			confirmMigration: true,
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(true);
+		const ops = api.calls.map((c) => c.op);
+		const applyIdx = ops.indexOf('applyMigrations');
+		const uploadIdx = ops.indexOf('uploadScript');
+		expect(applyIdx).toBeGreaterThan(-1);
+		expect(uploadIdx).toBeGreaterThan(-1);
+		expect(applyIdx).toBeLessThan(uploadIdx);
+		// recordVersion still fires on success.
+		expect(store._state.recordVersionCalls).toHaveLength(1);
+	});
+
+	testAsync('confirmMigration:true sends the new SQL to applyMigrations', async () => {
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+		const v2 = compileProgram(ITEMS_SCHEMA_V2, { target: 'cloudflare' });
+		const expectedSql = v2.workerBundle['migrations/001-init.sql'];
+
+		let appliedWith = null;
+		const api = makeFakeWfpApi({
+			applyMigrations: async ({ d1_database_id, sql }) => {
+				appliedWith = { d1_database_id, sql };
+				api.calls.push({ op: 'applyMigrations', d1_database_id, sqlLen: sql.length });
+				return { ok: true };
+			},
+			uploadScript: async () => ({ ok: true, result: { id: 'v' } }),
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'mig-sql',
+				d1_database_id: 'd1-prior-xyz',
+				hostname: 'h', versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'mig-sql',
+			mode: 'update',
+			confirmMigration: true,
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(appliedWith).toBeDefined();
+		expect(appliedWith.d1_database_id).toBe('d1-prior-xyz');
+		expect(appliedWith.sql).toBe(expectedSql);
+	});
+
+	testAsync('applyMigrations failure returns stage:migrations and DOES NOT upload', async () => {
+		const { compileProgram } = await import('../index.js');
+		const v1 = compileProgram(SIMPLE_APP, { target: 'cloudflare' });
+		const oldBundle = v1.workerBundle;
+
+		let uploadCalled = false;
+		const api = makeFakeWfpApi({
+			applyMigrations: async () => {
+				api.calls.push({ op: 'applyMigrations' });
+				throw Object.assign(new Error('SQL syntax error near ALTER'), { status: 400 });
+			},
+			uploadScript: async () => {
+				uploadCalled = true;
+				api.calls.push({ op: 'uploadScript' });
+				return { ok: true, result: { id: 'v' } };
+			},
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'mig-fails',
+				d1_database_id: 'd1', hostname: 'h',
+				versions: [], secretKeys: [],
+				lastBundle: oldBundle,
+			},
+		});
+
+		const r = await deploySource({
+			source: ITEMS_SCHEMA_V2,
+			tenantSlug: 'clear-acme',
+			appSlug: 'mig-fails',
+			mode: 'update',
+			confirmMigration: true,
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(false);
+		expect(r.stage).toBe('migrations');
+		// Critical: no upload happened — the new code never goes live so the
+		// running script keeps serving against the still-untouched old schema.
+		expect(uploadCalled).toBe(false);
+		// recordVersion not called either — there's no new version to record.
+		expect(store._state.recordVersionCalls).toHaveLength(0);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 3 Cycle 3.4 — wrangler.toml is schema-ish too.
+//
+// Durable Object namespace bindings, [[workflows]] entries, KV bindings,
+// and other resource declarations live in wrangler.toml. Re-binding a DO
+// namespace mid-update is the wrangler.toml equivalent of dropping a SQL
+// table — same blast radius. So migrationsDiffer treats wrangler.toml byte
+// changes the same way it treats migrations/* changes: any difference
+// requires explicit user confirmation.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('migrationsDiffer — wrangler.toml is schema-ish (Cycle 3.4)', () => {
+	testAsync('returns true when wrangler.toml content differs', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': '[[durable_objects.bindings]]\nname = "OLD_DO"\n',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': '[[durable_objects.bindings]]\nname = "NEW_DO"\n',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(true);
+	});
+
+	testAsync('returns false when wrangler.toml is identical (and migrations identical)', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(false);
+	});
+
+	testAsync('returns true when wrangler.toml is added in the new bundle', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = { 'migrations/001-init.sql': 'CREATE TABLE a' };
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(true);
+	});
+
+	testAsync('returns true when wrangler.toml is removed in the new bundle', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+		};
+		const newB = { 'migrations/001-init.sql': 'CREATE TABLE a' };
+		expect(migrationsDiffer(oldB, newB)).toBe(true);
+	});
+
+	testAsync('still ignores src/index.js — code changes alone do not require confirmation', async () => {
+		const { migrationsDiffer } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+			'src/index.js': 'export default { fetch(){ return new Response("v1"); } }',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "x"\n',
+			'src/index.js': 'export default { fetch(){ return new Response("v2-CHANGED"); } }',
+		};
+		expect(migrationsDiffer(oldB, newB)).toBe(false);
+	});
+
+	testAsync('describes wrangler.toml diffs in _describeMigrationDiff alongside migrations/', async () => {
+		const { _describeMigrationDiff } = await import('./deploy-cloudflare.js');
+		const oldB = {
+			'migrations/001-init.sql': 'CREATE TABLE a',
+			'wrangler.toml': 'name = "v1"\n',
+		};
+		const newB = {
+			'migrations/001-init.sql': 'CREATE TABLE a-CHANGED',
+			'wrangler.toml': 'name = "v2"\n',
+		};
+		const diff = _describeMigrationDiff(oldB, newB);
+		const byFile = Object.fromEntries(diff.map((d) => [d.file, d.kind]));
+		expect(byFile['migrations/001-init.sql']).toBe('changed');
+		expect(byFile['wrangler.toml']).toBe('changed');
+	});
+});

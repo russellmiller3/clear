@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+
+# Auto-log compiler-edit changes after every commit.
+# Reads the last commit's diff for compiler.js + validator.js, captures
+# changed error-message-shaped string literals, drops one row per change in
+# the Factor DB so the friction script can later answer:
+# "did rewriting this message reduce its friction count in subsequent sweeps?"
+#
+# Always exits 0 — never blocks a commit.
+
+if [ -f scripts/log-compiler-edits.mjs ]; then
+  node scripts/log-compiler-edits.mjs 2>/dev/null || true
+fi

@@ -50,6 +50,62 @@
       "runtimeArgs": ["--input-type=module", "--eval", "import{compileProgram}from'./index.js';import fs from'fs';import http from'http';const r=compileProgram(fs.readFileSync('apps/devtool-landing/main.clear','utf8'));const s=http.createServer((_,res)=>{res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(r.html||'');});s.listen(5003,()=>console.log('ready'));"],
       "port": 5003,
       "autoPort": false
+    },
+    {
+      "name": "marcus-deal-desk",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/deal-desk/server.js"],
+      "port": 4101,
+      "autoPort": false,
+      "env": { "PORT": "4101" }
+    },
+    {
+      "name": "marcus-approval-queue",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/approval-queue/server.js"],
+      "port": 4102,
+      "autoPort": false,
+      "env": { "PORT": "4102" }
+    },
+    {
+      "name": "marcus-lead-router",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/lead-router/server.js"],
+      "port": 4103,
+      "autoPort": false,
+      "env": { "PORT": "4103" }
+    },
+    {
+      "name": "marcus-onboarding-tracker",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/onboarding-tracker/server.js"],
+      "port": 4104,
+      "autoPort": false,
+      "env": { "PORT": "4104" }
+    },
+    {
+      "name": "marcus-internal-request-queue",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/internal-request-queue/server.js"],
+      "port": 4105,
+      "autoPort": false,
+      "env": { "PORT": "4105" }
+    },
+    {
+      "name": "marcus-support-triage",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/support-triage/server.js"],
+      "port": 4106,
+      "autoPort": false,
+      "env": { "PORT": "4106" }
+    },
+    {
+      "name": "studio-builder-mode",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["playground/server.js"],
+      "port": 4200,
+      "autoPort": false,
+      "env": { "PORT": "4200", "CLEAR_ALLOW_SEED": "1" }
     }
   ]
 }

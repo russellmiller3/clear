@@ -150,6 +150,11 @@ export const NodeType = Object.freeze({
   // Error handling (Phase 3)
   TRY_HANDLE: 'try_handle',
 
+  // Decidable Core — explicit effect fence (Path B Phase 1, 2026-04-25)
+  // `live:` block marks code that talks to the world (ask claude, call API,
+  // subscribe, timers). Body emits as-is for now; the fence makes the
+  // boundary visible to the compiler and the reader. See PHILOSOPHY.md Rule 18.
+
   // GP Phase 1: Map iteration
   MAP_KEYS: 'map_keys',
   MAP_VALUES: 'map_values',
@@ -175,6 +180,7 @@ export const NodeType = Object.freeze({
   // Agent primitives
   AGENT: 'agent',
   ASK_AI: 'ask_ai',
+  GIVE_CLAUDE: 'give_claude',
   RUN_AGENT: 'run_agent',
   PARALLEL_AGENTS: 'parallel_agents',
   PIPELINE: 'pipeline',
@@ -384,6 +390,12 @@ export const NodeType = Object.freeze({
   BINARY_OP: 'binary_op',
   UNARY_OP: 'unary_op',
   CALL: 'call',
+
+  // Lean Lesson 1 — placeholder marker. Goes anywhere a value or a statement
+  // can. Compiler emits a tagged stub that throws a clean runtime error if
+  // execution ever reaches it. Keeps a partial program compiling instead of
+  // forcing a rewrite of the whole file.
+  PLACEHOLDER: 'placeholder',
 });
 
 // =============================================================================
@@ -494,6 +506,15 @@ function unaryOp(operator, operand, line) {
 
 function callNode(name, args, line) {
   return { type: NodeType.CALL, name, args, line };
+}
+
+// Lean Lesson 1 — placeholder marker. Drops into either expression position
+// (e.g. `set greeting = TBD`) or statement position (a line that's just `TBD`).
+// Both shapes record the source line so the compiler can emit a "this part
+// hasn't been filled in yet" stub at runtime and so the test runner can mark
+// any test that exercises the line as SKIPPED instead of FAILED.
+function placeholderNode(line) {
+  return { type: NodeType.PLACEHOLDER, line };
 }
 
 // Phase 3: Modules
@@ -867,6 +888,11 @@ function resolveCanonical(token, zone) {
 // Canonical-keyword handlers (keyed on firstToken.canonical)
 const CANONICAL_DISPATCH = new Map([
   // --- Simple single-line nodes ---
+  // Lean Lesson 1 — `TBD` as a standalone statement. Records the line so the
+  // compiler can emit a tagged stub and the test runner can skip any test
+  // that exercises it. Expression-position TBD (e.g. `set x = TBD`) is
+  // handled in parsePrimary below.
+  ['tbd', (ctx) => { ctx.body.push(placeholderNode(ctx.line)); return ctx.i + 1; }],
   ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
   ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
   ['auth_scaffold', (ctx) => { ctx.body.push({ type: NodeType.AUTH_SCAFFOLD, line: ctx.line }); return ctx.i + 1; }],
@@ -1460,6 +1486,15 @@ const CANONICAL_DISPATCH = new Map([
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
+  ['give_claude', (ctx) => {
+    // Plan 2026-04-26 — canonical AI call. Statement-level shape:
+    // `give claude <data> [with prompt[:] '<X>'] [as <name>]`. Replaces the
+    // assignment-form `answer = ask claude '<prompt>' with <data>` for new
+    // code. Old form still parses (additive Phase A; no migration breakage).
+    const parsed = parseGiveClaude(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
   ['use', (ctx) => {
     const parsed = parseUse(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
@@ -1661,7 +1696,33 @@ const CANONICAL_DISPATCH = new Map([
     if (hasDisplayModifiers(ctx.tokens)) {
       const parsed = parseDisplay(ctx.tokens, ctx.line);
       if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-      else ctx.body.push(parsed.node);
+      else {
+        // SHELL-5: harvest indented `with actions:` block — each child line is
+        // `'Label' is style` where style ∈ primary|ghost|danger|secondary.
+        if (parsed.node._actionsBlockFollows) {
+          delete parsed.node._actionsBlockFollows;
+          parsed.node.actionButtons = [];
+          let j = ctx.i + 1;
+          while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+            const aTokens = ctx.lines[j].tokens;
+            if (aTokens && aTokens.length >= 3 && aTokens[0].type === TokenType.STRING) {
+              const label = aTokens[0].value;
+              let stylePos = -1;
+              for (let k = 1; k < aTokens.length; k++) {
+                if (aTokens[k].canonical === 'is' || aTokens[k].value === 'is') { stylePos = k + 1; break; }
+              }
+              const style = (stylePos >= 0 && stylePos < aTokens.length)
+                ? aTokens[stylePos].value.toLowerCase()
+                : 'ghost';
+              parsed.node.actionButtons.push({ label, style });
+            }
+            j++;
+          }
+          ctx.body.push(parsed.node);
+          return j;
+        }
+        ctx.body.push(parsed.node);
+      }
       return ctx.i + 1;
     }
     // Plain show
@@ -6445,25 +6506,37 @@ function parseDisplay(tokens, line) {
   }
 
   // Optional: with delete / with edit / with delete and edit
+  // Optional (SHELL-5): with actions:  + indented block of 'Label' is style.
+  // Tokenizer strips the trailing block-opener colon, so we detect SHELL-5
+  // form by `with actions` being the last two tokens. The caller harvests
+  // the indented child lines into node.actionButtons.
   let actions = null;
+  let actionsBlockFollows = false;
   if (pos < tokens.length && tokens[pos].canonical === 'with') {
     pos++;
-    actions = [];
-    while (pos < tokens.length) {
-      const resolved = resolveCanonical(tokens[pos], 'ui');
-      if (resolved === 'action_delete' || resolved === 'remove') {
-        actions.push('delete');
-      } else if (tokens[pos].value.toLowerCase() === 'edit') {
-        actions.push('edit');
-      }
+    if (pos < tokens.length && tokens[pos].value && tokens[pos].value.toLowerCase() === 'actions'
+        && pos === tokens.length - 1) {
+      actionsBlockFollows = true;
       pos++;
-      if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+    } else {
+      actions = [];
+      while (pos < tokens.length) {
+        const resolved = resolveCanonical(tokens[pos], 'ui');
+        if (resolved === 'action_delete' || resolved === 'remove') {
+          actions.push('delete');
+        } else if (tokens[pos].value.toLowerCase() === 'edit') {
+          actions.push('edit');
+        }
+        pos++;
+        if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+      }
     }
   }
 
   const node = displayNode(expr.node, format, label, line);
   node.columns = columns;
   if (actions && actions.length > 0) node.actions = actions;
+  if (actionsBlockFollows) node._actionsBlockFollows = true;
   return { node };
 }
 
@@ -7655,6 +7728,200 @@ function parseTryHandle(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: tryHandleNode(tryBody, handlers, line, finallyBody), endIdx: i };
+}
+
+// =============================================================================
+// GIVE CLAUDE — canonical AI call (Plan 2026-04-26)
+// =============================================================================
+//
+// CANONICAL: give claude <data> [with prompt[:] '<instructions>'] [as <name>]
+//
+// Examples:
+//   give claude message
+//   give claude message with prompt: 'be concise and helpful'
+//   give claude article with prompt: 'summarize' as summary
+//   give claude message with prompt:           ← multi-line (Phase 5)
+//     'You are a deal-desk assistant.
+//     Reply only in JSON.'
+//
+// The result binds to `claude_reply` by default. The expression
+// `claude's reply` parses as MEMBER_ACCESS on a variable `claude` and
+// the compiler rewrites it to the underlying `claude_reply` (or the
+// `as <name>` chosen here). See validator.js for the registration
+// of `claude` as a defined name in any scope that contains a
+// preceding GIVE_CLAUDE statement.
+//
+// Multi-line prompt: when the line ends right at `with prompt:` with
+// nothing after, the parser walks the indented continuation block,
+// joins the lines with `\n`, and produces a single LITERAL_STRING.
+//
+function parseGiveClaude(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+
+  // Skip token[0] = 'give claude' (multi-word, canonical 'give_claude').
+  let pos = 1;
+
+  // Need data. End of line / no more meaningful tokens = parse error.
+  const meaningful = tokens.slice(pos).filter(t => t.type !== TokenType.COMMENT);
+  if (meaningful.length === 0) {
+    errors.push({
+      line,
+      message: "give claude needs a data argument. Example: give claude message with prompt: 'be concise'"
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Find the boundary of the data expression. It ends at the FIRST
+  // top-level `with`, `as`, or comment. We scan tokens at depth 0
+  // (parens balanced) so that `with` inside a function call doesn't
+  // terminate the data expression early.
+  let depth = 0;
+  let dataEnd = tokens.length;
+  let withPos = -1;
+  let asPos = -1;
+  for (let k = pos; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.type === TokenType.LPAREN || t.type === TokenType.LBRACKET) depth++;
+    else if (t.type === TokenType.RPAREN || t.type === TokenType.RBRACKET) depth--;
+    else if (t.type === TokenType.COMMENT) { dataEnd = k; break; }
+    else if (depth === 0) {
+      if (withPos === -1 && (t.value === 'with' || t.canonical === 'with')) {
+        withPos = k;
+        dataEnd = k;
+        break;
+      }
+      // `as` (canonical `as_format`) without preceding `with prompt:`
+      if (asPos === -1 && t.canonical === 'as_format') {
+        asPos = k;
+        dataEnd = k;
+        break;
+      }
+    }
+  }
+
+  // Parse data expression up to dataEnd.
+  const dataExpr = parseExpression(tokens, pos, line, dataEnd);
+  if (dataExpr.error) {
+    errors.push({ line, message: dataExpr.error });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  pos = dataEnd;
+
+  // Optional `with prompt[:] '<X>'` (or multi-line continuation).
+  let prompt = null;
+  let endIdx = startIdx + 1;
+  if (withPos !== -1) {
+    pos = withPos + 1; // skip `with`
+    // Expect `prompt` keyword. Trailing colon is already stripped by tokenizer.
+    if (pos >= tokens.length || tokens[pos].canonical !== 'prompt') {
+      errors.push({
+        line,
+        message: "give claude expects `with prompt: '<instructions>'` after the data. Example: give claude message with prompt: 'be concise'"
+      });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+    pos++; // skip `prompt`
+
+    // Optional trailing colon — `with prompt: 'X'` is canonical, but
+    // `with prompt 'X'` parses too (parser is lenient on the colon
+    // because the tokenizer makes it its own COLON token).
+    if (pos < tokens.length && tokens[pos].type === TokenType.COLON) pos++;
+
+    // After `prompt[:]`, look for: a string literal, a variable reference,
+    // or end-of-line (multi-line continuation).
+    const remaining = tokens.slice(pos).filter(t => t.type !== TokenType.COMMENT);
+    if (remaining.length === 0) {
+      // Phase 5: multi-line continuation. Walk indented lines, join with \n.
+      const promptLines = [];
+      let j = startIdx + 1;
+      while (j < lines.length && lines[j].indent > blockIndent) {
+        // Reconstruct the original text from the raw line if available.
+        const raw = lines[j].raw;
+        let pieceText;
+        if (typeof raw === 'string') {
+          pieceText = raw.trim();
+          // Strip surrounding single or double quotes if the whole indented
+          // line is one quoted segment of a multi-line string.
+          if ((pieceText.startsWith("'") && pieceText.endsWith("'") && pieceText.length >= 2) ||
+              (pieceText.startsWith('"') && pieceText.endsWith('"') && pieceText.length >= 2)) {
+            pieceText = pieceText.slice(1, -1);
+          } else if (pieceText.startsWith("'")) {
+            // Opening quote on first line, closing quote on a later line.
+            pieceText = pieceText.slice(1);
+          } else if (pieceText.endsWith("'")) {
+            pieceText = pieceText.slice(0, -1);
+          }
+        } else {
+          // Fallback: stitch tokens back together.
+          pieceText = lines[j].tokens.map(t => t.value).join(' ');
+        }
+        promptLines.push(pieceText);
+        j++;
+      }
+      if (promptLines.length === 0) {
+        errors.push({
+          line,
+          message: "give claude's `with prompt:` clause is empty — add a string after `prompt:` or indent a multi-line prompt below."
+        });
+        return { node: null, endIdx: startIdx + 1 };
+      }
+      prompt = { type: NodeType.LITERAL_STRING, value: promptLines.join('\n'), line };
+      endIdx = j;
+      // After multi-line prompt, no `as` clause is supported on the same
+      // header line (the rebind would be far away). Keep simple for v1.
+      pos = tokens.length;
+    } else if (tokens[pos].type === TokenType.STRING) {
+      prompt = { type: NodeType.LITERAL_STRING, value: tokens[pos].value, line };
+      pos++;
+    } else if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+      prompt = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+      pos++;
+    } else {
+      errors.push({
+        line,
+        message: "give claude's `with prompt:` clause needs a string or a variable. Example: give claude message with prompt: 'be concise'"
+      });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+  }
+
+  // Optional `as <name>` — names the result (default is `claude_reply`).
+  let resultName = 'claude_reply';
+  // After consuming the prompt, we may now have an `as <ident>` clause.
+  // Either we hit an `as_format` token earlier (no prompt), or we may
+  // have one after the prompt expression.
+  if (asPos !== -1 && withPos === -1) {
+    pos = asPos + 1; // skip `as`
+  } else {
+    // Skip whitespace and look for `as_format` at current pos.
+    while (pos < tokens.length && tokens[pos].type === TokenType.COMMENT) pos++;
+    if (pos < tokens.length && tokens[pos].canonical === 'as_format') pos++;
+    else pos = -1; // no `as` clause
+  }
+  if (pos !== -1 && pos < tokens.length) {
+    if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+      resultName = tokens[pos].value;
+      pos++;
+    } else {
+      errors.push({
+        line,
+        message: "give claude's `as <name>` clause needs an identifier. Example: give claude message with prompt: 'be concise' as answer"
+      });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+  }
+
+  return {
+    node: {
+      type: NodeType.GIVE_CLAUDE,
+      data: dataExpr.node,
+      prompt,
+      resultName,
+      line,
+    },
+    endIdx,
+  };
 }
 
 // =============================================================================
@@ -8920,6 +9187,14 @@ function parsePrimary(tokens, pos, line, end) {
 
   if (tok.canonical === 'nothing') {
     return { node: literalNothing(line), nextPos: pos + 1 };
+  }
+
+  // Lean Lesson 1 — `TBD` in expression position. Drops a placeholder marker
+  // wherever a value goes (`set greeting = TBD`, `respond TBD`, etc). The
+  // compiler emits a runtime stub that throws a "this part hasn't been filled
+  // in yet" error if the value is ever read.
+  if (tok.canonical === 'tbd') {
+    return { node: placeholderNode(line), nextPos: pos + 1 };
   }
 
   // "today" → date expression for start of current day

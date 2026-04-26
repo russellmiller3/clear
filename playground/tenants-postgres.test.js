@@ -32,7 +32,7 @@ import { newDb } from 'pg-mem';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { runMigrations } from './db/migrations.js';
-import { InMemoryTenantStore, PostgresTenantStore } from './tenants.js';
+import { InMemoryTenantStore, PostgresTenantStore, MAX_VERSIONS_PER_APP } from './tenants.js';
 import { planFor } from './plans.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -649,30 +649,279 @@ await runAsync(async () => {
     `hostname stored as null (got ${cf.rows[0].hostname})`);
 });
 
+// ═════════════════════════════════════════════════════════════════════════
+// CC-1 cycle 5 — versions: seed in markAppDeployed, recordVersion,
+// getAppRecord newest-first, cap at 20.
+// ═════════════════════════════════════════════════════════════════════════
+//
+// In-memory parity (the contract):
+//   - markAppDeployed({...versionId, sourceHash, migrationsHash}) seeds an
+//     initial app_versions row when versionId is non-null.
+//   - recordVersion({tenantSlug, appSlug, versionId, uploadedAt, sourceHash,
+//     migrationsHash, note?, via?}) appends a row, returns {ok:true} on hit
+//     or {ok:false, code:'APP_NOT_FOUND'} when the app doesn't exist.
+//   - getAppRecord(tenantSlug, appSlug) returns:
+//       {tenantSlug, appSlug, scriptName, d1_database_id, hostname,
+//        deployedAt:<iso string>, versions:[…newest-first…], secretKeys:[…]}
+//     or null on miss. versions[i] = {versionId, uploadedAt, sourceHash,
+//     migrationsHash, note?, via?}. secretKeys is an empty [] in cycle 5
+//     (cycle 6 wires the seed + dedupe-append).
+//   - versions is capped at MAX_VERSIONS_PER_APP=20 — the OLDEST entries
+//     are trimmed first. Cap is enforced inside recordVersion's transaction
+//     so the row never lives in an over-capped state.
+//
+// pg-mem caveat: pg-mem ignores ORDER BY *inside* aggregates (json_agg /
+// array_agg) — it returns insertion order. So we DO NOT use the
+// `json_agg(av ORDER BY uploaded_at DESC)` shape from the plan. Instead
+// getAppRecord runs three plain SELECTs (cf_deploys row, versions ORDER BY
+// uploaded_at DESC, secret keys ORDER BY set_at) and assembles the record
+// in JS. Same observable behavior, portable to real Postgres.
+//
+// MAX_VERSIONS_PER_APP is exported from tenants.js — we import it at the top
+// of this file so the trim test below uses the same constant the
+// implementation does.
+
 // ─────────────────────────────────────────────────────────────────────────
-// Sanity — cycles 5-8 territory (versions / secrets / lookup / audit) still
-// throws NOT_IMPLEMENTED. markAppDeployed has graduated; getAppRecord has not.
+// markAppDeployed seeds an initial version row when versionId is non-null.
+// getAppRecord returns the seed row in versions[].
 // ─────────────────────────────────────────────────────────────────────────
-console.log('\n🐘 CC-1 cycle 4 — cycles 5-8 territory still NOT_IMPLEMENTED');
+console.log('\n🐘 CC-1 cycle 5 — markAppDeployed seeds versions[] when versionId is non-null');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'todo',
+    scriptName: 'clear-abc-todo',
+    d1_database_id: 'db_abc',
+    hostname: 'todo.buildclear.dev',
+    versionId: 'v-seed',
+    sourceHash: 'sh-seed',
+    migrationsHash: 'mh-seed',
+  });
+
+  const rec = await store.getAppRecord(slug, 'todo');
+  assert(rec !== null, 'getAppRecord returns non-null after markAppDeployed');
+  assert(rec.scriptName === 'clear-abc-todo', `scriptName carried (got ${rec.scriptName})`);
+  assert(rec.d1_database_id === 'db_abc', `d1_database_id carried (got ${rec.d1_database_id})`);
+  assert(rec.hostname === 'todo.buildclear.dev', `hostname carried (got ${rec.hostname})`);
+  assert(typeof rec.deployedAt === 'string', `deployedAt is iso string (got ${typeof rec.deployedAt})`);
+  assert(Array.isArray(rec.versions) && rec.versions.length === 1,
+    `versions[] seeded with exactly 1 row (got ${rec.versions && rec.versions.length})`);
+  assert(rec.versions[0].versionId === 'v-seed',
+    `seed versionId carries through (got ${rec.versions[0].versionId})`);
+  assert(rec.versions[0].sourceHash === 'sh-seed',
+    `seed sourceHash carries through (got ${rec.versions[0].sourceHash})`);
+  assert(rec.versions[0].migrationsHash === 'mh-seed',
+    `seed migrationsHash carries through (got ${rec.versions[0].migrationsHash})`);
+  assert(Array.isArray(rec.secretKeys) && rec.secretKeys.length === 0,
+    'secretKeys is empty array in cycle 5 (cycle 6 wires the seed)');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// markAppDeployed without versionId does NOT seed a version row.
+// (Backward compat with Phase 7 callers that don't pass version metadata.)
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — markAppDeployed without versionId does NOT seed a version row');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'no-ver',
+    scriptName: 'clear-abc-no-ver',
+    d1_database_id: 'db_x', hostname: 'h.x',
+  });
+  const rec = await store.getAppRecord(slug, 'no-ver');
+  assert(rec !== null, 'getAppRecord returns non-null');
+  assert(Array.isArray(rec.versions) && rec.versions.length === 0,
+    `versions[] is empty when no versionId passed (got ${rec.versions && rec.versions.length})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// markAppDeployed UPSERT must NOT clobber existing versions[]. A redeploy
+// without versionId of an app that has accumulated versions keeps the
+// versions intact (we only ever INSERT seed rows when versionId is given,
+// and the existing rows survive the cf_deploys UPSERT because the FK from
+// app_versions points at (tenant_slug, app_slug), not at cf_deploys.id).
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — markAppDeployed UPSERT preserves existing versions[]');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'keep',
+    scriptName: 'sn1', d1_database_id: 'db1', hostname: 'h.x',
+    versionId: 'v-original',
+    sourceHash: 'sh-original',
+  });
+  // Add a couple more versions.
+  await store.recordVersion({
+    tenantSlug: slug, appSlug: 'keep',
+    versionId: 'v-2', uploadedAt: '2026-04-23T12:00:00Z', sourceHash: 'sh2',
+  });
+  await store.recordVersion({
+    tenantSlug: slug, appSlug: 'keep',
+    versionId: 'v-3', uploadedAt: '2026-04-23T13:00:00Z', sourceHash: 'sh3',
+  });
+
+  // Redeploy WITHOUT versionId — should not seed a new row, and existing 3
+  // versions must survive the UPSERT.
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'keep',
+    scriptName: 'sn1-new', d1_database_id: 'db1-new', hostname: 'h.x',
+  });
+
+  const rec = await store.getAppRecord(slug, 'keep');
+  assert(rec.versions.length === 3,
+    `existing versions[] preserved through UPSERT (got ${rec.versions.length})`);
+  assert(rec.scriptName === 'sn1-new',
+    `scriptName updated by UPSERT (got ${rec.scriptName})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// recordVersion appends a row; getAppRecord shows it.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — recordVersion appends and getAppRecord shows it');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'app',
+    scriptName: 'sn', d1_database_id: 'db', hostname: 'h.x',
+  });
+  const res = await store.recordVersion({
+    tenantSlug: slug, appSlug: 'app',
+    versionId: 'v-001',
+    uploadedAt: '2026-04-23T20:00:00Z',
+    sourceHash: 'sh1',
+    migrationsHash: 'mh1',
+    note: 'first ship',
+    via: 'widget',
+  });
+  assert(res && res.ok === true, `recordVersion returns {ok:true} (got ${JSON.stringify(res)})`);
+
+  const rec = await store.getAppRecord(slug, 'app');
+  assert(rec.versions.length === 1, `versions has 1 row (got ${rec.versions.length})`);
+  assert(rec.versions[0].versionId === 'v-001', `versionId carried (got ${rec.versions[0].versionId})`);
+  assert(rec.versions[0].sourceHash === 'sh1', `sourceHash carried (got ${rec.versions[0].sourceHash})`);
+  assert(rec.versions[0].migrationsHash === 'mh1', `migrationsHash carried (got ${rec.versions[0].migrationsHash})`);
+  assert(rec.versions[0].note === 'first ship', `note carried (got ${rec.versions[0].note})`);
+  assert(rec.versions[0].via === 'widget', `via carried (got ${rec.versions[0].via})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// recordVersion on unknown app returns {ok:false, code:'APP_NOT_FOUND'}.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — recordVersion on unknown app returns APP_NOT_FOUND');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const res = await store.recordVersion({
+    tenantSlug: 'clear-ghost',
+    appSlug: 'ghost-app',
+    versionId: 'v1',
+    uploadedAt: '2026-04-23T20:00:00Z',
+    sourceHash: 'x',
+  });
+  assert(res && res.ok === false && res.code === 'APP_NOT_FOUND',
+    `unknown app returns {ok:false, code:APP_NOT_FOUND} (got ${JSON.stringify(res)})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// getAppRecord returns versions newest-first by uploaded_at.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — getAppRecord sorts versions newest-first by uploaded_at');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'sortme',
+    scriptName: 'sn', d1_database_id: 'db', hostname: 'h.x',
+  });
+  // Insert in non-chronological order on purpose.
+  await store.recordVersion({
+    tenantSlug: slug, appSlug: 'sortme',
+    versionId: 'v-middle', uploadedAt: '2026-04-23T12:00:00Z', sourceHash: 'b',
+  });
+  await store.recordVersion({
+    tenantSlug: slug, appSlug: 'sortme',
+    versionId: 'v-newest', uploadedAt: '2026-04-23T20:00:00Z', sourceHash: 'c',
+  });
+  await store.recordVersion({
+    tenantSlug: slug, appSlug: 'sortme',
+    versionId: 'v-oldest', uploadedAt: '2026-04-23T06:00:00Z', sourceHash: 'a',
+  });
+
+  const rec = await store.getAppRecord(slug, 'sortme');
+  assert(rec.versions[0].versionId === 'v-newest',
+    `versions[0] is newest (got ${rec.versions[0].versionId})`);
+  assert(rec.versions[1].versionId === 'v-middle',
+    `versions[1] is middle (got ${rec.versions[1].versionId})`);
+  assert(rec.versions[2].versionId === 'v-oldest',
+    `versions[2] is oldest (got ${rec.versions[2].versionId})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// recordVersion caps at MAX_VERSIONS_PER_APP, oldest trimmed.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — recordVersion caps at MAX_VERSIONS_PER_APP=20, oldest trimmed');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'cap',
+    scriptName: 'sn', d1_database_id: 'db', hostname: 'h.x',
+  });
+  // Insert 25 versions with monotonically increasing timestamps.
+  for (let i = 0; i < 25; i++) {
+    await store.recordVersion({
+      tenantSlug: slug, appSlug: 'cap',
+      versionId: `v${String(i).padStart(2, '0')}`,  // v00 .. v24
+      uploadedAt: new Date(Date.parse('2026-01-01T00:00:00Z') + i * 60000).toISOString(),
+      sourceHash: `sh${i}`,
+    });
+  }
+  const rec = await store.getAppRecord(slug, 'cap');
+  assert(rec.versions.length === MAX_VERSIONS_PER_APP,
+    `versions capped at ${MAX_VERSIONS_PER_APP} (got ${rec.versions.length})`);
+  // Newest-first → versions[0] should be v24.
+  assert(rec.versions[0].versionId === 'v24',
+    `newest kept is v24 (got ${rec.versions[0].versionId})`);
+  // Oldest of kept should be v05 (we dropped v00-v04).
+  assert(rec.versions[rec.versions.length - 1].versionId === 'v05',
+    `oldest kept is v05 — v00..v04 trimmed (got ${rec.versions[rec.versions.length - 1].versionId})`);
+  // None of the trimmed ones should be present.
+  const ids = new Set(rec.versions.map(v => v.versionId));
+  assert(!ids.has('v00') && !ids.has('v01') && !ids.has('v02') && !ids.has('v03') && !ids.has('v04'),
+    'v00..v04 are not in the result');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// getAppRecord on unknown (tenantSlug, appSlug) returns null.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — getAppRecord returns null for unknown (tenantSlug, appSlug)');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const rec = await store.getAppRecord('clear-ghost', 'ghost-app');
+  assert(rec === null, `getAppRecord on unknown returns null (got ${rec})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sanity — cycles 6-8 territory (secrets / lookup / audit) still throws
+// NOT_IMPLEMENTED. Cycle 5 promotes getAppRecord + recordVersion.
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n🐘 CC-1 cycle 5 — cycles 6-8 territory still NOT_IMPLEMENTED');
 await runAsync(async () => {
   const { store } = await freshStore();
   let caught = null;
   try { await store.lookupAppBySubdomain('whatever'); }
   catch (e) { caught = e; }
   assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'lookupAppBySubdomain still throws NOT_IMPLEMENTED');
+    'lookupAppBySubdomain still throws NOT_IMPLEMENTED until cycle 7');
 
   caught = null;
-  try { await store.getAppRecord('clear-x', 'app-y'); }
+  try { await store.updateSecretKeys({ tenantSlug: 'x', appSlug: 'y', newKeys: ['K'] }); }
   catch (e) { caught = e; }
   assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'getAppRecord still throws NOT_IMPLEMENTED until cycle 5');
+    'updateSecretKeys still throws NOT_IMPLEMENTED until cycle 6');
 
   caught = null;
-  try { await store.recordVersion({ tenantSlug: 'x', appSlug: 'y', versionId: 'v1' }); }
+  try { await store.getAuditLog('x', 'y'); }
   catch (e) { caught = e; }
   assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'recordVersion still throws NOT_IMPLEMENTED until cycle 5');
+    'getAuditLog still throws NOT_IMPLEMENTED until cycle 8');
 });
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

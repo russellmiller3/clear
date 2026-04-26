@@ -877,3 +877,49 @@ Every directive in Clear must unambiguously name what it does. The reader (human
 **When two readers would guess differently, change the syntax.** Don't add a comment explaining what it does — the comment proves the syntax is wrong. The fix is always at the syntax level, not the doc level.
 
 **This rule applies retroactively.** When we find a directive in Clear that lies about what it does (`local memory` was one), we deprecate it with a warning steering authors to the precise form. We do NOT keep the lying form because "people are used to it" — that's the same religion the dependencies rule kills.
+
+## Rule 22: One Thought Per Line — No Expression Chaining
+
+Rule 3 (One Operation Per Line) bans nested expressions and chaining at the AST level. Rule 22 sharpens it at the reading level: even when a line technically expresses one operation, if it crams multiple mental concepts into one breath, split it.
+
+**The anti-pattern this rule kills:** lines that pass the "one operation" check but read as compound thoughts. The trigger case (2026-04-26) was the AI-call form `reply is ask claude to answer message with prompt 'be concise'`. That's one operation (one assignment, one AI call), but it forces the reader to track:
+
+1. Assignment to `reply`
+2. Verb chain — "ask claude to answer"
+3. Data — `message`
+4. Constraint — `with prompt 'X'`
+
+Four mental concepts at once. The eye has to hold all four to understand what the line does. That's compound prose, not source code a 14-year-old can read.
+
+**The split:**
+
+```clear
+give claude message with prompt: 'be concise'
+send back claude's reply
+```
+
+Two lines, each one thought:
+- "Hand the message to Claude with these instructions."
+- "Send back what Claude said."
+
+Reader processes one beat at a time. Cognitive load per line stays below the 14-year-old test bar.
+
+**How to spot the violation in your own code:**
+
+- Read the line out loud. If it has two `to`s, two prepositions back-to-back, or you have to take a breath in the middle — split it.
+- Count the mental concepts. Assignment, verb, data, constraint = four. Three or more is usually a sign of chaining; split.
+- "But it's one expression" is not a defense. Rule 3 already passed; Rule 22 is the next bar.
+
+**What this rule allows:**
+
+- Possessive access on the result of a previous line (`claude's reply`, `caller's id`). That's not chaining — it's reading a name that earned its place by being explicit about its source.
+- Single-arg verbs with a data token (`send back claude's reply`, `display all_users`, `save record as new User`). One verb, one object — that's one thought.
+- Optional named result with `as <name>` when the result is reused. Adds one concept (the name) and earns its place by being referenced again later. Not chaining.
+
+**What this rule forbids:**
+
+- Verb chains in the same expression as the call (`ask claude to <verb> <data>`). The verb belongs in the prompt string or in the call's name — not threaded through the assignment.
+- Inline assignments inside other expressions (`send back ask claude '...' with X`). Either name the result on its own line, or have the call be the whole right-hand side of `send back` — never both ceremonies stacked.
+- Multi-clause prepositional chains (`call API with X using Y as Z within W`). If you find yourself reaching for three+ qualifier words in one line, you have a structured argument — make it a block.
+
+**When in doubt, the test is:** can a 14-year-old read this line out loud in one breath and explain what it does? If they pause, split.

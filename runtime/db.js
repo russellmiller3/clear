@@ -28,7 +28,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DATA_FILE = path.join(process.cwd(), 'clear-data.db');
+const DATA_FILE = process.env.CLEAR_DB_PATH || path.join(process.cwd(), 'clear-data.db');
 const _db = new Database(DATA_FILE);
 
 // WAL mode: better concurrent read performance, safe across crashes
@@ -426,6 +426,10 @@ function reset() {
   }
 }
 
+function close() {
+  _db.close();
+}
+
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -443,4 +447,5 @@ module.exports = {
   save,
   load,
   reset,
+  close,
 };

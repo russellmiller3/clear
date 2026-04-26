@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (126 total)
+## Node Types (127 total)
 
 ### Core Language
 
@@ -48,6 +48,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `CONTINUE` | `skip` / `continue` | `continue;` |
 | `COMMENT` | `# text` | `// text` / `# text` |
 | `TRY_HANDLE` | `try:` + `if error:` / `if error 'not found':` + optional `finally:` / `always do:` | `try { ... } catch (_err) { ... } finally { ... }` — typed handlers emit status checks; multiple handlers chain as `if/else if/else`; finally always runs |
+| `LIVE_BLOCK` | `live:` + indented body — explicit effect fence (Path B Phase 1, 2026-04-25). Body holds calls that talk to the world (`ask claude`, `call API`, `subscribe to`, timers). Phase B-1 is permissive: any statement is allowed inside. Phase B-2 will reject effect-shaped calls outside `live:`. See PHILOSOPHY.md Rule 18. | Body emits inline with a `// live: block — explicit effect fence` comment marker. No runtime semantics yet — fence is signal for the validator and the human reader. |
 | `THROW` | `send error 'message'` / `throw error` / `fail with` / `raise error` | `throw new Error('message')` (JS) / `raise Exception('message')` (Python) — custom errors from any context |
 | `LITERAL_STRING` (interpolated) | `'Hello, {name}!'` | `` `Hello, ${name}!` `` (JS) / `f"Hello, {name}!"` (Python) |
 | `USE` | `use 'helpers'` / `use double from 'helpers'` / `use everything from 'helpers'` / `use 'lib' from './lib.js'` | Module import (namespaced, selective, inline-all, or external JS) |
@@ -83,6 +84,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `LITERAL_STRING` | `'hello'` | Single or double quotes |
 | `LITERAL_BOOLEAN` | `true`, `false` | |
 | `LITERAL_NOTHING` | `nothing` | `null` / `None` |
+| `PLACEHOLDER` | `TBD` (statement OR expression) | Lean Lesson 1 — drop anywhere a value or block can go. Compiles green. Runtime emits `throw new Error("placeholder hit at line N — fill it in or remove it")` (or `raise Exception(...)` in Python). Test harness catches that exact message and reports SKIPPED, not FAILED. `result.placeholders` lists every TBD line. |
 | `LITERAL_LIST` | `['a', 'b']` | |
 | `LITERAL_RECORD` | `create person:` + fields | Object literal |
 | `VARIABLE_REF` | `name` | |
@@ -485,20 +487,32 @@ the full token system.
 | `section_dark` | Same as `page_section_dark` |
 | `card` | `card bg-base-200 border border-base-300/50 rounded-xl p-6` |
 
-**App/dashboard presets:**
+**App/dashboard presets** (Phase 1 shell upgrade — 04-25-2026, modeled on
+`landing/marcus-app-target.html`):
 
-| Preset | DaisyUI/Tailwind Classes |
-|--------|------------------------|
-| `app_layout` | `h-screen flex bg-base-100` (flex container for sidebar + main) |
-| `app_sidebar` | `menu p-4 w-60 min-h-full bg-base-200 border-r border-base-300/50 text-sm` |
-| `app_main` | `flex flex-col flex-1 min-w-0` (column wrapper for header + content) |
-| `app_content` | `flex-1 p-6 bg-base-100 overflow-y-auto` |
-| `app_header` | `navbar bg-base-200 border-b border-base-300/50 px-4 h-14 sticky top-0 z-30` |
-| `app_card` | `card bg-base-200 border border-base-300/50 rounded-xl p-5` |
+| Preset | HTML tag | Classes + inline style |
+|--------|----------|------------------------|
+| `app_layout` | `<div>` | `flex min-h-screen` (full-screen flex shell — page owns scroll) |
+| `app_sidebar` | `<aside>` | `hairline-r flex-shrink-0 flex flex-col scroll-y` + `style="width:240px;background:var(--clear-bg-rail);"` |
+| `app_main` | `<main>` | `flex-1 min-w-0 flex flex-col` |
+| `app_header` | `<header>` | `hairline-b sticky top-0 z-30 flex items-center gap-4 px-5` + `style="height:56px;background:var(--clear-bg-canvas);"` (3 slots: brand / breadcrumb / actions, exposed via `data-clear-slot=`) |
+| `app_content` | `<div>` | `flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6` |
+| `app_card` | `<div>` | `bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5` |
 
-App presets skip the max-width inner wrapper (unlike landing page presets) since they
-participate in flex layout. When app presets are detected, the outer `<main>` gets no
-constraining class and `<body>` uses `bg-base-100`.
+The shell tags use semantic HTML5 elements (`aside`, `main`, `header`) instead
+of generic divs — better accessibility and matches the polished slate-on-ivory
+mock chrome. CSS custom properties (`--clear-bg-rail`, `--clear-bg-canvas`,
+`--clear-line`) come from the design tokens block in `compiler.js`'s
+`CSS_RESET`. App presets skip the max-width inner wrapper (unlike landing page
+presets) since they participate in flex layout.
+
+`app_header` body content is auto-sorted into three slots when emitted:
+- `heading` children → `data-clear-slot="brand"` (left)
+- text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
+- `button` children → `data-clear-slot="actions"` (right, ml-auto)
+
+Phase 2-7 of the shell upgrade plan add `nav item`, `stat card`, `detail
+panel`, etc. — see `plans/plan-full-shell-upgrade-04-25-2026.md`.
 
 ### Design System
 
@@ -558,6 +572,7 @@ These are Studio (`playground/server.js`) features, not Clear language primitive
 | Capability | Where | What it does |
 |------------|-------|--------------|
 | **Hosted deploy** | `playground/deploy.js`, `playground/builder/` | `POST /api/deploy` packages the current source, tars it, POSTs to a shared builder machine that runs `docker build` → `docker push registry.fly.io` → `flyctl deploy` and returns a live URL. Customer never sees Fly. |
+| **One-click updates** (Cloudflare) | `playground/deploy-cloudflare.js:_deployUpdate`, `playground/deploy.js:/api/deploy` | When `/api/deploy` sees the app is already deployed, it routes through the incremental `mode: 'update'` path — re-uploads the Worker bundle only (no D1 reprovision, no domain reattach, no full secret push), records the new `versionId` against the tenant's `versions[]`, and returns in ~2s instead of ~12s. Schema changes (D1 SQL or `wrangler.toml`) are gated by `migrationsDiffer()` + a 409 `MIGRATION_REQUIRED` confirm round-trip. Per-app history capped at 20 entries; older versions stay on Cloudflare's side. |
 | **AI proxy routing** | `playground/ai-proxy/` | Every `ask claude` in a deployed app routes through a metered proxy that holds the only Anthropic key. Usage attributed to the tenant, billed via Stripe metered add-on. |
 | **Tenant + billing** | `playground/tenants.js`, `playground/billing.js` | One row per paying customer. Plan limits come from `plans.js`. Stripe Checkout creates tenants; webhook updates plan. Dedup'd by event_id so webhook replays don't double-bill. |
 | **Multi-tenant isolation** | `playground/sanitize.js` | Every app name starts with `clear-<tenantSlug>-`. Rollback, history, cert endpoints assert ownership before calling the builder. Per-app Firecracker VM isolation is Fly's default. |

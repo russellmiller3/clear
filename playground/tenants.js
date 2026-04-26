@@ -644,8 +644,8 @@ export class PostgresTenantStore {
 	// new deploy timestamp, even if the script is unchanged).
 	async markAppDeployed({
 		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
-		// versionId, sourceHash, migrationsHash, secretKeys — accepted but
-		// ignored in cycle 4 (cycles 5-6 will wire them into the transaction).
+		versionId = null, sourceHash = null, migrationsHash = null,
+		// secretKeys — accepted but ignored in cycle 5 (cycle 6 wires the seed).
 	}) {
 		const client = await this._pool.connect();
 		try {
@@ -673,6 +673,23 @@ export class PostgresTenantStore {
 				   DO UPDATE SET app_name = EXCLUDED.app_name`,
 				[tenantSlug, appSlug, scriptName]
 			);
+			// CC-1 cycle 5 — seed an initial app_versions row when versionId
+			// is non-null. Mirrors InMemoryTenantStore.markAppDeployed line 110:
+			// only seed when the caller passed a versionId. Existing rows are
+			// untouched by this UPSERT (the FK on (tenant_slug, app_slug)
+			// points at cf_deploys, not at cf_deploys.id, so re-deploys keep
+			// the version history intact). Plain INSERT — never an UPSERT —
+			// because every recordVersion call is also a plain INSERT, and
+			// duplicate version rows are allowed in the in-memory store too
+			// (the cap is the only de-dupe).
+			if (versionId) {
+				await client.query(
+					`INSERT INTO clear_cloud.app_versions
+					   (tenant_slug, app_slug, version_id, uploaded_at, source_hash, migrations_hash)
+					 VALUES ($1, $2, $3, now(), $4, $5)`,
+					[tenantSlug, appSlug, versionId, sourceHash ?? null, migrationsHash ?? null]
+				);
+			}
 			await client.query('COMMIT');
 			return { ok: true };
 		} catch (err) {
@@ -683,8 +700,158 @@ export class PostgresTenantStore {
 		}
 	}
 
-	async getAppRecord() { return this._notImpl('getAppRecord', 'SELECT * FROM cf_deploys WHERE tenant_slug = $1 AND app_slug = $2'); }
-	async recordVersion() { return this._notImpl('recordVersion', 'UPDATE cf_deploys SET versions = versions || $1::jsonb WHERE tenant_slug = $2 AND app_slug = $3'); }
+	// CC-1 cycle 5 — read the full per-app record. Mirrors
+	// InMemoryTenantStore.getAppRecord (line 129): returns the cf_deploys row
+	// merged with versions[] (newest-first by uploaded_at) and secretKeys[]
+	// (cycle 5 leaves this empty; cycle 6 wires the seed + dedupe append).
+	//
+	// SQL shape: three plain SELECTs assembled in JS, NOT a single mega-JOIN
+	// with json_agg. pg-mem ignores ORDER BY inside aggregate functions
+	// (json_agg / array_agg) — it returns insertion order regardless of the
+	// ORDER BY clause. Three SELECTs with plain top-level ORDER BY work
+	// identically in pg-mem and real Postgres, and the per-app row counts are
+	// tiny (max 20 versions, ~5-10 keys), so the extra round-trips are noise.
+	//
+	// Returns null when (tenant_slug, app_slug) doesn't exist in cf_deploys.
+	// Returned shape uses camelCase for fields the in-memory store camelCases
+	// (scriptName, deployedAt, secretKeys) and snake_case where it does
+	// (d1_database_id) — strict shape parity with the in-memory store.
+	async getAppRecord(tenantSlug, appSlug) {
+		const client = await this._pool.connect();
+		try {
+			const cf = await client.query(
+				`SELECT script_name, d1_database_id, hostname, deployed_at
+				 FROM clear_cloud.cf_deploys
+				 WHERE tenant_slug = $1 AND app_slug = $2`,
+				[tenantSlug, appSlug]
+			);
+			if (cf.rows.length === 0) return null;
+			const row = cf.rows[0];
+
+			const versions = await client.query(
+				`SELECT version_id, uploaded_at, source_hash, migrations_hash, note, via
+				 FROM clear_cloud.app_versions
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY uploaded_at DESC`,
+				[tenantSlug, appSlug]
+			);
+
+			const secrets = await client.query(
+				`SELECT key_name FROM clear_cloud.app_secret_keys
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY set_at`,
+				[tenantSlug, appSlug]
+			);
+
+			// Map snake_case columns to the camelCase fields the in-memory
+			// shape uses. note/via are conditionally included — the in-memory
+			// store uses spread-with-conditionals for these so they're absent
+			// (not null) when the caller didn't pass them.
+			const versionsCamel = versions.rows.map(v => {
+				const out = {
+					versionId: v.version_id,
+					uploadedAt: v.uploaded_at instanceof Date
+						? v.uploaded_at.toISOString()
+						: v.uploaded_at,
+					sourceHash: v.source_hash,
+					migrationsHash: v.migrations_hash,
+				};
+				if (v.note !== null && v.note !== undefined) out.note = v.note;
+				if (v.via !== null && v.via !== undefined) out.via = v.via;
+				return out;
+			});
+
+			return {
+				tenantSlug,
+				appSlug,
+				scriptName: row.script_name,
+				d1_database_id: row.d1_database_id,
+				hostname: row.hostname,
+				deployedAt: row.deployed_at instanceof Date
+					? row.deployed_at.toISOString()
+					: row.deployed_at,
+				versions: versionsCamel,
+				secretKeys: secrets.rows.map(r => r.key_name),
+			};
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 5 — append a new version row, then trim if over the cap.
+	// Mirrors InMemoryTenantStore.recordVersion (line 151): returns
+	// {ok:true} on success or {ok:false, code:'APP_NOT_FOUND'} when the
+	// (tenant_slug, app_slug) doesn't exist in cf_deploys. Both the existence
+	// check, the INSERT, and the cap trim run inside one transaction so the
+	// row never lives in an over-capped state and a concurrent reader never
+	// sees the un-trimmed window.
+	//
+	// Trim shape: DELETE every row whose id falls beyond the newest
+	// MAX_VERSIONS_PER_APP, ordered by uploaded_at ASC then OFFSET 20. The
+	// OFFSET-in-subquery pattern is portable to pg-mem AND real Postgres;
+	// window functions (ROW_NUMBER OVER) would be cleaner but pg-mem coverage
+	// of window functions is patchy and the OFFSET subquery is just as fast
+	// at our row counts (max 25 in-flight, almost always under 20).
+	async recordVersion({
+		tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via,
+	}) {
+		const client = await this._pool.connect();
+		try {
+			await client.query('BEGIN');
+			// APP_NOT_FOUND check — mirrors the in-memory store's
+			// `if (!cfDeploys.has(key)) return APP_NOT_FOUND`. SELECT 1 keeps
+			// the round trip cheap; the row itself isn't read.
+			const exists = await client.query(
+				`SELECT 1 FROM clear_cloud.cf_deploys
+				 WHERE tenant_slug = $1 AND app_slug = $2`,
+				[tenantSlug, appSlug]
+			);
+			if (exists.rowCount === 0) {
+				await client.query('ROLLBACK');
+				return { ok: false, code: 'APP_NOT_FOUND' };
+			}
+
+			await client.query(
+				`INSERT INTO clear_cloud.app_versions
+				   (tenant_slug, app_slug, version_id, uploaded_at, source_hash, migrations_hash, note, via)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				[
+					tenantSlug, appSlug, versionId,
+					uploadedAt || new Date().toISOString(),
+					sourceHash ?? null,
+					migrationsHash ?? null,
+					note ?? null,
+					via ?? null,
+				]
+			);
+
+			// Trim oldest beyond MAX_VERSIONS_PER_APP. ORDER BY uploaded_at
+			// DESC + OFFSET 20 selects everything PAST the newest 20 — i.e.
+			// the oldest rows that need deleting. (ASC + OFFSET 20 would
+			// select the NEWEST past 20, which is the inverse of what we
+			// want.) The MAX_VERSIONS_PER_APP interpolation is safe — it's a
+			// module constant (number literal in source), never user input.
+			await client.query(
+				`DELETE FROM clear_cloud.app_versions
+				 WHERE id IN (
+				   SELECT id FROM clear_cloud.app_versions
+				   WHERE tenant_slug = $1 AND app_slug = $2
+				   ORDER BY uploaded_at DESC
+				   OFFSET ${MAX_VERSIONS_PER_APP}
+				 )`,
+				[tenantSlug, appSlug]
+			);
+
+			await client.query('COMMIT');
+			return { ok: true };
+		} catch (err) {
+			try { await client.query('ROLLBACK'); } catch { /* swallow secondary error */ }
+			throw err;
+		} finally {
+			client.release();
+		}
+	}
+
 	async updateSecretKeys() { return this._notImpl('updateSecretKeys', 'UPDATE cf_deploys SET secret_keys = ... WHERE tenant_slug = $1 AND app_slug = $2'); }
 	async lookupAppBySubdomain() { return this._notImpl('lookupAppBySubdomain', "SELECT * FROM cf_deploys WHERE split_part(hostname, '.', 1) = lower($1)"); }
 	async loadKnownApps() { return this._notImpl('loadKnownApps', 'SELECT script_name, d1_database_id FROM cf_deploys'); }

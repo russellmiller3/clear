@@ -3174,9 +3174,36 @@ function _applyTheme(src, themeName) {
   return `theme '${themeName}'\n\n${src}`;
 }
 
+// One-click updates Phase 5 — fetch the deployed-state for an app slug so the
+// Publish window can swap to "Update <hostname>" / show "Last published N min
+// ago" / change button text. Returns null on any failure (network, 404, etc.)
+// so the modal falls back to the fresh-deploy UX cleanly.
+async function _fetchAppInfo(slug) {
+  if (!slug || !slug.trim()) return null;
+  try {
+    const r = await fetch('/api/app-info/' + encodeURIComponent(slug.trim()));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+// Plain-English relative time. "5 min ago", "2 hr ago", "3 days ago".
+function _formatTimeAgo(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return '';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + ' hr ago';
+  const days = Math.floor(hr / 24);
+  return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+}
+
 window.doDeploy = async function() {
-  const source = (typeof getSource === 'function') ? getSource() : (window.editor ? window.editor.state.doc.toString() : '');
-  if (!source) { alert('Nothing to deploy — compile first.'); return; }
+  const source = (typeof getSource === 'function') ? getSource() : (window._editor ? window._editor.state.doc.toString() : '');
+  if (!source) { alert('Nothing to publish — compile first.'); return; }
 
   const appSlugDefault = 'app-' + Math.random().toString(36).slice(2, 6);
   const detected = _detectTheme(source);
@@ -3200,18 +3227,23 @@ window.doDeploy = async function() {
   modal.style.display = 'flex';
   modal.innerHTML = `
     <div class="deploy-box">
-      <div class="deploy-title">Deploy to a live URL</div>
+      <div class="deploy-title" id="deploy-modal-title">Publish to Clear Cloud</div>
+      <div id="deploy-modal-subtitle" style="font-size:12px;color:var(--tx2);margin:-8px 0 12px;min-height:14px"></div>
       <label>App name</label>
       <input id="deploy-app-slug" type="text" value="${appSlugDefault}">
       <label style="margin-top:12px">Theme</label>
       <div class="theme-grid">${themeCardsHtml}</div>
       <label style="margin-top:12px">Custom domain (optional)</label>
-      <input id="deploy-domain" type="text" placeholder="deals.acme.com">
+      <input id="deploy-domain" type="text" placeholder="deals.acme.com (defaults to ${appSlugDefault}.buildclear.dev)">
       <div id="deploy-secret-fields"></div>
       <div class="deploy-actions">
         <button id="deploy-cancel-btn">Cancel</button>
         <button id="deploy-submit-btn" class="primary">Ship it</button>
       </div>
+      <div id="deploy-history-toggle" style="display:none;font-size:12px;margin-top:10px;text-align:right">
+        <a href="#" id="deploy-history-link" style="color:var(--ac1);cursor:pointer;text-decoration:underline">View version history</a>
+      </div>
+      <div id="deploy-history-panel" style="display:none;margin-top:8px;border:1px solid var(--bd);border-radius:6px;max-height:220px;overflow-y:auto"></div>
       <div id="deploy-progress"></div>
     </div>`;
   // Pre-select the detected / default theme.
@@ -3220,8 +3252,162 @@ window.doDeploy = async function() {
   if (initialCard) initialCard.classList.add('active');
   document.getElementById('deploy-cancel-btn').onclick = () => { modal.style.display = 'none'; };
 
-  document.getElementById('deploy-submit-btn').onclick = async () => {
-    const appSlug = document.getElementById('deploy-app-slug').value.trim();
+  // One-click updates Phase 5 — when the entered app slug matches an already-
+  // deployed app, swap the window's title + button text + subtitle so the
+  // owner knows they're updating, not creating fresh. Falls back to the
+  // Publish UX cleanly if the lookup fails or the slug is unknown.
+  const titleEl = document.getElementById('deploy-modal-title');
+  const subtitleEl = document.getElementById('deploy-modal-subtitle');
+  const slugInput = document.getElementById('deploy-app-slug');
+  const submitBtn = document.getElementById('deploy-submit-btn');
+  let currentInfo = null;
+
+  // One-click updates Phase 6 — version history + rollback. The "View
+  // version history" link only shows when the slug points to a deployed
+  // app. Clicking expands a panel with the last 20 versions; each non-
+  // current version has a Rollback button that promotes it back to live.
+  const historyToggle = document.getElementById('deploy-history-toggle');
+  const historyLink = document.getElementById('deploy-history-link');
+  const historyPanel = document.getElementById('deploy-history-panel');
+
+  const renderHistory = (versions) => {
+    if (!Array.isArray(versions) || versions.length === 0) {
+      historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">No version history yet.</div>';
+      return;
+    }
+    // Normalize across the two response shapes: Cloudflare returns
+    // {id, created_on, ...}; the in-store fallback returns {versionId,
+    // uploadedAt, sourceHash, note}. Both flow into one list.
+    const norm = versions.map(v => ({
+      versionId: v.versionId || v.id || '',
+      uploadedAt: v.uploadedAt || v.created_on || '',
+      note: v.note || '',
+    })).filter(v => v.versionId).slice(0, 20);
+    norm.sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || ''));
+    historyPanel.innerHTML = norm.map((v, i) => {
+      const idShort = v.versionId.slice(0, 10);
+      const when = v.uploadedAt ? _formatTimeAgo(v.uploadedAt) : '';
+      const isCurrent = i === 0;
+      const rightSide = isCurrent
+        ? '<span style="color:var(--ac1);font-weight:600;font-size:11px">Current</span>'
+        : `<button class="deploy-rollback-btn" data-version="${escHtmlLocal(v.versionId)}" style="font-size:11px;padding:3px 10px;cursor:pointer">Rollback</button>`;
+      const noteHtml = v.note ? `<div style="font-size:10px;color:var(--tx2);margin-top:2px;font-style:italic">${escHtmlLocal(v.note)}</div>` : '';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--bd)">
+          <div style="min-width:0;flex:1">
+            <div style="font-family:ui-monospace,monospace;font-size:11px;color:var(--tx1)">${escHtmlLocal(idShort)}</div>
+            <div style="font-size:11px;color:var(--tx2)">${when}</div>
+            ${noteHtml}
+          </div>
+          ${rightSide}
+        </div>`;
+    }).join('');
+
+    // Wire up rollback buttons. Each one POSTs /api/rollback then refreshes
+    // both the deployed-state header and the history panel itself.
+    historyPanel.querySelectorAll('.deploy-rollback-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const versionId = btn.dataset.version;
+        const slug = slugInput.value.trim();
+        btn.textContent = '…';
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/rollback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appName: slug, version: versionId }),
+          });
+          let body = {};
+          try { body = await r.json(); } catch { /* empty body — fine */ }
+          if (r.ok && body.ok) {
+            await refreshFromInfo();
+            await openHistory();
+            return;
+          }
+          if (r.status === 404 || body.code === 'VERSION_GONE') {
+            historyPanel.innerHTML = '<div style="color:#664d03;background:#fff3cd;padding:10px;border-radius:4px;font-size:12px;margin:8px">This version no longer exists on Cloudflare. Refreshing the list…</div>';
+            setTimeout(() => openHistory(), 1500);
+            return;
+          }
+          btn.textContent = 'Rollback';
+          btn.disabled = false;
+          const errMsg = body.error || ('rollback failed (status ' + r.status + ')');
+          alert(errMsg + ' — try again or pick a different version');
+        } catch (e) {
+          btn.textContent = 'Rollback';
+          btn.disabled = false;
+          alert('Network error: ' + (e.message || 'unknown'));
+        }
+      };
+    });
+  };
+
+  const openHistory = async () => {
+    const slug = slugInput.value.trim();
+    if (!slug) return;
+    historyPanel.style.display = '';
+    historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">Loading…</div>';
+    try {
+      const r = await fetch('/api/deploy-history/' + encodeURIComponent(slug));
+      if (!r.ok) {
+        historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">No history available.</div>';
+        return;
+      }
+      const body = await r.json();
+      renderHistory(Array.isArray(body.versions) ? body.versions : []);
+    } catch (e) {
+      historyPanel.innerHTML = `<div style="color:#e74c3c;font-size:12px;padding:10px">Failed to load history: ${escHtmlLocal(e.message || '')}</div>`;
+    }
+  };
+
+  historyLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (historyPanel.style.display === 'none' || !historyPanel.style.display) {
+      openHistory();
+      historyLink.textContent = 'Hide version history';
+    } else {
+      historyPanel.style.display = 'none';
+      historyPanel.innerHTML = '';
+      historyLink.textContent = 'View version history';
+    }
+  });
+
+  const refreshFromInfo = async () => {
+    const slug = slugInput.value.trim();
+    const info = slug ? await _fetchAppInfo(slug) : null;
+    currentInfo = info;
+    if (info && info.deployed) {
+      const host = info.hostname || (slug + '.buildclear.dev');
+      titleEl.textContent = 'Update ' + host;
+      const when = info.lastVersion && info.lastVersion.uploadedAt ? _formatTimeAgo(info.lastVersion.uploadedAt) : '';
+      subtitleEl.textContent = when ? 'Last published ' + when : 'Already published';
+      submitBtn.textContent = 'Update';
+      historyToggle.style.display = '';
+    } else {
+      titleEl.textContent = 'Publish to Clear Cloud';
+      subtitleEl.textContent = '';
+      submitBtn.textContent = 'Ship it';
+      historyToggle.style.display = 'none';
+      historyPanel.style.display = 'none';
+      historyPanel.innerHTML = '';
+      historyLink.textContent = 'View version history';
+    }
+  };
+
+  let __infoDebounce = null;
+  slugInput.addEventListener('input', () => {
+    clearTimeout(__infoDebounce);
+    __infoDebounce = setTimeout(refreshFromInfo, 300);
+  });
+  // Initial fetch with the default slug — usually returns deployed:false
+  // (random slug) but if the user kept the same name across publishes it
+  // surfaces the Update state immediately.
+  refreshFromInfo();
+
+  // Re-callable submit so the "Apply migration + update" button can resubmit
+  // with the same form state plus a confirmMigration flag.
+  const submitDeploy = async (extraOpts = {}) => {
+    const appSlug = slugInput.value.trim();
     const domain = document.getElementById('deploy-domain').value.trim();
     const progress = document.getElementById('deploy-progress');
     progress.textContent = 'packaging…';
@@ -3242,7 +3428,15 @@ window.doDeploy = async function() {
       r = await fetch('/api/deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: sourceWithTheme, appSlug, secrets, domain: domain || undefined }),
+        body: JSON.stringify({
+          source: sourceWithTheme,
+          appSlug,
+          secrets,
+          domain: domain || undefined,
+          // Studio is Clear Cloud only — every Publish ships to Cloudflare.
+          target: 'cloudflare',
+          ...extraOpts,
+        }),
       }).then(x => x.json().then(j => ({ status: x.status, body: j })));
     } catch (e) {
       progress.innerHTML = `<span style="color:#e74c3c">Network error: ${escHtmlLocal(e.message)}</span>`;
@@ -3259,17 +3453,43 @@ window.doDeploy = async function() {
     }
     if (r.status === 402) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'quota exceeded')}</span>`; return; }
     if (r.status === 503) { progress.innerHTML = `<span style="color:#e74c3c">Deploy service down — try again in a minute.</span>`; return; }
+
+    // One-click updates Phase 5 — schema-change confirmation gate. The server
+    // returns 409 MIGRATION_REQUIRED when the new source's database structure
+    // would change. Owner must explicitly accept the brief in-flight failure
+    // window before the migration applies.
+    if (r.status === 409 && r.body.code === 'MIGRATION_REQUIRED') {
+      const diff = Array.isArray(r.body.migrationDiff) ? r.body.migrationDiff : [];
+      const list = diff.map(d => `<li>${escHtmlLocal(d.file || '')}: ${escHtmlLocal(d.kind || '')}</li>`).join('');
+      progress.innerHTML = `
+        <div style="background:#fff3cd;border:1px solid #ffeaa7;color:#664d03;padding:12px;border-radius:6px;margin-top:12px">
+          <strong>Schema change detected.</strong>
+          <p style="margin:6px 0 8px">This update changes the app's database structure. In-flight requests may briefly fail (~2 sec) during the change.</p>
+          <ul style="margin:0 0 10px 20px">${list}</ul>
+          <button id="deploy-confirm-migration" class="primary">Apply migration + update</button>
+        </div>`;
+      document.getElementById('deploy-confirm-migration').onclick = () => submitDeploy({ confirmMigration: true });
+      return;
+    }
+
     if (!r.body.ok) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'deploy failed')}</span>`; return; }
 
     const jobId = r.body.jobId;
     progress.textContent = 'deploying…';
+    const wasUpdate = !!(currentInfo && currentInfo.deployed);
+
     const poll = async () => {
       const s = await fetch(`/api/deploy-status/${encodeURIComponent(jobId)}`).then(x => x.ok ? x.json() : null).catch(() => null);
       if (!s) { setTimeout(poll, 2000); return; }
       progress.textContent = deployStageLabel(s);
       if (s.status === 'ok') {
         const url = s.result?.url || `https://${s.result?.appName || 'app'}.fly.dev`;
-        progress.innerHTML = `<div style="margin-top:12px">Live: <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
+        const versionId = s.result?.versionId;
+        // Phase 5 — different copy when this was an update vs a fresh publish.
+        const headerLine = wasUpdate
+          ? `Updated to version ${versionId ? versionId.slice(0, 10) : '(new)'}.`
+          : 'Live:';
+        progress.innerHTML = `<div style="margin-top:12px">${headerLine} <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
           <button onclick="navigator.clipboard.writeText('${url}')">Copy</button></div>`;
         // BM-3 full: count successful Publishes. After 3 ships, the next page load
         // in builder mode auto-hides the source editor.
@@ -3277,15 +3497,15 @@ window.doDeploy = async function() {
           const cur = parseInt(localStorage.getItem('clear-bm-ships-counter') || '0', 10) || 0;
           localStorage.setItem('clear-bm-ships-counter', String(cur + 1));
         } catch (e) { /* private browsing — counter resets each session, harmless */ }
-        if (domain) {
-          fetch('/api/custom-domain', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appName: s.result?.appName, domain }),
-          }).then(x => x.json()).then(c => {
-            if (c.ok) progress.innerHTML += `<div style="margin-top:8px">DNS records: <pre>${escHtmlLocal(c.stdout || '')}</pre></div>`;
-          });
-        }
+        // Custom domain is attached during the publish itself by Cloudflare
+        // (see deploy-cloudflare.js attachDomain step). The old post-publish
+        // /api/custom-domain call was a Fly-era leftover — Studio is Clear
+        // Cloud only now, so the domain is already wired up by the time the
+        // user sees the live URL. If the orchestrator returned degraded:true,
+        // the URL above shows the default <slug>.buildclear.dev fallback.
+        // Re-fetch app-info so reopening this window after the publish sees
+        // the new deployed state.
+        refreshFromInfo();
         return;
       }
       if (s.status === 'failed') {
@@ -3299,6 +3519,8 @@ window.doDeploy = async function() {
     };
     poll();
   };
+
+  submitBtn.onclick = () => submitDeploy();
 };
 
 // ==========================================================================
@@ -5025,12 +5247,15 @@ loadTemplates();
 })();
 
 // ==========================================================================
-// STUDIO MODE (builder / classic) — Builder Mode v0.1
-// ?studio-mode=builder flips Studio to Marcus-first layout (preview hero +
-// chat driver). Opt-in via URL param; preference persists in localStorage.
+// STUDIO MODE (builder / classic) — Builder Mode v0.3 default
+// Builder Mode is the default for new users (Marcus-first layout: preview
+// hero + chat driver). Existing users with a saved preference keep their
+// preference. ?studio-mode=classic opts back into the 3-panel editor view.
+// `cmd+.` reveals the 3-panel layout from inside Builder Mode.
 // Full spec: plans/plan-builder-mode-v0.1-04-21-2026.md
 // ==========================================================================
 const STUDIO_MODES = ['builder', 'classic'];
+const STUDIO_MODE_DEFAULT = 'builder';
 function detectStudioMode() {
   const body = document.body;
 
@@ -5041,11 +5266,13 @@ function detectStudioMode() {
     if (p !== null) {
       const norm = String(p).trim().toLowerCase();
       if (STUDIO_MODES.includes(norm)) urlMode = norm;
-      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to classic`);
+      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to ${STUDIO_MODE_DEFAULT}`);
     }
   } catch (e) { /* URLSearchParams always works in a browser, defensive only */ }
 
-  // 2. Read localStorage (best-effort — private browsing throws)
+  // 2. Read localStorage (best-effort — private browsing throws). Existing
+  // users with a saved preference (either 'builder' or 'classic') keep what
+  // they had. Only fresh users (no saved value) get the new default.
   let storedMode = null;
   try {
     const s = localStorage.getItem('studio-mode-pref');
@@ -5054,8 +5281,8 @@ function detectStudioMode() {
     console.warn('[studio-mode] localStorage unavailable; mode will not persist across sessions');
   }
 
-  // 3. Resolve: URL param wins, else stored, else classic
-  const mode = urlMode || storedMode || 'classic';
+  // 3. Resolve: URL param wins, else stored, else default (builder).
+  const mode = urlMode || storedMode || STUDIO_MODE_DEFAULT;
 
   // 4. Persist URL-param choice (best-effort)
   if (urlMode) {

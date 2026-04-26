@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Approval Queue</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+
+
+
+  <link rel="preconnect" href="https://rsms.me/" crossorigin>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v3 — Inter base + slate chrome + tabular nums */
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  /* Slate chrome layered on top of DaisyUI base/primary tokens. Modeled on
+     the 2026 RevOps mock — see landing/marcus-app-target.html. Compiled apps
+     read these for hairlines, status pills, stat cards, sidebar nav. */
+  --clear-bg-app:        oklch(98% 0.005 240);
+  --clear-bg-canvas:     oklch(100% 0 0);
+  --clear-bg-rail:       oklch(99% 0.005 240);
+  --clear-bg-row-hover:  oklch(96% 0.008 240);
+  --clear-bg-active:     oklch(96% 0.025 258);
+  --clear-bg-chip:       oklch(95% 0.01 240);
+  --clear-line:          oklch(91% 0.012 240);
+  --clear-line-strong:   oklch(83% 0.015 240);
+  --clear-ink:           oklch(15% 0.025 255);
+  --clear-ink-soft:      oklch(35% 0.02 255);
+  --clear-ink-muted:     oklch(54% 0.018 255);
+  --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-good:          oklch(50% 0.16 152);
+  --clear-good-soft:     oklch(96% 0.05 152);
+  --clear-warn:          oklch(58% 0.14 65);
+  --clear-warn-soft:     oklch(96% 0.05 80);
+  --clear-bad:           oklch(54% 0.21 25);
+  --clear-bad-soft:      oklch(96% 0.04 25);
+}
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: "cv11","ss01","ss03";
+  -webkit-font-smoothing: antialiased;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+  margin: 0;
+}
+@supports (font-variation-settings: normal) {
+  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+}
+.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+/* Hairline borders — drop-in alternative to combo border+shadow */
+.hairline   { border: 1px solid var(--clear-line); }
+.hairline-b { border-bottom: 1px solid var(--clear-line); }
+.hairline-r { border-right: 1px solid var(--clear-line); }
+.hairline-t { border-top: 1px solid var(--clear-line); }
+/* Status pills — uppercase semibold colored on tinted bg */
+.clear-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+}
+.clear-pill-pending  { background: var(--clear-warn-soft); color: var(--clear-warn); }
+.clear-pill-approved { background: var(--clear-good-soft); color: var(--clear-good); }
+.clear-pill-rejected { background: var(--clear-bad-soft);  color: var(--clear-bad); }
+.clear-pill-neutral  { background: var(--clear-bg-chip);    color: var(--clear-ink-soft); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- Inline Layout --- */
+.section-header { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6">
+    <div class="section-header" data-clear-line="104">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="105">Approval Queue</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-tpl="{total} pending requests" data-clear-line="107">{total} pending requests</p>
+    </div>
+    <div class="bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4" data-clear-line="109">
+    <fieldset class="fieldset" data-clear-line="110">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Title</legend>
+      <input id="input_title" class="input input-bordered w-full" type="text" placeholder="Title">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="111">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Description</legend>
+      <input id="input_description" class="input input-bordered w-full" type="text" placeholder="Description">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="112">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Amount ($)</legend>
+      <input id="input_amount" class="input input-bordered w-full" type="number" step="any" placeholder="Amount ($)">
+    </fieldset>
+    <fieldset class="fieldset" data-clear-line="113">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Requester</legend>
+      <input id="input_requester" class="input input-bordered w-full" type="text" placeholder="Requester">
+    </fieldset>
+    <button class="btn btn-primary w-full" id="btn_Submit" data-clear-line="114">Submit</button>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6" data-clear-line="121">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Pending Requests</h2>
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="122">
+      <div class="px-6 py-4 border-b border-base-300/40">
+        <h3 class="text-sm font-semibold text-base-content">Pending</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Pending_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Requests: title*, description, amount, status, notes, requester, created_at_date (line 20)
+
+ ENDPOINTS:
+   GET /api/requests (line 39)
+   GET /api/requests/pending (line 42)
+   POST /api/requests (line 45)
+   PUT /api/requests/:id [auth] (line 52)
+   POST /api/seed (line 59)
+
+ PAGES:
+   'Approval Queue' at / (line 99)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function _clear_render_table(tableEl, data, renderHead, renderRow) {
+  if (!tableEl) return;
+  var thead = tableEl.querySelector('thead tr');
+  var tbody = tableEl.querySelector('tbody');
+  if (!Array.isArray(data) || data.length === 0) {
+    if (thead) thead.innerHTML = '';
+    if (tbody) tbody.innerHTML = '';
+    return;
+  }
+  if (thead) thead.innerHTML = renderHead(data);
+  var VIRT_THRESHOLD = 100;
+  if (data.length <= VIRT_THRESHOLD) {
+    tbody.innerHTML = data.map(renderRow).join('');
+    return;
+  }
+  var ROW_HEIGHT = 40;
+  var BUFFER = 5;
+  var scroller = tableEl.parentElement;
+  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  scroller.style.maxHeight = '560px';
+  scroller.style.overflowY = 'auto';
+  function paint() {
+    var top = scroller.scrollTop;
+    var h = scroller.clientHeight || 560;
+    var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
+    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var topPad = first * ROW_HEIGHT;
+    var botPad = (data.length - last) * ROW_HEIGHT;
+    var html = '';
+    if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
+    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
+    tbody.innerHTML = html;
+  }
+  if (!scroller._clear_virt_bound) {
+    scroller._clear_virt_bound = true;
+    scroller.addEventListener('scroll', paint, { passive: true });
+  }
+  paint();
+}
+document.title = "Approval Queue";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  title: "",
+  description: "",
+  amount: 0,
+  requester: "",
+  pending: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:16
+  // Database: local memory (JSON file backup)
+  // clear:106
+  let total = _clear_len(_state.pending);
+  _clear_render_table(
+    document.getElementById('output_Pending_table'),
+    _state.pending,
+    function(d) { var _keys = ["title","requester","amount","description"]; return _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join(''); },
+    function(row) { var _keys = ["title","requester","amount","description"]; return '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>'; }
+  );
+  document.getElementById('input_title').value = _state.title;
+  document.getElementById('input_description').value = _state.description;
+  document.getElementById('input_amount').value = _state.amount;
+  document.getElementById('input_requester').value = _state.requester;
+  // Substitute {varname} in text templates
+  const _tplCtx = Object.assign({}, _state || {});
+  if (typeof total !== 'undefined') _tplCtx["total"] = total;
+  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
+    const _tpl = _el.getAttribute('data-clear-tpl');
+    _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
+      const _val = _tplCtx[_v];
+      return (_val == null) ? '' : String(_val);
+    });
+  });
+}
+
+// --- Input listeners ---
+document.getElementById('input_title').addEventListener('input', function(e) {
+  _state.title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_description').addEventListener('input', function(e) {
+  _state.description = e.target.value;
+  _recompute();
+});
+document.getElementById('input_amount').addEventListener('input', function(e) {
+  _state.amount = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_requester').addEventListener('input', function(e) {
+  _state.requester = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Submit').addEventListener('click', async function() {
+    if (_state.title === '' || _state.title == null) { _toast('title is required', 'error'); return; }
+    if (_state.description === '' || _state.description == null) { _toast('description is required', 'error'); return; }
+    if (_state.amount === '' || _state.amount == null) { _toast('amount is required', 'error'); return; }
+    if (_state.requester === '' || _state.requester == null) { _toast('requester is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Submit');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/requests", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title, description: _state.description, amount: _state.amount, requester: _state.requester }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/requests] [clear:115]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:116]', e.message); return _state.pending; });
+    _state.title = "";
+    _state.description = "";
+    _state.amount = 0;
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- On Page Load ---
+_recompute(); // initial render with default state
+(async () => {
+  try {
+    { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:101]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:102]', e.message); return _state.pending; });
+  _recompute();
+  } catch(e) { console.error("Page load error:", e); }
+})();
+
+
+  </script>
+
+  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
+  <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
+  <script src="/__meph__/widget.js" defer onerror="this.remove()"></script>
+  <!-- ============================================================== -->
+  <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
+  <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
+  <!-- ============================================================== -->
+  <script>
+  (function() {
+    if (window === window.parent) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
+    var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    function __selectorFor(el) {
+      if (!el || el === document) return null;
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/s+/).join('.') : '';
+      var txt = (el.textContent || '').trim().slice(0, 30);
+      if (tag === 'button' && txt) return tag + ':has-text("' + txt + '")';
+      return tag + cls;
+    }
+    function __post(msg) {
+      try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
+    }
+    // Capture user actions and forward to Studio
+    document.addEventListener('click', function(e) {
+      __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
+    }, true);
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') {
+        __post({ type: 'user-action', action: 'input', selector: __selectorFor(t), value: String(t.value || '').slice(0, 200), ts: Date.now() });
+      }
+    }, true);
+    document.addEventListener('submit', function(e) {
+      __post({ type: 'user-action', action: 'submit', selector: __selectorFor(e.target), ts: Date.now() });
+    }, true);
+    // Listen for commands from Meph
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.target !== 'clear-bridge') return;
+      var reply = { source: 'clear-bridge', replyTo: msg.id };
+      try {
+        if (msg.cmd === 'click') {
+          var el = document.querySelector(msg.selector);
+          if (!el) { reply.error = 'Element not found: ' + msg.selector; }
+          else { el.click(); reply.ok = true; reply.html = document.body.innerHTML.slice(0, 4000); }
+        } else if (msg.cmd === 'fill') {
+          var input = document.querySelector(msg.selector);
+          if (!input) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter) nativeSetter.set.call(input, msg.value);
+            else input.value = msg.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            reply.ok = true; reply.value = input.value;
+          }
+        } else if (msg.cmd === 'inspect') {
+          var target = document.querySelector(msg.selector);
+          if (!target) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var cs = window.getComputedStyle(target);
+            var rect = target.getBoundingClientRect();
+            reply.ok = true;
+            reply.tag = target.tagName.toLowerCase();
+            reply.text = (target.textContent || '').slice(0, 200);
+            reply.styles = { color: cs.color, backgroundColor: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, padding: cs.padding, border: cs.border };
+            reply.box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        } else if (msg.cmd === 'read-dom') {
+          reply.ok = true;
+          reply.html = document.body.innerHTML.slice(0, 8000);
+          reply.state = window._state ? JSON.parse(JSON.stringify(window._state)) : null;
+          reply.url = location.href;
+        } else if (msg.cmd === 'read-storage') {
+          var ls = {}, ss = {};
+          for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+          for (var j = 0; j < sessionStorage.length; j++) { var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2); }
+          reply.ok = true; reply.localStorage = ls; reply.sessionStorage = ss;
+        }
+      } catch (err) {
+        reply.error = err.message;
+      }
+      __post(reply);
+    });
+    __post({ type: 'bridge-ready', url: location.href });
+  })();
+  </script>
+</body>
+</html>
