@@ -65,10 +65,24 @@ The product is meaningfully ready. The gating items are mostly setup work you ow
 - **`give-claude` doc cascade + template sweep are deferred.** The new form parses and compiles correctly, and the old `ask claude '...' with X` form still parses (additive, no migration breakage). But the 14+ examples in SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, and Meph's system prompt still show the old form, and apps in `apps/` still use the old form. That's a separate session of work — the plan is at `plans/plan-give-claude-canonical-form-04-26-2026.md`.
 - **The give-claude plan was not red-teamed.** The execute-plan flow ran into a stuck worker; I salvaged the parser/compiler/validator code from the worker's worktree and shipped that. The plan is still ready for a clean execute-plan + red-team-plan pass when you want the doc cascade and template migration done properly.
 
+## Sweep is broken in three real ways — fix it next session
+
+The summary patch only fixed the visual reporting — the underlying reasons tasks were failing are still there. The last full sweep produced 6 of 38 wins (16%), 20 timeouts at the 3-min cap (53%), and 12 silent failures (32%). Worse, even the 6 wins added **zero rows** to the training database. So the flywheel got no useful signal from that whole run.
+
+Three priorities, in leverage order:
+
+1. **Fix the training-database write hole (THE BOTTLENECK).** When Meph successfully calls a customer endpoint and gets a 200 back, that should write a `test_pass=1` row to the Factor DB. Today, when Meph runs through the local-AI path (cc-agent), that write doesn't reach the database — it lives in the wrong layer. The 2026-04-22 fix for this class of bug looks incomplete. Without this, the flywheel is broken: even when Meph wins, the win doesn't compound. Investigate `playground/meph-tools.js` (where the http_request tool lives) vs `playground/ghost-meph/mcp-server/tools.js` (the local-AI dispatcher) — the write needs to fire on both paths.
+
+2. **Detect worker death + skip remaining tasks instead of fast-failing them.** When a worker child process crashes (`claude.exe` dies after multiple timeouts), the harness keeps sending it tasks for 5-7 seconds each before moving on. Currently those silent fast-fails get hidden in the "Failed" bucket. Better: detect the crash on the first ECONNRESET, mark the worker dead, skip its remaining tasks with a clear "worker-died" status (not silent fail).
+
+3. **Investigate the 53% timeout rate.** That's much higher than expected. Either many curriculum tasks legitimately need longer than 3 minutes, OR Meph's iteration cap (25) is too low for the harder ones, OR a specific class of task (probably L7-L10) always hangs. A `--per-level-stats` flag on the sweep would surface "L1-L3 = 100% pass, L7+ = 0% pass" if that's the pattern.
+
+Roll these into a single follow-up session — they're all the same epic (training-signal integrity).
+
 ## Recommended next moves
 
 1. **Items #3 and #5 above are short.** Fly Trust Verified (form submission) and Anthropic org key (~15 min in their console) unblock most of the rest. About $30-50 + 2 hours total time cost across all of #3-#6.
-2. **Run a fresh sweep with the patched summary** — `node playground/supervisor/curriculum-sweep.js --workers=3` (free, gm path). The new "Failed" bucket print should give you a much sharper picture of where Meph is breaking.
+2. **Fix the sweep three-fer above** before running another sweep — without the database-write fix, every sweep is wasted compute.
 3. **Curate `playground/canonical-examples.md`** — initial draft is ready; pick / improve / swap / drop the 10 examples to your taste. Once curated, wire it into Meph's prompt and shape-search retrieval has real material to match against.
 4. **When you're ready to do the give-claude doc cascade + template sweep**, run the plan through red-team-plan first then execute-plan. The plan is comprehensive; the execution just got interrupted last time.
 
