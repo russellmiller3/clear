@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-25 — Shell Upgrade Phase 1: `app_*` presets get the slate-on-ivory polish
+
+The shell that wraps every app — sidebar + header + main — got the visual overhaul the Marcus-target mock has been calling for. Same Clear source (`section 'Sidebar' with style app_sidebar:` etc.), upgraded compiled output: semantic HTML5 tags, 240px rail, 56px sticky header with brand/breadcrumb/action data slots, slate-on-ivory token palette aligned with `landing/marcus-app-target.html`.
+
+**What shipped:**
+
+- `app_layout` now emits `<div class="flex min-h-screen">` (page owns the scroll, not the layout — was `h-screen overflow-hidden`).
+- `app_sidebar` now emits `<aside>` with 240px width, hairline-r border, vertical scroll, slate background tokens.
+- `app_main` now emits `<main class="flex-1 min-w-0 flex flex-col">`.
+- `app_header` now emits `<header>` at 56px sticky with `data-brand-slot` / `data-breadcrumb-slot` / `data-action-slot` attributes that later phases will use to wire selection state.
+- 5 new tests in `clear.test.js`. 2589 → 2594 passing. All 8 core templates compile clean (0 errors).
+
+**Doc cascade:** `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md` updated with the new emit shapes; `FEATURES.md` and `playground/system-prompt.md` updated this commit. The rest of the cascade (USER-GUIDE.md tutorial, FAQ "where the shell lives", landing page parity) pending since the chunk is small and the visual story is what users care about — chrome stops looking generic and starts looking like a product.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 1.
+
+---
+
 ## 2026-04-25 — Decidable Core Path B Phase 1: `live:` keyword lands
 
 Decidable Core started in late April with the minimalist Path A — surgical validator rules + runtime caps that already rejected naked `while` and uncapped recursion (Phase 7 closed 2026-04-24, $0 spent). Path B is the bigger move: a real keyword that names the effect boundary explicitly, so the compiler can prove the rest of the program is total.

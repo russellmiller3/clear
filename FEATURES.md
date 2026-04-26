@@ -17,6 +17,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
+- App shell (`app_layout`, `app_sidebar`, `app_main`, `app_header` presets) compiles to a polished slate-on-ivory chrome — semantic `<aside>`/`<main>`/`<header>`, 240px rail, 56px sticky header, brand/breadcrumb/action slots ready to wire.
 
 **Talk to Claude inside your code**
 - Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.

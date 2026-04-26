@@ -725,6 +725,14 @@ section 'Dashboard' with style app_layout:
     heading 'Dashboard'
 ```
 
+**App shell shape (Phase 1 polish, 2026-04-25).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
+- `app_layout` → outer container with full-screen flex
+- `app_sidebar` → 240px-wide vertical rail
+- `app_main` → flexible content column
+- `app_header` → 56px sticky bar with three named regions: `brand` (heading children), `action` (button children, right-aligned), `breadcrumb` (everything else)
+
+Don't reach for raw HTML / Tailwind to recreate the shell — the presets already do the right thing.
+
 ## Web Tools (when the toggle is on)
 
 You have two web tools. Use the right one:
