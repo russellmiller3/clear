@@ -327,6 +327,7 @@ export async function runSweep({
   timeoutPerTaskMs = 180_000,
   dryRun = false,
   strict = false,
+  real = false,
 } = {}) {
   const filtered = taskFilter
     ? allTasks.filter(t => taskFilter.includes(t.id))
@@ -354,7 +355,7 @@ export async function runSweep({
     return { tasksRun: 0, rowsAdded: 0, dryRun: true };
   }
 
-  const pre = validateSweepPreconditions(process.env, { real: !!opts.real });
+  const pre = validateSweepPreconditions(process.env, { real: !!real });
   if (!pre.ok) {
     throw new Error(pre.reason);
   }
@@ -392,6 +393,16 @@ export async function runSweep({
   try { unlinkSync(SWEEP_REGISTRY_PATH); } catch {}
   const registry = new SessionRegistry(SWEEP_REGISTRY_PATH);
   const spawner = new WorkerSpawner(registry);
+
+  // Belt-and-suspenders: even though we just unlinked the registry file,
+  // a sibling sweep using a non-default CLEAR_SWEEP_REGISTRY path could
+  // share this DB. Drop any leftover idle/done rows + anything older than
+  // 1h before we INSERT new worker rows — otherwise abnormal exits leave
+  // stale rows that trip `UNIQUE constraint failed: sessions.id`.
+  const staleRemoved = registry.cleanupStale();
+  if (staleRemoved > 0) {
+    console.log(`Cleared ${staleRemoved} stale session row(s) from previous run.`);
+  }
 
   try {
     console.log(`Spawning ${workers} workers...`);

@@ -72,6 +72,36 @@ export class SessionRegistry {
     return this._db.prepare('SELECT * FROM sessions ORDER BY updated_at DESC').all();
   }
 
+  /**
+   * Clear stale rows so a fresh sweep can re-use the same session ids
+   * ('worker-1', 'worker-2', ...) without tripping the UNIQUE PRIMARY
+   * KEY on `sessions.id`.
+   *
+   * Deletes:
+   *   - any row whose state is 'idle' or 'done' (regardless of age)
+   *   - any row whose updated_at is older than 1 hour (regardless of state)
+   *
+   * Preserves: rows in 'running' / 'crashed' / etc. that were touched in
+   * the last hour — those might belong to a sibling sweep still running
+   * elsewhere.
+   *
+   * Why this exists: pre-2026-04-25, an abnormal exit (Ctrl-C, OOM, taskkill)
+   * left rows behind. The next sweep called registry.create() with the same
+   * ids and the INSERT failed with `UNIQUE constraint failed: sessions.id`
+   * before any worker spawned, killing the whole sweep at startup.
+   *
+   * Returns: number of rows deleted.
+   */
+  cleanupStale() {
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    const result = this._db.prepare(
+      `DELETE FROM sessions
+        WHERE state IN ('idle', 'done')
+           OR updated_at < ?`
+    ).run(oneHourAgo);
+    return result.changes;
+  }
+
   log(sessionId, action, reason = null, payload = null) {
     this._db.prepare(`
       INSERT INTO supervisor_log (session_id, action, reason, payload, ts)
