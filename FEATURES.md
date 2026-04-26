@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 168 node types. 2629 compiler tests. Zero npm dependencies in the compiler.
+**Headline numbers:** 169 node types. 2635 compiler tests after the Phase 6 compiler tests land. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
@@ -17,7 +17,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
-- App shell compiles to polished real app chrome — sidebar groups, route-aware nav, workbench headers, routed tabs, and KPI stat cards.
+- App shell compiles to polished real app chrome — sidebar groups, route-aware nav, workbench headers, routed tabs, KPI stat cards, and right-side record panels.
 
 **Talk to Claude inside your code**
 - Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
@@ -146,6 +146,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 |----------------|--------|--------|
 | Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows |
 | Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
+| Detail panel | `detail panel for selected_deal:` + body + `actions:` | 340px right rail populated from the selected table row, with sticky bottom action buttons |
 | Cards | `display X as cards showing name, description` | Card grid |
 | List | `display X as list` | Bullet list |
 | Currency | `display X as dollars` | `$1,234.56` |

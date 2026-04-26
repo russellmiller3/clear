@@ -2917,6 +2917,26 @@ stat strip:
     icon 'inbox'
 ```
 
+#### Detail Panels
+
+When a table is the queue and one row is the work, use a right detail panel.
+It keeps the user in context instead of sending them to a separate page.
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject'
+    button 'Counter'
+    button 'Approve'
+```
+
+The panel reads from the selected row. The normal content lines become the
+scrolling body. The `actions:` block becomes the sticky decision bar at the
+bottom.
+
 Each `stat card` needs one `value` line. Use `delta` for trend copy,
 `sparkline` for a tiny trend line, and `icon` for a Lucide symbol.
 

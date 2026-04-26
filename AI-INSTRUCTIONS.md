@@ -1793,6 +1793,23 @@ Use `stat strip` directly under `app_content`, usually after `page header` and
 tabs. Use one `value` line per card. Add `delta`, `sparkline`, and `icon` only
 when the source data exists.
 
+**Detail panel rule** (prefer first-class selected-row rails):
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject'
+    button 'Counter'
+    button 'Approve'
+```
+
+Use `detail panel for selected_row:` next to a table when a queue needs one
+selected record, facts, and final actions. The body can use normal Clear UI
+primitives. Put approval / reject / counter buttons inside `actions:` so they
+stay pinned at the bottom.
+
 #### Blog Presets (3)
 
 | Preset | What it does | Use for |

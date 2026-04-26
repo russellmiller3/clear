@@ -1,12 +1,13 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-04-26 (shell Phase 4 adds stat card/sparkline syntax + curriculum/eval signal; overnight autonomous run closed the WIN-data asymmetry and unblocked regression measurement)**.
+Updated: **2026-04-26 (shell Phase 6 detail-panel docs/curriculum prep added; overnight autonomous run closed the WIN-data asymmetry and unblocked regression measurement)**.
 
 ## Session timeline (recent)
 
 | Session | Date | What shipped |
 |---------|------|--------------|
+| **52** | **2026-04-26** | **Shell Upgrade Phase 6 teaching surface prepared.** Docs, Meph prompt, and curriculum now teach `detail panel for selected_deal:` with a sticky `actions:` bar. Compiler and chrome-check work are landing in the main thread; this adds the training target so future sweeps can measure selected-row right rails instead of generic cards. |
 | 35 | 2026-04-16 | Marcus GTM lock, competitive landscape research, deal-desk hero use case |
 | 36 | 2026-04-17 | Multi-session supervisor plan + curriculum harness skeleton |
 | 37 | 2026-04-18 | **Flywheel live.** Factor DB wired to `/api/chat`, archetype classifier (15 cats), Studio dashboard tab, cold-start harness, 5 Marcus curriculum tasks, cross-archetype curriculum diversity. 107 rows, 38 passing. |
@@ -64,6 +65,8 @@ The document below is structured **theory → architecture → current state →
 - **Open-capability surface (Lean Lesson 3, 2026-04-26):** Meph's per-turn context now includes a structured "what's still open" report — TBD placeholders, failing tests, unresolved compile errors with their canonical-fix hint. Mirrors how Lean shows the prover writer "what's left to prove" instead of forcing them to re-derive it from raw output.
 - **Shell nav primitive (Phase 2, 2026-04-26):** generated dashboards now have an explicit sidebar target: grouped links with counts, icons, and active state. This turns app chrome from a visual-only compiler change into a curriculum/eval signal Meph can learn.
 - **Shell workbench primitive (Phase 3, 2026-04-26):** generated queues now have explicit page headers and routed tab strips. This gives Meph a measurable target for the main work area, not just the left rail.
+
+- **Shell detail-panel target (Phase 6, 2026-04-26):** curriculum now asks for selected-row right rails with a sticky decision bar. Once compiler/eval land, the flywheel can grade whether Meph builds queue inspection like a real internal tool.
 
 **What this buys you.** Meph makes the same mistake once, then never again — the fix is stored and returned to future sessions automatically. You don't manually teach him. The more people use Clear, the smarter Meph gets for everyone.
 

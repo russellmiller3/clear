@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (129 total)
+## Node Types (130 total)
 
 ### Core Language
 
@@ -113,6 +113,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` | ECharts `<div>` with auto-configured option |
 | `STAT_STRIP` | `stat strip:` + stat cards | Responsive KPI card row |
 | `STAT_CARD` | `stat card 'Pending Count':` + `value EXPR`, optional `delta 'TEXT'`, `sparkline [1, 2, 3]`, `icon 'inbox'` | Polished KPI card with label, value, delta, optional sparkline and Lucide icon |
+| `DETAIL_PANEL` | `detail panel for selected_deal:` + indented content + optional `actions:` | 340px right rail populated from the selected table row; body can contain normal Clear UI primitives, with sticky action buttons at bottom |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
 | `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `divider` | `<h1>` / `<p>` / `<hr>` |

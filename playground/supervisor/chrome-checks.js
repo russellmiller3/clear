@@ -116,3 +116,42 @@ export function checkStatCardsChrome(html, opts = {}) {
     violations,
   };
 }
+
+export function checkDetailPanelChrome(html, opts = {}) {
+  const source = String(html || '');
+  const minActions = opts.minActions ?? 0;
+  const selectedVar = opts.selectedVar || null;
+
+  const counts = {
+    detailPanels: countMatches(source, /<aside[^>]*data-detail-panel="true"/g),
+    bodies: countMatches(source, /class="clear-detail-body"/g),
+    actionSlots: countMatches(source, /data-detail-actions="true"/g),
+    actions: countMatches(source, /<button class="[^"]*" id="btn_/g),
+    rowIndexes: countMatches(source, /data-row-index=/g),
+  };
+
+  const hasDetailFor = !selectedVar || attrPattern('data-detail-for', selectedVar).test(source);
+  const hasSelectionWiring = source.includes('_clear_table_init') &&
+    (!selectedVar || source.includes(`'${selectedVar}'`)) &&
+    source.includes('_state[selectedName]');
+  const hasEmptyState = source.includes('clear-detail-empty') && source.includes("classList.toggle('is-empty'");
+  const hasRightRailWidth = source.includes('width: 340px') && source.includes('flex: 0 0 340px');
+
+  const violations = [];
+  if (counts.detailPanels < 1) violations.push('missing detail panel');
+  if (counts.bodies < 1) violations.push('missing detail panel body');
+  if (counts.actionSlots < 1) violations.push('missing sticky action slot');
+  if (counts.actions < minActions) violations.push('missing detail panel actions');
+  if (counts.rowIndexes < 1) violations.push('missing selectable table row indexes');
+  if (!hasDetailFor) violations.push(`missing detail target ${selectedVar}`);
+  if (!hasSelectionWiring) violations.push('missing row selection wiring');
+  if (!hasEmptyState) violations.push('missing empty-state toggle');
+  if (!hasRightRailWidth) violations.push('missing 340px right rail width');
+
+  return {
+    ok: violations.length === 0,
+    counts,
+    selectedVar: hasDetailFor ? selectedVar : null,
+    violations,
+  };
+}

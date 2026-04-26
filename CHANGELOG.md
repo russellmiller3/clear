@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-26 - Shell Upgrade Phase 6 docs/curriculum prep: right detail panel
+
+Phase 6 now has its teaching surface before the compiler merge finishes. The canonical form is `detail panel for selected_deal:` with normal content lines and a sticky `actions:` bar for Reject / Counter / Approve.
+
+**What changed:**
+
+- Doc cascade entries added for intent, syntax, AI instructions, user guide, FAQ, features, roadmap, research, and Meph prompt.
+- New `deal-with-detail-panel` curriculum task teaches selected-row right rails.
+- Roadmap wording stays honest: Phase 6 is the active shell primitive; Phase 7 follows after the Phase 6 compiler/doc/curriculum/eval merge.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 6.
+
+---
+
 ## 2026-04-26 - Shell Upgrade Phase 4: stat cards and sparklines
 
 Dashboard KPI rows can now use first-class stat cards instead of hand-built card grids. `stat strip:` wraps the row. `stat card 'Pending Count':` accepts `value`, optional `delta`, optional `sparkline`, and optional `icon`.

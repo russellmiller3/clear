@@ -1075,6 +1075,24 @@ stat strip:
 `stat strip` wraps a responsive row of KPI cards. Each `stat card` needs one
 `value` line. `delta`, `sparkline`, and `icon` are optional.
 
+#### Right detail panel
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject'
+    button 'Counter'
+    button 'Approve'
+```
+
+Use `detail panel for selected_row:` next to a selectable table when the user
+needs to inspect and act on one record without leaving the queue. The panel body
+accepts normal Clear UI primitives. Put final decisions inside `actions:` so
+they render as the sticky bottom action bar.
+
 #### App UI preset examples
 
 ```clear

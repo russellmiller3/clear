@@ -108,6 +108,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
 - [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
 - [How do I add KPI stat cards?](#how-do-i-add-kpi-stat-cards)
+- [How do I add a right detail panel?](#how-do-i-add-a-right-detail-panel)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
@@ -675,6 +676,24 @@ stat strip:
 
 Each `stat card` needs one `value` line. `delta`, `sparkline`, and `icon` are
 optional. Use quoted Lucide icon names.
+
+### How do I add a right detail panel?
+
+Use `detail panel for selected_row:` next to the selectable table it explains.
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject'
+    button 'Counter'
+    button 'Approve'
+```
+
+The body can use normal Clear UI primitives. Put final decisions inside
+`actions:` so they render as the sticky bottom action bar.
 
 ### How do I add a new node type?
 

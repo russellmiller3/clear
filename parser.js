@@ -213,6 +213,7 @@ export const NodeType = Object.freeze({
   ROUTE_TAB: 'route_tab',
   STAT_STRIP: 'stat_strip',
   STAT_CARD: 'stat_card',
+  DETAIL_PANEL: 'detail_panel',
   PANEL_ACTION: 'panel_action',  // toggle/open/close a panel or modal
   HIDE_ELEMENT: 'hide_element',  // hide X — toggle element visibility
   CLIPBOARD_COPY: 'clipboard_copy',  // copy X to clipboard
@@ -2620,6 +2621,14 @@ CANONICAL_DISPATCH.set('tab', (ctx) => {
 CANONICAL_DISPATCH.set('stat', (ctx) => {
     if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'strip') {
       const parsed = parseStatStrip(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
+    return undefined;
+});
+CANONICAL_DISPATCH.set('detail', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'panel') {
+      const parsed = parseDetailPanel(ctx.lines, ctx.i, ctx.indent, ctx.errors);
       if (parsed.node) ctx.body.push(parsed.node);
       return parsed.endIdx;
     }
@@ -5229,6 +5238,57 @@ function parseStatStrip(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: { type: NodeType.STAT_STRIP, cards, line }, endIdx: j };
+}
+
+function parseDetailPanel(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  if (tokens.length < 4 ||
+      String(tokens[1]?.value || '').toLowerCase() !== 'panel' ||
+      String(tokens[2]?.value || '').toLowerCase() !== 'for' ||
+      (tokens[3].type !== TokenType.IDENTIFIER && tokens[3].type !== TokenType.KEYWORD)) {
+    errors.push({ line, message: "A detail panel needs a selected row variable. Example: detail panel for selected_deal:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  const variable = String(tokens[3].value);
+  const body = [];
+  const actions = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const child = lines[j];
+    const childTokens = child.tokens || [];
+    if (childTokens.length === 0) { j++; continue; }
+    const first = String(childTokens[0].value || '').toLowerCase();
+
+    if (first === 'actions') {
+      let actionEnd = j + 1;
+      while (actionEnd < lines.length && lines[actionEnd].indent > child.indent) actionEnd++;
+      const actionErrors = [];
+      const parsed = parseBlock(lines.slice(j + 1, actionEnd), 0, child.indent, actionErrors);
+      for (const actionError of actionErrors) {
+        if (!/The button ".*" has no action/.test(actionError.message || '')) {
+          errors.push(actionError);
+        }
+      }
+      actions.push(...parsed.body);
+      j = actionEnd;
+      continue;
+    }
+
+    let childEnd = j + 1;
+    while (childEnd < lines.length && lines[childEnd].indent > child.indent) childEnd++;
+    const parsed = parseBlock(lines.slice(j, childEnd), 0, blockIndent, errors);
+    body.push(...parsed.body);
+    j = childEnd;
+  }
+
+  if (body.length === 0 && actions.length === 0) {
+    errors.push({ line, message: `The detail panel for ${variable} is empty. Add content or actions inside it.` });
+  }
+
+  return { node: { type: NodeType.DETAIL_PANEL, variable, body, actions, line }, endIdx: j };
 }
 
 function parseNav(lines, startIdx, blockIndent, errors) {

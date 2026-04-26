@@ -1,6 +1,6 @@
 import { describe, it, expect, run } from '../../lib/testUtils.js';
 import { compileProgram } from '../../index.js';
-import { checkPageHeaderTabsChrome, checkSidebarNavChrome, checkStatCardsChrome } from './chrome-checks.js';
+import { checkDetailPanelChrome, checkPageHeaderTabsChrome, checkSidebarNavChrome, checkStatCardsChrome } from './chrome-checks.js';
 
 const NAV_SOURCE = `build for web
 pending_count = 5
@@ -70,6 +70,20 @@ page 'Deals' at '/cro':
             sparkline [40, 45, 55, 72]
             icon 'trending-up'`;
 
+const DETAIL_PANEL_SOURCE = `build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Body' with style app_content:
+        display deals as table showing customer, amount, status
+        detail panel for selected_deal:
+          text selected_deal's customer
+          display selected_deal's amount as dollars called 'Value'
+          actions:
+            button 'Reject'
+            button 'Approve'`;
+
 describe('chrome checks', () => {
   it('recognizes sidebar nav with sections, items, counts, icons, and active-state wiring', () => {
     const result = compileProgram(NAV_SOURCE);
@@ -120,6 +134,17 @@ page 'Legacy' at '/':
     expect(check.violations).toEqual([]);
     expect(check.counts.cards).toEqual(4);
     expect(check.counts.values).toEqual(4);
+  });
+
+  it('recognizes detail panels with row selection, body content, and sticky actions', () => {
+    const result = compileProgram(DETAIL_PANEL_SOURCE);
+    expect(result.errors).toHaveLength(0);
+
+    const check = checkDetailPanelChrome(result.html, { minActions: 2, selectedVar: 'selected_deal' });
+    expect(check.ok).toEqual(true);
+    expect(check.violations).toEqual([]);
+    expect(check.counts.detailPanels).toEqual(1);
+    expect(check.counts.actions).toEqual(2);
   });
 });
 

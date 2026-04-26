@@ -216,6 +216,7 @@ export const UTILITY_FUNCTIONS = [
   // reactive re-renders, only the visible slice is repainted.
   { name: '_clear_render_table', code: `function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
+  tableEl._clear_rows = Array.isArray(data) ? data : [];
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
   if (!Array.isArray(data) || data.length === 0) {
@@ -226,7 +227,7 @@ export const UTILITY_FUNCTIONS = [
   if (thead) thead.innerHTML = renderHead(data);
   var VIRT_THRESHOLD = 100;
   if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(renderRow).join('');
+    tbody.innerHTML = data.map(function(row, idx) { return renderRow(row, idx); }).join('');
     return;
   }
   var ROW_HEIGHT = 40;
@@ -286,8 +287,10 @@ export const UTILITY_FUNCTIONS = [
   // SHELL-5: one-time wiring per table — click-to-select on rows, sort
   // toggling on header clicks. Idempotent (guarded via _clear_init flag) so
   // reactive re-renders don't double-bind.
-  { name: '_clear_table_init', code: `function _clear_table_init(tableEl) {
-  if (!tableEl || tableEl._clear_init) return;
+  { name: '_clear_table_init', code: `function _clear_table_init(tableEl, selectedVar) {
+  if (!tableEl) return;
+  if (selectedVar) tableEl._clear_selected_var = selectedVar;
+  if (tableEl._clear_init) return;
   tableEl._clear_init = true;
   tableEl.addEventListener('click', function(e) {
     var th = e.target.closest('th[data-sortable]');
@@ -305,6 +308,13 @@ export const UTILITY_FUNCTIONS = [
     if (tr && !e.target.closest('button') && !e.target.closest('a')) {
       tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
       tr.classList.toggle('is-selected');
+      var rowIndex = Number(tr.getAttribute('data-row-index'));
+      var row = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows[rowIndex] : null;
+      var selectedName = tableEl._clear_selected_var;
+      if (selectedName && typeof _state === 'object') {
+        _state[selectedName] = tr.classList.contains('is-selected') ? row : null;
+        if (typeof _recompute === 'function') _recompute();
+      }
     }
   });
 }`, deps: [] },
@@ -6842,6 +6852,7 @@ ${pad}}`;
     case NodeType.ROUTE_TAB:
     case NodeType.STAT_STRIP:
     case NodeType.STAT_CARD:
+    case NodeType.DETAIL_PANEL:
       return null;
 
     case NodeType.ASK_FOR: {
@@ -9222,7 +9233,7 @@ function compileToJS(body, errors, sourceMap = false, streamingAgentNames = new 
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE || node.type === NodeType.DETAIL_PANEL) return true;
       // Conditional blocks with UI content need reactive path for show/hide toggling
       if (node.type === NodeType.IF_THEN && node.isBlock) return true;
       // Inline component call: show Card(name) OR show ui's Card(name) — needs reactive path for DOM injection
@@ -9273,6 +9284,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         flatten(node.body, node.route || '/');
       } else if (node.type === NodeType.SECTION) {
         flatten(node.body, pageRoute);
+      } else if (node.type === NodeType.DETAIL_PANEL) {
+        if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
+        flatNodes.push(node);
+        flatten(node.body || [], pageRoute);
       } else {
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
@@ -9321,11 +9336,13 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const buttonNodes = [];    // button nodes
   const computeNodes = [];   // assignments, functions, etc.
   const setupNodes = [];     // comments, targets, modules
+  const detailPanels = [];    // right rail nodes
 
   for (const node of flatNodes) {
     switch (node.type) {
       case NodeType.ASK_FOR: if (!node._chatAbsorbed) inputNodes.push(node); break;
       case NodeType.DISPLAY: displayNodes.push(node); break;
+      case NodeType.DETAIL_PANEL: detailPanels.push(node); break;
       case NodeType.CHART: break; // Chart nodes handled separately below
       case NodeType.BUTTON: if (!node._chatAbsorbed) buttonNodes.push(node); break;
       case NodeType.COMMENT:
@@ -9452,6 +9469,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const hasEditAction = displayNodes.some(d => d.actions && d.actions.includes('edit'));
   if (hasEditAction) {
     stateDefaults['_editing_id'] = 'null';
+  }
+  for (const panel of detailPanels) {
+    stateDefaults[sanitizeName(panel.variable)] = 'null';
   }
 
   const stateEntries = Object.entries(stateDefaults).map(([k, v]) => `  ${k}: ${v}`).join(',\n');
@@ -9642,6 +9662,18 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const _dispUsedIds = new Set();
   const _chatDisplays = []; // Track chat displays for event listener wiring
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
+  function detailTargetForDisplay(displayNode) {
+    const start = flatNodes.indexOf(displayNode);
+    if (start < 0) return null;
+    for (let idx = start + 1; idx < flatNodes.length; idx++) {
+      const next = flatNodes[idx];
+      if (next.type === NodeType.DISPLAY && next.format === 'table' && next._pageRoute === displayNode._pageRoute) return null;
+      if (next.type === NodeType.DETAIL_PANEL && next._pageRoute === displayNode._pageRoute) {
+        return sanitizeName(next.variable);
+      }
+    }
+    return null;
+  }
   for (const disp of displayNodes) {
     let outputId = disp.ui._resolvedId || disp.ui.id;
     if (_dispUsedIds.has(outputId)) {
@@ -9667,6 +9699,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       const actionButtons = Array.isArray(disp.actionButtons) ? disp.actionButtons : [];
       const hasBlockActions = actionButtons.length > 0;
       const hasActions = hasShorthandActions || hasBlockActions;
+      const detailTarget = detailTargetForDisplay(disp);
 
       const headKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(d[0])';
       const rowKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(row)';
@@ -9692,18 +9725,18 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
           buttonExprs.push(`'<button class="${styleClass}" data-action="${slugAttr}" data-row-id="' + _esc(row.id) + '">${labelEsc}</button>'`);
         }
         const buttonsExpr = buttonExprs.length > 0 ? buttonExprs.join(` + ' ' + `) : `''`;
-        rowHtmlExpr = `'<tr>' + ${dataCols} + '<td><div class="clear-row-actions">' + ${buttonsExpr} + '</div></td>' + '</tr>'`;
+        rowHtmlExpr = `'<tr data-row-index="' + _esc(rowIndex) + '">' + ${dataCols} + '<td><div class="clear-row-actions">' + ${buttonsExpr} + '</div></td>' + '</tr>'`;
       } else {
-        rowHtmlExpr = `'<tr>' + ${dataCols} + '</tr>'`;
+        rowHtmlExpr = `'<tr data-row-index="' + _esc(rowIndex) + '">' + ${dataCols} + '</tr>'`;
       }
       const extraHead = hasActions ? ` + '<th class="${thClass}" style="width:1%"></th>'` : '';
       lines.push(`  _clear_render_table(`);
       lines.push(`    document.getElementById('${outputId}_table'),`);
       lines.push(`    ${val},`);
       lines.push(`    function(d) { var _keys = ${headKeysExpr}; return ${headCols}${extraHead}; },`);
-      lines.push(`    function(row) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
+      lines.push(`    function(row, rowIndex) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
       lines.push(`  );`);
-      lines.push(`  _clear_table_init(document.getElementById('${outputId}_table'));`);
+      lines.push(`  _clear_table_init(document.getElementById('${outputId}_table')${detailTarget ? `, '${detailTarget}'` : ''});`);
     } else if (disp.format === 'cards') {
       // Reactive card grid: render array of objects as styled cards
       lines.push(`  {`);
@@ -9979,6 +10012,11 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push(`      return (_val == null) ? '' : String(_val);`);
     lines.push(`    });`);
     lines.push(`  });`);
+  }
+
+  for (const panel of detailPanels) {
+    const selectedName = sanitizeName(panel.variable);
+    lines.push(`  { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="${selectedName}"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.${selectedName}); }`);
   }
 
   lines.push('}');
@@ -10613,6 +10651,31 @@ function buildHTML(body) {
   function statStripHTML(node) {
     const cards = (node.cards || []).map(statCardHTML).join('\n');
     return `    <div class="clear-stat-strip" data-stat-strip="true"${clAttr(node)}>\n${cards}\n    </div>`;
+  }
+
+  function detailPanelHTML(node) {
+    const variable = sanitizeName(node.variable || 'selected_row');
+    const beforeBody = parts.length;
+    sectionStack.push('detail_panel');
+    walk(node.body || []);
+    sectionStack.pop();
+    const bodyHTML = parts.splice(beforeBody).join('\n');
+
+    const beforeActions = parts.length;
+    if (node.actions && node.actions.length > 0) {
+      walk(node.actions);
+    }
+    const actionHTML = parts.splice(beforeActions).join('\n');
+    const actions = actionHTML
+      ? `\n      <div class="clear-detail-actions" data-detail-actions="true">\n${actionHTML}\n      </div>`
+      : '';
+
+    return `    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="${attrEsc(variable)}"${clAttr(node)}>
+      <div class="clear-detail-empty">Select a row to inspect it.</div>
+      <div class="clear-detail-body">
+${bodyHTML}
+      </div>${actions}
+    </aside>`;
   }
 
   function walk(nodes) {
@@ -11768,6 +11831,10 @@ ${options}
           parts.push(statStripHTML(node));
           break;
 
+        case NodeType.DETAIL_PANEL:
+          parts.push(detailPanelHTML(node));
+          break;
+
         case NodeType.SHOW: {
           // Component call: show Card(name) OR show ui's Card(name) -> container div for reactive rendering
           // Only uppercase component names match (bare or as the namespace's member).
@@ -11778,7 +11845,13 @@ ${options}
             // Dynamic expression: show total, text 'Price: ' + price → placeholder <p> for JS to fill
             const showId = `show_${showCounter++}`;
             node._showId = showId;
-            parts.push(`    <p id="${showId}" class="text-sm font-medium text-base-content/90 leading-snug"></p>`);
+            if (node.displayAs === 'heading') {
+              parts.push(`    <h2 id="${showId}" class="clear-detail-title text-lg font-semibold text-base-content"></h2>`);
+            } else if (node.displayAs === 'subheading') {
+              parts.push(`    <p id="${showId}" class="clear-detail-subtitle text-sm text-base-content/60"></p>`);
+            } else {
+              parts.push(`    <p id="${showId}" class="text-sm font-medium text-base-content/90 leading-snug"></p>`);
+            }
           }
           break;
         }
@@ -14726,6 +14799,50 @@ const CSS_COMPONENTS = [
   stroke-width: 2.25;
   stroke-linecap: round;
   stroke-linejoin: round;
+}` },
+  { class: 'clear-detail-panel', css: `.clear-detail-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}
+.clear-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+.clear-detail-empty {
+  display: none;
+  padding: 18px;
+  color: var(--clear-ink-muted);
+  font-size: 13px;
+}
+.clear-detail-panel.is-empty .clear-detail-empty {
+  display: block;
+}
+.clear-detail-panel.is-empty .clear-detail-body,
+.clear-detail-panel.is-empty .clear-detail-actions {
+  opacity: .42;
+}
+.clear-detail-title {
+  margin-bottom: 6px;
+}
+.clear-detail-subtitle {
+  margin-bottom: 14px;
+}
+.clear-detail-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
 }` },
   { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }
 .clear-chat-head { padding: 12px 16px; border-bottom: 1px solid oklch(var(--color-base-content) / 0.1); display: flex; align-items: center; justify-content: space-between; }

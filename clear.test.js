@@ -16565,6 +16565,83 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('data-stat-strip="true"');
     expect(r.html).toContain('data-stat-card="true"');
   });
+
+  it('parses detail panels with selected row variables, content, and actions', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    display selected_deal's amount as dollars called 'Value'
+    actions:
+      button 'Reject'
+      button 'Approve'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const panel = page.body.find(n => n.type === 'detail_panel');
+    expect(panel.variable).toBe('selected_deal');
+    expect(panel.body.length).toBe(2);
+    expect(panel.actions.length).toBe(2);
+  });
+
+  it('rejects detail panels without a selected row variable', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel:
+    text 'Pick a row'`);
+    expect(ast.errors.length > 0).toBe(true);
+    expect(ast.errors[0].message).toContain('selected row');
+  });
+
+  it('emits a right detail rail with body and sticky actions', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    display selected_deal's amount as dollars called 'Value'
+    actions:
+      button 'Reject'
+      button 'Approve'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-detail-panel="true"');
+    expect(r.html).toContain('data-detail-for="selected_deal"');
+    expect(r.html).toContain('clear-detail-actions');
+    expect(r.html).toContain('Reject');
+    expect(r.html).toContain('Approve');
+  });
+
+  it('initializes selected row state for detail panels', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text 'Pick a deal'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('selected_deal: null');
+  });
+
+  it('wires table row clicks to the nearest detail panel variable', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, amount
+  detail panel for selected_deal:
+    text selected_deal's customer`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_clear_table_init(document.getElementById('output_Deals_table'), 'selected_deal')");
+    expect(r.html).toContain("_state[selectedName] = tr.classList.contains('is-selected') ? row : null");
+    expect(r.javascript).toContain('data-row-index');
+  });
+
+  it('renders detail panel content from selected row state', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, amount
+  detail panel for selected_deal:
+    display selected_deal's amount as dollars called 'Value'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_state.selected_deal');
+    expect(r.html).toContain('output_Value_value');
+  });
 });
 
 describe('Complex app compilation: CRM with many tables', () => {
