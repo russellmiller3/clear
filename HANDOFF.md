@@ -346,3 +346,223 @@ What is next:
 - Then clean up Meph/docs so future app generation uses the new syntax.
 
 ---
+# Handoff - 2026-04-26 ambitious night run prep
+
+## Read this first
+
+Russell is going AFK. The goal is **finish as much WIP as possible without creating new sprawl**.
+
+This is intentionally more ambitious than the first AFK handoff. The overnight runner should keep moving down this queue until stopped by a real stop condition.
+
+Current repo state:
+- Branch: `main`.
+- Remote: `origin/main` should be synced with local `main`.
+- Only known dirty files should be local runtime DB files: `playground/factor-db.sqlite*`.
+- Do **not** stage or revert those DB files unless deliberately checkpointing Factor DB state.
+
+What shipped today:
+- Shell upgrade phases 2-7 are merged and pushed to `main`.
+- Deal Desk now requires auth for customer submit and approve flows.
+- Field rename/data carryover is hardened across runtime stores.
+- Live app editing for cloud apps now has widget bridge, deploy history, update, schema-confirm, and rollback coverage.
+- Support Triage ticket intake no longer depends on an Anthropic key.
+- The broken detail-panel curriculum skeleton now compiles.
+- Cloud Studio plan exists at `plans/plan-cloud-studio-04-26-2026.md`.
+- `AGENTS.md` has fresh rules for active worker management, staying focused, and plain-English ADHD-friendly updates.
+
+Verification already run:
+- `node clear.test.js` passed: 2671/0.
+- `node playground/e2e.test.js` passed: 75/75.
+- Cross-target smoke passed: 32 app-target emissions parse clean.
+- `playground/supervisor/chrome-checks.test.js` passed: 5/0.
+- Six Marcus app UAT tests were run; Support Triage failed, was fixed, then passed 13/13.
+- `git push origin main` passed all hooks and pushed successfully.
+
+## Big picture
+
+The app shell work is no longer the blocker. Clear apps now look and behave much closer to real internal tools.
+
+The overnight objective is **customer-readiness, flywheel integrity, and reducing WIP**:
+- Customer-readiness means Deal Desk can survive Marcus's first ten minutes.
+- Flywheel integrity means passing Meph work actually writes training signal.
+- Reducing WIP means close current roadmap/research threads before opening new ones.
+
+## Ambitious overnight order
+
+### 1. Deal Desk deep UAT - highest priority
+
+Goal: prove the Marcus demo path works like a customer would use it.
+
+Run the UAT checklist below against `apps/deal-desk/main.clear`.
+
+Focus areas:
+- Build, test, run, and browser console.
+- Signup/login/JWT protected pages.
+- Create/view/edit/delete deal records where supported.
+- Approve flow changes the pending queue.
+- Responsive sanity at mobile width.
+- No visible `undefined`, broken layout, or console red errors.
+- Live edit owner/non-owner visibility if the local/cloud harness can exercise it safely.
+
+If anything fails:
+- Write the failing test first.
+- Fix it.
+- Rerun the app test and the narrow regression.
+- Commit the fix.
+
+Do not stop at compile success. Verify visible behavior.
+
+### 2. Sweep training signal integrity - second priority
+
+Goal: make the flywheel record wins again before any expensive sweep.
+
+Roadmap and research both point at this as the compounding moat: if wins do not write rows, every future sweep wastes compute.
+
+Current best order:
+- First prove whether successful local-AI endpoint calls write a `test_pass=1` row.
+- Compare `playground/meph-tools.js` and `playground/ghost-meph/mcp-server/tools.js`.
+- Add a runtime guard/test that fails if a successful HTTP call records nothing.
+- Then fix or verify worker death handling.
+- Then add or verify per-level timeout stats.
+
+### 3. Run one post-fix sweep - guarded
+
+Goal: prove the flywheel fix with real data, not just unit tests.
+
+Preferred path:
+- Run a no-spend cc-agent/local sweep first if the harness supports it.
+- Use a small targeted curriculum slice before a full sweep.
+- Include held-out and per-level reporting in the summary.
+- Save a snapshot of results in `snapshots/` if the result teaches us something durable.
+
+If a paid Anthropic sweep is needed:
+- Run the project cost estimator first.
+- Post estimated range and median.
+- Do not exceed the spend gate while Russell is AFK.
+
+Success criteria:
+- Passing task creates Factor DB training rows.
+- Worker death is reported as worker-death, not silent fail.
+- Timeout stats show which levels/classes are slow.
+- The final report says what changed vs the last known bad sweep.
+
+### 4. Marcus GTM polish from ROADMAP
+
+Goal: make the pitch surface match the now-better product.
+
+Roadmap candidates:
+- `landing/marcus.html` polish and deal-desk demo embed.
+- `landing/pricing.html` Free / Team / Business / Enterprise page.
+- Demo recording script and outline.
+
+Recommended AFK order:
+- Inspect current landing pages.
+- Patch only what can be visually verified.
+- Prefer landing/pricing/docs work after Deal Desk UAT and sweep signal, not before.
+- Run browser/HTML checks where possible.
+
+Stop if the work needs Russell's taste call on pricing copy, live customer names, or recording voice-over.
+
+### 5. Live App Editing remaining WIP
+
+Goal: close obvious LAE safety gaps that matter for multi-user demos.
+
+Roadmap says remaining WIP includes:
+- Concurrent-edit guard.
+- Dry-run/private staging mode.
+- Browser e2e for owner widget ship/hide/undo on templates.
+- HMAC verification for live edit auth before multi-user use.
+
+Recommended order:
+- Start with tests around auth verification and owner/non-owner widget visibility.
+- Then concurrent-edit guard.
+- Then dry-run mode if time remains.
+
+Do not start a large LAE redesign overnight. Close safety holes.
+
+### 6. Give-Claude doc cascade and template migration
+
+Goal: make Meph and docs teach the new canonical AI-call form.
+
+Plan:
+- Read `plans/plan-give-claude-canonical-form-04-26-2026.md`.
+- Red-team the plan before editing.
+- Then update docs/templates/system prompt in small chunks.
+- Run compile/tests after each meaningful migration slice.
+
+This is useful, but it comes after Deal Desk UAT, sweep signal, and one guarded sweep.
+
+### 7. Canonical examples curation support
+
+Goal: prepare the examples so Russell can make fast taste decisions later.
+
+Useful AFK work:
+- Inspect `playground/canonical-examples.md`.
+- Group candidates by archetype.
+- Flag weak examples, duplicates, and gaps.
+- Propose a short ranked curation list.
+
+Do not silently rewrite the whole examples library.
+
+### 8. Cloud Studio stays after-launch
+
+Cloud Studio is planned, not the overnight build target.
+
+Use `plans/plan-cloud-studio-04-26-2026.md` only for red-team or follow-up planning unless customer-readiness, flywheel signal, and the guarded sweep are done.
+
+### 9. Dave-first launch thread stays parked
+
+Roadmap says Dave-first has shipped infrastructure but D-6 launch is on hold.
+
+Do not spend overnight work on HN/X launch prep unless all Marcus/flywheel work above is closed.
+
+## Parallel worker split
+
+Use the N-1 pattern:
+- If there are N independent chunks, assign N-1 workers and keep the most integration-sensitive chunk local.
+- Workers should not sit idle.
+- Give workers narrow briefs and disjoint write scopes.
+- Verify every worker change in the main thread before commit.
+
+Good initial split:
+- Main thread: Deal Desk deep UAT and fixes.
+- Worker A: sweep write-path investigation and tests.
+- Worker B: worker-death/per-level stats harness audit.
+- Worker C: Marcus landing/pricing audit and patch plan.
+- Worker D: LAE auth/widget safety audit.
+
+As workers finish:
+- Reassign idle workers to the next queue item.
+- Close workers only when no useful independent task remains.
+
+## Commit and push policy
+
+- Commit each tested repair.
+- Push after meaningful green checkpoints.
+- Use normal hooks for code.
+- Use `--no-verify` only for doc-only commits.
+- Never stage `playground/factor-db.sqlite*` unless deliberately checkpointing the training DB.
+
+## Stop conditions
+
+Stop and wait only for:
+- Destructive filesystem/git action.
+- Paid API run above the allowed spend gate.
+- Production credential or account-console work Russell must do.
+- Ambiguous product choice with no safe default.
+
+## Plain-English status for Russell
+
+What got done:
+- The visual shell work is landed.
+- Live editing is much safer.
+- Deal Desk and Support Triage have fewer demo-killing holes.
+- The repo is pushed and recoverable.
+
+What is next:
+- First prove Deal Desk end-to-end.
+- Then fix the flywheel so wins write training data.
+- Then run one guarded sweep.
+- Then spend remaining overnight capacity on Marcus GTM, LAE safety, docs/template cleanup, and curation.
+
+---
