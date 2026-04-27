@@ -51,8 +51,14 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/require-branch-work.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking branch discipline before editing..."
+          },
           {
             "type": "command",
             "command": "node .claude/hooks/clear-cheatsheet-on-write.mjs",
