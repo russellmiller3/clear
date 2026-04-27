@@ -292,7 +292,7 @@ body {
 }
 .clear-detail-panel.is-empty .clear-detail-body,
 .clear-detail-panel.is-empty .clear-detail-actions {
-  opacity: .42;
+  display: none;
 }
 .clear-detail-title {
   margin-bottom: 6px;

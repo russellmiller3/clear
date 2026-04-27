@@ -133,36 +133,36 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a deal with rep_name : 'mike.l' , customer : 'Beta Co' , list_price : 50000 , discount_percent : 10", async () => {
-      // clear:349
+      // clear:350
       _response = await fetch(_baseUrl + "/api/deals", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "rep_name": "mike.l", "customer": "Beta Co", "list_price": 50000, "discount_percent": 10 })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:350
+      // clear:351
       _expectSuccess(_response);
   });
 
   await test("can user submit a deal with rep_name : 'sarah.j' , customer : 'Acme Corp' , list_price : 240000 , discount_percent : 25", async () => {
-      // clear:353
+      // clear:354
       _response = await fetch(_baseUrl + "/api/deals", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "rep_name": "sarah.j", "customer": "Acme Corp", "list_price": 240000, "discount_percent": 25 })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:354
+      // clear:355
       _expectSuccess(_response);
   });
 
   await test("updating a deal should require login", async () => {
-      // clear:357
+      // clear:358
       // Could not find PUT endpoint for deal
   });
 
   await test("creating a deal should require login", async () => {
-      // clear:360
+      // clear:361
       _response = await fetch(_baseUrl + "/api/deals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,27 +172,27 @@ async function run() {
   });
 
   await test("can user approve a deal", async () => {
-      // clear:363
+      // clear:364
       // Approving a deal removes it from the pending queue
-      _lastCall = { method: "POST", path: "/api/seed", line: 363 };
+      _lastCall = { method: "POST", path: "/api/seed", line: 364 };
       _response = await fetch(_baseUrl + "/api/seed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       _responseBody = await _response.json().catch(() => null);
       _expectSuccess(_response);
-      _lastCall = { method: "GET", path: "/api/deals/pending", line: 363 };
+      _lastCall = { method: "GET", path: "/api/deals/pending", line: 364 };
       _response = await fetch(_baseUrl + "/api/deals/pending");
       _responseBody = await _response.json().catch(() => null);
       _expectSuccess(_response);
       const before = Array.isArray(_responseBody) ? _responseBody : [];
       const target = before[0];
       assert(target && target.id, "Expected a pending deal to approve");
-      _lastCall = { method: "PUT", path: "/api/deals/:id/approve", line: 363 };
+      _lastCall = { method: "PUT", path: "/api/deals/:id/approve", line: 364 };
       _response = await fetch(_baseUrl + "/api/deals/" + target.id + "/approve", {
         method: "PUT", headers: AUTH_HEADERS,
         body: JSON.stringify(target)
       });
       _responseBody = await _response.json().catch(() => null);
       _expectSuccess(_response);
-      _lastCall = { method: "GET", path: "/api/deals/pending", line: 363 };
+      _lastCall = { method: "GET", path: "/api/deals/pending", line: 364 };
       _response = await fetch(_baseUrl + "/api/deals/pending");
       _responseBody = await _response.json().catch(() => null);
       _expectSuccess(_response);

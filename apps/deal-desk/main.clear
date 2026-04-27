@@ -265,7 +265,8 @@ page 'Deal Desk' at '/':
           actions:
             button 'Refresh'
             button 'Export'
-            button 'New deal'
+            button 'New deal':
+              go to '/new'
 
         tab strip:
           active tab is 'Pending'
@@ -302,7 +303,7 @@ page 'Deal Desk' at '/':
             text selected_deal's customer
             text selected_deal's summary
             display selected_deal's list_price as dollars called 'List price'
-            display selected_deal's discount_percent as percent called 'Discount'
+            display selected_deal's discount_percent as number called 'Discount %'
             display selected_deal's risk_score as number called 'Risk score'
             text selected_deal's recommendation
             text selected_deal's approval_rule

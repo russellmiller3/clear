@@ -310,7 +310,7 @@ body {
 }
 .clear-detail-panel.is-empty .clear-detail-body,
 .clear-detail-panel.is-empty .clear-detail-actions {
-  opacity: .42;
+  display: none;
 }
 .clear-detail-title {
   margin-bottom: 6px;
@@ -381,7 +381,7 @@ body {
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="263">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Pending CRO approval</h1>
-        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{pending_count} deals waiting on you. Oldest submitted 2 hours ago.</p>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{pending_count} deals waiting on you. Oldest submitted 2 hours ago.">{pending_count} deals waiting on you. Oldest submitted 2 hours ago.</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
     <button class="btn btn-primary" id="btn_Refresh" data-clear-line="266">Refresh</button>
@@ -389,13 +389,13 @@ body {
     <button class="btn btn-primary" id="btn_New_deal" data-clear-line="268">New deal</button>
       </div>
     </div>
-    <nav class="clear-tab-strip" data-tab-strip="true" data-clear-line="270">
+    <nav class="clear-tab-strip" data-tab-strip="true" data-clear-line="271">
       <a href="/" class="clear-route-tab is-active" data-route-tab="true" data-tab-path="/">Pending</a>
       <a href="/approved" class="clear-route-tab" data-route-tab="true" data-tab-path="/approved">My approvals</a>
       <a href="/all" class="clear-route-tab" data-route-tab="true" data-tab-path="/all">All</a>
     </nav>
-    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="276">
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="277">
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="277">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="278">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Pending count</div>
           <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
@@ -403,7 +403,7 @@ body {
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{pending_count}">{pending_count}</span></div>
         <div class="clear-stat-delta clear-stat-delta-positive">same as yesterday</div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="281">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="282">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Avg discount</div>
           <i class="clear-stat-icon" data-lucide="percent" aria-hidden="true"></i>
@@ -411,7 +411,7 @@ body {
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{average_discount}">{average_discount}</span></div>
         <div class="clear-stat-delta clear-stat-delta-positive">+1.8 pts vs last week</div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="285">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="286">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Value at stake</div>
           <i class="clear-stat-icon" data-lucide="dollar-sign" aria-hidden="true"></i>
@@ -419,7 +419,7 @@ body {
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{value_at_stake}">{value_at_stake}</span></div>
         <div class="clear-stat-delta clear-stat-delta-positive">+12% vs last week</div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="289">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="290">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Approvals - 7-day</div>
         </div>
@@ -428,9 +428,9 @@ body {
         <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 17.3,17.3 32.7,20.7 48.0,10.7 63.3,14.0 78.7,4.0 94.0,7.3"></polyline></svg>
       </div>
     </div>
-    <div class="section-queue_workbench" data-clear-line="294">
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden section-pending_queue" data-clear-line="295">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="296">
+    <div class="section-queue_workbench" data-clear-line="295">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden section-pending_queue" data-clear-line="296">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="297">
       <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">Pending</h3>
       </div>
@@ -442,16 +442,16 @@ body {
       </div>
     </div>
     </div>
-    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_deal" data-clear-line="300">
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_deal" data-clear-line="301">
       <div class="clear-detail-empty">Select a row to inspect it.</div>
       <div class="clear-detail-body">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="301">Deal details</h1>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="302">Deal details</h1>
     <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_List_price_value"></p>
     <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">List price</p>
-    <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Discount_value"></p>
-    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Discount</p>
+    <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Discount___value"></p>
+    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Discount %</p>
     <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Risk_score_value"></p>
     <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Risk score</p>
     <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
@@ -461,46 +461,46 @@ body {
     <p id="show_6" class="text-sm font-medium text-base-content/90 leading-snug"></p>
       </div>
       <div class="clear-detail-actions" data-detail-actions="true">
-    <button class="btn btn-primary" id="btn_Reject" data-action="reject" data-clear-line="313">Reject</button>
-    <button class="btn btn-primary" id="btn_Counter" data-action="counter" data-clear-line="314">Counter</button>
-    <button class="btn btn-primary" id="btn_Approve" data-action="approve" data-clear-line="315">Approve</button>
+    <button class="btn btn-primary" id="btn_Reject" data-action="reject" data-clear-line="314">Reject</button>
+    <button class="btn btn-primary" id="btn_Counter" data-action="counter" data-clear-line="315">Counter</button>
+    <button class="btn btn-primary" id="btn_Approve" data-action="approve" data-clear-line="316">Approve</button>
       </div>
     </aside>
     </div>
-    <div class="flex flex-row items-center gap-4" data-clear-line="317">
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{pending_count} pending" data-clear-line="318">{pending_count} pending</span>
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="319">synced 12 sec ago</span>
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="320">Clear Cloud</span>
+    <div class="flex flex-row items-center gap-4" data-clear-line="318">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{pending_count} pending" data-clear-line="319">{pending_count} pending</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="320">synced 12 sec ago</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="321">Clear Cloud</span>
     </div>
     </div>
     </main>
     </div>
 </div>
 <div id="page_New_discount_request" style="display:none">
-    <div class="section-header" data-clear-line="323">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="324">New discount request</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="325">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
+    <div class="section-header" data-clear-line="324">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="325">New discount request</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="326">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5" data-clear-line="327">
-    <fieldset class="fieldset" data-clear-line="328">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5" data-clear-line="328">
+    <fieldset class="fieldset" data-clear-line="329">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your name</legend>
       <input id="input_rep_name" class="input input-bordered w-full" type="text" placeholder="Your name">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="329">
+    <fieldset class="fieldset" data-clear-line="330">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer</legend>
       <input id="input_customer" class="input input-bordered w-full" type="text" placeholder="Customer">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="330">
+    <fieldset class="fieldset" data-clear-line="331">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">List price ($)</legend>
       <input id="input_list_price" class="input input-bordered w-full" type="number" step="any" placeholder="List price ($)">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="331">
+    <fieldset class="fieldset" data-clear-line="332">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Discount %</legend>
       <input id="input_discount_percent" class="input input-bordered w-full" type="number" step="any" placeholder="Discount %">
     </fieldset>
-    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-line="332">Submit for approval</button>
+    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-line="333">Submit for approval</button>
     </div>
-    <a class="link link-primary text-sm" href="#/" data-clear-line="339">Back to queue</a>
+    <a class="link link-primary text-sm" href="#/" data-clear-line="340">Back to queue</a>
 </div>
 <div id="page_Sign_in" style="display:none">
     <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
@@ -613,9 +613,9 @@ body {
       });
     })();
     </script>
-    <div class="section-sign_in" data-clear-line="342">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="343">Sign in to the CRO console</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="344">Use the signup or login form above. After signing in, head to /cro.</p>
+    <div class="section-sign_in" data-clear-line="343">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="344">Sign in to the CRO console</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="345">Use the signup or login form above. After signing in, head to /cro.</p>
     </div>
 </div>
   </main>
@@ -637,8 +637,8 @@ body {
 
  PAGES:
    'Deal Desk' at / (line 217)
-   'New discount request' at /new (line 322)
-   'Sign in' at /login (line 341)
+   'New discount request' at /new (line 323)
+   'Sign in' at /login (line 342)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -864,19 +864,19 @@ function _recompute() {
   }
   // clear:222
   let pending_count = _clear_len(_state.pending);
-  // clear:302
-  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer; }
   // clear:303
+  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer; }
+  // clear:304
   { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_deal?.summary; }
-  // clear:307
-  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_deal?.recommendation; }
   // clear:308
-  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_deal?.approval_rule; }
+  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_deal?.recommendation; }
   // clear:309
-  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_deal?.term; }
+  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_deal?.approval_rule; }
   // clear:310
-  { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_deal?.health_signal; }
+  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_deal?.term; }
   // clear:311
+  { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_deal?.health_signal; }
+  // clear:312
   { const _el = document.getElementById('show_6'); if (_el) _el.textContent = _state.selected_deal?.precedent_note; }
   _clear_render_table(
     document.getElementById('output_Pending_table'),
@@ -885,9 +885,9 @@ function _recompute() {
     function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k) { return _clear_cell(k, row[k]); }).join('') + '<td><div class="clear-row-actions">' + '<button class="btn-tiny is-secondary" data-action="review" data-row-id="' + _esc(row.id) + '">Review</button>' + ' ' + '<button class="btn-tiny is-primary" data-action="approve" data-row-id="' + _esc(row.id) + '">Approve</button>' + '</div></td>' + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_Pending_table'), 'selected_deal');
-  document.getElementById('output_List_price_value').textContent = Number(_state.selected_deal?.list_price).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  document.getElementById('output_Discount_value').textContent = (Number(_state.selected_deal?.discount_percent) * 100).toFixed(1) + '%';
-  document.getElementById('output_Risk_score_value').textContent = String(_state.selected_deal?.risk_score);
+  document.getElementById('output_List_price_value').textContent = _state.selected_deal ? Number(_state.selected_deal?.list_price).toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '';
+  document.getElementById('output_Discount___value').textContent = _state.selected_deal ? String(_state.selected_deal?.discount_percent) : '';
+  document.getElementById('output_Risk_score_value').textContent = _state.selected_deal ? String(_state.selected_deal?.risk_score) : '';
   document.getElementById('input_rep_name').value = _state.rep_name;
   document.getElementById('input_customer').value = _state.customer;
   document.getElementById('input_list_price').value = _state.list_price;
@@ -895,6 +895,14 @@ function _recompute() {
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof pending_count !== 'undefined') _tplCtx["pending_count"] = pending_count;
+  if (typeof approved_today_count !== 'undefined') _tplCtx["approved_today_count"] = approved_today_count;
+  if (typeof rejected_count !== 'undefined') _tplCtx["rejected_count"] = rejected_count;
+  if (typeof awaiting_count !== 'undefined') _tplCtx["awaiting_count"] = awaiting_count;
+  if (typeof total_deals_count !== 'undefined') _tplCtx["total_deals_count"] = total_deals_count;
+  if (typeof rep_count !== 'undefined') _tplCtx["rep_count"] = rep_count;
+  if (typeof average_discount !== 'undefined') _tplCtx["average_discount"] = average_discount;
+  if (typeof value_at_stake !== 'undefined') _tplCtx["value_at_stake"] = value_at_stake;
+  if (typeof approvals_week_count !== 'undefined') _tplCtx["approvals_week_count"] = approvals_week_count;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
@@ -933,7 +941,7 @@ document.getElementById('btn_Export').addEventListener('click', function() {
   _recompute();
 });
 document.getElementById('btn_New_deal').addEventListener('click', function() {
-
+  window.location.hash = "/new";
   _recompute();
 });
 document.getElementById('btn_Submit_for_approval').addEventListener('click', async function() {
@@ -947,7 +955,7 @@ document.getElementById('btn_Submit_for_approval').addEventListener('click', asy
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/deals", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ rep_name: _state.rep_name, customer: _state.customer, list_price: _state.list_price, discount_percent: _state.discount_percent }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:333]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:334]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
     _state.rep_name = "";
     _state.customer = "";
     _state.list_price = 0;
@@ -988,6 +996,9 @@ document.getElementById('output_Pending_table').addEventListener('click', async 
     const row = _state.selected_deal;
     const id = row && row.id;
     await _clear_action_output_Pending_approve(id, row);
+    const _detailRows = _state.pending;
+    const _stillSelected = Array.isArray(_detailRows) && _detailRows.some(function(candidate) { return candidate && String(candidate.id) === String(id); });
+    if (!_stillSelected) { _state.selected_deal = null; _recompute(); }
   });
 }
 
@@ -1003,9 +1014,9 @@ _recompute(); // initial render with default state
 })();
 
 // --- Router ---
-// Reads both location.pathname (server-side navigation, direct URLs, route
-// selector) and location.hash (in-iframe clicks). Pathname wins when set,
-// hash is the fallback so hash-style links keep working. Also intercepts
+// Reads both location.hash (button-driven in-app navigation) and
+// location.pathname (server-side navigation, direct URLs, route selector).
+// Hash wins when present so button-driven navigation works from the root route. Also intercepts
 // <a href> clicks to same-origin routes so we don't hit the server on each
 // click (SPA feel while still supporting refresh/direct-URL).
 const _routes = {
@@ -1014,10 +1025,10 @@ const _routes = {
   '/login': 'Sign_in'
 };
 function _currentRoute() {
-  const p = (location.pathname || '/').replace(/\/$/, '') || '/';
-  if (_routes.hasOwnProperty(p)) return p;
   const h = (location.hash || '').slice(1);
   if (h && _routes.hasOwnProperty(h)) return h;
+  const p = (location.pathname || '/').replace(/\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
   return Object.keys(_routes)[0]; // first declared route (usually '/')
 }
 function _router() {
@@ -1053,6 +1064,8 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
       return raw || '/';
     }
     function currentPath() {
+      var h = (location.hash || '').slice(1);
+      if (h) return normalize(h);
       return normalize(location.pathname || '/');
     }
     function syncActiveNav() {
@@ -1081,7 +1094,8 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
       return raw || '/';
     }
     function syncActiveTabs() {
-      var current = normalize(location.pathname || '/');
+      var h = (location.hash || '').slice(1);
+      var current = h ? normalize(h) : normalize(location.pathname || '/');
       document.querySelectorAll('[data-tab-strip]').forEach(function(strip) {
         var tabs = Array.prototype.slice.call(strip.querySelectorAll('[data-route-tab]'));
         var matched = false;

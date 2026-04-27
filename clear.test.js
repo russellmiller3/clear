@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { describe, it, expect, run } from './lib/testUtils.js';
-import { mkdtempSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname as pathDirname, join as pathJoin } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15882,6 +15882,24 @@ describe('Stress R2: Multi-Page SPA Edge Cases', () => {
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
   });
+
+  it('hash navigation routes before pathname fallback', () => {
+    const src = [
+      "build for web",
+      "page 'Home' at '/':",
+      "  heading 'Home'",
+      "  button 'Go to About':",
+      "    go to '/about'",
+      "page 'About' at '/about':",
+      "  heading 'About'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const routerStart = result.html.indexOf('function _currentRoute()');
+    const routerEnd = result.html.indexOf('function _router()', routerStart);
+    const currentRoute = result.html.slice(routerStart, routerEnd);
+    expect(currentRoute.indexOf('const h =')).toBeLessThan(currentRoute.indexOf('const p ='));
+  });
 });
 
 describe('Stress R2: Database Backends', () => {
@@ -16459,6 +16477,18 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('Refresh');
   });
 
+  it('emits dynamic page header subtitles as recomputable text templates', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get pending from '/api/deals'
+  pending_count = count of pending
+  page header 'CRO Review':
+    subtitle '{pending_count} deals waiting'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-clear-tpl="{pending_count} deals waiting"');
+    expect(r.javascript).toContain('if (typeof pending_count !==');
+  });
+
   it('wires page header action buttons with bodies', () => {
     const r = compileProgram(`build for web
 page 'Deals' at '/cro':
@@ -16687,6 +16717,17 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('Approve');
   });
 
+  it('hides detail rail body and actions while no row is selected', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.css).toContain('.clear-detail-panel.is-empty .clear-detail-body,\n.clear-detail-panel.is-empty .clear-detail-actions {\n  display: none;');
+  });
+
   it('initializes selected row state for detail panels', () => {
     const r = compileProgram(`build for web
 page 'Deals' at '/cro':
@@ -16719,6 +16760,15 @@ page 'Deals' at '/cro':
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('_state.selected_deal');
     expect(r.html).toContain('output_Value_value');
+  });
+
+  it('keeps formatted detail panel values blank until a row is selected', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    display selected_deal's amount as dollars called 'Value'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_state.selected_deal ? Number(_state.selected_deal?.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : ''");
   });
 
   it('updates each dynamic detail text field through its own DOM slot', () => {
@@ -26284,6 +26334,42 @@ page 'App' at '/':
     expect(js).toContain("_state.selected_deal");
   });
 
+  it('clears the detail selection when a detail action removes the row from the refreshed table', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+page 'App' at '/':
+  on page load get pending from '/api/deals/pending'
+
+  display pending as table showing customer, status with actions:
+    'Approve' is primary
+
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve'`;
+
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    expect(js).toContain('const _detailRows = _state.pending;');
+    expect(js).toContain('const _stillSelected = Array.isArray(_detailRows) && _detailRows.some(function(candidate) { return candidate && String(candidate.id) === String(id); });');
+    expect(js).toContain('if (!_stillSelected) { _state.selected_deal = null; _recompute(); }');
+  });
+
   it('generates an approval UAT that proves the pending queue changes', () => {
     const src = `build for web and javascript backend
 database is local memory
@@ -26355,6 +26441,26 @@ describe('SHELL-5: data tables — backwards compat with `with delete and edit`'
     expect(ast.errors).toHaveLength(0);
     const disp = ast.body[0].body[0];
     expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+});
+
+describe('Deal Desk UAT', () => {
+  it('header New deal action opens the request form', () => {
+    const src = readFileSync(pathJoin(REPO_ROOT, 'apps', 'deal-desk', 'main.clear'), 'utf8');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const listenerIndex = result.javascript.indexOf("document.getElementById('btn_New_deal').addEventListener");
+    expect(listenerIndex >= 0).toBe(true);
+    const navIndex = result.javascript.indexOf('window.location.hash = "/new";', listenerIndex);
+    expect(navIndex > listenerIndex).toBe(true);
+  });
+
+  it('detail rail does not multiply stored discount percentages', () => {
+    const src = readFileSync(pathJoin(REPO_ROOT, 'apps', 'deal-desk', 'main.clear'), 'utf8');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('Discount %');
+    expect(result.javascript).not.toContain('(Number(_state.selected_deal?.discount_percent) * 100).toFixed(1)');
   });
 });
 

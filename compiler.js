@@ -9854,6 +9854,13 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
     return null;
   }
+  function rootVariableName(expr) {
+    if (!expr) return null;
+    if (expr.type === NodeType.VARIABLE_REF) return sanitizeName(expr.name || '');
+    if (expr.type === NodeType.MEMBER_ACCESS) return rootVariableName(expr.object);
+    return null;
+  }
+  const detailPanelNames = new Set(detailPanels.map(panel => sanitizeName(panel.variable)));
   for (const disp of displayNodes) {
     let outputId = disp.ui._resolvedId || disp.ui.id;
     if (_dispUsedIds.has(outputId)) {
@@ -10086,8 +10093,12 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         : disp.format === 'json' ? `JSON.stringify(${val}, null, 2)`
         : disp.format === 'count' ? `String(Array.isArray(${val}) ? ${val}.length : ${val})`
         : `String(${val})`;
+      const detailRoot = rootVariableName(disp.expression);
+      const safeFormatExpr = detailRoot && detailPanelNames.has(detailRoot)
+        ? `_state.${detailRoot} ? ${formatExpr} : ''`
+        : formatExpr;
       const dispProp = disp.format === 'json' ? 'innerText' : 'textContent';
-      lines.push(`  document.getElementById('${outputId}_value').${dispProp} = ${formatExpr};`);
+      lines.push(`  document.getElementById('${outputId}_value').${dispProp} = ${safeFormatExpr};`);
     }
   }
 
@@ -10171,13 +10182,35 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   // arrow-function callbacks can't reach closure vars dynamically by string.
   const _tplVars = new Set();
   const _tplVarRe = /\{([a-zA-Z_]\w*)\}/g;
-  for (const _node of flatNodes) {
-    if (_node.type === NodeType.CONTENT && typeof _node.text === 'string') {
-      let _m;
-      _tplVarRe.lastIndex = 0;
-      while ((_m = _tplVarRe.exec(_node.text)) !== null) _tplVars.add(_m[1]);
+  function collectTextTemplateVars(text) {
+    if (typeof text !== 'string') return;
+    let _m;
+    _tplVarRe.lastIndex = 0;
+    while ((_m = _tplVarRe.exec(text)) !== null) _tplVars.add(_m[1]);
+  }
+  function collectTemplateVars(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const _node of nodes || []) {
+      if (!_node) continue;
+      if (_node.type === NodeType.CONTENT) {
+        collectTextTemplateVars(_node.text);
+      } else if (_node.type === NodeType.PAGE_HEADER) {
+        collectTextTemplateVars(_node.title);
+        collectTextTemplateVars(_node.subtitle);
+      } else if (_node.type === NodeType.NAV_ITEM && typeof _node.count === 'string' && /^[a-zA-Z_]\w*$/.test(_node.count)) {
+        _tplVars.add(_node.count);
+      } else if (_node.type === NodeType.STAT_CARD && _node.value && _node.value.type === NodeType.VARIABLE_REF) {
+        _tplVars.add(_node.value.name);
+      } else if (_node.type === NodeType.STAT_STRIP) {
+        collectTemplateVars(_node.cards || []);
+      }
+      collectTemplateVars(_node.body || []);
+      collectTemplateVars(_node.actions || []);
+      collectTemplateVars(_node.thenBranch || []);
+      collectTemplateVars(_node.otherwiseBranch || []);
     }
   }
+  collectTemplateVars(body);
   if (_tplVars.size > 0) {
     lines.push(`  // Substitute {varname} in text templates`);
     lines.push(`  const _tplCtx = Object.assign({}, _state || {});`);
@@ -10461,6 +10494,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         lines.push(`    const row = _state.${detailVar};`);
         lines.push(`    const id = row && row.id;`);
         lines.push(`    await ${fnName}(id, row);`);
+        lines.push(`    const _detailRows = _state.${varName};`);
+        lines.push(`    const _stillSelected = Array.isArray(_detailRows) && _detailRows.some(function(candidate) { return candidate && String(candidate.id) === String(id); });`);
+        lines.push(`    if (!_stillSelected) { _state.${detailVar} = null; _recompute(); }`);
         lines.push(`  });`);
         lines.push(`}`);
       }
@@ -10783,6 +10819,12 @@ function buildHTML(body) {
     return `<span class="clear-nav-count num">${safe}</span>`;
   }
 
+  function templateAttrForText(text) {
+    const raw = String(text == null ? '' : text);
+    if (!/\{[a-zA-Z_]\w*\}/.test(raw)) return '';
+    return ` data-clear-tpl="${attrEsc(formatInlineText(raw))}"`;
+  }
+
   function navItemHTML(node) {
     const title = formatInlineText(node.title || '');
     const href = attrEsc(node.path || '#');
@@ -10795,8 +10837,9 @@ function buildHTML(body) {
 
   function pageHeaderHTML(node) {
     const title = formatInlineText(node.title || '');
+    const titleTpl = templateAttrForText(node.title);
     const subtitle = node.subtitle
-      ? `<p class="clear-page-subtitle text-sm text-base-content/55 mt-1">${formatInlineText(node.subtitle)}</p>`
+      ? `<p class="clear-page-subtitle text-sm text-base-content/55 mt-1"${templateAttrForText(node.subtitle)}>${formatInlineText(node.subtitle)}</p>`
       : '';
     const before = parts.length;
     if (node.actions && node.actions.length > 0) {
@@ -10808,7 +10851,7 @@ function buildHTML(body) {
       : '';
     return `    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true"${clAttr(node)}>
       <div class="min-w-0">
-        <h1 class="clear-page-title text-2xl">${title}</h1>
+        <h1 class="clear-page-title text-2xl"${titleTpl}>${title}</h1>
         ${subtitle}
       </div>${actions}
     </div>`;
@@ -12214,19 +12257,19 @@ function compileToHTML(body, compiledJS) {
     const routeMap = pages.map(p => `  '${p.route}': '${sanitizeName(p.title)}'`).join(',\n');
     routerJS = `
 // --- Router ---
-// Reads both location.pathname (server-side navigation, direct URLs, route
-// selector) and location.hash (in-iframe clicks). Pathname wins when set,
-// hash is the fallback so hash-style links keep working. Also intercepts
+// Reads both location.hash (button-driven in-app navigation) and
+// location.pathname (server-side navigation, direct URLs, route selector).
+// Hash wins when present so button-driven navigation works from the root route. Also intercepts
 // <a href> clicks to same-origin routes so we don't hit the server on each
 // click (SPA feel while still supporting refresh/direct-URL).
 const _routes = {
 ${routeMap}
 };
 function _currentRoute() {
-  const p = (location.pathname || '/').replace(/\\/$/, '') || '/';
-  if (_routes.hasOwnProperty(p)) return p;
   const h = (location.hash || '').slice(1);
   if (h && _routes.hasOwnProperty(h)) return h;
+  const p = (location.pathname || '/').replace(/\\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
   return Object.keys(_routes)[0]; // first declared route (usually '/')
 }
 function _router() {
@@ -12357,6 +12400,8 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
       return raw || '/';
     }
     function currentPath() {
+      var h = (location.hash || '').slice(1);
+      if (h) return normalize(h);
       return normalize(location.pathname || '/');
     }
     function syncActiveNav() {
@@ -12385,7 +12430,8 @@ ${htmlBody.includes('data-tab-strip') ? `  <script>
       return raw || '/';
     }
     function syncActiveTabs() {
-      var current = normalize(location.pathname || '/');
+      var h = (location.hash || '').slice(1);
+      var current = h ? normalize(h) : normalize(location.pathname || '/');
       document.querySelectorAll('[data-tab-strip]').forEach(function(strip) {
         var tabs = Array.prototype.slice.call(strip.querySelectorAll('[data-route-tab]'));
         var matched = false;
@@ -15086,7 +15132,7 @@ const CSS_COMPONENTS = [
 }
 .clear-detail-panel.is-empty .clear-detail-body,
 .clear-detail-panel.is-empty .clear-detail-actions {
-  opacity: .42;
+  display: none;
 }
 .clear-detail-title {
   margin-bottom: 6px;
