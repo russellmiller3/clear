@@ -12,6 +12,12 @@
 - `playground/factor-db.sqlite` is source/training data for the flywheel, not a disposable artifact.
 - Run `node clear.test.js` after JavaScript/runtime/compiler changes. Use the bundled Node runtime if `node` is not available on PATH.
 
+## Branch Discipline
+
+- Always do work on a branch. Never edit, stage, or commit feature/fix/doc work directly on `main`.
+- Before starting work from `main`, create a focused branch such as `feature/<name>`, `fix/<name>`, or `docs/<name>`.
+- Merge back to `main` only after the branch is tested, committed, and ready to ship.
+
 ## Worker Management
 
 - Do not let workers sit idle when independent work exists. The manager should keep assigning useful parallel tasks while doing the critical-path work locally.
