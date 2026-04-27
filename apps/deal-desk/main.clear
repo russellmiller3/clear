@@ -88,6 +88,13 @@ when user updates deal at /api/deals/:id:
   save deal to Deals
   send back 'updated' with success message
 
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  deal's recommendation is 'approved'
+  save deal to Deals
+  send back deal with success message
+
 # Seed
 
 when user sends seed to /api/seed:
@@ -351,3 +358,6 @@ test:
 
 test:
   creating a deal should require login
+
+test:
+  can user approve a deal

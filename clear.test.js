@@ -5,11 +5,17 @@
 // =============================================================================
 
 import { describe, it, expect, run } from './lib/testUtils.js';
+import { mkdtempSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname as pathDirname, join as pathJoin } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tokenizeLine, TokenType } from './tokenizer.js';
 import { parse, NodeType } from './parser.js';
 import { compile, compileNode, exprToCode, UTILITY_FUNCTIONS } from './compiler.js';
 import { validate } from './validator.js';
 import { compileProgram, SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './index.js';
+
+const REPO_ROOT = pathDirname(fileURLToPath(import.meta.url));
 
 // =============================================================================
 // SYNONYM TABLE
@@ -442,6 +448,12 @@ describe('Compiler - JavaScript', () => {
   it('compiles comments as JS comments', () => {
     const result = compileProgram('# hello', { target: 'web' });
     expect(result.javascript).toContain('// hello');
+  });
+
+  it('emits blank comment lines without trailing spaces', () => {
+    const result = compileProgram('/*\nhello\n\nworld\n*/', { target: 'web' });
+    expect(result.javascript).toContain('//\n// world');
+    expect(result.javascript).not.toContain('// \n');
   });
 
   it('compiles a list literal', () => {
@@ -3602,6 +3614,15 @@ describe('Input Syntax (label-first canonical)', () => {
     expect(node.inputType).toBe('choice');
     expect(node.label).toBe('Color');
     expect(node.choices).toHaveLength(3);
+  });
+
+  it('parses label-is dropdown with options saved as a named variable', () => {
+    const ast = parse(`'Size' is a dropdown with ['SMB', 'Mid-market', 'Enterprise'] saved as a size`);
+    expect(ast.errors).toHaveLength(0);
+    const node = ast.body.find(n => n.type === 'ask_for');
+    expect(node.inputType).toBe('choice');
+    expect(node.variable).toBe('size');
+    expect(node.choices).toEqual(['SMB', 'Mid-market', 'Enterprise']);
   });
 
   it('parses label-first checkbox', () => {
@@ -16438,6 +16459,22 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('Refresh');
   });
 
+  it('wires page header action buttons with bodies', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  page header 'CRO Review':
+    actions:
+      button 'Refresh':
+        get deals from '/api/deals'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="btn_Refresh"');
+    const listenerIndex = r.javascript.indexOf("document.getElementById('btn_Refresh').addEventListener('click'");
+    expect(listenerIndex >= 0).toBe(true);
+    const refreshFetchIndex = r.javascript.indexOf('fetch("/api/deals")', listenerIndex);
+    expect(refreshFetchIndex > listenerIndex).toBe(true);
+  });
+
   it('parses tab strips with routed tabs and an active tab hint', () => {
     const ast = parse(`build for web
 page 'Deals' at '/cro':
@@ -16682,6 +16719,20 @@ page 'Deals' at '/cro':
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('_state.selected_deal');
     expect(r.html).toContain('output_Value_value');
+  });
+
+  it('updates each dynamic detail text field through its own DOM slot', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    text selected_deal's summary`);
+    expect(r.errors).toHaveLength(0);
+    const out = `${r.html || ''}\n${r.javascript || ''}`;
+    expect(out).toContain('id="show_0"');
+    expect(out).toContain('id="show_1"');
+    expect(out).toContain("getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer");
+    expect(out).toContain("getElementById('show_1'); if (_el) _el.textContent = _state.selected_deal?.summary");
   });
 });
 
@@ -23469,6 +23520,35 @@ test 'blank title rejected':
   });
 });
 
+describe('Clear CLI test runner teardown', () => {
+  it('keeps a passing generated test result when server cleanup transport fails', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-teardown-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, `build for javascript backend
+
+when user requests data from /api/health:
+  script:
+    setTimeout(() => process.exit(0), 10);
+  send back 'ok'
+`);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--quiet'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 120000,
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Results: 1 passed, 0 failed');
+      expect(result.stderr).toContain('keeping the passing test result');
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('HTTP test assertions in test blocks', () => {
   it('parses call POST with body fields into HTTP_TEST_CALL node', () => {
     const src = `build for javascript backend
@@ -26157,6 +26237,88 @@ page 'App':
     expect(out).toContain('clear-row-actions');
     expect(out).toContain('Approve');
     expect(out).toContain('Review');
+  });
+
+  it('wires table and detail Approve buttons to a matching row action endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+page 'App' at '/':
+  on page load get pending from '/api/deals/pending'
+
+  display pending as table showing customer, status with actions:
+    'Approve' is primary
+
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve'`;
+
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const html = result.html || '';
+
+    expect(js).toContain('data-action="approve"');
+    expect(js).toContain("'/api/deals/' + id + '/approve'");
+    expect(js).toContain("headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }");
+    expect(js).toContain("body: JSON.stringify(_payload)");
+    expect(js).toContain("await _clear_action_output_Pending_approve(id, row)");
+    expect(js).toContain("_state.pending = await fetch('/api/deals/pending'");
+
+    expect(html).toContain('data-detail-for="selected_deal"');
+    expect(html).toContain('data-action="approve"');
+    expect(js).toContain("_state.selected_deal");
+  });
+
+  it('generates an approval UAT that proves the pending queue changes', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+when user sends seed to /api/seed:
+  create d1:
+    customer is 'Acme Corp'
+    status is 'pending'
+  save d1 as new Deal
+  send back 'seeded' with success message
+
+test:
+  can user approve a deal`;
+
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.tests).toContain('Approving a deal removes it from the pending queue');
+    expect(result.tests).toContain('"/api/seed"');
+    expect(result.tests).toContain('"/api/deals/pending"');
+    expect(result.tests).toContain('"/api/deals/" + target.id + "/approve"');
+    expect(result.tests).toContain('Approved deal should leave the pending queue');
+    expect(result.tests).toContain('after.length === before.length - 1');
   });
 });
 

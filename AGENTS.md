@@ -17,3 +17,15 @@
 - Do not let workers sit idle when independent work exists. The manager should keep assigning useful parallel tasks while doing the critical-path work locally.
 - Default to the N-1 pattern for multi-part work: assign independent sidecar tasks to workers, keep the most integration-sensitive task in the main conversation, and verify worker output before shipping.
 - At each phase boundary, explicitly check whether any worker is idle and either assign the next safe task or close it if no useful task remains.
+
+## Stay Focused
+
+- Keep the active finish target explicit. Do not start a new front unless it directly helps finish the current one.
+- When work sprawls, pause for one sentence: what is in flight, what is blocked, and what ships next.
+- Prefer closing one tested, committed lane over opening another interesting lane.
+
+## Plain English Depth
+
+- Respond in plain English first. Conceptual depth is good; jargon is not.
+- Make every non-trivial update ADHD-friendly: short bullets, bold load-bearing words, and no walls of text.
+- Explain the why beneath the work without making Russell parse code names or internal mechanics.

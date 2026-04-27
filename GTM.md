@@ -644,24 +644,304 @@ High-ticket buyers need confidence, not mystery.
 
 ## The First 10 Prospects
 
-Fill this manually.
+This should be braindead.
 
-Do not outsource the first 10.
+The goal is not "find good companies."
 
-Russell needs to feel the buyer language directly.
+The goal is:
 
-| # | Person | Company | Workflow clue | Message |
-|---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
-| 6 |  |  |  |  |
-| 7 |  |  |  |  |
-| 8 |  |  |  |  |
-| 9 |  |  |  |  |
-| 10 |  |  |  |  |
+- Find a named operator.
+- Find one public workflow clue.
+- Send one message.
+- Move on.
+
+### The 7-Minute Prospect Recipe
+
+Do this 10 times.
+
+1. Open Google.
+2. Search one exact query below.
+3. Open the first job post or org-chart result.
+4. Copy the named operator.
+5. Copy one workflow clue.
+6. Write one sentence that starts with: `Saw you are dealing with...`
+7. Add the row.
+
+### Use These Exact Searches
+
+Search these first:
+
+```text
+"Director of Revenue Operations" "Deal Desk" "CPQ" "B2B SaaS"
+"Head of Deal Desk" "quote-to-cash" "Salesforce"
+"Revenue Operations" "lead routing" "forecasting" "CRM"
+"RevOps" "approval workflows" "pricing" "Legal" "Finance"
+"Revenue Operations" "build from scratch" "GTM systems"
+site:theorg.com "VP Revenue Operations" "B2B SaaS"
+site:linkedin.com/jobs "Deal Desk" "Revenue Operations" "approval"
+```
+
+### What Counts As A Workflow Clue
+
+Use only concrete smoke.
+
+Good clues:
+
+- "Deal Desk."
+- "Quote-to-cash."
+- "Approval workflow."
+- "Pricing / discounting governance."
+- "CRM integrity."
+- "Lead routing."
+- "Forecasting cadence."
+- "Pipeline bottlenecks."
+- "Sales / Finance / Legal handoff."
+
+Bad clues:
+
+- "Fast-growing."
+- "AI company."
+- "Cool product."
+- "Raised money."
+- "Seems busy."
+
+If the clue is not an actual workflow, skip.
+
+### Starter List
+
+Use rows 1-5 first.
+
+Rows 6-10 are backup.
+
+| # | Person | Company | Candidate email | Email confidence | Pain score | Workflow clue | Source |
+|---|---|---|---|---|---|---|---|
+| 1 | Jasper Paterson | Gradial | `jasper.paterson@gradial.com` | Pattern guess. Verify before sending. | 3 | Gradial has looked for Sales Ops / RevOps + Deal Desk ownership across forecasting, pricing, deal execution, HubSpot, and quote-to-cash workflows. | [Madrona job](https://jobs.madrona.com/companies/gradial-2/jobs/61350792-director-of-sales-operations-deal-desk), [Built In job](https://builtin.com/job/director-revenue-operations/8403598) |
+| 2 | Bryan Bayless | Gong | `bryan.bayless@gong.io` | Strong pattern guess. Gong commonly uses `first.last@gong.io`. Verify before sending. | 3 | Gong is hiring for Deal Desk strategy around enterprise quote-to-cash, CPQ, approvals, billing readiness, and Sales / Legal / Finance handoffs. | [Gong job](https://www.linkedin.com/jobs/view/director-deal-desk-strategy-operations-at-gong-4389768881), [The Org](https://theorg.com/org/gong-io/org-chart/bryan-bayless), [Gong email pattern](https://contactout.com/company/Gong-email-format-24569) |
+| 3 | Stephen Daniels | Cresta | `sdaniels@cresta.ai`; fallback `stephen.daniels@cresta.com` | Pattern guess. Cresta sources disagree between `cresta.ai` and `cresta.com`. Verify before sending. | 3 | Cresta had a documented manual lead-routing bottleneck and territory-planning data problem. | [Cresta routing story](https://tractioncomplete.com/stories/how-crestas-revops-team-overhauled-territory-planning-and-lead-routing/), [Cresta email pattern](https://contactout.com/company/Cresta-email-format-47547), [Cresta.com email pattern](https://tomba.io/company/cresta.com/email-format) |
+| 4 | Marcus Ratzlaff | Factory | `marcus@factory.ai` | Strong pattern guess. Factory commonly uses `first@factory.ai`. Verify before sending. | 3 | Factory is hiring foundational RevOps to own CRM, forecasting, territory planning, quota, reporting, and revenue lifecycle friction. | [Factory role](https://factory.ai/careers/revenue-operations), [Factory org](https://theorg.com/org/factory-1), [Factory email pattern](https://prospeo.io/c/factory) |
+| 5 | Alex Jaffe | Watershed | `ajaffe@watershed.com` | Pattern guess. Watershed commonly uses `first_initial+last@watershed.com`. Verify before sending. | 2 | Watershed customer ops needs operating cadences, forecasting reviews, QBRs, operational docs, customer health analytics, and workflow automation. | [Watershed job](https://jobs.ashbyhq.com/watershed/ee822cb3-56c1-43aa-9150-4529f8053080/), [Alex Jaffe](https://theorg.com/org/watershedclimate/org-chart/alex-jaffe), [Watershed email pattern](https://contactout.com/company/Watershed-email-format-3342) |
+| 6 | Shivam Shah | SpryPoint | `sshah@sprypoint.com`; fallback `shivamshah@sprypoint.com` | Pattern guess. Sources disagree between `first_initial+last` and `first+last`. Verify before sending. | 2 | SpryPoint's Sales Operations team focuses on sales process, customer implementations, proposals, and operational efficiency. | [Shivam Shah](https://theorg.com/org/sprypoint/org-chart/shivam-shah), [SpryPoint sales ops team](https://theorg.com/org/sprypoint/teams/sales-operations-team), [SpryPoint email pattern](https://tomba.io/company/sprypoint.com/email-format) |
+| 7 | Ted Gumerson | Zuora | Find manually with Apollo / Hunter / LinkedIn. | No public pattern checked yet. | 2 | Zuora is a quote-to-cash company with senior RevOps ownership; good fit only if a smaller team or sub-workflow is reachable. | [Ted Gumerson](https://theorg.com/org/zuora/org-chart/ted-gumerson) |
+| 8 | Cole Sutliff | Procore | Find manually with Apollo / Hunter / LinkedIn. | No public pattern checked yet. | 2 | Procore has named RevOps ownership for NAMER and complex construction-tech GTM operations. Bigger-company target; use only if warm path exists. | [Cole Sutliff](https://theorg.com/org/procore/org-chart/cole-sutliff) |
+| 9 | Christine Dorrion | Observe | Find manually with Apollo / Hunter / LinkedIn. | No public pattern checked yet. | 2 | Observe's RevOps team is explicitly about optimizing and streamlining the end-to-end revenue process. | [Observe RevOps](https://theorg.com/org/observe-inc/teams/revenue-operations) |
+| 10 | Anastasiya Semenina | Persona | Find manually with Apollo / Hunter / LinkedIn. | No public pattern checked yet. | 2 | Persona's RevOps team focuses on optimizing sales process and customer experience after sale. | [Persona RevOps](https://theorg.com/org/withpersona/teams/revenue-operations) |
+
+### Email Verification Before Sending
+
+Do this for rows 1-5.
+
+1. Paste the candidate email into Apollo, Hunter, Prospeo, or NeverBounce.
+2. If it says **valid**, send the email.
+3. If it says **risky**, send LinkedIn instead.
+4. If it says **invalid**, use the fallback pattern or LinkedIn.
+5. Do not spend more than 3 minutes per person.
+
+If there is no verified email, LinkedIn is the route.
+
+Do not stall.
+
+### The Rule For Today
+
+Message only rows 1-5.
+
+Do not research more.
+
+Do not improve the table.
+
+Do not build anything.
+
+Send the messages.
+
+Then update the scorecard.
+
+### Copy-Paste These 5 Emails
+
+Send these first.
+
+Do not write from scratch.
+
+Verify the email address, paste, send.
+
+**1. Jasper / Gradial**
+
+To: `jasper.paterson@gradial.com`
+
+Subject: `deal desk workflow`
+
+```text
+Jasper -
+
+Saw Gradial has been building the Sales Ops / Deal Desk foundation around forecasting, pricing, deal execution, HubSpot, and quote-to-cash.
+
+I build tiny done-for-you internal workflow apps for exactly that kind of approval queue.
+
+Not a Retool rollout.
+Not another platform your team has to maintain.
+
+I take one messy Slack/spreadsheet workflow and turn it into a working app.
+
+Worth comparing notes for 15 minutes?
+
+Russell
+```
+
+**2. Bryan / Gong**
+
+To: `bryan.bayless@gong.io`
+
+Subject: `deal desk handoffs`
+
+```text
+Bryan -
+
+Saw Gong is hiring around Deal Desk strategy and operations: quote-to-cash, CPQ, approvals, billing readiness, and Sales / Legal / Finance handoffs.
+
+I build managed internal apps for the approval queues that still sit between the big systems.
+
+Not trying to replace Gong's stack.
+I am looking for the one manual workflow that still burns operator time.
+
+Do you have one manual approval workflow worth mapping for 15 minutes next week?
+
+Russell
+```
+
+**3. Stephen / Cresta**
+
+To: `sdaniels@cresta.ai`
+
+Fallback: `stephen.daniels@cresta.com`
+
+Subject: `manual lead routing`
+
+```text
+Stephen -
+
+Saw the writeup on Cresta's manual lead-routing and territory-planning bottlenecks.
+
+That is exactly the kind of manual routing and territory-planning workflow I build around.
+
+Small internal app.
+Managed by me.
+No platform rollout for your team.
+
+If manual lead routing or territory planning still creates exceptions, I can probably map that handoff fast.
+
+Worth comparing notes?
+
+Russell
+```
+
+**4. Marcus / Factory**
+
+To: `marcus@factory.ai`
+
+Subject: `RevOps from scratch`
+
+```text
+Marcus -
+
+Saw Factory is hiring foundational RevOps around CRM, forecasting, territory planning, quota, reporting, and revenue lifecycle friction.
+
+I build done-for-you internal workflow apps for teams before they hire the whole operating system around the pain.
+
+One ugly GTM workflow.
+Turned into a working app.
+Hosted and changed weekly.
+
+Do you have one manual approval or routing workflow worth mapping for 15 minutes next week?
+
+Russell
+```
+
+**5. Alex / Watershed**
+
+To: `ajaffe@watershed.com`
+
+Subject: `customer ops workflow`
+
+```text
+Alex -
+
+Saw Watershed is scaling customer operating cadences around forecasting reviews, QBRs, customer health, operational docs, and workflow automation.
+
+I build small managed internal apps for recurring ops workflows that should not live in docs and spreadsheets anymore.
+
+The pitch is simple:
+one workflow,
+one app,
+hosted and maintained for you.
+
+Worth comparing notes for 15 minutes?
+
+Russell
+```
+
+### Copy-Paste LinkedIn Fallbacks
+
+Use these only if the email is invalid or bounces.
+
+**1. Jasper / Gradial**
+
+```text
+Quick one, Jasper - saw Gradial has been building the Sales Ops / Deal Desk foundation around forecasting, pricing, deal execution, HubSpot, and quote-to-cash.
+
+I build tiny done-for-you workflow apps for approval queues like that.
+
+Not a Retool rollout. Not another platform to maintain.
+
+Worth comparing notes for 15 minutes?
+```
+
+**2. Bryan / Gong**
+
+```text
+Quick one, Bryan - saw Gong has a complex deal desk / quote-to-cash motion around CPQ, approvals, billing readiness, and Sales / Legal / Finance handoffs.
+
+I build managed internal apps for the approval queues that still sit between the big systems.
+
+Not trying to replace Gong's stack.
+
+Do you have one manual workflow worth mapping for 15 minutes next week?
+```
+
+**3. Stephen / Cresta**
+
+```text
+Quick one, Stephen - saw Cresta has had manual lead-routing and territory-planning workflow pain.
+
+I build one-off internal workflow apps when RevOps needs speed without rolling out another platform.
+
+If manual lead routing or territory planning still creates exceptions, I can probably map that handoff fast.
+
+Worth 15 minutes?
+```
+
+**4. Marcus / Factory**
+
+```text
+Quick one, Marcus - saw Factory is building RevOps from scratch around CRM, forecasting, territory planning, reporting, and revenue lifecycle friction.
+
+I help teams remove one ugly GTM workflow before they hire the whole system around it.
+
+Done-for-you internal app.
+
+Built, hosted, and changed weekly.
+
+Do you have one manual approval or routing workflow worth mapping for 15 minutes next week?
+```
+
+**5. Alex / Watershed**
+
+```text
+Quick one, Alex - saw Watershed is scaling customer operating cadences around forecasting reviews, QBRs, customer health, and workflow automation.
+
+I build internal workflow apps for the recurring process that should not live in docs and spreadsheets anymore.
+
+Small, managed, and specific.
+
+Worth comparing notes?
+```
 
 ---
 
@@ -673,8 +953,8 @@ Current date: Sunday, 2026-04-26.
 
 - Lock this plan.
 - Fix the wide landing-page mock.
-- Pick the first 10 prospects.
-- Draft 5 personal messages.
+- Use the starter list above.
+- Send the first 5 messages.
 
 ### Monday, 2026-04-27
 

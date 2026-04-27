@@ -152,6 +152,7 @@ await runAsync(async () => {
     sourceHash: 'sh-seed',
     migrationsHash: 'mh-seed',
     secretKeys: ['API_KEY', 'DB_URL'],
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE a(id INTEGER);' },
   });
   const rec = await s.getAppRecord('t4', 'a4');
   assert(Array.isArray(rec.versions) && rec.versions.length === 1,
@@ -163,6 +164,26 @@ await runAsync(async () => {
     'secretKeys stored as array');
   assert(rec.secretKeys.includes('API_KEY') && rec.secretKeys.includes('DB_URL'),
     'both secretKeys present');
+  assert(rec.lastBundle && rec.lastBundle['migrations/001-init.sql'].includes('CREATE TABLE'),
+    'lastBundle stored on initial deploy record');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 't4d', appSlug: 'a4d',
+    scriptName: 't4d-a4d', d1_database_id: 'd', hostname: 'h',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE old_items(id INTEGER);' },
+  });
+  await s.recordVersion({
+    tenantSlug: 't4d', appSlug: 'a4d',
+    versionId: 'v-new', uploadedAt: '2026-04-23T20:00:00Z',
+    sourceHash: 'sh-new',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE new_items(id INTEGER);' },
+  });
+  const rec = await s.getAppRecord('t4d', 'a4d');
+  assert(rec.lastBundle && rec.lastBundle['migrations/001-init.sql'].includes('new_items'),
+    'recordVersion refreshes lastBundle for the next migration check');
 });
 
 // Backward compat: markAppDeployed without versionId should still work

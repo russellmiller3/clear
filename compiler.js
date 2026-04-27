@@ -6242,10 +6242,11 @@ function _compileNodeInner(node, ctx) {
   switch (node.type) {
     case NodeType.COMMENT: {
       const prefix = ctx.lang === 'python' ? '#' : '//';
+      const formatLine = (line) => line ? `${pad}${prefix} ${line}` : `${pad}${prefix}`;
       if (node.text.includes('\n')) {
-        return node.text.split('\n').map(line => `${pad}${prefix} ${line}`).join('\n');
+        return node.text.split('\n').map(formatLine).join('\n');
       }
-      return `${pad}${prefix} ${node.text}`;
+      return formatLine(node.text);
     }
 
     case NodeType.TARGET:
@@ -6412,7 +6413,13 @@ function _compileNodeInner(node, ctx) {
           return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
         }
         if (ctx._showCounter == null) ctx._showCounter = 0;
-        const showId = `show_${ctx._showCounter++}`;
+        let showId = node._showId;
+        if (showId) {
+          const match = /^show_(\d+)$/.exec(showId);
+          if (match) ctx._showCounter = Math.max(ctx._showCounter, Number(match[1]) + 1);
+        } else {
+          showId = `show_${ctx._showCounter++}`;
+        }
         return `${pad}{ const _el = document.getElementById('${showId}'); if (_el) _el.textContent = ${exprToCode(node.expression, ctx)}; }`;
       }
       return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
@@ -7418,6 +7425,68 @@ ${pad}}`;
         });
       }
 
+      function singularizeResourceName(value) {
+        const lower = String(value || '').toLowerCase().replace(/^:/, '');
+        if (lower.endsWith('ies')) return lower.slice(0, -3) + 'y';
+        if (lower.endsWith('s') && !lower.endsWith('ss')) return lower.slice(0, -1);
+        return lower;
+      }
+
+      function resourceNameMatches(candidate) {
+        const lower = String(candidate || '').toLowerCase().replace(/^:/, '');
+        return lower === res ||
+          lower === res + 's' ||
+          lower === pluralizeName(res) ||
+          singularizeResourceName(lower) === singularizeResourceName(res);
+      }
+
+      function endpointResourcePart(ep) {
+        const pathParts = String(ep.path || '').split('/').filter(Boolean);
+        if (pathParts[0] === 'api' && pathParts[1]) return pathParts[1];
+        return pathParts.find(part => part !== 'api' && !part.startsWith(':')) || '';
+      }
+
+      function endpointMatchesResource(ep) {
+        return resourceNameMatches(endpointResourcePart(ep));
+      }
+
+      function bodyHasAuth(nodes) {
+        return (nodes || []).some(n =>
+          n.type === NodeType.REQUIRES_AUTH ||
+          n.type === NodeType.REQUIRES_ROLE ||
+          (n.body && bodyHasAuth(n.body))
+        );
+      }
+
+      function endpointRequiresAuth(ep) {
+        return !!(ep && (ep.hasAuth || bodyHasAuth(ep.body)));
+      }
+
+      function actionName(value) {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+
+      function findRowActionEndpoint(action) {
+        const wanted = actionName(action);
+        return endpoints.find(ep => {
+          if (!['PUT', 'PATCH', 'POST'].includes(ep.method)) return false;
+          if (!endpointMatchesResource(ep)) return false;
+          const pathParts = String(ep.path || '').split('/').filter(Boolean);
+          const idIndex = pathParts.findIndex(part => part.startsWith(':'));
+          if (idIndex < 0) return false;
+          return actionName(pathParts[pathParts.length - 1]) === wanted;
+        });
+      }
+
+      function findCollectionEndpoint(matchPath) {
+        return endpoints.find(ep =>
+          ep.method === 'GET' &&
+          endpointMatchesResource(ep) &&
+          !String(ep.path || '').includes(':') &&
+          (!matchPath || matchPath(ep.path.toLowerCase()))
+        );
+      }
+
       // --- Python target branches (TEST_INTENT) ---
       if (ctx.lang === 'python') {
         const commentPrefix = (msg) => `${pad}# ${msg}`;
@@ -7600,6 +7669,47 @@ ${pad}}`;
         const opts = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { method: "DELETE", headers: AUTH_HEADERS }' : ', { method: "DELETE" }';
         let code = `${pad}_response = await fetch(_baseUrl + "${path}"${opts});\n`;
         code += `${pad}_responseBody = await _response.json().catch(() => null);`;
+        return code;
+      }
+
+      if (node.intent === 'approve') {
+        const actionEp = findRowActionEndpoint('approve');
+        if (!actionEp) return `${pad}// Could not find approve endpoint for ${node.resource}`;
+        const pendingEp = findCollectionEndpoint(path => path.includes('/pending')) || findCollectionEndpoint();
+        if (!pendingEp) return `${pad}// Could not find pending GET endpoint for ${node.resource}`;
+        const seedEp = endpoints.find(ep => ep.method === 'POST' && /\/seed(?:\/|$)/.test(String(ep.path || '').toLowerCase()));
+        const pendingOpts = endpointRequiresAuth(pendingEp) ? ', { headers: AUTH_HEADERS }' : '';
+        const actionHeaders = endpointRequiresAuth(actionEp) ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+        const actionPath = actionEp.path.replace(/:id/g, '" + target.id + "');
+        let code = `${pad}// Approving a ${node.resource} removes it from the pending queue\n`;
+        if (seedEp) {
+          const seedHeaders = endpointRequiresAuth(seedEp) ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+          code += `${pad}_lastCall = { method: "POST", path: ${JSON.stringify(seedEp.path)}, line: ${node.line || 0} };\n`;
+          code += `${pad}_response = await fetch(_baseUrl + ${JSON.stringify(seedEp.path)}, { method: "POST", headers: ${seedHeaders}, body: JSON.stringify({}) });\n`;
+          code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+          code += `${pad}_expectSuccess(_response);\n`;
+        }
+        code += `${pad}_lastCall = { method: "GET", path: ${JSON.stringify(pendingEp.path)}, line: ${node.line || 0} };\n`;
+        code += `${pad}_response = await fetch(_baseUrl + ${JSON.stringify(pendingEp.path)}${pendingOpts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}_expectSuccess(_response);\n`;
+        code += `${pad}const before = Array.isArray(_responseBody) ? _responseBody : [];\n`;
+        code += `${pad}const target = before[0];\n`;
+        code += `${pad}assert(target && target.id, "Expected a pending ${node.resource} to approve");\n`;
+        code += `${pad}_lastCall = { method: ${JSON.stringify(actionEp.method)}, path: ${JSON.stringify(actionEp.path)}, line: ${node.line || 0} };\n`;
+        code += `${pad}_response = await fetch(_baseUrl + "${actionPath}", {\n`;
+        code += `${pad}  method: ${JSON.stringify(actionEp.method)}, headers: ${actionHeaders},\n`;
+        code += `${pad}  body: JSON.stringify(target)\n`;
+        code += `${pad}});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}_expectSuccess(_response);\n`;
+        code += `${pad}_lastCall = { method: "GET", path: ${JSON.stringify(pendingEp.path)}, line: ${node.line || 0} };\n`;
+        code += `${pad}_response = await fetch(_baseUrl + ${JSON.stringify(pendingEp.path)}${pendingOpts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}_expectSuccess(_response);\n`;
+        code += `${pad}const after = Array.isArray(_responseBody) ? _responseBody : [];\n`;
+        code += `${pad}assert(after.length === before.length - 1, "Pending queue should shrink by 1 after approval");\n`;
+        code += `${pad}assert(!after.some(item => String(item.id) === String(target.id)), "Approved ${node.resource} should leave the pending queue");`;
         return code;
       }
 
@@ -9301,6 +9411,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
         flatten(node.body || [], pageRoute);
+      } else if (node.type === NodeType.PAGE_HEADER) {
+        if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
+        flatNodes.push(node);
+        flatten(node.actions || [], pageRoute);
       } else {
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
@@ -9308,6 +9422,29 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
   }
   flatten(body);
+
+  function assignShowIds(nodes) {
+    let counter = 0;
+    function walk(nodes) {
+      for (const node of nodes || []) {
+        if (!node) continue;
+        if (node.type === NodeType.SHOW && node.expression && !getComponentCall(node.expression)) {
+          if (!node._showId) node._showId = `show_${counter}`;
+          const match = /^show_(\d+)$/.exec(node._showId);
+          counter = match ? Math.max(counter, Number(match[1]) + 1) : counter + 1;
+        }
+        if (node.type === NodeType.PAGE || node.type === NodeType.SECTION || node.type === NodeType.DETAIL_PANEL) {
+          walk(node.body || []);
+        }
+        if (node.type === NodeType.IF_THEN) {
+          walk(node.thenBranch || []);
+          walk(node.otherwiseBranch || []);
+        }
+      }
+    }
+    walk(nodes);
+  }
+  assignShowIds(body);
 
   // --- Chat input absorption pre-scan ---
   // When `display X as chat` is immediately followed by a text input + Send button
@@ -9436,9 +9573,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     !(n.type === NodeType.ASSIGN && n.expression && literalTypes.has(n.expression.type))
   );
 
-  // Detect DELETE, PUT, and GET endpoints for auto-generating per-row action buttons
+  // Detect DELETE, PUT, row-action, and GET endpoints for auto-generating per-row action buttons
   const deleteEndpoints = {};
   const updateEndpoints = {};
+  const rowActionEndpoints = {};
   const getRefreshUrls = {};
   const authEndpoints = new Set();
   // Endpoints whose response is an SSE stream. Any `ask claude`/`ask ai` or
@@ -9469,13 +9607,27 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   function scanForEndpoints(nodes) {
     for (const n of nodes) {
       if (n.type === NodeType.ENDPOINT && n.path) {
-        const match = n.path.match(/\/api\/(\w+)\/:id/);
+        const requiresAuth = hasAuthBody(n.body);
+        const rowActionMatch = n.path.match(/^\/api\/([^/]+)\/:id\/([^/]+)$/);
+        if (rowActionMatch && (n.method === 'PUT' || n.method === 'PATCH' || n.method === 'POST')) {
+          const resource = rowActionMatch[1].toLowerCase();
+          const action = actionSlug(rowActionMatch[2]);
+          if (!rowActionEndpoints[resource]) rowActionEndpoints[resource] = {};
+          rowActionEndpoints[resource][action] = {
+            method: n.method,
+            path: n.path,
+            urlPrefix: `/api/${rowActionMatch[1]}/`,
+            suffix: `/${rowActionMatch[2]}`,
+            requiresAuth,
+          };
+        }
+        const match = n.path.match(/^\/api\/([^/]+)\/:id$/);
         if (match) {
           const resource = match[1].toLowerCase();
           if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
           if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method, path: n.path };
         }
-        if (hasAuthBody(n.body)) authEndpoints.add(`${String(n.method || 'GET').toUpperCase()} ${n.path}`);
+        if (requiresAuth) authEndpoints.add(`${String(n.method || 'GET').toUpperCase()} ${n.path}`);
         if (hasStreamBody(n.body)) streamingEndpoints.add(n.path);
       }
       if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
@@ -9684,6 +9836,12 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const _dispUsedIds = new Set();
   const _chatDisplays = []; // Track chat displays for event listener wiring
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
+  function endpointResourceKeyForDisplay(varName) {
+    const key = String(varName || '').toLowerCase();
+    const refresh = getRefreshUrls[key];
+    const match = refresh && refresh.url && String(refresh.url).match(/^\/api\/([^/]+)/);
+    return match ? match[1].toLowerCase() : key;
+  }
   function detailTargetForDisplay(displayNode) {
     const start = flatNodes.indexOf(displayNode);
     if (start < 0) return null;
@@ -9743,7 +9901,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
             : btn.style === 'secondary' ? 'btn-tiny is-secondary'
             : 'btn-tiny';
           const labelEsc = btn.label.replace(/'/g, "\\'");
-          const slugAttr = btn.label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const slugAttr = actionSlug(btn.label);
           buttonExprs.push(`'<button class="${styleClass}" data-action="${slugAttr}" data-row-id="' + _esc(row.id) + '">${labelEsc}</button>'`);
         }
         const buttonsExpr = buttonExprs.length > 0 ? buttonExprs.join(` + ' ' + `) : `''`;
@@ -10197,17 +10355,51 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   for (const disp of displayNodes) {
     if (disp.format !== 'table') continue;
     const actions = disp.actions || [];
-    if (actions.length === 0) continue;
+    const actionButtons = Array.isArray(disp.actionButtons) ? disp.actionButtons : [];
+    if (actions.length === 0 && actionButtons.length === 0) continue;
     const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
-    const resourceKey = varName.toLowerCase();
-    const deleteUrl = actions.includes('delete') ? deleteEndpoints[resourceKey] : null;
-    const updateInfo = actions.includes('edit') ? updateEndpoints[resourceKey] : null;
-    const refreshInfo = getRefreshUrls[resourceKey];
+    const stateKey = varName.toLowerCase();
+    const resourceKey = endpointResourceKeyForDisplay(varName);
+    const deleteUrl = actions.includes('delete') ? (deleteEndpoints[resourceKey] || deleteEndpoints[stateKey]) : null;
+    const updateInfo = actions.includes('edit') ? (updateEndpoints[resourceKey] || updateEndpoints[stateKey]) : null;
+    const refreshInfo = getRefreshUrls[stateKey] || getRefreshUrls[resourceKey];
+    const rowActions = [];
+    const rowActionMap = rowActionEndpoints[resourceKey] || rowActionEndpoints[stateKey] || {};
+    for (const btn of actionButtons) {
+      const slug = actionSlug(btn.label);
+      if (rowActionMap[slug]) rowActions.push({ slug, label: btn.label, info: rowActionMap[slug] });
+    }
+    const hasRowActions = rowActions.length > 0;
+    const detailTarget = detailTargetForDisplay(disp);
     const outputId = disp.ui._resolvedId || disp.ui.id;
-    if (!deleteUrl && !updateInfo) continue;
+    if (!deleteUrl && !updateInfo && !hasRowActions) continue;
 
     lines.push('');
     lines.push(`// --- Table action handlers for ${varName} ---`);
+
+    for (const action of rowActions) {
+      const fnName = `_clear_action_${sanitizeName(outputId)}_${sanitizeName(action.slug.replace(/-/g, '_'))}`;
+      const headers = action.info.requiresAuth
+        ? "{ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }"
+        : "{ 'Content-Type': 'application/json' }";
+      const refreshNeedsAuth = refreshInfo && authEndpoints.has(`GET ${refreshInfo.url}`);
+      const refreshOptions = refreshNeedsAuth
+        ? ", { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') } }"
+        : "";
+      lines.push(`async function ${fnName}(id, row) {`);
+      lines.push(`  if (!id) return;`);
+      lines.push(`  try {`);
+      lines.push(`    const _payload = (row && typeof row === 'object') ? row : {};`);
+      lines.push(`    const _r = await fetch('${action.info.urlPrefix}' + id + '${action.info.suffix}', { method: '${action.info.method}', headers: ${headers}, body: JSON.stringify(_payload) });`);
+      lines.push(`    if (!_r.ok) { const _e = await _r.json().catch(function() { return {}; }); throw new Error(_e.error || 'Action failed'); }`);
+      if (refreshInfo) {
+        lines.push(`    _state.${refreshInfo.varName} = await fetch('${refreshInfo.url}'${refreshOptions}).then(function(r) { if (!r.ok) throw new Error('Failed to refresh data'); return r.json(); });`);
+      }
+      lines.push(`  } catch(e) { console.error(e); if (typeof _toast === 'function') _toast(e.message || 'Action failed', 'error'); }`);
+      lines.push(`  _recompute();`);
+      lines.push(`}`);
+    }
+
     lines.push(`document.getElementById('${outputId}_table').addEventListener('click', async function(e) {`);
 
     if (deleteUrl) {
@@ -10242,7 +10434,37 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`  }`);
     }
 
+    for (const action of rowActions) {
+      const fnName = `_clear_action_${sanitizeName(outputId)}_${sanitizeName(action.slug.replace(/-/g, '_'))}`;
+      lines.push(`  const actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))} = e.target.closest('[data-action="${action.slug}"]');`);
+      lines.push(`  if (actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))}) {`);
+      lines.push(`    e.preventDefault();`);
+      lines.push(`    e.stopPropagation();`);
+      lines.push(`    const id = actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))}.dataset.rowId;`);
+      lines.push(`    const tr = actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))}.closest('tr[data-row-index]');`);
+      lines.push(`    const rowIndex = tr ? Number(tr.getAttribute('data-row-index')) : -1;`);
+      lines.push(`    const row = Array.isArray(this._clear_rows) ? this._clear_rows[rowIndex] : null;`);
+      lines.push(`    await ${fnName}(id, row);`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
     lines.push(`});`);
+
+    if (detailTarget && rowActions.length > 0) {
+      for (const action of rowActions) {
+        const fnName = `_clear_action_${sanitizeName(outputId)}_${sanitizeName(action.slug.replace(/-/g, '_'))}`;
+        const detailVar = sanitizeName(detailTarget);
+        lines.push(`{ const detailBtn = document.querySelector('[data-detail-for="${detailTarget}"] [data-action="${action.slug}"]');`);
+        lines.push(`  if (detailBtn) detailBtn.addEventListener('click', async function(e) {`);
+        lines.push(`    e.preventDefault();`);
+        lines.push(`    const row = _state.${detailVar};`);
+        lines.push(`    const id = row && row.id;`);
+        lines.push(`    await ${fnName}(id, row);`);
+        lines.push(`  });`);
+        lines.push(`}`);
+      }
+    }
   }
 
   // 7. On page load handlers (if any, these call _recompute at the end)
@@ -10690,7 +10912,9 @@ function buildHTML(body) {
 
     const beforeActions = parts.length;
     if (node.actions && node.actions.length > 0) {
+      sectionStack.push('detail_panel');
       walk(node.actions);
+      sectionStack.pop();
     }
     const actionHTML = parts.splice(beforeActions).join('\n');
     const actions = actionHTML
@@ -11552,7 +11776,10 @@ ${options}
             // Default: primary CTA
             btnCls = btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
           }
-          parts.push(`    <button class="${btnCls}" id="${node.ui.id}"${clAttr(node)}>${node.ui.label}</button>`);
+          const detailActionAttr = sectionStack.includes('detail_panel')
+            ? ` data-action="${attrEsc(actionSlug(node.ui.label || ''))}"`
+            : '';
+          parts.push(`    <button class="${btnCls}" id="${node.ui.id}"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
           break;
         }
 
@@ -11870,8 +12097,14 @@ ${options}
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           } else if (node.expression) {
             // Dynamic expression: show total, text 'Price: ' + price → placeholder <p> for JS to fill
-            const showId = `show_${showCounter++}`;
-            node._showId = showId;
+            let showId = node._showId;
+            if (showId) {
+              const match = /^show_(\d+)$/.exec(showId);
+              if (match) showCounter = Math.max(showCounter, Number(match[1]) + 1);
+            } else {
+              showId = `show_${showCounter++}`;
+              node._showId = showId;
+            }
             if (node.displayAs === 'heading') {
               parts.push(`    <h2 id="${showId}" class="clear-detail-title text-lg font-semibold text-base-content"></h2>`);
             } else if (node.displayAs === 'subheading') {
@@ -15108,6 +15341,13 @@ function sanitizeName(name) {
     return name.split('.').map(part => part.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1')).join('.');
   }
   return name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1');
+}
+
+function actionSlug(label) {
+  return String(label == null ? '' : label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 // Python needs bracket access for dotted assignment targets

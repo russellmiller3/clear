@@ -3,7 +3,7 @@ import { compileProgram } from '../index.js';
 import { parse } from '../parser.js';
 import { patch } from '../patch.js';
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, openSync, closeSync, appendFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, relative, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
@@ -124,6 +124,43 @@ app.use(express.static(__dirname, { etag: false, lastModified: false, dotfiles: 
 // Postgres-backed store in production via wireDeploy({ store }).
 wireDeploy(app);
 
+function _allowTestCloudHooks() {
+  return process.env.NODE_ENV === 'test' || process.env.CLEAR_ALLOW_SEED;
+}
+
+app.post('/api/_test/live-edit-cloud-uat-setup', async (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  const { tenantSlug, appSlug } = req.body || {};
+  if (!tenantSlug || !appSlug) {
+    return res.status(400).json({ ok: false, error: 'tenantSlug and appSlug are required' });
+  }
+  const deps = getDeployDeps();
+  if (!deps || !deps.store || !deps.store.cfDeploys) {
+    return res.status(503).json({ ok: false, error: 'in-memory deploy store unavailable' });
+  }
+  const record = deps.store.cfDeploys.get(`${tenantSlug}/${appSlug}`);
+  if (!record) return res.status(404).json({ ok: false, error: 'app record not found' });
+  const ownerToken = mintLegacyEvalAuthToken({
+    id: 'uat-owner',
+    email: 'uat-owner@test.local',
+    role: 'owner',
+  });
+  return res.json({ ok: true, ownerToken });
+});
+
+app.get('/api/_test/live-edit-cloud-uat-state/:tenantSlug/:appSlug', async (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  const deps = getDeployDeps();
+  if (!deps || !deps.store) {
+    return res.status(503).json({ ok: false, error: 'deploy deps unavailable' });
+  }
+  let api = null;
+  try { api = deps.api; } catch {}
+  const record = await deps.store.getAppRecord(req.params.tenantSlug, req.params.appSlug);
+  const calls = api && Array.isArray(api.calls) ? api.calls : [];
+  return res.json({ ok: true, record, calls });
+});
+
 // =============================================================================
 // LIVE APP EDITING — PHASE A (Studio integration)
 // =============================================================================
@@ -195,6 +232,7 @@ createEditApi(app, {
               mode: 'update',
               lastRecord,
               via: 'widget',
+              confirmMigration: true,
               secrets: {},
               api: deps.api,
               store: deps.store,
@@ -247,6 +285,15 @@ createEditApi(app, {
   },
   widgetScript: _liveEditWidgetSource,
   listSnapshots: async () => _listSnapshots(),
+  listDeployHistory: async ({ tenantSlug, appSlug }) => {
+    const deps = getDeployDeps();
+    if (!deps || !deps.store) {
+      throw new Error('deploy store not wired on this server');
+    }
+    const record = await deps.store.getAppRecord(tenantSlug, appSlug);
+    if (!record) return { ok: true, versions: [] };
+    return { ok: true, versions: Array.isArray(record.versions) ? record.versions : [] };
+  },
   // LAE Phase B Phase 4 — cloud rollback. Widget sends {tenantSlug, appSlug,
   // targetVersionId}; we call rollbackToVersion on Cloudflare and record
   // a new 'widget-undo-v<N>' version row so history stays linear. Returns
@@ -454,6 +501,31 @@ app.get('/api/docs/:name', (req, res) => {
 // =============================================================================
 const ALLOWED_PREFIXES = ['node ', 'curl ', 'ls ', 'cat '];
 
+function runListCommand(command) {
+  const rawPath = command.slice(3).trim() || '.';
+  const target = resolve(ROOT_DIR, rawPath);
+  const rel = relative(ROOT_DIR, target);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    const err = new Error('Path not allowed');
+    err.statusCode = 403;
+    throw err;
+  }
+  const targetStat = statSync(target);
+  if (!targetStat.isDirectory()) {
+    return rawPath + '\n';
+  }
+  return readdirSync(target)
+    .sort()
+    .map((name) => {
+      try {
+        return statSync(join(target, name)).isDirectory() ? name + '/' : name;
+      } catch {
+        return name;
+      }
+    })
+    .join('\n') + '\n';
+}
+
 app.post('/api/exec', (req, res) => {
   const { command } = req.body;
   if (!command) return res.status(400).json({ error: 'Missing command' });
@@ -468,6 +540,11 @@ app.post('/api/exec', (req, res) => {
   }
 
   try {
+    if (command.startsWith('ls ')) {
+      const stdout = runListCommand(command);
+      res.json({ stdout, stderr: '', exitCode: 0 });
+      return;
+    }
     const stdout = execSync(command, {
       cwd: ROOT_DIR,
       encoding: 'utf8',
@@ -476,6 +553,9 @@ app.post('/api/exec', (req, res) => {
     });
     res.json({ stdout, stderr: '', exitCode: 0 });
   } catch (err) {
+    if (err.statusCode === 403) {
+      return res.status(403).json({ error: err.message });
+    }
     res.json({
       stdout: err.stdout || '',
       stderr: err.stderr || err.message,

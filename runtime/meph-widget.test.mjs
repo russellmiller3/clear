@@ -29,14 +29,265 @@
 // and Marcus will think Meph is broken. This test catches that drift at
 // commit time.
 
-import { describe, it, expect } from '../lib/testUtils.js';
+import { describe, it, testAsync, expect } from '../lib/testUtils.js';
 import { requiredConfirmation as canonicalRequiredConfirmation } from '../lib/destructive-confirm.js';
 import { readFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const widgetSource = readFileSync(join(__dirname, 'meph-widget.js'), 'utf8');
+
+function extractWidgetFunction(name) {
+	const startIdx = widgetSource.indexOf('function ' + name);
+	if (startIdx < 0) throw new Error('no ' + name + ' function found in meph-widget.js');
+	const openIdx = widgetSource.indexOf('{', startIdx);
+	let depth = 0;
+	for (let i = openIdx; i < widgetSource.length; i++) {
+		const c = widgetSource[i];
+		if (c === '{') depth++;
+		else if (c === '}') {
+			depth--;
+			if (depth === 0) return widgetSource.slice(startIdx, i + 1);
+		}
+	}
+	throw new Error('unbalanced braces in ' + name);
+}
+
+function widgetFnsForStorage(storage) {
+	return new Function(
+		'localStorage',
+		extractWidgetFunction('getToken') + '\n' +
+		extractWidgetFunction('decodeBase64Url') + '\n' +
+		extractWidgetFunction('tokenClaims') + '\n' +
+		'return { getToken, tokenClaims };',
+	)(storage);
+}
+
+function base64urlJson(value) {
+	return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+class FakeClassList {
+	constructor() {
+		this.values = new Set();
+	}
+
+	setFromString(value) {
+		this.values = new Set(String(value || '').split(/\s+/).filter(Boolean));
+	}
+
+	add(value) {
+		this.values.add(value);
+	}
+
+	remove(value) {
+		this.values.delete(value);
+	}
+
+	toggle(value) {
+		if (this.values.has(value)) {
+			this.values.delete(value);
+			return false;
+		}
+		this.values.add(value);
+		return true;
+	}
+}
+
+class FakeElement {
+	constructor(tagName) {
+		this.tagName = String(tagName).toUpperCase();
+		this.attributes = {};
+		this.children = [];
+		this.listeners = {};
+		this.style = {};
+		this.classList = new FakeClassList();
+		this.parentElement = null;
+		this.scrollTop = 0;
+		this.scrollHeight = 0;
+		this.value = '';
+		this.checked = false;
+	}
+
+	setAttribute(name, value) {
+		const text = String(value);
+		this.attributes[name] = text;
+		if (name === 'class') this.classList.setFromString(text);
+		if (name === 'id') this.id = text;
+		if (name === 'name') this.name = text;
+		if (name === 'type') this.type = text;
+		if (name === 'value') this.value = text;
+	}
+
+	getAttribute(name) {
+		return this.attributes[name] || null;
+	}
+
+	appendChild(child) {
+		if (child && typeof child === 'object') child.parentElement = this;
+		this.children.push(child);
+		return child;
+	}
+
+	remove() {
+		if (!this.parentElement) return;
+		this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+		this.parentElement = null;
+	}
+
+	addEventListener(type, listener) {
+		if (!this.listeners[type]) this.listeners[type] = [];
+		this.listeners[type].push(listener);
+	}
+
+	async fire(type, props = {}) {
+		const event = { type, target: this, ...props };
+		const listeners = this.listeners[type] || [];
+		for (const listener of listeners) await listener(event);
+	}
+}
+
+function findElement(root, predicate) {
+	if (!root || typeof root !== 'object') return null;
+	if (predicate(root)) return root;
+	for (const child of root.children || []) {
+		const found = findElement(child, predicate);
+		if (found) return found;
+	}
+	return null;
+}
+
+function createWidgetHarness({
+	tokenPayload = { role: 'owner', exp: Math.floor(Date.now() / 1000) + 60 },
+	cloudMeta = { tenantSlug: 'acme', appSlug: 'deal-desk' },
+	historyVersions = [{ id: 'current-version' }, { id: 'previous-version' }],
+} = {}) {
+	const meta = new FakeElement('meta');
+	meta.setAttribute('content', JSON.stringify(cloudMeta));
+	const head = new FakeElement('head');
+	const body = new FakeElement('body');
+	const document = {
+		readyState: 'complete',
+		head,
+		body,
+		createElement: (tagName) => new FakeElement(tagName),
+		createTextNode: (text) => ({ nodeType: 3, textContent: String(text), children: [] }),
+		querySelector: (selector) => (selector === 'meta[name="clear-cloud"]' && cloudMeta ? meta : null),
+		querySelectorAll: () => [],
+		addEventListener: () => {},
+	};
+	const token = tokenPayload
+		? base64urlJson({ alg: 'none' }) + '.' + base64urlJson(tokenPayload) + '.sig'
+		: '';
+	const localStorage = {
+		getItem: (key) => (key === 'token' && token ? token : null),
+	};
+	const sessionStorageData = new Map();
+	const sessionStorage = {
+		getItem: (key) => sessionStorageData.get(key) || null,
+		setItem: (key, value) => sessionStorageData.set(key, String(value)),
+		removeItem: (key) => sessionStorageData.delete(key),
+	};
+	const fetchCalls = [];
+	const fetch = async (url, options = {}) => {
+		fetchCalls.push({ url, options });
+		if (String(url).startsWith('/__meph__/api/deploy-history')) {
+			return { ok: true, status: 200, json: async () => ({ versions: historyVersions }) };
+		}
+		return { ok: true, status: 200, json: async () => ({}) };
+	};
+	const window = {
+		location: { pathname: '/dashboard', reload: () => {} },
+		addEventListener: () => {},
+	};
+	const Event = function Event(type, props = {}) {
+		return { type, ...props };
+	};
+	const atob = (value) => Buffer.from(String(value), 'base64').toString('binary');
+	new Function(
+		'window',
+		'document',
+		'localStorage',
+		'sessionStorage',
+		'fetch',
+		'atob',
+		'Event',
+		'setTimeout',
+		widgetSource,
+	)(window, document, localStorage, sessionStorage, fetch, atob, Event, () => {});
+	return { document, fetchCalls };
+}
+
+describe('meph-widget auth token boundary', () => {
+	it('reads token first and falls back to clear_auth_token', () => {
+		const storage = {
+			getItem(key) {
+				if (key === 'token') return 'jwt-token';
+				if (key === 'clear_auth_token') return 'legacy-token';
+				return null;
+			},
+		};
+		expect(widgetFnsForStorage(storage).getToken()).toBe('jwt-token');
+
+		const fallbackStorage = {
+			getItem(key) {
+				if (key === 'clear_auth_token') return 'legacy-token';
+				return null;
+			},
+		};
+		expect(widgetFnsForStorage(fallbackStorage).getToken()).toBe('legacy-token');
+	});
+
+	it('parses normal three-part JWT payloads from the middle segment', () => {
+		const payload = base64urlJson({ role: 'owner', exp: Math.floor(Date.now() / 1000) + 60 });
+		const token = base64urlJson({ alg: 'HS256' }) + '.' + payload + '.sig';
+		const storage = { getItem: (key) => (key === 'token' ? token : null) };
+		expect(widgetFnsForStorage(storage).tokenClaims().role).toBe('owner');
+	});
+
+	it('still parses legacy two-part tokens from the first segment', () => {
+		const payload = base64urlJson({ role: 'owner', exp: Date.now() + 60000 });
+		const token = payload + '.sig';
+		const storage = { getItem: (key) => (key === 'clear_auth_token' ? token : null) };
+		expect(widgetFnsForStorage(storage).tokenClaims().role).toBe('owner');
+	});
+});
+
+describe('meph-widget cloud undo', () => {
+	it('does not mount edit controls without identity', () => {
+		const harness = createWidgetHarness({ tokenPayload: null });
+		const badge = findElement(
+			harness.document.body,
+			(node) => node.tagName === 'BUTTON' && node.attributes.class === 'clear-meph-badge',
+		);
+		expect(badge).toBeNull();
+	});
+
+	testAsync('owner cloud Undo posts the previous deployment id from Cloudflare history', async () => {
+		const harness = createWidgetHarness({
+			historyVersions: [{ id: 'current-version' }, { id: 'previous-version' }],
+		});
+		const undoButton = findElement(
+			harness.document.body,
+			(node) => node.tagName === 'BUTTON' && node.attributes.class === 'clear-meph-undo',
+		);
+		expect(undoButton).toBeDefined();
+
+		await undoButton.fire('click');
+
+		const historyCall = harness.fetchCalls.find((call) => String(call.url).startsWith('/__meph__/api/deploy-history'));
+		expect(historyCall.url).toContain('tenantSlug=acme');
+		expect(historyCall.url).toContain('appSlug=deal-desk');
+		const rollbackCall = harness.fetchCalls.find((call) => call.url === '/__meph__/api/cloud-rollback');
+		expect(rollbackCall).toBeDefined();
+		const rollbackBody = JSON.parse(rollbackCall.options.body);
+		expect(rollbackBody.tenantSlug).toBe('acme');
+		expect(rollbackBody.appSlug).toBe('deal-desk');
+		expect(rollbackBody.targetVersionId).toBe('previous-version');
+	});
+});
 
 describe('meph-widget — destructive UX (LAE Phase C cycle 5)', () => {
 	it('inlines a requiredConfirmation helper that matches lib/destructive-confirm.js', () => {

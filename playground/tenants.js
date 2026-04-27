@@ -22,6 +22,20 @@ export const MAX_VERSIONS_PER_APP = 20;
 // outcome is recorded. (Locked-in decision #2 in plans/plan-lae-phase-c.)
 export const MAX_AUDIT_PER_APP = 200;
 
+function _bundleParam(lastBundle) {
+	if (lastBundle === undefined || lastBundle === null) return null;
+	return JSON.stringify(lastBundle);
+}
+
+function _bundleValue(value) {
+	if (value === undefined || value === null) return null;
+	if (typeof value === 'string') {
+		try { return JSON.parse(value); }
+		catch { return null; }
+	}
+	return value;
+}
+
 export class InMemoryTenantStore {
 	constructor() {
 		this.tenants = new Map();
@@ -98,6 +112,7 @@ export class InMemoryTenantStore {
 	async markAppDeployed({
 		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
 		versionId = null, sourceHash = null, migrationsHash = null, secretKeys = null,
+		lastBundle = null,
 	}) {
 		if (!this.cfDeploys) this.cfDeploys = new Map();
 		const key = this._appKey(tenantSlug, appSlug);
@@ -106,6 +121,7 @@ export class InMemoryTenantStore {
 			deployedAt: new Date().toISOString(),
 			versions: [],
 			secretKeys: Array.isArray(secretKeys) ? [...secretKeys] : [],
+			lastBundle: lastBundle || null,
 		};
 		if (versionId) {
 			row.versions.push({
@@ -148,7 +164,7 @@ export class InMemoryTenantStore {
 	// oldest entries once the array exceeds MAX_VERSIONS_PER_APP. Rejects
 	// with APP_NOT_FOUND if markAppDeployed was never called for this
 	// (tenantSlug, appSlug) — forces the happy-path sequencing.
-	async recordVersion({ tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via }) {
+	async recordVersion({ tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via, lastBundle }) {
 		if (!this.cfDeploys) return { ok: false, code: 'APP_NOT_FOUND' };
 		const key = this._appKey(tenantSlug, appSlug);
 		const row = this.cfDeploys.get(key);
@@ -162,6 +178,7 @@ export class InMemoryTenantStore {
 			...(note ? { note } : {}),
 			...(via ? { via } : {}),
 		});
+		if (lastBundle !== undefined) row.lastBundle = lastBundle || null;
 		if (row.versions.length > MAX_VERSIONS_PER_APP) {
 			// Sort by uploadedAt ascending, keep the newest MAX_VERSIONS_PER_APP.
 			row.versions.sort((a, b) => {
@@ -645,6 +662,7 @@ export class PostgresTenantStore {
 	async markAppDeployed({
 		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
 		versionId = null, sourceHash = null, migrationsHash = null,
+		lastBundle = null,
 		// secretKeys — accepted but ignored in cycle 5 (cycle 6 wires the seed).
 	}) {
 		const client = await this._pool.connect();
@@ -655,14 +673,15 @@ export class PostgresTenantStore {
 			// IS a new deploy event).
 			await client.query(
 				`INSERT INTO clear_cloud.cf_deploys
-				   (tenant_slug, app_slug, script_name, d1_database_id, hostname, deployed_at)
-				 VALUES ($1, $2, $3, $4, $5, now())
+				   (tenant_slug, app_slug, script_name, d1_database_id, hostname, last_bundle, deployed_at)
+				 VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
 				 ON CONFLICT (tenant_slug, app_slug) DO UPDATE
 				   SET script_name = EXCLUDED.script_name,
 				       d1_database_id = EXCLUDED.d1_database_id,
 				       hostname = EXCLUDED.hostname,
+				       last_bundle = EXCLUDED.last_bundle,
 				       deployed_at = now()`,
-				[tenantSlug, appSlug, scriptName, d1_database_id ?? null, hostname ?? null]
+				[tenantSlug, appSlug, scriptName, d1_database_id ?? null, hostname ?? null, _bundleParam(lastBundle)]
 			);
 			// apps — mirror the scriptName into the apps table so appNameFor
 			// returns it. Same UPSERT key as recordApp (tenant_slug, app_slug).
@@ -720,7 +739,7 @@ export class PostgresTenantStore {
 		const client = await this._pool.connect();
 		try {
 			const cf = await client.query(
-				`SELECT script_name, d1_database_id, hostname, deployed_at
+				`SELECT script_name, d1_database_id, hostname, last_bundle, deployed_at
 				 FROM clear_cloud.cf_deploys
 				 WHERE tenant_slug = $1 AND app_slug = $2`,
 				[tenantSlug, appSlug]
@@ -767,6 +786,7 @@ export class PostgresTenantStore {
 				scriptName: row.script_name,
 				d1_database_id: row.d1_database_id,
 				hostname: row.hostname,
+				lastBundle: _bundleValue(row.last_bundle),
 				deployedAt: row.deployed_at instanceof Date
 					? row.deployed_at.toISOString()
 					: row.deployed_at,
@@ -793,7 +813,7 @@ export class PostgresTenantStore {
 	// of window functions is patchy and the OFFSET subquery is just as fast
 	// at our row counts (max 25 in-flight, almost always under 20).
 	async recordVersion({
-		tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via,
+		tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via, lastBundle,
 	}) {
 		const client = await this._pool.connect();
 		try {
@@ -841,6 +861,15 @@ export class PostgresTenantStore {
 				 )`,
 				[tenantSlug, appSlug]
 			);
+
+			if (lastBundle !== undefined) {
+				await client.query(
+					`UPDATE clear_cloud.cf_deploys
+					 SET last_bundle = $3::jsonb
+					 WHERE tenant_slug = $1 AND app_slug = $2`,
+					[tenantSlug, appSlug, _bundleParam(lastBundle)]
+				);
+			}
 
 			await client.query('COMMIT');
 			return { ok: true };

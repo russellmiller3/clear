@@ -262,6 +262,25 @@ function _appInfoResponse(record) {
 	};
 }
 
+function _versionTimestamp(version) {
+	const raw = version && (version.uploadedAt || version.created_on || version.createdAt || version.created_at);
+	const ts = Date.parse(raw || '');
+	return Number.isFinite(ts) ? ts : 0;
+}
+
+function _mergeCloudflareVersionsWithLocalRollbacks(cloudflareVersions, storeVersions) {
+	const rollbackRows = (Array.isArray(storeVersions) ? storeVersions : [])
+		.filter(v => v && v.via === 'publish-modal-rollback');
+	if (rollbackRows.length === 0) return cloudflareVersions;
+	return [
+		...rollbackRows.map((version, index) => ({ version, order: index })),
+		...(Array.isArray(cloudflareVersions) ? cloudflareVersions : [])
+			.map((version, index) => ({ version, order: rollbackRows.length + index })),
+	]
+		.sort((a, b) => (_versionTimestamp(b.version) - _versionTimestamp(a.version)) || (a.order - b.order))
+		.map(row => row.version);
+}
+
 // -------- shared deploy deps (for sibling modules that need the same
 // store + CF API the /api/deploy route uses). Populated by wireDeploy.
 // Used by the Live App Editing widget's cloud-ship path so it doesn't
@@ -431,6 +450,7 @@ export function wireDeploy(app, opts = {}) {
 				api,
 				store,
 				rootDomain: cloudflareRootDomain(),
+				...(req.body && req.body.liveEditBaseUrl ? { liveEditBaseUrl: req.body.liveEditBaseUrl } : {}),
 				// CF doesn't expose D1 delete via the wrapper today — pass a
 				// no-op so the rollback ladder still runs without throwing.
 				// Real delete is tracked in reconcile-wfp.js meanwhile.
@@ -605,7 +625,13 @@ export function wireDeploy(app, opts = {}) {
 			try {
 				const lv = await api.listVersions({ scriptName });
 				if (lv && lv.ok && Array.isArray(lv.versions)) {
-					return res.json({ ok: true, source: 'cloudflare', versions: lv.versions });
+					const versions = _mergeCloudflareVersionsWithLocalRollbacks(lv.versions, record.versions);
+					const hasLocalRollbackRows = versions.length !== lv.versions.length;
+					return res.json({
+						ok: true,
+						source: hasLocalRollbackRows ? 'cloudflare+store' : 'cloudflare',
+						versions,
+					});
 				}
 				// listVersions returned non-ok shape — treat like a soft failure
 				// and fall back to the store's versions[].
@@ -637,21 +663,42 @@ export function wireDeploy(app, opts = {}) {
 		if (!tenant) return;
 		const { appName, version } = req.body || {};
 		if (!appName || !version) return res.status(400).json({ ok: false, error: 'missing fields' });
-		try { sanitizeAppName(appName); assertOwnership(tenant.slug, appName); }
-		catch (e) { return res.status(e.code === 'CROSS_TENANT' ? 403 : 400).json({ ok: false, code: errorCode(e) }); }
-		// Phase 7.12 — CF path uses the dispatch namespace script-versions API
-		// to promote a previous version to 100%.
 		if (deployTarget() === 'cloudflare') {
+			const appSlug = appName;
+			try { sanitizeAppSlug(appSlug); }
+			catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
+			const record = await store.getAppRecord(tenant.slug, appSlug);
+			if (!record) return res.status(404).json({ ok: false, error: 'app not deployed for this tenant' });
 			let api;
 			try { api = getWfpApi(); }
 			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+			const scriptName = record.scriptName || appSlug;
 			try {
-				await api.rollbackToVersion({ scriptName: appName, versionId: version });
+				const r = await api.rollbackToVersion({ scriptName, versionId: version });
+				if (r && r.ok === false) {
+					return res.status(r.status || 502).json({ ok: false, error: r.error || 'Cloudflare rollback failed' });
+				}
+				const saved = await store.recordVersion({
+					tenantSlug: tenant.slug,
+					appSlug,
+					versionId: version,
+					note: `Rolled back to ${version}`,
+					via: 'publish-modal-rollback',
+				});
+				if (!saved || !saved.ok) {
+					return res.status(saved && saved.code === 'APP_NOT_FOUND' ? 404 : 500).json({
+						ok: false,
+						stage: 'record',
+						error: saved && saved.code ? saved.code : 'rollback history write failed',
+					});
+				}
 				return res.json({ ok: true });
 			} catch (e) {
 				return res.status(e.status || 500).json({ ok: false, error: e.message });
 			}
 		}
+		try { sanitizeAppName(appName); assertOwnership(tenant.slug, appName); }
+		catch (e) { return res.status(e.code === 'CROSS_TENANT' ? 403 : 400).json({ ok: false, code: errorCode(e) }); }
 		const body = Buffer.from(JSON.stringify({ appName, version, tenantSlug: tenant.slug }));
 		const r = await postToBuilder('/rollback', 'POST', { 'Content-Type': 'application/json' }, body);
 		res.status(r.status || 200).json(r.json || { ok: false });

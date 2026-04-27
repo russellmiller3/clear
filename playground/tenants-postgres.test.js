@@ -696,6 +696,7 @@ await runAsync(async () => {
     versionId: 'v-seed',
     sourceHash: 'sh-seed',
     migrationsHash: 'mh-seed',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE seeded(id INTEGER);' },
   });
 
   const rec = await store.getAppRecord(slug, 'todo');
@@ -712,6 +713,8 @@ await runAsync(async () => {
     `seed sourceHash carries through (got ${rec.versions[0].sourceHash})`);
   assert(rec.versions[0].migrationsHash === 'mh-seed',
     `seed migrationsHash carries through (got ${rec.versions[0].migrationsHash})`);
+  assert(rec.lastBundle && rec.lastBundle['migrations/001-init.sql'].includes('seeded'),
+    'lastBundle carries through from markAppDeployed');
   assert(Array.isArray(rec.secretKeys) && rec.secretKeys.length === 0,
     'secretKeys is empty array in cycle 5 (cycle 6 wires the seed)');
 });
@@ -802,6 +805,27 @@ await runAsync(async () => {
   assert(rec.versions[0].migrationsHash === 'mh1', `migrationsHash carried (got ${rec.versions[0].migrationsHash})`);
   assert(rec.versions[0].note === 'first ship', `note carried (got ${rec.versions[0].note})`);
   assert(rec.versions[0].via === 'widget', `via carried (got ${rec.versions[0].via})`);
+});
+
+console.log('\n🐘 CC-1 cycle 5 — recordVersion refreshes lastBundle for migration checks');
+await runAsync(async () => {
+  const { store, slug } = await freshStoreWithTenant();
+  await store.markAppDeployed({
+    tenantSlug: slug, appSlug: 'bundle-app',
+    scriptName: 'sn', d1_database_id: 'db', hostname: 'h.x',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE old_items(id INTEGER);' },
+  });
+  const res = await store.recordVersion({
+    tenantSlug: slug, appSlug: 'bundle-app',
+    versionId: 'v-bundle',
+    uploadedAt: '2026-04-23T20:00:00Z',
+    sourceHash: 'sh-bundle',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE new_items(id INTEGER);' },
+  });
+  assert(res && res.ok === true, `recordVersion returns {ok:true} (got ${JSON.stringify(res)})`);
+  const rec = await store.getAppRecord(slug, 'bundle-app');
+  assert(rec.lastBundle && rec.lastBundle['migrations/001-init.sql'].includes('new_items'),
+    'lastBundle refreshes on recordVersion');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -128,8 +128,8 @@ page 'Lead Router' at '/':
     get new_leads from '/api/leads/new'
 
   total = count of new_leads
-  owner_count = 3
-  rule_count = 3
+  owners = 3
+  rules = 3
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
@@ -137,8 +137,8 @@ page 'Lead Router' at '/':
       nav section 'Queues':
         nav item 'New leads' to '/' with count total with icon 'inbox'
       nav section 'Operations':
-        nav item 'Routing rules' to '/' with count rule_count with icon 'route'
-        nav item 'Owners' to '/' with count owner_count with icon 'users'
+        nav item 'Routing rules' to '/' with count rules with icon 'route'
+        nav item 'Owners' to '/' with count owners with icon 'users'
 
     section 'Main' with style app_main:
       section 'Top' with style app_header:
@@ -152,6 +152,8 @@ page 'Lead Router' at '/':
             button 'Refresh':
               get new_leads from '/api/leads/new'
 
+        small text '{total} new leads, {owners} owners, and {rules} routing rules are live.'
+
         stat strip:
           stat card 'New Leads':
             value total
@@ -159,11 +161,11 @@ page 'Lead Router' at '/':
             sparkline [1, 2, 3, 3, 4]
             icon 'inbox'
           stat card 'Owners':
-            value owner_count
+            value owners
             delta 'Alice, Bob, Charlie'
             icon 'users'
           stat card 'Routing Rules':
-            value rule_count
+            value rules
             delta 'Size based assignment'
             icon 'route'
 
@@ -192,10 +194,6 @@ page 'Lead Router' at '/':
             text selected_lead's company
             text selected_lead's source
             text selected_lead's assigned_to
-            actions:
-              button 'Assign'
-              button 'Route'
-              button 'Archive'
 
 # Tests
 

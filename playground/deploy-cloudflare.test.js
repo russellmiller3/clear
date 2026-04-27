@@ -87,8 +87,8 @@ function makeFakeStore(seed = {}) {
 	return {
 		_state: state,
 		async appNameFor(_tenantSlug, _appSlug) { return state.appNameReturns; },
-		async markAppDeployed({ tenantSlug, appSlug, scriptName, d1_database_id }) {
-			state.markAppDeployedCalls.push({ tenantSlug, appSlug, scriptName, d1_database_id });
+		async markAppDeployed(args) {
+			state.markAppDeployedCalls.push(args);
 			if (state.markFails) throw new Error('tenants-db unreachable');
 			return { ok: true };
 		},
@@ -115,6 +115,52 @@ when user requests data from /api/ask:
   set reply to ask claude 'say hi'
   send back reply
 `;
+
+const OWNER_APP = `build for web and javascript backend
+
+allow signup and login
+
+page 'Owner Dashboard':
+  heading 'Owner Dashboard'
+
+when user requests data from /api/me:
+  send back 'ok'
+`;
+
+// Deployed live-edit identity boundary.
+describe('deploySource live-edit identity boundary', () => {
+	testAsync('owner deploy uploads a Worker bundle with clear-cloud meta and widget route', async () => {
+		_resetLockManagerForTest();
+		let uploadedBundle = null;
+		const api = makeFakeWfpApi({
+			uploadScript: async (args) => {
+				uploadedBundle = args.bundle;
+				api.calls.push({ op: 'uploadScript', scriptName: args.scriptName });
+				return { ok: true, result: { id: 'v-owner-live-edit' } };
+			},
+		});
+		const store = makeFakeStore();
+
+		const r = await deploySource({
+			source: OWNER_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'owner-dashboard',
+			secrets: {},
+			api,
+			store,
+			rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+
+		expect(r.ok).toBe(true);
+		expect(uploadedBundle).toBeDefined();
+		const indexJs = uploadedBundle['src/index.js'];
+		expect(indexJs).toContain('meta name=\\"clear-cloud\\"');
+		expect(indexJs).toContain('\\"tenantSlug\\":\\"clear-acme\\"');
+		expect(indexJs).toContain('\\"appSlug\\":\\"owner-dashboard\\"');
+		expect(indexJs).toContain("pathname === '/__meph__/widget.js'");
+	});
+});
 
 // App with both a table (triggers D1 provision) AND an ask-claude call
 // (would normally take the ANTHROPIC_API_KEY secret). Used for rollback
@@ -174,6 +220,7 @@ describe('deploySource happy path — Phase 7.7', () => {
 			tenantSlug: 'clear-acme',
 			appSlug: 'items',
 			secrets: {},
+			liveEditEnv: {},
 			api, store, rootDomain: 'buildclear.dev',
 			deleteD1: makeFakeD1Deleter(),
 		});
@@ -196,6 +243,126 @@ describe('deploySource happy path — Phase 7.7', () => {
 		const setCall = api.calls.find((c) => c.op === 'setSecrets');
 		expect(setCall).toBeDefined();
 		expect(setCall.secretNames.includes('ANTHROPIC_API_KEY')).toBe(true);
+	});
+
+	testAsync('records the compiled Worker bundle on the initial deploy record', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi();
+		const store = makeFakeStore();
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'bundle-seed',
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		const recorded = store._state.markAppDeployedCalls[0];
+		expect(recorded.lastBundle).toBeDefined();
+		expect(recorded.lastBundle['migrations/001-init.sql']).toContain('CREATE TABLE');
+		expect(recorded.lastBundle['wrangler.toml']).toBeDefined();
+		expect(recorded.lastBundle['src/index.js']).toBeDefined();
+	});
+
+	testAsync('injects CLEAR_LIVE_EDIT_BASE_URL from explicit deploy option without overriding user secrets', async () => {
+		_resetLockManagerForTest();
+		let sentSecrets = null;
+		const api = makeFakeWfpApi({
+			setSecrets: async ({ scriptName, secrets }) => {
+				sentSecrets = { scriptName, secrets };
+				api.calls.push({ op: 'setSecrets', scriptName, secretNames: Object.keys(secrets || {}) });
+				return { ok: true, failed: [] };
+			},
+		});
+		const store = makeFakeStore();
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'live-base-option',
+			liveEditBaseUrl: 'https://studio.buildclear.dev',
+			secrets: { CLEAR_LIVE_EDIT_BASE_URL: 'https://override.example', API_KEY: 'abc' },
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(sentSecrets.secrets.CLEAR_LIVE_EDIT_BASE_URL).toBe('https://override.example');
+		expect(sentSecrets.secrets.API_KEY).toBe('abc');
+		expect(store._state.markAppDeployedCalls[0].secretKeys).toEqual(['CLEAR_LIVE_EDIT_BASE_URL', 'API_KEY']);
+	});
+
+	testAsync('injects CLEAR_LIVE_EDIT_BASE_URL from explicit deploy option when user secret is absent', async () => {
+		_resetLockManagerForTest();
+		let sentSecrets = null;
+		const api = makeFakeWfpApi({
+			setSecrets: async ({ scriptName, secrets }) => {
+				sentSecrets = { scriptName, secrets };
+				api.calls.push({ op: 'setSecrets', scriptName, secretNames: Object.keys(secrets || {}) });
+				return { ok: true, failed: [] };
+			},
+		});
+		const store = makeFakeStore();
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'live-base-option-only',
+			liveEditBaseUrl: 'https://studio.buildclear.dev',
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(sentSecrets.secrets.CLEAR_LIVE_EDIT_BASE_URL).toBe('https://studio.buildclear.dev');
+		expect(store._state.markAppDeployedCalls[0].secretKeys).toEqual(['CLEAR_LIVE_EDIT_BASE_URL']);
+	});
+
+	testAsync('falls back to STUDIO_BASE_URL when the clearer env names are absent', async () => {
+		_resetLockManagerForTest();
+		let sentSecrets = null;
+		const api = makeFakeWfpApi({
+			setSecrets: async ({ scriptName, secrets }) => {
+				sentSecrets = { scriptName, secrets };
+				api.calls.push({ op: 'setSecrets', scriptName, secretNames: Object.keys(secrets || {}) });
+				return { ok: true, failed: [] };
+			},
+		});
+		const store = makeFakeStore();
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'live-base-studio-env',
+			secrets: {},
+			liveEditEnv: { STUDIO_BASE_URL: 'https://legacy-studio.buildclear.dev' },
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(sentSecrets.secrets.CLEAR_LIVE_EDIT_BASE_URL).toBe('https://legacy-studio.buildclear.dev');
+	});
+
+	testAsync('injects CLEAR_LIVE_EDIT_BASE_URL from CLEAR_STUDIO_BASE_URL env fallback', async () => {
+		_resetLockManagerForTest();
+		let sentSecrets = null;
+		const api = makeFakeWfpApi({
+			setSecrets: async ({ scriptName, secrets }) => {
+				sentSecrets = { scriptName, secrets };
+				api.calls.push({ op: 'setSecrets', scriptName, secretNames: Object.keys(secrets || {}) });
+				return { ok: true, failed: [] };
+			},
+		});
+		const store = makeFakeStore();
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'live-base-env',
+			secrets: {},
+			liveEditEnv: { CLEAR_STUDIO_BASE_URL: 'https://studio-env.buildclear.dev' },
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(sentSecrets.secrets.CLEAR_LIVE_EDIT_BASE_URL).toBe('https://studio-env.buildclear.dev');
+		expect(store._state.markAppDeployedCalls[0].secretKeys).toEqual(['CLEAR_LIVE_EDIT_BASE_URL']);
 	});
 
 	testAsync('returns compile errors without touching Cloudflare', async () => {
@@ -699,6 +866,7 @@ describe('deploySource mode:update — LAE Phase B Cycle 2', () => {
 			mode: 'update',
 			lastRecord: store._state.appRecord,
 			secrets: { API_KEY: 'existing-val', DB_URL: 'new-val' },
+			liveEditEnv: {},
 			api, store, rootDomain: 'buildclear.dev',
 			deleteD1: makeFakeD1Deleter(),
 		});
@@ -726,6 +894,7 @@ describe('deploySource mode:update — LAE Phase B Cycle 2', () => {
 			mode: 'update',
 			lastRecord: store._state.appRecord,
 			secrets: { API_KEY: 'existing-val' },
+			liveEditEnv: {},
 			api, store, rootDomain: 'buildclear.dev',
 			deleteD1: makeFakeD1Deleter(),
 		});
@@ -783,6 +952,62 @@ describe('deploySource mode:update — LAE Phase B Cycle 2', () => {
 			deleteD1: makeFakeD1Deleter(),
 		});
 		expect(store._state.recordVersionCalls[0].via).toBe('widget');
+	});
+
+	testAsync('mode:update records the new compiled Worker bundle for the next migration check', async () => {
+		_resetLockManagerForTest();
+		const api = makeFakeWfpApi({ uploadScript: async () => ({ ok: true, result: { id: 'v-bundle-refresh' } }) });
+		const store = makeFakeStoreWithVersions({
+			appRecord: { scriptName: 'bundle-refresh', d1_database_id: 'd1', hostname: 'h', versions: [], secretKeys: [] },
+		});
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'bundle-refresh',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			secrets: {},
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		const recorded = store._state.recordVersionCalls[0];
+		expect(recorded.lastBundle).toBeDefined();
+		expect(recorded.lastBundle['migrations/001-init.sql']).toContain('CREATE TABLE');
+		expect(recorded.lastBundle['wrangler.toml']).toBeDefined();
+	});
+
+	testAsync('mode:update injects live-edit base URL and preserves it in secretKeys', async () => {
+		_resetLockManagerForTest();
+		let setSecretsArgs = null;
+		const api = makeFakeWfpApi({
+			setSecrets: async ({ scriptName, secrets }) => {
+				setSecretsArgs = { scriptName, secretNames: Object.keys(secrets || {}) };
+				api.calls.push({ op: 'setSecrets', scriptName, secretNames: setSecretsArgs.secretNames });
+				return { ok: true };
+			},
+			uploadScript: async () => ({ ok: true, result: { id: 'v-live-secret' } }),
+		});
+		const store = makeFakeStoreWithVersions({
+			appRecord: {
+				scriptName: 'live-secret-update', d1_database_id: 'd1',
+				hostname: 'h', versions: [], secretKeys: ['API_KEY'],
+			},
+		});
+		const r = await deploySource({
+			source: SIMPLE_APP,
+			tenantSlug: 'clear-acme',
+			appSlug: 'live-secret-update',
+			mode: 'update',
+			lastRecord: store._state.appRecord,
+			liveEditBaseUrl: 'https://studio.buildclear.dev',
+			secrets: { API_KEY: 'already-set' },
+			api, store, rootDomain: 'buildclear.dev',
+			deleteD1: makeFakeD1Deleter(),
+		});
+		expect(r.ok).toBe(true);
+		expect(setSecretsArgs.secretNames).toEqual(['CLEAR_LIVE_EDIT_BASE_URL']);
+		expect(store._state.updateSecretKeysCalls[0].newKeys).toEqual(['CLEAR_LIVE_EDIT_BASE_URL']);
 	});
 });
 

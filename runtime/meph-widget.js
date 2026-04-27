@@ -35,20 +35,30 @@
 	// auth scaffolding in compiler.js).
 	function getToken() {
 		try {
-			return localStorage.getItem('clear_auth_token') || '';
+			return localStorage.getItem('token') || localStorage.getItem('clear_auth_token') || '';
 		} catch {
 			return '';
 		}
+	}
+
+	function decodeBase64Url(value) {
+		let text = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+		while (text.length % 4) text += '=';
+		return atob(text);
 	}
 
 	function tokenClaims() {
 		const t = getToken();
 		if (!t) return null;
 		const parts = t.split('.');
-		if (parts.length !== 2) return null;
+		if (parts.length !== 2 && parts.length !== 3) return null;
+		const payloadPart = parts.length === 3 ? parts[1] : parts[0];
 		try {
-			const payload = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
-			if (payload.exp && payload.exp < Date.now()) return null;
+			const payload = JSON.parse(decodeBase64Url(payloadPart));
+			if (payload.exp) {
+				const expMs = payload.exp < 1000000000000 ? payload.exp * 1000 : payload.exp;
+				if (expMs < Date.now()) return null;
+			}
 			return payload;
 		} catch {
 			return null;
@@ -578,14 +588,16 @@
 	async function fetchCloudVersionTarget() {
 		if (!cloudContext) return null;
 		try {
-			const r = await fetch('/__meph__/api/deploy-history?appSlug=' + encodeURIComponent(cloudContext.appSlug), {
+			const query = 'tenantSlug=' + encodeURIComponent(cloudContext.tenantSlug)
+				+ '&appSlug=' + encodeURIComponent(cloudContext.appSlug);
+			const r = await fetch('/__meph__/api/deploy-history?' + query, {
 				headers: { Authorization: 'Bearer ' + getToken() },
 			});
 			if (!r.ok) return null;
 			const body = await r.json();
 			// versions[0] is the current live; versions[1] is the previous.
 			if (body && Array.isArray(body.versions) && body.versions.length >= 2) {
-				return body.versions[1].versionId;
+				return body.versions[1].versionId || body.versions[1].id;
 			}
 		} catch { /* fall through */ }
 		return null;

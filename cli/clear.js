@@ -106,6 +106,156 @@ function makeModuleResolver(filePath) {
   };
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function stopChildAndWait(child, {
+  gracefulSignal = 'SIGTERM',
+  forceSignal = 'SIGKILL',
+  forceAfterMs = 2000,
+  closeGraceMs = 200,
+} = {}) {
+  const result = { closed: true, forced: false, timedOut: false };
+  if (!child) return result;
+
+  // Keep stdio moving while the child handles shutdown. On Windows, exiting
+  // the parent while the child is still closing async handles can trip libuv.
+  if (child.stdout) child.stdout.resume();
+  if (child.stderr) child.stderr.resume();
+
+  await new Promise(resolve => {
+    let done = false;
+    let forceTimer = null;
+    let hardTimer = null;
+
+    const finish = (closed = true) => {
+      if (done) return;
+      done = true;
+      result.closed = closed;
+      if (forceTimer) clearTimeout(forceTimer);
+      if (hardTimer) clearTimeout(hardTimer);
+      resolve();
+    };
+
+    child.once('close', () => finish(true));
+    child.once('error', () => finish(false));
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      hardTimer = setTimeout(finish, closeGraceMs);
+      return;
+    }
+
+    if (gracefulSignal) {
+      try {
+        child.kill(gracefulSignal);
+      } catch {
+        finish(false);
+        return;
+      }
+    }
+
+    forceTimer = setTimeout(() => {
+      try {
+        if (child.exitCode === null && child.signalCode === null) {
+          result.forced = true;
+          child.kill(forceSignal);
+        }
+      } catch {
+        finish(false);
+      }
+    }, forceAfterMs);
+    hardTimer = setTimeout(() => {
+      result.timedOut = true;
+      finish(false);
+    }, forceAfterMs + closeGraceMs);
+  });
+
+  if (closeGraceMs > 0) await wait(closeGraceMs);
+  return result;
+}
+
+function addClearTestShutdownHook(serverCode) {
+  if (!/\bconst\s+server\s*=\s*app\.listen\b/.test(serverCode)) return serverCode;
+  const hook = `
+
+// Clear test runner shutdown hook. This avoids the Windows signal path after
+// green test runs; the parent asks this temp server to close itself instead.
+if (typeof process !== 'undefined') {
+  let _clearTestShuttingDown = false;
+  function _clearTestCloseServer() {
+    if (_clearTestShuttingDown) return;
+    _clearTestShuttingDown = true;
+    const forceExit = setTimeout(() => process.exit(0), 1000);
+    try {
+      server.close(() => {
+        clearTimeout(forceExit);
+        process.exit(0);
+      });
+      if (server.closeIdleConnections) server.closeIdleConnections();
+      if (server.closeAllConnections) {
+        const closeAll = setTimeout(() => server.closeAllConnections(), 50);
+        if (closeAll.unref) closeAll.unref();
+      }
+    } catch {
+      process.exit(0);
+    }
+  }
+  app.post('/__clear_test_shutdown__', (_req, res) => {
+    res.status(204).end();
+    setImmediate(_clearTestCloseServer);
+  });
+}
+`;
+  const staticMarker = "const path = require('path');";
+  if (serverCode.includes(staticMarker)) {
+    return serverCode.replace(staticMarker, hook + '\n' + staticMarker);
+  }
+  return serverCode + hook;
+}
+
+async function requestClearTestShutdown(port, timeoutMs = 1000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`http://localhost:${port}/__clear_test_shutdown__`, {
+      method: 'POST',
+      signal: controller.signal,
+    });
+    return { ok: response.ok, status: response.status, timedOut: false };
+  } catch (e) {
+    return { ok: false, status: null, timedOut: e?.name === 'AbortError', error: e?.message || String(e) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function testRunnerExitFromError(e) {
+  const timedOut = e?.code === 'ETIMEDOUT' || (e?.killed && e?.signal === 'SIGTERM');
+  if (timedOut) return { code: 4, timedOut: true };
+  if (Number.isInteger(e?.status)) return { code: e.status, timedOut: false };
+  return { code: 2, timedOut: false };
+}
+
+function addClearTestRunnerCleanup(testCode) {
+  const fetchCleanup = `const BASE = process.env.TEST_URL || "http://localhost:3000";
+
+const _clearOriginalFetch = globalThis.fetch;
+if (typeof _clearOriginalFetch === 'function' && typeof Headers === 'function') {
+  globalThis.fetch = (url, options = {}) => {
+    const nextOptions = { ...options };
+    const headers = new Headers(options.headers || {});
+    if (!headers.has('connection')) headers.set('connection', 'close');
+    nextOptions.headers = headers;
+    return _clearOriginalFetch(url, nextOptions);
+  };
+}
+`;
+  let nextCode = testCode.replace('const BASE = process.env.TEST_URL || "http://localhost:3000";\n', fetchCleanup);
+  nextCode = nextCode.replace('  process.exit(failed > 0 ? 1 : 0);', '  process.exitCode = failed > 0 ? 1 : 0;');
+  return nextCode;
+}
+
 // =============================================================================
 // COMMANDS
 // =============================================================================
@@ -523,10 +673,12 @@ async function testCommand(args) {
     // Write server + test files
     const serverCode = result.serverJS || result.javascript || '';
     const testFile = resolve(buildDir, 'test.js');
-    writeFileSync(testFile, result.tests);
+    writeFileSync(testFile, addClearTestRunnerCleanup(result.tests));
 
     if (serverCode) {
-      writeFileSync(resolve(buildDir, 'server.js'), serverCode);
+      const testServerCode = addClearTestShutdownHook(serverCode);
+      const canRequestShutdown = testServerCode !== serverCode;
+      writeFileSync(resolve(buildDir, 'server.js'), testServerCode);
       if (result.html) writeFileSync(resolve(buildDir, 'index.html'), result.html);
       if (result.css) writeFileSync(resolve(buildDir, 'style.css'), result.css);
 
@@ -599,25 +751,34 @@ async function testCommand(args) {
       // suites (multi-agent research chains, LLM-graded evals, etc.).
       const testTimeoutMs = Math.max(10000, Number(process.env.CLEAR_TEST_TIMEOUT_MS) || 120000);
       if (!flags.quiet) console.log('  Running tests...\n');
+      let testExitCode = 0;
       try {
         const testEnv = { ...process.env, TEST_URL: `http://localhost:${port}`, JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret };
         const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: testTimeoutMs, env: testEnv });
         process.stdout.write(stdout);
       } catch (e) {
         if (e.stdout) process.stdout.write(e.stdout);
-        if (e.status === 4) { server.kill('SIGTERM'); process.exit(4); }
-        // Node represents execSync timeouts with .signal === 'SIGTERM' and .code === 'ETIMEDOUT'
-        // on Windows; on other platforms .killed === true. Surface a plain message either way.
-        const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
-        if (timedOut) {
+        const testError = testRunnerExitFromError(e);
+        if (testError.timedOut) {
           process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit.\n`);
           process.stderr.write(`  Set CLEAR_TEST_TIMEOUT_MS to a higher value for long-running suites (e.g. agent chains).\n`);
         } else if (e.stderr) {
           process.stderr.write(e.stderr);
         }
+        testExitCode = testError.code;
       } finally {
-        server.kill('SIGTERM');
+        const shutdownResult = canRequestShutdown ? await requestClearTestShutdown(port) : { ok: true };
+        const stopResult = await stopChildAndWait(server, canRequestShutdown ? { gracefulSignal: null, forceAfterMs: 5000 } : {});
+        const cleanupFailed = !stopResult.closed || stopResult.timedOut || (canRequestShutdown && (!shutdownResult.ok || stopResult.forced));
+        if (cleanupFailed && testExitCode === 0) {
+          process.stderr.write('\n  Warning: test server cleanup failed after tests passed; keeping the passing test result.\n');
+          if (shutdownResult.timedOut) process.stderr.write('  Shutdown request timed out before the server answered.\n');
+          if (stopResult.forced) process.stderr.write('  Forced the test server to stop after graceful shutdown failed.\n');
+        } else if (cleanupFailed && !flags.quiet) {
+          process.stderr.write('\n  Warning: test server cleanup needed a forced stop.\n');
+        }
       }
+      if (testExitCode) process.exit(testExitCode);
     } else {
       // Frontend-only app — run tests without server (no live API calls,
       // so the default 30s timeout is usually plenty; still honor the override).
@@ -625,11 +786,11 @@ async function testCommand(args) {
       try {
         execSync(`node test.js`, { cwd: buildDir, stdio: 'inherit', timeout: testTimeoutMs });
       } catch (e) {
-        const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
-        if (timedOut) {
+        const testError = testRunnerExitFromError(e);
+        if (testError.timedOut) {
           process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit (set CLEAR_TEST_TIMEOUT_MS to override).\n`);
         }
-        if (e.status === 4) process.exit(4);
+        process.exit(testError.code);
       }
     }
     return;

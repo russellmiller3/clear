@@ -52,7 +52,7 @@ async function getJson(path) {
 // START SERVER
 // =============================================================================
 console.log('Starting playground server on port 3457...');
-const server = spawn('node', ['playground/server.js'], {
+const server = spawn(process.execPath, ['playground/server.js'], {
   cwd: join(__dirname, '..'),
   // CC-4 cycle 5 — CLEAR_ALLOW_SEED unlocks the test-only seed/inject/lookup
   // endpoints (gated behind NODE_ENV !== 'test' && !CLEAR_ALLOW_SEED). The
@@ -69,13 +69,24 @@ server.stdout.on('data', (d) => {
 });
 server.stderr.on('data', (d) => process.stderr.write(d));
 
+async function waitForHttpReady(timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (!serverReady) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      continue;
+    }
+    try {
+      const r = await fetch(BASE + '/api/templates');
+      if (r.status > 0) return true;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
 // Wait for server
-await new Promise((resolve) => {
-  const check = setInterval(() => {
-    if (serverReady) { clearInterval(check); resolve(); }
-  }, 100);
-  setTimeout(() => { clearInterval(check); resolve(); }, 5000);
-});
+await waitForHttpReady();
 
 console.log('Server ready. Running tests...\n');
 
@@ -360,7 +371,7 @@ try {
   }
 
   {
-    const { data } = await post('/api/compile', { source: "build for javascript backend\nwhen user calls DELETE /api/items/:id:\n  remove from Items with this id\n  send back 'deleted'" });
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nallow signup and login\nwhen user calls DELETE /api/items/:id:\n  remove from Items with this id\n  send back 'deleted'" });
     assert(data.errors.length > 0, 'catches DELETE without auth');
     // Compiler's actual error string says "requires login" (clearer than
     // "auth" — Meph sees the exact keyword he needs to add). Match on
@@ -953,6 +964,128 @@ try {
   const missBody = await missRes.json();
   assert(missRes.status === 200, 'lookup-subdomain on missing slug returns 200');
   assert(missBody === null, 'lookup-subdomain on missing slug returns null');
+}
+
+// =============================================================================
+// Live App Editing UAT - widget add-field ships through cloud bridge
+// =============================================================================
+{
+  console.log('\nLive App Editing UAT - widget add-field cloud update');
+
+  const WIDGET_SCHEMA_V1 = `build for javascript backend
+
+create a Items table:
+  name, required
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+  const WIDGET_SCHEMA_V2 = `build for javascript backend
+
+create a Items table:
+  name, required
+  price, number
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+  const tenantSlug = 'clear-widget-uat';
+  const appSlug = 'widget-items';
+
+  const seedRes = await fetch(BASE + '/api/_test/seed-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: tenantSlug, plan: 'pro' }),
+  });
+  assert(seedRes.status === 200, 'widget UAT seed-tenant returns 200');
+  const setCookie = seedRes.headers.get('set-cookie') || '';
+  const cookieMatch = setCookie.match(/clear_tenant=[^;]+/);
+  assert(!!cookieMatch, 'widget UAT seed-tenant sets clear_tenant cookie');
+  const cookie = cookieMatch ? cookieMatch[0] : '';
+
+  await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset: true }),
+  });
+  const injectRes = await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(injectRes.status === 200, 'widget UAT inject-wfp-api returns 200');
+
+  const deployRes = await fetch(BASE + '/api/deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ source: WIDGET_SCHEMA_V1, appSlug, target: 'cloudflare' }),
+  });
+  const deployBody = await deployRes.json();
+  assert(deployRes.status === 200, `widget UAT v1 deploy returns 200 (got ${deployRes.status}: ${JSON.stringify(deployBody).slice(0, 200)})`);
+  assert(deployBody.ok === true, 'widget UAT v1 deploy returns ok:true');
+
+  const setupRes = await fetch(BASE + '/api/_test/live-edit-cloud-uat-setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenantSlug, appSlug }),
+  });
+  const setupBody = await setupRes.json();
+  assert(setupRes.status === 200, `widget UAT setup returns 200 (got ${setupRes.status}: ${JSON.stringify(setupBody).slice(0, 200)})`);
+  assert(setupBody.ok === true, 'widget UAT setup returns ok:true');
+  assert(typeof setupBody.ownerToken === 'string' && setupBody.ownerToken.length > 10, 'widget UAT setup returns owner token');
+
+  const beforeStateRes = await fetch(BASE + `/api/_test/live-edit-cloud-uat-state/${tenantSlug}/${appSlug}`);
+  const beforeState = await beforeStateRes.json();
+  const beforeCallCount = Array.isArray(beforeState.calls) ? beforeState.calls.length : 0;
+  assert(beforeState.record && beforeState.record.lastBundle && beforeState.record.lastBundle['migrations/001-init.sql'],
+    'widget UAT initial deploy stores lastBundle before setup hook runs');
+
+  const shipRes = await fetch(BASE + '/__meph__/api/ship', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${setupBody.ownerToken}`,
+    },
+    body: JSON.stringify({
+      newSource: WIDGET_SCHEMA_V2,
+      tenantSlug,
+      appSlug,
+      classification: {
+        type: 'additive',
+        changes: [{ kind: 'add_field', table: 'Items', field: 'price', fieldType: 'number' }],
+      },
+    }),
+  });
+  const shipBody = await shipRes.json();
+  assert(shipRes.status === 200, `widget UAT ship returns 200 (got ${shipRes.status}: ${JSON.stringify(shipBody).slice(0, 200)})`);
+  assert(shipBody.ok === true, 'widget UAT ship returns ok:true');
+  assert(shipBody.mode === 'update', `widget UAT ship uses update mode (got ${shipBody.mode})`);
+  assert(shipBody.versionId === 'script-id', `widget UAT ship returns uploaded version id (got ${shipBody.versionId})`);
+  assert(shipBody.url === 'https://widget-items.buildclear.dev', `widget UAT ship keeps cloud URL (got ${shipBody.url})`);
+
+  const stateRes = await fetch(BASE + `/api/_test/live-edit-cloud-uat-state/${tenantSlug}/${appSlug}`);
+  const stateBody = await stateRes.json();
+  assert(stateRes.status === 200, 'widget UAT state returns 200');
+  const updateCalls = Array.isArray(stateBody.calls) ? stateBody.calls.slice(beforeCallCount) : [];
+  const updateOps = updateCalls.map((c) => c.op);
+  assert(updateOps[0] === 'applyMigrations', `widget UAT applies migration before upload (ops: ${updateOps.join(',')})`);
+  assert(updateOps[1] === 'uploadScript', `widget UAT uploads script after migration (ops: ${updateOps.join(',')})`);
+  assert(stateBody.record && Array.isArray(stateBody.record.versions), 'widget UAT deployed record has versions array');
+  const lastVersion = stateBody.record && stateBody.record.versions && stateBody.record.versions[0];
+  assert(lastVersion && lastVersion.versionId === 'script-id', `widget UAT records uploaded version (got ${lastVersion && lastVersion.versionId})`);
+  assert(lastVersion && lastVersion.via === 'widget', `widget UAT records version via widget (got ${lastVersion && lastVersion.via})`);
+
+  const historyRes = await fetch(BASE + `/__meph__/api/deploy-history?tenantSlug=${encodeURIComponent(tenantSlug)}&appSlug=${encodeURIComponent(appSlug)}`, {
+    headers: { Authorization: `Bearer ${setupBody.ownerToken}` },
+  });
+  const historyBody = await historyRes.json();
+  assert(historyRes.status === 200, `widget UAT deploy-history returns 200 (got ${historyRes.status}: ${JSON.stringify(historyBody).slice(0, 200)})`);
+  assert(Array.isArray(historyBody.versions), 'widget UAT deploy-history returns versions array');
+  assert(historyBody.versions[0] && historyBody.versions[0].versionId === 'script-id', `widget UAT deploy-history exposes newest version (got ${historyBody.versions[0] && historyBody.versions[0].versionId})`);
 }
 
 } catch (err) {

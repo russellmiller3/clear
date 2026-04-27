@@ -413,8 +413,13 @@ when user requests data from /api/secret:
 		};
 		_setWfpApiForTest(fake);
 		try {
-			const { port, cookie, close } = await startStudio();
+			const { port, cookie, close, store } = await startStudio();
 			try {
+				await store.markAppDeployed({
+					tenantSlug: 'clear-acme', appSlug: 'clear-acme-x',
+					scriptName: 'clear-acme-x', d1_database_id: 'd1-x',
+					hostname: 'clear-acme-x.buildclear.dev', secretKeys: [],
+				});
 				const r = await req(port, '/api/rollback', {
 					method: 'POST', headers: { Cookie: cookie },
 					body: { appName: 'clear-acme-x', version: 'version-42' },
@@ -423,6 +428,62 @@ when user requests data from /api/secret:
 				expect(r.body.ok).toBe(true);
 				expect(rollbackCall.scriptName).toBe('clear-acme-x');
 				expect(rollbackCall.versionId).toBe('version-42');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/rollback - Cloudflare short slug records a rollback timeline event', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		let rollbackCall = null;
+		const cfVersions = [
+			{ id: 'v-2', created_on: '2026-04-23T12:00:00Z', metadata: { sourceHash: 'h2' } },
+			{ id: 'v-1', created_on: '2026-04-23T10:00:00Z', metadata: { sourceHash: 'h1' } },
+		];
+		const fake = {
+			rollbackToVersion: async (p) => { rollbackCall = p; return { ok: true }; },
+			listVersions: async (p) => {
+				expect(p.scriptName).toBe('worker-hello');
+				return { ok: true, versions: cfVersions };
+			},
+		};
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close, store } = await startStudio();
+			try {
+				await store.markAppDeployed({
+					tenantSlug: 'clear-acme', appSlug: 'hello',
+					scriptName: 'worker-hello', d1_database_id: 'd1-hello',
+					hostname: 'hello.buildclear.dev', secretKeys: [],
+				});
+
+				const rollback = await req(port, '/api/rollback', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { appName: 'hello', version: 'v-1' },
+				});
+				expect(rollback.status).toBe(200);
+				expect(rollback.body.ok).toBe(true);
+				expect(rollbackCall.scriptName).toBe('worker-hello');
+				expect(rollbackCall.versionId).toBe('v-1');
+
+				const record = await store.getAppRecord('clear-acme', 'hello');
+				expect(record.versions.length).toBe(1);
+				expect(record.versions[0].versionId).toBe('v-1');
+				expect(record.versions[0].via).toBe('publish-modal-rollback');
+				expect(record.versions[0].note).toBe('Rolled back to v-1');
+
+				const history = await req(port, '/api/deploy-history/hello', {
+					method: 'GET', headers: { Cookie: cookie },
+				});
+				expect(history.status).toBe(200);
+				expect(history.body.ok).toBe(true);
+				expect(history.body.source).toBe('cloudflare+store');
+				expect(history.body.versions.length).toBe(3);
+				expect(history.body.versions[0].via).toBe('publish-modal-rollback');
+				const v1Entries = history.body.versions.filter(v => (v.id || v.versionId) === 'v-1');
+				expect(v1Entries.length).toBe(2);
 			} finally { await close(); }
 		} finally {
 			delete process.env.CLEAR_DEPLOY_TARGET;

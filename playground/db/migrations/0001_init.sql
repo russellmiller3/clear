@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS clear_cloud.cf_deploys (
   script_name       text        NOT NULL,
   d1_database_id    text,
   hostname          text,
+  last_bundle       jsonb,
   deployed_at       timestamptz NOT NULL DEFAULT now(),
   UNIQUE (tenant_slug, app_slug)
 );

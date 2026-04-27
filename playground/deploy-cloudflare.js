@@ -27,7 +27,7 @@
 import { randomUUID, createHash } from 'crypto';
 
 import { compileProgram } from '../index.js';
-import { packageCloudflareBundle } from '../lib/packaging-cloudflare.js';
+import { prepareCloudflareWorkerBundle } from '../lib/packaging-cloudflare.js';
 
 // ──────────────────────────────────────────────────────────────────────
 // LAE Phase B / one-click-updates — helpers for the incremental-update path
@@ -82,6 +82,23 @@ function _hashMigrations(bundle) {
 		h.update('\x00');
 	}
 	return h.digest('hex');
+}
+
+function _resolveLiveEditBaseUrl(explicitUrl, env = process.env) {
+	return explicitUrl
+		|| env.CLEAR_LIVE_EDIT_BASE_URL
+		|| env.CLEAR_STUDIO_BASE_URL
+		|| env.STUDIO_BASE_URL
+		|| '';
+}
+
+function _withLiveEditBaseUrlSecret(secrets, liveEditBaseUrl, env = process.env) {
+	const merged = { ...(secrets || {}) };
+	if (!Object.prototype.hasOwnProperty.call(merged, 'CLEAR_LIVE_EDIT_BASE_URL')) {
+		const resolved = _resolveLiveEditBaseUrl(liveEditBaseUrl, env);
+		if (resolved) merged.CLEAR_LIVE_EDIT_BASE_URL = resolved;
+	}
+	return merged;
 }
 
 /**
@@ -298,6 +315,8 @@ export async function deploySource({
 	lastRecord = null,
 	via,
 	confirmMigration,
+	liveEditBaseUrl,
+	liveEditEnv,
 }) {
 	// 0. Idempotency lock — covers both deploy and update modes.
 	const lockKey = `${tenantSlug}:${appSlug}`;
@@ -328,6 +347,8 @@ export async function deploySource({
 				lastRecord, via, jobId,
 				knowledgeBase, knowledgeCache,
 				confirmMigration,
+				liveEditBaseUrl,
+				liveEditEnv,
 			});
 		} finally {
 			_lockManager.release(lockKey);
@@ -349,6 +370,7 @@ export async function deploySource({
 			return { ok: false, stage: 'compile', jobId, errors: compiled.errors };
 		}
 		const astBody = compiled.ast?.body || [];
+		const deploySecrets = _withLiveEditBaseUrlSecret(secrets, liveEditBaseUrl, liveEditEnv);
 
 		// 2. Provision D1 (only if the app has tables — otherwise no DB needed).
 		let d1_database_id = null;
@@ -360,6 +382,7 @@ export async function deploySource({
 		}
 
 		// 3. Apply migrations.
+		const workerBundle = prepareCloudflareWorkerBundle(compiled, { appName: appSlug, tenantSlug, appSlug });
 		const migrations = compiled.workerBundle?.['migrations/001-init.sql'] || '';
 		if (d1_database_id && migrations) {
 			try {
@@ -372,7 +395,7 @@ export async function deploySource({
 
 		// 4. Upload script.
 		const bindings = _deriveBindings(astBody, d1_database_id);
-		const bundle = { ...(compiled.workerBundle || {}) };
+		const bundle = { ...workerBundle };
 		// The migrations file is for step 3 — never upload it as a module.
 		delete bundle['migrations/001-init.sql'];
 		// wrangler.toml is not a module either — CF reads metadata from the
@@ -394,8 +417,8 @@ export async function deploySource({
 		}
 
 		// 5. Set secrets.
-		if (secrets && Object.keys(secrets).length > 0) {
-			const setR = await api.setSecrets({ scriptName, secrets });
+		if (deploySecrets && Object.keys(deploySecrets).length > 0) {
+			const setR = await api.setSecrets({ scriptName, secrets: deploySecrets });
 			if (!setR.ok) {
 				await _rollback(state, { api, deleteD1, scriptName });
 				return {
@@ -429,7 +452,8 @@ export async function deploySource({
 				versionId: null,
 				sourceHash: null,
 				migrationsHash: null,
-				secretKeys: Object.keys(secrets || {}),
+				secretKeys: Object.keys(deploySecrets || {}),
+				lastBundle: compiled.workerBundle || {},
 			});
 		} catch (e) {
 			// No rollback — the app IS live. Reconcile picks up the orphan.
@@ -479,6 +503,8 @@ async function _deployUpdate({
 	lastRecord, via, jobId,
 	knowledgeBase, knowledgeCache,
 	confirmMigration,
+	liveEditBaseUrl,
+	liveEditEnv,
 }) {
 	// 1. Compile.
 	const compileOpts = { target: 'cloudflare' };
@@ -488,6 +514,7 @@ async function _deployUpdate({
 	if (compiled.errors && compiled.errors.length) {
 		return { ok: false, stage: 'compile', jobId, errors: compiled.errors, mode: 'update' };
 	}
+	const deploySecrets = _withLiveEditBaseUrlSecret(secrets, liveEditBaseUrl, liveEditEnv);
 
 	// 1b. Migration safety gate (Phase 3 Cycle 3.2). If the new compile changed
 	// any migrations/* file vs the bundle stored on lastRecord, refuse to upload
@@ -496,6 +523,7 @@ async function _deployUpdate({
 	// half-applied migration mid-update can wedge a live D1.
 	const oldBundleForGate = (lastRecord && lastRecord.lastBundle) || null;
 	const newBundleForGate = compiled.workerBundle || {};
+	const workerBundle = prepareCloudflareWorkerBundle(compiled, { appName: appSlug, tenantSlug, appSlug });
 	const schemaChanged = oldBundleForGate && migrationsDiffer(oldBundleForGate, newBundleForGate);
 	if (schemaChanged && confirmMigration !== true) {
 		return {
@@ -534,7 +562,7 @@ async function _deployUpdate({
 
 	// 2. Filter secrets — only set keys that aren't already on the record.
 	const existingKeys = new Set((lastRecord && Array.isArray(lastRecord.secretKeys)) ? lastRecord.secretKeys : []);
-	const newSecretEntries = Object.entries(secrets || {}).filter(([k]) => !existingKeys.has(k));
+	const newSecretEntries = Object.entries(deploySecrets || {}).filter(([k]) => !existingKeys.has(k));
 	const newSecrets = Object.fromEntries(newSecretEntries);
 	const newKeys = Object.keys(newSecrets);
 
@@ -552,7 +580,7 @@ async function _deployUpdate({
 	}
 
 	// 4. Upload script — upsert. CF creates a new version automatically.
-	const bundle = { ...(compiled.workerBundle || {}) };
+	const bundle = { ...workerBundle };
 	delete bundle['migrations/001-init.sql'];
 	delete bundle['wrangler.toml'];
 	const astBody = compiled.ast?.body || [];
@@ -585,7 +613,8 @@ async function _deployUpdate({
 			tenantSlug, appSlug, versionId,
 			uploadedAt,
 			sourceHash: _hashSource(source),
-			migrationsHash: _hashMigrations(bundle),
+			migrationsHash: _hashMigrations(newBundleForGate),
+			lastBundle: newBundleForGate,
 			...(via ? { via } : {}),
 		});
 	} catch (e) {

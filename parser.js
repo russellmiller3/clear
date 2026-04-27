@@ -559,7 +559,7 @@ function autoLabelFromName(name) {
     .join(' ');
 }
 
-function askForNode(variable, inputType, label, line) {
+function askForNode(variable, inputType, label, line, choices) {
   const baseType = inputType;
   let htmlType = 'text';
   let tag = 'input';
@@ -577,7 +577,12 @@ function askForNode(variable, inputType, label, line) {
     label: label || autoLabelFromName(variable),
   };
 
-  return { type: NodeType.ASK_FOR, variable, inputType, label, line, ui };
+  const node = { type: NodeType.ASK_FOR, variable, inputType, label, line, ui };
+  if (choices) {
+    node.choices = choices;
+    node.ui.choices = choices;
+  }
+  return node;
 }
 
 function displayNode(expression, format, label, line) {
@@ -2995,10 +3000,11 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
     see: 'view', read: 'view', get: 'view', list: 'view',
     remove: 'delete',
     edit: 'update', change: 'update', modify: 'update',
+    approved: 'approve',
     find: 'search',
   };
   const canonicalAction = TEST_VERB_ALIAS[action] || action;
-  if (!['create', 'view', 'delete', 'update', 'search'].includes(canonicalAction)) return undefined;
+  if (!['create', 'view', 'delete', 'update', 'search', 'approve'].includes(canonicalAction)) return undefined;
   let pos = 3;
   // skip articles: a, an, the, new
   while (pos < ctx.tokens.length && ['a', 'an', 'the', 'new', 'all'].includes(ctx.tokens[pos].value)) pos++;
@@ -5457,7 +5463,8 @@ function isInputType(token) {
 // 'Label' is a text input that saves to var
 function parseLabelIsInput(tokens, line) {
   const label = tokens[0].value;
-  let pos = 3; // skip label + "is" + "a"/"the"
+  let pos = 2; // skip label + "is"
+  if (pos < tokens.length && (tokens[pos].canonical === 'a' || tokens[pos].canonical === 'the')) pos++;
 
   if (pos >= tokens.length || !isInputType(tokens[pos])) return null;
 
@@ -5474,21 +5481,6 @@ function parseLabelIsInput(tokens, line) {
 
   let variable = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-  // Skip optional "that" before "saves to"
-  if (pos < tokens.length && tokens[pos].type === TokenType.IDENTIFIER && tokens[pos].value === 'that') {
-    pos++;
-  }
-
-  // Optional: saves to <variable>
-  if (pos < tokens.length && tokens[pos].canonical === 'saves_to') {
-    pos++;
-    // Skip optional article: "saved as a todo", "saved as an item"
-    if (pos < tokens.length && (tokens[pos].canonical === 'a' || tokens[pos].canonical === 'the')) pos++;
-    if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
-      variable = tokens[pos].value;
-    }
-  }
-
   // Dropdown choices: 'Color' is a dropdown with ['Red', 'Green']
   let choices = null;
   if (inputType === 'choice') {
@@ -5504,6 +5496,19 @@ function parseLabelIsInput(tokens, line) {
         break;
       }
     }
+  }
+
+  // Optional: saves to <variable>. It can appear before or after dropdown choices.
+  for (let k = pos; k < tokens.length; k++) {
+    if (tokens[k].canonical !== 'saves_to') continue;
+    let variablePos = k + 1;
+    if (variablePos < tokens.length && (tokens[variablePos].canonical === 'a' || tokens[variablePos].canonical === 'an' || tokens[variablePos].canonical === 'the')) {
+      variablePos++;
+    }
+    if (variablePos < tokens.length && (tokens[variablePos].type === TokenType.IDENTIFIER || tokens[variablePos].type === TokenType.KEYWORD)) {
+      variable = tokens[variablePos].value;
+    }
+    break;
   }
 
   return { node: askForNode(variable, inputType, label, line, choices) };
