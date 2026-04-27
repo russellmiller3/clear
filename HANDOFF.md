@@ -1,5 +1,8 @@
 # Handoff — 2026-04-26 (Phase 2 sidebar nav committed, ready to merge)
 
+> **Fresh AFK handoff is at the bottom of this file. Read that section first.**
+> The older section below is stale: shell phases 2-7 are already merged and pushed to `main`.
+
 ## Where you are when you sit down
 
 You're on **`feature/shell-upgrade-phase-2`** — Codex built Phase 2 (sidebar nav with counts, icons, route-based active state) overnight. I reviewed it, it was ship-quality, I committed it (`b554007`) and pushed the branch to remote. **Not yet merged to main** — Russell decides whether to ship it via `/ship` or merge manually.
@@ -179,3 +182,167 @@ Roll these into a single follow-up session — they're all the same epic (traini
 | `snapshots/winner-rankings-04-26-2026.txt` | The cleanest 564 passing builds ranked by exemplariness |
 | `plans/plan-give-claude-canonical-form-04-26-2026.md` | The plan for the doc cascade + template migration that's still pending |
 | `plans/plan-decidable-core-04-24-2026.md` | The original termination-safety plan (Path A is shipped; Path B reverted) |
+# Handoff - 2026-04-26 night run prep
+
+## Read this first
+
+Russell is going AFK. The goal is **finish as much WIP as possible without creating new sprawl**.
+
+Stay focused:
+- Work in parallel by default.
+- Keep workers busy when independent work exists.
+- Do code changes in the main conversation when visibility matters.
+- Use workers for read-only research, test triage, and disjoint implementation slices.
+- Before spawning against any plan, read the plan in this session and quote its phase order in the worker brief.
+- At every phase boundary, say what shipped, why it matters, and what is next.
+
+Current repo state:
+- Branch: `main`.
+- Remote: `origin/main` is synced with local `main`.
+- Latest pushed commit: `ff85f58 fix(curriculum): keep detail panel skeleton compilable`.
+- Only known dirty files should be local runtime DB files: `playground/factor-db.sqlite*`.
+- Do **not** stage or revert those DB files unless the task explicitly decides to preserve/checkpoint Factor DB state.
+
+What shipped today:
+- Shell upgrade phases 2-7 are merged and pushed to `main`.
+- Deal Desk now requires auth for customer submit and approve flows.
+- Field rename/data carryover is hardened across runtime stores.
+- Live app editing for cloud apps now has widget bridge, deploy history, update, schema-confirm, and rollback coverage.
+- Support Triage ticket intake no longer depends on an Anthropic key.
+- The broken detail-panel curriculum skeleton now compiles.
+- Cloud Studio plan exists at `plans/plan-cloud-studio-04-26-2026.md`.
+- `AGENTS.md` has fresh rules for active worker management, staying focused, and plain-English ADHD-friendly updates.
+
+Verification already run:
+- `node clear.test.js` passed: 2671/0.
+- `node playground/e2e.test.js` passed: 75/75.
+- Cross-target smoke passed: 32 app-target emissions parse clean.
+- `playground/supervisor/chrome-checks.test.js` passed: 5/0.
+- Six Marcus app UAT tests were run; Support Triage failed, was fixed, then passed 13/13.
+- `git push origin main` passed all hooks and pushed successfully.
+
+## Big picture
+
+The app shell work is no longer the blocker. Clear apps now look and behave much closer to real internal tools.
+
+The next overnight objective is **customer-readiness and flywheel integrity**:
+- Customer-readiness means Deal Desk can survive Marcus's first ten minutes.
+- Flywheel integrity means passing Meph work actually writes training signal.
+- Avoid starting brand-new product epics unless they close one of those two loops.
+
+## Recommended overnight order
+
+### 1. Deal Desk deep UAT - highest priority
+
+Goal: prove the Marcus demo path works like a customer would use it.
+
+Run the UAT checklist below against `apps/deal-desk/main.clear`.
+
+Focus areas:
+- Build, test, run, and browser console.
+- Signup/login/JWT protected pages.
+- Create/view/edit/delete deal records where supported.
+- Approve flow changes the pending queue.
+- Responsive sanity at mobile width.
+- No visible `undefined`, broken layout, or console red errors.
+- Live edit owner/non-owner visibility if the local/cloud harness can exercise it safely.
+
+If anything fails:
+- Write the failing test first.
+- Fix it.
+- Rerun the app test and the narrow regression.
+- Commit the fix.
+
+Do not stop at compile success. Verify visible behavior.
+
+### 2. Sweep training signal integrity - second priority
+
+Goal: make the flywheel record wins again before any expensive sweep.
+
+The handoff below lists the three-fer:
+1. Training DB write hole.
+2. Worker-death detection.
+3. Per-level timeout stats.
+
+Current best order:
+- First prove whether successful local-AI endpoint calls write a `test_pass=1` row.
+- Compare `playground/meph-tools.js` and `playground/ghost-meph/mcp-server/tools.js`.
+- Add a runtime guard/test that fails if a successful HTTP call records nothing.
+- Then fix worker death handling.
+- Then add per-level timeout stats.
+
+Cost rule:
+- Do not run paid Anthropic sweeps blindly while Russell is AFK.
+- Run local/unit tests and no-spend harness tests freely.
+- Before any Anthropic-spending operation, estimate cost and post it.
+- If the estimate crosses the session spend gate, stop and wait.
+
+### 3. Give-Claude doc cascade and template migration
+
+Goal: make Meph and docs teach the new canonical AI-call form.
+
+Plan:
+- Read `plans/plan-give-claude-canonical-form-04-26-2026.md`.
+- Red-team the plan before editing.
+- Then update docs/templates/system prompt in small chunks.
+- Run compile/tests after each meaningful migration slice.
+
+This is useful, but it comes after Deal Desk UAT and sweep signal integrity.
+
+### 4. Canonical examples curation support
+
+Goal: prepare the examples so Russell can make fast taste decisions later.
+
+Do not silently rewrite the whole examples library.
+
+Useful AFK work:
+- Inspect `playground/canonical-examples.md`.
+- Group candidates by archetype.
+- Flag weak examples, duplicates, and gaps.
+- Propose a short ranked curation list.
+
+### 5. Cloud Studio stays after-launch
+
+Cloud Studio is planned, not the overnight build target.
+
+Use `plans/plan-cloud-studio-04-26-2026.md` only for red-team or follow-up planning unless the customer-readiness and flywheel work are done.
+
+## Overnight operating instructions
+
+Use the N-1 pattern:
+- If there are N independent chunks, assign N-1 workers and keep the most integration-sensitive chunk local.
+- Workers should not sit idle.
+- Give workers narrow briefs and disjoint write scopes.
+- Verify every worker change in the main thread before commit.
+
+Suggested parallel split after initial Deal Desk UAT starts:
+- Main thread: run and fix Deal Desk UAT.
+- Worker A: read sweep write paths and identify exact missing training-write branch.
+- Worker B: inspect worker-death handling and propose/patch disjoint harness fix.
+- Worker C: inspect give-claude plan/docs and return a migration map only.
+
+Commit policy:
+- Commit each tested repair.
+- Push after meaningful green checkpoints.
+- Never stage `playground/factor-db.sqlite*` unless deliberately checkpointing the training DB.
+
+Stop conditions:
+- Destructive filesystem/git action.
+- Paid API run above the allowed spend gate.
+- Production credential or account-console work Russell must do.
+- Ambiguous product choice with no safe default.
+
+## Plain-English status for Russell
+
+What got done:
+- The visual shell work is landed.
+- Live editing is much safer.
+- Deal Desk and Support Triage have fewer demo-killing holes.
+- The repo is pushed and recoverable.
+
+What is next:
+- First prove Deal Desk end-to-end.
+- Then fix the flywheel so wins write training data.
+- Then clean up Meph/docs so future app generation uses the new syntax.
+
+---
