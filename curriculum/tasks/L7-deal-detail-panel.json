@@ -3,7 +3,7 @@
   "level": 7,
   "title": "Deal Queue With Detail Panel",
   "description": "ARCHETYPE: queue_workflow. Build a web app page at '/deals' with an app shell, a selectable deals table, and a right detail panel. The detail panel MUST use the canonical `detail panel for selected_deal:` syntax and MUST include customer text, a dollars display called 'Value', status text, and an `actions:` bar with Reject, Counter, and Approve buttons.",
-  "skeleton": "build for web and javascript backend\n\n# Build one deal review page with app_layout, app_sidebar, app_main, app_content, a deals table, and a detail panel.\n# Use the exact canonical detail-panel shape below, wired to the selected row name.\n\npage 'Deal Review' at '/deals':\n  selected_deal is nothing\n  deals is [\n    create deal:\n      customer is 'Acme'\n      amount = 125000\n      status is 'pending'\n  ]\n\n  # App shell, table, and detail panel here\n",
+  "skeleton": "build for web and javascript backend\n\n# Build one deal review page with app_layout, app_sidebar, app_main, app_content, a deals table, and a detail panel.\n# Use the exact canonical detail-panel shape below, wired to the selected row name.\n\npage 'Deal Review' at '/deals':\n  selected_deal is nothing\n  deals is an empty list\n\n  # App shell, table, and detail panel here\n",
   "steps": [
     { "id": "page", "name": "Deal page at /deals", "sourceMatches": ["page\\s+['\"]Deal Review['\"]\\s+at\\s+['\"]/deals['\"]"] },
     { "id": "shell", "name": "Uses app shell presets", "sourceMatches": ["style\\s+app_layout", "style\\s+app_sidebar", "style\\s+app_main", "style\\s+app_content"] },
