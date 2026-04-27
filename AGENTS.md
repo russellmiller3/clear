@@ -16,6 +16,8 @@
 
 - Always do work on a branch. Never edit, stage, or commit feature/fix/doc work directly on `main`.
 - Before starting work from `main`, create a focused branch such as `feature/<name>`, `fix/<name>`, or `docs/<name>`.
+- Use one branch per epic. Do not create branch-per-phase, branch-per-worker, or branch-per-agent clutter for the same epic.
+- Workers on the same epic should share the epic branch or work in temporary worktrees that are merged back and deleted promptly.
 - Merge back to `main` only after the branch is tested, committed, and ready to ship.
 
 ## Worker Management
