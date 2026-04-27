@@ -70,7 +70,6 @@ when user requests data from /api/tickets/open:
 when user sends ticket to /api/tickets:
   validate ticket:
     subject is text, required, min 1, max 300
-  classification = call 'Triage' with ticket
   new_ticket = save ticket as new Ticket
   send back new_ticket with success message
 

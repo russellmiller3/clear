@@ -9,6 +9,7 @@
 
 
 
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <link rel="preconnect" href="https://rsms.me/" crossorigin>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
@@ -98,42 +99,284 @@ body {
   --border: 1px; --depth: 0; --noise: 0;
 }
 
-.clear-section { padding: 1.5rem; }
-.clear-section-card {
-  margin-bottom: 2rem;
-  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
-  border-radius: 0.75rem; padding: 1.5rem;
+.clear-nav-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clear-ink-subtle);
+  padding: 0 13px;
+  margin: 18px 0 6px;
+}
+.clear-nav-item {
+  position: relative;
+  min-height: 34px;
+  padding: 7px 10px 7px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--clear-ink-soft);
+  font-weight: 500;
+  transition: background-color 100ms ease, color 100ms ease;
+  cursor: pointer;
+}
+.clear-nav-item:hover {
+  background: var(--clear-bg-row-hover);
+  color: var(--clear-ink);
+}
+.clear-nav-item svg,
+.clear-nav-item i {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.clear-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clear-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--clear-ink-muted);
+  background: var(--clear-bg-chip);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-variant-numeric: tabular-nums;
+}
+.clear-nav-item.is-active,
+.clear-nav-item.active {
+  background: var(--clear-bg-active);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active .clear-nav-count,
+.clear-nav-item.active .clear-nav-count {
+  background: rgba(79,70,229,.10);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active::before,
+.clear-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--clear-accent);
 }
 
+.clear-page-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-page-title {
+  color: var(--clear-ink);
+  line-height: 1.2;
+}
+.clear-page-subtitle {
+  line-height: 1.45;
+}
+.clear-page-actions .btn {
+  min-height: 34px;
+  height: 34px;
+}
 
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: var(--clear-bg-panel);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+}
+.clear-stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.clear-stat-label {
+  color: var(--clear-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.clear-stat-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--clear-ink-muted);
+  flex: 0 0 auto;
+}
+.clear-stat-value {
+  margin-top: 10px;
+  color: var(--clear-ink);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.clear-stat-delta {
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.clear-stat-delta-positive {
+  color: #15803d;
+}
+.clear-stat-delta-negative {
+  color: #b42318;
+}
+.clear-stat-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 10px;
+  overflow: visible;
+}
+.clear-stat-sparkline polyline {
+  fill: none;
+  stroke: var(--clear-accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
-/* --- Inline Layout --- */
-.section-header { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }</style>
+.clear-detail-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}
+.clear-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+.clear-detail-empty {
+  display: none;
+  padding: 18px;
+  color: var(--clear-ink-muted);
+  font-size: 13px;
+}
+.clear-detail-panel.is-empty .clear-detail-empty {
+  display: block;
+}
+.clear-detail-panel.is-empty .clear-detail-body,
+.clear-detail-panel.is-empty .clear-detail-actions {
+  opacity: .42;
+}
+.clear-detail-title {
+  margin-bottom: 6px;
+}
+.clear-detail-subtitle {
+  margin-bottom: 14px;
+}
+.clear-detail-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}</style>
 </head>
 <body class="min-h-screen bg-base-100">
-  <main id="app" class="max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6">
-    <div class="section-header" data-clear-line="106">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="107">Support Triage</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-tpl="{total} open tickets" data-clear-line="109">{total} open tickets</p>
+  <main id="app" class="">
+    <div class="flex min-h-screen" data-clear-line="121">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="122">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="123"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">S</div><span class="text-base font-bold text-base-content tracking-tight">Support Triage</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="125"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Open tickets</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+        <li class="clear-nav-section-label">Triage</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="127"><i data-lucide="tags" aria-hidden="true"></i><span class="clear-nav-label">Categories</span><span class="clear-nav-count num" data-clear-tpl="{category_count}">{category_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="128"><i data-lucide="flame" aria-hidden="true"></i><span class="clear-nav-label">Priorities</span><span class="clear-nav-count num" data-clear-tpl="{priority_count}">{priority_count}</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="130">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="131">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="132">Support Triage</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="133">Customer ops / AI routing</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="135">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="136">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Open support queue</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{total} tickets waiting for triage</p>
+      </div>
+      <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-line="139">Refresh</button>
+      </div>
     </div>
-    <div class="bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4" data-clear-line="111">
-    <fieldset class="fieldset" data-clear-line="112">
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="142">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="143">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Open Tickets</div>
+          <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{total}">{total}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Waiting for owner pickup</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,17.3 48.0,4.0 71.0,10.7 94.0,17.3"></polyline></svg>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="148">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Categories</div>
+          <i class="clear-stat-icon" data-lucide="tags" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{category_count}">{category_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Billing to general</div>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="152">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Priority Levels</div>
+          <i class="clear-stat-icon" data-lucide="flame" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{priority_count}">{priority_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Urgent through low</div>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="157">
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="158">Submit ticket</p>
+    <fieldset class="fieldset mb-4" data-clear-line="159">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Subject</legend>
       <input id="input_subject" class="input input-bordered w-full" type="text" placeholder="Subject">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="113">
+    <fieldset class="fieldset mb-4" data-clear-line="160">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Body</legend>
       <input id="input_body" class="input input-bordered w-full" type="text" placeholder="Body">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="114">
+    <fieldset class="fieldset mb-4" data-clear-line="161">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your email</legend>
       <input id="input_from_email" class="input input-bordered w-full" type="text" placeholder="Your email">
     </fieldset>
-    <button class="btn btn-primary w-full" id="btn_Submit_ticket" data-clear-line="115">Submit ticket</button>
+    <button class="btn btn-primary" id="btn_Submit_ticket" data-clear-line="162">Submit ticket</button>
     </div>
-    <div class="clear-section bg-base-200 rounded-box p-6 mb-6" data-clear-line="121">
-      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Open Tickets</h2>
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Tickets" data-clear-line="122">
+    <div class="grid grid-cols-2 gap-5" data-clear-line="169">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="170">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Tickets" data-clear-line="171">
       <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">Tickets</h3>
       </div>
@@ -145,6 +388,25 @@ body {
       </div>
     </div>
     </div>
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_ticket" data-clear-line="173">
+      <div class="clear-detail-empty">Select a row to inspect it.</div>
+      <div class="clear-detail-body">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="174">Select a ticket to inspect the triage decision.</span>
+    <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_3" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+      </div>
+      <div class="clear-detail-actions" data-detail-actions="true">
+    <button class="btn btn-primary" id="btn_Escalate" data-action="escalate" data-clear-line="180">Escalate</button>
+    <button class="btn btn-primary" id="btn_Assign" data-action="assign" data-clear-line="181">Assign</button>
+    <button class="btn btn-ghost" id="btn_Close" data-action="close" data-clear-line="182">Close</button>
+      </div>
+    </aside>
+    </div>
+    </div>
+    </main>
+    </div>
   </main>
 
   <!-- ┌─────────────────────────────────────────────┐
@@ -152,31 +414,20 @@ body {
  └─────────────────────────────────────────────┘
 
  TABLES:
-   Tickets: subject*, body, from_email, category, priority, status, assigned_to, created_at_date (line 26)
+   Tickets: subject*, body, from_email, category, priority, status, assigned_to, created_at_date (line 38)
 
  ENDPOINTS:
-   GET /api/tickets (line 52)
-   GET /api/tickets/open (line 55)
-   POST /api/tickets (line 58)
-   PUT /api/tickets/:id [auth] (line 65)
-   POST /api/seed (line 72)
+   GET /api/tickets (line 64)
+   GET /api/tickets/open (line 67)
+   POST /api/tickets (line 70)
+   PUT /api/tickets/:id [auth] (line 76)
+   POST /api/seed (line 83)
 
  PAGES:
-   'Support Triage' at / (line 101)
+   'Support Triage' at / (line 112)
 
  AGENTS:
-   'Triage' [streaming] (line 40)
-
- AGENT FLOW:
-
-   POST /api/tickets
-     │
-     v
-   Triage
-     │
-     v
-   Response
-
+   'Triage' [streaming] (line 52)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -212,6 +463,7 @@ function _toast(msg, type) {
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
+  tableEl._clear_rows = Array.isArray(data) ? data : [];
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
   if (!Array.isArray(data) || data.length === 0) {
@@ -222,7 +474,7 @@ function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (thead) thead.innerHTML = renderHead(data);
   var VIRT_THRESHOLD = 100;
   if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(renderRow).join('');
+    tbody.innerHTML = data.map(function(row, idx) { return renderRow(row, idx); }).join('');
     return;
   }
   var ROW_HEIGHT = 40;
@@ -250,6 +502,62 @@ function _clear_render_table(tableEl, data, renderHead, renderRow) {
   }
   paint();
 }
+function _clear_cell(key, val) {
+  var k = String(key).toLowerCase();
+  var v = val == null ? '' : String(val);
+  if (k === 'status' || k === 'state' || k === 'stage') {
+    var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+  }
+  if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\$/.test(v)) {
+    var formatted = v;
+    if (typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(v)) {
+      var n = Number(val);
+      formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+    }
+    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+  }
+  if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
+    var parts = v.trim().split(/[\s@.]+/).filter(Boolean);
+    var initials = parts.length >= 2
+      ? (parts[0][0] || '') + (parts[1][0] || '')
+      : v.slice(0, 2);
+    initials = initials.toUpperCase();
+    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+  }
+  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+}
+function _clear_table_init(tableEl, selectedVar) {
+  if (!tableEl) return;
+  if (selectedVar) tableEl._clear_selected_var = selectedVar;
+  if (tableEl._clear_init) return;
+  tableEl._clear_init = true;
+  tableEl.addEventListener('click', function(e) {
+    var th = e.target.closest('th[data-sortable]');
+    if (th) {
+      var col = th.getAttribute('data-sortable');
+      var prev = tableEl.getAttribute('data-sort-col');
+      var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
+      tableEl.setAttribute('data-sort-col', col);
+      tableEl.setAttribute('data-sort-dir', dir);
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      th.classList.add('is-sorted');
+      return;
+    }
+    var tr = e.target.closest('tbody tr');
+    if (tr && !e.target.closest('button') && !e.target.closest('a')) {
+      tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
+      tr.classList.toggle('is-selected');
+      var rowIndex = Number(tr.getAttribute('data-row-index'));
+      var row = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows[rowIndex] : null;
+      var selectedName = tableEl._clear_selected_var;
+      if (selectedName && typeof _state === 'object') {
+        _state[selectedName] = tr.classList.contains('is-selected') ? row : null;
+        if (typeof _recompute === 'function') _recompute();
+      }
+    }
+  });
+}
 document.title = "Support Triage";
 
 // --- State ---
@@ -259,34 +567,37 @@ let _state = {
   subject: "",
   body: "",
   from_email: "",
-  tickets: null
+  tickets: null,
+  category_count: 6,
+  priority_count: 4,
+  selected_ticket: null
 };
 
 // --- Recompute derived values and update displays ---
 function _recompute() {
-  // clear:22
+  // clear:34
   // Database: local memory (JSON file backup)
-  // clear:108
+  // clear:117
   let total = _clear_len(_state.tickets);
+  // clear:175
+  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_ticket?.subject; }
+  // clear:176
+  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_ticket?.category; }
+  // clear:177
+  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_ticket?.priority; }
+  // clear:178
+  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_ticket?.from_email; }
   _clear_render_table(
     document.getElementById('output_Tickets_table'),
     _state.tickets,
-    function(d) { var _keys = ["subject","category","priority","from_email"]; return _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join(''); },
-    function(row) { var _keys = ["subject","category","priority","from_email"]; return '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>'; }
+    function(d) { var _keys = ["subject","category","priority","from_email"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["subject","category","priority","from_email"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k) { return _clear_cell(k, row[k]); }).join('') + '</tr>'; }
   );
+  _clear_table_init(document.getElementById('output_Tickets_table'), 'selected_ticket');
   document.getElementById('input_subject').value = _state.subject;
   document.getElementById('input_body').value = _state.body;
   document.getElementById('input_from_email').value = _state.from_email;
-  // Substitute {varname} in text templates
-  const _tplCtx = Object.assign({}, _state || {});
-  if (typeof total !== 'undefined') _tplCtx["total"] = total;
-  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
-    const _tpl = _el.getAttribute('data-clear-tpl');
-    _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
-      const _val = _tplCtx[_v];
-      return (_val == null) ? '' : String(_val);
-    });
-  });
+  { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="selected_ticket"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.selected_ticket); }
 }
 
 // --- Input listeners ---
@@ -304,6 +615,18 @@ document.getElementById('input_from_email').addEventListener('input', function(e
 });
 
 // --- Button handlers ---
+document.getElementById('btn_Refresh').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Refresh');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:140]', e.message); return _state.tickets; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
 document.getElementById('btn_Submit_ticket').addEventListener('click', async function() {
     if (_state.subject === '' || _state.subject == null) { _toast('subject is required', 'error'); return; }
     if (_state.body === '' || _state.body == null) { _toast('body is required', 'error'); return; }
@@ -314,10 +637,11 @@ document.getElementById('btn_Submit_ticket').addEventListener('click', async fun
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/tickets", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject: _state.subject, body: _state.body, from_email: _state.from_email }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/tickets] [clear:116]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:117]', e.message); return _state.tickets; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/tickets] [clear:163]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:164]', e.message); return _state.tickets; });
     _state.subject = "";
     _state.body = "";
+    _state.from_email = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -329,13 +653,43 @@ _recompute(); // initial render with default state
 (async () => {
   try {
     { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:103]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:104]', e.message); return _state.tickets; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:114]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:115]', e.message); return _state.tickets; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
 
+if (window.lucide && lucide.createIcons) lucide.createIcons();
 
+
+  </script>
+  <script>
+  (function _initClearNav() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\/$/, '');
+      return raw || '/';
+    }
+    function currentPath() {
+      return normalize(location.pathname || '/');
+    }
+    function syncActiveNav() {
+      var current = currentPath();
+      document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+        var target = normalize(el.getAttribute('data-nav-path') || el.getAttribute('href') || '');
+        var active = target === current;
+        el.classList.toggle('is-active', active);
+        el.classList.toggle('active', active);
+      });
+    }
+    document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        setTimeout(syncActiveNav, 0);
+      });
+    });
+    window.addEventListener('popstate', syncActiveNav);
+    window.addEventListener('hashchange', syncActiveNav);
+    syncActiveNav();
+  })();
   </script>
 
   <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
