@@ -8594,7 +8594,21 @@ ${pad}}`;
         const bodyCode = compileBody(node.body, ctx);
         return `${pad}def ${sanitizeName(node.name)}(${params}):\n${bodyCode}`;
       }
-      // JS: compile component as a function that returns HTML string
+      // JS: compile component as a function that returns HTML string.
+      //
+      // Children are compiled via the same buildHTML walker that pages use —
+      // so any UI primitive that works in a page (nav-section, nav-item,
+      // page-header, stat-strip, stat-card, tab-strip, sections with style,
+      // tables, charts, detail panels) works inside a component too. CONTENT
+      // and SHOW nodes still use the existing inline path so dynamic values
+      // (`show user_var`) interpolate correctly.
+      //
+      // Russell, 2026-04-28: previous behavior silently dropped any child
+      // type compileNode returned null for (NAV_SECTION etc.) — so the
+      // compiled DealDeskSidebar() returned only its heading, not its nav.
+      // Caught visually via preview_snapshot. Fix: call buildHTML on a
+      // single-node fragment to get the static HTML, embed it as a string
+      // literal in the compiled function.
       const compDeclared = new Set(node.props.map(sanitizeName));
       const compCtx = { ...ctx, indent: ctx.indent + 1, declared: compDeclared, componentMode: true };
       const bodyParts = [];
@@ -8609,7 +8623,24 @@ ${pad}}`;
           bodyParts.push(`${padFor(compCtx)}_html += ${val};`);
         } else {
           const compiled = compileNode(child, compCtx);
-          if (compiled) bodyParts.push(compiled);
+          if (compiled) {
+            bodyParts.push(compiled);
+            continue;
+          }
+          // compileNode returned null — the child is an HTML-only node
+          // (the walker emits its HTML during page build). Use buildHTML on
+          // a single-node fragment to produce static HTML, then embed.
+          try {
+            const fragmentResult = buildHTML([child]);
+            const html = (fragmentResult && fragmentResult.htmlBody) || '';
+            if (html) {
+              bodyParts.push(`${padFor(compCtx)}_html += ${JSON.stringify(html)};`);
+            }
+          } catch (_err) {
+            // If buildHTML chokes on this fragment, leave it out (silent
+            // drop matches old behavior on unhandled cases — better than
+            // throwing during compile).
+          }
         }
       }
       bodyParts.push(`${padFor(compCtx)}return _html;`);

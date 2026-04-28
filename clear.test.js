@@ -7189,6 +7189,73 @@ when user calls POST /api/chat receiving chat_data:
 // COMPONENT HTML RENDERING
 // =============================================================================
 
+describe('Component - nav-section / nav-item children render (2026-04-28 fix)', () => {
+  it('compiled component preserves nav-section + nav-item children', () => {
+    const result = compileProgram(`build for web
+define component Sidebar:
+  heading 'My App'
+  nav section 'Group':
+    nav item 'Home' to '/' with icon 'home'
+    nav item 'Settings' to '/settings' with icon 'settings'
+
+page 'Home' at '/':
+  show Sidebar()
+
+page 'Settings' at '/settings':
+  show Sidebar()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function Sidebar');
+    expect(fnIdx).toBeGreaterThan(-1);
+    // Slice the body of the Sidebar function for inspection
+    const fnBody = js.slice(fnIdx, fnIdx + 1500);
+    // Heading should still be there (existing behavior)
+    expect(fnBody).toContain('My App');
+    // The nav-section label should now be in the compiled HTML
+    expect(fnBody).toContain('clear-nav-section-label');
+    expect(fnBody).toContain('Group');
+    // Each nav item should be in the compiled HTML
+    expect(fnBody).toContain('Home');
+    expect(fnBody).toContain('Settings');
+    // The icon attribute should be present
+    expect(fnBody).toContain('data-lucide');
+  });
+
+  it('compiled component preserves page-header inside body', () => {
+    const result = compileProgram(`build for web
+define component MyHeader:
+  page header 'Welcome':
+    subtitle 'A friendly greeting'
+
+page 'Home' at '/':
+  show MyHeader()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function MyHeader');
+    const fnBody = js.slice(fnIdx, fnIdx + 1000);
+    expect(fnBody).toContain('Welcome');
+    // page-header generates a clear-page-title or clear-page-header marker
+    expect(fnBody).toMatch(/clear-page-(title|header)/);
+  });
+
+  it('SHOW node still interpolates dynamic values inside components', () => {
+    const result = compileProgram(`build for web
+define component Greeting:
+  heading 'Welcome'
+  show user_name
+
+page 'Home' at '/':
+  user_name is 'Alice'
+  show Greeting()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function Greeting');
+    const fnBody = js.slice(fnIdx, fnIdx + 600);
+    // SHOW should still interpolate (not embed as static)
+    expect(fnBody).toMatch(/_html\s*\+=\s*user_name/);
+  });
+});
+
 describe('Component - HTML rendering', () => {
   it('compiles component to return HTML string in web mode', () => {
     const result = compileProgram(`

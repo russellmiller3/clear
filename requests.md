@@ -1,6 +1,12 @@
 # Compiler & Runtime Requests
 
-## 2026-04-28 — Components silently drop nav-section / nav-item children
+## 2026-04-28 — Components silently drop nav-section / nav-item children — DONE 2026-04-28
+
+**Fixed in commit (this session).** Components now compile their HTML-only children (NAV_SECTION, NAV_ITEM, PAGE_HEADER, STAT_STRIP, STAT_CARD, TAB_STRIP, etc.) by routing them through the same buildHTML walker pages use. The component function returns the full HTML string with all children rendered. SHOW and CONTENT children still use the existing inline path so dynamic interpolation (`show user_name`) keeps working. Verified end-to-end via the preview tools: deal-desk's `DealDeskSidebar` component now renders 11 nav links + 3 section labels on every sub-page (was: only the heading).
+
+Original bug report below for history.
+
+---
 
 **App:** apps/deal-desk/main.clear (also affects any app trying to share a sidebar across pages).
 
