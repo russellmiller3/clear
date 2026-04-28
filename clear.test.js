@@ -22264,6 +22264,78 @@ when user requests data from /api/deals:
   });
 });
 
+describe('Queue primitive — compiler URL handlers', () => {
+  it('emits GET /api/deals/queue handler that filters by pending status', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deals/queue'");
+    expect(result.javascript).toContain("'pending'");
+  });
+
+  it('emits PUT /api/deals/:id/<action> for each action', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.put('/api/deals/:id/approve'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/reject'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    // Multi-word action 'awaiting customer' slugifies to 'awaiting'
+    expect(result.javascript).toContain("app.put('/api/deals/:id/awaiting'");
+  });
+
+  it('PUT handlers insert into the decisions audit table', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each PUT handler should insert a row into deal_decisions
+    expect(result.javascript).toMatch(/db\.insert\(['"]deal_decisions['"]/);
+  });
+
+  it('emits GET /api/deal-decisions for the audit history', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deal-decisions'");
+  });
+});
+
 // =============================================================================
 // CANONICAL SYNTAX: receives + returning JSON text
 // =============================================================================

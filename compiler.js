@@ -6088,7 +6088,92 @@ function compileQueueDef(node, ctx, pad) {
     }
   }
 
+  // Phase 3: URL handlers (only emit in backend mode).
+  if (ctx.mode === 'backend') {
+    const pluralEntity = pluralizeName(node.entityName).toLowerCase();
+    const reviewerStr = JSON.stringify(node.reviewer || 'reviewer');
+
+    // GET /api/<plural>/queue — filtered by 'pending' status (default open status)
+    result += `\n${pad}// Auto-generated: GET filtered queue for '${node.entityName}'\n`;
+    result += `${pad}app.get('/api/${pluralEntity}/queue', (req, res) => {\n`;
+    result += `${pad}  const _all = db.findAll('${pluralEntity}') || [];\n`;
+    result += `${pad}  const _pending = _all.filter(_r => (_r && _r.status) === 'pending');\n`;
+    result += `${pad}  res.json(_pending);\n`;
+    result += `${pad}});\n`;
+
+    // GET /api/<entity>-decisions — audit history view
+    result += `${pad}// Auto-generated: GET decision history for '${node.entityName}'\n`;
+    result += `${pad}app.get('/api/${entityNameLower}-decisions', (req, res) => {\n`;
+    result += `${pad}  res.json(db.findAll('${entityNameLower}_decisions') || []);\n`;
+    result += `${pad}});\n`;
+
+    // GET /api/<entity>-notifications — notification log view (only if notify clauses present)
+    if (node.notifications && node.notifications.length > 0) {
+      result += `${pad}// Auto-generated: GET notification log for '${node.entityName}'\n`;
+      result += `${pad}app.get('/api/${entityNameLower}-notifications', (req, res) => {\n`;
+      result += `${pad}  res.json(db.findAll('${entityNameLower}_notifications') || []);\n`;
+      result += `${pad}});\n`;
+    }
+
+    // PUT /api/<plural>/:id/<action-slug> for each action
+    for (const action of (node.actions || [])) {
+      const slug = action.split(/\s+/)[0].toLowerCase();
+      const terminalStatus = actionToTerminalStatus(action);
+      const decisionLabel = action;
+
+      result += `${pad}// Auto-generated: ${decisionLabel} action for '${node.entityName}'\n`;
+      result += `${pad}app.put('/api/${pluralEntity}/:id/${slug}', (req, res) => {\n`;
+      result += `${pad}  const _id = req.params.id;\n`;
+      result += `${pad}  const _record = db.findById('${pluralEntity}', _id);\n`;
+      result += `${pad}  if (!_record) return res.status(404).json({ error: 'not found' });\n`;
+      result += `${pad}  _record.status = ${JSON.stringify(terminalStatus)};\n`;
+      result += `${pad}  db.update('${pluralEntity}', _id, _record);\n`;
+      result += `${pad}  // Insert audit row\n`;
+      result += `${pad}  db.insert('${entityNameLower}_decisions', {\n`;
+      result += `${pad}    ${entityNameLower}_id: _id,\n`;
+      result += `${pad}    decision: ${JSON.stringify(action)},\n`;
+      result += `${pad}    decided_by: ${reviewerStr},\n`;
+      result += `${pad}    next_status: ${JSON.stringify(terminalStatus)},\n`;
+      result += `${pad}    decided_at: new Date().toISOString()\n`;
+      result += `${pad}  });\n`;
+
+      // Insert notification rows for any notify clauses matching this action
+      if (node.notifications && node.notifications.length > 0) {
+        for (const n of node.notifications) {
+          if (!n.onActions || !n.onActions.includes(action)) continue;
+          const roleStr = JSON.stringify(n.role);
+          // Try to resolve recipient_email from the record (e.g., customer_email field)
+          const emailField = `${n.role}_email`;
+          result += `${pad}  db.insert('${entityNameLower}_notifications', {\n`;
+          result += `${pad}    ${entityNameLower}_id: _id,\n`;
+          result += `${pad}    recipient_role: ${roleStr},\n`;
+          result += `${pad}    recipient_email: (_record && _record[${JSON.stringify(emailField)}]) || '',\n`;
+          result += `${pad}    notification_type: ${JSON.stringify(action)},\n`;
+          result += `${pad}    queue_status: 'pending',\n`;
+          result += `${pad}    queued_at: new Date().toISOString()\n`;
+          result += `${pad}  });\n`;
+        }
+      }
+
+      result += `${pad}  res.json(_record);\n`;
+      result += `${pad}});\n`;
+    }
+  }
+
   return result;
+}
+
+// Map a queue action name to its terminal status value.
+// Convention from the queue plan: approve→approved, reject→rejected,
+// counter→awaiting (because "counter" means "now waiting on customer"),
+// "awaiting <thing>"→awaiting, anything else→ first-word lowercased.
+function actionToTerminalStatus(action) {
+  const first = action.split(/\s+/)[0].toLowerCase();
+  if (first === 'approve') return 'approved';
+  if (first === 'reject') return 'rejected';
+  if (first === 'counter') return 'awaiting';
+  if (first === 'awaiting') return 'awaiting';
+  return first;
 }
 
 function compileDataShape(node, ctx, pad) {
