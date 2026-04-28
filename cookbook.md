@@ -124,7 +124,7 @@ Seven hooks in this repo as of 2026-04-25. Each fires automatically on a specifi
 
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
-_Last refresh: 2026-04-26_
+_Last refresh: 2026-04-28_
 
 ### CLAUDE.md rules (project-level, this repo)
 
@@ -151,13 +151,19 @@ _Last refresh: 2026-04-26_
 
 ### `.claude/hooks/` — event-driven enforcement
 
+- **clear-cheatsheet-on-write.mjs** — .claude/hooks/clear-cheatsheet-on-write.mjs
 - **cookbook-updater.mjs** — .claude/hooks/cookbook-updater.mjs
 - **doc-cascade.mjs** — .claude/hooks/doc-cascade.mjs
+- **landing-design-on-write.mjs** — .claude/hooks/landing-design-on-write.mjs
 - **learnings-miner.mjs** — .claude/hooks/learnings-miner.mjs
+- **no-stub-nav.mjs** — Compute the post-edit content
 - **parallel-thinking.mjs** — .claude/hooks/parallel-thinking.mjs
+- **periodic-introspect.mjs** — UserPromptSubmit hook — nudges Claude to invoke /introspect every 20 user
 - **propose-new-hooks.mjs** — .claude/hooks/propose-new-hooks.mjs
 - **propose-new-tools.mjs** — .claude/hooks/propose-new-tools.mjs
+- **require-branch-work.mjs** — Block edit tools on main.
 - **require-plan-read.mjs** — .claude/hooks/require-plan-read.mjs
+- **screenshot-ui-work.mjs** — Match UI surfaces.
 - **validator-friction.mjs** — .claude/hooks/validator-friction.mjs
 
 ### `.claude/skills/` — user-invocable slash commands
@@ -168,9 +174,10 @@ _Last refresh: 2026-04-26_
 - **/eval-meph** — Run the Meph tool eval as a regression net. Trigger when changes touch playground/server.js (especially TOOLS array, executeTool, validat…
 - **/execute-plan** — Use when executing a multi-phase implementation plan. Trigger when user says "execute this plan", "implement this plan", "start building"…
 - **/handoff** — Create or update HANDOFF.md to pass context between sessions. Use when ending a session, switching tasks, or when the user says "handoff"…
+- **/introspect** — Step back, re-read the load-bearing docs, and decide if current work is still on the critical path. Trigger when Russell says "/introspec…
 - **/pres** — (no description)
 - **/red-team-code** — Use when stress-testing code AFTER it has been written and compiles. Trigger when user says "/rt", "/red-team-code", "red team this code"…
-- **/red-team-plan** — **Announce:** "I'm using the red-team-plan skill to bulletproof `[plan-name]`." 
+- **/red-team-plan** — Use when stress-testing any implementation plan before coding begins. Trigger when user says "red team this", "bulletproof this plan", "r…
 - **/rule** — Add a rule to the project-level CLAUDE.md. Use when the user says "/rule [text]" or "add a project rule" or "make this a rule". Appends a…
 - **/ship** — Ship a Clear feature: update all docs, commit, merge to main, push. Updates learnings, roadmap, philosophy, syntax, handoff, and readme.
 - **/update-learnings** — Update learnings.md with lessons from completed work. Trigger when: user says "update learnings", "add to learnings", "document what we l…
