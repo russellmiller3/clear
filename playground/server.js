@@ -102,6 +102,7 @@ app.use(express.json({ limit: '1mb' }));
 // playground/cloud-routing/index.test.js.
 import { mountCloudRouting } from './cloud-routing/index.js';
 import { makeTenantStore } from './tenant-store-factory.js';
+import { mountCloudAuthRoutes } from './cloud-auth/routes.js';
 // CC-1 cycle 9 — pick the right tenant store from env. DATABASE_URL unset
 // → InMemoryTenantStore (default, dev/test). DATABASE_URL set → migrations
 // run + PostgresTenantStore. TENANT_STORE_PRIMARY=dual-write → wrapper
@@ -112,6 +113,10 @@ const _cloudTenantStore = _cloudTenantHandle.store;
 console.log(`[cloud] tenant store mode: ${_cloudTenantHandle.mode}`);
 const _cloudRouted = mountCloudRouting(app, { store: _cloudTenantStore });
 if (_cloudRouted) console.log('[cloud] CC-1 multi-tenant routing active (CLEAR_CLOUD_MODE=1)');
+// CC-2 — Clear Cloud auth URLs. Wires /api/auth/{signup,login,me,logout}.
+// Without DATABASE_URL the routes return 503; Studio dev loops keep working.
+const _cloudAuth = mountCloudAuthRoutes(app, { pool: _cloudTenantHandle.pool });
+console.log(`[cloud] auth routes ${_cloudAuth.mounted ? 'mounted' : 'stubbed (no DATABASE_URL)'}`);
 
 // =============================================================================
 // STATIC FILES

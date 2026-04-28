@@ -133,6 +133,35 @@ await runAsync(async () => {
   assert(known.databases.has('d1-mir'), 'union includes mirror databases');
 });
 
+console.log('\n🔑 makeTenantStore — CC-2 cloud-auth schema applied (users + sessions tables exist)');
+await runAsync(async () => {
+  const Pool = makePgMemPool();
+  const handle = await makeTenantStore(
+    { DATABASE_URL: 'postgresql://fake' },
+    { Pool, migrationsDir: MIGRATIONS_DIR }
+  );
+  // Pool from pg-mem; query directly to confirm the auth tables exist.
+  const c = await handle.pool.connect();
+  try {
+    // SELECT against an empty table should succeed if migration ran.
+    const u = await c.query('SELECT count(*) AS n FROM users');
+    assert(Number(u.rows[0].n) === 0, 'users table exists and is empty after migration');
+    const s = await c.query('SELECT count(*) AS n FROM sessions');
+    assert(Number(s.rows[0].n) === 0, 'sessions table exists and is empty after migration');
+    // Insert a row to confirm columns are right (covers the cloud-auth helper SQL shape).
+    await c.query(
+      `INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id`,
+      ['marcus@example.com', '$2a$12$fakehashfake', 'Marcus']
+    );
+    const r = await c.query(`SELECT email, status, role FROM users WHERE email = $1`, ['marcus@example.com']);
+    assert(r.rows[0]?.email === 'marcus@example.com', 'users insert + select round-trips');
+    assert(r.rows[0]?.status === 'active', 'users.status defaults to active');
+    assert(r.rows[0]?.role === 'member', 'users.role defaults to member');
+  } finally {
+    c.release();
+  }
+});
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
 
