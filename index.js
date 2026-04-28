@@ -30,6 +30,7 @@ import { parse, NodeType } from './parser.js';
 import { compile, resolveModules, generateEvalEndpoints } from './compiler.js';
 import { validate } from './validator.js';
 import { SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './synonyms.js';
+import { generateUATContract } from './lib/uat-contract.js';
 
 /**
  * Parse and compile a Clear program in one step.
@@ -114,6 +115,18 @@ function compileProgram(source, options = {}) {
   // can find them. The compiler emits runtime stubs at these lines; this list
   // tells callers WHICH lines are stubs without re-walking the AST.
   result.placeholders = collectPlaceholders(ast);
+  // UAT contract — JSON description of every page, route, button, and API
+  // call in the program. Test generators walk this to know what to assert
+  // (every button click, every nav target, every endpoint hit). Cherry-picked
+  // from a 2026-04-27 Codex stash; the deeper browser-test generator that
+  // consumes this contract lands in a follow-up commit.
+  try {
+    result.uatContract = generateUATContract(ast.body);
+  } catch (err) {
+    // Never let the contract break compilation. Surface as warning instead.
+    result.uatContract = null;
+    (result.warnings ??= []).push({ kind: 'uat-contract-failed', message: String(err.message || err) });
+  }
   // Structured eval stats for RL + observability
   const stats = computeStats(ast, source, result.warnings);
   stats.ok = result.errors.length === 0;
