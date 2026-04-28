@@ -22672,6 +22672,53 @@ email customer when deal's status changes to 'awaiting':
     expect(String(neverFires.message || neverFires)).toContain('deal');
   });
 
+  // Cycle 5.2 — body and subject often want to interpolate entity fields
+  // (`{customer}`, `{amount}`). Until interpolation lands as a runtime
+  // feature, ANY `{ident}` in the email body or subject is a likely typo
+  // — author thought it would render but it'll be sent as literal text.
+  // Validator warns so the typo is caught at compile time.
+  it("warns when email body uses {ident} that doesn't match an entity field", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Hello {nonexistent_var}'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const interpWarn = result.warnings.find(w =>
+      /nonexistent_var/.test(String(w.message || w))
+    );
+    expect(interpWarn).toBeTruthy();
+  });
+
+  it("does NOT warn when {ident} matches a field on the entity table", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Update on your deal'
+  body is 'Hello {customer}, your deal is awaiting reply.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const interpWarn = result.warnings.find(w =>
+      /customer/.test(String(w.message || w)) && /interpol/i.test(String(w.message || w))
+    );
+    expect(interpWarn).toBeUndefined();
+  });
+
   it("does NOT warn when a queue action provides the matching status transition", () => {
     const src = `build for javascript backend
 database is local memory

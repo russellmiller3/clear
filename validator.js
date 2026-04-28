@@ -251,6 +251,36 @@ function validateEmailTriggers(body, warnings) {
         });
       }
     }
+    // Phase 5.2 — body/subject interpolation refs. Any `{ident}` in body or
+    // subject is a likely typo: author meant the entity field, but the email
+    // worker doesn't interpolate templates yet. Warn at compile time so the
+    // typo doesn't ship as literal `{customer}` text in the customer's inbox.
+    // When the ref matches a real entity field, the warning still fires (as a
+    // heads-up that interpolation isn't supported) but is phrased differently.
+    const fields = tableFields.get(entity) || new Set();
+    const interpRefs = (text) => {
+      const out = [];
+      if (typeof text !== 'string') return out;
+      // Match {ident} / {ident_with_underscores} — single braces only. Skip
+      // any opening that's part of `${...}` (already-interpolated JS in
+      // case the body was hand-rolled).
+      const re = /(?<!\$)\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+      let m;
+      while ((m = re.exec(text)) !== null) out.push(m[1]);
+      return out;
+    };
+    const refs = [...interpRefs(node.body || ''), ...interpRefs(node.subject || '')];
+    for (const ref of refs) {
+      if (!fields.has(ref.toLowerCase())) {
+        warnings.push({
+          line: node.line,
+          message:
+            `email body / subject references '{${ref}}' but no field by that name exists on ${entity}. ` +
+            `The email worker doesn't interpolate templates — the customer will see literal '{${ref}}' text. ` +
+            `Spell out the value in plain prose, or fix the field name.`
+        });
+      }
+    }
   }
 }
 
