@@ -1,3 +1,199 @@
+# Handoff — 2026-04-28 (queue follow-up + Codex partial cherry-pick + compiler bug fix)
+
+> **Read this top section first. Below is the prior overnight handoff for context.**
+
+## Where you are when you sit down
+
+**Branch:** `chore/queue-redteam-and-syntax-followup` (off `main`). 12 commits, NOT pushed yet (decided to leave for next session to push or merge after picking through the work).
+
+**`main` is unchanged from where the prior overnight session left it.** Today's work lives on the branch.
+
+To get back into context fast: read this file top-to-bottom, then `git log --oneline main..` to see the commits in order.
+
+## What shipped on this branch (12 commits)
+
+Newest first:
+
+1. **`fix(compiler): components now compile UI primitives in body — proper fix`** — the load-bearing win of today. The Clear compiler used to silently drop nav-section / nav-item / page-header / stat-strip / stat-card / tab-strip / detail-panel children when they appeared inside a `define component:` block. Compiled component returned only its heading. Caught visually via the preview tools (preview_snapshot showed a sidebar with just "Deal Desk" and no nav). Fix: when a component child is an HTML-only node that compileNode returns null for, route that single-node fragment through the existing buildHTML walker to capture static HTML, embed as a string literal in the compiled function. Reuses the same path pages use, no walker duplication. 3 new TDD tests in clear.test.js cover nav-children-in-component, page-header-in-component, and SHOW interpolation inside components still working. requests.md entry marked DONE.
+
+2. **`docs(requests): log compiler bug — components silently drop nav children`** — bug report logged to requests.md (then marked DONE in the next commit when fixed).
+
+3. **`fix(deal-desk): inline sidebar in each page (component approach didn't work)`** — superseded by the compiler fix. Was the bridge while the proper fix was in flight.
+
+4. **`feat(deal-desk): add charts to /all and /reports pages (Codex Phase 2b)`** — pie + bar charts for status mix, segment pressure, deal types.
+
+5. **`feat(deal-desk): cherry-pick 10 sidebar pages + 4 backing tables (Codex Phase 2a)`** — fixes the broken nav. Adds Reps / Accounts / ApprovalRules / Integrations tables + 8 filter URLs + 10 page declarations + seed data.
+
+6. **`feat(queue-parser): F1 — hard-fail on unknown body lines with did-you-mean`** — silent-skip in the queue parser was the 14-year-old test failure; now every unknown clause inside `queue for X:` errors with a Levenshtein-based did-you-mean hint.
+
+7. **`feat(studio): builder-mode layout overhaul + sticky resizers + tab wrap`** — Meph on the left rail, source as a right pane, 8px draggable resizers persisted to localStorage, Show Source button on the far right, Hide Chat button on the far left, tabs wrap on overflow.
+
+8. **`chore(hook): no-stub-nav — block .clear writes whose nav points to dead routes`** — every nav item must reach a real page or be marked TBD.
+
+9. **`docs(plan): queue primitive follow-up — Russell's 2026-04-28 red-team`** — the F1-F7 follow-up plan.
+
+10. **`chore(hook): screenshot-on-UI-edit reminder`** — fires after every `.html` / `.clear` / `.css` / compiler.js edit, tells the next turn to use the preview tools and screenshot.
+
+11. **`fix(deal-desk): sidebar persists across all 10 sub-pages via shared component`** — first pass of the sidebar fix (using a `define component`). It compiled clean but visually only the heading rendered — the very bug the next commits diagnosed and fixed in the compiler.
+
+12. **(commit before that)** — the F1 test bed and hooks scaffolding.
+
+## What's verified working
+
+Verified via the preview tools (preview_eval across all 11 routes of a live deal-desk server on port 4567):
+- Every sidebar nav link routes to its page
+- Every page renders the shared sidebar component (11 nav links + 3 section labels)
+- "Deal Desk" heading present on every page
+- /all + /reports show charts (2 + 3 respectively)
+- Studio layout changes (Meph left rail, source right pane, sticky sliders, button positions, tab wrap) — visible in the running Studio, but the FINAL hand-off check ("does this look right to you?") is on Russell.
+
+## Known issue surfaced today (NOT yet fixed)
+
+**Data tables show 0 rows after route change.** When you navigate from `/` to `/approved` (etc.), the `on page load: get approved_deals from /api/deals/approved` block does NOT re-fire. Only the data loaded during the FIRST page load (which is /'s `pending` and `all_deals`) ends up populated. So:
+- /all and /reports show their charts and tables (because all_deals loads on /)
+- /approved, /rejected, /awaiting, /reps, /accounts, /rules, /integrations show their headings + sidebar but EMPTY tables.
+
+This is a runtime / router gap, not a compile error. The compiler emits the on-page-load fetch correctly; the client-side router just doesn't trigger it on route swap. Two paths to fix:
+- (a) Make the runtime re-fire `on page load` blocks when the route changes to that page.
+- (b) Cherry-pick Codex's shell-page router (still in stash@{0}) which mounts each page's content into an outlet on route change — its mount path naturally re-runs the page's setup.
+
+Path (b) is on the cherry-pick queue below. Path (a) might be cheaper if the compiler already knows which routes own which fetches.
+
+## Verification on pickup
+
+Before doing more work, prove deal-desk still works:
+
+1. Start a live deal-desk server: edit `.claude/launch.json` to ensure the `deal-desk-live` entry exists (it does — `node cli/clear.js serve apps/deal-desk/main.clear --port 4567`), then `preview_start` the `deal-desk-live` config.
+2. `curl -s -X POST http://localhost:4567/api/seed -H "Content-Type: application/json" -d "{}"` to seed.
+3. `preview_snapshot` of the home page — confirm sidebar renders with APPROVALS / PIPELINE / WORKSPACE sections + 11 nav links.
+4. `preview_eval` to navigate each route — confirm the right page becomes visible and the sidebar persists.
+5. `node clear.test.js` — expect 2696 of 2696 passing (one pre-existing flake on the CLI-teardown stderr-capture race; 2 of 3 runs pass clean — unrelated).
+6. `node -e "..."` smoke test on the 12 Marcus apps + crm-spa — expect 0 errors per app.
+
+## QUEUED WORK — in priority order
+
+### 1. Finish the Codex stash cherry-pick (Russell's explicit ask: "scour for value")
+
+The audit catalog from earlier this session is the authoritative list. **Russell explicitly said drop `stash@{0}` ONLY after every value chunk has been extracted.** Do not drop it early.
+
+Stash patch dump for reference: `/tmp/codex-stash.patch` (if it's still there — re-dump with `git stash show -p stash@{0} > /tmp/codex-stash.patch` if the temp file got cleaned up).
+
+Chunks to land, smallest/safest first:
+
+| # | Chunk | Stash patch lines | Lines | Customer value | Notes |
+|---|-------|-------------------|-------|----------------|-------|
+| 1 | **Validator fixes** | validator.js section | ~33 | low-medium | (a) `assignedFields` tracking — reduces false-positive missing-field warnings; (b) skip the condition-complexity check on DB lookups (reduces noise on filter expressions). Self-contained. |
+| 2 | **Cloudflare packaging sandbox tolerance** | lib/packaging-cloudflare-*.test.js × 3 | ~46 | low | `isNodeSpawnBlocked` + `skipBlockedNodeCheck` helpers across 3 test files. Detects sandbox EPERM on `node --check` and skips gracefully. No production impact, just stabilizes tests in restricted runtimes. |
+| 3 | **Page marker attributes on every page div** | compiler.js around stash line 12200-12250 | ~50 | medium | Adds `data-clear-page-id`, `data-clear-page-route`, `data-clear-page-title` to every `<div id="page_X">`. Feeds the UAT contract + browser-test generator. Non-breaking. |
+| 4 | **Button UAT identifier** | compiler.js around stash line 9860-9880 | ~20 | medium | Adds `data-clear-uat-id` + `data-clear-control-kind="button"` to button markup. Feeds UAT browser tests. Non-breaking. |
+| 5 | **Sortable + filterable tables compiler emit** | compiler.js around stash line 10814-10950 + runtime helpers `_clear_table_rows_for_view`, `_clear_apply_table_view`, `_clear_render_table`, `_clear_table_header`, `_clear_cell` (stash lines 1680-1825) | ~130 + ~150 helpers | high | Adds `data-clear-table-sort` + `.clear-table-filter` to table rows; injects sort/filter JS at the page footer. Context-aware (skips in sidebar, smaller fonts in detail panels). **Codex did real UX polish here — bring it.** |
+| 6 | **Approval-rules dedicated render path** | compiler.js around stash line 11200-11300 | ~100 | medium | When `display 'rules' as table` is encountered, emits a styled table with status badge / threshold / owner columns. Generic enough to reuse beyond the deal-desk app. |
+| 7 | **Reports / charts compact dashboard rendering** | compiler.js around stash line 11600-12000 | ~400 | high | Adds `clear-chart-card` + `clear-chart-canvas` CSS classes; renders charts in compact dashboard panels (360px height); ECharts config polish (legend, tooltips, formatters for pie / bar / line). The deal-desk /reports + /all pages currently use basic charts; this lands the polished version. |
+| 8 | **Browser-driven UAT test generator** | compiler.js around stash line 6986-7350 — `generateBrowserUAT(contract)` + 10 helpers (`assert`, `test`, `routeUrl`, `pageByRoute`, `screenshotName`, `captureRouteScreenshot`, `assertVisiblePage`, `assertNoPageOverflow`, `assertPersistentShell`); plus the deeper `generateE2ETests(body, uatContract)` at stash line 7188 | ~200 + ~250 | very high | The Playwright runner that consumes the JSON UAT contract (already shipped) — emits browser tests that navigate every route, click every control, screenshot, and assert content. **Russell wants this; it's what makes the UAT contract actually useful.** |
+| 9 | **CLI plumbing for UAT artifacts** | cli/clear.js — `formatIssue` (stash 6075), `writeGeneratedUATArtifacts` (6101), `staticTestServerCode` (6112), `send` helper (6122), `waitForHttpServer` (6150), `skipWhenNodeSpawnIsBlocked` (5155) | ~250 | medium | Writes `uat-contract.json` + `uat.browser.mjs` to disk on `clear build`. Spins up a test HTTP server. Polls port until app is live. Plumbing for #8. |
+| 10 | **Shell-page router with detail-panel outlet** | compiler.js around stash lines 12130-12190 + 7868-7889 (Workers target duplicates) — `_clearTemplateHost`, `_clearParkMountedRoutes`, `_clearRenderRouteIntoShell` | ~60 | high (would also fix the data-hydration gap above) | One shell page (the page with `app_layout` + `app_sidebar`) holds the sidebar; other pages' content gets parked / unparked in an outlet on route change. Fixes the "fetch doesn't refire on route change" issue because the page mount lifecycle re-runs naturally. |
+| 11 | **Plan-lint enforcement + skill machine-gates** | `.claude/skills/{execute-plan,red-team-plan,write-plan}/SKILL.md` (~70 lines), `package.json` plan-lint script (~2 lines), `.claude/settings.json` hook entry (~6 lines) | ~80 | low (process polish) | Plans must pass `node scripts/plan-lint.mjs` before execution / red-team. **NOTE:** the script `scripts/plan-lint.mjs` itself doesn't ship — Codex referenced it but didn't write it. Either skip this chunk or write the plan-lint script first. |
+
+**After ALL of those land:** `git stash drop stash@{0}` per Russell's explicit direction.
+
+Some chunks have inter-dependencies (#5 needs the runtime helpers from stash 1680-1825; #8 needs #3 and #4 to have shipped; #9 needs the contract from already-shipped UAT layer). Land in roughly numerical order; #1, #2, #3, #4, #6 are independent.
+
+### 2. Triggered email primitive
+
+Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. 13 TDD cycles. **REVIEW FREEZE in the plan said it needs Russell's explicit approval before execution** — assume that approval is granted via Russell's "email primitive next" direction this session.
+
+The plan adds `when X's status changes to Y: send email to ...:` syntax. Auto-emits a `WorkflowEmailQueue` table when a when-trigger exists. Auto-injects queue-insert into URL handlers that update the entity's status to the trigger value. **NO real sends in default builds** — durable queue only. Live email delivery is gated behind `enable live email delivery via X` directive (deferred until Russell explicitly enables).
+
+The parser disambiguation between `when user sends X to Y` (existing endpoint syntax) and `when X's status changes to Y` (new) is the load-bearing tricky bit. The plan covers it.
+
+**Per Russell's design feedback this session, before locking syntax:**
+- Use `email <role> when <action>` as canonical (NOT `notify <role> on <action>` — "notify" is too vague).
+- Hard-fail on unknown body lines (same pattern as the queue F1 fix).
+- Run the "would a manager type this?" pass before locking.
+
+### 3. F2-F7 of the queue primitive follow-up plan
+
+Plan: `plans/plan-queue-primitive-followup-04-28-2026.md`. F1 already shipped. Remaining:
+
+- **F2: pluralize on the way in.** `queue for deals` should resolve to `deal` (currently produces a double-S URL like `/api/dealss/queue`).
+- **F3: `email <role> when <action>` canonical, demote `notify <role> on <action>` to legacy alias.** Per Russell's design feedback.
+- **F4: `options:` and `buttons:` synonyms for `actions:`; `waiting on customer` canonical for what's currently `awaiting customer`.**
+- **F5: Python parity for the queue primitive.** Currently the Python branch returns a TBD stub. **This violates the new MANDATORY "Build Python Alongside JS" rule shipped earlier in this session** — needs to land.
+- **F6: docs cascade re-run** for the new canonical forms.
+- **F7: 8-template smoke gate** — all green.
+
+### 4. /introspect skill + periodic hook
+
+Russell's ask earlier today: a skill that asks me to step back, scope out, think about broader project goals, review the CLAUDE files, decide what we can learn from a situation and record to learnings, and decide if we're on the right track. Plus a hook that fires periodically in a session to trigger this proactively.
+
+Not yet started. Lives at `.claude/skills/introspect/SKILL.md` when written. Hook would be a periodic timer-based UserPromptSubmit (fires every N user messages or N minutes).
+
+### 5. Hard product review of Deal Desk
+
+Russell's ask earlier today: "decide what we actually need to work. (integrations? slack? probably!) and then either build or kill." Read the full deal-desk source, the Codex catalog of features it could have, and write a "what does this app actually need to demo to Marcus + what's nice-to-have we should kill" doc with build-or-kill calls per feature. ~30 min judgment work, no coding.
+
+### 6. Russell's external work (still gating first paying customer)
+
+Unchanged from the earlier overnight handoff:
+
+- **Fly.io Trust Verified app** — submit form, ~1-2 day review.
+- **Stripe live keys** — ~30 min once the domain + Trust Verified land.
+- **Anthropic org key for paid Meph sessions** — ~15 min in console.
+- **Postgres provision** (Fly Postgres or Neon) — ~30 min.
+- **First Marcus conversation** — the actual launch event.
+
+These are Russell-only and run async to the code work above.
+
+## What's open in stash list
+
+`git stash list` should show:
+- `stash@{0}` — the Codex stash. **DO NOT DROP** until every value chunk above has been extracted. Russell's explicit instruction.
+- Other older stashes — separate concern, not related to today.
+
+## Hooks active this session (and their triggers)
+
+| Hook | When it fires | What it does |
+|------|---------------|--------------|
+| `~/.claude/hooks/no-shortcuts.mjs` | Stop hook (end-of-turn) | Scans the last assistant message for shortcut phrases ("I'll just", "instead of fix", "time-box the fix", "hard-error fallback", "for now" + "workaround", etc.). Blocks stop with a re-read of CLAUDE.md line 165 + line 362 + PHILOSOPHY.md compiler-accumulates-quality + the operational pattern Russell hates ("the proper fix is N hours / risky → I'll do an incremental partial / fall back to inline"). |
+| `~/.claude/hooks/never-idle.mjs` | Stop hook | Blocks stop if background tasks are still running. |
+| `~/.claude/hooks/no-emoji-landing.mjs` | PreToolUse on Write/Edit of HTML | Denies emoji in landing pages; suggests Lucide swaps. |
+| `.claude/hooks/no-stub-nav.mjs` | PreToolUse on Write/Edit of `.clear` | Denies the write if any nav item points to a route with no page declaration. Suggests both build-the-page and TBD-stub forms. |
+| `.claude/hooks/screenshot-ui-work.mjs` | PostToolUse on Write/Edit of `.html` / `.clear` / `.css` / compiler.js | Mandatory tool sequence: ToolSearch preview → preview_start → preview_screenshot → preview_click → preview_snapshot → preview_inspect → tell Russell. Says "screenshot pending — please verify visually" is LAST RESORT. |
+| `.claude/hooks/parallel-thinking.mjs` | UserPromptSubmit | Reminds parallel-first decision tree. |
+| `.claude/hooks/clear-cheatsheet-on-write.mjs` | PreToolUse on Write/Edit of teaching files | Injects canonical-form cheat sheet so I cross-check before saving. |
+| `.claude/hooks/landing-design-on-write.mjs` | PreToolUse on Write/Edit of landing files | Injects landing-page design constraints. |
+| `.claude/hooks/learnings-miner.mjs` | PostToolUse on Edit/Write | Pulls relevant learnings.md sections. |
+| `.claude/hooks/doc-cascade.mjs` | PostToolUse on Edit/Write | Reminds about the 11-doc cascade. |
+| `.claude/hooks/validator-friction.mjs` | PostToolUse on Edit/Write to validator.js | Runs friction script to rank top errors. |
+| `.claude/hooks/require-branch-work.mjs` | PreToolUse on Write/Edit | Blocks edits on main. |
+| `.claude/hooks/require-plan-read.mjs` | PreToolUse on Agent | Blocks agent spawns that reference unread plans. |
+
+## How to start the next session
+
+1. `git switch chore/queue-redteam-and-syntax-followup` (verify with `git branch --show-current`).
+2. Read this file + the queue-primitive-followup plan + the triggered-email plan + the snapshots.
+3. Verify deal-desk works (per the section above).
+4. Pick the first cherry-pick chunk (validator fixes — smallest, safest start) and TDD it.
+5. Run the full suite + smoke 12 apps after each chunk.
+6. After ALL chunks land: `git stash drop stash@{0}` per Russell's direction.
+7. Move to the triggered email primitive.
+
+## Files to read for fuller context
+
+| File | Why |
+|------|-----|
+| `plans/plan-queue-primitive-followup-04-28-2026.md` | The F1-F7 follow-up plan from Russell's red-team review. F1 done. F2-F7 queued. |
+| `plans/plan-triggered-email-primitive-04-27-2026.md` | The triggered email plan — 13 TDD cycles, REVIEW FREEZE assumed lifted. |
+| `plans/plan-csv-export-primitive-04-27-2026.md` | Already shipped to main; reference only. |
+| `plans/plan-queue-primitive-tier1-04-27-2026.md` | The original queue plan. Historical record. |
+| `requests.md` | Today's components-drop-children bug logged + marked DONE. |
+| `snapshots/marcus-market-evidence-04-27-2026.md` | The wedge research evidence — STRONG. |
+| `snapshots/marcus-primitives-decomposition-04-27-2026.md` | Top 5 apps + 3 primitives. Also references which connector lane to use. |
+
+---
+
+# Older handoff (preserved for context)
+
 # Handoff — 2026-04-28 morning (overnight loop: snap layer + UAT contract + CSV export shipped)
 
 > **Read this section first. The earlier handoffs below preserve queue primitive context.**
