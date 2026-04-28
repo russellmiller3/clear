@@ -1164,6 +1164,22 @@ function validateFieldNames(body, warnings) {
             // (skip auto fields like created_at, id)
             const validatedFields = new Set(validate.rules.map(r => r.name));
             const autoFields = new Set();
+            // Codex chunk #1: also accept fields the user already assigned
+            // before the save (e.g. `record.status is 'pending'` followed by
+            // `save record to Things`). Without this, every assigned field
+            // looked like a missing-validate warning.
+            const assignedFields = new Set();
+            const savedVariable = crud.variable;
+            if (savedVariable) {
+              const prefix = `${savedVariable}.`;
+              for (const step of node.body) {
+                if (step === crud) break;
+                if (step.type === NodeType.ASSIGN && typeof step.name === 'string' && step.name.startsWith(prefix)) {
+                  const fieldName = step.name.slice(prefix.length).split('.')[0];
+                  if (fieldName) assignedFields.add(fieldName);
+                }
+              }
+            }
             // Collect auto and default fields from the actual data shape
             function findShape(nodes) {
               for (const n of nodes) {
@@ -1178,7 +1194,7 @@ function validateFieldNames(body, warnings) {
             findShape(body);
 
             for (const field of schema) {
-              if (!validatedFields.has(field) && !autoFields.has(field) && !['id'].includes(field)) {
+              if (!validatedFields.has(field) && !assignedFields.has(field) && !autoFields.has(field) && !['id'].includes(field)) {
                 // Check if the field is required in the schema
                 // We need to check the actual DATA_SHAPE node
                 let isRequired = false;
@@ -2433,7 +2449,11 @@ function validateExprComplexity(body, warnings) {
     for (const node of nodes) {
       const line = node.line;
       if (node.expression) checkExpr(node.expression, line);
-      if (node.condition) checkExpr(node.condition, line);
+      // Codex chunk #1: skip the condition-complexity check on DB lookups —
+      // filter expressions like `where status is 'pending' and demo_key is X`
+      // tripped the noise threshold even though they're declarative not logic.
+      const isDatabaseLookup = node.type === NodeType.CRUD && node.operation === 'lookup';
+      if (node.condition && !isDatabaseLookup) checkExpr(node.condition, line);
       if (Array.isArray(node.body)) walk(node.body);
       if (Array.isArray(node.thenBranch)) walk(node.thenBranch);
       if (Array.isArray(node.otherwiseBranch)) walk(node.otherwiseBranch);
