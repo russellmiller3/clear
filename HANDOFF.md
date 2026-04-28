@@ -1,5 +1,24 @@
 # Handoff — 2026-04-28 night
 
+> ## How this file works (READ FIRST when writing or updating it)
+>
+> **Hard cap: 2 pages, ~150 lines max.** Russell has Mito + ADHD; long handoffs don't get read. Lead with priorities, not history. Bullets over paragraphs. One-screen scan should give a fresh session everything it needs.
+>
+> **Where things go (don't bloat HANDOFF with content that lives elsewhere):**
+> - **Priorities for next session** → THIS file (forward-looking only)
+> - **What shipped this session** → `CHANGELOG.md` (newest at top, dated)
+> - **What Clear can do today** → `FEATURES.md` (add a row when shipping new capability; update the headline counts)
+> - **Bug stories / what broke + how we fixed** → `learnings.md` (narrative gotchas)
+> - **Long-running design / project state** → `intent.md`, `PHILOSOPHY.md`, `RESEARCH.md`
+> - **Where does X live? / How do I Y? / Why did we Z?** → `FAQ.md`
+> - **Full feature plans** → `plans/plan-*.md`, link to them from here, don't inline them
+>
+> **Hygiene before saving the handoff (in this order):**
+> 1. Add a CHANGELOG entry for what shipped this session (1-3 short paragraphs).
+> 2. Add FEATURES rows for any new shipped capability; update headline counts.
+> 3. Trim ROADMAP — anything shipped this session gets DELETED from ROADMAP (it's in CHANGELOG/FEATURES now). No strikethrough done items.
+> 4. THEN write this file lean: where you are + next 5 priorities + blocked + tested-vs-assumed + resume prompt. Nothing else.
+
 ## Where you are
 
 - **Branch:** `main`. All work pushed to GitHub.
@@ -15,9 +34,7 @@
    - **Why for launch:** Marcus opens buildclear.dev, logs in, sees his apps. Without the page, the auth has nowhere to land.
 3. **Deal Desk demo polish** (~1 hr). Kill `/reports` (duplicate of `/all`), kill dead Refresh/Export header buttons, fix hardcoded stat-strip counts (wire to live counts), add Draft AI summary button to detail panel. From the product review at `snapshots/deal-desk-product-review-04-28-2026.md`.
    - **Why for launch:** these are the gaps that would tank a Marcus demo.
-4. **GTM-2 — landing/marcus.html polish** (~1 hr). Tighten the headline, embed the deal-desk live preview, add "see it live" CTA pointing at the published URL.
-   - **Why for launch:** the page Marcus reads before he says yes.
-5. **CC-3 webhook receiver** (~1 hr code, gated on Russell's Stripe live keys). Wire the production webhook route in `playground/server.js`. Test in test mode until live keys land.
+4. **CC-3 webhook receiver** (~1 hr code, gated on Russell's Stripe live keys). Wire the production webhook route in `playground/server.js`. Test in test mode until live keys land.
 
 ## Blocked on Russell (skip these, grab the next item)
 
