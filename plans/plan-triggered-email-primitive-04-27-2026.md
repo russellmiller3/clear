@@ -639,6 +639,7 @@ Do NOT start this phase unless Russell explicitly:
 3. Confirms readiness to handle real customer email outbound
 
 When unblocked, B-1 cycles will:
+- **Body + subject template substitution at queue-insert time** (REAL GAP, surfaced 2026-04-28 evening). Today the compiler emits the body as a literal string — every customer gets identical text, no mention of which deal, no customer name, no discount amount. The Phase 5.2 validator catches `{nonexistent_field}` typos but the runtime substitution doesn't exist. Fix: when emitting the queue-insert, swap any `{field}` reference in `node.body` and `node.subject` for a runtime expression that reads the field off the entity record. Pattern: `body: "Hi " + (_record && _record.customer != null ? _record.customer : '') + ", we countered at " + (_record && _record.discount_percent != null ? _record.discount_percent : '') + "%"` — or use a small `_clear_interpolate(template, record)` runtime helper for cleaner emit. Without this, live sends would be useless ("Sarah from our team has prepared a counter offer for you" with no name, no deal, no number). Coupled to live delivery because: if you're not actually sending, the static text is fine; if you are sending, real personalization is non-negotiable.
 - Add `enable live email delivery via agentmail` directive (parser + validator)
 - Background worker that polls `WorkflowEmailQueue` for pending rows + sends real emails via the declared provider
 - Provider adapter modules for AgentMail (default), SendGrid (fallback), Resend (modern alt), Postmark, Mailgun
