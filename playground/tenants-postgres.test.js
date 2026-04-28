@@ -923,29 +923,109 @@ await runAsync(async () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Sanity — cycles 6-8 territory (secrets / lookup / audit) still throws
-// NOT_IMPLEMENTED. Cycle 5 promotes getAppRecord + recordVersion.
+// CC-1 cycles 6/7/8 — secret keys, subdomain lookup, audit log are wired.
+// Smoke tests against pg-mem confirm the SQL paths land. Heavier flows are
+// covered by the per-cycle test suites added below.
 // ─────────────────────────────────────────────────────────────────────────
-console.log('\n🐘 CC-1 cycle 5 — cycles 6-8 territory still NOT_IMPLEMENTED');
+console.log('\n🐘 CC-1 cycle 6 — updateSecretKeys dedupe-appends key names');
 await runAsync(async () => {
   const { store } = await freshStore();
-  let caught = null;
-  try { await store.lookupAppBySubdomain('whatever'); }
-  catch (e) { caught = e; }
-  assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'lookupAppBySubdomain still throws NOT_IMPLEMENTED until cycle 7');
+  await store.create({ slug: 'clear-sec', stripeCustomerId: 'cus_sec', plan: 'pro' });
+  await store.recordApp('clear-sec', 'app1', 'clear-sec-app1');
+  await store.markAppDeployed({ tenantSlug: 'clear-sec', appSlug: 'app1', scriptName: 'clear-sec-app1' });
+  let r = await store.updateSecretKeys({ tenantSlug: 'clear-sec', appSlug: 'app1', newKeys: ['STRIPE', 'OPENAI'] });
+  assert(r.ok === true, 'first update returns ok');
+  r = await store.updateSecretKeys({ tenantSlug: 'clear-sec', appSlug: 'app1', newKeys: ['STRIPE', 'GITHUB'] });
+  assert(r.ok === true, 'dedupe update returns ok');
+  const rec = await store.getAppRecord('clear-sec', 'app1');
+  assert(Array.isArray(rec.secretKeys), 'getAppRecord returns secretKeys array');
+  // Should contain STRIPE, OPENAI, GITHUB — STRIPE only once
+  assert(rec.secretKeys.includes('STRIPE'), 'STRIPE present');
+  assert(rec.secretKeys.includes('OPENAI'), 'OPENAI present');
+  assert(rec.secretKeys.includes('GITHUB'), 'GITHUB present');
+  assert(rec.secretKeys.filter(k => k === 'STRIPE').length === 1, 'STRIPE appears exactly once (deduped)');
+});
 
-  caught = null;
-  try { await store.updateSecretKeys({ tenantSlug: 'x', appSlug: 'y', newKeys: ['K'] }); }
-  catch (e) { caught = e; }
-  assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'updateSecretKeys still throws NOT_IMPLEMENTED until cycle 6');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const r = await store.updateSecretKeys({ tenantSlug: 'nope', appSlug: 'no', newKeys: ['K'] });
+  assert(r.ok === false && r.code === 'APP_NOT_FOUND', 'updateSecretKeys APP_NOT_FOUND on unknown app');
+});
 
-  caught = null;
-  try { await store.getAuditLog('x', 'y'); }
-  catch (e) { caught = e; }
-  assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'getAuditLog still throws NOT_IMPLEMENTED until cycle 8');
+console.log('\n🐘 CC-1 cycle 7 — lookupAppBySubdomain finds by leading hostname label');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-look', stripeCustomerId: 'cus_l', plan: 'pro' });
+  await store.recordApp('clear-look', 'deals', 'clear-look-deals');
+  await store.markAppDeployed({
+    tenantSlug: 'clear-look', appSlug: 'deals',
+    scriptName: 'clear-look-deals', hostname: 'acme-deals.buildclear.dev',
+  });
+  const found = await store.lookupAppBySubdomain('acme-deals');
+  assert(found !== null, 'subdomain match returns row');
+  assert(found.scriptName === 'clear-look-deals', 'row.scriptName');
+  assert(Array.isArray(found.versions), 'row.versions is array');
+  assert(Array.isArray(found.secretKeys), 'row.secretKeys is array');
+  const missing = await store.lookupAppBySubdomain('not-a-real-subdomain');
+  assert(missing === null, 'unknown subdomain returns null');
+});
+
+console.log('\n🐘 CC-1 cycle 7 — loadKnownApps returns scripts + databases sets');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-load', stripeCustomerId: 'cus_l2', plan: 'pro' });
+  await store.recordApp('clear-load', 'a1', 'clear-load-a1');
+  await store.markAppDeployed({ tenantSlug: 'clear-load', appSlug: 'a1', scriptName: 'clear-load-a1', d1_database_id: 'd1-abc' });
+  const known = await store.loadKnownApps();
+  assert(known.scripts instanceof Set, 'scripts is a Set');
+  assert(known.databases instanceof Set, 'databases is a Set');
+  assert(known.scripts.has('clear-load-a1'), 'scripts includes deployed script');
+  assert(known.databases.has('d1-abc'), 'databases includes the D1 id');
+});
+
+console.log('\n🐘 CC-1 cycle 8 — appendAuditEntry + getAuditLog round-trip');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-aud', stripeCustomerId: 'cus_a', plan: 'pro' });
+  await store.recordApp('clear-aud', 'app1', 'clear-aud-app1');
+  await store.markAppDeployed({ tenantSlug: 'clear-aud', appSlug: 'app1', scriptName: 'clear-aud-app1' });
+  const r1 = await store.appendAuditEntry({
+    tenantSlug: 'clear-aud', appSlug: 'app1',
+    actor: 'russell', action: 'ship',
+    sourceHashBefore: 'h1', sourceHashAfter: 'h2',
+  });
+  assert(r1.ok === true, 'appendAuditEntry returns ok');
+  assert(typeof r1.auditId === 'string' && r1.auditId.length > 0, 'auditId is a non-empty string');
+  const log = await store.getAuditLog('clear-aud', 'app1');
+  assert(Array.isArray(log) && log.length === 1, 'getAuditLog returns one entry');
+  assert(log[0].auditId === r1.auditId, 'log entry has the right auditId');
+  assert(log[0].actor === 'russell', 'log entry has actor');
+  assert(log[0].action === 'ship', 'log entry has action');
+  assert(log[0].status === 'shipped', 'default status is shipped');
+});
+
+console.log('\n🐘 CC-1 cycle 8 — appendAuditEntry returns APP_NOT_FOUND on unknown app');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  const r = await store.appendAuditEntry({ tenantSlug: 'ghost', appSlug: 'nope', actor: 'r', action: 'ship' });
+  assert(r.ok === false && r.code === 'APP_NOT_FOUND', 'unknown app returns APP_NOT_FOUND');
+});
+
+console.log('\n🐘 CC-1 cycle 8 — markAuditEntry flips pending → shipped + records versionId');
+await runAsync(async () => {
+  const { store } = await freshStore();
+  await store.create({ slug: 'clear-mk', stripeCustomerId: 'cus_mk', plan: 'pro' });
+  await store.recordApp('clear-mk', 'app1', 'clear-mk-app1');
+  await store.markAppDeployed({ tenantSlug: 'clear-mk', appSlug: 'app1', scriptName: 'clear-mk-app1' });
+  const r1 = await store.appendAuditEntry({
+    tenantSlug: 'clear-mk', appSlug: 'app1',
+    actor: 'r', action: 'destructive_ship', status: 'pending',
+  });
+  const r2 = await store.markAuditEntry({ auditId: r1.auditId, status: 'shipped', versionId: 'v-42' });
+  assert(r2.ok === true, 'markAuditEntry returns ok');
+  const log = await store.getAuditLog('clear-mk', 'app1');
+  assert(log[0].status === 'shipped', 'status flipped to shipped');
+  assert(log[0].versionId === 'v-42', 'versionId recorded');
 });
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

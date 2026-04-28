@@ -623,15 +623,10 @@ console.log('\n🐘 CC-1 — PostgresTenantStore interface contract');
     assert(pgMethods.has(m), `PostgresTenantStore implements ${m} (matches InMemoryTenantStore)`);
   }
 }
-await runAsync(async () => {
-  const pg = new PostgresTenantStore();
-  let caught = null;
-  try { await pg.lookupAppBySubdomain('acme'); } catch (err) { caught = err; }
-  assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'PostgresTenantStore stub throws NOT_IMPLEMENTED');
-  assert(caught && /SQL:/.test(caught.message),
-    'NOT_IMPLEMENTED error includes the future SQL for grep-ability');
-});
+// CC-1 cycles 6/7/8 wired up the last stubs (updateSecretKeys,
+// lookupAppBySubdomain, loadKnownApps, getAuditLog, appendAuditEntry,
+// markAuditEntry). The "still throws NOT_IMPLEMENTED" guard is obsolete.
+// Real Postgres behavior is tested in tenants-postgres.test.js against pg-mem.
 
 // ── Regression floor: existing Phase 7.7 behavior preserved ─────────────────
 console.log('\n🧩 Regression — loadKnownApps still works across the new fields');
