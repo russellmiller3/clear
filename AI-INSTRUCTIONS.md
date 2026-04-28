@@ -1252,6 +1252,53 @@ when user deletes user at /api/users/:id:
 **`broadcast to all message`** inside a WebSocket handler sends the value to all connected clients.
 **`block arguments matching 'pattern'`** in an agent adds a regex guard on tool inputs — rejects matching arguments before execution.
 
+## Approval Queues — `queue for X:`
+
+**Use this when an entity needs human approval before its status changes.** One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action. About 150 lines of hand-rolled JavaScript per app collapse to 5 lines of declaration.
+
+Canonical form:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+What the compiler emits for free:
+- A `deal_decisions` audit table with `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`.
+- A `deal_notifications` outbound queue table — only when `notify` clauses are present.
+- `GET /api/deals/queue` — filtered by `status = 'pending'`.
+- `GET /api/deal-decisions` and `GET /api/deal-notifications` — full history views.
+- `PUT /api/deals/:id/<action>` per action — login-gated, status update, audit row insert, notification rows for matching `notify` clauses. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
+
+**When to use it:**
+- Entity has a `pending → approved | rejected | escalated` shape.
+- A specific human role decides; you want an audit trail.
+- You want notifications queued (recipient_email resolves by convention from `<role>_email` fields on the entity).
+
+**When NOT to use it:**
+- Single-record approve/reject without audit needs (just write a PUT handler).
+- Automated routing with no human in the loop (build a `routing rules for X:` primitive — separate shape).
+- Multi-stage workflows with multiple reviewer roles (deferred to Tier 2 — use `workflow` for now).
+
+**Wiring action buttons.** The primitive does not yet auto-render UI — hand-add buttons that call the auto-generated PUT URLs:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+  'Reject' is danger
+```
+
+The button labels are case-insensitive matches against the action list. Bind each button to the matching `/api/deals/:id/<action>` URL.
+
 ## Guards (All Five Kinds)
 
 Clear has **five different kinds of guards**. Each one protects a different thing. Use them together — they're complementary, not alternatives.

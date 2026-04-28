@@ -18,6 +18,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
 - App shell compiles to polished real app chrome — sidebar groups, route-aware nav, workbench headers, routed tabs, KPI stat cards, and right-side record panels.
+- **Approval queues with audit + notifications in one block.** `queue for deal:` + 4 lines generates the audit table, the outbound notification queue, the filtered queue view, and a login-gated URL for every action. ~150 lines of hand-rolled approval pipeline collapse to 5 lines of declaration.
 
 **Talk to Claude inside your code**
 - Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
@@ -319,6 +320,20 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Progress tracking | `track workflow progress` | State history |
 | Checkpoint | `save progress to Table` | DB persistence |
 | Run workflow | `result = run workflow 'Name' with data` | |
+
+## Approval Queues
+
+| Feature | Syntax | Notes |
+|---------|--------|-------|
+| Queue declaration | `queue for deal:` + indented body | Auto-generates audit table, optional notifications queue, filtered GET, per-action login-gated PUT handlers |
+| Reviewer role | `reviewer is 'CRO'` | Stamped on every audit row's `decided_by` |
+| Action list | `actions: approve, reject, counter, awaiting customer` | Each action becomes `PUT /api/<entity>s/:id/<action>` — multi-word actions slugify to first word |
+| Notify clause | `notify customer on counter, awaiting customer` | Inserts a row in `<entity>_notifications` for matching actions; recipient_email resolves from `<role>_email` field on the entity |
+| Auto-emitted audit | `<entity>_decisions` table | `deal_id, decision, decided_by, decided_at, decision_note` |
+| Auto-emitted queue view | `GET /api/<entity>s/queue` | Filtered by `status = 'pending'` |
+| Auto-emitted history view | `GET /api/<entity>-decisions` | Full audit log |
+
+Also under "Build full apps by writing English" in the exec summary: **Approval queues with audit + notifications in one block.**
 
 ## Scheduling
 
