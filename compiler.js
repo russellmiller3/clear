@@ -6259,6 +6259,82 @@ function compileEmailTrigger(node, ctx, pad) {
   return result;
 }
 
+// Email delivery worker (Phase B-1 part 2). Emits a small background poll
+// loop that drains workflow_email_queue via the named provider's HTTP API.
+// Without this directive in the source, no worker emits — default builds
+// stay inert (Phase 3.2 regression guard). The worker fails loud at runtime
+// if the provider's API key env var isn't set, so a misconfigured deploy
+// can't silently no-op.
+function compileEmailDeliveryDirective(node, ctx, pad) {
+  if (ctx.lang === 'python') {
+    return `${pad}# email delivery worker (using ${node.provider}): backend Phase B-1 (Python target TBD)`;
+  }
+  if (ctx.mode !== 'backend') return '';
+  // Dedupe: if multiple directives present, emit one worker only. (Validator
+  // could enforce single-directive in future; for now, last-write-wins.)
+  if (ctx._emailDeliveryWorkerEmitted) return `${pad}// email delivery worker already emitted (using ${ctx._emailDeliveryProvider})`;
+  ctx._emailDeliveryWorkerEmitted = true;
+  ctx._emailDeliveryProvider = node.provider;
+
+  const provider = node.provider;
+  const envKey = provider.toUpperCase() + '_API_KEY';
+  // Map each provider to its send URL. Only AgentMail has a real implementation
+  // today; the others return a runtime error pointing at the next thing to wire.
+  const PROVIDER_ENDPOINTS = {
+    agentmail: 'https://api.agentmail.to/v1/send',
+    sendgrid: 'https://api.sendgrid.com/v3/mail/send',
+    resend: 'https://api.resend.com/emails',
+    postmark: 'https://api.postmarkapp.com/email',
+    mailgun: 'https://api.mailgun.net/v3/messages',
+  };
+  const sendUrl = PROVIDER_ENDPOINTS[provider] || '';
+
+  let result = `${pad}// Auto-emitted: email delivery worker (provider: ${provider})\n`;
+  result += `${pad}// Polls workflow_email_queue every 30 seconds, sends pending rows via\n`;
+  result += `${pad}// ${provider}, marks them sent or failed. Fails loud at runtime if the\n`;
+  result += `${pad}// API key env var (${envKey}) isn't set — never silently no-ops.\n`;
+  result += `${pad}(function _startEmailDeliveryWorker() {\n`;
+  result += `${pad}  const _provider = ${JSON.stringify(provider)};\n`;
+  result += `${pad}  const _sendUrl = ${JSON.stringify(sendUrl)};\n`;
+  result += `${pad}  const _envKey = ${JSON.stringify(envKey)};\n`;
+  result += `${pad}  let _warnedNoKey = false;\n`;
+  result += `${pad}  setInterval(async () => {\n`;
+  result += `${pad}    const _apiKey = process.env[_envKey];\n`;
+  result += `${pad}    if (!_apiKey) {\n`;
+  result += `${pad}      if (!_warnedNoKey) { console.error('[email delivery worker] ' + _envKey + ' not set — cannot send. Set the env var to enable live delivery.'); _warnedNoKey = true; }\n`;
+  result += `${pad}      return;\n`;
+  result += `${pad}    }\n`;
+  result += `${pad}    let _pending;\n`;
+  result += `${pad}    try { _pending = (db.findAll('workflow_email_queue') || []).filter(r => r && r.queue_status === 'pending'); }\n`;
+  result += `${pad}    catch (_err) { console.error('[email delivery worker] could not read queue:', _err.message || _err); return; }\n`;
+  result += `${pad}    for (const _row of _pending) {\n`;
+  result += `${pad}      try {\n`;
+  if (provider === 'agentmail') {
+    result += `${pad}        const _resp = await fetch(_sendUrl, {\n`;
+    result += `${pad}          method: 'POST',\n`;
+    result += `${pad}          headers: { 'Authorization': 'Bearer ' + _apiKey, 'Content-Type': 'application/json' },\n`;
+    result += `${pad}          body: JSON.stringify({ to: _row.recipient_email, subject: _row.subject, body: _row.body }),\n`;
+    result += `${pad}        });\n`;
+    result += `${pad}        if (_resp.ok) {\n`;
+    result += `${pad}          const _result = await _resp.json().catch(() => ({}));\n`;
+    result += `${pad}          db.update('workflow_email_queue', _row.id, { queue_status: 'sent', sent_at: new Date().toISOString(), provider_event_id: (_result && _result.id) || null });\n`;
+    result += `${pad}        } else {\n`;
+    result += `${pad}          const _errText = await _resp.text().catch(() => 'unknown');\n`;
+    result += `${pad}          db.update('workflow_email_queue', _row.id, { queue_status: 'failed', attempts: (_row.attempts || 0) + 1, last_error: 'HTTP ' + _resp.status + ': ' + _errText });\n`;
+    result += `${pad}        }\n`;
+  } else {
+    result += `${pad}        // Provider '${provider}' adapter not yet implemented — fail this row\n`;
+    result += `${pad}        db.update('workflow_email_queue', _row.id, { queue_status: 'failed', attempts: (_row.attempts || 0) + 1, last_error: '${provider} adapter not implemented yet — only agentmail supported in this build' });\n`;
+  }
+  result += `${pad}      } catch (_err) {\n`;
+  result += `${pad}        try { db.update('workflow_email_queue', _row.id, { queue_status: 'failed', attempts: (_row.attempts || 0) + 1, last_error: String(_err && _err.message || _err) }); } catch (_e) {}\n`;
+  result += `${pad}      }\n`;
+  result += `${pad}    }\n`;
+  result += `${pad}  }, 30000);\n`;
+  result += `${pad}})();\n`;
+  return result;
+}
+
 function compileQueueDef(node, ctx, pad) {
   // Phase 2 scope: emit the auto-generated tables (decisions + optional notifications).
   // Phase 3 will add URL handlers; Phase 4 will add UI elements.
@@ -7339,6 +7415,9 @@ ${pad}}`;
 
     case NodeType.EMAIL_TRIGGER:
       return compileEmailTrigger(node, ctx, pad);
+
+    case NodeType.EMAIL_DELIVERY_DIRECTIVE:
+      return compileEmailDeliveryDirective(node, ctx, pad);
 
     case NodeType.RESPOND:
       return compileRespond(node, ctx, pad);

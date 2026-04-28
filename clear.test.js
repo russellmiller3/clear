@@ -22866,6 +22866,107 @@ email customer when deal's status changes to 'awaiting':
   });
 });
 
+describe('Triggered email — delivery directive (Phase B-1 part 2)', () => {
+  // Russell's canonical syntax for flipping live sending on:
+  //   email delivery using agentmail
+  // No "live", no "via" — short and direct. The directive at the top level
+  // tells the compiler to emit a small background worker that polls
+  // workflow_email_queue and sends pending rows via the named provider.
+  // Without the directive, no worker emits — default builds queue rows only.
+  // The worker fails loud at runtime if the provider's API key env var isn't
+  // set, so a misconfigured deploy doesn't silently succeed.
+  it('parses `email delivery using agentmail` as a top-level directive', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email delivery using agentmail
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('parser hard-errors on unknown provider name in delivery directive', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email delivery using badprovider`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const providerErr = result.errors.find(e => /badprovider/.test(String(e.message || e)));
+    expect(providerErr).toBeTruthy();
+  });
+
+  it('emits a delivery worker when the directive is present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  amount
+  status, default 'pending'
+email delivery using agentmail
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter for {customer}'
+  body is 'Counter on {amount}'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Worker poll loop must be present
+    expect(result.javascript).toContain('setInterval');
+    expect(result.javascript).toContain('email delivery worker');
+    // AgentMail HTTP endpoint must be present (this is the provider URL)
+    expect(result.javascript).toContain('api.agentmail.to');
+    // Worker must read the API key from env (fails loud if missing)
+    expect(result.javascript).toContain('AGENTMAIL_API_KEY');
+    // Worker reads pending rows from the queue
+    expect(result.javascript).toContain('workflow_email_queue');
+  });
+
+  it('does NOT emit a delivery worker when the directive is absent (default build stays inert)', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Phase 3.2 regression guard — without the directive, NO real provider URL
+    // appears in the compiled output, NO env var is referenced, NO worker runs.
+    expect(result.javascript).not.toContain('api.agentmail.to');
+    expect(result.javascript).not.toContain('api.sendgrid.com');
+    expect(result.javascript).not.toContain('AGENTMAIL_API_KEY');
+    expect(result.javascript).not.toContain('email delivery worker');
+  });
+
+  it('worker fails loud at runtime if API key env var is missing', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email delivery using agentmail
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The worker must guard on the env var and log a clear error if missing —
+    // not silently no-op, which would let a deploy "succeed" without sending.
+    expect(result.javascript).toMatch(/AGENTMAIL_API_KEY[\s\S]*not set/);
+  });
+});
+
 describe('Triggered email — validator (Phase 5)', () => {
   it("hard-errors on an unknown provider name with did-you-mean suggestion", () => {
     const src = `create a Deals table:

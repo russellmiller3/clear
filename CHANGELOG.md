@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (late evening) — Triggered email Phase B-1 part 2: `email delivery using <provider>` directive + worker scaffold
+
+New top-level directive flips real email sending on without changing any other line of source:
+
+```clear
+email delivery using agentmail
+```
+
+When present, the compiler emits a small background worker that polls `workflow_email_queue` every 30 seconds, sends pending rows via the named provider's HTTP API, and marks each row sent or failed. Without the directive, no worker emits — default builds stay inert (the Phase 3.2 regression guard still holds, asserting no real-provider URL leaks into the compiled output).
+
+**Why for launch:** the moment Russell sets the `AGENTMAIL_API_KEY` env var on the production server, real customer emails start flowing. No compiler change, no app change. Until then, the worker logs a clear "API key not set — cannot send" once and silently waits for it. Misconfigured deploys never silently succeed (the worker fails loud).
+
+**Provider support:**
+- `agentmail` — full HTTP POST adapter (default).
+- `sendgrid`, `resend`, `postmark`, `mailgun` — recognized by the parser + validator but the worker marks rows `failed` with a clear "adapter not implemented yet" message. Picking a non-AgentMail provider today documents intent without sending.
+
+5 new tests under `Triggered email — delivery directive (Phase B-1 part 2)`. 2740 → 2745 passing, 0 failing.
+
 ## 2026-04-28 (late evening) — Triggered email Phase B-1 part 1: template substitution at queue-insert
 
 Every queued email used to get the same literal subject + body. Now `{customer}`, `{amount}`, `{customer_email}` and any other `{field}` reference in the Clear source resolves at queue-insert time against the entity record. Each row in `workflow_email_queue` carries the per-customer text that's actually intended.
