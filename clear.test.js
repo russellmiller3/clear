@@ -22156,6 +22156,42 @@ queue for deal:
     expect(q.reviewer).toBe('CRO');
     expect(q.actions).toEqual(['approve', 'reject', 'counter']);
   });
+
+  it('parses notify clauses', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q.notifications).toEqual([
+      { role: 'customer', onActions: ['counter', 'awaiting customer'] },
+      { role: 'rep', onActions: ['approve', 'reject'] },
+    ]);
+  });
+
+  it('rejects queue with no entity name', () => {
+    const src = `queue for:
+  reviewer is 'CRO'
+  actions: approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain("entity name");
+  });
+
+  it('rejects queue with no actions', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors.some(e => e.message.includes('actions'))).toBe(true);
+  });
 });
 
 // =============================================================================

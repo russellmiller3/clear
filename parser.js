@@ -2712,8 +2712,10 @@ CANONICAL_DISPATCH.set('workflow', (ctx) => {
     return result.endIdx;
 });
 CANONICAL_DISPATCH.set('queue', (ctx) => {
-    // Disambiguate from any other 'queue' use: must be `queue for <name>:`
-    if (ctx.tokens.length < 3 || ctx.tokens[1].value !== 'for') return undefined;
+    // Disambiguate from any other 'queue' use: must START with `queue for ...`
+    // We DON'T require length >= 3 here because malformed input like `queue for:`
+    // (no entity name) needs parseQueueDef to emit the helpful error.
+    if (ctx.tokens.length < 2 || ctx.tokens[1].value !== 'for') return undefined;
     const result = parseQueueDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
@@ -4533,13 +4535,14 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
 function parseQueueDef(lines, startIdx, _parentIndent, errors) {
   const tokens = lines[startIdx].tokens;
   const line = lines[startIdx].line || startIdx + 1;
-  // tokens[0] = 'queue', tokens[1] = 'for', tokens[2] = entityName, tokens[3] = ':' (colon may be merged)
-  if (tokens.length < 3 || tokens[1].value !== 'for') {
+  // tokens[0] = 'queue', tokens[1] = 'for', tokens[2] = entityName (colon is consumed
+  // as block opener and is not a separate token).
+  if (tokens.length < 2 || tokens[1].value !== 'for') {
     errors.push({ line, message: "queue needs 'for'. Example: queue for deal:" });
     return { node: null, endIdx: startIdx + 1 };
   }
   const entityName = tokens[2] && tokens[2].value;
-  if (!entityName || entityName === ':') {
+  if (!entityName) {
     errors.push({ line, message: "queue needs an entity name. Example: queue for deal:" });
     return { node: null, endIdx: startIdx + 1 };
   }
