@@ -217,6 +217,18 @@ The `queue for X:` primitive is a brand-new Clear node type added 2026-04-27. En
 
 Plan: `plans/plan-queue-primitive-tier1-04-27-2026.md`. Changelog entry at top of `CHANGELOG.md`.
 
+### Where does the triggered email primitive live? (top-level `email <role> when <entity>'s status changes to <value>:`)
+
+The second of three primitives unlocking Marcus's workflow apps, added 2026-04-28. End-to-end:
+
+- **Parser** — `parser.js`: `parseEmailTrigger` lives next to `parseQueueDef` (search for `CANONICAL_DISPATCH.set('email'`). Produces an `EMAIL_TRIGGER` AST node with `recipientRole`, `entityName`, `triggerField` (always `'status'` for now), `triggerValue`, `subject`, `body`, `provider`, `replyTracking`. Dispatch fires only when the third token is the literal `when` (other top-level uses of `email` fall through). Validates the entity references a declared table; hard-fails on missing required body fields and on unknown body lines (F1 pattern).
+- **Compiler — table emit** — `compiler.js`: `case NodeType.EMAIL_TRIGGER:` near the `QUEUE_DEF` dispatch. Calls `compileEmailTrigger`, which emits the shared `workflow_email_queue` table once per app (deduped via `ctx._workflowEmailQueueEmitted`) plus a comment marking each trigger's location.
+- **Compiler — queue-action injection** — `compileQueueDef`'s per-action PUT loop now reads `ctx._astBody`, finds matching `EMAIL_TRIGGER` nodes (entityName + triggerValue match the action's `actionToTerminalStatus(action)`), and emits a `db.insert('workflow_email_queue', {...})` after the audit + notify inserts. Recipient resolution uses the `<role>_email` field-on-entity convention (same as the queue's notify clauses).
+- **Tests** — `clear.test.js`: search for `Triggered email — parser (Phase 1)`, `Triggered email — compiler tables (Phase 3)`, `Triggered email — queue-action integration (Phase 4)`. Phase 3 includes a regression guard that asserts NO real provider URLs (api.agentmail.to, api.sendgrid.com, etc.) appear in default-build compiled output.
+- **Real app using it** — none yet on main; deal-desk is the first candidate.
+
+Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phases 4.2-4.3 (user-written endpoint handler injection), Phase 5 (validator), and Phase B-1 (live email delivery) are deferred. Changelog entry at top of `CHANGELOG.md`.
+
 ### Where does the Live App Editing widget live?
 
 **The widget source:** `runtime/meph-widget.js` (pure browser JS, no imports). Gets copied into `clear-runtime/meph-widget.js` inside each compiled app's build directory on every Studio `/api/run`. Served at `/__meph__/widget.js` from the compiled app.

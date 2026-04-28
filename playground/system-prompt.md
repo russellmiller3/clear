@@ -778,6 +778,22 @@ What the compiler emits for free:
 
 **Recipient-email convention:** `email customer when …` resolves recipient_email by reading `<entity>.customer_email`. If the field is missing, the validator warns; the row still queues with a blank email.
 
+**Triggered emails (top-level block).** When the user wants emails to fire on state changes (counter offers, status updates, awaiting-reply pings), use:
+
+```clear
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+The compiler emits a shared `workflow_email_queue` table once per app + wires the queue's auto-PUT handlers to inject email rows when their terminal status matches the trigger value. Real provider sends stay deferred behind `enable live email delivery via X` — default builds queue rows only (visible in your tables, but no one gets a real email).
+
+Sub-clauses: `subject is '...'`, `body is '...'`, `provider is '...'` (default `'agentmail'`), `track replies as <text>` (optional). Hard-fails on undeclared entity / missing subject or body / unknown body line.
+
+**Use the email-trigger block when** Marcus's flow needs reply-aware notifications tied to state changes. **Don't use it for** one-off transactional emails — those keep using `send email:` directly.
+
 **DO NOT hand-roll** when the user asks for an approval flow. Don't write per-action `when user updates X at /api/deals/:id/approve:` URLs alongside hand-built `DealDecisions` and `DealNotifications` tables. The primitive replaces all of that.
 
 **DO NOT use `queue for X:`** when:

@@ -1286,6 +1286,32 @@ What the compiler emits for free:
 - A specific human role decides; you want an audit trail.
 - You want notifications queued (recipient_email resolves by convention from `<role>_email` fields on the entity).
 
+**Triggered emails on state change — `email <role> when <entity>'s status changes to <value>:`**
+
+Same `email <role> when <trigger>` atom as the queue clause above, at the top level. Declares: when ANY URL handler (typically a queue auto-PUT) sets the entity's status to the trigger value, queue an email row in the shared `workflow_email_queue` table:
+
+```clear
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+The compiler emits a single shared `workflow_email_queue` table per app and wires queue auto-PUT handlers (whose terminalStatus matches the trigger value) to insert email rows alongside the audit + notify inserts. **No real provider sends in default builds** — rows queue only. Live delivery is gated behind an explicit `enable live email delivery via X` directive (not yet shipped). Tests, previews, and dev never accidentally email a customer.
+
+**Sub-clauses inside the body:**
+- `subject is '...'` (required)
+- `body is '...'` (required)
+- `provider is '...'` (optional; default `'agentmail'`; valid: `agentmail`, `sendgrid`, `resend`, `postmark`, `mailgun`)
+- `track replies as <free text>` (optional; e.g. `track replies as deal activity`)
+
+**Hard-fails on:** undeclared entity reference, missing required `subject` or `body`, unknown body line (F1 pattern with did-you-mean hint).
+
+**When to use it:** workflow state changes that should notify a person (customer / rep / manager). Pair with a `queue for X:` block — the queue's auto-PUT handlers automatically trigger matching emails.
+
+**When NOT to use it:** one-off transactional emails not tied to a state change — keep using `send email:` directly.
+
 **When NOT to use it:**
 - Single-record approve/reject without audit needs (just write a PUT handler).
 - Automated routing with no human in the loop (build a `routing rules for X:` primitive — separate shape).

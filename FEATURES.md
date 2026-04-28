@@ -330,6 +330,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Reviewer role | `reviewer is 'CRO'` | Stamped on every audit row's `decided_by` |
 | Action list | `actions: approve, reject, counter, awaiting customer` | Each action becomes `PUT /api/<entity>s/:id/<action>` — multi-word actions slugify to first word |
 | Notify clause | `notify customer on counter, awaiting customer` | Inserts a row in `<entity>_notifications` for matching actions; recipient_email resolves from `<role>_email` field on the entity |
+| Email when (canonical, F3) | `email customer when counter, awaiting customer` | Same as above but the verb names HOW (email vs vague notify); `notify on` kept as legacy alias |
+| Triggered email block (top-level) | `email customer when deal's status changes to 'awaiting': subject is '...' body is '...'` | Auto-emits a shared `workflow_email_queue` table; queue-driven status transitions automatically queue email rows. Real sends gated behind `enable live email delivery via X` directive (deferred). |
 | Auto-emitted audit | `<entity>_decisions` table | `deal_id, decision, decided_by, decided_at, decision_note` |
 | Auto-emitted queue view | `GET /api/<entity>s/queue` | Filtered by `status = 'pending'` |
 | Auto-emitted history view | `GET /api/<entity>-decisions` | Full audit log |

@@ -6,6 +6,39 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 — Triggered email primitive — top-level `email <role> when <entity>'s status changes to <value>:` block + queue-action integration
+
+The second of three primitives unlocking Marcus's 5 workflow apps. F3 (above) made `email <role> when <action>` canonical INSIDE queue blocks; this section puts the same atom at the TOP LEVEL so any URL handler that lands the entity's status on a trigger value queues an email automatically.
+
+Concretely, for Marcus's deal desk, this single Clear block:
+
+    queue for deal:
+      reviewer is 'CRO'
+      actions: approve, reject, counter
+
+    email customer when deal's status changes to 'awaiting':
+      subject is 'We countered your offer'
+      body is 'Sarah from our team has prepared a counter offer for you.'
+      provider is 'agentmail'
+      track replies as deal activity
+
+…now compiles to: a queue's PUT /api/deals/:id/counter handler that records the decision audit row AND inserts a customer-bound row in workflow_email_queue (subject, body, provider, queue_status='pending', recipient resolved via the entity's `customer_email` field).
+
+What landed across 4 commits on `feature/triggered-email-primitive`:
+- **F3 (494fa1f)** — `email <role> when <action>` canonical inside queue blocks; `notify <role> on <action>` kept as legacy alias. Both forms push `{role, onActions, mechanism}` to the notifications array so future passes can route email rows to the workflow email queue while leaving notify rows generic. Apps migrated: deal-desk + onboarding-tracker. Doc cascade: SYNTAX, AI-INSTRUCTIONS, system-prompt.
+- **Phase 1 parser (dfc9da7)** — new `EMAIL_TRIGGER` NodeType + `parseEmailTrigger` mirroring parseQueueDef shape. Recognizes `email <role> when <entity>'s status changes to <value>:` + body fields (`subject is`, `body is`, `provider is`, `track replies as`). Validates entity references a declared table (singular/plural match). Hard-fails on unknown body lines (F1 pattern). 5 TDD tests cover happy path, sub-clauses, undeclared entity, missing subject, unknown body line.
+- **Phase 3 compiler table emit (8a6b8a6)** — `compileEmailTrigger` emits the shared `workflow_email_queue` table once per app (deduped via `ctx._workflowEmailQueueEmitted` flag — multiple triggers share the table). 3 TDD tests including a regression guard that asserts NO real provider URLs (api.agentmail.to, api.sendgrid.com, etc.) appear in compiled output. Live email delivery stays deferred behind an explicit `enable live email delivery via X` directive (Phase B-1, not started).
+- **Phase 4.1 queue-action integration (fe80249)** — compileQueueDef's per-action PUT handler reads `ctx._astBody`, finds matching `EMAIL_TRIGGER` nodes (entityName + triggerValue match the action's terminalStatus), and emits a `db.insert('workflow_email_queue', {...})` after the audit + notify inserts. Recipient resolution uses the `<role>_email` field-on-entity convention. 2 TDD tests cover the positive case (counter → awaiting injects) and the negative case (approve → approved does not inject).
+
+Test count: 2716 passing (up 14 from start of email epic), 0 failing. All 14 templates / Marcus apps compile clean.
+
+What's deferred (not in this commit):
+- Phase 4.2-4.3 — user-written endpoint handlers like `when user updates deal at /api/deals/:id/counter:` with a manual `deal's status is 'awaiting'` line. Different injection path (scanning ENDPOINT body for POSSESSIVE_ASSIGN). Adds when first customer evidence demands.
+- Phase 5 — validator (never-firing trigger warning, undefined body var warning, bad provider name hard-error).
+- Phase B-1 — live email delivery worker via real provider APIs. Gated behind explicit `enable live email delivery via X` directive AND env-var-backed API keys.
+
+---
+
 ## 2026-04-28 — `email <role> when <action>` is the canonical queue notification clause (F3)
 
 The queue primitive's notification clause now reads `email customer when counter, awaiting customer` instead of `notify customer on counter, awaiting customer`. The verb names HOW the recipient gets reached (email, vs vague "notify"); the connector reads naturally (when, vs the slightly-off "on"). This is Russell's design feedback from the 2026-04-28 red-team — verbs that name HOW > vague verbs.
