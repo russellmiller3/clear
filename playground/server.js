@@ -101,8 +101,15 @@ app.use(express.json({ limit: '1mb' }));
 // and Studio operates exactly as before. Wiring contract is in
 // playground/cloud-routing/index.test.js.
 import { mountCloudRouting } from './cloud-routing/index.js';
-import { InMemoryTenantStore } from './tenants.js';
-const _cloudTenantStore = new InMemoryTenantStore();
+import { makeTenantStore } from './tenant-store-factory.js';
+// CC-1 cycle 9 — pick the right tenant store from env. DATABASE_URL unset
+// → InMemoryTenantStore (default, dev/test). DATABASE_URL set → migrations
+// run + PostgresTenantStore. TENANT_STORE_PRIMARY=dual-write → wrapper
+// that writes to both during cutover. Single source of truth for every
+// store consumer in the cloud layer.
+const _cloudTenantHandle = await makeTenantStore(process.env);
+const _cloudTenantStore = _cloudTenantHandle.store;
+console.log(`[cloud] tenant store mode: ${_cloudTenantHandle.mode}`);
 const _cloudRouted = mountCloudRouting(app, { store: _cloudTenantStore });
 if (_cloudRouted) console.log('[cloud] CC-1 multi-tenant routing active (CLEAR_CLOUD_MODE=1)');
 
