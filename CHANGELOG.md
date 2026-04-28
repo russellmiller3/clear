@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (follow-up) — Triggered email primitive Cycles 4.1-extension, 4.2, 4.3, 5.2 close the silent-failure surface
+
+Earlier in the day Phase 1 + 3 + 4.1 (queue auto-PUT only) + 5.1 + 5.3 shipped. The triggered email primitive worked when an app used the queue primitive — but if an app hand-wrote its endpoints, or skipped the queue entirely, the trigger sat dead. Same problem for the validator: it warned "never fires" on apps whose only status-changing handler was hand-written.
+
+This session closes those gaps and adds two compile-time silent-bug guards.
+
+- **Cycle 4.1-extension + 4.2 (compiler + validator) — `feat(email-trigger): user-defined endpoints also queue emails`** — `compileEndpoint` now scans the endpoint body for `<entity>.status = <literal>` assignments. If a top-level `email_trigger` matches the entity + value, splice a `db.insert('workflow_email_queue', {...})` into the compiled bodyCode BEFORE the response statement (after-response would be unreachable dead code). Validator's never-fires reachability map now includes user-written endpoint bodies, not just queue actions. Two regression tests: single user-defined endpoint produces exactly one insert; two user-defined endpoints both assigning the same trigger value produce exactly two inserts (catches "scan once and stop" mistakes).
+
+- **Cycle 4.3 (validator) — `feat(email-trigger): warn when entity has no recipient_email field`** — every `email_trigger` resolves the recipient at runtime via the `<role>_email` field-on-entity convention. If the entity table never declares that field, the queue row lands with empty recipient_email and the email never sends. Validator now scans email_triggers + entity table fields, warns at compile time naming the table + missing field. Compile still succeeds (warn, not error); the queue insert still emits — failure is observable in the queue, not silent at send time.
+
+- **Cycle 5.2 (validator) — `feat(email-trigger): warn on {ident} body interpolation refs`** — body and subject often want to interpolate entity fields (`{customer}`, `{amount}`). Until interpolation lands as a runtime feature, any `{ident}` ships as literal text in the customer's inbox. Validator now scans `node.body` + `node.subject` for `{ident}` patterns and warns when the ident doesn't match an entity field. Once interpolation lands, the same warning shape catches typos.
+
+Tests: 2720 → 2727 passing (+7), 0 failing. Three commits (193f829, 2cfb6a4, b4835b3) + one demo commit (1b02e55) on the deal-desk app exercising the new top-level `email customer when deal's status changes to 'awaiting':` block alongside the queue's `counter` action. Merged to main as 9e5e4bc.
+
+---
+
 ## 2026-04-28 — Triggered email primitive — top-level `email <role> when <entity>'s status changes to <value>:` block + queue-action integration
 
 The second of three primitives unlocking Marcus's 5 workflow apps. F3 (above) made `email <role> when <action>` canonical INSIDE queue blocks; this section puts the same atom at the TOP LEVEL so any URL handler that lands the entity's status on a trigger value queues an email automatically.

@@ -350,7 +350,7 @@ Workflow step types (inside workflow body):
 | Node Type | Syntax | Compiles To |
 |-----------|--------|-------------|
 | `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action PUT handlers (auth-gated), CSV export URL (`GET /api/<entity>/export.csv`). Suppress CSV with `no export` clause inside the body. |
-| `EMAIL_TRIGGER` | `email <role> when <entity>'s status changes to <value>:` + indented body (`subject is`, `body is`, `provider is`, `track replies as`) | Top-level block. Auto-emits the shared `workflow_email_queue` table once per app. Queue auto-PUT handlers whose terminal status matches the trigger value also inject an email-queue row (Phase 4.1). Real provider sends deferred behind `enable live email delivery via X` directive. |
+| `EMAIL_TRIGGER` | `email <role> when <entity>'s status changes to <value>:` + indented body (`subject is`, `body is`, `provider is`, `track replies as`) | Top-level block. Auto-emits the shared `workflow_email_queue` table once per app. Both queue auto-PUT handlers (Phase 4.1) AND user-defined `when user updates <entity> at <path>:` endpoints (Phase 4.1-extension) that assign the entity's status to the trigger value inject an email-queue row before the response statement. Validator warns when the entity table has no `<role>_email` field (Phase 4.3) or when body / subject reference `{ident}` that doesn't match an entity field (Phase 5.2). Real provider sends deferred behind `enable live email delivery via X` directive. |
 
 Queue body clauses:
 
