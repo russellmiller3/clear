@@ -224,6 +224,8 @@ Before building a new feature, grep the parser for similar existing features. We
 
 These automate the rule, they don't replace it. The human-side practice — writing doc updates in the same commit as the feature — is still the actual quality bar. The hook nudges; the detector catches the misses.
 
+**Doc cascade runs at PHASE-END, not commit-end (HARD RULE — added 2026-04-28).** When a session ships multiple commits all in service of the same epic / phase / feature, run the 11-surface cascade ONCE at the end — not after every commit. A "phase" is a coherent unit of shipped work (CC-2 close, deal-desk polish, a single feature). One cascade per phase, not per commit. If a session covers 3 different epics, that's 3 cascades (one per epic) — but if a single epic ships across 5 commits, it's 1 cascade. Saves the energy + churn of writing five overlapping CHANGELOG entries that all describe the same thing.
+
 ## Before Adding New Features or Syntax (MANDATORY)
 1. Use `/write-plan` to create an implementation plan
 2. Use `/red-team-plan` to stress-test the plan before coding

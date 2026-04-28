@@ -10723,12 +10723,18 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`    }`);
       lines.push(`  }`);
     } else {
-      const formatExpr = disp.format === 'dollars' || disp.format === 'currency' ? `Number(${val}).toLocaleString('en-US', { style: 'currency', currency: 'USD' })`
-        : disp.format === 'percent' || disp.format === 'percentage' ? `(Number(${val}) * 100).toFixed(1) + '%'`
-        : disp.format === 'date' ? `new Date(${val}).toLocaleDateString()`
-        : disp.format === 'json' ? `JSON.stringify(${val}, null, 2)`
-        : disp.format === 'count' ? `String(Array.isArray(${val}) ? ${val}.length : ${val})`
-        : `String(${val})`;
+      // Null/undefined guard — when the source value isn't loaded yet
+      // (page just opened, no row selected, fetch hasn't returned), every
+      // format below would produce ugly defaults: $NaN, NaN%, "Invalid Date",
+      // "null", "undefined". Render an empty string instead so the layout
+      // shape stays right but no broken numbers leak to the user. Caught
+      // session 04-28-2026 in deal-desk's empty detail panel.
+      const formatExpr = disp.format === 'dollars' || disp.format === 'currency' ? `((${val}) == null ? '' : Number(${val}).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))`
+        : disp.format === 'percent' || disp.format === 'percentage' ? `((${val}) == null ? '' : (Number(${val}) * 100).toFixed(1) + '%')`
+        : disp.format === 'date' ? `((${val}) == null ? '' : new Date(${val}).toLocaleDateString())`
+        : disp.format === 'json' ? `((${val}) == null ? '' : JSON.stringify(${val}, null, 2))`
+        : disp.format === 'count' ? `((${val}) == null ? '0' : String(Array.isArray(${val}) ? ${val}.length : ${val}))`
+        : `((${val}) == null ? '' : String(${val}))`;
       const dispProp = disp.format === 'json' ? 'innerText' : 'textContent';
       lines.push(`  document.getElementById('${outputId}_value').${dispProp} = ${formatExpr};`);
     }
@@ -11451,9 +11457,21 @@ function buildHTML(body) {
 
   function pageHeaderHTML(node) {
     const title = formatInlineText(node.title || '');
-    const subtitle = node.subtitle
-      ? `<p class="clear-page-subtitle text-sm text-base-content/55 mt-1">${formatInlineText(node.subtitle)}</p>`
-      : '';
+    // Subtitle supports {varname} interpolation against the page's reactive
+    // state — same path that text/small-text use elsewhere. When the subtitle
+    // contains {var} placeholders we emit data-clear-tpl="{original}" and the
+    // runtime's _recompute() resubstitutes on every state change. Without this
+    // attribute the literal "{var}" text shows on the page (caught session
+    // 04-28-2026 in the deal-desk demo).
+    let subtitle = '';
+    if (node.subtitle) {
+      const subText = formatInlineText(node.subtitle);
+      const hasTpl = typeof subText === 'string' && /\{[a-zA-Z_]\w*\}/.test(subText);
+      const tplAttr = hasTpl
+        ? ` data-clear-tpl="${subText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"`
+        : '';
+      subtitle = `<p class="clear-page-subtitle text-sm text-base-content/55 mt-1"${tplAttr}>${subText}</p>`;
+    }
     const before = parts.length;
     if (node.actions && node.actions.length > 0) {
       walk(node.actions);

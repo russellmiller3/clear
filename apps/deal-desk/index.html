@@ -372,7 +372,7 @@ body {
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="290">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Pending CRO approval</h1>
-        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{pending_count} deals waiting on you.</p>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{pending_count} deals waiting on you.">{pending_count} deals waiting on you.</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
     <button class="btn btn-primary" id="btn_New_deal" data-clear-uat-id="button_293_New_deal" data-clear-control-kind="button" data-clear-line="293">New deal</button>
@@ -1095,9 +1095,9 @@ function _recompute() {
     function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '<td><div class="clear-row-actions">' + '<button class="btn-tiny is-secondary" data-action="review" data-row-id="' + _esc(row.id) + '">Review</button>' + ' ' + '<button class="btn-tiny is-primary" data-action="approve" data-row-id="' + _esc(row.id) + '">Approve</button>' + '</div></td>' + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_Pending_table'), 'selected_deal');
-  document.getElementById('output_List_price_value').textContent = Number(_state.selected_deal?.list_price).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  document.getElementById('output_Discount_value').textContent = (Number(_state.selected_deal?.discount_percent) * 100).toFixed(1) + '%';
-  document.getElementById('output_Risk_score_value').textContent = String(_state.selected_deal?.risk_score);
+  document.getElementById('output_List_price_value').textContent = ((_state.selected_deal?.list_price) == null ? '' : Number(_state.selected_deal?.list_price).toLocaleString('en-US', { style: 'currency', currency: 'USD' }));
+  document.getElementById('output_Discount_value').textContent = ((_state.selected_deal?.discount_percent) == null ? '' : (Number(_state.selected_deal?.discount_percent) * 100).toFixed(1) + '%');
+  document.getElementById('output_Risk_score_value').textContent = ((_state.selected_deal?.risk_score) == null ? '' : String(_state.selected_deal?.risk_score));
   _clear_render_table(
     document.getElementById('output_Approved_Deals_table'),
     _state.approved_deals,
