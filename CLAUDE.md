@@ -491,3 +491,16 @@ The Factor DB already knows which error messages cost Meph the most minutes — 
 - In ROADMAP tables, prefix estimates with "human:" and "agent:" when it matters, OR drop duration columns and use complexity tiers (small / medium / large) instead.
 - Before splitting a multi-feature /pres into "too big for one session," do the 10x division first — a "5-6 week human project" is a "3-5 day agent project," which IS one pres cycle.
 - Never cite unadjusted human estimates from external sources (LinkedIn, job postings, conventional wisdom) without applying the 10x divisor when scoping agent work.
+
+## Build Python Alongside JS — No Drift Tax (MANDATORY)
+
+**Whenever you add, change, or extend the JS backend output, build the Python equivalent in the SAME change.** Both targets ship from the same Clear source and are first-class compile targets — Python is not a "later" target. Compile-test both targets before declaring a feature done.
+
+**Why this rule exists:** every time we let JS land first and "do Python next session," the gap compounds. Three sessions later, the Python emission has 8 missing features, the runtime helpers don't exist, and the gap looks like a refactor. By the time someone tries to use the Python target in anger, it's broken in ways that should never have existed. PHILOSOPHY.md Rule 17 (cross-target parity) is the design principle; this rule is the enforcement.
+
+**How to apply:**
+- New node type? Implement both `compileToJSBackend` and `compileToPythonBackend` paths in the same commit. New runtime helper? Write `runtime/<name>.js` AND `runtime/<name>.py` together.
+- After every change to a backend emit path, run `node scripts/cross-target-smoke.mjs` to compile every template × every target and syntax-check each emission. Fix any drift before commit.
+- New AI-INSTRUCTIONS.md or SYNTAX.md guidance with a code example? The example must compile clean on BOTH targets.
+- For features that genuinely don't make sense on Python (e.g. browser-only DOM APIs), document the gap explicitly in the node-type's `intent.md` row — "JS-only: <reason>." Silent gaps are the failure mode; documented gaps are fine.
+- **Red flag:** a commit that touches `compileToJSBackend` without also touching `compileToPythonBackend` (or explicitly documenting why Python doesn't apply). Investigate before merging.
