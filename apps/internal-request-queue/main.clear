@@ -33,6 +33,13 @@ create a Requests table:
   resolution
   created_at_date, auto
 
+# Triage queue — auto-generates audit, action URLs, and filtered queue URL.
+# Each action requires login and records the triage decision.
+
+queue for request:
+  reviewer is 'ops'
+  actions: assign, resolve
+
 # Backend
 
 ## Middleware
