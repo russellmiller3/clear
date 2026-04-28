@@ -131,15 +131,24 @@ export function validate(ast) {
 // trigger needs at least one URL handler in the same app that actually sets
 // the entity's status to that value. Otherwise the trigger sits dead in the
 // compiled output: workflow_email_queue table emits but no row ever lands.
-// Today we check queue auto-PUT handlers (their actionToTerminalStatus); a
-// future cycle will also scan user-written ENDPOINT bodies for matching
-// possessive-status assignments.
+// Two reachability paths:
+//   (a) queue actions whose terminal status matches the trigger value, or
+//   (b) user-written endpoint bodies containing `<entity>'s status is <value>`
+//       (parser shape: assign{name='entity.status', expression=literal_string}).
+// Either path is enough — apps that don't use the queue primitive still trigger
+// emails when their hand-written handler assigns the trigger value.
 function validateEmailTriggers(body, warnings) {
   const reachable = new Map(); // entity (lowercase) -> Set<status value>
+  const addReachable = (entity, value) => {
+    const key = String(entity || '').toLowerCase();
+    if (!key) return;
+    if (!reachable.has(key)) reachable.set(key, new Set());
+    reachable.get(key).add(value);
+  };
+  // Path (a): queue actions
   for (const node of body) {
     if (!node || node.type !== 'queue_def') continue;
     const entity = String(node.entityName || '').toLowerCase();
-    if (!reachable.has(entity)) reachable.set(entity, new Set());
     for (const action of (node.actions || [])) {
       const first = String(action).split(/\s+/)[0].toLowerCase();
       let terminal;
@@ -148,8 +157,60 @@ function validateEmailTriggers(body, warnings) {
       else if (first === 'counter') terminal = 'awaiting';
       else if (first === 'awaiting') terminal = 'awaiting';
       else terminal = first;
-      reachable.get(entity).add(terminal);
+      addReachable(entity, terminal);
     }
+  }
+  // Path (b): user-written endpoint bodies. Walk every endpoint / update_endpoint
+  // recursively to find `<varName>.status = <literal>` assignments. Treat
+  // `<varName>` as the entity name — same convention the parser uses for
+  // possessive assignments to a receiving variable.
+  const collectStatusAssigns = (stmts) => {
+    if (!Array.isArray(stmts)) return;
+    for (const stmt of stmts) {
+      if (!stmt || typeof stmt !== 'object') continue;
+      if (
+        stmt.type === 'assign' &&
+        typeof stmt.name === 'string' &&
+        stmt.name.includes('.') &&
+        stmt.name.toLowerCase().endsWith('.status') &&
+        stmt.expression &&
+        stmt.expression.type === 'literal_string'
+      ) {
+        const dotIdx = stmt.name.lastIndexOf('.');
+        const entityVar = stmt.name.slice(0, dotIdx);
+        addReachable(entityVar, stmt.expression.value);
+      }
+      if (Array.isArray(stmt.body)) collectStatusAssigns(stmt.body);
+    }
+  };
+  for (const node of body) {
+    if (!node) continue;
+    if (node.type === 'endpoint' || node.type === 'update_endpoint') {
+      collectStatusAssigns(node.body);
+    }
+  }
+  // Phase 4.3 — recipient field reachability. Each email_trigger picks its
+  // recipient by the `<role>_email` convention (e.g. `email customer ...`
+  // resolves to the entity's `customer_email` field at runtime). Build a
+  // map of {entity (lowercase, singular) -> Set<field name>} from the table
+  // declarations so we can warn when the trigger references a field the
+  // table never declares. The compiled queue insert still emits — it just
+  // lands with empty recipient_email so the failure is observable in the
+  // queue, not silent at send time.
+  const tableFields = new Map();
+  for (const node of body) {
+    if (!node || node.type !== 'data_shape') continue;
+    const tableName = String(node.name || '').toLowerCase();
+    if (!tableName) continue;
+    const fieldSet = new Set();
+    for (const field of (node.fields || [])) {
+      if (field && field.name) fieldSet.add(String(field.name).toLowerCase());
+    }
+    // Map both `Deals` (table name as written) and `deal` (the singular
+    // entity name used in `email customer when deal's ...`). The convention
+    // strips a trailing s; tables already singular ('Foo') stay as-is.
+    tableFields.set(tableName, fieldSet);
+    if (tableName.endsWith('s')) tableFields.set(tableName.slice(0, -1), fieldSet);
   }
   for (const node of body) {
     if (!node || node.type !== 'email_trigger') continue;
@@ -165,6 +226,60 @@ function validateEmailTriggers(body, warnings) {
           `Add a queue action whose terminal status is '${value}' (e.g. 'counter' for awaiting), ` +
           `or a user-written endpoint that assigns '${value}' to ${entity}.status.`
       });
+    }
+    const role = String(node.recipientRole || '').toLowerCase();
+    if (role) {
+      const expectedField = `${role}_email`;
+      const fields = tableFields.get(entity);
+      // Find the table's display name (e.g. `Deals`) for a friendlier message.
+      let tableDisplay = '';
+      for (const n of body) {
+        if (!n || n.type !== 'data_shape') continue;
+        const lower = String(n.name || '').toLowerCase();
+        if (lower === entity || (lower.endsWith('s') && lower.slice(0, -1) === entity)) {
+          tableDisplay = n.name;
+          break;
+        }
+      }
+      if (fields && !fields.has(expectedField)) {
+        warnings.push({
+          line: node.line,
+          message:
+            `email trigger sends to '${role}' but the ${tableDisplay || entity} table has no '${expectedField}' field. ` +
+            `Queue rows will land with an empty recipient_email — add '${expectedField}' to the ${tableDisplay || entity} table ` +
+            `so the email worker has somewhere to send.`
+        });
+      }
+    }
+    // Phase 5.2 — body/subject interpolation refs. Any `{ident}` in body or
+    // subject is a likely typo: author meant the entity field, but the email
+    // worker doesn't interpolate templates yet. Warn at compile time so the
+    // typo doesn't ship as literal `{customer}` text in the customer's inbox.
+    // When the ref matches a real entity field, the warning still fires (as a
+    // heads-up that interpolation isn't supported) but is phrased differently.
+    const fields = tableFields.get(entity) || new Set();
+    const interpRefs = (text) => {
+      const out = [];
+      if (typeof text !== 'string') return out;
+      // Match {ident} / {ident_with_underscores} — single braces only. Skip
+      // any opening that's part of `${...}` (already-interpolated JS in
+      // case the body was hand-rolled).
+      const re = /(?<!\$)\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+      let m;
+      while ((m = re.exec(text)) !== null) out.push(m[1]);
+      return out;
+    };
+    const refs = [...interpRefs(node.body || ''), ...interpRefs(node.subject || '')];
+    for (const ref of refs) {
+      if (!fields.has(ref.toLowerCase())) {
+        warnings.push({
+          line: node.line,
+          message:
+            `email body / subject references '{${ref}}' but no field by that name exists on ${entity}. ` +
+            `The email worker doesn't interpolate templates — the customer will see literal '{${ref}}' text. ` +
+            `Spell out the value in plain prose, or fix the field name.`
+        });
+      }
     }
   }
 }

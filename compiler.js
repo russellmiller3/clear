@@ -4284,7 +4284,7 @@ function compileEndpoint(node, ctx, pad) {
   if (endpointBodyUsesIncoming(node.body)) epDeclared.add('incoming');
   const hasIdParam = node.path.includes(':id');
   const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
+  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
   let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
   // Auto-wire multer middleware on POST endpoints that are the target of a
   // client-side `upload X to '<path>'`. Without this, the multipart body
@@ -4332,6 +4332,77 @@ function compileEndpoint(node, ctx, pad) {
       const hasUrlParam = /\/:/.test(node.path || '');
       const source = isGet && !hasUrlParam ? 'req.query' : 'req.params';
       epCode += `${pad}    const ${sanitizeName(dataVar)} = ${source};\n`;
+    }
+  }
+  // Triggered email primitive (Phase 4.1-extension) — when this user-written
+  // endpoint body contains an assignment of <entity>.status to a literal value
+  // that matches a top-level email_trigger, queue an email row in
+  // workflow_email_queue. Mirrors the queue auto-PUT injection at compileQueueDef
+  // so apps that don't use the queue primitive still get triggered emails when
+  // their handler sets the entity's status to a trigger value.
+  //
+  // The insert MUST land BEFORE the response statement, otherwise it sits
+  // after a `return res.json(...)` and never executes (silent dead code).
+  // We splice the insert into the compiled bodyCode just before the LAST
+  // response prefix (`<indent>return res.` / `<indent>res.send` / etc.).
+  let triggerInjection = '';
+  const triggerAssigns = (node.body || []).filter(stmt =>
+    stmt && stmt.type === NodeType.ASSIGN &&
+    typeof stmt.name === 'string' &&
+    stmt.name.includes('.') &&
+    stmt.name.toLowerCase().endsWith('.status') &&
+    stmt.expression && stmt.expression.type === NodeType.LITERAL_STRING
+  );
+  if (triggerAssigns.length > 0 && Array.isArray(ctx._astBody)) {
+    for (const assign of triggerAssigns) {
+      const dotIdx = assign.name.lastIndexOf('.');
+      const entityVarRaw = assign.name.slice(0, dotIdx);
+      const entityVar = entityVarRaw.toLowerCase();
+      const triggerValue = assign.expression.value;
+      const matchingTriggers = ctx._astBody.filter(n =>
+        n && n.type === NodeType.EMAIL_TRIGGER &&
+        n.entityName === entityVar &&
+        n.triggerValue === triggerValue
+      );
+      for (const trig of matchingTriggers) {
+        const safeVar = sanitizeName(entityVarRaw);
+        const emailField = `${trig.recipientRole}_email`;
+        const subjectStr = JSON.stringify(trig.subject || '');
+        const bodyStr = JSON.stringify(trig.body || '');
+        const providerStr = JSON.stringify(trig.provider || 'agentmail');
+        const replyStr = JSON.stringify(trig.replyTracking || '');
+        const recipientRoleStr = JSON.stringify(trig.recipientRole);
+        triggerInjection += `${pad}    db.insert('workflow_email_queue', {\n`;
+        triggerInjection += `${pad}      entity_type: ${JSON.stringify(entityVar)},\n`;
+        triggerInjection += `${pad}      entity_id: (${safeVar} && ${safeVar}.id) || null,\n`;
+        triggerInjection += `${pad}      recipient_role: ${recipientRoleStr},\n`;
+        triggerInjection += `${pad}      recipient_email: (${safeVar} && ${safeVar}[${JSON.stringify(emailField)}]) || '',\n`;
+        triggerInjection += `${pad}      subject: ${subjectStr},\n`;
+        triggerInjection += `${pad}      body: ${bodyStr},\n`;
+        triggerInjection += `${pad}      provider: ${providerStr},\n`;
+        triggerInjection += `${pad}      reply_tracking: ${replyStr},\n`;
+        triggerInjection += `${pad}      queue_status: 'pending',\n`;
+        triggerInjection += `${pad}      attempts: 0,\n`;
+        triggerInjection += `${pad}      queued_at: new Date().toISOString()\n`;
+        triggerInjection += `${pad}    });\n`;
+      }
+    }
+  }
+  if (triggerInjection) {
+    // Splice the insert in before the LAST response prefix in bodyCode. The
+    // RESPOND compiler emits `<indent>return res.<...>` (sometimes plain
+    // `<indent>res.send/json` for older paths). Match the last such line.
+    const respondPrefix = /(^|\n)([ \t]+)(return\s+res\.|res\.send|res\.json|res\.status)/g;
+    let lastMatch = null;
+    let m;
+    while ((m = respondPrefix.exec(bodyCode)) !== null) {
+      lastMatch = m;
+    }
+    if (lastMatch) {
+      const insertAt = lastMatch.index + lastMatch[1].length;
+      bodyCode = bodyCode.slice(0, insertAt) + triggerInjection + bodyCode.slice(insertAt);
+    } else {
+      bodyCode = bodyCode + (bodyCode.endsWith('\n') ? '' : '\n') + triggerInjection;
     }
   }
   epCode += bodyCode + '\n';

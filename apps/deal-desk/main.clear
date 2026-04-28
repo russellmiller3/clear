@@ -88,6 +88,15 @@ queue for deal:
   email customer when counter, awaiting customer
   email rep when approve, reject
 
+# When the CRO counters a deal, queue a reply-aware email to the customer
+# so they can accept or push back. The queue's PUT handler for the counter
+# action automatically inserts the row into the shared email outbox.
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you. Please review and respond when you can.'
+  provider is 'agentmail'
+  track replies as deal activity
+
 # Backend
 
 allow cross-origin requests

@@ -22672,6 +22672,53 @@ email customer when deal's status changes to 'awaiting':
     expect(String(neverFires.message || neverFires)).toContain('deal');
   });
 
+  // Cycle 5.2 — body and subject often want to interpolate entity fields
+  // (`{customer}`, `{amount}`). Until interpolation lands as a runtime
+  // feature, ANY `{ident}` in the email body or subject is a likely typo
+  // — author thought it would render but it'll be sent as literal text.
+  // Validator warns so the typo is caught at compile time.
+  it("warns when email body uses {ident} that doesn't match an entity field", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Hello {nonexistent_var}'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const interpWarn = result.warnings.find(w =>
+      /nonexistent_var/.test(String(w.message || w))
+    );
+    expect(interpWarn).toBeTruthy();
+  });
+
+  it("does NOT warn when {ident} matches a field on the entity table", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Update on your deal'
+  body is 'Hello {customer}, your deal is awaiting reply.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const interpWarn = result.warnings.find(w =>
+      /customer/.test(String(w.message || w)) && /interpol/i.test(String(w.message || w))
+    );
+    expect(interpWarn).toBeUndefined();
+  });
+
   it("does NOT warn when a queue action provides the matching status transition", () => {
     const src = `build for javascript backend
 database is local memory
@@ -22741,6 +22788,151 @@ email customer when deal's status changes to 'awaiting':
     const approveEnd = result.javascript.indexOf("});", approveStart);
     const approveHandler = result.javascript.slice(approveStart, approveEnd);
     expect(approveHandler).not.toMatch(/workflow_email_queue/);
+  });
+
+  // Cycle 4.1-extension — user-defined endpoints that set entity.status to
+  // the trigger value must also queue an email. Without this, an app that
+  // doesn't use the queue primitive (or whose user-written endpoint bypasses
+  // the queue) silently drops the trigger. The plan's Cycle 4.1 explicitly
+  // tests user-written handlers, not just queue auto-PUTs.
+  it("user-defined endpoint that assigns entity.status to trigger value also queues an email", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Confirm the handler exists in the output.
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    // No queue is declared — the ONLY source of a workflow_email_queue insert
+    // is the user-defined counter handler. Exactly one insert should appear.
+    const inserts = (result.javascript.match(/db\.insert\(['"]workflow_email_queue['"]/g) || []).length;
+    expect(inserts).toBe(1);
+    // Insert carries the subject + resolved recipient field.
+    expect(result.javascript).toContain('"Counter offer"'); // subject
+    expect(result.javascript).toMatch(/recipient_email:[^\n]*customer_email/);
+    // The insert must land BEFORE the response — otherwise it's unreachable
+    // dead code. Splice point is captured by the relative ordering of the
+    // insert vs `return res.` inside the same handler region.
+    const insertPos = result.javascript.indexOf("db.insert('workflow_email_queue'");
+    const responsePos = result.javascript.indexOf('return res.', insertPos);
+    expect(insertPos).toBeGreaterThan(-1);
+    expect(responsePos).toBeGreaterThan(insertPos);
+  });
+
+  // Cycle 4.2 — same trigger fires from EVERY handler that lands on the
+  // trigger value, not just the first one. Two distinct user-written
+  // endpoints both assign awaiting; both must queue an email.
+  it("multiple user-defined handlers assigning the same trigger value all queue emails", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+when user updates deal at /api/deals/:id/awaiting:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting reply'
+  body is 'We are waiting on you.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Both handlers exist.
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/awaiting'");
+    // No queue is declared, so the only sources of workflow_email_queue inserts
+    // are the two user-defined handlers. Both must inject — the test fails if
+    // only the first matched (regression on a "scan once and stop" mistake).
+    const inserts = (result.javascript.match(/db\.insert\(['"]workflow_email_queue['"]/g) || []).length;
+    expect(inserts).toBe(2);
+  });
+
+  // Cycle 4.3 — when the entity table doesn't have the recipient role's
+  // <role>_email field (e.g. `email customer when ...` but the Deals table
+  // has no `customer_email`), warn at compile time but still emit the queue
+  // insert. The runtime row lands with recipient_email='' so the failure mode
+  // is observable in the queue (operator can patch the data) instead of
+  // silently dropping the email at send time.
+  it("warns when entity is missing the recipient_email field but still emits the queue insert", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0); // warn, not error
+    const missingField = result.warnings.find(w =>
+      /customer_email/.test(String(w.message || w)) && /Deals/.test(String(w.message || w))
+    );
+    expect(missingField).toBeTruthy();
+    // Queue insert still fires (degraded with empty recipient_email at runtime)
+    expect(result.javascript).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+  });
+
+  it("does NOT warn when the entity has the recipient_email field", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    const missingField = result.warnings.find(w =>
+      /customer_email/.test(String(w.message || w)) && /missing/.test(String(w.message || w))
+    );
+    expect(missingField).toBeUndefined();
+  });
+
+  // Cycle 4.1-extension — validator's never-fires check must recognize
+  // user-defined endpoints as valid trigger sources, not just queue actions.
+  // Otherwise an app whose only status-changing endpoint is hand-written
+  // gets a false-positive "never fires" warning even though the trigger
+  // does fire correctly.
+  it("validator does NOT warn never-fires when a user-defined endpoint provides the matching status transition", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeUndefined();
   });
 });
 
