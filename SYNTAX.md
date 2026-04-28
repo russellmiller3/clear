@@ -2976,15 +2976,53 @@ create a Deals table:
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject, counter, awaiting customer
-  notify customer on counter, awaiting customer
-  notify rep on approve, reject
+  email customer when counter, awaiting customer
+  email rep when approve, reject
 ```
 
-Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `notify customer on ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
+Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `email customer when ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
+
+**Canonical form is `email <role> when <action>, <action>`** (the verb names HOW the recipient gets reached). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but new code should prefer `email`. Future communication primitives will follow the same pattern: `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`.
 
 ### Action naming
 - Multi-word actions slugify to a single URL token: `awaiting customer` → `PUT /api/deals/:id/awaiting`.
 - Status transitions: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names become the status verbatim.
+
+### Triggered emails — `email <role> when <entity>'s status changes to <value>:`
+
+Same `email <role> when <trigger>` atom as the queue clause above, but at the top level. Declares: when ANY URL handler sets the entity's status to the trigger value, queue an email row. Today the queue primitive's auto-generated PUT handlers wire this up automatically — when the action's terminal status matches the trigger value, the handler queues an email after the audit row.
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you. Please review and respond.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+The compiler emits a single shared `workflow_email_queue` table per app (used by every email trigger). Each queued row has: `entity_type`, `entity_id`, `recipient_role`, `recipient_email` (resolved via the `<role>_email` field on the entity — same convention as the queue's `email when` clause), `subject`, `body`, `provider` (default `'agentmail'`), `reply_tracking`, `queue_status` (`'pending'` until a delivery worker flips it), `attempts`, `last_error`, `queued_at`/`sent_at`/`replied_at`.
+
+**Real provider sends are deferred behind an explicit `enable live email delivery via X` directive** (not yet shipped). Default builds queue rows only — tests, previews, and dev never accidentally email a customer. The queued rows show up in your app's tables, so you can verify the right messages would have gone out before flipping the live switch.
+
+**Sub-clauses inside the body:**
+- `subject is '...'` (required)
+- `body is '...'` (required)
+- `provider is '...'` (optional; default `'agentmail'`; valid values: `agentmail`, `sendgrid`, `resend`, `postmark`, `mailgun`)
+- `track replies as <free text>` (optional; e.g. `track replies as deal activity`)
+
+**Hard-fails on:**
+- Entity that isn't a declared table (`email customer when fakeentity's status changes to ...`)
+- Missing required `subject` or `body`
+- Unknown body line (same F1 pattern as queue clauses — typos get a did-you-mean hint)
 
 ### CSV export (auto-included; opt out with `no export`)
 

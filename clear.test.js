@@ -22332,8 +22332,8 @@ queue for deal:
     expect(ast.errors).toHaveLength(0);
     const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
     expect(q.notifications).toEqual([
-      { role: 'customer', onActions: ['counter', 'awaiting customer'] },
-      { role: 'rep', onActions: ['approve', 'reject'] },
+      { role: 'customer', onActions: ['counter', 'awaiting customer'], mechanism: 'notify' },
+      { role: 'rep', onActions: ['approve', 'reject'], mechanism: 'notify' },
     ]);
   });
 
@@ -22369,10 +22369,10 @@ describe('Queue primitive — parser hard-fail (F1)', () => {
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject
-  email rep when approve`;
+  slack rep when approve`;
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
-    expect(ast.errors[0].message).toContain('email rep when approve');
+    expect(ast.errors[0].message).toContain('slack rep when approve');
   });
 
   it('errors on a typo of a known clause with did-you-mean hint', () => {
@@ -22401,6 +22401,346 @@ queue for deal:
   no export`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
+  });
+});
+
+// F3 — `email <role> when <action>` is the canonical way to declare notifications
+// in a queue block. Russell's design feedback 2026-04-28: verbs that name HOW
+// (email, slack, text, webhook) beat vague verbs ("notify"). The old `notify
+// <role> on <action>` form keeps working as a legacy alias so existing apps
+// don't break, but new docs and Meph guidance should teach the email form.
+describe('Queue primitive — email canonical (F3)', () => {
+  it('parses `email <role> when <action>, <action>` as the canonical form', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  email rep when approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue).toBeTruthy();
+    expect(queue.notifications).toHaveLength(2);
+    expect(queue.notifications[0]).toEqual({ role: 'customer', onActions: ['counter'], mechanism: 'email' });
+    expect(queue.notifications[1]).toEqual({ role: 'rep', onActions: ['approve', 'reject'], mechanism: 'email' });
+  });
+
+  it('still accepts `notify <role> on <action>` as a legacy alias', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  notify rep on approve`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications).toHaveLength(1);
+    expect(queue.notifications[0].role).toBe('rep');
+    expect(queue.notifications[0].onActions).toEqual(['approve']);
+    expect(queue.notifications[0].mechanism).toBe('notify');
+  });
+
+  it('mixes `email` and `notify` clauses in the same block (both push to notifications)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  rep_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  notify rep on approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications).toHaveLength(2);
+    expect(queue.notifications[0].mechanism).toBe('email');
+    expect(queue.notifications[1].mechanism).toBe('notify');
+  });
+
+  it('parses multi-word actions in the email-when list (e.g. `waiting on customer`)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications[0].onActions).toEqual(['counter', 'awaiting customer']);
+  });
+});
+
+// Triggered email primitive — top-level `email <role> when <entity>'s status
+// changes to <value>:` block. Parallels the F3 queue clause shape (same
+// `email <role> when <trigger>` atom) but lives at the top level so any URL
+// handler that sets the entity's status to the trigger value queues an email,
+// not just the queue's per-action handlers. Default build queues only — real
+// sends are gated behind an explicit `enable live email delivery via X`
+// directive (deferred per the plan's Phase B-1).
+describe('Triggered email — parser (Phase 1)', () => {
+  it("parses email <role> when <entity>'s status changes to <value> block with subject + body", () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const trigger = ast.body.find(n => n.type === 'email_trigger');
+    expect(trigger).toBeTruthy();
+    expect(trigger.recipientRole).toBe('customer');
+    expect(trigger.entityName).toBe('deal');
+    expect(trigger.triggerField).toBe('status');
+    expect(trigger.triggerValue).toBe('awaiting');
+    expect(trigger.subject).toBe('We countered your offer');
+    expect(trigger.body).toBe('Sarah from our team has prepared a counter offer for you.');
+  });
+
+  it('parses provider + track replies as sub-clauses', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Counter offer details.'
+  provider is 'agentmail'
+  track replies as deal activity`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const trigger = ast.body.find(n => n.type === 'email_trigger');
+    expect(trigger.provider).toBe('agentmail');
+    expect(trigger.replyTracking).toBe('deal activity');
+  });
+
+  it('rejects email-trigger that references an undeclared entity', () => {
+    const src = `email customer when fakeentity's status changes to 'X':
+  subject is 'test'
+  body is 'test'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('fakeentity');
+  });
+
+  it('rejects email-trigger missing required subject', () => {
+    const src = `create a Deals table:
+  customer_email
+  status
+email customer when deal's status changes to 'awaiting':
+  body is 'no subject!'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('subject');
+  });
+
+  it('rejects email-trigger with unknown body line (hard-fail with did-you-mean, same pattern as F1)', () => {
+    const src = `create a Deals table:
+  customer_email
+  status
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  sndr is 'wrong typo'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('sndr');
+  });
+});
+
+describe('Triggered email — compiler tables (Phase 3)', () => {
+  it('emits workflow_email_queue table when an email-trigger exists', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('workflow_email_queue');
+    expect(result.javascript).toContain('entity_type');
+    expect(result.javascript).toContain('entity_id');
+    expect(result.javascript).toContain('recipient_email');
+    expect(result.javascript).toContain('subject');
+    expect(result.javascript).toContain('queue_status');
+  });
+
+  it('does NOT emit workflow_email_queue when no email-trigger exists', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.javascript).not.toContain('workflow_email_queue');
+  });
+
+  it('does NOT contain real provider API URLs in default builds', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is 'agentmail'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Regression guard: live email delivery is gated behind an explicit
+    // `enable live email delivery via X` directive (deferred); default builds
+    // queue rows only, never reach a real provider.
+    expect(result.javascript).not.toContain('api.agentmail.to');
+    expect(result.javascript).not.toContain('api.sendgrid.com');
+    expect(result.javascript).not.toContain('api.resend.com');
+    expect(result.javascript).not.toContain('api.postmarkapp.com');
+    expect(result.javascript).not.toContain('AGENTMAIL_API_KEY');
+    expect(result.javascript).not.toContain('SENDGRID_KEY');
+  });
+});
+
+describe('Triggered email — validator (Phase 5)', () => {
+  it("hard-errors on an unknown provider name with did-you-mean suggestion", () => {
+    const src = `create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is 'agentmial'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const providerErr = result.errors.find(e => /agentmial/.test(String(e.message || e)));
+    expect(providerErr).toBeTruthy();
+    expect(String(providerErr.message || providerErr).toLowerCase()).toContain('agentmail');
+  });
+
+  it("accepts every recognized provider name without error", () => {
+    for (const provider of ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun']) {
+      const src = `create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is '${provider}'`;
+      const result = compileProgram(src);
+      const providerErr = result.errors.find(e => /provider/.test(String(e.message || e)));
+      expect(providerErr).toBeUndefined();
+    }
+  });
+
+  it("warns when an email-trigger has no URL handler that sets the trigger value", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeTruthy();
+    expect(String(neverFires.message || neverFires)).toContain('awaiting');
+    expect(String(neverFires.message || neverFires)).toContain('deal');
+  });
+
+  it("does NOT warn when a queue action provides the matching status transition", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    // counter -> awaiting via actionToTerminalStatus, so the trigger CAN fire
+    const result = compileProgram(src);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeUndefined();
+  });
+});
+
+describe('Triggered email — queue-action integration (Phase 4)', () => {
+  it("queue auto-PUT handler that lands on the trigger value also inserts into workflow_email_queue", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The 'counter' action transitions status to 'awaiting' (actionToTerminalStatus
+    // in compiler.js), so the queue's auto-generated PUT /api/deals/:id/counter
+    // handler must also queue an email row in workflow_email_queue.
+    expect(result.javascript).toContain("/api/deals/:id/counter");
+    expect(result.javascript).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+    // The queued row should carry the trigger's subject + the resolved recipient
+    // (customer's email field). The compiler JSON-stringifies the subject so it
+    // ends up double-quoted in the output regardless of how the source quoted it.
+    expect(result.javascript).toContain('"We countered"');
+    expect(result.javascript).toContain('customer_email');
+  });
+
+  it("queue auto-PUT handler that DOES NOT land on a trigger value does not insert into workflow_email_queue", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting'
+  body is 'Awaiting'`;
+    // The 'approve' action transitions status to 'approved' (NOT 'awaiting'),
+    // so its handler should NOT inject a workflow_email_queue insert.
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Find the approve handler's body and assert no queue-insert appears in it.
+    const approveStart = result.javascript.indexOf("/api/deals/:id/approve");
+    const approveEnd = result.javascript.indexOf("});", approveStart);
+    const approveHandler = result.javascript.slice(approveStart, approveEnd);
+    expect(approveHandler).not.toMatch(/workflow_email_queue/);
   });
 });
 

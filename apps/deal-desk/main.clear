@@ -85,8 +85,8 @@ create a Integrations table:
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject, counter, awaiting customer
-  notify customer on counter, awaiting customer
-  notify rep on approve, reject
+  email customer when counter, awaiting customer
+  email rep when approve, reject
 
 # Backend
 

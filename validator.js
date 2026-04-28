@@ -123,7 +123,50 @@ export function validate(ast) {
   validateReservedEndpointPrefixes(ast.body, errors);
   validateTermination(ast.body, warnings);
   validateDeprecatedKeywords(ast.body, warnings);
+  validateEmailTriggers(ast.body, warnings);
   return { errors, warnings };
+}
+
+// Phase 5.1 — every `email <role> when <entity>'s status changes to <value>:`
+// trigger needs at least one URL handler in the same app that actually sets
+// the entity's status to that value. Otherwise the trigger sits dead in the
+// compiled output: workflow_email_queue table emits but no row ever lands.
+// Today we check queue auto-PUT handlers (their actionToTerminalStatus); a
+// future cycle will also scan user-written ENDPOINT bodies for matching
+// possessive-status assignments.
+function validateEmailTriggers(body, warnings) {
+  const reachable = new Map(); // entity (lowercase) -> Set<status value>
+  for (const node of body) {
+    if (!node || node.type !== 'queue_def') continue;
+    const entity = String(node.entityName || '').toLowerCase();
+    if (!reachable.has(entity)) reachable.set(entity, new Set());
+    for (const action of (node.actions || [])) {
+      const first = String(action).split(/\s+/)[0].toLowerCase();
+      let terminal;
+      if (first === 'approve') terminal = 'approved';
+      else if (first === 'reject') terminal = 'rejected';
+      else if (first === 'counter') terminal = 'awaiting';
+      else if (first === 'awaiting') terminal = 'awaiting';
+      else terminal = first;
+      reachable.get(entity).add(terminal);
+    }
+  }
+  for (const node of body) {
+    if (!node || node.type !== 'email_trigger') continue;
+    const entity = String(node.entityName || '').toLowerCase();
+    const value = node.triggerValue;
+    const set = reachable.get(entity);
+    if (!set || !set.has(value)) {
+      warnings.push({
+        line: node.line,
+        message:
+          `email trigger for ${entity}'s status changing to '${value}' never fires — ` +
+          `no URL handler in this app sets ${entity}.status to '${value}'. ` +
+          `Add a queue action whose terminal status is '${value}' (e.g. 'counter' for awaiting), ` +
+          `or a user-written endpoint that assigns '${value}' to ${entity}.status.`
+      });
+    }
+  }
 }
 
 /**

@@ -6,6 +6,53 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 — Triggered email primitive — top-level `email <role> when <entity>'s status changes to <value>:` block + queue-action integration
+
+The second of three primitives unlocking Marcus's 5 workflow apps. F3 (above) made `email <role> when <action>` canonical INSIDE queue blocks; this section puts the same atom at the TOP LEVEL so any URL handler that lands the entity's status on a trigger value queues an email automatically.
+
+Concretely, for Marcus's deal desk, this single Clear block:
+
+    queue for deal:
+      reviewer is 'CRO'
+      actions: approve, reject, counter
+
+    email customer when deal's status changes to 'awaiting':
+      subject is 'We countered your offer'
+      body is 'Sarah from our team has prepared a counter offer for you.'
+      provider is 'agentmail'
+      track replies as deal activity
+
+…now compiles to: a queue's PUT /api/deals/:id/counter handler that records the decision audit row AND inserts a customer-bound row in workflow_email_queue (subject, body, provider, queue_status='pending', recipient resolved via the entity's `customer_email` field).
+
+What landed across 4 commits on `feature/triggered-email-primitive`:
+- **F3 (494fa1f)** — `email <role> when <action>` canonical inside queue blocks; `notify <role> on <action>` kept as legacy alias. Both forms push `{role, onActions, mechanism}` to the notifications array so future passes can route email rows to the workflow email queue while leaving notify rows generic. Apps migrated: deal-desk + onboarding-tracker. Doc cascade: SYNTAX, AI-INSTRUCTIONS, system-prompt.
+- **Phase 1 parser (dfc9da7)** — new `EMAIL_TRIGGER` NodeType + `parseEmailTrigger` mirroring parseQueueDef shape. Recognizes `email <role> when <entity>'s status changes to <value>:` + body fields (`subject is`, `body is`, `provider is`, `track replies as`). Validates entity references a declared table (singular/plural match). Hard-fails on unknown body lines (F1 pattern). 5 TDD tests cover happy path, sub-clauses, undeclared entity, missing subject, unknown body line.
+- **Phase 3 compiler table emit (8a6b8a6)** — `compileEmailTrigger` emits the shared `workflow_email_queue` table once per app (deduped via `ctx._workflowEmailQueueEmitted` flag — multiple triggers share the table). 3 TDD tests including a regression guard that asserts NO real provider URLs (api.agentmail.to, api.sendgrid.com, etc.) appear in compiled output. Live email delivery stays deferred behind an explicit `enable live email delivery via X` directive (Phase B-1, not started).
+- **Phase 4.1 queue-action integration (fe80249)** — compileQueueDef's per-action PUT handler reads `ctx._astBody`, finds matching `EMAIL_TRIGGER` nodes (entityName + triggerValue match the action's terminalStatus), and emits a `db.insert('workflow_email_queue', {...})` after the audit + notify inserts. Recipient resolution uses the `<role>_email` field-on-entity convention. 2 TDD tests cover the positive case (counter → awaiting injects) and the negative case (approve → approved does not inject).
+
+Test count: 2716 passing (up 14 from start of email epic), 0 failing. All 14 templates / Marcus apps compile clean.
+
+What's deferred (not in this commit):
+- Phase 4.2-4.3 — user-written endpoint handlers like `when user updates deal at /api/deals/:id/counter:` with a manual `deal's status is 'awaiting'` line. Different injection path (scanning ENDPOINT body for POSSESSIVE_ASSIGN). Adds when first customer evidence demands.
+- Phase 5 — validator (never-firing trigger warning, undefined body var warning, bad provider name hard-error).
+- Phase B-1 — live email delivery worker via real provider APIs. Gated behind explicit `enable live email delivery via X` directive AND env-var-backed API keys.
+
+---
+
+## 2026-04-28 — `email <role> when <action>` is the canonical queue notification clause (F3)
+
+The queue primitive's notification clause now reads `email customer when counter, awaiting customer` instead of `notify customer on counter, awaiting customer`. The verb names HOW the recipient gets reached (email, vs vague "notify"); the connector reads naturally (when, vs the slightly-off "on"). This is Russell's design feedback from the 2026-04-28 red-team — verbs that name HOW > vague verbs.
+
+The legacy `notify <role> on <action>` form still parses for backwards compatibility — a deliberate alias, not a deprecation. Both forms now push to the same `notifications` array; each row carries a new `mechanism` field (`'email'` vs `'notify'`) so future compiler passes can route email rows to the workflow email queue while leaving notify rows generic.
+
+Future communication primitives will follow the same pattern — `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...` — each verb naming the channel.
+
+Updated together: parser (`parseQueueDef` in `parser.js`), 4 new TDD tests in clear.test.js's `Queue primitive — email canonical (F3)` block, the existing `notify clauses` test now asserts the `mechanism: 'notify'` field, the F1 hard-fail test swaps its old "unknown clause" example from `email rep when approve` (now valid) to `slack rep when approve` (still unknown). Docs cascade across SYNTAX.md, AI-INSTRUCTIONS.md, playground/system-prompt.md. Two app sources migrated to the canonical form: `apps/deal-desk/main.clear` and `apps/onboarding-tracker/main.clear`. Test count: 2706 passing, 0 failing. All 14 templates / Marcus apps compile clean.
+
+This unblocks the larger triggered-email primitive (next epic) — both surfaces share the canonical `email <role> when <trigger>` shape, so the new top-level `email <role> when <entity> status changes to <value>:` block will parse using the same atom.
+
+---
+
 ## 2026-04-28 — Shell-page router (chunk #10) + chart polish (chunk #7) cherry-picked
 
 The compiler now emits a smarter router for multi-page apps that have an `app_layout`. The first page that wraps its body in `app_layout` becomes THE **shell page** — its sidebar, header, and chrome stay mounted across every route. When the user clicks `/approved`, the router parks the shell's default content and unparks `page_Approved_today` into the shell's content slot, then kicks `_recompute()` so the newly-visible table re-binds to data already fetched on initial page load. Sidebar persists, tables hydrate, page mount lifecycle is implicit.
