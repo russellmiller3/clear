@@ -70,6 +70,12 @@
             "command": "node .claude/hooks/landing-design-on-write.mjs",
             "timeout": 5,
             "statusMessage": "Injecting landing-page design constraints..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/no-stub-nav.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking nav items resolve to real or TBD-stubbed pages..."
           }
         ]
       }

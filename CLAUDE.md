@@ -492,6 +492,24 @@ The Factor DB already knows which error messages cost Meph the most minutes — 
 - Before splitting a multi-feature /pres into "too big for one session," do the 10x division first — a "5-6 week human project" is a "3-5 day agent project," which IS one pres cycle.
 - Never cite unadjusted human estimates from external sources (LinkedIn, job postings, conventional wisdom) without applying the 10x divisor when scoping agent work.
 
+## No Stub Nav (MANDATORY — HARD HOOK)
+
+**Every nav item in a `.clear` app must reach a real page or be an explicit `TBD` stub. No silent stubs ever.** A button that goes to a URL returning nothing is a silent failure: app builds, user clicks, gets a 404, can't tell why. This is the exact failure mode the 14-year-old test is designed to catch.
+
+**The rule, three branches:**
+- **Real page:** `nav item 'Pending' to '/pending'` requires `page 'Pending' at '/pending':` somewhere in the file with real content.
+- **Explicit stub (Lean Lesson 1):** if the page genuinely isn't built yet, declare it with a `TBD` body — `page 'Pending' at '/pending':\n  TBD`. The compiler emits a runtime stub that says "placeholder hit at line N — fill it in or remove it" if a user navigates to it. Tests report SKIPPED, not FAILED. The point: the stub is VISIBLE.
+- **External / API / anchor:** routes like `https://...`, `mailto:`, `/api/...`, `#` are exempt — those aren't pages.
+
+**Why this rule exists:** 2026-04-28, Russell built the deal-desk app, opened Studio, clicked the Rejected nav item, got `Cannot GET /rejected`. Codex had built that page in a previous session; Claude (me) cherry-picked compiler infrastructure but missed the page declarations in `apps/deal-desk/main.clear`. The app shipped looking complete but four sidebar items were dead. This rule + its hook ensure a future Claude can't ship a Clear app with that failure mode.
+
+**Hook backstop.** `.claude/hooks/no-stub-nav.mjs` (PreToolUse on Write + Edit, scoped to `.clear` files) parses the file, lists every `nav item ... to '/X'`, lists every `page ... at '/X':`, and DENIES the write if any nav route has no matching page (and isn't external / API / anchor). Suggests both the build-it and the TBD form. Hook is enforcement; this rule is intent.
+
+**How to apply:**
+- When designing a Clear app, write the page declarations BEFORE or alongside the nav items, not "I'll add the pages later."
+- For pages you genuinely haven't decided on, use the TBD form. The hook accepts that. Then call it out to Russell explicitly: "I marked /reports and /settings as TBD — those need a real design before launch."
+- Surface a design indicator in the page itself if it's TBD-stubbed (e.g. `text 'Coming soon — this page is a placeholder'`). The hook doesn't enforce the indicator (yet); manual discipline.
+
 ## Build Python Alongside JS — No Drift Tax (MANDATORY)
 
 **Whenever you add, change, or extend the JS backend output, build the Python equivalent in the SAME change.** Both targets ship from the same Clear source and are first-class compile targets — Python is not a "later" target. Compile-test both targets before declaring a feature done.
