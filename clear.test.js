@@ -22815,6 +22815,56 @@ email customer when deal's status changes to 'awaiting':
     expect(inserts).toBe(2);
   });
 
+  // Cycle 4.3 — when the entity table doesn't have the recipient role's
+  // <role>_email field (e.g. `email customer when ...` but the Deals table
+  // has no `customer_email`), warn at compile time but still emit the queue
+  // insert. The runtime row lands with recipient_email='' so the failure mode
+  // is observable in the queue (operator can patch the data) instead of
+  // silently dropping the email at send time.
+  it("warns when entity is missing the recipient_email field but still emits the queue insert", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0); // warn, not error
+    const missingField = result.warnings.find(w =>
+      /customer_email/.test(String(w.message || w)) && /Deals/.test(String(w.message || w))
+    );
+    expect(missingField).toBeTruthy();
+    // Queue insert still fires (degraded with empty recipient_email at runtime)
+    expect(result.javascript).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+  });
+
+  it("does NOT warn when the entity has the recipient_email field", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    const missingField = result.warnings.find(w =>
+      /customer_email/.test(String(w.message || w)) && /missing/.test(String(w.message || w))
+    );
+    expect(missingField).toBeUndefined();
+  });
+
   // Cycle 4.1-extension — validator's never-fires check must recognize
   // user-defined endpoints as valid trigger sources, not just queue actions.
   // Otherwise an app whose only status-changing endpoint is hand-written

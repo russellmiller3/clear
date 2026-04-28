@@ -189,6 +189,29 @@ function validateEmailTriggers(body, warnings) {
       collectStatusAssigns(node.body);
     }
   }
+  // Phase 4.3 — recipient field reachability. Each email_trigger picks its
+  // recipient by the `<role>_email` convention (e.g. `email customer ...`
+  // resolves to the entity's `customer_email` field at runtime). Build a
+  // map of {entity (lowercase, singular) -> Set<field name>} from the table
+  // declarations so we can warn when the trigger references a field the
+  // table never declares. The compiled queue insert still emits — it just
+  // lands with empty recipient_email so the failure is observable in the
+  // queue, not silent at send time.
+  const tableFields = new Map();
+  for (const node of body) {
+    if (!node || node.type !== 'data_shape') continue;
+    const tableName = String(node.name || '').toLowerCase();
+    if (!tableName) continue;
+    const fieldSet = new Set();
+    for (const field of (node.fields || [])) {
+      if (field && field.name) fieldSet.add(String(field.name).toLowerCase());
+    }
+    // Map both `Deals` (table name as written) and `deal` (the singular
+    // entity name used in `email customer when deal's ...`). The convention
+    // strips a trailing s; tables already singular ('Foo') stay as-is.
+    tableFields.set(tableName, fieldSet);
+    if (tableName.endsWith('s')) tableFields.set(tableName.slice(0, -1), fieldSet);
+  }
   for (const node of body) {
     if (!node || node.type !== 'email_trigger') continue;
     const entity = String(node.entityName || '').toLowerCase();
@@ -203,6 +226,30 @@ function validateEmailTriggers(body, warnings) {
           `Add a queue action whose terminal status is '${value}' (e.g. 'counter' for awaiting), ` +
           `or a user-written endpoint that assigns '${value}' to ${entity}.status.`
       });
+    }
+    const role = String(node.recipientRole || '').toLowerCase();
+    if (role) {
+      const expectedField = `${role}_email`;
+      const fields = tableFields.get(entity);
+      // Find the table's display name (e.g. `Deals`) for a friendlier message.
+      let tableDisplay = '';
+      for (const n of body) {
+        if (!n || n.type !== 'data_shape') continue;
+        const lower = String(n.name || '').toLowerCase();
+        if (lower === entity || (lower.endsWith('s') && lower.slice(0, -1) === entity)) {
+          tableDisplay = n.name;
+          break;
+        }
+      }
+      if (fields && !fields.has(expectedField)) {
+        warnings.push({
+          line: node.line,
+          message:
+            `email trigger sends to '${role}' but the ${tableDisplay || entity} table has no '${expectedField}' field. ` +
+            `Queue rows will land with an empty recipient_email — add '${expectedField}' to the ${tableDisplay || entity} table ` +
+            `so the email worker has somewhere to send.`
+        });
+      }
     }
   }
 }
