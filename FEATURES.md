@@ -331,7 +331,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Action list | `actions: approve, reject, counter, awaiting customer` | Each action becomes `PUT /api/<entity>s/:id/<action>` — multi-word actions slugify to first word |
 | Notify clause | `notify customer on counter, awaiting customer` | Inserts a row in `<entity>_notifications` for matching actions; recipient_email resolves from `<role>_email` field on the entity |
 | Email when (canonical, F3) | `email customer when counter, awaiting customer` | Same as above but the verb names HOW (email vs vague notify); `notify on` kept as legacy alias |
-| Triggered email block (top-level) | `email customer when deal's status changes to 'awaiting': subject is '...' body is '...'` | Auto-emits a shared `workflow_email_queue` table; queue-driven status transitions automatically queue email rows. Real sends gated behind `enable live email delivery via X` directive (deferred). |
+| Triggered email block (top-level) | `email customer when deal's status changes to 'awaiting': subject is 'Counter for {customer}' body is 'Hi {customer}, we countered your {amount} request.'` | Auto-emits a shared `workflow_email_queue` table; queue-driven status transitions automatically queue email rows. Subject + body interpolate `{field}` references against the entity record at queue-insert time, so each row carries per-customer text. Real sends gated behind a delivery directive (deferred until API keys land). |
 | Auto-emitted audit | `<entity>_decisions` table | `deal_id, decision, decided_by, decided_at, decision_note` |
 | Auto-emitted queue view | `GET /api/<entity>s/queue` | Filtered by `status = 'pending'` |
 | Auto-emitted history view | `GET /api/<entity>-decisions` | Full audit log |

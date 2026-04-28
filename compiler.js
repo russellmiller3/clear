@@ -406,6 +406,21 @@ export const UTILITY_FUNCTIONS = [
   });
 }`, deps: ['_clear_apply_table_view'] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
+  // Triggered email primitive (Phase B-1) — at queue-insert time, the email
+  // subject + body templates pass through this helper so {customer}, {amount},
+  // {customer_email} etc. resolve against the actual entity record. Without
+  // this, every queued email gets the same literal text — no name, no deal,
+  // no number — which would be useless once live sending lands. Missing
+  // fields render as empty string, never the literal "undefined".
+  { name: '_clear_interpolate', code: `function _clear_interpolate(template, record) {
+  if (typeof template !== 'string') return template;
+  if (!record || typeof record !== 'object') return template;
+  return template.replace(/\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}/g, function(_, key) {
+    var v = record[key];
+    if (v == null) return '';
+    return String(v);
+  });
+}`, deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
   if (body == null || typeof body !== 'object') return [{ field: '_body', message: 'Request body is required' }];
@@ -4464,8 +4479,10 @@ function compileEndpoint(node, ctx, pad) {
         triggerInjection += `${pad}      entity_id: (${safeVar} && ${safeVar}.id) || null,\n`;
         triggerInjection += `${pad}      recipient_role: ${recipientRoleStr},\n`;
         triggerInjection += `${pad}      recipient_email: (${safeVar} && ${safeVar}[${JSON.stringify(emailField)}]) || '',\n`;
-        triggerInjection += `${pad}      subject: ${subjectStr},\n`;
-        triggerInjection += `${pad}      body: ${bodyStr},\n`;
+        // Phase B-1 — subject + body interpolate {field} refs against the
+        // entity in scope so per-customer text resolves at queue-insert time.
+        triggerInjection += `${pad}      subject: _clear_interpolate(${subjectStr}, ${safeVar}),\n`;
+        triggerInjection += `${pad}      body: _clear_interpolate(${bodyStr}, ${safeVar}),\n`;
         triggerInjection += `${pad}      provider: ${providerStr},\n`;
         triggerInjection += `${pad}      reply_tracking: ${replyStr},\n`;
         triggerInjection += `${pad}      queue_status: 'pending',\n`;
@@ -6379,8 +6396,11 @@ function compileQueueDef(node, ctx, pad) {
         result += `${pad}    entity_id: _id,\n`;
         result += `${pad}    recipient_role: ${roleStr},\n`;
         result += `${pad}    recipient_email: (_record && _record[${JSON.stringify(emailField)}]) || '',\n`;
-        result += `${pad}    subject: ${subjectStr},\n`;
-        result += `${pad}    body: ${bodyStr},\n`;
+        // Phase B-1 — subject + body interpolate {field} references against
+        // the deal record at queue-insert time, so each customer gets the
+        // right name + amount + email instead of identical literal text.
+        result += `${pad}    subject: _clear_interpolate(${subjectStr}, _record),\n`;
+        result += `${pad}    body: _clear_interpolate(${bodyStr}, _record),\n`;
         result += `${pad}    provider: ${providerStr},\n`;
         result += `${pad}    reply_tracking: ${replyStr},\n`;
         result += `${pad}    queue_status: 'pending',\n`;
