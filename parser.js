@@ -4786,7 +4786,11 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
       continue;
     }
 
-    if (first === 'actions' && bodyTokens[1] && bodyTokens[1].value === ':') {
+    // F4 — `options:` and `buttons:` are synonyms for `actions:`. Managers
+    // type the menu metaphor (options) or the UI metaphor (buttons) — both
+    // resolve to the same action list. The canonical form for new code is
+    // still `actions:`; the synonyms exist so authoring feels natural.
+    if ((first === 'actions' || first === 'options' || first === 'buttons') && bodyTokens[1] && bodyTokens[1].value === ':') {
       // Collect action names from tokens after ':', splitting on commas. Multi-word
       // action names like 'awaiting customer' are joined by a space.
       let current = '';

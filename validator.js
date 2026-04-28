@@ -156,6 +156,9 @@ function validateEmailTriggers(body, warnings) {
       else if (first === 'reject') terminal = 'rejected';
       else if (first === 'counter') terminal = 'awaiting';
       else if (first === 'awaiting') terminal = 'awaiting';
+      // F4 — `waiting on customer` is the canonical action; same terminal
+      // status as legacy `awaiting customer`.
+      else if (first === 'waiting') terminal = 'awaiting';
       else terminal = first;
       addReachable(entity, terminal);
     }
