@@ -22866,6 +22866,74 @@ email customer when deal's status changes to 'awaiting':
   });
 });
 
+describe('Queue primitive — Python parity (F5)', () => {
+  // The JS branch of compileQueueDef has been carrying the queue primitive
+  // alone since launch. Python target returned a TBD stub. The "Build
+  // Python Alongside JS" rule (added 2026-04-28) demands parity. This
+  // suite locks in the mechanical port: same tables, same URLs, same
+  // audit + notification inserts, just emitted as FastAPI/Python.
+  it('emits a Python decisions table when queue is declared', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toBeTruthy();
+    expect(result.python).toContain('deal_decisions');
+    expect(result.python).toContain('create_table');
+  });
+
+  it('emits FastAPI PUT handlers for each queue action', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('@app.put("/api/deals/{id}/approve")');
+    expect(result.python).toContain('@app.put("/api/deals/{id}/reject")');
+    expect(result.python).toContain('@app.put("/api/deals/{id}/counter")');
+  });
+
+  it('emits a queue filter URL for pending entities in Python', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('@app.get("/api/deals/queue")');
+  });
+
+  it('emits an audit insert in each Python PUT handler', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each handler inserts a row into deal_decisions with the action
+    expect(result.python).toMatch(/db\.insert\(['"]deal_decisions['"]/);
+  });
+});
+
 describe('Triggered email — delivery directive (Phase B-1 part 2)', () => {
   // Russell's canonical syntax for flipping live sending on:
   //   email delivery using agentmail

@@ -6343,7 +6343,108 @@ function compileQueueDef(node, ctx, pad) {
   // calls matching the pattern used by compileDataShape's JS branch.
   // Python and other backends to follow if Marcus uses them.
   if (ctx.lang === 'python') {
-    return `${pad}# queue for ${node.entityName}: tables emitted by Phase 2 (Python target TBD)`;
+    // Python parity (F5, 2026-04-28). Mechanical port of the JS branch
+    // below. Same tables, same URLs, same audit + notification inserts —
+    // emitted as FastAPI/Python via the existing _DB stub adapter
+    // (db.create_table, db.save for insert, db.update, db.query for find).
+    // Email-queue inserts (workflow_email_queue) stay JS-only for now —
+    // the email delivery worker hasn't been ported to Python yet.
+    if (ctx.mode !== 'backend') return '';
+    const entityNameLower = node.entityName.toLowerCase();
+    const entityCapital = node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1);
+    const decisionsTableName = `${entityNameLower}_decisions`;
+    const reviewerStr = JSON.stringify(node.reviewer || 'reviewer');
+    const pluralEntity = pluralizeName(node.entityName).toLowerCase();
+
+    let pyResult = `${pad}# Auto-generated audit table for queue '${node.entityName}'\n`;
+    pyResult += `${pad}db.create_table('${decisionsTableName}', {\n`;
+    pyResult += `${pad}    '${entityNameLower}_id': {'type': 'text', 'required': True},\n`;
+    pyResult += `${pad}    'decision': {'type': 'text', 'required': True},\n`;
+    pyResult += `${pad}    'decided_by': {'type': 'text'},\n`;
+    pyResult += `${pad}    'decision_note': {'type': 'text'},\n`;
+    pyResult += `${pad}    'next_status': {'type': 'text'},\n`;
+    pyResult += `${pad}    'decided_at': {'type': 'timestamp', 'auto': True}\n`;
+    pyResult += `${pad}})\n`;
+
+    if (node.notifications && node.notifications.length > 0) {
+      const notifTableName = `${entityNameLower}_notifications`;
+      pyResult += `\n${pad}# Auto-generated notifications outbound queue for '${node.entityName}'\n`;
+      pyResult += `${pad}db.create_table('${notifTableName}', {\n`;
+      pyResult += `${pad}    '${entityNameLower}_id': {'type': 'text', 'required': True},\n`;
+      pyResult += `${pad}    'recipient_role': {'type': 'text'},\n`;
+      pyResult += `${pad}    'recipient_email': {'type': 'text'},\n`;
+      pyResult += `${pad}    'notification_type': {'type': 'text'},\n`;
+      pyResult += `${pad}    'queue_status': {'type': 'text', 'default': 'pending'},\n`;
+      pyResult += `${pad}    'queued_at': {'type': 'timestamp', 'auto': True}\n`;
+      pyResult += `${pad}})\n`;
+    }
+
+    // GET /api/<plural>/queue — filtered by 'pending' status
+    pyResult += `\n${pad}# Auto-generated: GET filtered queue for '${node.entityName}'\n`;
+    pyResult += `${pad}@app.get("/api/${pluralEntity}/queue")\n`;
+    pyResult += `${pad}async def get_${pluralEntity}_queue(request: Request):\n`;
+    pyResult += `${pad}    _all = db.query('${pluralEntity}') or []\n`;
+    pyResult += `${pad}    _pending = [_r for _r in _all if (_r or {}).get('status') == 'pending']\n`;
+    pyResult += `${pad}    return JSONResponse(content=_pending)\n`;
+
+    // GET /api/<entity>-decisions — audit history view
+    pyResult += `\n${pad}# Auto-generated: GET decision history for '${node.entityName}'\n`;
+    pyResult += `${pad}@app.get("/api/${entityNameLower}-decisions")\n`;
+    pyResult += `${pad}async def get_${entityNameLower}_decisions(request: Request):\n`;
+    pyResult += `${pad}    return JSONResponse(content=db.query('${decisionsTableName}') or [])\n`;
+
+    if (node.notifications && node.notifications.length > 0) {
+      pyResult += `\n${pad}# Auto-generated: GET notification log for '${node.entityName}'\n`;
+      pyResult += `${pad}@app.get("/api/${entityNameLower}-notifications")\n`;
+      pyResult += `${pad}async def get_${entityNameLower}_notifications(request: Request):\n`;
+      pyResult += `${pad}    return JSONResponse(content=db.query('${entityNameLower}_notifications') or [])\n`;
+    }
+
+    // PUT handlers per action
+    for (const action of (node.actions || [])) {
+      const slug = action.split(/\s+/)[0].toLowerCase();
+      const terminalStatus = actionToTerminalStatus(action);
+      const handlerName = `put_${pluralEntity}_${slug}`;
+
+      pyResult += `\n${pad}# Auto-generated: ${action} action for '${node.entityName}'\n`;
+      pyResult += `${pad}@app.put("/api/${pluralEntity}/{id}/${slug}")\n`;
+      pyResult += `${pad}async def ${handlerName}(id: str, request: Request):\n`;
+      pyResult += `${pad}    if not getattr(request.state, 'user', None):\n`;
+      pyResult += `${pad}        raise HTTPException(status_code=401, detail='Authentication required')\n`;
+      pyResult += `${pad}    _record = db.query_one('${pluralEntity}', {'id': int(id) if id.isdigit() else id})\n`;
+      pyResult += `${pad}    if not _record:\n`;
+      pyResult += `${pad}        raise HTTPException(status_code=404, detail='not found')\n`;
+      pyResult += `${pad}    _record['status'] = '${terminalStatus}'\n`;
+      pyResult += `${pad}    db.update('${pluralEntity}', _record)\n`;
+      pyResult += `${pad}    db.insert('${decisionsTableName}', {\n`;
+      pyResult += `${pad}        '${entityNameLower}_id': str(id),\n`;
+      pyResult += `${pad}        'decision': ${JSON.stringify(action)},\n`;
+      pyResult += `${pad}        'decided_by': ${reviewerStr},\n`;
+      pyResult += `${pad}        'next_status': '${terminalStatus}',\n`;
+      pyResult += `${pad}        'decided_at': datetime.datetime.now().isoformat()\n`;
+      pyResult += `${pad}    })\n`;
+
+      // Notifications for this action
+      if (node.notifications && node.notifications.length > 0) {
+        for (const n of node.notifications) {
+          if (!n.onActions || !n.onActions.includes(action)) continue;
+          const roleStr = JSON.stringify(n.role);
+          const emailField = `${n.role}_email`;
+          pyResult += `${pad}    db.insert('${entityNameLower}_notifications', {\n`;
+          pyResult += `${pad}        '${entityNameLower}_id': str(id),\n`;
+          pyResult += `${pad}        'recipient_role': ${roleStr},\n`;
+          pyResult += `${pad}        'recipient_email': (_record.get('${emailField}') or '') if _record else '',\n`;
+          pyResult += `${pad}        'notification_type': ${JSON.stringify(action)},\n`;
+          pyResult += `${pad}        'queue_status': 'pending',\n`;
+          pyResult += `${pad}        'queued_at': datetime.datetime.now().isoformat()\n`;
+          pyResult += `${pad}    })\n`;
+        }
+      }
+
+      pyResult += `${pad}    return JSONResponse(content=_record)\n`;
+    }
+
+    return pyResult;
   }
 
   const entityNameLower = node.entityName.toLowerCase();
