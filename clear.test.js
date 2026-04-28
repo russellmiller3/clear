@@ -22556,6 +22556,68 @@ email customer when deal's status changes to 'awaiting':
   });
 });
 
+describe('Triggered email — compiler tables (Phase 3)', () => {
+  it('emits workflow_email_queue table when an email-trigger exists', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('workflow_email_queue');
+    expect(result.javascript).toContain('entity_type');
+    expect(result.javascript).toContain('entity_id');
+    expect(result.javascript).toContain('recipient_email');
+    expect(result.javascript).toContain('subject');
+    expect(result.javascript).toContain('queue_status');
+  });
+
+  it('does NOT emit workflow_email_queue when no email-trigger exists', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.javascript).not.toContain('workflow_email_queue');
+  });
+
+  it('does NOT contain real provider API URLs in default builds', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is 'agentmail'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Regression guard: live email delivery is gated behind an explicit
+    // `enable live email delivery via X` directive (deferred); default builds
+    // queue rows only, never reach a real provider.
+    expect(result.javascript).not.toContain('api.agentmail.to');
+    expect(result.javascript).not.toContain('api.sendgrid.com');
+    expect(result.javascript).not.toContain('api.resend.com');
+    expect(result.javascript).not.toContain('api.postmarkapp.com');
+    expect(result.javascript).not.toContain('AGENTMAIL_API_KEY');
+    expect(result.javascript).not.toContain('SENDGRID_KEY');
+  });
+});
+
 describe('Queue primitive — compiler tables', () => {
   it('emits a deal_decisions audit table when queue for deal: declared', () => {
     const src = `build for javascript backend

@@ -6042,6 +6042,48 @@ function compileValidate(node, ctx, pad) {
 // Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
 // =============================================================================
 
+// Triggered email primitive (Phase 3) — emits the shared workflow_email_queue
+// table once per app + a comment marking where the trigger lives so Phase 4
+// (URL-handler queue-insert injection) has a hook to find. Real provider sends
+// stay deferred behind `enable live email delivery via X` (Phase B-1, not
+// shipped); default builds queue rows only.
+function compileEmailTrigger(node, ctx, pad) {
+  if (ctx.lang === 'python') {
+    return `${pad}# email trigger for ${node.entityName}: backend Phase 3 (Python target TBD)`;
+  }
+  let result = '';
+  // Dedupe: a single workflow_email_queue table covers every trigger in the app.
+  // First trigger emits the CREATE; later triggers skip it.
+  if (!ctx._workflowEmailQueueEmitted) {
+    ctx._workflowEmailQueueEmitted = true;
+    const schemaName = 'WorkflowEmailQueueSchema';
+    result += `${pad}// Auto-generated outbound email queue (every email trigger in this app shares this table)\n`;
+    result += `${pad}const ${schemaName} = {\n`;
+    result += `${pad}  entity_type: { type: "text", required: true },\n`;
+    result += `${pad}  entity_id: { type: "text", required: true },\n`;
+    result += `${pad}  recipient_role: { type: "text" },\n`;
+    result += `${pad}  recipient_email: { type: "text" },\n`;
+    result += `${pad}  subject: { type: "text", required: true },\n`;
+    result += `${pad}  body: { type: "text", required: true },\n`;
+    result += `${pad}  provider: { type: "text", default: "agentmail" },\n`;
+    result += `${pad}  reply_tracking: { type: "text" },\n`;
+    result += `${pad}  queue_status: { type: "text", default: "pending" },\n`;
+    result += `${pad}  attempts: { type: "number", default: 0 },\n`;
+    result += `${pad}  last_error: { type: "text" },\n`;
+    result += `${pad}  queued_at: { type: "timestamp", auto: true },\n`;
+    result += `${pad}  sent_at: { type: "timestamp" },\n`;
+    result += `${pad}  replied_at: { type: "timestamp" }\n`;
+    result += `${pad}};\n`;
+    if (ctx.mode === 'backend') {
+      result += `${pad}db.createTable('workflow_email_queue', ${schemaName});\n`;
+    }
+  }
+  // Mark where this specific trigger lives (Phase 4 will replace this comment
+  // with actual queue-insert injections in matching URL handlers).
+  result += `${pad}// Email trigger: ${node.recipientRole} when ${node.entityName}.status === ${JSON.stringify(node.triggerValue)} (subject="${node.subject}", provider=${JSON.stringify(node.provider || 'agentmail')})`;
+  return result;
+}
+
 function compileQueueDef(node, ctx, pad) {
   // Phase 2 scope: emit the auto-generated tables (decisions + optional notifications).
   // Phase 3 will add URL handlers; Phase 4 will add UI elements.
@@ -7080,6 +7122,9 @@ ${pad}}`;
 
     case NodeType.QUEUE_DEF:
       return compileQueueDef(node, ctx, pad);
+
+    case NodeType.EMAIL_TRIGGER:
+      return compileEmailTrigger(node, ctx, pad);
 
     case NodeType.RESPOND:
       return compileRespond(node, ctx, pad);
