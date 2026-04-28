@@ -167,14 +167,12 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 
 The product Marcus presses "Publish" in. Building on top of already-shipped Phase-85 Fly infrastructure (shared builder, AI proxy, tenant layer, 72 passing tests) and the CC-2/3/5 scaffolding shipped Sessions 41-43.
 
-**The five missing pieces (only CC-1 and CC-4 are still genuinely open — CC-2/3/5 internals shipped):**
+**Remaining pieces (CC-1 fully closed 2026-04-28, CC-2 fully closed 2026-04-28 night):**
 
 | # | Piece | Status | Scope |
 |---|---|---|---|
-| **CC-1** | Multi-tenant routing — subdomain → Worker + D1 DB binding | **Open — biggest blocker** | 2-3 weeks |
-| CC-2 | Auth for `buildclear.dev` (accounts, sessions, teams) | Scaffolding shipped (CC-2b/c/d). Open: stitching into a logged-in dashboard UI. | ~1 week to wire up |
-| CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 week to wire up |
-| CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | ~1 week to wire up |
+| CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 hr code, gated on Russell providing live Stripe keys |
+| CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | a session of work |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
 

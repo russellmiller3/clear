@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (night) — CC-2 closed: cloud-auth URLs + login/signup/dashboard pages
+
+Customers can now log into buildclear.dev. The auth helpers from CC-1 cycle 9 (signupUser, loginUser, validateSession, revokeSession) finally have the four URL handlers they need, plus three customer-facing HTML pages that drive the full flow end-to-end.
+
+**Why for launch:** Marcus opens buildclear.dev → /signup.html → creates an account → lands on /dashboard.html. Without this, the auth was plumbed but unreachable — code without a door. Now the door exists, and the moment Russell sets DATABASE_URL the whole flow works in production.
+
+**What shipped:**
+- `playground/db/migrations/0002_users_sessions.sql` — applies alongside CC-1's init migration when DATABASE_URL is set. Stripped the PL/pgSQL trigger vs the cloud-auth/migrations master because pg-mem doesn't speak plpgsql.
+- `playground/cloud-auth/routes.js` — the four URL handlers (signup/login/me/logout). httpOnly + SameSite=Lax + Secure cookies, 30-day Max-Age, inline cookie parser (no cookie-parser dep). Stub mode when pool is null so Studio dev keeps working without DATABASE_URL.
+- `playground/{login,signup,dashboard}.html` — clean Inter-font, indigo-gradient buttons matching the existing design system. Lucide icons (no emoji per the no-emoji-on-landing rule). Dashboard auth-gates on /api/auth/me and bounces unauth'd users to /login.
+- IPv4-mapped IPv6 prefix gets stripped on the client-IP capture (pg-mem rejects `::ffff:127.0.0.1`).
+
+50 new routes integration tests + 5 new factory tests prove the cloud-auth schema applies under pg-mem and the full signup → cookie-set → me-returns-user → logout-revokes-session loop works. 2749 main tests still green.
+
 ## 2026-04-28 (late evening) — Triggered email Phase B-1 part 2: `email delivery using <provider>` directive + worker scaffold
 
 New top-level directive flips real email sending on without changing any other line of source:
