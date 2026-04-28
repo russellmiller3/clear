@@ -555,6 +555,9 @@ page 'All deals' at '/all':
   page header 'All deals':
     subtitle 'Total deal-desk requests across every status.'
 
+  chart 'Approval mix' as pie showing all_deals by status
+  chart 'Segment pressure' as bar showing all_deals by account_segment
+
   section 'Deal Audit Trail' with style app_table:
     display all_deals as table showing customer, account_segment, rep_name, deal_type, list_price, discount_percent, status, submitted_label
 
@@ -584,6 +587,10 @@ page 'Reports' at '/reports':
 
   page header 'Reports':
     subtitle 'Approval velocity, discount pressure, and value-at-stake reporting.'
+
+  chart 'Status mix' as pie showing all_deals by status
+  chart 'Segment pressure' as bar showing all_deals by account_segment
+  chart 'Deal types' as pie showing all_deals by deal_type
 
   section 'Reports Detail' with style app_table:
     display all_deals as table showing customer, status, list_price, discount_percent, submitted_label
