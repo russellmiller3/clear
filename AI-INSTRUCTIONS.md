@@ -1729,6 +1729,32 @@ tab strip:                                   # routed underline tabs
 
 **When writing an app:** use `app_sidebar`, `app_content`, `app_header` for layout structure. Put `page header` and `tab strip` at the top of `app_content` for queues, CRMs, approval workbenches, and dashboard subviews. Use `app_card` for visual grouping of related content.
 
+**Multi-page apps with a sidebar — declare `app_layout` ONCE.** When your app has more than one page and you want the sidebar to persist across navigation, put the `app_layout` block on a SINGLE page (the shell page, typically `/`). All other pages contain just their content (no `app_layout`, no `app_sidebar`, no `app_main`). The compiler turns the first page that has `app_layout` into the shell — its sidebar / header stay mounted; other pages get parked / unparked into the shell's `app_content` outlet on route change. Putting `app_layout` on every page produces a duplicate sidebar (the shell's + the page's own). The right pattern:
+
+```clear
+page 'Home' at '/':
+  on page load:
+    get items from '/api/items'
+    get more_items from '/api/more'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'My App'
+      nav item 'Home' to '/'
+      nav item 'Other' to '/other'
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        heading 'Welcome'
+        display items as table
+
+page 'Other' at '/other':
+  page header 'Other things':
+    subtitle 'Just the content; the shell page provides the sidebar.'
+  section 'Other Items' with style app_table:
+    display more_items as table
+```
+
+Hoist all `on page load:` data fetches into the shell page's load block when you want every route to have data without re-fetching on click. The router calls `_recompute()` after every route swap, so visible tables re-bind to whatever's already in state.
+
 **Override a preset** by defining it in the file:
 ```
 style page_hero:

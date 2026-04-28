@@ -10306,8 +10306,14 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push(`  {`);
     lines.push(`    const _chartEl = document.getElementById('${chartId}_canvas');`);
     lines.push(`    const _data = ${dataExpr};`);
-    lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
+    // offsetParent check: skip init when the chart is inside a hidden page
+    // (display:none). Without this, ECharts initialises with a 0-width canvas
+    // and the chart never recovers when the page becomes visible. resize()
+    // after init also handles the post-route-swap case where the chart was
+    // built while hidden then revealed by the shell router.
+    lines.push(`    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
     lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
+    lines.push(`      _chart.resize();`);
 
     // TailAdmin-quality color palette
     lines.push(`      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];`);
@@ -10323,7 +10329,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
         lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
       }
-      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, series: [{ type: 'pie', radius: ['40%', '70%'], itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, label: { color: '#6b7280' }, data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);`);
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: { orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#4b5563', fontSize: 12 } }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, minShowLabelAngle: 1, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: true, formatter: '{b}: {c}', color: '#374151', fontSize: 12, fontWeight: 600, lineHeight: 16 }, labelLine: { show: true, length: 16, length2: 18, lineStyle: { width: 1.5 } }, data: _pieData, emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);`);
     } else {
       // line, bar, area
       const seriesType = chartType === 'area' ? 'line' : chartType;
@@ -10970,6 +10976,12 @@ function buildHTML(body) {
   let hasRichText = false; // Track if any rich text editors exist (for Quill CDN)
   let hasChat = false;  // Track if any chat display nodes exist (for chat CSS)
   const pages = [];
+  // Track which page the walker is currently inside so shell-attr emission
+  // (data-clear-shell-root / data-clear-shell-outlet) can attach to the right
+  // page. The first page that wraps its body in `app_layout` becomes THE shell —
+  // its `app_content` is the outlet other routes get parked into.
+  let currentPage = null;
+  let shellPage = null;
   const sectionStack = []; // Track parent section presets for context-aware rendering
   // True when `allow signup and login` is in source — the compiler can then
   // auto-inject a default signup+login form on `/login` pages so the user
@@ -11135,10 +11147,14 @@ ${bodyHTML}
   function walk(nodes) {
     for (const node of nodes) {
       switch (node.type) {
-        case NodeType.PAGE:
+        case NodeType.PAGE: {
           pageTitle = node.title;
+          const previousPage = currentPage;
+          let pageMeta = null;
           if (node.route) {
-            pages.push({ title: node.title, route: node.route, startIdx: parts.length });
+            pageMeta = { title: node.title, route: node.route, startIdx: parts.length, hasShell: false };
+            pages.push(pageMeta);
+            currentPage = pageMeta;
           }
           // Auto-inject a default signup+login form when the page is at /login,
           // `allow signup and login` is in source, and the user didn't already
@@ -11161,10 +11177,12 @@ ${bodyHTML}
             }
           }
           walk(node.body);
-          if (node.route) {
-            pages[pages.length - 1].endIdx = parts.length;
+          if (node.route && pageMeta) {
+            pageMeta.endIdx = parts.length;
           }
+          currentPage = previousPage;
           break;
+        }
 
         case NodeType.SECTION: {
           const hasUserStyle = node.styleName;
@@ -11409,7 +11427,20 @@ ${bodyHTML}
             const inlineStyleAttr = shellInline
               ? ` style="${shellInline}"`
               : heroInlineStyle;
-            parts.push(`    <${shellTag} class="${cls}"${inlineStyleAttr}${clAttr(node)}>`);
+            // Mark the first page with `app_layout` as THE shell page; its `app_content`
+            // becomes the outlet other routes get parked into. The router uses these
+            // attributes to swap page content WITHOUT re-mounting the shell — meaning
+            // the sidebar persists and `_recompute()` re-binds visible tables to
+            // already-fetched data.
+            let shellAttr = '';
+            if (node.styleName === 'app_layout' && currentPage && !shellPage) {
+              shellPage = currentPage;
+              shellPage.hasShell = true;
+              shellAttr = ' data-clear-shell-root="true"';
+            } else if (node.styleName === 'app_content' && currentPage && shellPage === currentPage) {
+              shellAttr = ' data-clear-shell-outlet="true"';
+            }
+            parts.push(`    <${shellTag} class="${cls}"${inlineStyleAttr}${shellAttr}${clAttr(node)}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -11718,6 +11749,13 @@ ${bodyHTML}
               if (actionKids.length > 0) walk(actionKids);
               if (otherKids.length > 0) walk(otherKids);
               parts.push(`      </div>`);
+            } else if (node.styleName === 'app_content' && currentPage && shellPage === currentPage) {
+              // Shell page's app_content: wrap the body in a marker so the router
+              // can show/hide it as "the shell's default content" on route change.
+              const routedId = sanitizeName(currentPage.title || 'Page');
+              parts.push(`      <div data-clear-routed-content="${attrEsc(routedId)}" data-clear-routed-route="${attrEsc(currentPage.route || '/')}">`);
+              walk(node.body);
+              parts.push(`      </div>`);
             } else if (node.styleName === 'app_list') {
               // app_list: header content above, each child wrapped as a list item row
               const listHeader = node.body.filter(c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading'));
@@ -11937,9 +11975,9 @@ ${options}
           const subtitleHtml = node.subtitle
             ? `\n      <p class="text-sm text-base-content/50 -mt-2 mb-3">${node.subtitle}</p>`
             : '';
-          parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="${chartId}">
+          parts.push(`    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="${chartId}">
       <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>${subtitleHtml}
-      <div id="${chartId}_canvas" style="width:100%;height:350px;"></div>
+      <div id="${chartId}_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
     </div>`);
           hasChart = true;
           break;
@@ -12354,14 +12392,21 @@ ${options}
   let showCounter = 0;
   walk(body);
 
-  // Wrap multi-page content in routable divs (process in reverse to keep indices valid)
-  if (pages.length > 1) {
+  // Wrap each page's content in a routable div (process in reverse to keep indices valid).
+  // Single-page apps get the marker too so generated browser tests can prove
+  // the compiled UI actually rendered, not just that HTML fetched. Non-shell pages
+  // also carry `data-clear-routed-content` so the shell router can park/unpark
+  // them into the shared outlet on route change.
+  if (pages.length > 0) {
     for (let i = pages.length - 1; i >= 0; i--) {
       const p = pages[i];
       const pageId = sanitizeName(p.title);
-      const hidden = i > 0 ? ' style="display:none"' : '';
+      const hidden = pages.length > 1 && i > 0 ? ' style="display:none"' : '';
+      const routedContentAttr = shellPage && shellPage !== p
+        ? ` data-clear-routed-content="${attrEsc(pageId)}"`
+        : '';
       parts.splice(p.endIdx, 0, `</div>`);
-      parts.splice(p.startIdx, 0, `<div id="page_${pageId}"${hidden}>`);
+      parts.splice(p.startIdx, 0, `<div id="page_${pageId}" data-clear-page-id="${attrEsc(pageId)}" data-clear-page-route="${attrEsc(p.route)}" data-clear-page-title="${attrEsc(p.title)}"${routedContentAttr}${hidden}>`);
     }
   }
 
@@ -12415,6 +12460,62 @@ function compileToHTML(body, compiledJS) {
   let routerJS = '';
   if (hasRouting) {
     const routeMap = pages.map(p => `  '${p.route}': '${sanitizeName(p.title)}'`).join(',\n');
+    // Shell-page routing: when one of the pages declared an `app_layout`, the
+    // router can swap the active page's content into the shell's outlet
+    // WITHOUT re-mounting the whole app. The sidebar / header persist; only
+    // the content area changes. After every swap we kick `_recompute()` via
+    // requestAnimationFrame so visible tables re-bind to data already
+    // fetched by the global `on page load:` block.
+    const shellHostPage = pages.find(p => p.hasShell);
+    const shellRoute = shellHostPage ? shellHostPage.route : '';
+    const shellPageId = shellHostPage ? sanitizeName(shellHostPage.title) : '';
+    const hasShellRouting = !!shellRoute && !!shellPageId;
+    const shellRouterJS = hasShellRouting ? `
+const _shellRoute = '${shellRoute}';
+const _shellPageId = '${shellPageId}';
+const _standaloneRoutes = { '/login': true, '/signup': true };
+function _clearTemplateHost() {
+  let host = document.getElementById('clear-route-templates');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'clear-route-templates';
+    host.hidden = true;
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function _clearParkMountedRoutes(outlet) {
+  const host = _clearTemplateHost();
+  Array.from(outlet.children).forEach(function(child) {
+    if (!child || !child.getAttribute) return;
+    if (!child.hasAttribute('data-clear-page-route')) return;
+    if (child.id === 'page_' + _shellPageId) return;
+    if (child.getAttribute('data-clear-routed-content') === _shellPageId) return;
+    child.style.display = 'none';
+    host.appendChild(child);
+  });
+}
+function _clearRenderRouteIntoShell(current) {
+  if (_standaloneRoutes[current]) return false;
+  const shellPage = document.getElementById('page_' + _shellPageId);
+  const outlet = document.querySelector('[data-clear-shell-outlet="true"]');
+  if (!shellPage || !outlet) return false;
+  const shellDefault = outlet.querySelector('[data-clear-routed-content="' + _shellPageId + '"]');
+  shellPage.style.display = 'block';
+  _clearParkMountedRoutes(outlet);
+  if (current === _shellRoute) {
+    if (shellDefault) shellDefault.style.display = '';
+    return true;
+  }
+  if (shellDefault) shellDefault.style.display = 'none';
+  const pageId = _routes[current];
+  const target = pageId ? document.getElementById('page_' + pageId) : null;
+  if (!target) return true;
+  target.style.display = 'block';
+  outlet.appendChild(target);
+  return true;
+}
+` : '';
     routerJS = `
 // --- Router ---
 // Reads both location.pathname (server-side navigation, direct URLs, route
@@ -12425,6 +12526,7 @@ function compileToHTML(body, compiledJS) {
 const _routes = {
 ${routeMap}
 };
+${shellRouterJS}
 function _currentRoute() {
   const p = (location.pathname || '/').replace(/\\/$/, '') || '/';
   if (_routes.hasOwnProperty(p)) return p;
@@ -12434,11 +12536,18 @@ function _currentRoute() {
 }
 function _router() {
   const current = _currentRoute();
+  ${hasShellRouting ? `const _shellRendered = _clearRenderRouteIntoShell(current);
+  if (_shellRendered) {
+    document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+    if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+    return;
+  }` : ''}
   for (const [route, pageId] of Object.entries(_routes)) {
     const el = document.getElementById('page_' + pageId);
     if (el) el.style.display = (route === current) ? 'block' : 'none';
   }
   document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+  if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
 }
 window.addEventListener('popstate', _router);
 window.addEventListener('hashchange', _router);

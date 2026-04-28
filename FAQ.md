@@ -663,6 +663,19 @@ Clear matches the button label (case-insensitive) to the action and binds it to 
 
 Use explicit `nav section` and `nav item` rows inside `app_sidebar`.
 
+For multi-page apps, declare `app_layout` once on the shell page (`/`); other pages contain just content. The compiler emits a shell-page router that parks/unparks page content into the shell's outlet on route change — sidebar persists, no double-sidebar. See "Where does the shell-page router live?" below for internals.
+
+### Where does the shell-page router live? (multi-page apps with a persistent sidebar)
+
+**`compiler.js`** emits the router into the compiled HTML. Two pieces:
+
+1. **`buildHTML` walker** (around the `case NodeType.SECTION` for `app_layout` / `app_content`): the first page that wraps its body in `app_layout` becomes THE shell — its `app_layout` div gets `data-clear-shell-root="true"`, its `app_content` div gets `data-clear-shell-outlet="true"`, and the shell's content body is wrapped in `<div data-clear-routed-content="<shellPageId>">...`. Non-shell pages get `data-clear-routed-content="<pageId>"` on their outer page div.
+2. **`compileToHTML` router emit** (around the `_routes` map): when at least one page has `hasShell=true`, the compiler emits three runtime helpers — `_clearTemplateHost`, `_clearParkMountedRoutes`, `_clearRenderRouteIntoShell` — and `_router()` calls them before falling back to the simple show/hide path. After every route swap the router calls `_recompute()` via `requestAnimationFrame` so visible tables re-bind to already-fetched data.
+
+Apps without `app_layout` use the original simple show/hide router (no shell, no outlet, no behavior change).
+
+The 5 regression tests live in `clear.test.js` under `describe('Shell-page router (chunk #10) — fixes empty-tables-after-route-change', ...)`.
+
 ```clear
 section 'Sidebar' with style app_sidebar:
   heading 'Deal Desk'

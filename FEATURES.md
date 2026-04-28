@@ -18,6 +18,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
 - App shell compiles to polished real app chrome — sidebar groups, route-aware nav, workbench headers, routed tabs, KPI stat cards, and right-side record panels.
+- **Shell-page router for multi-page apps with a sidebar.** Declare `app_layout` once on the page that owns the chrome (typically `/`). When the user navigates to another route, the compiler-emitted router parks the shell's default content and mounts the new page's content into the shell's outlet — sidebar persists, page mount lifecycle re-runs, tables re-bind to already-loaded data. No double-sidebar, no empty-table-after-click failure mode. (Compiled emit only — no new syntax to learn.)
 - **Approval queues with audit + notifications in one block.** `queue for deal:` + 4 lines generates the audit table, the outbound notification queue, the filtered queue view, and a login-gated URL for every action. ~150 lines of hand-rolled approval pipeline collapse to 5 lines of declaration.
 
 **Talk to Claude inside your code**
