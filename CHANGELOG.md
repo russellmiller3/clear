@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (evening) — Queue primitive F2 + F4 — plural input + action keyword synonyms + waiting on customer canonical
+
+Two follow-ups from Russell's 2026-04-28 red-team review of the queue primitive plan, both backwards-compatible.
+
+**F2 — plural entity input singularizes (commit 38781e5).** Authors who type `queue for deals:` used to get a different audit table + URL than authors who typed `queue for deal:` (deals_decisions vs deal_decisions, /api/deals-decisions vs /api/deal-decisions). The parser now singularizes the entityName in both `parseQueueDef` and `parseEmailTrigger` so plural input produces canonical singular output. Handles the cases Marcus's 5 apps need: regular `-s` plural (deals → deal), `-ies` plural (activities → activity), `-(s|x|z|sh|ch)es` plural (boxes → box, churches → church). Preserves `-ss` endings (address, business, status stay as-is) so they don't get truncated wrong. Five new tests in `Queue primitive — F2 plural input singularizes`.
+
+**F4 — `options:` / `buttons:` synonyms + `waiting on customer` canonical (commit 5d72d94).** Managers don't always type `actions:` — they often type `options:` (matches the menu metaphor) or `buttons:` (matches the UI). All three keywords now resolve to the same parsed shape. Same goes for the action label `waiting on customer`, which reads more naturally than legacy `awaiting customer` and maps to the same terminal status `'awaiting'`. URL slug: `/api/deals/:id/waiting`. The compiler's `actionToTerminalStatus` and the validator's `validateEmailTriggers` reachability map both add a `waiting → awaiting` mapping next to the existing `awaiting → awaiting` and `counter → awaiting` rules. Five new tests in `Queue primitive — F4 action keyword synonyms + waiting on customer canonical`.
+
+Tests: 2727 → 2737 passing (+10), 0 failing. Smoke-checks all 14 apps (8 core + 6 Marcus) compile clean.
+
+**Still pending — F5 (Python parity).** The Python branch of `compileQueueDef` still returns a `# queue for X: tables emitted by Phase 2 (Python target TBD)` stub. None of the 14 apps target Python, so this isn't blocking, but it violates the new "Build Python Alongside JS" rule and should land before any Python-targeted Marcus app gets written. ~150 lines of mechanical port from the JS branch.
+
+---
+
 ## 2026-04-28 (evening) — Codex stash cleanup — chunks #1, #2, #4, #5 cherry-picked + stash dropped
 
 Russell's question at the end of the email-epic session: "did we cherry-pick everything useful out of Codex stash?" Audit said no — chunk #10 (shell router) + parts of #7 (chart polish) + the JSON UAT contract had landed earlier, but six other useful chunks were still sitting in `stash@{0}`. This session pulled four of them into focused commits, preserved the patch + a follow-up plan for the remaining two, then dropped the stash.

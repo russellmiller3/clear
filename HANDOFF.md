@@ -1,6 +1,129 @@
+# Handoff — 2026-04-28 late evening (router + email + queue F2/F4 + Codex stash cleanup all on main)
+
+> **Read this top section first. Earlier handoffs preserved below for context.**
+
+## Where you are when you sit down
+
+**Branch:** `main`. Local branch is **38 commits ahead of `origin/main`** and not pushed yet — push when ready (default rule says no push without your explicit ask).
+
+**Tests:** 2737 passing, 0 failing. All 14 templates / Marcus apps compile clean.
+
+**Marcus's deal-desk demo is fully working end-to-end.** Sidebar persists across every nav click. Every page hydrates with real seeded data. Counter button on a deal queues a real customer email row in the shared outbox table. Tables sort + filter via the new toolbar search box.
+
+**The Codex stash (`stash@{0}`) is dropped.** All useful chunks landed on main except the Playwright-test-generator pair — those live as a follow-up plan in `plans/` so the work survives the drop.
+
+## What landed today (newest first)
+
+```
+7944486 Merge: Codex stash cleanup — chunks #1, #2, #4, #5 + #8/#9 follow-up plan
+04d9ec8 docs(codex-stash): preserve full stash patch + UAT chunks 8/9 follow-up plan + CHANGELOG
+dce2b41 feat(compiler): #5 — sortable + filterable tables (search box + working sort)
+b63c46e feat(validator+tests): #1 + #2 — validator false-positive fixes + Cloudflare sandbox tolerance
+498c923 Merge: #4 — UAT markers on every button + nav + route tab
+5d72d94 feat(queue): F4 — options:/buttons: synonyms + 'waiting on customer' canonical
+38781e5 feat(queue): F2 — plural entity input singularizes on the way in
+ddebd76 Merge: HANDOFF refresh for next session pickup
+934dde3 docs(handoff): chunk #10 router live, email primitive complete, deal-desk demo wired
+86e95e2 Merge: email-primitive doc cascade tail
+1af50fc docs(email-primitive): finish doc cascade — FAQ + landing example
+c31ef22 Merge: doc-cascade tail-up for email primitive completion
+7008221 docs(email-primitive): commit Russell's CHANGELOG + intent updates for 4.1-ext / 4.2 / 4.3 / 5.2
+9e5e4bc Merge: triggered email Phases 4.2 + 4.3 + 5.2 + deal-desk demo wiring
+b4835b3 feat(email-trigger): warn on {ident} body interpolation refs (Cycle 5.2)
+2cfb6a4 feat(email-trigger): warn when entity has no recipient_email field (Cycle 4.3)
+193f829 feat(email-trigger): user-defined endpoints also queue emails (4.1-ext + 4.2)
+1b02e55 demo(deal-desk): use email customer when deal's status changes to 'awaiting'
+f3e5e24 Merge: triggered email primitive (F3 + Phase 1 + Phase 3 + Phase 4.1 + docs + 5.1 + 5.3)
+... (and the morning's chunk #10 + chart polish at cceb48b)
+```
+
+## Three big wins from today's session
+
+1. **The empty-tables-after-route-swap bug is dead.** Codex's shell-page router + the chart-resize fix landed; deal-desk's local SQLite (the one previous sessions kept missing — it lives at `./clear-data.db` at the REPO ROOT, not under `apps/deal-desk/`) got nuked + reseeded; every sidebar page now hydrates with real rows.
+
+2. **The triggered email primitive is functionally complete.** Top-level `email customer when deal's status changes to 'awaiting': subject is '...' body is '...'` block fires from BOTH queue auto-PUT handlers AND user-written endpoints. Three validator silent-bug guards (never-fires, missing recipient field, undefined body interpolation). One parser hard-error (provider name allow-list). Default builds queue rows only; real provider sends still gated behind the deferred `enable live email delivery via X` directive.
+
+3. **Codex's stash is mostly drained.** Four chunks pulled with focused commits + tests: validator false-positive fixes (#1), Cloudflare test sandbox tolerance (#2), UAT-id markers on every button + nav + tab (#4), sortable/filterable tables with search box (#5). The Playwright-test-generator pair (#8 + #9, ~700 lines) stays in `plans/codex-stash-2026-04-27.patch` + a focused execution plan at `plans/plan-codex-uat-chunks-8-9.md`.
+
+Plus Russell's parallel commits while I was hunting the file lock: queue F2 (pluralize on input), F4 (options:/buttons: synonyms + 'waiting on customer' canonical).
+
+## Verification on pickup
+
+Before doing more work, prove deal-desk still works:
+
+1. `git switch main` then `git status` — should be clean (or only `.claude/settings.local.json` + `playground/factor-db.sqlite` modified, both ignored).
+2. **CRITICAL — kill any leftover deal-desk node child process before resetting the DB**:
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*deal-desk*' -or $_.CommandLine -like '*clear-serve*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+   ```
+   The DB lives at `./clear-data.db` at the REPO ROOT, not under `apps/deal-desk/`. Previous sessions kept missing it because `clear serve` defaults to `process.cwd()` for the DB path.
+3. To force a fresh compile: `rm -rf apps/deal-desk/.clear-serve apps/deal-desk/.clear-test-build` then `preview_start name="deal-desk-live"`.
+4. POST `/api/seed` with empty body → `{"message": "already seeded"}` (or empty if first call after DB reset, then re-POST).
+5. Walk the routes: `/` (5 pending), `/approved` (1), `/rejected` (1), `/all` (7), `/reps` (4), `/accounts` (4), `/rules` (3), `/integrations` (3). Every table shows real rows. Sidebar persists. Title swaps.
+6. Check the new search box + sort: any sidebar table — type in the toolbar search field, rows filter; click a column header, rows sort.
+7. `node clear.test.js` — expect 2737 of 2737 passing.
+
+## QUEUED WORK — in priority order
+
+### 1. Push 38 commits to `origin/main`
+
+Local main is 38 commits ahead. Default rule says no push without your explicit ask. When ready: `git push origin main`. Pre-push hook will run compiler tests + meph eval (~3 min).
+
+### 2. Codex chunks #8 + #9 — Playwright browser-test generator + CLI plumbing
+
+Plan: `plans/plan-codex-uat-chunks-8-9.md`. Patch dump: `plans/codex-stash-2026-04-27.patch`. ~700 lines of generated test runner that walks every page, clicks every UAT-id-marked control, screenshots, asserts no console errors. Pairs with the JSON UAT contract (`lib/uat-contract.js`) that already shipped + the new `data-clear-uat-id` markers (chunk #4 today). Needs `npm install --save-dev playwright` first. Plan has step-by-step extraction commands.
+
+### 3. Phase B-1 of triggered email — live email delivery worker
+
+The only triggered-email work that hasn't shipped. Plan: `plans/plan-triggered-email-primitive-04-27-2026.md` Phase B-1 section. Real provider sends behind `enable live email delivery via X` + env-var keys. Adapter modules for AgentMail (default), SendGrid, Resend, Postmark, Mailgun. Reply webhook handler. Idempotency on provider event IDs.
+
+### 4. Queue follow-up F5/F6/F7 (still pending from this morning's plan)
+
+Plan: `plans/plan-queue-primitive-followup-04-28-2026.md`. F1 + F2 + F3 + F4 already shipped today. Remaining:
+- **F5: Python parity for the queue primitive.** Currently the Python branch returns a TBD stub. Violates the new MANDATORY "Build Python Alongside JS" rule.
+- **F6: docs cascade re-run** for the new canonical forms (likely partly covered by today's email-epic + Codex-stash doc cascades — verify).
+- **F7: 8-template smoke gate** — all green.
+
+### 5. /introspect skill + periodic hook (from morning queue)
+
+Russell's earlier ask: a skill that asks Claude to step back, scope out, think about broader project goals, review the CLAUDE files, decide what we can learn from a situation and record to learnings, and decide if we're on the right track. Plus a hook that fires periodically in a session to trigger this proactively.
+
+Lives at `.claude/skills/introspect/SKILL.md` when written. Hook would be a periodic timer-based UserPromptSubmit (fires every N user messages or N minutes).
+
+### 6. Hard product review of Deal Desk (from morning queue)
+
+Russell's earlier ask: "decide what we actually need to work. (integrations? slack? probably!) and then either build or kill." Read the full deal-desk source, the Codex catalog of features it could have, and write a "what does this app actually need to demo to Marcus + what's nice-to-have we should kill" doc with build-or-kill calls per feature. ~30 min judgment work, no coding.
+
+### 7. Russell's external work (still gating first paying customer)
+
+Unchanged from prior handoffs:
+- **Fly.io Trust Verified app** — submit form, ~1-2 day review.
+- **Stripe live keys** — ~30 min once domain + Trust Verified land.
+- **Anthropic org key for paid Meph sessions** — ~15 min in console.
+- **Postgres provision** (Fly Postgres or Neon) — ~30 min.
+- **First Marcus conversation** — the actual launch event.
+
+These are Russell-only and run async to the code work above.
+
+## Lessons captured this session that are worth remembering
+
+- **`clear serve`'s DB lives at `process.cwd()`** — for deal-desk launched via `node cli/clear.js serve apps/deal-desk/main.clear --port 4567` from the repo root, the SQLite file is `./clear-data.db` at the repo root, not under `apps/deal-desk/`. Three sessions of the deal-desk-DB-reset task missed this.
+- **Windows file locks on SQLite are sticky.** Killing the immediate child process isn't always enough — sometimes a sibling node process or even Windows Defender real-time scan keeps the file open. The reliable nuke pattern: `preview_stop` the dev server, `Get-CimInstance Win32_Process` to find every node process whose CommandLine mentions deal-desk OR clear-serve, `Stop-Process -Force` each one, sleep 2, then `rm -f`.
+- **`cli/clear.js serve` builds to `apps/<name>/.clear-serve/`** — not directly into `apps/<name>/`. The compiled `server.js`, `index.html`, and `node_modules` all live in `.clear-serve/`. Deleting the source-level `apps/<name>/server.js` does nothing; the live server reads from `.clear-serve/server.js`. To force a fresh compile, `rm -rf apps/<name>/.clear-serve apps/<name>/.clear-test-build` then `preview_start`.
+- **Russell parallel-shipped during the session.** Phase 4.2 (user-written endpoint email injection), Phase 4.3 (recipient-email warning), Phase 5.2 (body interpolation warning), the deal-desk demo wiring, queue F2 + F4 — all landed via Russell's hand while my session was working on adjacent things. Lesson: when working on a branch, `git log --oneline -5` is a useful "did anything change under me" check before committing.
+- **The Codex stash patch is preserved at `plans/codex-stash-2026-04-27.patch`** so chunks #8 + #9 (the deferred Playwright generator + CLI plumbing) can be re-extracted later. Stash itself is dropped.
+
+## Hooks active this session
+
+Same set as the morning HANDOFF below — see the older entries. The `parallel-thinking.mjs` UserPromptSubmit hook + the `learnings-miner.mjs` PostToolUse hook fired most often this session and are working as intended.
+
+---
+
+# Older handoff (preserved for context)
+
 # Handoff — 2026-04-28 evening (chunk #10 router + email primitive end-to-end + deal-desk demo live)
 
-> **Read this top section first. The earlier handoffs below preserve queue + email primitive context.**
+> **Read this top section first. Below is the prior overnight handoff for context.**
 
 ## Where you are when you sit down
 

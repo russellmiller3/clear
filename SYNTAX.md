@@ -2982,6 +2982,38 @@ queue for deal:
 
 Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `email customer when ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
 
+### Action keyword variants (F4)
+
+`options:` and `buttons:` are accepted as synonyms for `actions:`. The clauses below all parse identically:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+
+queue for deal:
+  reviewer is 'CRO'
+  options: approve, reject, counter
+
+queue for deal:
+  reviewer is 'CRO'
+  buttons: approve, reject, counter
+```
+
+### `waiting on customer` canonical action (F4)
+
+`waiting on customer` reads more naturally than legacy `awaiting customer`. Both forms produce the same terminal status (`'awaiting'`) so an email-trigger watching `'awaiting'` fires either way. URL slug for `waiting on customer` is `/api/deals/:id/waiting`:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, waiting on customer
+```
+
+### Plural input is accepted (F2)
+
+`queue for deals:` produces the same audit table + URLs as `queue for deal:`. The parser singularizes English plurals (`-s`, `-ies`, `-(s|x|z|sh|ch)es`) on the way in. `-ss` endings (`address`, `business`, `status`) stay as-is so they don't get truncated wrong.
+
 **Canonical form is `email <role> when <action>, <action>`** (the verb names HOW the recipient gets reached). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but new code should prefer `email`. Future communication primitives will follow the same pattern: `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`.
 
 ### Action naming
