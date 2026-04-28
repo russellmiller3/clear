@@ -22135,6 +22135,30 @@ when user calls POST /api/support sending data:
 });
 
 // =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` — human-approval queue with reviewer + actions + notifications.
+// Distinct from `workflow` which orchestrates AI agents over shared state.
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+describe('Queue primitive — parser', () => {
+  it('parses queue for deal: with reviewer + actions', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q).toBeTruthy();
+    expect(q.entityName).toBe('deal');
+    expect(q.reviewer).toBe('CRO');
+    expect(q.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+});
+
+// =============================================================================
 // CANONICAL SYNTAX: receives + returning JSON text
 // =============================================================================
 
