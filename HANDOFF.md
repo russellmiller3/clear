@@ -110,24 +110,55 @@ The product is meaningfully ready. The gating items are mostly setup work you ow
 7. **First Marcus conversation** — conversation move
 8. **Watch them build, fix what bites** — pair with Claude
 
-## What I'd do next when you're back
+## What I'd do next when you're back — RANKED for the next session
 
-**In priority order:**
+Ordered the way I'd actually pick them. Skim the P0 list, pick what fits your energy, ignore the rest.
 
-1. **Eyeball the queue primitive Deal Desk** — start a Studio preview of `apps/deal-desk/main.clear`, click around, confirm the audit URL and per-action URLs respond properly. End-to-end smoke is the proof Marcus would see.
+### P0 — Finish the in-flight epic (the queue primitive is 90% done; close it before opening anything else)
 
-2. **Decide on Codex's UAT compiler work.** Options:
-   - **Cherry-pick now** (1-2 hour session): bring back compiler.js's UAT contract generation + cli helpers, write tests that lock it in, ship.
-   - **Defer until after first Marcus** — the queue primitive covers Marcus #1 already; UAT contract is a quality-of-life upgrade for the next 5 customers.
+**1. Eyeball the queue primitive on Deal Desk** (~10 min). Start a Studio preview of `apps/deal-desk/main.clear`. Click around. Confirm the queue page loads, the per-action URLs respond, the audit history URL returns rows. This is the proof a real Marcus would see. If it breaks, fix before doing anything else below.
 
-3. **Land the queue primitive properly** — the branch isn't on main yet. Consider:
-   - `/red-team-plan` against the queue primitive plan to find anything I missed
-   - Run the doc cascade (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, FEATURES.md, FAQ.md, CHANGELOG.md, playground/system-prompt.md) per project CLAUDE.md
-   - Merge to main with `/ship`
+**2. Doc cascade for the queue primitive** (~30-45 min). Touch the 11 surfaces project CLAUDE.md requires. Highest-impact subset: `intent.md` (node-type row), `SYNTAX.md` (canonical example), `AI-INSTRUCTIONS.md` (when-to-use), `FEATURES.md` (capability row), `CHANGELOG.md` (session entry), `playground/system-prompt.md` (so Meph knows). The remaining 5 surfaces are nice-to-have. Doc cascade is gating the merge to main.
 
-4. **Triggered email primitive** — second of the three primitive plans. Plan is at `plans/plan-triggered-email-primitive-04-27-2026.md`. Ready to execute (REVIEW FREEZE clause needs your explicit go).
+**3. Optional sharpening before merge:**
+   - `/red-team-plan` against `plans/plan-queue-primitive-tier1-04-27-2026.md` (~15 min) — looks for gaps in cycles I deferred (Phase 4 UI auto-render, Cycle 2.3 collision detection, Phase 5 validator). May surface things worth fixing before merge.
 
-5. **CSV export primitive** — third plan. `plans/plan-csv-export-primitive-04-27-2026.md`. Smallest of the three.
+**4. Merge the queue primitive to main with `/ship`** (~5 min). Closes the epic. 8 commits + ~370 lines of compiler code + 4 of 5 Marcus apps now use it.
+
+### P1 — Real-money decisions you have to make
+
+**5. Decide on Codex's UAT compiler stash.** Two paths:
+   - **Cherry-pick now** (1-2 hour session). Bring back the UAT contract + browser-test generation. This is the highest-value piece in Codex's stash and exactly what queue primitive Phase 4 calls for. If you cherry-pick, do it BEFORE the triggered-email primitive so the new primitive can use the contract for its visual contract section.
+   - **Defer until after Marcus #1.** Queue primitive covers what Marcus needs today. UAT contract is quality-of-life for customers #2-5. Defer-able.
+   - **My lean: cherry-pick now.** Codex did real work, it's exactly what your plan called for, and waiting risks the stash getting stale or accidentally dropped.
+
+### P2 — Next primitives (after queue primitive ships)
+
+**6. Triggered email primitive.** Plan at `plans/plan-triggered-email-primitive-04-27-2026.md`. 7 phases, 13 cycles. ~2-3 iterations. Big unlock: every Marcus app gets notification emails for free.
+
+**7. CSV export primitive.** Plan at `plans/plan-csv-export-primitive-04-27-2026.md`. 5 phases, 7 cycles. Smallest of the three. ~1 iteration. Big unlock: every queue page gets a Download CSV button automatically — explicit MVP item from your GTM doc.
+
+### P3 — Outside-of-code things only you can do
+
+**8. External dependencies (Fly Trust Verified, Stripe live keys, Anthropic org key, Postgres provision).** ~$30-50 + 2-3 hours. Unblocks the first paying customer directly. Per the existing critical-path list. These can run in parallel with everything else.
+
+**9. First Marcus conversation.** Conversation, not code. The product is meaningfully ready for the demo path. The 4 migrated Marcus apps now actually do something when buttons get clicked.
+
+### P4 — Deferred items (don't do until evidence demands)
+
+- **Queue primitive Phase 4 (UI auto-render in tables).** Invasive. Most apps will hand-add buttons that call the auto-generated URLs. Defer until a customer actually complains.
+- **Queue primitive Cycle 2.3 (collision detection between user-defined `<Entity>Decisions` table + queue-generated one).** Validator-level safety. Add when first customer trips it.
+- **Multi-stage workflow (Tier 2 of queue primitive).** Defer until a second workflow app exists (expense tracker is the natural next).
+- **Lead Router migration.** Doesn't fit queue primitive shape. Probably needs its own `routing rules for X:` primitive someday — design when you have a second routing app to validate against.
+- **Connector platform integration code (Composio / Nango).** Defaults are decided in the research doc. Don't build until the first AI assistant or admin panel needs to call out.
+- **Settings page primitive, Trello board view, full event sourcing.** All deferred per research evidence — Marcus's flow doesn't need them.
+
+### Rules of thumb for the next session
+
+- Finish #1-#4 first (close the queue epic) before starting anything in P2.
+- Don't open more than 2 epics at once. Currently in-flight: queue primitive (90% done) + Codex stash decision. That's the limit.
+- Doc cascade BEFORE merge — project CLAUDE.md is strict about this.
+- Russell's P3 work runs in parallel with all of the above (different surface).
 
 ## Loose ends
 
