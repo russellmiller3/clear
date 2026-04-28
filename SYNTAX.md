@@ -2944,6 +2944,61 @@ when user sends ticket to /api/support:
 
 ---
 
+## Approval Queues (Single-Stage Reviewer)
+
+When an entity needs human approval before its status changes, declare a queue. One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action.
+
+### Basic Queue
+```clear
+create a Deals table:
+  customer
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+```
+
+This emits:
+- A `deal_decisions` audit table (`deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`).
+- `GET /api/deals/queue` — filtered by `status = 'pending'`.
+- `GET /api/deal-decisions` — full audit history.
+- `PUT /api/deals/:id/approve`, `/reject`, `/counter` — each requires login, updates the deal's status, and inserts an audit row.
+
+### Queue with Notifications
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `notify customer on ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
+
+### Action naming
+- Multi-word actions slugify to a single URL token: `awaiting customer` → `PUT /api/deals/:id/awaiting`.
+- Status transitions: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names become the status verbatim.
+
+### Wiring action buttons
+The queue primitive does not yet auto-render UI buttons (deferred). Hand-add buttons that call the auto-generated PUT URLs:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+  'Reject' is danger
+```
+
+Bind each button to the matching PUT URL the queue emitted.
+
+---
+
 ## Scheduled Tasks (Cron)
 
 Run code on a schedule — intervals or specific times:

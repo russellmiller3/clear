@@ -22135,6 +22135,226 @@ when user calls POST /api/support sending data:
 });
 
 // =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` — human-approval queue with reviewer + actions + notifications.
+// Distinct from `workflow` which orchestrates AI agents over shared state.
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+describe('Queue primitive — parser', () => {
+  it('parses queue for deal: with reviewer + actions', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q).toBeTruthy();
+    expect(q.entityName).toBe('deal');
+    expect(q.reviewer).toBe('CRO');
+    expect(q.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+
+  it('parses notify clauses', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q.notifications).toEqual([
+      { role: 'customer', onActions: ['counter', 'awaiting customer'] },
+      { role: 'rep', onActions: ['approve', 'reject'] },
+    ]);
+  });
+
+  it('rejects queue with no entity name', () => {
+    const src = `queue for:
+  reviewer is 'CRO'
+  actions: approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain("entity name");
+  });
+
+  it('rejects queue with no actions', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors.some(e => e.message.includes('actions'))).toBe(true);
+  });
+});
+
+describe('Queue primitive — compiler tables', () => {
+  it('emits a deal_decisions audit table when queue for deal: declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // JS backend emits db.createTable() rather than literal CREATE TABLE SQL.
+    // Backend code is in result.javascript (not serverJS).
+    expect(result.javascript).toContain('deal_decisions');
+    expect(result.javascript).toContain('deal_id');
+    expect(result.javascript).toContain('decision');
+    expect(result.javascript).toContain('decided_by');
+    expect(result.javascript).toContain('decided_at');
+  });
+
+  it('does NOT emit decisions table when no queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('deal_decisions');
+  });
+
+  it('emits a deal_notifications table when notify clauses present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  notify customer on counter
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('deal_notifications');
+    expect(result.javascript).toContain('recipient_role');
+    expect(result.javascript).toContain('recipient_email');
+    expect(result.javascript).toContain('queue_status');
+  });
+
+  it('does NOT emit notifications table when no notify clauses', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('deal_notifications');
+  });
+});
+
+describe('Queue primitive — compiler URL handlers', () => {
+  it('emits GET /api/deals/queue handler that filters by pending status', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deals/queue'");
+    expect(result.javascript).toContain("'pending'");
+  });
+
+  it('emits PUT /api/deals/:id/<action> for each action', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.put('/api/deals/:id/approve'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/reject'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    // Multi-word action 'awaiting customer' slugifies to 'awaiting'
+    expect(result.javascript).toContain("app.put('/api/deals/:id/awaiting'");
+  });
+
+  it('PUT handlers insert into the decisions audit table', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each PUT handler should insert a row into deal_decisions
+    expect(result.javascript).toMatch(/db\.insert\(['"]deal_decisions['"]/);
+  });
+
+  it('emits GET /api/deal-decisions for the audit history', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deal-decisions'");
+  });
+
+  it('action PUT handlers require login (return 401 without req.user)', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each per-action PUT handler must short-circuit with 401 when no req.user.
+    // Compliance + audit story depends on it: only logged-in users record decisions.
+    expect(result.javascript).toMatch(/app\.put\('\/api\/deals\/:id\/approve'[\s\S]*?if \(!req\.user\) return res\.status\(401\)/);
+  });
+});
+
+// =============================================================================
 // CANONICAL SYNTAX: receives + returning JSON text
 // =============================================================================
 

@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (130 total)
+## Node Types (171 total)
 
 ### Core Language
 
@@ -344,6 +344,43 @@ Workflow step types (inside workflow body):
 | Conditional | `if state's field is value:` + steps | `if (_state.field == value) { ... }` |
 | Repeat | `repeat until condition, max N times:` + steps | `for (_iter < N) { if (cond) break; ... }` |
 | Parallel | `at the same time:` + steps | `Promise.all([...])` |
+
+### Approval Queue Primitives (Phase 91)
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action PUT handlers (auth-gated) |
+
+Queue body clauses:
+
+| Clause | What it does |
+|--------|-------------|
+| `reviewer is 'Role'` | Stamps `decided_by` on every audit row |
+| `actions: a, b, c` | Each action becomes a `PUT /api/<entity>s/:id/<action>` handler |
+| `notify <role> on <action>, <action>` | Inserts a row into the notifications queue for those actions |
+
+**Given:** a `Deals` table with a `status` field and the block:
+```
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+**The compiler emits:**
+- A `deal_decisions` audit table — `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`.
+- A `deal_notifications` outbound queue table — `deal_id`, `recipient_role`, `recipient_email`, `notification_type`, `queue_status`, `queued_at`. Skipped when no `notify` clauses.
+- `GET /api/deals/queue` — filtered by `status = 'pending'` (the default open status).
+- `GET /api/deal-decisions` — full audit history.
+- `GET /api/deal-notifications` — notification log.
+- `PUT /api/deals/:id/<action>` for each action — slugifies multi-word actions (`awaiting customer` → `/awaiting`). Each handler: requires login, updates `Deals.status` to the action's terminal value, inserts an audit row, inserts notification rows for any matching `notify` clause, returns the updated record.
+
+**Status-transition map:** `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Custom action names use the action name itself as the status.
+
+**Recipient-email convention:** `notify customer on ...` resolves recipient_email by reading `<entity>.customer_email`. If the entity has no `<role>_email` field, the validator warns; the row is still queued with a blank email.
+
+UI auto-render (Phase 4 of the queue plan) is deferred: app authors hand-add buttons that call the auto-generated PUT URLs. Backend, audit, notifications, and tests are fully generated.
 
 ### Testing (Phases 46b, 84)
 

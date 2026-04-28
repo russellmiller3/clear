@@ -195,6 +195,12 @@ export const NodeType = Object.freeze({
   WORKFLOW: 'workflow',
   RUN_WORKFLOW: 'run_workflow',
 
+  // Approval queue primitive (Tier 1, 2026-04-27)
+  // `queue for X:` declares a human-approval queue with reviewer + actions + notifications
+  // Distinct from WORKFLOW which orchestrates AI agents over shared state.
+  QUEUE_DEF: 'queue_def',
+  TRIGGERED_SEND_EMAIL: 'triggered_send_email',
+
   // App-level policies (Enact guard types)
   POLICY: 'policy',
 
@@ -2705,6 +2711,15 @@ CANONICAL_DISPATCH.set('workflow', (ctx) => {
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
 });
+CANONICAL_DISPATCH.set('queue', (ctx) => {
+    // Disambiguate from any other 'queue' use: must START with `queue for ...`
+    // We DON'T require length >= 3 here because malformed input like `queue for:`
+    // (no entity name) needs parseQueueDef to emit the helpful error.
+    if (ctx.tokens.length < 2 || ctx.tokens[1].value !== 'for') return undefined;
+    const result = parseQueueDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
 CANONICAL_DISPATCH.set('policy', (ctx) => {
     const policyIndent = ctx.lines[ctx.i].indent;
     const rules = [];
@@ -4507,6 +4522,114 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
       ...directives,
     },
     endIdx: bodyStartIdx,
+  };
+}
+
+// =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` declares a human-approval queue with reviewer + actions + notifications.
+// Distinct from `workflow` (above) which orchestrates AI agents over shared state.
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+function parseQueueDef(lines, startIdx, _parentIndent, errors) {
+  const tokens = lines[startIdx].tokens;
+  const line = lines[startIdx].line || startIdx + 1;
+  // tokens[0] = 'queue', tokens[1] = 'for', tokens[2] = entityName (colon is consumed
+  // as block opener and is not a separate token).
+  if (tokens.length < 2 || tokens[1].value !== 'for') {
+    errors.push({ line, message: "queue needs 'for'. Example: queue for deal:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const entityName = tokens[2] && tokens[2].value;
+  if (!entityName) {
+    errors.push({ line, message: "queue needs an entity name. Example: queue for deal:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Parse indented body — `reviewer is 'X'` and `actions: a, b, c` and notify clauses
+  let reviewer = null;
+  const actions = [];
+  const notifications = [];
+  const queueIndent = lines[startIdx].indent;
+  let i = startIdx + 1;
+
+  while (i < lines.length && lines[i].indent > queueIndent) {
+    const bodyTokens = lines[i].tokens;
+    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
+    const first = bodyTokens[0].value;
+
+    if (first === 'reviewer' && bodyTokens[1] && bodyTokens[1].value === 'is') {
+      const valToken = bodyTokens[2];
+      if (valToken && valToken.type === TokenType.STRING) {
+        reviewer = valToken.value;
+      }
+      i++;
+      continue;
+    }
+
+    if (first === 'actions' && bodyTokens[1] && bodyTokens[1].value === ':') {
+      // Collect action names from tokens after ':', splitting on commas. Multi-word
+      // action names like 'awaiting customer' are joined by a space.
+      let current = '';
+      for (let j = 2; j < bodyTokens.length; j++) {
+        const t = bodyTokens[j];
+        if (t.value === ',') {
+          if (current.trim()) actions.push(current.trim());
+          current = '';
+        } else {
+          current += (current ? ' ' : '') + t.value;
+        }
+      }
+      if (current.trim()) actions.push(current.trim());
+      i++;
+      continue;
+    }
+
+    if (first === 'notify' && bodyTokens.length >= 4) {
+      // notify <role> on <action>, <action>, ...
+      const role = bodyTokens[1].value;
+      let onIdx = -1;
+      for (let j = 2; j < bodyTokens.length; j++) {
+        if (bodyTokens[j].value === 'on') { onIdx = j; break; }
+      }
+      if (onIdx > 0) {
+        const onActions = [];
+        let current = '';
+        for (let j = onIdx + 1; j < bodyTokens.length; j++) {
+          const t = bodyTokens[j];
+          if (t.value === ',') {
+            if (current.trim()) onActions.push(current.trim());
+            current = '';
+          } else {
+            current += (current ? ' ' : '') + t.value;
+          }
+        }
+        if (current.trim()) onActions.push(current.trim());
+        notifications.push({ role, onActions });
+      }
+      i++;
+      continue;
+    }
+
+    // Unknown body line — skip but don't error (tolerant for forward-compat)
+    i++;
+  }
+
+  if (actions.length === 0) {
+    errors.push({ line, message: `queue '${entityName}' needs actions: list. Example:\n  actions: approve, reject` });
+  }
+
+  return {
+    node: {
+      type: NodeType.QUEUE_DEF,
+      entityName,
+      reviewer,
+      actions,
+      notifications,
+      line,
+    },
+    endIdx: i,
   };
 }
 

@@ -102,9 +102,11 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where does the playground bundle come from?](#where-does-the-playground-bundle-come-from)
 - [Where does the supervisor plan live?](#where-does-the-supervisor-plan-live)
 - [Where does the archetype classifier live?](#where-does-the-archetype-classifier-live)
+- [Where does the queue primitive live?](#where-does-the-queue-primitive-live)
 
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
+- [How do I add a new approval action?](#how-do-i-add-a-new-approval-action)
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
 - [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
 - [How do I add KPI stat cards?](#how-do-i-add-kpi-stat-cards)
@@ -120,6 +122,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How does the eval system work?](#how-does-the-eval-system-work)
 
 **Why did we do X?**
+- [Why is `queue` separate from `workflow`?](#why-is-queue-separate-from-workflow)
 - [Why does send back compile to return inside define function?](#why-does-send-back-compile-to-return-inside-define-function)
 - [Why do user-defined functions shadow built-in aliases?](#why-do-user-defined-functions-shadow-built-in-aliases)
 - [Why write the test before the function?](#why-write-the-test-before-the-function)
@@ -201,6 +204,18 @@ For older versions beyond the in-Studio cap of 20, call `wfp-api.listVersions({ 
 So Clear treats any change to `migrations/*.sql` or `wrangler.toml` as schema-class and pauses the update for explicit user confirmation. The Studio modal shows the diff and a button labelled "Apply migration + update" that re-POSTs with `confirmMigration: true`. Auto-rollback of failed schema changes is intentionally out of scope today — if the migration applies but upload-script fails, the user has to manually re-apply the old migration SQL via the D1 console. That tradeoff lives in `plans/plan-one-click-updates-04-23-2026.md` § Section 3 (D4) and § Section 9 (known follow-ups).
 
 ---
+
+### Where does the queue primitive live?
+
+The `queue for X:` primitive is a brand-new Clear node type added 2026-04-27. End-to-end:
+
+- **Parser** — `parser.js`: `parseQueueDef` lives next to `parseWorkflow` (search for `CANONICAL_DISPATCH.set('queue'`). Produces a `QUEUE_DEF` AST node with `entityName`, `reviewer`, `actions`, and `notifications`.
+- **Compiler** — `compiler.js`: `case NodeType.QUEUE_DEF:` near the `ENDPOINT` dispatch site. Calls `compileQueueDef`, which emits the `<entity>_decisions` audit table, the optional `<entity>_notifications` outbound queue, the filtered `GET /api/<entity>s/queue` handler, and a login-gated `PUT /api/<entity>s/:id/<action>` for each action.
+- **Validator** — `validator.js`: warns when `notify <role> on …` references a role with no `<role>_email` field on the entity.
+- **Tests** — `clear.test.js`: search for `Queue primitive — parser`, `Queue primitive — compiler tables`, `Queue primitive — compiler URLs`. The Phase 8 migration tests live alongside the Deal Desk UAT block.
+- **Real app using it** — `apps/deal-desk/main.clear` is the proof of value. Approval Queue, Onboarding Tracker, and Internal Request Queue also migrated.
+
+Plan: `plans/plan-queue-primitive-tier1-04-27-2026.md`. Changelog entry at top of `CHANGELOG.md`.
 
 ### Where does the Live App Editing widget live?
 
@@ -617,6 +632,33 @@ Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:
 
 ---
 
+### How do I add a new approval action?
+
+Add it to the `actions:` list in the queue block. The compiler does the rest — new login-gated URL, status transition, audit row, notification fan-out if a `notify` clause matches.
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer, escalate
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject, escalate
+```
+
+Recompile. You now have `PUT /api/deals/:id/escalate` — login-gated, sets the deal's status to `'escalate'`, inserts an audit row, and (because of the `notify rep on … escalate` clause) inserts a notification row for the rep.
+
+If the action name has multiple words, the URL uses the first word (`awaiting customer` → `/awaiting`). The status transitions follow these defaults: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Anything else uses the action name as the status verbatim.
+
+To wire a button for the new action, add it to your queue page's `with actions:` block:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+  'Reject' is danger
+  'Escalate' is secondary
+```
+
+Clear matches the button label (case-insensitive) to the action and binds it to the right login-gated URL.
+
 ### How do I add sidebar navigation to an app shell?
 
 Use explicit `nav section` and `nav item` rows inside `app_sidebar`.
@@ -828,6 +870,18 @@ The eval child is killed between template runs (`killEvalChildAndWait()`). Idle 
 ---
 
 ## Why did we do X?
+
+### Why is `queue` separate from `workflow`?
+
+They look related — both are multi-step, both have state — but the shape is fundamentally different.
+
+A `workflow` is for chaining AI agents in sequence with state passed through. The "actor" at each step is an agent. Branches and retries are computed; humans don't intervene mid-flow.
+
+A `queue` is for a **single human reviewer** to decide on items piling up in a list. The "actor" is a person (the reviewer). The audit log is load-bearing — you need to know who clicked what, when, with what note. The decision URL has to be auth-gated. Notifications need to fan out to humans (the rep, the customer) — not other agents.
+
+Folding both into one primitive would compromise both. The workflow primitive gives up state-passing semantics it needs. The queue primitive picks up agent-orchestration knobs it doesn't want.
+
+There's also a Tier 2 future for queues: multi-stage (Manager → Director → CRO). That's still a different shape from workflow — it's a sequence of human gates, not a sequence of agent calls. Tier 2 lands when a second multi-stage app surfaces; until then, the single-stage primitive covers Marcus's actual flows.
 
 ### Why does send back compile to return inside define function?
 

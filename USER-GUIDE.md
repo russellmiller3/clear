@@ -2473,6 +2473,64 @@ with timestamps. Great for debugging and audit trails.
 
 ---
 
+## Chapter 19b: Approval Queues (The Deal Desk in 10 Lines)
+
+Workflows orchestrate AI agents. **Approval queues** orchestrate humans — they're for the moment a person has to look at something and say "yes, no, or come back to me later." Discount approvals. Time-off requests. New-vendor onboarding. Any time work piles up in a list waiting for a real human to decide.
+
+Clear has a one-block primitive for this. Watch what nine lines buys you:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+That's the whole deal desk. Drop it in a `.clear` file and the compiler hands you back:
+
+- **An audit table** — every decision gets a row stamped with who decided, what they decided, when, and an optional note.
+- **A notification queue** — every time the CRO clicks Approve, a row gets added to an outbound list saying "tell the rep this was approved." Same for Reject, Counter, and Awaiting customer. The actual email-sending is a separate piece (covered later in this guide), but the queue is ready and waiting.
+- **A queue page URL** at `/api/deals/queue` — returns every deal that's still pending review.
+- **A history URL** at `/api/deal-decisions` — returns the full audit log.
+- **A login-gated URL for every action** — `/api/deals/:id/approve`, `/reject`, `/counter`, `/awaiting`. Each one updates the deal's status, logs the decision, queues the right notifications, and returns the updated deal.
+
+If the CRO clicks Approve, the deal flips to `'approved'`. Reject flips it to `'rejected'`. Counter and Awaiting customer flip it to `'awaiting'`. (The action name picks the new status — you can use other words too, and the new status will match.) Multi-word actions like `awaiting customer` shorten to a single URL token (`/awaiting`).
+
+### How notifications resolve recipient emails
+
+`notify customer on counter` doesn't need you to specify how to reach the customer. It looks for a field called `customer_email` on the deal. `notify rep on approve` looks for `rep_email`. The rule is `<role>_email` — match the role name in the notify clause to a field name on the entity. If the field doesn't exist, the compiler will warn you (the row still gets queued, just with a blank recipient — so the CRO's flow doesn't break, but the email obviously can't go out until you add the field).
+
+### Wiring action buttons in the UI
+
+The primitive does the backend, the audit, and the notifications. UI buttons are still hand-added — paste a few lines in your queue page:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+  'Reject' is danger
+```
+
+Clear matches the button labels to the action names you declared and binds each one to the right login-gated URL. (Auto-rendering the buttons from the queue declaration is on the to-do list — coming once a real customer asks for it.)
+
+### When NOT to reach for `queue for X:`
+
+- A simple "yes/no" with no audit need — just write a single PUT URL.
+- Automated routing where no human decides — that's a different shape, and a future `routing rules for X:` primitive will handle it cleanly.
+- Multi-stage approval where a deal needs Manager → Director → CRO — coming in Tier 2 once a second multi-stage app exists.
+
+### Why this primitive earns its keep
+
+A real Deal Desk used to need ~150 lines of hand-rolled JavaScript per app: the audit table, the URLs, the status transitions, the auth checks, the notification rows. Each one easy to get wrong, each one duplicated across every approval app. The queue primitive collapses that to **5 lines of declaration**, with auth, audit, and notifications all wired correctly by construction. Four of Clear's five Marcus-targeted apps now use it. Same visible behavior. A fraction of the surface for bugs to hide in.
+
+---
+
 ## Chapter 20: Designing Beautiful Pages
 
 Up to this point, we've been building functional apps. They work, they have

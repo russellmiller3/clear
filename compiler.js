@@ -6034,6 +6034,149 @@ function compileValidate(node, ctx, pad) {
   return `${pad}const _vErrs = _validate(req.body, [${rules.join(', ')}]);\n${pad}if (_vErrs) return res.status(400).json({ errors: _vErrs });`;
 }
 
+// =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` declares a human-approval queue. Compiler auto-emits:
+//   - `<entity>_decisions` audit table (always)
+//   - `<entity>_notifications` outbound queue table (when notify clauses present)
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+function compileQueueDef(node, ctx, pad) {
+  // Phase 2 scope: emit the auto-generated tables (decisions + optional notifications).
+  // Phase 3 will add URL handlers; Phase 4 will add UI elements.
+
+  // Local-memory backend is the default for Marcus apps. We emit `db.createTable(...)`
+  // calls matching the pattern used by compileDataShape's JS branch.
+  // Python and other backends to follow if Marcus uses them.
+  if (ctx.lang === 'python') {
+    return `${pad}# queue for ${node.entityName}: tables emitted by Phase 2 (Python target TBD)`;
+  }
+
+  const entityNameLower = node.entityName.toLowerCase();
+  const decisionsTableName = `${entityNameLower}_decisions`;
+  const decisionsSchemaName = `${node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1)}DecisionsSchema`;
+
+  let result = `${pad}// Auto-generated audit table for queue '${node.entityName}'\n`;
+  result += `${pad}const ${decisionsSchemaName} = {\n`;
+  result += `${pad}  ${entityNameLower}_id: { type: "text", required: true },\n`;
+  result += `${pad}  decision: { type: "text", required: true },\n`;
+  result += `${pad}  decided_by: { type: "text" },\n`;
+  result += `${pad}  decision_note: { type: "text" },\n`;
+  result += `${pad}  next_status: { type: "text" },\n`;
+  result += `${pad}  decided_at: { type: "timestamp", auto: true }\n`;
+  result += `${pad}};\n`;
+  if (ctx.mode === 'backend') {
+    result += `${pad}db.createTable('${decisionsTableName}', ${decisionsSchemaName});`;
+  }
+
+  // Notifications table: only when notify clauses present.
+  if (node.notifications && node.notifications.length > 0) {
+    const notifTableName = `${entityNameLower}_notifications`;
+    const notifSchemaName = `${node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1)}NotificationsSchema`;
+    result += `\n${pad}// Auto-generated notifications outbound queue for '${node.entityName}'\n`;
+    result += `${pad}const ${notifSchemaName} = {\n`;
+    result += `${pad}  ${entityNameLower}_id: { type: "text", required: true },\n`;
+    result += `${pad}  recipient_role: { type: "text" },\n`;
+    result += `${pad}  recipient_email: { type: "text" },\n`;
+    result += `${pad}  notification_type: { type: "text" },\n`;
+    result += `${pad}  queue_status: { type: "text", default: "pending" },\n`;
+    result += `${pad}  queued_at: { type: "timestamp", auto: true }\n`;
+    result += `${pad}};\n`;
+    if (ctx.mode === 'backend') {
+      result += `${pad}db.createTable('${notifTableName}', ${notifSchemaName});`;
+    }
+  }
+
+  // Phase 3: URL handlers (only emit in backend mode).
+  if (ctx.mode === 'backend') {
+    const pluralEntity = pluralizeName(node.entityName).toLowerCase();
+    const reviewerStr = JSON.stringify(node.reviewer || 'reviewer');
+
+    // GET /api/<plural>/queue — filtered by 'pending' status (default open status)
+    result += `\n${pad}// Auto-generated: GET filtered queue for '${node.entityName}'\n`;
+    result += `${pad}app.get('/api/${pluralEntity}/queue', (req, res) => {\n`;
+    result += `${pad}  const _all = db.findAll('${pluralEntity}') || [];\n`;
+    result += `${pad}  const _pending = _all.filter(_r => (_r && _r.status) === 'pending');\n`;
+    result += `${pad}  res.json(_pending);\n`;
+    result += `${pad}});\n`;
+
+    // GET /api/<entity>-decisions — audit history view
+    result += `${pad}// Auto-generated: GET decision history for '${node.entityName}'\n`;
+    result += `${pad}app.get('/api/${entityNameLower}-decisions', (req, res) => {\n`;
+    result += `${pad}  res.json(db.findAll('${entityNameLower}_decisions') || []);\n`;
+    result += `${pad}});\n`;
+
+    // GET /api/<entity>-notifications — notification log view (only if notify clauses present)
+    if (node.notifications && node.notifications.length > 0) {
+      result += `${pad}// Auto-generated: GET notification log for '${node.entityName}'\n`;
+      result += `${pad}app.get('/api/${entityNameLower}-notifications', (req, res) => {\n`;
+      result += `${pad}  res.json(db.findAll('${entityNameLower}_notifications') || []);\n`;
+      result += `${pad}});\n`;
+    }
+
+    // PUT /api/<plural>/:id/<action-slug> for each action
+    for (const action of (node.actions || [])) {
+      const slug = action.split(/\s+/)[0].toLowerCase();
+      const terminalStatus = actionToTerminalStatus(action);
+      const decisionLabel = action;
+
+      result += `${pad}// Auto-generated: ${decisionLabel} action for '${node.entityName}'\n`;
+      result += `${pad}app.put('/api/${pluralEntity}/:id/${slug}', (req, res) => {\n`;
+      result += `${pad}  if (!req.user) return res.status(401).json({ error: 'Authentication required' });\n`;
+      result += `${pad}  const _id = req.params.id;\n`;
+      result += `${pad}  const _record = db.findById('${pluralEntity}', _id);\n`;
+      result += `${pad}  if (!_record) return res.status(404).json({ error: 'not found' });\n`;
+      result += `${pad}  _record.status = ${JSON.stringify(terminalStatus)};\n`;
+      result += `${pad}  db.update('${pluralEntity}', _id, _record);\n`;
+      result += `${pad}  // Insert audit row\n`;
+      result += `${pad}  db.insert('${entityNameLower}_decisions', {\n`;
+      result += `${pad}    ${entityNameLower}_id: _id,\n`;
+      result += `${pad}    decision: ${JSON.stringify(action)},\n`;
+      result += `${pad}    decided_by: ${reviewerStr},\n`;
+      result += `${pad}    next_status: ${JSON.stringify(terminalStatus)},\n`;
+      result += `${pad}    decided_at: new Date().toISOString()\n`;
+      result += `${pad}  });\n`;
+
+      // Insert notification rows for any notify clauses matching this action
+      if (node.notifications && node.notifications.length > 0) {
+        for (const n of node.notifications) {
+          if (!n.onActions || !n.onActions.includes(action)) continue;
+          const roleStr = JSON.stringify(n.role);
+          // Try to resolve recipient_email from the record (e.g., customer_email field)
+          const emailField = `${n.role}_email`;
+          result += `${pad}  db.insert('${entityNameLower}_notifications', {\n`;
+          result += `${pad}    ${entityNameLower}_id: _id,\n`;
+          result += `${pad}    recipient_role: ${roleStr},\n`;
+          result += `${pad}    recipient_email: (_record && _record[${JSON.stringify(emailField)}]) || '',\n`;
+          result += `${pad}    notification_type: ${JSON.stringify(action)},\n`;
+          result += `${pad}    queue_status: 'pending',\n`;
+          result += `${pad}    queued_at: new Date().toISOString()\n`;
+          result += `${pad}  });\n`;
+        }
+      }
+
+      result += `${pad}  res.json(_record);\n`;
+      result += `${pad}});\n`;
+    }
+  }
+
+  return result;
+}
+
+// Map a queue action name to its terminal status value.
+// Convention from the queue plan: approve→approved, reject→rejected,
+// counter→awaiting (because "counter" means "now waiting on customer"),
+// "awaiting <thing>"→awaiting, anything else→ first-word lowercased.
+function actionToTerminalStatus(action) {
+  const first = action.split(/\s+/)[0].toLowerCase();
+  if (first === 'approve') return 'approved';
+  if (first === 'reject') return 'rejected';
+  if (first === 'counter') return 'awaiting';
+  if (first === 'awaiting') return 'awaiting';
+  return first;
+}
+
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
     // Supabase: tables managed in dashboard, emit comment only
@@ -6908,6 +7051,9 @@ ${pad}}`;
 
     case NodeType.ENDPOINT:
       return compileEndpoint(node, ctx, pad);
+
+    case NodeType.QUEUE_DEF:
+      return compileQueueDef(node, ctx, pad);
 
     case NodeType.RESPOND:
       return compileRespond(node, ctx, pad);

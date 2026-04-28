@@ -745,6 +745,54 @@ workflow 'Pipeline' with state:
   step 'Publish' with 'Publisher Agent'
 ```
 
+## Approval Queues — `queue for X:`
+
+**When the user asks for an approval flow** — discount approvals, time-off requests, deal review, onboarding sign-off, anything where a human reviews items piled up in a list and clicks Approve / Reject / Counter — reach for `queue for X:` BEFORE writing hand-rolled CRUD URLs.
+
+Canonical form:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+What the compiler emits for free:
+- `<entity>_decisions` audit table — `deal_id, decision, decided_by, decided_at, decision_note`.
+- `<entity>_notifications` outbound queue table (only when `notify` clauses present) — `recipient_role, recipient_email, notification_type, queue_status, queued_at`.
+- `GET /api/deals/queue` — filtered to `status = 'pending'`.
+- `GET /api/deal-decisions` and `GET /api/deal-notifications` — full history views.
+- `PUT /api/deals/:id/<action>` per action — login-gated, updates status, inserts audit row, queues notifications. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
+
+**Status transitions:** `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names use the action name as the status verbatim.
+
+**Recipient-email convention:** `notify customer on …` resolves recipient_email by reading `<entity>.customer_email`. If the field is missing, the validator warns; the row still queues with a blank email.
+
+**DO NOT hand-roll** when the user asks for an approval flow. Don't write per-action `when user updates X at /api/deals/:id/approve:` URLs alongside hand-built `DealDecisions` and `DealNotifications` tables. The primitive replaces all of that.
+
+**DO NOT use `queue for X:`** when:
+- The flow is a single-record toggle with no audit need (just write a PUT URL).
+- The flow is automated routing with no human in the loop (different shape — flag as a feature gap in `requests.md`).
+- The flow needs multi-stage approval (Manager → Director → CRO) — Tier 2 isn't built yet; flag in `requests.md` and use `workflow` for now.
+
+**Wiring action buttons.** The primitive doesn't auto-render UI yet. Hand-add buttons that call the generated URLs:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+  'Reject' is danger
+```
+
+Button labels match the action names (case-insensitive); each button binds to the matching `/api/deals/:id/<action>` URL.
+
 ## Policies (Safety Guards)
 
 ```clear

@@ -31,6 +31,13 @@ create a Requests table:
   requester
   created_at_date, auto
 
+# Approval queue — auto-generates audit table, notification queue,
+# filtered URL, and PUT URLs for each action. Each PUT requires login.
+
+queue for request:
+  reviewer is 'approver'
+  actions: approve, reject
+
 # Backend
 
 ## Middleware
