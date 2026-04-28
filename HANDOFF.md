@@ -1,6 +1,60 @@
-# Handoff — 2026-04-27 late evening (queue primitive MERGED to main)
+# Handoff — 2026-04-28 morning (overnight loop: snap layer + UAT contract + CSV export shipped)
 
-> **Read this section first. Below is the prior afternoon's handoff for context.**
+> **Read this section first. The earlier handoffs below preserve queue primitive context.**
+
+## Where you are when you wake up
+
+**You're on `main`, with three more shipped landings on top of the queue primitive.** All overnight branches merged in cleanly and pushed to `origin/main` with hooks. Test count: **2671 → 2684 (queue) → 2690 (csv)** + 18 snap-layer unit tests + 21 UAT-contract unit tests in their own files. All 8 core templates still compile clean.
+
+### What shipped overnight (3 ships, plain English)
+
+**1. The "snap layer" — the AI assistant can no longer end a turn with broken Clear on screen.** When Meph indicates he's done but the source still has compile errors, the system automatically asks him "you have N errors, fix these before stopping" and he re-rolls. Up to 3 retries. The user only sees the converged output. Same UX as full grammar-constrained generation, 5% of the implementation cost, no model swap. Disable with `SNAP_LAYER_OFF=1`. Pure-function decision + message-format helpers in `playground/snap-layer.js` (18 unit tests). Wired into the chat URL at the end-of-turn detection.
+
+**2. The UAT contract — every compiled app now describes itself.** `compileProgram(source).uatContract` returns a structured JSON description of every page, route, button, form, and API call in the program. This is the discriminator that future test generators walk to know what to assert. Cherry-picked from the Codex stash (the JSON-contract layer only — Codex's full browser-test generator + Playwright runner is still in the stash for a follow-up session). Lives in `lib/uat-contract.js` (340 lines, 21 unit tests). All 8 core templates produce populated contracts.
+
+**3. CSV export comes free with every queue.** Every `queue for X:` block now auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row, with proper RFC 4180 escaping (commas, quotes, newlines wrapped + doubled correctly) and sensitive fields (password / token / api_key / secret / hash) automatically omitted. Marcus's GTM list explicitly called this out as MVP. Suppress with `no export` clause inside the queue body when an entity should never expose data via CSV.
+
+**Plus a new project rule: "Build Python Alongside JS — No Drift Tax" (MANDATORY).** Any change to JS backend output requires the Python equivalent in the same commit, plus a cross-target smoke run before merge. Documented in `CLAUDE.md`.
+
+### What was deferred (and why)
+
+**Triggered email primitive** (the second of the three primitive plans). I started the overnight loop with the intent to ship this AFTER snap layer and Codex cherry-pick — but on reading the plan (`plans/plan-triggered-email-primitive-04-27-2026.md`), it's 13 TDD cycles with non-trivial parser disambiguation work between `when user sends X to Y` (existing endpoint syntax) and `when X's status changes to Y` (new). I judged that worth your eyes during a focused session rather than a half-shipped overnight. The plan is intact and ready for the next /pres or execute-plan run.
+
+**Codex's browser-test generator and the deeper E2E generator** (rest of the UAT cherry-pick). The JSON contract layer is in. The Playwright runner + screenshot-diffing bits stayed in the stash — ~1000 more lines that need careful adaptation since Codex wrote them before the queue primitive landed. Worth a focused session.
+
+**Phase 4 of queue primitive (auto-render UI buttons + history table block)**, **Cycle 2.3 (collision detection between user-defined audit tables and the auto-generated one)**, **Tier 2 of queue (multi-stage)**. Same status as the prior handoff — gated on customer evidence.
+
+### Recent commits on `main` (newest first)
+
+```
+<csv merge>      Merge branch 'feature/overnight-04-27-csv-export'
+e612ef1          feat(csv-export): every queue auto-emits /export.csv with RFC 4180 + sensitive-field filtering
+<uat merge>      Merge branch 'feature/overnight-04-27-codex-uat'
+9c9d5b6          feat(uat-contract): cherry-pick Codex's JSON contract walker
+<snap merge>     Merge branch 'feature/overnight-04-27-snap-layer'
+3875191          feat(snap-layer): wire auto-retry into /api/chat at end_turn
+d30c348          feat(snap-layer): pure functions for auto-retry decision
+edd7bc4          chore(rule): build Python alongside JS to prevent drift
+2516e14          docs(queue-primitive): cascade across all 11 doc surfaces
+```
+
+### What I'd do first when you sit down
+
+**Skim the snap layer in action.** Open Studio, ask Meph to "build me a contacts CRUD," watch what happens. The first time he stops with errors still on screen, you should see the loop self-correct. If you don't see it, set `SNAP_LAYER_OFF=1` to confirm the difference. Quick proof.
+
+**Eyeball one queue's CSV download.** Run Deal Desk in Studio (`apps/deal-desk/main.clear`), navigate to `/api/deals/export.csv` — should download a CSV with the seed deals, no password fields, properly escaped commas. About 2 minutes of clicks for the proof point.
+
+**Then pick from the in-flight list:**
+1. Triggered email primitive (the deferred one — plan ready, ~3-5 hours of careful TDD)
+2. Codex's browser-test generator (the other deferred chunk — would marry beautifully with the UAT contract that just shipped)
+3. External setup (Fly Trust Verified, Stripe live keys, Anthropic org key, Postgres provision)
+4. First Marcus conversation (the actual launch event)
+
+### Critical-path standing (unchanged from prior handoff)
+
+The product is meaningfully ready. Items 3 and 4 above are still the launch gate — couple hours of your time + a real conversation. Everything overnight raised quality but didn't directly unblock the first paying customer.
+
+---
 
 ## Where you are when you sit down
 
