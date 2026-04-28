@@ -22619,6 +22619,42 @@ when user requests data from /api/deals:
 });
 
 describe('Triggered email — validator (Phase 5)', () => {
+  it("hard-errors on an unknown provider name with did-you-mean suggestion", () => {
+    const src = `create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is 'agentmial'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const providerErr = result.errors.find(e => /agentmial/.test(String(e.message || e)));
+    expect(providerErr).toBeTruthy();
+    expect(String(providerErr.message || providerErr).toLowerCase()).toContain('agentmail');
+  });
+
+  it("accepts every recognized provider name without error", () => {
+    for (const provider of ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun']) {
+      const src = `create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is '${provider}'`;
+      const result = compileProgram(src);
+      const providerErr = result.errors.find(e => /provider/.test(String(e.message || e)));
+      expect(providerErr).toBeUndefined();
+    }
+  });
+
   it("warns when an email-trigger has no URL handler that sets the trigger value", () => {
     const src = `build for javascript backend
 database is local memory

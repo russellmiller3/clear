@@ -4689,6 +4689,21 @@ function parseEmailTrigger(lines, startIdx, _parentIndent, errors, parentBody) {
   if (!body) {
     errors.push({ line, message: `email trigger needs a body. Add 'body is \\'...\\'' inside the block.` });
   }
+  // Provider allow-list (Phase 5.3). Catches typos like 'agentmial' / 'sengrid'
+  // at compile time with a did-you-mean suggestion. Default 'agentmail' is the
+  // reply-aware choice for Marcus's deal desk; SendGrid / Resend / Postmark /
+  // Mailgun are alternates for one-way transactional sends.
+  if (provider) {
+    const validProviders = ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun'];
+    if (!validProviders.includes(provider)) {
+      const suggestion = closestQueueClause(provider, validProviders);
+      const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
+      errors.push({
+        line,
+        message: `email trigger has unknown provider '${provider}'.${didYouMean} Valid providers: ${validProviders.map(p => `'${p}'`).join(', ')}.`
+      });
+    }
+  }
 
   return {
     node: {
