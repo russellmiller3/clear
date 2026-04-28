@@ -413,6 +413,33 @@ when user sends seed to /api/seed:
 
 # Frontend
 
+# Shared sidebar — referenced from every page so nav persists across routes.
+# Counts are static placeholders here (decorative); live counts only matter
+# on the Deal Desk root page where they're loaded fresh from /api/deals/pending.
+define component DealDeskSidebar:
+  heading 'Deal Desk'
+
+  nav section 'Approvals':
+    nav item 'Pending' to '/' with icon 'inbox'
+    nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+    nav item 'Rejected' to '/rejected' with icon 'x-circle'
+    nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+  nav section 'Pipeline':
+    nav item 'All deals' to '/all' with icon 'layers'
+    nav item 'Reps' to '/reps' with icon 'users'
+    nav item 'Accounts' to '/accounts' with icon 'building-2'
+    nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+  nav section 'Workspace':
+    nav item 'Approval rules' to '/rules' with icon 'git-branch'
+    nav item 'Integrations' to '/integrations' with icon 'puzzle'
+    nav item 'Settings' to '/settings' with icon 'settings'
+
+  section 'Quota' with style app_card:
+    small text 'Quota: 78%'
+    text '$2.3M of $3M'
+
 page 'Deal Desk' at '/':
   on page load:
     send nothing to '/api/seed'
@@ -522,98 +549,143 @@ page 'Approved today' at '/approved':
   on page load:
     get approved_deals from '/api/deals/approved'
 
-  page header 'Approved today':
-    subtitle 'Approved requests cleared today and ready for audit.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Approved today':
+          subtitle 'Approved requests cleared today and ready for audit.'
 
-  section 'Approved Deals' with style app_table:
-    display approved_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
+        section 'Approved Deals' with style app_table:
+          display approved_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
 
 page 'Rejected' at '/rejected':
   on page load:
     get rejected_deals from '/api/deals/rejected'
 
-  page header 'Rejected deals':
-    subtitle 'Requests rejected after CRO review.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Rejected deals':
+          subtitle 'Requests rejected after CRO review.'
 
-  section 'Rejected Deals' with style app_table:
-    display rejected_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
+        section 'Rejected Deals' with style app_table:
+          display rejected_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
 
 page 'Awaiting customer' at '/awaiting':
   on page load:
     get awaiting_deals from '/api/deals/awaiting'
 
-  page header 'Awaiting customer':
-    subtitle 'Counters, signatures, and procurement follow-ups needing customer action.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Awaiting customer':
+          subtitle 'Counters, signatures, and procurement follow-ups needing customer action.'
 
-  section 'Customer Follow-up' with style app_table:
-    display awaiting_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
+        section 'Customer Follow-up' with style app_table:
+          display awaiting_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
 
 page 'All deals' at '/all':
   on page load:
     get all_deals from '/api/deals/all'
 
-  page header 'All deals':
-    subtitle 'Total deal-desk requests across every status.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'All deals':
+          subtitle 'Total deal-desk requests across every status.'
 
-  chart 'Approval mix' as pie showing all_deals by status
-  chart 'Segment pressure' as bar showing all_deals by account_segment
+        chart 'Approval mix' as pie showing all_deals by status
+        chart 'Segment pressure' as bar showing all_deals by account_segment
 
-  section 'Deal Audit Trail' with style app_table:
-    display all_deals as table showing customer, account_segment, rep_name, deal_type, list_price, discount_percent, status, submitted_label
+        section 'Deal Audit Trail' with style app_table:
+          display all_deals as table showing customer, account_segment, rep_name, deal_type, list_price, discount_percent, status, submitted_label
 
 page 'Reps' at '/reps':
   on page load:
     get reps from '/api/reps'
 
-  page header 'Reps':
-    subtitle 'Reps with active or recent discount requests.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Reps':
+          subtitle 'Reps with active or recent discount requests.'
 
-  section 'Rep Performance' with style app_table:
-    display reps as table showing rep_name, team, open_requests, approved_today, average_discount, value_at_stake, risk_flag
+        section 'Rep Performance' with style app_table:
+          display reps as table showing rep_name, team, open_requests, approved_today, average_discount, value_at_stake, risk_flag
 
 page 'Accounts' at '/accounts':
   on page load:
     get accounts from '/api/accounts'
 
-  page header 'Accounts':
-    subtitle 'Accounts with recent deal-desk context.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Accounts':
+          subtitle 'Accounts with recent deal-desk context.'
 
-  section 'Account Context' with style app_table:
-    display accounts as table showing customer, account_segment, owner, active_requests, total_value, last_decision, health_signal
+        section 'Account Context' with style app_table:
+          display accounts as table showing customer, account_segment, owner, active_requests, total_value, last_decision, health_signal
 
 page 'Reports' at '/reports':
   on page load:
     get all_deals from '/api/deals/all'
 
-  page header 'Reports':
-    subtitle 'Approval velocity, discount pressure, and value-at-stake reporting.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Reports':
+          subtitle 'Approval velocity, discount pressure, and value-at-stake reporting.'
 
-  chart 'Status mix' as pie showing all_deals by status
-  chart 'Segment pressure' as bar showing all_deals by account_segment
-  chart 'Deal types' as pie showing all_deals by deal_type
+        chart 'Status mix' as pie showing all_deals by status
+        chart 'Segment pressure' as bar showing all_deals by account_segment
+        chart 'Deal types' as pie showing all_deals by deal_type
 
-  section 'Reports Detail' with style app_table:
-    display all_deals as table showing customer, status, list_price, discount_percent, submitted_label
+        section 'Reports Detail' with style app_table:
+          display all_deals as table showing customer, status, list_price, discount_percent, submitted_label
 
 page 'Approval rules' at '/rules':
   on page load:
     get approval_rules from '/api/approval-rules'
 
-  page header 'Approval rules':
-    subtitle 'Policies that explain why deals route to CRO review.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Approval rules':
+          subtitle 'Policies that explain why deals route to CRO review.'
 
-  section 'Rules' with style app_table:
-    display approval_rules as table showing rule_name, threshold, owner, status, last_updated
+        section 'Rules' with style app_table:
+          display approval_rules as table showing rule_name, threshold, owner, status, last_updated
 
 page 'Integrations' at '/integrations':
   on page load:
     get integrations from '/api/integrations'
 
-  page header 'Integrations':
-    subtitle 'Sync health for the systems that keep deal context trustworthy.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Integrations':
+          subtitle 'Sync health for the systems that keep deal context trustworthy.'
 
-  section 'Integration Health' with style app_table:
-    display integrations as table showing system_name, sync_status, last_sync, records_synced, owner
+        section 'Integration Health' with style app_table:
+          display integrations as table showing system_name, sync_status, last_sync, records_synced, owner
 
 page 'Settings' at '/settings':
   approval_threshold = 20
@@ -621,16 +693,21 @@ page 'Settings' at '/settings':
   crm_sync_enabled = true
   email_alerts_enabled = true
 
-  page header 'Settings':
-    subtitle 'Workspace controls for approval policy, notifications, and sync defaults.'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show DealDeskSidebar()
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'Settings':
+          subtitle 'Workspace controls for approval policy, notifications, and sync defaults.'
 
-  section 'Approval Controls' with style form:
-    'Approval threshold (%)' as number input saves to approval_threshold
-    'Auto-approve limit (%)' as number input saves to auto_approve_limit
-    'CRM sync enabled' as checkbox saves to crm_sync_enabled
-    'Email alerts enabled' as checkbox saves to email_alerts_enabled
-    button 'Save settings':
-      show 'Settings saved'
+        section 'Approval Controls' with style form:
+          'Approval threshold (%)' as number input saves to approval_threshold
+          'Auto-approve limit (%)' as number input saves to auto_approve_limit
+          'CRM sync enabled' as checkbox saves to crm_sync_enabled
+          'Email alerts enabled' as checkbox saves to email_alerts_enabled
+          button 'Save settings':
+            show 'Settings saved'
 
 page 'New discount request' at '/new':
   section 'Header' centered, padded:
