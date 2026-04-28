@@ -22355,6 +22355,118 @@ when user requests data from /api/deals:
 });
 
 // =============================================================================
+// CSV export primitive — every queue auto-emits a /export.csv URL + button
+// Plan: plans/plan-csv-export-primitive-04-27-2026.md
+// =============================================================================
+
+describe('CSV export — compiler URL handler', () => {
+  it('auto-emits GET /api/<entity>/export.csv when queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deals/export.csv'");
+    expect(result.javascript).toContain('text/csv');
+    expect(result.javascript).toContain('attachment; filename');
+  });
+
+  it('does NOT emit /export.csv when no queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('/export.csv');
+  });
+
+  it('emits RFC 4180 escape helper for cells with commas, quotes, newlines', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The compiled CSV handler must wrap cells containing , " or \n in quotes
+    // and double internal quotes per RFC 4180. Look for the escape helper.
+    expect(result.javascript).toMatch(/_clearCsvEscape|csvEscape/);
+  });
+
+  it('omits sensitive fields (password, token, api_key, secret) from CSV', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  email
+  password
+  api_token
+  display_name
+  status, default 'pending'
+queue for user:
+  reviewer is 'admin'
+  actions: ban, unban
+when user requests data from /api/users:
+  send back all Users`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The CSV handler should explicitly filter out sensitive field names
+    // before emitting them. Look for the sensitive-pattern filter.
+    expect(result.javascript).toMatch(/SENSITIVE_FIELDS|password|token|secret|api_key/);
+    // Specifically: there should be a filter that excludes password / api_token
+    expect(result.javascript).toMatch(/_csvSensitive/);
+  });
+});
+
+describe('CSV export — no export opt-out', () => {
+  it('parser accepts no export clause inside queue block', () => {
+    const src = `create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q).toBeTruthy();
+    expect(q.noExport).toBe(true);
+  });
+
+  it('compiler suppresses CSV URL when no export clause present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('/export.csv');
+  });
+});
+
+// =============================================================================
 // CANONICAL SYNTAX: receives + returning JSON text
 // =============================================================================
 

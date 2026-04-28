@@ -4551,6 +4551,7 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
   let reviewer = null;
   const actions = [];
   const notifications = [];
+  let noExport = false;
   const queueIndent = lines[startIdx].indent;
   let i = startIdx + 1;
 
@@ -4612,6 +4613,14 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
       continue;
     }
 
+    // `no export` opt-out clause — turns off the auto-emitted CSV download.
+    // Marcus moves FROM spreadsheets so the default is on; this is the escape.
+    if (first === 'no' && bodyTokens[1] && bodyTokens[1].value === 'export') {
+      noExport = true;
+      i++;
+      continue;
+    }
+
     // Unknown body line — skip but don't error (tolerant for forward-compat)
     i++;
   }
@@ -4627,6 +4636,7 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
       reviewer,
       actions,
       notifications,
+      noExport,
       line,
     },
     endIdx: i,

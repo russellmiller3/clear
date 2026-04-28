@@ -349,7 +349,7 @@ Workflow step types (inside workflow body):
 
 | Node Type | Syntax | Compiles To |
 |-----------|--------|-------------|
-| `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action PUT handlers (auth-gated) |
+| `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action PUT handlers (auth-gated), CSV export URL (`GET /api/<entity>/export.csv`). Suppress CSV with `no export` clause inside the body. |
 
 Queue body clauses:
 
