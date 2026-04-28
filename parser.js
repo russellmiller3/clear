@@ -4608,12 +4608,15 @@ function parseEmailTrigger(lines, startIdx, _parentIndent, errors, parentBody) {
     return { node: null, endIdx: startIdx + 1 };
   }
   // Entity name appears at tokens[3]. Confirm the possessive marker followed.
-  const entityName = tokens[3] && tokens[3].value;
+  const entityNameRaw = tokens[3] && tokens[3].value;
   const possessive = tokens[4] && (tokens[4].value === "'s" || tokens[4].type === 'possessive');
-  if (!entityName || !possessive) {
+  if (!entityNameRaw || !possessive) {
     errors.push({ line, message: `email trigger needs an entity reference. Example: email ${recipientRole} when deal's status changes to 'awaiting':` });
     return { node: null, endIdx: startIdx + 1 };
   }
+  // F2 — singularize plural input so `email customer when deals's status ...:`
+  // produces the same workflow_email_queue insert as the singular form.
+  const entityName = singularizeEntityName(entityNameRaw);
   // Find the trigger field ('status') and the trigger value (a string literal).
   const triggerField = tokens[5] && tokens[5].value;
   const triggerValueTok = tokens.find(t => t.type === 'string');
@@ -4722,6 +4725,27 @@ function parseEmailTrigger(lines, startIdx, _parentIndent, errors, parentBody) {
   };
 }
 
+// F2 — Marcus's design feedback 2026-04-28: authors who type the plural form
+// (`queue for deals:`) should get the same generated audit table + URLs as
+// authors who type the singular (`queue for deal:`). Without this, `deals`
+// produces `deals_decisions` + `/api/deals-decisions` while `deal` produces
+// `deal_decisions` + `/api/deal-decisions` — same intent, different output.
+// The English-singularize is intentionally simple: it covers the cases Marcus's
+// 5 apps need (deals, leads, requests, tickets, activities) and leaves `-ss`
+// endings (address, business, status) alone so they don't get truncated wrong.
+function singularizeEntityName(word) {
+  if (typeof word !== 'string' || word.length < 2) return word;
+  const lower = word.toLowerCase();
+  if (lower.endsWith('ies') && lower.length > 3) return lower.slice(0, -3) + 'y';
+  if (lower.endsWith('sses')) return lower.slice(0, -2);
+  if (lower.endsWith('ches') || lower.endsWith('shes') || lower.endsWith('xes') || lower.endsWith('zes')) {
+    return lower.slice(0, -2);
+  }
+  if (lower.endsWith('ss')) return lower; // `address`, `business`, `status` stay as-is
+  if (lower.endsWith('s')) return lower.slice(0, -1);
+  return lower;
+}
+
 function parseQueueDef(lines, startIdx, _parentIndent, errors) {
   const tokens = lines[startIdx].tokens;
   const line = lines[startIdx].line || startIdx + 1;
@@ -4731,11 +4755,14 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
     errors.push({ line, message: "queue needs 'for'. Example: queue for deal:" });
     return { node: null, endIdx: startIdx + 1 };
   }
-  const entityName = tokens[2] && tokens[2].value;
-  if (!entityName) {
+  const entityNameRaw = tokens[2] && tokens[2].value;
+  if (!entityNameRaw) {
     errors.push({ line, message: "queue needs an entity name. Example: queue for deal:" });
     return { node: null, endIdx: startIdx + 1 };
   }
+  // F2 — singularize plural input so `queue for deals:` produces the same
+  // audit table + URLs as `queue for deal:`.
+  const entityName = singularizeEntityName(entityNameRaw);
 
   // Parse indented body — `reviewer is 'X'` and `actions: a, b, c` and notify clauses
   let reviewer = null;

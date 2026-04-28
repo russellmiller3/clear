@@ -22409,6 +22409,90 @@ queue for deal:
 // (email, slack, text, webhook) beat vague verbs ("notify"). The old `notify
 // <role> on <action>` form keeps working as a legacy alias so existing apps
 // don't break, but new docs and Meph guidance should teach the email form.
+// F2 — `queue for deals:` should produce the same output as `queue for deal:`.
+// Without singularization, the audit table becomes `deals_decisions` and the
+// audit URL becomes `/api/deals-decisions` — both inconsistent with the
+// canonical singular convention. Russell's design feedback 2026-04-28: the
+// parser should normalize plural entity names on the way in so authors who
+// type the plural form get the same generated artifacts.
+describe('Queue primitive — F2 plural input singularizes', () => {
+  it("queue for deals: produces deal_decisions table (not deals_decisions)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("createTable('deal_decisions'");
+    expect(result.javascript).not.toContain("createTable('deals_decisions'");
+  });
+
+  it("queue for deals: produces /api/deal-decisions audit URL (not /api/deals-decisions)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.javascript).toContain("app.get('/api/deal-decisions'");
+    expect(result.javascript).not.toContain("app.get('/api/deals-decisions'");
+  });
+
+  it("queue for activities: singularizes to activity (handles -ies plural)", () => {
+    const src = `build for javascript backend
+database is local memory
+create an Activities table:
+  description
+queue for activities:
+  reviewer is 'manager'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("createTable('activity_decisions'");
+  });
+
+  it("queue for status: leaves -ss endings alone (status, address)", () => {
+    const src = `build for javascript backend
+database is local memory
+create an Address table:
+  street
+queue for address:
+  reviewer is 'admin'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // address has -ss ending, not a plural; should stay as-is
+    expect(result.javascript).toContain("createTable('address_decisions'");
+  });
+
+  it("email customer when deals's status changes to 'awaiting': also singularizes", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deals's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Both the queue path and the email trigger should reference `deal` (singular)
+    expect(result.javascript).toContain("createTable('deal_decisions'");
+    // workflow_email_queue insert should reference entity_type 'deal', not 'deals'
+    expect(result.javascript).toMatch(/entity_type:\s*"deal"/);
+    expect(result.javascript).not.toMatch(/entity_type:\s*"deals"/);
+  });
+});
+
 describe('Queue primitive — email canonical (F3)', () => {
   it('parses `email <role> when <action>, <action>` as the canonical form', () => {
     const src = `create a Deals table:
