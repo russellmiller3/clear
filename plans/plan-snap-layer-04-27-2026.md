@@ -166,9 +166,16 @@ it('SNAP_LAYER_OFF=1 disables snap layer entirely', async () => {
 
 **Commit:** `TDD cycle 3: snap layer respects SNAP_LAYER_OFF env var`
 
-### Cycle 4 — Telemetry: log snap-retries to Factor DB
+### Cycle 4 — Telemetry: log snap-retries to Factor DB (DEFERRED)
 
-**Test code:**
+> **Status:** deferred to a follow-up session. The wedge in /api/chat already
+> calls `_factorDB.logEvent?.(...)` with optional chaining — when the method
+> lands, telemetry starts flowing automatically. `console.log` lines give
+> operational visibility in the meantime. The full Factor DB `factor_events`
+> table + `logEvent` / `listEvents` methods are 30-60 minutes of focused work
+> when needed for the friction analyzer.
+
+**Test code (for the future):**
 ```javascript
 it('records each snap retry as a Factor DB event', async () => {
   const broken = "create a Users tabel:\n  name";
