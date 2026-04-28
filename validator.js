@@ -131,15 +131,24 @@ export function validate(ast) {
 // trigger needs at least one URL handler in the same app that actually sets
 // the entity's status to that value. Otherwise the trigger sits dead in the
 // compiled output: workflow_email_queue table emits but no row ever lands.
-// Today we check queue auto-PUT handlers (their actionToTerminalStatus); a
-// future cycle will also scan user-written ENDPOINT bodies for matching
-// possessive-status assignments.
+// Two reachability paths:
+//   (a) queue actions whose terminal status matches the trigger value, or
+//   (b) user-written endpoint bodies containing `<entity>'s status is <value>`
+//       (parser shape: assign{name='entity.status', expression=literal_string}).
+// Either path is enough — apps that don't use the queue primitive still trigger
+// emails when their hand-written handler assigns the trigger value.
 function validateEmailTriggers(body, warnings) {
   const reachable = new Map(); // entity (lowercase) -> Set<status value>
+  const addReachable = (entity, value) => {
+    const key = String(entity || '').toLowerCase();
+    if (!key) return;
+    if (!reachable.has(key)) reachable.set(key, new Set());
+    reachable.get(key).add(value);
+  };
+  // Path (a): queue actions
   for (const node of body) {
     if (!node || node.type !== 'queue_def') continue;
     const entity = String(node.entityName || '').toLowerCase();
-    if (!reachable.has(entity)) reachable.set(entity, new Set());
     for (const action of (node.actions || [])) {
       const first = String(action).split(/\s+/)[0].toLowerCase();
       let terminal;
@@ -148,7 +157,36 @@ function validateEmailTriggers(body, warnings) {
       else if (first === 'counter') terminal = 'awaiting';
       else if (first === 'awaiting') terminal = 'awaiting';
       else terminal = first;
-      reachable.get(entity).add(terminal);
+      addReachable(entity, terminal);
+    }
+  }
+  // Path (b): user-written endpoint bodies. Walk every endpoint / update_endpoint
+  // recursively to find `<varName>.status = <literal>` assignments. Treat
+  // `<varName>` as the entity name — same convention the parser uses for
+  // possessive assignments to a receiving variable.
+  const collectStatusAssigns = (stmts) => {
+    if (!Array.isArray(stmts)) return;
+    for (const stmt of stmts) {
+      if (!stmt || typeof stmt !== 'object') continue;
+      if (
+        stmt.type === 'assign' &&
+        typeof stmt.name === 'string' &&
+        stmt.name.includes('.') &&
+        stmt.name.toLowerCase().endsWith('.status') &&
+        stmt.expression &&
+        stmt.expression.type === 'literal_string'
+      ) {
+        const dotIdx = stmt.name.lastIndexOf('.');
+        const entityVar = stmt.name.slice(0, dotIdx);
+        addReachable(entityVar, stmt.expression.value);
+      }
+      if (Array.isArray(stmt.body)) collectStatusAssigns(stmt.body);
+    }
+  };
+  for (const node of body) {
+    if (!node) continue;
+    if (node.type === 'endpoint' || node.type === 'update_endpoint') {
+      collectStatusAssigns(node.body);
     }
   }
   for (const node of body) {
