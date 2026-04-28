@@ -22,6 +22,12 @@
             "command": "node .claude/hooks/doc-cascade.mjs",
             "timeout": 5,
             "statusMessage": "Checking if doc cascade applies..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/screenshot-ui-work.mjs",
+            "timeout": 5,
+            "statusMessage": "Reminding to screenshot UI changes before claiming done..."
           }
         ]
       }
