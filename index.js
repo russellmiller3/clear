@@ -30,7 +30,7 @@ import { parse, NodeType } from './parser.js';
 import { compile, resolveModules, generateEvalEndpoints } from './compiler.js';
 import { validate } from './validator.js';
 import { SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './synonyms.js';
-import { generateUATContract } from './lib/uat-contract.js';
+import { generateUATContract, generateBrowserUAT } from './lib/uat-contract.js';
 
 /**
  * Parse and compile a Clear program in one step.
@@ -122,9 +122,16 @@ function compileProgram(source, options = {}) {
   // consumes this contract lands in a follow-up commit.
   try {
     result.uatContract = generateUATContract(ast.body);
+    // Browser test script — runnable Playwright that walks every page +
+    // clicks every nav/button + screenshots every route. Null when the app
+    // has no pages (backend-only). Russell's Marcus demo: every Clear app
+    // gets auto-generated browser tests for free, so a chat-driven edit
+    // can't silently break a screen between iterations.
+    result.browserUAT = result.uatContract ? generateBrowserUAT(result.uatContract) : null;
   } catch (err) {
     // Never let the contract break compilation. Surface as warning instead.
     result.uatContract = null;
+    result.browserUAT = null;
     (result.warnings ??= []).push({ kind: 'uat-contract-failed', message: String(err.message || err) });
   }
   // Structured eval stats for RL + observability
