@@ -6198,6 +6198,39 @@ function compileQueueDef(node, ctx, pad) {
         }
       }
 
+      // Triggered email primitive (Phase 4) — when this action's terminalStatus
+      // matches a top-level email_trigger for this entity, inject a row into the
+      // shared workflow_email_queue. Recipient email is resolved by the same
+      // `<role>_email` convention as the queue's notify clauses. Real sends
+      // remain deferred behind `enable live email delivery via X` (B-1).
+      const allBody = (ctx && ctx._astBody) || [];
+      const matchingTriggers = allBody.filter(n =>
+        n && n.type === NodeType.EMAIL_TRIGGER &&
+        n.entityName === entityNameLower &&
+        n.triggerValue === terminalStatus
+      );
+      for (const trig of matchingTriggers) {
+        const roleStr = JSON.stringify(trig.recipientRole);
+        const emailField = `${trig.recipientRole}_email`;
+        const subjectStr = JSON.stringify(trig.subject || '');
+        const bodyStr = JSON.stringify(trig.body || '');
+        const providerStr = JSON.stringify(trig.provider || 'agentmail');
+        const replyStr = JSON.stringify(trig.replyTracking || '');
+        result += `${pad}  db.insert('workflow_email_queue', {\n`;
+        result += `${pad}    entity_type: ${JSON.stringify(entityNameLower)},\n`;
+        result += `${pad}    entity_id: _id,\n`;
+        result += `${pad}    recipient_role: ${roleStr},\n`;
+        result += `${pad}    recipient_email: (_record && _record[${JSON.stringify(emailField)}]) || '',\n`;
+        result += `${pad}    subject: ${subjectStr},\n`;
+        result += `${pad}    body: ${bodyStr},\n`;
+        result += `${pad}    provider: ${providerStr},\n`;
+        result += `${pad}    reply_tracking: ${replyStr},\n`;
+        result += `${pad}    queue_status: 'pending',\n`;
+        result += `${pad}    attempts: 0,\n`;
+        result += `${pad}    queued_at: new Date().toISOString()\n`;
+        result += `${pad}  });\n`;
+      }
+
       result += `${pad}  res.json(_record);\n`;
       result += `${pad}});\n`;
     }

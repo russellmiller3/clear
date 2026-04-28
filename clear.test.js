@@ -22618,6 +22618,59 @@ when user requests data from /api/deals:
   });
 });
 
+describe('Triggered email — queue-action integration (Phase 4)', () => {
+  it("queue auto-PUT handler that lands on the trigger value also inserts into workflow_email_queue", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The 'counter' action transitions status to 'awaiting' (actionToTerminalStatus
+    // in compiler.js), so the queue's auto-generated PUT /api/deals/:id/counter
+    // handler must also queue an email row in workflow_email_queue.
+    expect(result.javascript).toContain("/api/deals/:id/counter");
+    expect(result.javascript).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+    // The queued row should carry the trigger's subject + the resolved recipient
+    // (customer's email field). The compiler JSON-stringifies the subject so it
+    // ends up double-quoted in the output regardless of how the source quoted it.
+    expect(result.javascript).toContain('"We countered"');
+    expect(result.javascript).toContain('customer_email');
+  });
+
+  it("queue auto-PUT handler that DOES NOT land on a trigger value does not insert into workflow_email_queue", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting'
+  body is 'Awaiting'`;
+    // The 'approve' action transitions status to 'approved' (NOT 'awaiting'),
+    // so its handler should NOT inject a workflow_email_queue insert.
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Find the approve handler's body and assert no queue-insert appears in it.
+    const approveStart = result.javascript.indexOf("/api/deals/:id/approve");
+    const approveEnd = result.javascript.indexOf("});", approveStart);
+    const approveHandler = result.javascript.slice(approveStart, approveEnd);
+    expect(approveHandler).not.toMatch(/workflow_email_queue/);
+  });
+});
+
 describe('Queue primitive — compiler tables', () => {
   it('emits a deal_decisions audit table when queue for deal: declared', () => {
     const src = `build for javascript backend
