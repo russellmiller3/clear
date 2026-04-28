@@ -27,9 +27,13 @@
 
 ## Next session — priority order
 
-1. **Marcus apps list endpoint** (~30 min). The dashboard's "Your apps" empty state already ships; wire `GET /api/apps` to return the customer's deployed apps from the tenants store, then unhide the app grid.
-   - **Why for launch:** dashboard is currently informative-only. With the apps list, Marcus sees his real deployments + can click into any of them.
-2. **Deal Desk: fix `{pending_count}` subtitle interpolation + empty detail panel `$NaN`/`undefined`** (~30-60 min). Two pre-existing compiler bugs surfaced during the polish snapshot review — subtitle text doesn't interpolate `{...}` placeholders; detail panel's format helpers (`as dollars`, `as percent`) render `NaN`/`undefined` when the source is unset. Compiler-side guards.
+1. **Marcus apps list endpoint — bigger than 30 min, plan first** (a session). I poked at this and the user→tenant mapping doesn't exist yet — `users` rows have no tenant_slug column, `tenants` rows have no user_id. Three options to chew on first:
+   - (a) add a `tenant_slug` column on `users` for 1:1 user→tenant — simplest, matches single-customer accounts
+   - (b) add a `tenant_users` join table — supports teams (matches the CC-2b/c/d "Scaffolding shipped" team work)
+   - (c) derive `tenant_slug = clear-${hash(user.email)}` deterministically on the fly — no migration, but ties the slug to the email forever
+   Use `/write-plan` to pick + plan the migration + signup-creates-tenant flow before charging at the URL itself. Tenant store + auth helpers are ready; the wire-up is the design call.
+   - **Why for launch:** dashboard's empty state ships, but Marcus seeing real deployments needs this mapping decided.
+2. **Deal Desk: subtitle interpolation + empty detail panel NaN guard** (~1-2 hr — bigger than I first thought). Two pre-existing compiler bugs surfaced during the polish snapshot. Subtitle text in `page header` bakes the literal at compile time via `formatInlineText` (compiler.js ~line 11455) — only handles `*bold*`/`_italic_`, not `{var}` interpolation. `text` and `small text` nodes go through a different reactive pipeline that DOES interpolate. The fix: thread `subtitle` through the reactive emit path (probably emit a `<span>` with an ID + add to state-bindings). Detail panel `$NaN` / `undefined` is a separate fix — runtime format helpers (`as dollars`, `as percent`) need a guard for unset source values.
    - **Why for launch:** stops Marcus from seeing literal `{pending_count}` and `$NaN` on the demo. Both pre-date the polish commit but block a clean Marcus walk-through.
 3. **CC-3 webhook receiver** (~1 hr code, gated on Russell's Stripe live keys). Wire the production webhook route in `playground/server.js`. Test in test mode until live keys land.
    - **Why for launch:** customers can't pay until this lands AND Russell's Stripe live keys arrive.
@@ -56,4 +60,4 @@ Build priority queue from ROADMAP at session start, lead don't ask, big-picture 
 
 ## Resume prompt (paste into fresh session)
 
-> Read HANDOFF.md and start on item 1 (wire `GET /api/apps` so the dashboard's empty state can light up with the customer's deployed apps). All in one session. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: bed20b3.
+> Read HANDOFF.md. Item 1 (apps list URL) needs the user→tenant mapping decided FIRST — use `/write-plan` to pick between the three options and plan the migration before charging at code. Item 2 (subtitle interpolation + NaN guard) is a real compiler change — make sure to read the existing reactive emit path before edits. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: f27f0be.
