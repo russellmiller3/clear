@@ -207,6 +207,14 @@ export const NodeType = Object.freeze({
   // queue blocks so any URL handler that sets the entity's status to the
   // trigger value queues an email row in the WorkflowEmailQueue table.
   EMAIL_TRIGGER: 'email_trigger',
+  // Email delivery directive (Phase B-1 part 2, 2026-04-28). Top-level:
+  //   email delivery using agentmail
+  // Tells the compiler to emit a small background worker that polls
+  // workflow_email_queue and sends pending rows via the named provider.
+  // Without the directive, no worker emits — default builds queue rows only.
+  // Worker fails loud at runtime when the provider's API key env var isn't
+  // set, so a misconfigured deploy doesn't silently succeed.
+  EMAIL_DELIVERY_DIRECTIVE: 'email_delivery_directive',
 
   // App-level policies (Enact guard types)
   POLICY: 'policy',
@@ -2728,9 +2736,17 @@ CANONICAL_DISPATCH.set('queue', (ctx) => {
     return result.endIdx;
 });
 CANONICAL_DISPATCH.set('email', (ctx) => {
-    // Top-level: `email <role> when <entity>'s status changes to <value>:`
-    // Disambiguate by token sequence — third token must be the literal `when`.
+    // Two top-level forms share the `email` keyword. Disambiguate by token[1]:
+    //   1. `email delivery using <provider>`     — flips live sending on
+    //   2. `email <role> when <entity>'s status changes to <value>:` — trigger
     // Any other top-level use of `email` (rare; bare keyword) falls through.
+    if (ctx.tokens.length >= 4 &&
+        ctx.tokens[1].value === 'delivery' &&
+        ctx.tokens[2].value === 'using') {
+      const result = parseEmailDeliveryDirective(ctx.lines, ctx.i, ctx.errors);
+      if (result.node) ctx.body.push(result.node);
+      return result.endIdx;
+    }
     if (ctx.tokens.length < 4 || ctx.tokens[2].value !== 'when') return undefined;
     const result = parseEmailTrigger(ctx.lines, ctx.i, ctx.indent, ctx.errors, ctx.body);
     if (result.node) ctx.body.push(result.node);
@@ -4596,6 +4612,42 @@ function editDistance(a, b) {
 // at the top level so any URL handler that sets the entity's status to the
 // trigger value queues a row in the WorkflowEmailQueue table (no real sends
 // in default builds — that's gated behind `enable live email delivery via X`).
+// Email delivery directive (Phase B-1 part 2). Top-level form:
+//   email delivery using agentmail
+// Tells the compiler to emit a poll worker that drains workflow_email_queue
+// via the named provider. Default builds (no directive) emit no worker, so
+// tests + previews never accidentally touch a real provider URL.
+const VALID_DELIVERY_PROVIDERS = ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun'];
+function parseEmailDeliveryDirective(lines, startIdx, errors) {
+  const line = lines[startIdx];
+  const tokens = line.tokens;
+  // Expected: [email, delivery, using, <provider>]
+  if (tokens.length < 4) {
+    errors.push({
+      line: line.lineNum,
+      message: "email delivery directive needs a provider — write `email delivery using agentmail`",
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const providerToken = tokens[3];
+  const provider = String(providerToken.value || '').toLowerCase();
+  if (!VALID_DELIVERY_PROVIDERS.includes(provider)) {
+    errors.push({
+      line: line.lineNum,
+      message: `Unknown email delivery provider '${provider}' — valid providers: ${VALID_DELIVERY_PROVIDERS.join(', ')}`,
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  return {
+    node: {
+      type: NodeType.EMAIL_DELIVERY_DIRECTIVE,
+      provider,
+      line: line.lineNum,
+    },
+    endIdx: startIdx + 1,
+  };
+}
+
 function parseEmailTrigger(lines, startIdx, _parentIndent, errors, parentBody) {
   const tokens = lines[startIdx].tokens;
   const line = lines[startIdx].line || startIdx + 1;
