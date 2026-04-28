@@ -231,6 +231,24 @@ The second of three primitives unlocking Marcus's workflow apps, added 2026-04-2
 
 Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live email delivery worker — real sends through agentmail / sendgrid / etc.) is the only deferred chunk; everything else has shipped. Changelog entry at top of `CHANGELOG.md`.
 
+### Where do the Clear Cloud auth URLs live? (signup, login, me, logout)
+
+**The URL handlers:** `playground/cloud-auth/routes.js` — `mountCloudAuthRoutes(app, { pool })` wires four routes on Studio's Express app:
+- POST `/api/auth/signup` → creates a user + auto-logs in + sets cookie
+- POST `/api/auth/login` → verifies bcrypt + sets cookie
+- GET  `/api/auth/me` → reads cookie, returns the authed user (or 401)
+- POST `/api/auth/logout` → revokes session + clears cookie
+
+**The auth helpers** (the SQL these routes hit): `playground/cloud-auth/index.js` — `signupUser`, `loginUser`, `validateSession`, `revokeSession`, `logoutAllSessions`, `issueEmailVerifyToken`, `verifyEmailToken`, `issuePasswordResetToken`, `resetPassword`. bcryptjs hashing, 32-byte hex tokens hashed with SHA-256 before storage, 30-day hard TTL + 7-day idle timeout (configurable via env).
+
+**The schema:** `playground/db/migrations/0002_users_sessions.sql` — runs through the regular migrations runner alongside CC-1's init. Two tables (`users`, `sessions`) at the public schema, separate from `clear_cloud.*` which holds tenant-deploy state. Same logical Postgres DB, two concern-scoped namespaces.
+
+**The pages that call these URLs:** `playground/{login,signup,dashboard}.html`. Login + signup auto-redirect signed-in users to /dashboard; dashboard auth-gates and bounces unauth'd users to /login.
+
+**The Studio wiring:** `playground/server.js` calls `mountCloudAuthRoutes(app, { pool: _cloudTenantHandle.pool })` after the tenant-store factory. When DATABASE_URL is unset (Studio dev mode), the pool is null and every auth URL returns 503 `auth_not_configured` — Studio dev keeps working without auth.
+
+**Why two auth systems?** Clear apps generated via `allow signup and login` have their own auth layer that lives INSIDE each customer's app (per-tenant SQLite, JWT cookies). Clear Cloud's auth is for buildclear.dev itself — accounts, sessions, and the dashboard that lists a customer's apps. Same bcryptjs dep, same cost factor, separate schemas.
+
 ### Where does the Live App Editing widget live?
 
 **The widget source:** `runtime/meph-widget.js` (pure browser JS, no imports). Gets copied into `clear-runtime/meph-widget.js` inside each compiled app's build directory on every Studio `/api/run`. Served at `/__meph__/widget.js` from the compiled app.

@@ -412,6 +412,22 @@ Conversational edits to a running, deployed Clear app. Owner authenticates, open
 | Schema-change confirm gate | `migrationsDiffer()` byte-compares both `migrations/*.sql` and `wrangler.toml` between live + new bundles. Differences pause the update and return `409 MIGRATION_REQUIRED` with a per-file diff. Re-POST with `confirmMigration: true` applies the migration before uploading the new code. |
 | One-click rollback (Studio) | Version history panel inside the Publish window lists the last 20 versions with timestamps; Rollback button calls `/api/rollback`, records a tombstone version with `note: 'rollback-from-vN'`. Currently-live version shows "Current" label, no button. |
 
+## Clear Cloud (buildclear.dev — login + multi-tenant runtime)
+
+The customer-facing surface for buildclear.dev itself. Customers sign up, log in, and land on a dashboard that lists their deployed apps. Separate from the auth Clear apps generate INSIDE deployed apps (which uses the `allow signup and login` syntax against per-tenant SQLite).
+
+| Component | Where | What it does |
+|-----------|-------|--------------|
+| **Cloud-auth helpers** | `playground/cloud-auth/index.js` | bcryptjs hashing, 32-byte hex session tokens hashed with SHA-256 before DB storage, signup/login/validateSession/revokeSession/logoutAllSessions, email verify + password reset with 1-hour expiry. 57 unit tests. |
+| **Auth URL handlers** | `playground/cloud-auth/routes.js` | POST `/api/auth/signup`, POST `/api/auth/login`, GET `/api/auth/me`, POST `/api/auth/logout`. httpOnly + SameSite=Lax + Secure cookies, 30-day Max-Age, inline cookie parser (no cookie-parser dep). Stub mode when pool is null so Studio dev keeps working without DATABASE_URL. 50 routes integration tests against pg-mem. |
+| **Login + signup pages** | `playground/{login,signup}.html` | Inter-font, indigo-gradient buttons matching the existing landing system. Lucide icons (no emoji per the rule). Already-signed-in users on /login redirect to /dashboard. |
+| **Dashboard** | `playground/dashboard.html` | Auth-gates on `/api/auth/me`, bounces unauth'd users to /login. Shows greeting + Sign-out button + empty-state until `/api/apps` lands. |
+| **CC-2 schema migration** | `playground/db/migrations/0002_users_sessions.sql` | Runs alongside CC-1's init migration when DATABASE_URL is set. Users + sessions tables with CHECK constraints for status/role; partial unique indexes for verify/reset tokens; pg-mem-portable (no PL/pgSQL trigger). |
+| **Tenant store factory** | `playground/tenant-store-factory.js` | Picks InMemoryTenantStore (DATABASE_URL unset, default), DualWriteTenantStore (cutover wrapper), or PostgresTenantStore (production). Applies all migrations on first boot. 24 tests. |
+| **Multi-tenant routing** | `playground/cloud-routing/` | When `CLEAR_CLOUD_MODE=1`, subdomain `<sub>.buildclear.dev` requests get proxied to the deployed app's container before they hit Studio's static + chat routes. Silent no-op when env var unset. |
+
+**To run buildclear.dev in production:** set `DATABASE_URL` (Fly Postgres or Neon), set `CLEAR_CLOUD_MODE=1`, set `NODE_ENV=production`. The migrations apply on first boot, the four auth URLs become reachable, and the three pages serve at the named paths.
+
 ## Developer Tooling (Dave-first wedge — shipped 2026-04-24)
 
 The "language your coding agent writes without retries" surface. Editor integration + remote Compiler API. See `ROADMAP.md` → "Strategic pivot under review (2026-04-24) — Dave-first wedge" for status; this section documents what's built.
