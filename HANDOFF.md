@@ -1,10 +1,10 @@
-# Handoff — 2026-04-27 late evening (queue primitive shipped + Codex stash review)
+# Handoff — 2026-04-27 late evening (queue primitive MERGED to main)
 
 > **Read this section first. Below is the prior afternoon's handoff for context.**
 
 ## Where you are when you sit down
 
-Branch **`feature/queue-primitive-tier1`** (off `main`). Seven commits, all on top of clean main:
+**You're on `main`, with the queue primitive fully shipped.** The `feature/queue-primitive-tier1` branch was merged in (no-ff) and the doc cascade landed across all 11 surfaces. `main` (now matching `origin/main`) carries:
 
 1. `79b2bcb` — research docs + plans + Cycle 1.1 (parser)
 2. `b011b1f` — Cycles 1.2 + 1.3 (notify clauses + error paths)
@@ -13,8 +13,12 @@ Branch **`feature/queue-primitive-tier1`** (off `main`). Seven commits, all on t
 5. `ea5c63b` — Auth-gate the per-action URLs
 6. `64ccd0d` — Deal Desk migrated to use `queue for deal:`
 7. `76bce79` — 3 more Marcus apps migrated (Approval Queue, Onboarding Tracker, Internal Request Queue)
+8. `2516e14` — Doc cascade across 11 surfaces (intent, SYNTAX, AI-INSTRUCTIONS, FEATURES, CHANGELOG, USER-GUIDE, FAQ, ROADMAP, playground/system-prompt, landing/marcus.html, FAQ TOC links)
+9. Merge commit closing the epic
 
-Test count: **2671 baseline → 2684** (+13 from queue primitive cycles). All 13 apps compile clean (0 errors). Pre-commit hook ran the full suite green at every commit.
+Test count: **2671 baseline → 2684** (+13 from queue primitive cycles). All 8 core templates compile clean (0 errors; pre-existing warnings only). Deal Desk's own 16 in-app tests pass green, including "can user approve a deal" which exercises the auto-generated PUT URL. Pre-push hook on `main` ran the full test suite + Meph eval and passed.
+
+The `feature/queue-primitive-tier1` branch still exists locally + remote — fully merged, safe to delete (`git push origin --delete feature/queue-primitive-tier1` + `git branch -d feature/queue-primitive-tier1`).
 
 ## What shipped tonight (in plain English)
 
