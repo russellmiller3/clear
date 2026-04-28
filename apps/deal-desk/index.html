@@ -6,7 +6,7 @@
   <title>Sign in</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -339,100 +339,86 @@ body {
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
-<div id="page_Deal_Desk">
-    <div class="flex min-h-screen" data-clear-line="232">
-    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="233">
-    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="234"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">D</div><span class="text-base font-bold text-base-content tracking-tight">Deal Desk</span></div>
+<div id="page_Deal_Desk" data-clear-page-id="Deal_Desk" data-clear-page-route="/" data-clear-page-title="Deal Desk">
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="270">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="271">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="272"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">D</div><span class="text-base font-bold text-base-content tracking-tight">Deal Desk</span></div>
     <nav class="flex-1 overflow-y-auto py-4 px-4">
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Approvals</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="237"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Pending</span><span class="clear-nav-count num" data-clear-tpl="{pending_count}">{pending_count}</span></a></li>
-    <li><a href="/approved" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/approved" data-clear-line="238"><i data-lucide="check-circle-2" aria-hidden="true"></i><span class="clear-nav-label">Approved today</span><span class="clear-nav-count num" data-clear-tpl="{approved_today_count}">{approved_today_count}</span></a></li>
-    <li><a href="/rejected" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/rejected" data-clear-line="239"><i data-lucide="x-circle" aria-hidden="true"></i><span class="clear-nav-label">Rejected</span><span class="clear-nav-count num" data-clear-tpl="{rejected_count}">{rejected_count}</span></a></li>
-    <li><a href="/awaiting" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/awaiting" data-clear-line="240"><i data-lucide="clock" aria-hidden="true"></i><span class="clear-nav-label">Awaiting customer</span><span class="clear-nav-count num" data-clear-tpl="{awaiting_count}">{awaiting_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_275_Pending" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="275"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Pending</span><span class="clear-nav-count num" data-clear-tpl="{pending_count}">{pending_count}</span></a></li>
+    <li><a href="/approved" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_276_Approved_today" data-clear-control-kind="nav-item" data-nav-path="/approved" data-clear-line="276"><i data-lucide="check-circle-2" aria-hidden="true"></i><span class="clear-nav-label">Approved today</span><span class="clear-nav-count num" data-clear-tpl="{approved_today_count}">{approved_today_count}</span></a></li>
+    <li><a href="/rejected" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_277_Rejected" data-clear-control-kind="nav-item" data-nav-path="/rejected" data-clear-line="277"><i data-lucide="x-circle" aria-hidden="true"></i><span class="clear-nav-label">Rejected</span><span class="clear-nav-count num" data-clear-tpl="{rejected_count}">{rejected_count}</span></a></li>
+    <li><a href="/awaiting" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_278_Awaiting_customer" data-clear-control-kind="nav-item" data-nav-path="/awaiting" data-clear-line="278"><i data-lucide="clock" aria-hidden="true"></i><span class="clear-nav-label">Awaiting customer</span><span class="clear-nav-count num" data-clear-tpl="{awaiting_count}">{awaiting_count}</span></a></li>
         <li class="clear-nav-section-label">Pipeline</li>
-    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/all" data-clear-line="243"><i data-lucide="layers" aria-hidden="true"></i><span class="clear-nav-label">All deals</span><span class="clear-nav-count num" data-clear-tpl="{total_deals_count}">{total_deals_count}</span></a></li>
-    <li><a href="/reps" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/reps" data-clear-line="244"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Reps</span><span class="clear-nav-count num" data-clear-tpl="{rep_count}">{rep_count}</span></a></li>
-    <li><a href="/accounts" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/accounts" data-clear-line="245"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Accounts</span></a></li>
-    <li><a href="/reports" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/reports" data-clear-line="246"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span class="clear-nav-label">Reports</span></a></li>
-        <li class="clear-nav-section-label">Workspace</li>
-    <li><a href="/rules" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/rules" data-clear-line="249"><i data-lucide="git-branch" aria-hidden="true"></i><span class="clear-nav-label">Approval rules</span></a></li>
-    <li><a href="/integrations" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/integrations" data-clear-line="250"><i data-lucide="puzzle" aria-hidden="true"></i><span class="clear-nav-label">Integrations</span></a></li>
-    <li><a href="/settings" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/settings" data-clear-line="251"><i data-lucide="settings" aria-hidden="true"></i><span class="clear-nav-label">Settings</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_281_All_deals" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="281"><i data-lucide="layers" aria-hidden="true"></i><span class="clear-nav-label">All deals</span><span class="clear-nav-count num" data-clear-tpl="{total_deals_count}">{total_deals_count}</span></a></li>
+    <li><a href="/reports" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_282_Reports" data-clear-control-kind="nav-item" data-nav-path="/reports" data-clear-line="282"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span class="clear-nav-label">Reports</span></a></li>
       </ul>
     </nav>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="253">
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="254">Quota: 78%</span>
-    <li data-clear-line="255"><a class="clear-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">$2.3M of $3M</a></li>
-    </div>
     </aside>
-    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="257">
-    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="258">
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="284">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="285">
       <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
-    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="259">Clear</h1>
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="286">Clear</h1>
       </div>
       <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="260">Workspace / Deal Desk / Pending Queue</p>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="287">Workspace / Deal Desk / Pending Queue</p>
       </nav>
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="262">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="263">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="289">
+      <div data-clear-routed-content="Deal_Desk" data-clear-routed-route="/">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="290">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Pending CRO approval</h1>
-        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{pending_count} deals waiting on you. Oldest submitted 2 hours ago.</p>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{pending_count} deals waiting on you.</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
-    <button class="btn btn-primary" id="btn_Refresh" data-clear-line="266">Refresh</button>
-    <button class="btn btn-primary" id="btn_Export" data-clear-line="267">Export</button>
-    <button class="btn btn-primary" id="btn_New_deal" data-clear-line="268">New deal</button>
+    <button class="btn btn-primary" id="btn_New_deal" data-clear-uat-id="button_293_New_deal" data-clear-control-kind="button" data-clear-line="293">New deal</button>
       </div>
     </div>
-    <nav class="clear-tab-strip" data-tab-strip="true" data-clear-line="270">
-      <a href="/" class="clear-route-tab is-active" data-route-tab="true" data-tab-path="/">Pending</a>
-      <a href="/approved" class="clear-route-tab" data-route-tab="true" data-tab-path="/approved">My approvals</a>
-      <a href="/all" class="clear-route-tab" data-route-tab="true" data-tab-path="/all">All</a>
+    <nav class="clear-tab-strip" data-tab-strip="true" data-clear-line="295">
+      <a href="/" class="clear-route-tab is-active" data-route-tab="true" data-clear-uat-id="route_tab_297_Pending" data-clear-control-kind="route-tab" data-tab-path="/">Pending</a>
+      <a href="/approved" class="clear-route-tab" data-route-tab="true" data-clear-uat-id="route_tab_298_My_approvals" data-clear-control-kind="route-tab" data-tab-path="/approved">My approvals</a>
+      <a href="/all" class="clear-route-tab" data-route-tab="true" data-clear-uat-id="route_tab_299_All" data-clear-control-kind="route-tab" data-tab-path="/all">All</a>
     </nav>
-    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="276">
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="277">
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="301">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="302">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Pending count</div>
           <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
         </div>
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{pending_count}">{pending_count}</span></div>
-        <div class="clear-stat-delta clear-stat-delta-positive">same as yesterday</div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="281">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="305">
         <div class="clear-stat-card-top">
-          <div class="clear-stat-label">Avg discount</div>
-          <i class="clear-stat-icon" data-lucide="percent" aria-hidden="true"></i>
+          <div class="clear-stat-label">Approved today</div>
+          <i class="clear-stat-icon" data-lucide="check-circle-2" aria-hidden="true"></i>
         </div>
-        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{average_discount}">{average_discount}</span></div>
-        <div class="clear-stat-delta clear-stat-delta-positive">+1.8 pts vs last week</div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{approved_today_count}">{approved_today_count}</span></div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="285">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="308">
         <div class="clear-stat-card-top">
-          <div class="clear-stat-label">Value at stake</div>
-          <i class="clear-stat-icon" data-lucide="dollar-sign" aria-hidden="true"></i>
+          <div class="clear-stat-label">Awaiting customer</div>
+          <i class="clear-stat-icon" data-lucide="clock" aria-hidden="true"></i>
         </div>
-        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{value_at_stake}">{value_at_stake}</span></div>
-        <div class="clear-stat-delta clear-stat-delta-positive">+12% vs last week</div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{awaiting_count}">{awaiting_count}</span></div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="289">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="311">
         <div class="clear-stat-card-top">
-          <div class="clear-stat-label">Approvals - 7-day</div>
+          <div class="clear-stat-label">Total deals</div>
+          <i class="clear-stat-icon" data-lucide="layers" aria-hidden="true"></i>
         </div>
-        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{approvals_week_count}">{approvals_week_count}</span></div>
-        <div class="clear-stat-delta clear-stat-delta-positive">+6 vs prior 7 days</div>
-        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 17.3,17.3 32.7,20.7 48.0,10.7 63.3,14.0 78.7,4.0 94.0,7.3"></polyline></svg>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{total_deals_count}">{total_deals_count}</span></div>
       </div>
     </div>
-    <div class="section-queue_workbench" data-clear-line="294">
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden section-pending_queue" data-clear-line="295">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="296">
-      <div class="px-6 py-4 border-b border-base-300/40">
+    <div class="section-queue_workbench" data-clear-line="315">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden section-pending_queue" data-clear-line="316">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="317">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Pending</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Pending_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Pending_table">
@@ -442,10 +428,10 @@ body {
       </div>
     </div>
     </div>
-    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_deal" data-clear-line="300">
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_deal" data-clear-line="321">
       <div class="clear-detail-empty">Select a row to inspect it.</div>
       <div class="clear-detail-body">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="301">Deal details</h1>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="322">Deal details</h1>
     <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_List_price_value"></p>
@@ -461,48 +447,179 @@ body {
     <p id="show_6" class="text-sm font-medium text-base-content/90 leading-snug"></p>
       </div>
       <div class="clear-detail-actions" data-detail-actions="true">
-    <button class="btn btn-primary" id="btn_Reject" data-action="reject" data-clear-line="313">Reject</button>
-    <button class="btn btn-primary" id="btn_Counter" data-action="counter" data-clear-line="314">Counter</button>
-    <button class="btn btn-primary" id="btn_Approve" data-action="approve" data-clear-line="315">Approve</button>
+    <button class="btn btn-primary" id="btn_Draft_AI_summary" data-clear-uat-id="button_334_Draft_AI_summary" data-clear-control-kind="button" data-action="draft-ai-summary" data-clear-line="334">Draft AI summary</button>
+    <button class="btn btn-primary" id="btn_Reject" data-clear-uat-id="button_336_Reject" data-clear-control-kind="button" data-action="reject" data-clear-line="336">Reject</button>
+    <button class="btn btn-primary" id="btn_Counter" data-clear-uat-id="button_337_Counter" data-clear-control-kind="button" data-action="counter" data-clear-line="337">Counter</button>
+    <button class="btn btn-primary" id="btn_Approve" data-clear-uat-id="button_338_Approve" data-clear-control-kind="button" data-action="approve" data-clear-line="338">Approve</button>
       </div>
     </aside>
     </div>
-    <div class="flex flex-row items-center gap-4" data-clear-line="317">
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{pending_count} pending" data-clear-line="318">{pending_count} pending</span>
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="319">synced 12 sec ago</span>
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="320">Clear Cloud</span>
+    <div class="flex flex-row items-center gap-4" data-clear-line="340">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{pending_count} pending" data-clear-line="341">{pending_count} pending</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="342">Clear Cloud</span>
     </div>
+      </div>
     </div>
     </main>
     </div>
 </div>
-<div id="page_New_discount_request" style="display:none">
-    <div class="section-header" data-clear-line="323">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="324">New discount request</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="325">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
+<div id="page_Approved_today" data-clear-page-id="Approved_today" data-clear-page-route="/approved" data-clear-page-title="Approved today" data-clear-routed-content="Approved_today" style="display:none">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="348">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Approved today</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Approved requests cleared today and ready for audit.</p>
+      </div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5" data-clear-line="327">
-    <fieldset class="fieldset" data-clear-line="328">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="351">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Approved_Deals" data-clear-line="352">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Approved Deals</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Approved_Deals_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Approved_Deals_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+<div id="page_Rejected" data-clear-page-id="Rejected" data-clear-page-route="/rejected" data-clear-page-title="Rejected" data-clear-routed-content="Rejected" style="display:none">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="358">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Rejected deals</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Requests rejected after CRO review.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="361">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Rejected_Deals" data-clear-line="362">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Rejected Deals</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Rejected_Deals_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Rejected_Deals_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+<div id="page_Awaiting_customer" data-clear-page-id="Awaiting_customer" data-clear-page-route="/awaiting" data-clear-page-title="Awaiting customer" data-clear-routed-content="Awaiting_customer" style="display:none">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="368">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Awaiting customer</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Counters, signatures, and procurement follow-ups needing customer action.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="371">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Awaiting_Deals" data-clear-line="372">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Awaiting Deals</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Awaiting_Deals_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Awaiting_Deals_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+<div id="page_All_deals" data-clear-page-id="All_deals" data-clear-page-route="/all" data-clear-page-title="All deals" data-clear-routed-content="All_deals" style="display:none">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="378">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">All deals</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Total deal-desk requests across every status.</p>
+      </div>
+    </div>
+    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="chart_Approval_mix">
+      <h3 class="text-base font-semibold text-base-content mb-4">Approval mix</h3>
+      <div id="chart_Approval_mix_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
+    </div>
+    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="chart_Segment_pressure">
+      <h3 class="text-base font-semibold text-base-content mb-4">Segment pressure</h3>
+      <div id="chart_Segment_pressure_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="384">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Deals" data-clear-line="385">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">All Deals</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_All_Deals_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_All_Deals_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+<div id="page_Reports" data-clear-page-id="Reports" data-clear-page-route="/reports" data-clear-page-title="Reports" data-clear-routed-content="Reports" style="display:none">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="391">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Reports</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Approval velocity, discount pressure, and value-at-stake reporting.</p>
+      </div>
+    </div>
+    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="chart_Status_mix">
+      <h3 class="text-base font-semibold text-base-content mb-4">Status mix</h3>
+      <div id="chart_Status_mix_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
+    </div>
+    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="chart_Segment_pressure">
+      <h3 class="text-base font-semibold text-base-content mb-4">Segment pressure</h3>
+      <div id="chart_Segment_pressure_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
+    </div>
+    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="chart_Deal_types">
+      <h3 class="text-base font-semibold text-base-content mb-4">Deal types</h3>
+      <div id="chart_Deal_types_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="398">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Deals_2" data-clear-line="399">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">All Deals</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_All_Deals_2_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_All_Deals_2_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+<div id="page_New_discount_request" data-clear-page-id="New_discount_request" data-clear-page-route="/new" data-clear-page-title="New discount request" data-clear-routed-content="New_discount_request" style="display:none">
+    <div class="section-header" data-clear-line="402">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="403">New discount request</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="404">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5" data-clear-line="406">
+    <fieldset class="fieldset" data-clear-line="407">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your name</legend>
       <input id="input_rep_name" class="input input-bordered w-full" type="text" placeholder="Your name">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="329">
+    <fieldset class="fieldset" data-clear-line="408">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer</legend>
       <input id="input_customer" class="input input-bordered w-full" type="text" placeholder="Customer">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="330">
+    <fieldset class="fieldset" data-clear-line="409">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">List price ($)</legend>
       <input id="input_list_price" class="input input-bordered w-full" type="number" step="any" placeholder="List price ($)">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="331">
+    <fieldset class="fieldset" data-clear-line="410">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Discount %</legend>
       <input id="input_discount_percent" class="input input-bordered w-full" type="number" step="any" placeholder="Discount %">
     </fieldset>
-    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-line="332">Submit for approval</button>
+    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-uat-id="button_411_Submit_for_approval" data-clear-control-kind="button" data-clear-line="411">Submit for approval</button>
     </div>
-    <a class="link link-primary text-sm" href="#/" data-clear-line="339">Back to queue</a>
+    <a class="link link-primary text-sm" href="#/" data-clear-line="418">Back to queue</a>
 </div>
-<div id="page_Sign_in" style="display:none">
+<div id="page_Sign_in" data-clear-page-id="Sign_in" data-clear-page-route="/login" data-clear-page-title="Sign in" data-clear-routed-content="Sign_in" style="display:none">
     <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
       <div class="text-center">
         <h1 class="text-3xl font-bold text-base-content tracking-tight mb-2">Welcome back</h1>
@@ -613,9 +730,9 @@ body {
       });
     })();
     </script>
-    <div class="section-sign_in" data-clear-line="342">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="343">Sign in to the CRO console</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="344">Use the signup or login form above. After signing in, head to /cro.</p>
+    <div class="section-sign_in" data-clear-line="421">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="422">Sign in to the CRO console</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="423">Use the signup or login form above. After signing in, head to /cro.</p>
     </div>
 </div>
   </main>
@@ -625,20 +742,28 @@ body {
  └─────────────────────────────────────────────┘
 
  TABLES:
-   Deals: rep_name*, customer*, account_segment, deal_type, list_price, discount_percent, status, summary, recommendation, risk_score, submitted_label, approval_rule, term, effective_date, health_signal, precedent_note, created_at_date (line 20)
+   Deals: rep_name*, rep_email, customer*, customer_email, account_segment, deal_type, list_price, discount_percent, status, summary, recommendation, risk_score, submitted_label, approval_rule, term, effective_date, health_signal, precedent_note, created_at_date (line 20)
 
  ENDPOINTS:
-   GET /api/deals/pending (line 63)
-   POST /api/deals [auth] (line 66)
-   POST /api/deals/draft [auth] (line 81)
-   PUT /api/deals/:id [auth] (line 86)
-   PUT /api/deals/:id/approve [auth] (line 91)
-   POST /api/seed (line 100)
+   GET /api/deals/pending (line 88)
+   GET /api/deals/approved (line 92)
+   GET /api/deals/rejected (line 95)
+   GET /api/deals/awaiting (line 98)
+   GET /api/deals/all (line 101)
+   POST /api/deals [auth] (line 104)
+   POST /api/deals/draft [auth] (line 119)
+   PUT /api/deals/:id [auth] (line 124)
+   POST /api/seed (line 137)
 
  PAGES:
-   'Deal Desk' at / (line 217)
-   'New discount request' at /new (line 322)
-   'Sign in' at /login (line 341)
+   'Deal Desk' at / (line 255)
+   'Approved today' at /approved (line 344)
+   'Rejected' at /rejected (line 354)
+   'Awaiting customer' at /awaiting (line 364)
+   'All deals' at /all (line 374)
+   'Reports' at /reports (line 387)
+   'New discount request' at /new (line 401)
+   'Sign in' at /login (line 420)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -674,51 +799,79 @@ function _toast(msg, type) {
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
-  tableEl._clear_rows = Array.isArray(data) ? data : [];
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
-  if (!Array.isArray(data) || data.length === 0) {
+  if (rows.length === 0) {
     if (thead) thead.innerHTML = '';
     if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
     return;
   }
-  if (thead) thead.innerHTML = renderHead(data);
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}
+function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
   var VIRT_THRESHOLD = 100;
-  if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(function(row, idx) { return renderRow(row, idx); }).join('');
-    return;
-  }
   var ROW_HEIGHT = 40;
   var BUFFER = 5;
   var scroller = tableEl.parentElement;
-  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
   scroller.style.maxHeight = '560px';
   scroller.style.overflowY = 'auto';
-  function paint() {
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
     var top = scroller.scrollTop;
     var h = scroller.clientHeight || 560;
     var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
-    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
     var topPad = first * ROW_HEIGHT;
-    var botPad = (data.length - last) * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
     var html = '';
     if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
-    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
     if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
     tbody.innerHTML = html;
-  }
+  };
   if (!scroller._clear_virt_bound) {
     scroller._clear_virt_bound = true;
-    scroller.addEventListener('scroll', paint, { passive: true });
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
   }
-  paint();
+  tableEl._clear_paint_table();
 }
-function _clear_cell(key, val) {
+function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
+}
+function _clear_cell(key, val, selectable) {
   var k = String(key).toLowerCase();
   var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
   if (k === 'status' || k === 'state' || k === 'stage') {
     var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
-    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
   }
   if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\$/.test(v)) {
     var formatted = v;
@@ -726,7 +879,7 @@ function _clear_cell(key, val) {
       var n = Number(val);
       formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
     }
-    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
   }
   if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
     var parts = v.trim().split(/[\s@.]+/).filter(Boolean);
@@ -734,15 +887,25 @@ function _clear_cell(key, val) {
       ? (parts[0][0] || '') + (parts[1][0] || '')
       : v.slice(0, 2);
     initials = initials.toUpperCase();
-    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
   }
-  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
 }
 function _clear_table_init(tableEl, selectedVar) {
   if (!tableEl) return;
   if (selectedVar) tableEl._clear_selected_var = selectedVar;
   if (tableEl._clear_init) return;
   tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
   tableEl.addEventListener('click', function(e) {
     var th = e.target.closest('th[data-sortable]');
     if (th) {
@@ -751,8 +914,10 @@ function _clear_table_init(tableEl, selectedVar) {
       var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
       tableEl.setAttribute('data-sort-col', col);
       tableEl.setAttribute('data-sort-dir', dir);
-      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
       th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
       return;
     }
     var tr = e.target.closest('tbody tr');
@@ -834,22 +999,19 @@ let _state = {
   list_price: 0,
   discount_percent: 0,
   pending: null,
-  approved_today_count: 12,
-  rejected_count: 3,
-  awaiting_count: 7,
-  total_deals_count: 148,
-  rep_count: 22,
-  average_discount: "22.4%",
-  value_at_stake: "$348K",
-  approvals_week_count: 38,
+  approved_today_deals: null,
+  rejected_deals: null,
+  awaiting_deals: null,
+  all_deals: null,
+  approved_deals: null,
   selected_deal: null
 };
 
-// clear:54
+// clear:79
 async function draft_approval(deal_data) {
-  // clear:55
+  // clear:80
   let drafted = await _askAI("You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.", deal_data, [{"name":"summary","type":"text"},{"name":"recommendation","type":"text"},{"name":"risk_score","type":"number"}], null);
-  // clear:59
+  // clear:84
   return drafted;
 }
 
@@ -857,37 +1019,189 @@ async function draft_approval(deal_data) {
 function _recompute() {
   // clear:16
   // Database: local memory (JSON file backup)
-  // clear:54
+  // clear:32
+  // Auto-generated audit table for queue 'deal'
+  const DealDecisionsSchema = {
+    deal_id: { type: "text", required: true },
+    decision: { type: "text", required: true },
+    decided_by: { type: "text" },
+    decision_note: { type: "text" },
+    next_status: { type: "text" },
+    decided_at: { type: "timestamp", auto: true }
+  };
+
+  // Auto-generated notifications outbound queue for 'deal'
+  const DealNotificationsSchema = {
+    deal_id: { type: "text", required: true },
+    recipient_role: { type: "text" },
+    recipient_email: { type: "text" },
+    notification_type: { type: "text" },
+    queue_status: { type: "text", default: "pending" },
+    queued_at: { type: "timestamp", auto: true }
+  };
+
+  // clear:40
+  // Auto-generated outbound email queue (every email trigger in this app shares this table)
+  const WorkflowEmailQueueSchema = {
+    entity_type: { type: "text", required: true },
+    entity_id: { type: "text", required: true },
+    recipient_role: { type: "text" },
+    recipient_email: { type: "text" },
+    subject: { type: "text", required: true },
+    body: { type: "text", required: true },
+    provider: { type: "text", default: "agentmail" },
+    reply_tracking: { type: "text" },
+    queue_status: { type: "text", default: "pending" },
+    attempts: { type: "number", default: 0 },
+    last_error: { type: "text" },
+    queued_at: { type: "timestamp", auto: true },
+    sent_at: { type: "timestamp" },
+    replied_at: { type: "timestamp" }
+  };
+  // Email trigger: customer when deal.status === "awaiting" (subject="We countered your offer", provider="agentmail")
+  // clear:79
   async function draft_approval(deal_data) {
     let drafted = await _askAI("You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.", deal_data, [{"name":"summary","type":"text"},{"name":"recommendation","type":"text"},{"name":"risk_score","type":"number"}], null);
     return drafted;
   }
-  // clear:222
+  // clear:264
   let pending_count = _clear_len(_state.pending);
-  // clear:302
+  // clear:265
+  let approved_today_count = _clear_len(_state.approved_today_deals);
+  // clear:266
+  let rejected_count = _clear_len(_state.rejected_deals);
+  // clear:267
+  let awaiting_count = _clear_len(_state.awaiting_deals);
+  // clear:268
+  let total_deals_count = _clear_len(_state.all_deals);
+  // clear:323
   { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer; }
-  // clear:303
+  // clear:324
   { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_deal?.summary; }
-  // clear:307
+  // clear:328
   { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_deal?.recommendation; }
-  // clear:308
+  // clear:329
   { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_deal?.approval_rule; }
-  // clear:309
+  // clear:330
   { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_deal?.term; }
-  // clear:310
+  // clear:331
   { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_deal?.health_signal; }
-  // clear:311
+  // clear:332
   { const _el = document.getElementById('show_6'); if (_el) _el.textContent = _state.selected_deal?.precedent_note; }
   _clear_render_table(
     document.getElementById('output_Pending_table'),
     _state.pending,
-    function(d) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" style="width:1%"></th>'; },
-    function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k) { return _clear_cell(k, row[k]); }).join('') + '<td><div class="clear-row-actions">' + '<button class="btn-tiny is-secondary" data-action="review" data-row-id="' + _esc(row.id) + '">Review</button>' + ' ' + '<button class="btn-tiny is-primary" data-action="approve" data-row-id="' + _esc(row.id) + '">Approve</button>' + '</div></td>' + '</tr>'; }
+    function(d) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" style="width:1%"></th>'; },
+    function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '<td><div class="clear-row-actions">' + '<button class="btn-tiny is-secondary" data-action="review" data-row-id="' + _esc(row.id) + '">Review</button>' + ' ' + '<button class="btn-tiny is-primary" data-action="approve" data-row-id="' + _esc(row.id) + '">Approve</button>' + '</div></td>' + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_Pending_table'), 'selected_deal');
   document.getElementById('output_List_price_value').textContent = Number(_state.selected_deal?.list_price).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   document.getElementById('output_Discount_value').textContent = (Number(_state.selected_deal?.discount_percent) * 100).toFixed(1) + '%';
   document.getElementById('output_Risk_score_value').textContent = String(_state.selected_deal?.risk_score);
+  _clear_render_table(
+    document.getElementById('output_Approved_Deals_table'),
+    _state.approved_deals,
+    function(d) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Approved_Deals_table'));
+  _clear_render_table(
+    document.getElementById('output_Rejected_Deals_table'),
+    _state.rejected_deals,
+    function(d) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Rejected_Deals_table'));
+  _clear_render_table(
+    document.getElementById('output_Awaiting_Deals_table'),
+    _state.awaiting_deals,
+    function(d) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Awaiting_Deals_table'));
+  _clear_render_table(
+    document.getElementById('output_All_Deals_table'),
+    _state.all_deals,
+    function(d) { var _keys = ["customer","account_segment","rep_name","deal_type","list_price","discount_percent","status","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer","account_segment","rep_name","deal_type","list_price","discount_percent","status","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_All_Deals_table'));
+  _clear_render_table(
+    document.getElementById('output_All_Deals_2_table'),
+    _state.all_deals,
+    function(d) { var _keys = ["customer","status","list_price","discount_percent","submitted_label"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer","status","list_price","discount_percent","submitted_label"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_All_Deals_2_table'));
+  {
+    const _chartEl = document.getElementById('chart_Approval_mix_canvas');
+    const _data = _state.all_deals;
+    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      _chart.resize();
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.status || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: { orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#4b5563', fontSize: 12 } }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, minShowLabelAngle: 1, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: true, formatter: '{b}: {c}', color: '#374151', fontSize: 12, fontWeight: 600, lineHeight: 16 }, labelLine: { show: true, length: 16, length2: 18, lineStyle: { width: 1.5 } }, data: _pieData, emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Segment_pressure_canvas');
+    const _data = _state.all_deals;
+    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      _chart.resize();
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.account_segment || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _xData = Object.keys(_counts);
+      const _yData = Object.values(_counts);
+      const _series = [{ name: 'account_segment', type: 'bar', data: _yData, itemStyle: { borderRadius: [4, 4, 0, 0] }, barMaxWidth: 32, smooth: true }];
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: undefined, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Status_mix_canvas');
+    const _data = _state.all_deals;
+    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      _chart.resize();
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.status || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: { orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#4b5563', fontSize: 12 } }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, minShowLabelAngle: 1, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: true, formatter: '{b}: {c}', color: '#374151', fontSize: 12, fontWeight: 600, lineHeight: 16 }, labelLine: { show: true, length: 16, length2: 18, lineStyle: { width: 1.5 } }, data: _pieData, emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Segment_pressure_canvas');
+    const _data = _state.all_deals;
+    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      _chart.resize();
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.account_segment || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _xData = Object.keys(_counts);
+      const _yData = Object.values(_counts);
+      const _series = [{ name: 'account_segment', type: 'bar', data: _yData, itemStyle: { borderRadius: [4, 4, 0, 0] }, barMaxWidth: 32, smooth: true }];
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: undefined, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Deal_types_canvas');
+    const _data = _state.all_deals;
+    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      _chart.resize();
+      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];
+      const _counts = {};
+      _data.forEach(r => { const k = r.deal_type || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });
+      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));
+      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: { orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#4b5563', fontSize: 12 } }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, minShowLabelAngle: 1, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: true, formatter: '{b}: {c}', color: '#374151', fontSize: 12, fontWeight: 600, lineHeight: 16 }, labelLine: { show: true, length: 16, length2: 18, lineStyle: { width: 1.5 } }, data: _pieData, emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);
+    }
+  }
   document.getElementById('input_rep_name').value = _state.rep_name;
   document.getElementById('input_customer').value = _state.customer;
   document.getElementById('input_list_price').value = _state.list_price;
@@ -924,14 +1238,6 @@ document.getElementById('input_discount_percent').addEventListener('input', func
 });
 
 // --- Button handlers ---
-document.getElementById('btn_Refresh').addEventListener('click', function() {
-
-  _recompute();
-});
-document.getElementById('btn_Export').addEventListener('click', function() {
-
-  _recompute();
-});
 document.getElementById('btn_New_deal').addEventListener('click', function() {
 
   _recompute();
@@ -947,7 +1253,7 @@ document.getElementById('btn_Submit_for_approval').addEventListener('click', asy
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/deals", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ rep_name: _state.rep_name, customer: _state.customer, list_price: _state.list_price, discount_percent: _state.discount_percent }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:333]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:412]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
     _state.rep_name = "";
     _state.customer = "";
     _state.list_price = 0;
@@ -958,46 +1264,22 @@ document.getElementById('btn_Submit_for_approval').addEventListener('click', asy
   _recompute();
 });
 
-// --- Table action handlers for pending ---
-async function _clear_action_output_Pending_approve(id, row) {
-  if (!id) return;
-  try {
-    const _payload = (row && typeof row === 'object') ? row : {};
-    const _r = await fetch('/api/deals/' + id + '/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify(_payload) });
-    if (!_r.ok) { const _e = await _r.json().catch(function() { return {}; }); throw new Error(_e.error || 'Action failed'); }
-    _state.pending = await fetch('/api/deals/pending').then(function(r) { if (!r.ok) throw new Error('Failed to refresh data'); return r.json(); });
-  } catch(e) { console.error(e); if (typeof _toast === 'function') _toast(e.message || 'Action failed', 'error'); }
-  _recompute();
-}
-document.getElementById('output_Pending_table').addEventListener('click', async function(e) {
-  const actionBtn_approve = e.target.closest('[data-action="approve"]');
-  if (actionBtn_approve) {
-    e.preventDefault();
-    e.stopPropagation();
-    const id = actionBtn_approve.dataset.rowId;
-    const tr = actionBtn_approve.closest('tr[data-row-index]');
-    const rowIndex = tr ? Number(tr.getAttribute('data-row-index')) : -1;
-    const row = Array.isArray(this._clear_rows) ? this._clear_rows[rowIndex] : null;
-    await _clear_action_output_Pending_approve(id, row);
-    return;
-  }
-});
-{ const detailBtn = document.querySelector('[data-detail-for="selected_deal"] [data-action="approve"]');
-  if (detailBtn) detailBtn.addEventListener('click', async function(e) {
-    e.preventDefault();
-    const row = _state.selected_deal;
-    const id = row && row.id;
-    await _clear_action_output_Pending_approve(id, row);
-  });
-}
-
 // --- On Page Load ---
 _recompute(); // initial render with default state
 (async () => {
   try {
     { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:219]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:220]', e.message); return _state.pending; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:257]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:258]', e.message); return _state.pending; });
+    _state.approved_today_deals = await fetch("/api/deals/approved").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/approved] [clear:259]', e.message); return _state.approved_today_deals; });
+    _state.rejected_deals = await fetch("/api/deals/rejected").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/rejected] [clear:260]', e.message); return _state.rejected_deals; });
+    _state.awaiting_deals = await fetch("/api/deals/awaiting").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/awaiting] [clear:261]', e.message); return _state.awaiting_deals; });
+    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:262]', e.message); return _state.all_deals; });
+    _state.approved_deals = await fetch("/api/deals/approved").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/approved] [clear:346]', e.message); return _state.approved_deals; });
+    _state.rejected_deals = await fetch("/api/deals/rejected").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/rejected] [clear:356]', e.message); return _state.rejected_deals; });
+    _state.awaiting_deals = await fetch("/api/deals/awaiting").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/awaiting] [clear:366]', e.message); return _state.awaiting_deals; });
+    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:376]', e.message); return _state.all_deals; });
+    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:389]', e.message); return _state.all_deals; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
@@ -1010,9 +1292,60 @@ _recompute(); // initial render with default state
 // click (SPA feel while still supporting refresh/direct-URL).
 const _routes = {
   '/': 'Deal_Desk',
+  '/approved': 'Approved_today',
+  '/rejected': 'Rejected',
+  '/awaiting': 'Awaiting_customer',
+  '/all': 'All_deals',
+  '/reports': 'Reports',
   '/new': 'New_discount_request',
   '/login': 'Sign_in'
 };
+
+const _shellRoute = '/';
+const _shellPageId = 'Deal_Desk';
+const _standaloneRoutes = { '/login': true, '/signup': true };
+function _clearTemplateHost() {
+  let host = document.getElementById('clear-route-templates');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'clear-route-templates';
+    host.hidden = true;
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function _clearParkMountedRoutes(outlet) {
+  const host = _clearTemplateHost();
+  Array.from(outlet.children).forEach(function(child) {
+    if (!child || !child.getAttribute) return;
+    if (!child.hasAttribute('data-clear-page-route')) return;
+    if (child.id === 'page_' + _shellPageId) return;
+    if (child.getAttribute('data-clear-routed-content') === _shellPageId) return;
+    child.style.display = 'none';
+    host.appendChild(child);
+  });
+}
+function _clearRenderRouteIntoShell(current) {
+  if (_standaloneRoutes[current]) return false;
+  const shellPage = document.getElementById('page_' + _shellPageId);
+  const outlet = document.querySelector('[data-clear-shell-outlet="true"]');
+  if (!shellPage || !outlet) return false;
+  const shellDefault = outlet.querySelector('[data-clear-routed-content="' + _shellPageId + '"]');
+  shellPage.style.display = 'block';
+  _clearParkMountedRoutes(outlet);
+  if (current === _shellRoute) {
+    if (shellDefault) shellDefault.style.display = '';
+    return true;
+  }
+  if (shellDefault) shellDefault.style.display = 'none';
+  const pageId = _routes[current];
+  const target = pageId ? document.getElementById('page_' + pageId) : null;
+  if (!target) return true;
+  target.style.display = 'block';
+  outlet.appendChild(target);
+  return true;
+}
+
 function _currentRoute() {
   const p = (location.pathname || '/').replace(/\/$/, '') || '/';
   if (_routes.hasOwnProperty(p)) return p;
@@ -1022,11 +1355,18 @@ function _currentRoute() {
 }
 function _router() {
   const current = _currentRoute();
+  const _shellRendered = _clearRenderRouteIntoShell(current);
+  if (_shellRendered) {
+    document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+    if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+    return;
+  }
   for (const [route, pageId] of Object.entries(_routes)) {
     const el = document.getElementById('page_' + pageId);
     if (el) el.style.display = (route === current) ? 'block' : 'none';
   }
   document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+  if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
 }
 window.addEventListener('popstate', _router);
 window.addEventListener('hashchange', _router);
