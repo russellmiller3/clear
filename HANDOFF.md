@@ -1,3 +1,96 @@
+# Handoff — 2026-04-28 night (CC-1 finish + email Phase B-1 + Python parity + workflow hooks all on main)
+
+> **Read this top section first. Earlier handoffs preserved below for context.**
+
+## Where you are when you sit down
+
+**Branch:** `main`. All work this session pushed to `origin/main`. **Tests:** 2749+ passing, 0 failing.
+
+**Big movements this session, in order they shipped:**
+
+1. **Step-back skill + periodic timer hook** (commit `264abc7`) — `/introspect` skill makes me re-read load-bearing docs and decide if work is still on the critical path. Timer hook nudges every 20 messages or 30 min.
+
+2. **Richer UAT walker + auto-generated browser tests** (commit `5a4943e`) — every Clear app now produces a runnable Playwright script that walks every page, clicks every button, screenshots every route, asserts no console errors. The Marcus-demo safety net.
+
+3. **Email primitive Phase B-1 part 1 — template substitution** (commit `ae4c484`) — `{customer}`, `{amount}`, etc. in email subject + body now resolve at queue-insert time against the entity record. Each row in `workflow_email_queue` carries per-customer text instead of identical literal strings.
+
+4. **Email primitive Phase B-1 part 2 — `email delivery using <provider>` directive + worker scaffold** (commit `ba170c0`) — top-level directive flips real email sending on. Compiler emits a background worker that polls `workflow_email_queue` every 30 seconds and sends pending rows via the provider's HTTP API. AgentMail has a full adapter; SendGrid/Resend/Postmark/Mailgun mark rows failed with "adapter not implemented yet". Worker fails loud at runtime if the API key env var isn't set. **Russell sets `AGENTMAIL_API_KEY` and emails start flowing — no code change.**
+
+5. **Queue primitive Python parity (F5)** (commit `14d6a2e`) — Python branch of `compileQueueDef` was a stub since launch. Mechanical port now lands the same shape on the Python target via the existing `_DB` adapter. JS-only still: `workflow_email_queue` inserts (the email worker hasn't been ported either).
+
+6. **Roadmap tidy** (commit `102d12a`) — removed all 9 strikethrough done items cluttering ROADMAP.md (CC-4 / GTM-1 / R7 / R8 / LAE-8 / Builder Mode polish / CF-1 / GM-6 / R5). 30 lines lighter, forward-looking signal sharpens.
+
+7. **CC-1 finish — cycles 6/7/8 of the Postgres tenant store** (commit `fb012e8`) — every method on `PostgresTenantStore` now runs real SQL against pg / pg-mem; **no `NOT_IMPLEMENTED` stubs remain**. Cycle 6 (`updateSecretKeys`), cycle 7 (`lookupAppBySubdomain` + `loadKnownApps`), cycle 8 (`getAuditLog` + `appendAuditEntry` + `markAuditEntry`). 161/161 Postgres tests + 111/111 in-memory tests pass against pg-mem.
+
+**Plus:** workflow hooks landed in `~/.claude/hooks/` (user-global, no project commit) — `never-stop-asking.mjs` blocks Stop events that ask permission instead of leading or move work without big-picture orientation; `build-priority-queue.mjs` fires at session start to force a roadmap-driven priority queue. New user-level rule documents intent: `~/.claude/CLAUDE.md` → "Roadmap-Driven Priority Queue Workflow (HARD RULE — HOOK ENFORCED)".
+
+## Verification on pickup
+
+```
+git pull origin main
+node clear.test.js              # expect 2749 of 2749
+node playground/tenants.test.js # expect 111/111
+node playground/tenants-postgres.test.js  # expect 161/161
+```
+
+## Priority queue — what's open, in order
+
+### CC items (Russell's "do all of them" focus)
+
+1. **CC-1 cycle 9 — cutover wrapper** (~1 hour). Last cycle of the CC-1 plan. `playground/tenant-store-factory.js` + `DualWriteTenantStore` class + single-line swap in `playground/server.js`. Plan: `plans/plan-cc-1-postgres-wire-up-04-25-2026.md` (Cycle 9 section). All 8 prior cycles done — this is the "make it actually run with Postgres in production" step. Default behavior stays in-memory until `DATABASE_URL` is set, then it dual-writes, then `TENANT_STORE_PRIMARY=postgres` flips primary. Safe rollback by unsetting the env var.
+
+2. **CC-2 finish — auth dashboard UI** (~1-2 hours). Auth backend (`playground/cloud-auth/index.js`) is fully built: `signupUser`, `loginUser`, `validateSession`, `revokeSession`, email-verify token, password-reset token. **Open code work:** wire `/api/auth/signup`, `/api/auth/login`, `/api/auth/me`, `/api/auth/logout` HTTP routes in `playground/server.js`. **Open UI work:** build a logged-in dashboard.html that lists the customer's apps. Gated on CC-1 cycle 9 having Postgres available (auth needs the `users` + `sessions` tables).
+
+3. **CC-3 finish — Stripe webhook receiver in production** (~1 hour code, gated on Russell's Stripe live keys). Stripe billing scaffolding (`playground/cloud-billing/`) is shipped. Open: live Stripe keys + webhook receiver wired into the production server (currently in test mode only). Russell's external work is the gate — once live keys land, ~1 hour to wire the route + test.
+
+4. **CC-5 finish — custom domain UX polish** (~1-2 hours, gated on Fly Trust Verified). Domain scaffolding (`playground/cloud-domains/`) is shipped. Open: end-to-end UX polish for the "add your custom domain" flow. Gated on Fly Trust Verified application landing.
+
+### After all CCs
+
+5. **GTM-2** — `landing/marcus.html` polish + deal-desk demo embed.
+6. **GTM-3** — `landing/pricing.html` (Free / Team $99 / Business $499 / Enterprise).
+7. **GTM-5** — Studio onboarding (new users land in Meph chat with "What do you want to build?", not the editor).
+8. **GTM-7** — Studio instrumentation (first-click tracking, time-to-first-app, signup-bounce funnel).
+
+### P1 — Live App Editing remaining
+
+9. **LAE Phase C** — destructive ships (`plans/plan-lae-phase-c-04-25-2026.md`, 7-cycle TDD). Already plan-locked.
+10. **LAE-9** — concurrent-edit guard (block/queue, never silent overwrite).
+11. **LAE-10** — dry-run mode (private staging URL for 10-min preview before shipping).
+
+### P2 (after Marcus revenue lands)
+
+- CF-2 / CF-3 / CF-4 (compiler flywheel — candidate emitters, EBM reranker, GA-evolved compiler).
+- GM-5 (Ghost Meph calibration harness).
+- Refactoring backlog (R1, R2, R4, R6, R9, R10).
+- Session 46 follow-up (Python TEST_INTENT port, Dave-mode v0.1, Dave-mode v1.0 lifecycle pitch).
+
+### Blocked on Russell (skip until unblocked)
+
+- **Live email sending** — needs AgentMail or SendGrid API key + Russell's explicit "yes send real customer email". The directive + worker are wired and ready.
+- **Fly.io Trust Verified app** — Russell submits, Fly review takes 1–2 days.
+- **Stripe live keys** — gated on Trust Verified above.
+- **Anthropic org key for paid Meph sessions** — ~15 min in Russell's console.
+- **Postgres provision** (Fly Postgres or Neon) — ~30 min.
+- **First Marcus conversation** — Russell's conversation move.
+
+## Workflow rules added this session (so next session's Claude doesn't slip)
+
+- **Roadmap-Driven Priority Queue Workflow** in `~/.claude/CLAUDE.md` — at session start, build a prioritized queue from ROADMAP + RESEARCH + HANDOFF; tell Russell the next several steps; execute and ship each as you go; never stop to ask permission.
+- **Stop hook** at `~/.claude/hooks/never-stop-asking.mjs` — blocks any turn whose last assistant message contains asking-permission patterns ("want me to", "should I", multi-option lists ending in "?"), or moved work without big-picture orientation, or used working tools without a priority queue file at `.claude/state/priority-queue.md`.
+- **SessionStart hook** at `~/.claude/hooks/build-priority-queue.mjs` — fires at session start; if the priority queue file is missing or stale (>24h), injects a kickoff reminder telling Claude to read HANDOFF + ROADMAP + RESEARCH + CLAUDE.md, build the queue, and start work.
+
+## How the next session should start
+
+1. Read this file top section (you're done — that's this section).
+2. Read `.claude/state/priority-queue.md` for the prioritized work list (created this session).
+3. Pick item 1 from the queue (CC-1 cycle 9). Plan in `plans/plan-cc-1-postgres-wire-up-04-25-2026.md` Cycle 9 section.
+4. Execute. Ship. Move to item 2. Don't stop.
+
+---
+
+# Older handoff (preserved for context)
+
 # Handoff — 2026-04-28 late evening (router + email + queue F2/F4 + Codex stash cleanup all on main)
 
 > **Read this top section first. Earlier handoffs preserved below for context.**
