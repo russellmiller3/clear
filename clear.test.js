@@ -22334,6 +22334,24 @@ when user requests data from /api/deals:
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain("app.get('/api/deal-decisions'");
   });
+
+  it('action PUT handlers require login (return 401 without req.user)', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each per-action PUT handler must short-circuit with 401 when no req.user.
+    // Compliance + audit story depends on it: only logged-in users record decisions.
+    expect(result.javascript).toMatch(/app\.put\('\/api\/deals\/:id\/approve'[\s\S]*?if \(!req\.user\) return res\.status\(401\)/);
+  });
 });
 
 // =============================================================================

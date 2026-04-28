@@ -6123,6 +6123,7 @@ function compileQueueDef(node, ctx, pad) {
 
       result += `${pad}// Auto-generated: ${decisionLabel} action for '${node.entityName}'\n`;
       result += `${pad}app.put('/api/${pluralEntity}/:id/${slug}', (req, res) => {\n`;
+      result += `${pad}  if (!req.user) return res.status(401).json({ error: 'Authentication required' });\n`;
       result += `${pad}  const _id = req.params.id;\n`;
       result += `${pad}  const _record = db.findById('${pluralEntity}', _id);\n`;
       result += `${pad}  if (!_record) return res.status(404).json({ error: 'not found' });\n`;
