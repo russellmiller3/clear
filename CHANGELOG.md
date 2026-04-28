@@ -6,6 +6,30 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (night) — Deal Desk demo polish: kill 5 fake pages + Draft AI summary button + live stat counts
+
+The deal-desk Marcus would see at a demo had 5 pages backed by hand-coded seed data — Reps, Accounts, Approval Rules, Integrations, Settings. Each one looked real. None of them worked. The Integrations page was the most dangerous — it claimed "Salesforce / Slack / DocuSign — Connected" with zero of those actually connected. Marcus would lose trust the moment he poked at any of them.
+
+**What got pulled out (per `snapshots/deal-desk-product-review-04-28-2026.md`):**
+- 5 page declarations (`/reps`, `/accounts`, `/rules`, `/integrations`, `/settings`)
+- 4 backing tables (Reps, Accounts, ApprovalRules, Integrations)
+- 4 endpoints feeding them
+- Their seed-data sections (4 reps + 4 accounts + 3 rules + 3 integrations)
+- 5 nav items in the inline sidebar pointing at the killed routes
+- The dead `DealDeskSidebar` component (never referenced)
+
+**What got polished:**
+- Dead Refresh + Export header buttons gone (no body, did nothing)
+- Stat strip wired to live counts: pending, approved today, awaiting customer, total deals — sourced from the 4 filter URLs the page already fetches
+- Sidebar nav counts (Pending / Approved / Rejected / Awaiting / All) now use those same live counts instead of hardcoded numbers
+- Draft AI summary button added to the detail panel as the FIRST action, wired to the existing `/api/deals/draft` URL
+
+**Why for launch:** when Marcus opens this app, every visible affordance now does something real. The 12 features that remain tell a complete story; the 5 that were placeholders are gone. "This app does ONE thing and does it well" is a better pitch than "this app does 17 things and 5 of them are placeholders."
+
+25/25 deal-desk app tests green; 2749/2749 main compiler tests green; 0 errors across 8 templates + deal-desk.
+
+**Two pre-existing issues NOT addressed** (queued for follow-up): (1) page subtitle shows literal `{pending_count}` instead of the number — template substitution doesn't fire in subtitle text yet; (2) empty detail panel renders `$NaN` / `undefined` for unselected rows — format helpers need a guard for missing values.
+
 ## 2026-04-28 (night) — CC-2 closed: cloud-auth URLs + login/signup/dashboard pages
 
 Customers can now log into buildclear.dev. The auth helpers from CC-1 cycle 9 (signupUser, loginUser, validateSession, revokeSession) finally have the four URL handlers they need, plus three customer-facing HTML pages that drive the full flow end-to-end.
