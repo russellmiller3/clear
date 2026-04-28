@@ -40,6 +40,12 @@
             "command": "node .claude/hooks/parallel-thinking.mjs",
             "timeout": 3,
             "statusMessage": "Reminding to think parallel-first..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/periodic-introspect.mjs",
+            "timeout": 3,
+            "statusMessage": "Tracking session length for periodic step-back..."
           }
         ]
       }
