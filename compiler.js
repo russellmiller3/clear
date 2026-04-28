@@ -130,6 +130,7 @@ import {
   loadAuthWebcryptoSource,
   extractKnowledgeTextSync,
 } from './lib/packaging-cloudflare.js';
+import { stableUatId } from './lib/uat-contract.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -6346,6 +6347,9 @@ function actionToTerminalStatus(action) {
   if (first === 'reject') return 'rejected';
   if (first === 'counter') return 'awaiting';
   if (first === 'awaiting') return 'awaiting';
+  // F4 — `waiting on customer` is the canonical action for the same terminal
+  // status as legacy `awaiting customer`. Reads more naturally for the CRO.
+  if (first === 'waiting') return 'awaiting';
   return first;
 }
 
@@ -11150,11 +11154,12 @@ function buildHTML(body) {
   function navItemHTML(node) {
     const title = formatInlineText(node.title || '');
     const href = attrEsc(node.path || '#');
+    const uatId = attrEsc(stableUatId('nav_item', node.line, node.title));
     const icon = node.icon
       ? `<i data-lucide="${attrEsc(node.icon)}" aria-hidden="true"></i>`
       : '';
     const count = navCountHTML(node.count);
-    return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
+    return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="${uatId}" data-clear-control-kind="nav-item" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
   }
 
   function pageHeaderHTML(node) {
@@ -11185,10 +11190,11 @@ function buildHTML(body) {
     const rows = tabs.map((tab, idx) => {
       const title = formatInlineText(tab.title || '');
       const href = attrEsc(tab.path || '#');
+      const uatId = attrEsc(stableUatId('route_tab', tab.line || node.line, tab.title));
       const matchTitle = String(tab.title || '').toLowerCase() === activeKey;
       const matchPath = String(tab.path || '').toLowerCase() === activeKey;
       const isActive = hasActiveHint ? (matchTitle || matchPath) : idx === 0;
-      return `      <a href="${href}" class="clear-route-tab${isActive ? ' is-active' : ''}" data-route-tab="true" data-tab-path="${href}">${title}</a>`;
+      return `      <a href="${href}" class="clear-route-tab${isActive ? ' is-active' : ''}" data-route-tab="true" data-clear-uat-id="${uatId}" data-clear-control-kind="route-tab" data-tab-path="${href}">${title}</a>`;
     }).join('\n');
     return `    <nav class="clear-tab-strip" data-tab-strip="true"${clAttr(node)}>\n${rows}\n    </nav>`;
   }
@@ -12169,7 +12175,8 @@ ${options}
           const detailActionAttr = sectionStack.includes('detail_panel')
             ? ` data-action="${attrEsc(actionSlug(node.ui.label || ''))}"`
             : '';
-          parts.push(`    <button class="${btnCls}" id="${node.ui.id}"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
+          const btnUatId = attrEsc(stableUatId('button', node.line, node.label || node.ui.label));
+          parts.push(`    <button class="${btnCls}" id="${node.ui.id}" data-clear-uat-id="${btnUatId}" data-clear-control-kind="button"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
           break;
         }
 

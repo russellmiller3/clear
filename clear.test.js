@@ -22409,6 +22409,179 @@ queue for deal:
 // (email, slack, text, webhook) beat vague verbs ("notify"). The old `notify
 // <role> on <action>` form keeps working as a legacy alias so existing apps
 // don't break, but new docs and Meph guidance should teach the email form.
+// F2 — `queue for deals:` should produce the same output as `queue for deal:`.
+// Without singularization, the audit table becomes `deals_decisions` and the
+// audit URL becomes `/api/deals-decisions` — both inconsistent with the
+// canonical singular convention. Russell's design feedback 2026-04-28: the
+// parser should normalize plural entity names on the way in so authors who
+// type the plural form get the same generated artifacts.
+describe('Queue primitive — F2 plural input singularizes', () => {
+  it("queue for deals: produces deal_decisions table (not deals_decisions)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("createTable('deal_decisions'");
+    expect(result.javascript).not.toContain("createTable('deals_decisions'");
+  });
+
+  it("queue for deals: produces /api/deal-decisions audit URL (not /api/deals-decisions)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.javascript).toContain("app.get('/api/deal-decisions'");
+    expect(result.javascript).not.toContain("app.get('/api/deals-decisions'");
+  });
+
+  it("queue for activities: singularizes to activity (handles -ies plural)", () => {
+    const src = `build for javascript backend
+database is local memory
+create an Activities table:
+  description
+queue for activities:
+  reviewer is 'manager'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("createTable('activity_decisions'");
+  });
+
+  it("queue for status: leaves -ss endings alone (status, address)", () => {
+    const src = `build for javascript backend
+database is local memory
+create an Address table:
+  street
+queue for address:
+  reviewer is 'admin'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // address has -ss ending, not a plural; should stay as-is
+    expect(result.javascript).toContain("createTable('address_decisions'");
+  });
+
+  it("email customer when deals's status changes to 'awaiting': also singularizes", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deals's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Both the queue path and the email trigger should reference `deal` (singular)
+    expect(result.javascript).toContain("createTable('deal_decisions'");
+    // workflow_email_queue insert should reference entity_type 'deal', not 'deals'
+    expect(result.javascript).toMatch(/entity_type:\s*"deal"/);
+    expect(result.javascript).not.toMatch(/entity_type:\s*"deals"/);
+  });
+});
+
+// F4 — alternate keywords + the `waiting on customer` canonical action.
+// Russell's design feedback 2026-04-28: managers don't always type `actions:`
+// — they often type `options:` (matches the menu metaphor) or `buttons:`
+// (matches the UI). All three should parse identically. Same goes for the
+// "waiting on customer" status — reads more naturally than "awaiting
+// customer" but should map to the same terminal status so the email-trigger
+// `'awaiting'` value still matches.
+describe('Queue primitive — F4 action keyword synonyms + waiting on customer canonical', () => {
+  it("`options:` parses identically to `actions:`", () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  options: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue).toBeTruthy();
+    expect(queue.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+
+  it("`buttons:` parses identically to `actions:`", () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  buttons: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+
+  it("`waiting on customer` action emits PUT /api/deals/:id/waiting URL", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, waiting on customer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.put('/api/deals/:id/waiting'");
+  });
+
+  it("`waiting on customer` action lands deal.status on 'awaiting' (same terminal as legacy `awaiting customer`)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, waiting on customer
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting reply'
+  body is 'We are waiting on you.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The waiting-on-customer handler must inject a workflow_email_queue row
+    // because its terminal status maps to 'awaiting' — same as legacy
+    // 'awaiting customer'. Verifies the F4 canonical doesn't break F3+email
+    // primitive integration.
+    expect(result.javascript).toContain("app.put('/api/deals/:id/waiting'");
+    const handlerStart = result.javascript.indexOf("app.put('/api/deals/:id/waiting'");
+    expect(handlerStart).toBeGreaterThan(-1);
+    // Find the next app. boundary or end of file
+    const next = result.javascript.indexOf('\napp.', handlerStart + 5);
+    const end = next > 0 ? next : result.javascript.length;
+    const handler = result.javascript.slice(handlerStart, end);
+    expect(handler).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+  });
+
+  it("`buttons:` works inside an actions list with multi-word names", () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  buttons: approve, reject, counter, waiting on customer`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.actions).toEqual(['approve', 'reject', 'counter', 'waiting on customer']);
+  });
+});
+
 describe('Queue primitive — email canonical (F3)', () => {
   it('parses `email <role> when <action>, <action>` as the canonical form', () => {
     const src = `create a Deals table:
