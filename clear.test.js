@@ -22477,6 +22477,85 @@ queue for deal:
   });
 });
 
+// Triggered email primitive — top-level `email <role> when <entity>'s status
+// changes to <value>:` block. Parallels the F3 queue clause shape (same
+// `email <role> when <trigger>` atom) but lives at the top level so any URL
+// handler that sets the entity's status to the trigger value queues an email,
+// not just the queue's per-action handlers. Default build queues only — real
+// sends are gated behind an explicit `enable live email delivery via X`
+// directive (deferred per the plan's Phase B-1).
+describe('Triggered email — parser (Phase 1)', () => {
+  it("parses email <role> when <entity>'s status changes to <value> block with subject + body", () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const trigger = ast.body.find(n => n.type === 'email_trigger');
+    expect(trigger).toBeTruthy();
+    expect(trigger.recipientRole).toBe('customer');
+    expect(trigger.entityName).toBe('deal');
+    expect(trigger.triggerField).toBe('status');
+    expect(trigger.triggerValue).toBe('awaiting');
+    expect(trigger.subject).toBe('We countered your offer');
+    expect(trigger.body).toBe('Sarah from our team has prepared a counter offer for you.');
+  });
+
+  it('parses provider + track replies as sub-clauses', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Counter offer details.'
+  provider is 'agentmail'
+  track replies as deal activity`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const trigger = ast.body.find(n => n.type === 'email_trigger');
+    expect(trigger.provider).toBe('agentmail');
+    expect(trigger.replyTracking).toBe('deal activity');
+  });
+
+  it('rejects email-trigger that references an undeclared entity', () => {
+    const src = `email customer when fakeentity's status changes to 'X':
+  subject is 'test'
+  body is 'test'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('fakeentity');
+  });
+
+  it('rejects email-trigger missing required subject', () => {
+    const src = `create a Deals table:
+  customer_email
+  status
+email customer when deal's status changes to 'awaiting':
+  body is 'no subject!'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('subject');
+  });
+
+  it('rejects email-trigger with unknown body line (hard-fail with did-you-mean, same pattern as F1)', () => {
+    const src = `create a Deals table:
+  customer_email
+  status
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  sndr is 'wrong typo'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('sndr');
+  });
+});
+
 describe('Queue primitive — compiler tables', () => {
   it('emits a deal_decisions audit table when queue for deal: declared', () => {
     const src = `build for javascript backend

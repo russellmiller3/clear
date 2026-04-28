@@ -200,6 +200,13 @@ export const NodeType = Object.freeze({
   // Distinct from WORKFLOW which orchestrates AI agents over shared state.
   QUEUE_DEF: 'queue_def',
   TRIGGERED_SEND_EMAIL: 'triggered_send_email',
+  // Triggered email primitive (2026-04-28). Top-level block:
+  // `email <role> when <entity>'s status changes to <value>:` + body
+  // (subject is, body is, provider is, track replies as). Same `email <role>
+  // when <trigger>` atom as the queue's email clause (F3), but lives outside
+  // queue blocks so any URL handler that sets the entity's status to the
+  // trigger value queues an email row in the WorkflowEmailQueue table.
+  EMAIL_TRIGGER: 'email_trigger',
 
   // App-level policies (Enact guard types)
   POLICY: 'policy',
@@ -2720,6 +2727,15 @@ CANONICAL_DISPATCH.set('queue', (ctx) => {
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
 });
+CANONICAL_DISPATCH.set('email', (ctx) => {
+    // Top-level: `email <role> when <entity>'s status changes to <value>:`
+    // Disambiguate by token sequence — third token must be the literal `when`.
+    // Any other top-level use of `email` (rare; bare keyword) falls through.
+    if (ctx.tokens.length < 4 || ctx.tokens[2].value !== 'when') return undefined;
+    const result = parseEmailTrigger(ctx.lines, ctx.i, ctx.indent, ctx.errors, ctx.body);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
 CANONICAL_DISPATCH.set('policy', (ctx) => {
     const policyIndent = ctx.lines[ctx.i].indent;
     const rules = [];
@@ -4568,6 +4584,127 @@ function editDistance(a, b) {
     [prev, curr] = [curr, prev];
   }
   return prev[n];
+}
+
+// Triggered email primitive (2026-04-28). Top-level block:
+//   email <role> when <entity>'s status changes to '<value>':
+//     subject is '<text>'
+//     body is '<text>'
+//     provider is '<provider name>'   (optional; default 'agentmail')
+//     track replies as <text>          (optional; e.g. 'deal activity')
+// Mirrors the F3 queue clause's `email <role> when <trigger>` atom but lives
+// at the top level so any URL handler that sets the entity's status to the
+// trigger value queues a row in the WorkflowEmailQueue table (no real sends
+// in default builds — that's gated behind `enable live email delivery via X`).
+function parseEmailTrigger(lines, startIdx, _parentIndent, errors, parentBody) {
+  const tokens = lines[startIdx].tokens;
+  const line = lines[startIdx].line || startIdx + 1;
+  // tokens[0] = 'email', [1] = role, [2] = 'when', [3] = entity ident, [4] = POSSESSIVE 's,
+  // [5] = 'status', [6] = 'changes', [7] = 'to' (KEYWORD), [8] = STRING value.
+  // The trailing ':' is consumed as the block opener, not a separate token.
+  const recipientRole = tokens[1] && tokens[1].value;
+  if (!recipientRole) {
+    errors.push({ line, message: "email trigger needs a recipient role. Example: email customer when deal's status changes to 'awaiting':" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // Entity name appears at tokens[3]. Confirm the possessive marker followed.
+  const entityName = tokens[3] && tokens[3].value;
+  const possessive = tokens[4] && (tokens[4].value === "'s" || tokens[4].type === 'possessive');
+  if (!entityName || !possessive) {
+    errors.push({ line, message: `email trigger needs an entity reference. Example: email ${recipientRole} when deal's status changes to 'awaiting':` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // Find the trigger field ('status') and the trigger value (a string literal).
+  const triggerField = tokens[5] && tokens[5].value;
+  const triggerValueTok = tokens.find(t => t.type === 'string');
+  if (triggerField !== 'status' || !triggerValueTok) {
+    errors.push({ line, message: `email trigger needs the form: email <role> when <entity>'s status changes to '<value>':` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const triggerValue = triggerValueTok.value;
+
+  // Validate that the entity references a declared table. Tables in parentBody
+  // appear as { type: 'data_shape', name: 'Deals' } (plural-cased); the entity
+  // ref is the singular lowercase form.
+  const declaredTables = (parentBody || [])
+    .filter(n => n && n.type === NodeType.DATA_SHAPE && typeof n.name === 'string')
+    .map(n => n.name);
+  const matchesTable = declaredTables.some(tname => {
+    const lower = tname.toLowerCase();
+    return lower === entityName || lower === entityName + 's' || lower.replace(/s$/, '') === entityName;
+  });
+  if (!matchesTable) {
+    errors.push({ line, message: `email trigger references entity '${entityName}' but no table by that name has been declared. Add a 'create a ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}s table:' block before this trigger.` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Parse indented body lines.
+  const bodyIndent = lines[startIdx].indent;
+  let i = startIdx + 1;
+  let subject = null;
+  let body = null;
+  let provider = null;
+  let replyTracking = null;
+  while (i < lines.length && lines[i].indent > bodyIndent) {
+    const bodyTokens = lines[i].tokens;
+    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
+    const first = bodyTokens[0].value;
+    // `subject is '<text>'`, `body is '<text>'`, `provider is '<text>'`
+    if ((first === 'subject' || first === 'body' || first === 'provider') &&
+        bodyTokens[1] && bodyTokens[1].value === 'is' &&
+        bodyTokens[2] && bodyTokens[2].type === 'string') {
+      const value = bodyTokens[2].value;
+      if (first === 'subject') subject = value;
+      else if (first === 'body') body = value;
+      else if (first === 'provider') provider = value;
+      i++;
+      continue;
+    }
+    // `track replies as <free text>` — the trailing text is unquoted; collect tokens.
+    if (first === 'track' && bodyTokens[1] && bodyTokens[1].value === 'replies' &&
+        bodyTokens[2] && bodyTokens[2].value === 'as') {
+      const remaining = bodyTokens.slice(3).map(t => t.value).join(' ').trim();
+      if (remaining) replyTracking = remaining;
+      i++;
+      continue;
+    }
+    // F1-style hard-fail on unknown body lines with did-you-mean hint.
+    const lineText = bodyTokens.map(t => t.value).join(' ').trim();
+    const lineNum = lines[i].line || (i + 1);
+    const knownClauses = ['subject', 'body', 'provider', 'track'];
+    const suggestion = closestQueueClause(first, knownClauses);
+    const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
+    errors.push({
+      line: lineNum,
+      message:
+        `email trigger for '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}.${didYouMean} ` +
+        `Valid clauses inside an email trigger: \`subject is '...'\`, \`body is '...'\`, \`provider is '...'\` (optional), \`track replies as ...\` (optional).`,
+    });
+    i++;
+  }
+
+  if (!subject) {
+    errors.push({ line, message: `email trigger needs a subject. Add 'subject is \\'...\\'' inside the block.` });
+  }
+  if (!body) {
+    errors.push({ line, message: `email trigger needs a body. Add 'body is \\'...\\'' inside the block.` });
+  }
+
+  return {
+    node: {
+      type: NodeType.EMAIL_TRIGGER,
+      recipientRole,
+      entityName,
+      triggerField,
+      triggerValue,
+      subject,
+      body,
+      provider,
+      replyTracking,
+      line,
+    },
+    endIdx: i,
+  };
 }
 
 function parseQueueDef(lines, startIdx, _parentIndent, errors) {
