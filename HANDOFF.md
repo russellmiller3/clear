@@ -49,7 +49,6 @@ node playground/tenants-postgres.test.js  # expect 161/161
 
 5. **GTM-2** — `landing/marcus.html` polish + deal-desk demo embed.
 6. **GTM-3** — `landing/pricing.html` (Free / Team $99 / Business $499 / Enterprise).
-7. **GTM-5** — Studio onboarding (new users land in Meph chat with "What do you want to build?", not the editor).
 8. **GTM-7** — Studio instrumentation (first-click tracking, time-to-first-app, signup-bounce funnel).
 
 ### P1 — Live App Editing remaining
