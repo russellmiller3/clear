@@ -22618,6 +22618,43 @@ when user requests data from /api/deals:
   });
 });
 
+describe('Triggered email — validator (Phase 5)', () => {
+  it("warns when an email-trigger has no URL handler that sets the trigger value", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeTruthy();
+    expect(String(neverFires.message || neverFires)).toContain('awaiting');
+    expect(String(neverFires.message || neverFires)).toContain('deal');
+  });
+
+  it("does NOT warn when a queue action provides the matching status transition", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    // counter -> awaiting via actionToTerminalStatus, so the trigger CAN fire
+    const result = compileProgram(src);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeUndefined();
+  });
+});
+
 describe('Triggered email — queue-action integration (Phase 4)', () => {
   it("queue auto-PUT handler that lands on the trigger value also inserts into workflow_email_queue", () => {
     const src = `build for javascript backend
