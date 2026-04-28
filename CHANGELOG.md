@@ -6,6 +6,32 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (evening) — Codex stash cleanup — chunks #1, #2, #4, #5 cherry-picked + stash dropped
+
+Russell's question at the end of the email-epic session: "did we cherry-pick everything useful out of Codex stash?" Audit said no — chunk #10 (shell router) + parts of #7 (chart polish) + the JSON UAT contract had landed earlier, but six other useful chunks were still sitting in `stash@{0}`. This session pulled four of them into focused commits, preserved the patch + a follow-up plan for the remaining two, then dropped the stash.
+
+What landed:
+
+- **Chunk #1 (validator false-positive fixes)** — `validateFieldNames` now treats fields the user already assigned to the variable before saving as already-validated (no more spurious "missing validate rule" warnings on common patterns like `record.status is 'pending'` then `save record to Things`). `validateExprComplexity` skips the noise check on CRUD lookup conditions — filter expressions like `where status is 'pending' and demo_key is X` are declarative not logic and were tripping the threshold.
+- **Chunk #2 (Cloudflare packaging sandbox tolerance)** — all three CF packaging test files (`packaging-cloudflare-cron`, `packaging-cloudflare-workflows`, `packaging-cloudflare`) now skip the `node --check` smoke when the sandbox blocks Node child processes (EPERM). The skip logs visibly. Test stability fix only; no production code change.
+- **Chunk #4 (UAT id markers on buttons + nav + route tabs)** — every compiled button, nav item, and route tab now carries `data-clear-uat-id` (stable line-based identifier like `button_550_Counter`) and `data-clear-control-kind` (`button` / `nav-item` / `route-tab`). Pairs with the JSON UAT contract that already shipped — chunk #8's browser-test generator (deferred, plan committed) will use these markers to find every clickable thing reliably without depending on text content or fragile CSS selectors. Verified end-to-end on deal-desk: 11 nav-item markers, 8 button markers, 3 route-tab markers.
+- **Chunk #5 (sortable + filterable tables)** — every table now gets a search box in its toolbar plus working sort on every column header. Before this, the click handler set sort attributes but never re-rendered (sort was a noop) and filter didn't exist. Three new runtime helpers (`_clear_table_rows_for_view`, `_clear_apply_table_view`, `_clear_table_header`) + updates to `_clear_render_table`, `_clear_cell`, `_clear_table_init`, the table HTML emit, and the reactive table emit. Sort handles numeric, currency-prefixed, percent-suffixed, and text columns; filter is case-insensitive substring across all fields.
+
+What's deferred (preserved for next session):
+
+- **Chunks #8 + #9 (UAT browser-test generator + CLI plumbing)** — ~700 lines of Playwright test generator + CLI artifact-writing. Too risky to land cleanly at the tail of a marathon session. Saved the full Codex stash patch to `plans/codex-stash-2026-04-27.patch` + wrote a focused execution plan at `plans/plan-codex-uat-chunks-8-9.md` so the work survives the stash drop. Russell's call when to execute.
+
+What's skipped on purpose:
+
+- **Chunk #6 (approval-rules dedicated render path)** — anti-pattern (app-specific render branch in the compiler for one particular table label). Better to make existing styling work generically than add a one-off path.
+- **Chunk #11 (plan-lint enforcement + skill machine-gates)** — references a `scripts/plan-lint.mjs` that doesn't ship in the patch.
+
+`stash@{0}` was dropped after this commit. The full patch + per-chunk audit + the follow-up plan for #8/#9 live in `plans/`.
+
+Test count: 2737 passing, 0 failing. All 14 templates / Marcus apps compile clean.
+
+---
+
 ## 2026-04-28 (follow-up) — Triggered email primitive Cycles 4.1-extension, 4.2, 4.3, 5.2 close the silent-failure surface
 
 Earlier in the day Phase 1 + 3 + 4.1 (queue auto-PUT only) + 5.1 + 5.3 shipped. The triggered email primitive worked when an app used the queue primitive — but if an app hand-wrote its endpoints, or skipped the queue entirely, the trigger sat dead. Same problem for the validator: it warned "never fires" on apps whose only status-changing handler was hand-written.
