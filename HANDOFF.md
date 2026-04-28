@@ -1,4 +1,4 @@
-# Handoff — 2026-04-28 night (CC-1 finish + email Phase B-1 + Python parity + workflow hooks all on main)
+# Handoff — 2026-04-28 night (CC-1 fully closed: cycles 1-9 + email Phase B-1 + Python parity + workflow hooks all on main)
 
 > **Read this top section first. Earlier handoffs preserved below for context.**
 
@@ -22,6 +22,10 @@
 
 7. **CC-1 finish — cycles 6/7/8 of the Postgres tenant store** (commit `fb012e8`) — every method on `PostgresTenantStore` now runs real SQL against pg / pg-mem; **no `NOT_IMPLEMENTED` stubs remain**. Cycle 6 (`updateSecretKeys`), cycle 7 (`lookupAppBySubdomain` + `loadKnownApps`), cycle 8 (`getAuditLog` + `appendAuditEntry` + `markAuditEntry`). 161/161 Postgres tests + 111/111 in-memory tests pass against pg-mem.
 
+8. **CC-1 cycle 9 — tenant store factory + DualWriteTenantStore + server cutover** (commit `26526a2`) — `playground/tenant-store-factory.js` picks the right store from env. `DualWriteTenantStore` writes to both during cutover. Single-line swap in `playground/server.js`. **Russell sets `DATABASE_URL` and the entire tenant layer becomes durable Postgres — no code change.** 19/19 factory tests pass. **CC-1 fully closed; every cycle wired.**
+
+9. **Cookbook auto-inventory refresh** (commit `c329667`) — `cookbook.md` now lists the `/introspect` skill + the periodic timer hook that nudge Claude to step back every 20 messages or 30 min.
+
 **Plus:** workflow hooks landed in `~/.claude/hooks/` (user-global, no project commit) — `never-stop-asking.mjs` blocks Stop events that ask permission instead of leading or move work without big-picture orientation; `build-priority-queue.mjs` fires at session start to force a roadmap-driven priority queue. New user-level rule documents intent: `~/.claude/CLAUDE.md` → "Roadmap-Driven Priority Queue Workflow (HARD RULE — HOOK ENFORCED)".
 
 ## Verification on pickup
@@ -37,9 +41,7 @@ node playground/tenants-postgres.test.js  # expect 161/161
 
 ### CC items (Russell's "do all of them" focus)
 
-1. **CC-1 cycle 9 — cutover wrapper** (~1 hour). Last cycle of the CC-1 plan. `playground/tenant-store-factory.js` + `DualWriteTenantStore` class + single-line swap in `playground/server.js`. Plan: `plans/plan-cc-1-postgres-wire-up-04-25-2026.md` (Cycle 9 section). All 8 prior cycles done — this is the "make it actually run with Postgres in production" step. Default behavior stays in-memory until `DATABASE_URL` is set, then it dual-writes, then `TENANT_STORE_PRIMARY=postgres` flips primary. Safe rollback by unsetting the env var.
-
-2. **CC-2 finish — auth dashboard UI** (~1-2 hours). Auth backend (`playground/cloud-auth/index.js`) is fully built: `signupUser`, `loginUser`, `validateSession`, `revokeSession`, email-verify token, password-reset token. **Open code work:** wire `/api/auth/signup`, `/api/auth/login`, `/api/auth/me`, `/api/auth/logout` HTTP routes in `playground/server.js`. **Open UI work:** build a logged-in dashboard.html that lists the customer's apps. Gated on CC-1 cycle 9 having Postgres available (auth needs the `users` + `sessions` tables).
+1. **CC-2 finish — auth dashboard UI** (~1-2 hours). Auth backend (`playground/cloud-auth/index.js`) is fully built: `signupUser`, `loginUser`, `validateSession`, `revokeSession`, email-verify token, password-reset token. **Open code work:** wire `/api/auth/signup`, `/api/auth/login`, `/api/auth/me`, `/api/auth/logout` HTTP routes in `playground/server.js`. **Open UI work:** build a logged-in dashboard.html that lists the customer's apps. Gated on CC-1 cycle 9 having Postgres available (auth needs the `users` + `sessions` tables).
 
 3. **CC-3 finish — Stripe webhook receiver in production** (~1 hour code, gated on Russell's Stripe live keys). Stripe billing scaffolding (`playground/cloud-billing/`) is shipped. Open: live Stripe keys + webhook receiver wired into the production server (currently in test mode only). Russell's external work is the gate — once live keys land, ~1 hour to wire the route + test.
 
@@ -83,7 +85,7 @@ node playground/tenants-postgres.test.js  # expect 161/161
 
 1. Read this file top section (you're done — that's this section).
 2. Read `.claude/state/priority-queue.md` for the prioritized work list (created this session).
-3. Pick item 1 from the queue (CC-1 cycle 9). Plan in `plans/plan-cc-1-postgres-wire-up-04-25-2026.md` Cycle 9 section.
+3. Pick item 1 from the queue (CC-2 finish — auth dashboard UI). Auth helpers fully built; need to wire HTTP routes + dashboard.html.
 4. Execute. Ship. Move to item 2. Don't stop.
 
 ---
