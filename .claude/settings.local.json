@@ -20,7 +20,9 @@
       "Bash(node .claude/hooks/meta-learnings-updater.mjs)",
       "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\(0,'utf8'\\); if\\(!s.trim\\(\\)\\){console.log\\('\\(silent\\)'\\);process.exit\\(0\\);} try{const d=JSON.parse\\(s\\); console.log\\('systemMessage:',d.systemMessage\\);}catch\\(e\\){console.log\\('raw:',s.slice\\(0,300\\)\\);}\")",
       "Bash(node .claude/hooks/propose-new-tools.mjs)",
-      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\(0,'utf8'\\); if\\(!s.trim\\(\\)\\){console.log\\('\\(silent\\)'\\);process.exit\\(0\\);} try{console.log\\(JSON.parse\\(s\\).hookSpecificOutput.additionalContext.slice\\(0,2000\\)\\);}catch\\(e\\){console.log\\('raw:',s.slice\\(0,300\\)\\);}\")"
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\(0,'utf8'\\); if\\(!s.trim\\(\\)\\){console.log\\('\\(silent\\)'\\);process.exit\\(0\\);} try{console.log\\(JSON.parse\\(s\\).hookSpecificOutput.additionalContext.slice\\(0,2000\\)\\);}catch\\(e\\){console.log\\('raw:',s.slice\\(0,300\\)\\);}\")",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\")",
+      "PowerShell($f = 'apps\\\\deal-desk\\\\clear-data.db'; if \\(Test-Path $f\\) { try { [System.IO.File]::Delete\\(\\(Resolve-Path $f\\).Path\\); Write-Output \"deleted via .NET\" } catch { Write-Output \\(\"FAIL: \" + $_.Exception.Message\\) } } ; PowerShell -Command \"Get-Process | Where-Object {$_.ProcessName -eq 'node'} | Format-Table Id,ProcessName,StartTime\")"
     ]
   }
 }
