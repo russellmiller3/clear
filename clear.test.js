@@ -22332,8 +22332,8 @@ queue for deal:
     expect(ast.errors).toHaveLength(0);
     const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
     expect(q.notifications).toEqual([
-      { role: 'customer', onActions: ['counter', 'awaiting customer'] },
-      { role: 'rep', onActions: ['approve', 'reject'] },
+      { role: 'customer', onActions: ['counter', 'awaiting customer'], mechanism: 'notify' },
+      { role: 'rep', onActions: ['approve', 'reject'], mechanism: 'notify' },
     ]);
   });
 
@@ -22369,10 +22369,10 @@ describe('Queue primitive — parser hard-fail (F1)', () => {
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject
-  email rep when approve`;
+  slack rep when approve`;
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
-    expect(ast.errors[0].message).toContain('email rep when approve');
+    expect(ast.errors[0].message).toContain('slack rep when approve');
   });
 
   it('errors on a typo of a known clause with did-you-mean hint', () => {
@@ -22401,6 +22401,79 @@ queue for deal:
   no export`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
+  });
+});
+
+// F3 — `email <role> when <action>` is the canonical way to declare notifications
+// in a queue block. Russell's design feedback 2026-04-28: verbs that name HOW
+// (email, slack, text, webhook) beat vague verbs ("notify"). The old `notify
+// <role> on <action>` form keeps working as a legacy alias so existing apps
+// don't break, but new docs and Meph guidance should teach the email form.
+describe('Queue primitive — email canonical (F3)', () => {
+  it('parses `email <role> when <action>, <action>` as the canonical form', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  email rep when approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue).toBeTruthy();
+    expect(queue.notifications).toHaveLength(2);
+    expect(queue.notifications[0]).toEqual({ role: 'customer', onActions: ['counter'], mechanism: 'email' });
+    expect(queue.notifications[1]).toEqual({ role: 'rep', onActions: ['approve', 'reject'], mechanism: 'email' });
+  });
+
+  it('still accepts `notify <role> on <action>` as a legacy alias', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  notify rep on approve`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications).toHaveLength(1);
+    expect(queue.notifications[0].role).toBe('rep');
+    expect(queue.notifications[0].onActions).toEqual(['approve']);
+    expect(queue.notifications[0].mechanism).toBe('notify');
+  });
+
+  it('mixes `email` and `notify` clauses in the same block (both push to notifications)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  rep_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  notify rep on approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications).toHaveLength(2);
+    expect(queue.notifications[0].mechanism).toBe('email');
+    expect(queue.notifications[1].mechanism).toBe('notify');
+  });
+
+  it('parses multi-word actions in the email-when list (e.g. `waiting on customer`)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications[0].onActions).toEqual(['counter', 'awaiting customer']);
   });
 });
 

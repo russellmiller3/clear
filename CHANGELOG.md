@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 — `email <role> when <action>` is the canonical queue notification clause (F3)
+
+The queue primitive's notification clause now reads `email customer when counter, awaiting customer` instead of `notify customer on counter, awaiting customer`. The verb names HOW the recipient gets reached (email, vs vague "notify"); the connector reads naturally (when, vs the slightly-off "on"). This is Russell's design feedback from the 2026-04-28 red-team — verbs that name HOW > vague verbs.
+
+The legacy `notify <role> on <action>` form still parses for backwards compatibility — a deliberate alias, not a deprecation. Both forms now push to the same `notifications` array; each row carries a new `mechanism` field (`'email'` vs `'notify'`) so future compiler passes can route email rows to the workflow email queue while leaving notify rows generic.
+
+Future communication primitives will follow the same pattern — `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...` — each verb naming the channel.
+
+Updated together: parser (`parseQueueDef` in `parser.js`), 4 new TDD tests in clear.test.js's `Queue primitive — email canonical (F3)` block, the existing `notify clauses` test now asserts the `mechanism: 'notify'` field, the F1 hard-fail test swaps its old "unknown clause" example from `email rep when approve` (now valid) to `slack rep when approve` (still unknown). Docs cascade across SYNTAX.md, AI-INSTRUCTIONS.md, playground/system-prompt.md. Two app sources migrated to the canonical form: `apps/deal-desk/main.clear` and `apps/onboarding-tracker/main.clear`. Test count: 2706 passing, 0 failing. All 14 templates / Marcus apps compile clean.
+
+This unblocks the larger triggered-email primitive (next epic) — both surfaces share the canonical `email <role> when <trigger>` shape, so the new top-level `email <role> when <entity> status changes to <value>:` block will parse using the same atom.
+
+---
+
 ## 2026-04-28 — Shell-page router (chunk #10) + chart polish (chunk #7) cherry-picked
 
 The compiler now emits a smarter router for multi-page apps that have an `app_layout`. The first page that wraps its body in `app_layout` becomes THE **shell page** — its sidebar, header, and chrome stay mounted across every route. When the user clicks `/approved`, the router parks the shell's default content and unparks `page_Approved_today` into the shell's content slot, then kicks `_recompute()` so the newly-visible table re-binds to data already fetched on initial page load. Sidebar persists, tables hydrate, page mount lifecycle is implicit.

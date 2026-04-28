@@ -1268,16 +1268,18 @@ create a Deals table:
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject, counter, awaiting customer
-  notify customer on counter, awaiting customer
-  notify rep on approve, reject
+  email customer when counter, awaiting customer
+  email rep when approve, reject
 ```
+
+**Canonical clause is `email <role> when <action>, <action>`** — the verb names HOW (email), the connector reads naturally (when, not on). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but write `email when` in new code. Future communication primitives will follow the same pattern (`slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`). Don't reach for `notify` — it doesn't say HOW the recipient gets reached.
 
 What the compiler emits for free:
 - A `deal_decisions` audit table with `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`.
-- A `deal_notifications` outbound queue table — only when `notify` clauses are present.
+- A `deal_notifications` outbound queue table — only when `email` or `notify` clauses are present.
 - `GET /api/deals/queue` — filtered by `status = 'pending'`.
 - `GET /api/deal-decisions` and `GET /api/deal-notifications` — full history views.
-- `PUT /api/deals/:id/<action>` per action — login-gated, status update, audit row insert, notification rows for matching `notify` clauses. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
+- `PUT /api/deals/:id/<action>` per action — login-gated, status update, audit row insert, notification rows for matching `email` / `notify` clauses. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
 
 **When to use it:**
 - Entity has a `pending → approved | rejected | escalated` shape.

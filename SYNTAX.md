@@ -2976,11 +2976,13 @@ create a Deals table:
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject, counter, awaiting customer
-  notify customer on counter, awaiting customer
-  notify rep on approve, reject
+  email customer when counter, awaiting customer
+  email rep when approve, reject
 ```
 
-Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `notify customer on ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
+Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `email customer when ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
+
+**Canonical form is `email <role> when <action>, <action>`** (the verb names HOW the recipient gets reached). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but new code should prefer `email`. Future communication primitives will follow the same pattern: `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`.
 
 ### Action naming
 - Multi-word actions slugify to a single URL token: `awaiting customer` → `PUT /api/deals/:id/awaiting`.

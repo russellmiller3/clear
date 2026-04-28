@@ -4625,17 +4625,23 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
       continue;
     }
 
-    if (first === 'notify' && bodyTokens.length >= 4) {
-      // notify <role> on <action>, <action>, ...
+    // F3 — email <role> when <action>, <action>, ... is the canonical form.
+    // Russell, 2026-04-28: verbs that name HOW (email, slack, text, webhook)
+    // beat vague verbs ("notify"). Both forms push to notifications with a
+    // `mechanism` field so downstream code can route email rows to the
+    // workflow email queue while leaving notify rows as generic notifications.
+    if ((first === 'email' || first === 'notify') && bodyTokens.length >= 4) {
+      const mechanism = first; // 'email' or 'notify'
+      const connector = first === 'email' ? 'when' : 'on';
       const role = bodyTokens[1].value;
-      let onIdx = -1;
+      let connectorIdx = -1;
       for (let j = 2; j < bodyTokens.length; j++) {
-        if (bodyTokens[j].value === 'on') { onIdx = j; break; }
+        if (bodyTokens[j].value === connector) { connectorIdx = j; break; }
       }
-      if (onIdx > 0) {
+      if (connectorIdx > 0) {
         const onActions = [];
         let current = '';
-        for (let j = onIdx + 1; j < bodyTokens.length; j++) {
+        for (let j = connectorIdx + 1; j < bodyTokens.length; j++) {
           const t = bodyTokens[j];
           if (t.value === ',') {
             if (current.trim()) onActions.push(current.trim());
@@ -4645,7 +4651,7 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
           }
         }
         if (current.trim()) onActions.push(current.trim());
-        notifications.push({ role, onActions });
+        notifications.push({ role, onActions, mechanism });
       }
       i++;
       continue;
@@ -4665,7 +4671,7 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
     // becomes an explicit error.
     const lineText = bodyTokens.map(t => t.value).join(' ').trim();
     const lineNum = lines[i].line || (i + 1);
-    const knownClauses = ['reviewer', 'actions', 'notify', 'no export'];
+    const knownClauses = ['reviewer', 'actions', 'email', 'notify', 'no export'];
     const suggestion = closestQueueClause(first, knownClauses);
     const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
     errors.push({
@@ -4673,7 +4679,7 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
       message:
         `queue '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}.${didYouMean} ` +
         `Valid clauses inside a queue block: \`reviewer is 'X'\`, \`actions: a, b, c\`, ` +
-        `\`notify <role> on <action>, <action>\`, \`no export\`.`,
+        `\`email <role> when <action>, <action>\`, \`notify <role> on <action>\` (legacy), \`no export\`.`,
     });
     i++;
   }

@@ -761,20 +761,22 @@ create a Deals table:
 queue for deal:
   reviewer is 'CRO'
   actions: approve, reject, counter, awaiting customer
-  notify customer on counter, awaiting customer
-  notify rep on approve, reject
+  email customer when counter, awaiting customer
+  email rep when approve, reject
 ```
+
+**Canonical clause:** `email <role> when <action>, <action>` — the verb names HOW (email), the connector reads naturally (when). Legacy form `notify <role> on <action>` still works for backwards compatibility, but new code should always use `email when`. Future primitives will follow: `slack <role> when ...`, `text <role> when ...`.
 
 What the compiler emits for free:
 - `<entity>_decisions` audit table — `deal_id, decision, decided_by, decided_at, decision_note`.
-- `<entity>_notifications` outbound queue table (only when `notify` clauses present) — `recipient_role, recipient_email, notification_type, queue_status, queued_at`.
+- `<entity>_notifications` outbound queue table (only when `email` or `notify` clauses present) — `recipient_role, recipient_email, notification_type, queue_status, queued_at`.
 - `GET /api/deals/queue` — filtered to `status = 'pending'`.
 - `GET /api/deal-decisions` and `GET /api/deal-notifications` — full history views.
 - `PUT /api/deals/:id/<action>` per action — login-gated, updates status, inserts audit row, queues notifications. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
 
 **Status transitions:** `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names use the action name as the status verbatim.
 
-**Recipient-email convention:** `notify customer on …` resolves recipient_email by reading `<entity>.customer_email`. If the field is missing, the validator warns; the row still queues with a blank email.
+**Recipient-email convention:** `email customer when …` resolves recipient_email by reading `<entity>.customer_email`. If the field is missing, the validator warns; the row still queues with a blank email.
 
 **DO NOT hand-roll** when the user asks for an approval flow. Don't write per-action `when user updates X at /api/deals/:id/approve:` URLs alongside hand-built `DealDecisions` and `DealNotifications` tables. The primitive replaces all of that.
 

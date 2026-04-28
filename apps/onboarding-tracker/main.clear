@@ -36,7 +36,7 @@ create a Customers table:
 queue for customer:
   reviewer is 'success_manager'
   actions: mark active, escalate, email
-  notify customer on mark active
+  email customer when mark active
 
 create a OnboardingSteps table:
   customer_id, required
