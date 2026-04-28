@@ -143,8 +143,7 @@ Definition of launch: **first paying customer.** Not "we shipped a thing." Not "
 
 | # | Task | Owner | Days | Why it's next |
 |---|------|-------|------|---|
-| ~~1~~ | ~~**CC-4 — Publish button → Clear Cloud.**~~ **DONE 2026-04-25** — Studio Publish window now ships to Cloudflare end-to-end, plus the one-click-updates plan (Phases 1-6) landed on top: incremental update mode (~2s vs ~12s), version history panel, one-click rollback, byte-precise schema-change detector with 409 `MIGRATION_REQUIRED` confirmation gate. Touches `playground/deploy-cloudflare.js`, `playground/deploy.js`, `playground/tenants.js` + Postgres mirror, `playground/ide.html`. Demo path is unblocked. |
-| 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at item 1's Publish URL. | agent (parallel with #1) | 1 | Pitch surface. Lands when item 1 ships so the demo CTA isn't dead. |
+| 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at the Publish URL. | agent | 1 | Pitch surface. |
 | 3 | **Demo recording.** Walkthrough of building deal-desk in 30 minutes from scratch on a hosted URL. Russell records voice-over; agent prepares the script + reference app + recording outline. | agent + Russell | 0.5 | What you DM with. Lossless evidence the workflow works. |
 | 4 | **Russell sells.** Cold pitch 5-10 sales-ops people on LinkedIn with the recording from #3. Goal: 1 paying customer at $200-500/mo. | Russell | 0.5 | The actual launch event. Everything above is setup. |
 | 5 | **Phase 85a — provision the real cloud stack** (parallel async track). Register `buildclear.dev`, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB. | Russell (external paperwork) | external | Async — runs in background. Items 1-4 ship against the existing test infra; item 6 needs this. |
@@ -175,7 +174,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | **CC-1** | Multi-tenant routing — subdomain → Worker + D1 DB binding | **Open — biggest blocker** | 2-3 weeks |
 | CC-2 | Auth for `buildclear.dev` (accounts, sessions, teams) | Scaffolding shipped (CC-2b/c/d). Open: stitching into a logged-in dashboard UI. | ~1 week to wire up |
 | CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 week to wire up |
-| ~~**CC-4**~~ | ~~"Publish" button wired to Clear Cloud (not test builder)~~ | **DONE 2026-04-25** — Publish window ships to Cloudflare, one-click updates (Phases 1-6) layered on top: incremental update path (~2s), version history, rollback, schema-change confirm gate. See `CHANGELOG.md` 2026-04-25. | — |
 | CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | ~1 week to wire up |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
@@ -190,7 +188,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 | # | Item | Status | Scope |
 |---|---|---|---|
-| ~~GTM-1~~ | ~~`apps/deal-desk/main.clear`~~ | **DONE 2026-04-25** — 170 lines, 13/13 tests pass, login-gated `/cro` queue, AI draft endpoint wired (CRO button is the obvious next move) |
 | GTM-2 | `landing/marcus.html` — GAN against ASCII mock, "ship the first one this Friday" headline | Open | 1 session |
 | GTM-3 | `landing/pricing.html` — Free / Team $99 / Business $499 / Enterprise | Open | 1 session |
 | GTM-4 | Find 5 real Marcuses on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
@@ -201,17 +198,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 ---
 
-## P0 — Critical bugs blocking real Clear apps
-
-| # | Bug | Symptom | Status |
-|---|---|---|---|
-| ~~R7~~ | ~~`needs login` on a page → blank white page~~ | ~~JWT check hides everything but doesn't show login form or redirect~~ | **DONE 2026-04-25** — page-level guard now route-gated; emits `if (location.pathname === '/cro' && !token) location.href='/login'`. No more top-level `return;` SyntaxError. 4 TDD tests in clear.test.js → "R7: needs login". |
-| ~~R8~~ | ~~`for each` in HTML doesn't expand child template~~ | ~~Emits whole object as string (`+ msg +`) instead of rendering loop body~~ | **DONE 2026-04-25** — reactive renderer now recurses into `section`/`page` containers; empty fallback is a clean `''` instead of stringifying the row. 2 TDD tests in clear.test.js → "R8: for-each body expands". |
-
-Both shipped overnight 2026-04-25 along with the deal-desk app (GTM-1) that exercises both fixes end-to-end.
-
----
-
 ## P1 — Live App Editing (flagship completion)
 
 Phase A (additive edits) + Phase B (reversible: hide/rename/relabel/reorder) shipped — see `FEATURES.md` → "Live App Editing". What remains:
@@ -219,7 +205,7 @@ Phase A (additive edits) + Phase B (reversible: hide/rename/relabel/reorder) shi
 | Phase | Items | Status | Effort |
 |-------|-------|--------|--------|
 | **Phase C** | LAE-5 schema migration planner; LAE-3 destructive changes (explicit permanent-delete + unavoidable type coercion). **No data snapshot on destructive delete** — audit trail replaces it as the accountability surface (GDPR/CCPA/HIPAA erasure compliance). | Not started | ~1.5 weeks |
-| **Phase D** | ~~LAE-8 audit log per app~~ **DONE 2026-04-25** (write path on `InMemoryTenantStore`: `appendAuditEntry` + `getAuditLog`, append-only, schema `{ts, actor, action, verdict, sourceHashBefore, sourceHashAfter, note}`; Phase C extends with status + markAuditEntry); LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | LAE-8 done; LAE-9/10 not started | ~3 days remaining |
+| **Phase D** | LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | Not started | ~3 days remaining |
 
 **Still needed before any multi-user demo:**
 - Browser Playwright e2e covering owner→widget→ship/hide/undo on the three templates
@@ -231,24 +217,12 @@ Competitive snapshot in `FAQ.md` → "Why does Clear Cloud beat Retool and Lovab
 
 ---
 
-## P1 — Builder Mode polish
-
-Builder Mode v0.3 shipped (BM-1/2/3/4/5/6 — see `FEATURES.md` → Studio IDE row). What remains:
-
-| Item | What | Status |
-|------|------|--------|
-| ~~Status bar~~ | ~~Users / agent spend / last ship chip — always visible at bottom~~ | **DONE 2026-04-25** — three live chips polled every 5s: compiles ok/total, app ▶/idle, last ship Xm ago. Backed by `_builderState` + `GET /api/builder-status`. |
-| ~~Default flip~~ | ~~Builder Mode becomes default for new users; `cmd+.` reveals 3-panel~~ | **DONE 2026-04-25** — `STUDIO_MODE_DEFAULT = 'builder'` in `playground/ide.html` `detectStudioMode()`. Existing users with a saved `studio-mode-pref` (builder OR classic) keep what they had; only fresh users (no preference) get the new default. `?studio-mode=classic` opts back. Tests in `playground/builder-mode.test.js` cover: fresh user → builder, classic-pref preserved, builder-pref preserved, unknown URL value falls back to builder. |
-
----
-
 ## P2 — Compiler Flywheel (second-order moat)
 
 Tracks whether the JS/Python/HTML the compiler emits is actually optimal. Today's Meph-flywheel makes Meph write better Clear; this layer makes the *output of compilation* improve from production data.
 
 | # | Tier | Status | Scope | Unlock |
 |---|------|--------|-------|--------|
-| ~~CF-1~~ | ~~**Runtime instrumentation** — compiled apps emit latency / error / memory beacons to a shared endpoint~~ | **DONE 2026-04-25** — `_clearBeacon` helper + endpoint_latency + endpoint_error events emitted in every compileToJSBackend. Receiver at `POST /api/flywheel/beacon` writes to `playground/flywheel-beacons.jsonl`. Silent no-op unless `CLEAR_FLYWHEEL_URL` + `CLEAR_COMPILE_ROW_ID` set. **Flywheel begins collecting the moment the env points anywhere.** Next: migrate JSONL into Factor DB `code_actions_runtime` table (plan in `plans/plan-compiler-flywheel-tier1-04-19-2026.md`). | 1 day | Data-driven compiler bug-reports |
 | CF-2 | **Candidate emitters + deterministic A/B** — top 10 emit patterns get 2-3 variants, deterministic at compile time, production picks winner | Open | 1 week | Quantitative answer to "best JS pattern for X" |
 | CF-3 | **Compiler-strategy reranker** — EBM trained on (archetype, app shape, runtime outcome) → emit variant | Open (after Meph reranker trained) | 2 weeks | Per-pattern emit auto-selects |
 | CF-4 | **GA-evolved compiler** (research) — mutate emit functions, fitness = curriculum pass rate + runtime perf | Open | 2+ months | The compiler becomes a learned artifact |
@@ -266,7 +240,6 @@ cc-agent / ollama / openrouter backends shipped (see `FEATURES.md`). What remain
 | # | Item | Scope |
 |---|---|---|
 | GM-5 | Calibration harness — `curriculum-sweep.js --calibrate` runs N tasks on Ghost + same N on real Haiku, compares Factor DB row distributions, flags drift | 2 days |
-| ~~GM-6~~ | ~~Default research sweeps to Ghost~~ **DONE 2026-04-25** — `validateSweepPreconditions(env, opts)` defaults to cc-agent; `--real` opts back into production Anthropic. Banner announces the default at sweep start. The "forgot --ghost and burned $50" failure mode is gone. | DONE |
 
 Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real customer apps.
 
@@ -279,7 +252,6 @@ Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real custom
 | R1 | Decompose `compileAgent()` — 300-line monolith mutating strings via regex. Extract `applyToolUse()`, `applyMemory()`, `applyRAG()`. | Before adding more agent features |
 | R2 | Deduplicate JS/Python CRUD — parallel logic, bugs in one missed in other. Shared IR. | When Python target becomes priority |
 | R4 | Skill instruction raw text — tokenizer destroys parentheses in skill `instructions:` blocks. Parser should store `.raw` line text. Partially fixed; tokenizer still eats some formatting. | Before shipping store-ops demo |
-| ~~R5~~ | ~~`clear test` runner doesn't pick up user-written `test` blocks~~ — **DONE** (verified 2026-04-25). User blocks land in result.tests alongside auto-generated CRUD tests. Regression coverage in clear.test.js → "R5: user-written test: blocks land in result.tests". | — |
 | R6 | Fragile `[^)]*` regex patterns in `compileAgent()` break on literal parentheses. Real fix is R1. | Part of R1 |
 | R9 | Stale SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js` — pending migration unstaged since Session 32. Decide: ship, stash, or revert. | Whenever todo-fullstack is touched next |
 | R10 | **Retire 1:1-mapping violations.** `CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT` generate routes, functions, and imports the user never wrote — the compiler is doing magic the user can't trace. Move toward explicit source forms or demote until they comply. Protects PHILOSOPHY rule #1 (the most important moat). | Before adding more SERVICE_CALL-style sugar |
