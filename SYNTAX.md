@@ -2986,6 +2986,21 @@ Adds a `deal_notifications` outbound queue table and inserts a row whenever a ma
 - Multi-word actions slugify to a single URL token: `awaiting customer` → `PUT /api/deals/:id/awaiting`.
 - Status transitions: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names become the status verbatim.
 
+### CSV export (auto-included; opt out with `no export`)
+
+Every queue auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row in the entity's table, with proper RFC 4180 escaping (commas, quotes, and newlines wrapped + doubled correctly) and sensitive fields (password, token, api_key, secret, hash) automatically omitted. Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow for reporting and handoffs — default-on by GTM list.
+
+Suppress with `no export`:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export
+```
+
+When suppressed, the CSV URL is not emitted and the auto-rendered Download button (when Phase 2 lands) is hidden.
+
 ### Wiring action buttons
 The queue primitive does not yet auto-render UI buttons (deferred). Hand-add buttons that call the auto-generated PUT URLs:
 

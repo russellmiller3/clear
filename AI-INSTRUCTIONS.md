@@ -1299,6 +1299,8 @@ display pending as table showing customer, status with actions:
 
 The button labels are case-insensitive matches against the action list. Bind each button to the matching `/api/deals/:id/<action>` URL.
 
+**CSV export comes free.** Every queue auto-emits `GET /api/<entity>/export.csv` — Marcus's GTM list explicitly calls out "Export if they currently use spreadsheets" as MVP. Don't hand-roll a CSV download endpoint; it's already there. Sensitive fields (password / token / api_key / secret / hash) are automatically omitted. Suppress the CSV entirely with a `no export` clause inside the queue block — but unless there's a real reason to remove it, leave it on by default.
+
 ## Guards (All Five Kinds)
 
 Clear has **five different kinds of guards**. Each one protects a different thing. Use them together — they're complementary, not alternatives.

@@ -6159,6 +6159,32 @@ function compileQueueDef(node, ctx, pad) {
       result += `${pad}  res.json(_record);\n`;
       result += `${pad}});\n`;
     }
+
+    // CSV export — auto-emitted unless `no export` opt-out present.
+    // Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow
+    // for reporting + handoffs. Default-on by GTM doc.
+    if (!node.noExport) {
+      result += `${pad}// Auto-generated: CSV export for '${node.entityName}'\n`;
+      result += `${pad}const _csvSensitive_${entityNameLower} = /^(password|password_hash|bcrypt|hash|token|api_token|api_key|secret|salt)$/i;\n`;
+      result += `${pad}function _clearCsvEscape_${entityNameLower}(cell) {\n`;
+      result += `${pad}  if (cell == null) return '';\n`;
+      result += `${pad}  let s = typeof cell === 'object' ? JSON.stringify(cell) : String(cell);\n`;
+      result += `${pad}  if (/[",\\n\\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';\n`;
+      result += `${pad}  return s;\n`;
+      result += `${pad}}\n`;
+      result += `${pad}app.get('/api/${pluralEntity}/export.csv', (req, res) => {\n`;
+      result += `${pad}  const _rows = db.findAll('${pluralEntity}') || [];\n`;
+      result += `${pad}  const _allKeys = new Set();\n`;
+      result += `${pad}  for (const _r of _rows) { if (_r && typeof _r === 'object') Object.keys(_r).forEach(k => _allKeys.add(k)); }\n`;
+      result += `${pad}  const _cols = Array.from(_allKeys).filter(k => !_csvSensitive_${entityNameLower}.test(k));\n`;
+      result += `${pad}  const _header = _cols.map(c => _clearCsvEscape_${entityNameLower}(c)).join(',');\n`;
+      result += `${pad}  const _body = _rows.map(_r => _cols.map(c => _clearCsvEscape_${entityNameLower}(_r ? _r[c] : '')).join(',')).join('\\n');\n`;
+      result += `${pad}  const _date = new Date().toISOString().slice(0, 10);\n`;
+      result += `${pad}  res.setHeader('Content-Type', 'text/csv; charset=utf-8');\n`;
+      result += `${pad}  res.setHeader('Content-Disposition', 'attachment; filename="${pluralEntity}-export-' + _date + '.csv"');\n`;
+      result += `${pad}  res.send(_header + '\\n' + _body);\n`;
+      result += `${pad}});\n`;
+    }
   }
 
   return result;

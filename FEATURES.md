@@ -332,6 +332,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Auto-emitted audit | `<entity>_decisions` table | `deal_id, decision, decided_by, decided_at, decision_note` |
 | Auto-emitted queue view | `GET /api/<entity>s/queue` | Filtered by `status = 'pending'` |
 | Auto-emitted history view | `GET /api/<entity>-decisions` | Full audit log |
+| Auto-emitted CSV export | `GET /api/<entity>/export.csv` | Plain CSV with RFC 4180 escaping (commas, quotes, newlines wrapped + doubled correctly); sensitive fields (password / token / api_key / secret / hash) auto-omitted. Suppress with `no export` clause. |
+| Suppress CSV | `no export` (inside queue body) | Removes the auto-emitted `/export.csv` URL when the entity should never expose data via CSV (e.g. compliance-restricted tables) |
 
 Also under "Build full apps by writing English" in the exec summary: **Approval queues with audit + notifications in one block.**
 

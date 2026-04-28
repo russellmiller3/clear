@@ -6,6 +6,33 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-27 (overnight, 3rd ship) — CSV export auto-included on every queue
+
+Every `queue for X:` block now auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row in the entity's table, with proper RFC 4180 escaping (commas, quotes, and newlines wrapped + doubled correctly) and sensitive fields (password / token / api_key / secret / hash) automatically omitted. Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow for reporting and handoffs — explicit MVP item from the GTM list.
+
+Suppress with `no export` inside the queue body when an entity should never expose data via CSV (e.g. compliance-restricted user tables).
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export                    # turns off the auto-emitted CSV URL
+```
+
+**What landed:**
+- Parser: `no export` clause on QUEUE_DEF nodes (sets `node.noExport = true`).
+- Compiler: extends `compileQueueDef` with a CSV URL emit step. Per-entity helpers `_clearCsvEscape_<entity>` and `_csvSensitive_<entity>` handle RFC 4180 escaping + sensitive-field filtering.
+- 6 new TDD tests (URL emit, no-emit when no queue, RFC 4180 helper presence, sensitive field omission, no-export parser, no-export compiler suppression).
+- All 8 core templates compile clean; 2690 of 2690 compiler tests passing.
+
+**Deferred (Phase 2 of the plan, follow-up):**
+- Auto-rendered "Download CSV" button in the queue page header. App authors can hand-add a button that calls the URL for now.
+- Status filter query string (`?status=pending`).
+
+Plan: `plans/plan-csv-export-primitive-04-27-2026.md`.
+
+---
+
 ## 2026-04-27 (overnight) — Snap layer + UAT contract foundation
 
 Two infrastructure landings that compound across every Marcus session.
