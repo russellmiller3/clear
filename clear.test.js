@@ -22194,6 +22194,53 @@ queue for deal:
   });
 });
 
+// =============================================================================
+// F1 — hard-fail on unknown queue body lines (no silent skip)
+// Plan: plans/plan-queue-primitive-followup-04-28-2026.md Phase F1
+// =============================================================================
+
+describe('Queue primitive — parser hard-fail (F1)', () => {
+  it('errors on unknown clause inside queue block', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  email rep when approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('email rep when approve');
+  });
+
+  it('errors on a typo of a known clause with did-you-mean hint', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  notif rep on approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('did you mean');
+    expect(ast.errors[0].message).toContain('notify');
+  });
+
+  it('keeps every recognized clause parsing cleanly (no false positives)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  rep_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  notify customer on counter
+  notify rep on approve, reject
+  no export`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+  });
+});
+
 describe('Queue primitive — compiler tables', () => {
   it('emits a deal_decisions audit table when queue for deal: declared', () => {
     const src = `build for javascript backend

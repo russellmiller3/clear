@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 — Queue parser hard-fails on unknown body lines (F1)
+
+The queue primitive's parser used to silently skip body lines it didn't recognize. Type `email rep when approve` instead of `notify rep on approve` and the parser shrugged — app builds, app is wrong, no error. That's the failure mode of the 14-year-old test in production.
+
+Fixed: every unrecognized clause inside a `queue for X:` block now emits an explicit error with a "did you mean..." hint computed by edit-distance:
+
+```
+queue 'deal': don't know what to do with 'email rep when approve' on line 5.
+Did you mean 'notify'? Valid clauses inside a queue block: `reviewer is 'X'`,
+`actions: a, b, c`, `notify <role> on <action>, <action>`, `no export`.
+```
+
+The 4 migrated Marcus apps (Deal Desk, Approval Queue, Onboarding Tracker, Internal Request Queue) all still compile clean — they only use known clauses, so the stricter parser doesn't bite them.
+
+Plan: `plans/plan-queue-primitive-followup-04-28-2026.md` Phase F1.
+
+---
+
 ## 2026-04-27 (overnight, 3rd ship) — CSV export auto-included on every queue
 
 Every `queue for X:` block now auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row in the entity's table, with proper RFC 4180 escaping (commas, quotes, and newlines wrapped + doubled correctly) and sensitive fields (password / token / api_key / secret / hash) automatically omitted. Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow for reporting and handoffs — explicit MVP item from the GTM list.
