@@ -413,32 +413,12 @@ when user sends seed to /api/seed:
 
 # Frontend
 
-# Shared sidebar — referenced from every page so nav persists across routes.
-# Counts are static placeholders here (decorative); live counts only matter
-# on the Deal Desk root page where they're loaded fresh from /api/deals/pending.
-define component DealDeskSidebar:
-  heading 'Deal Desk'
-
-  nav section 'Approvals':
-    nav item 'Pending' to '/' with icon 'inbox'
-    nav item 'Approved today' to '/approved' with icon 'check-circle-2'
-    nav item 'Rejected' to '/rejected' with icon 'x-circle'
-    nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
-
-  nav section 'Pipeline':
-    nav item 'All deals' to '/all' with icon 'layers'
-    nav item 'Reps' to '/reps' with icon 'users'
-    nav item 'Accounts' to '/accounts' with icon 'building-2'
-    nav item 'Reports' to '/reports' with icon 'bar-chart-3'
-
-  nav section 'Workspace':
-    nav item 'Approval rules' to '/rules' with icon 'git-branch'
-    nav item 'Integrations' to '/integrations' with icon 'puzzle'
-    nav item 'Settings' to '/settings' with icon 'settings'
-
-  section 'Quota' with style app_card:
-    small text 'Quota: 78%'
-    text '$2.3M of $3M'
+# Sidebar is inlined into every page (10x duplication) because Clear's
+# `define component` doesn't currently support nav-section / nav-item
+# children — the compiler emits only the heading. When the shell-page
+# router from Codex's stash lands, the sidebar will live in one shell
+# page and content will swap into an outlet. For now, copy-paste keeps
+# nav persistent across routes.
 
 page 'Deal Desk' at '/':
   on page load:
@@ -551,7 +531,28 @@ page 'Approved today' at '/approved':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Approved today':
@@ -566,7 +567,28 @@ page 'Rejected' at '/rejected':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Rejected deals':
@@ -581,7 +603,28 @@ page 'Awaiting customer' at '/awaiting':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Awaiting customer':
@@ -596,7 +639,28 @@ page 'All deals' at '/all':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'All deals':
@@ -614,7 +678,28 @@ page 'Reps' at '/reps':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Reps':
@@ -629,7 +714,28 @@ page 'Accounts' at '/accounts':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Accounts':
@@ -644,7 +750,28 @@ page 'Reports' at '/reports':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Reports':
@@ -663,7 +790,28 @@ page 'Approval rules' at '/rules':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Approval rules':
@@ -678,7 +826,28 @@ page 'Integrations' at '/integrations':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Integrations':
@@ -695,7 +864,28 @@ page 'Settings' at '/settings':
 
   section 'App' with style app_layout:
     section 'Sidebar' with style app_sidebar:
-      show DealDeskSidebar()
+      heading 'Deal Desk'
+
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+        nav item 'Rejected' to '/rejected' with icon 'x-circle'
+        nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+      nav section 'Pipeline':
+        nav item 'All deals' to '/all' with icon 'layers'
+        nav item 'Reps' to '/reps' with icon 'users'
+        nav item 'Accounts' to '/accounts' with icon 'building-2'
+        nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+      nav section 'Workspace':
+        nav item 'Approval rules' to '/rules' with icon 'git-branch'
+        nav item 'Integrations' to '/integrations' with icon 'puzzle'
+        nav item 'Settings' to '/settings' with icon 'settings'
+
+      section 'Quota' with style app_card:
+        small text 'Quota: 78%'
+        text '$2.3M of $3M'
     section 'Main' with style app_main:
       section 'Content' with style app_content:
         page header 'Settings':

@@ -106,6 +106,13 @@
       "port": 4200,
       "autoPort": false,
       "env": { "PORT": "4200", "CLEAR_ALLOW_SEED": "1" }
+    },
+    {
+      "name": "deal-desk-live",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["cli/clear.js", "serve", "apps/deal-desk/main.clear", "--port", "4567"],
+      "port": 4567,
+      "autoPort": false
     }
   ]
 }

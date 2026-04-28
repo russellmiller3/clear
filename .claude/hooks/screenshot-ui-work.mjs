@@ -52,24 +52,27 @@ function main() {
   const fileType = pickType(path);
 
   const reminder =
-    `# UI screenshot reminder (Russell, 2026-04-28)\n\n` +
+    `# UI screenshot reminder (Russell, 2026-04-28) — MANDATORY\n\n` +
     `You just edited \`${path.split('/').pop()}\` — a UI surface (${fileType}). ` +
-    `Russell's rule: **when doing UI, always screenshot to confirm before claiming done.** ` +
-    `Compile passing is not the spec — the user-visible outcome is.\n\n` +
-    `**What to do BEFORE this turn ends:**\n` +
-    `1. Make sure a preview server is running (the deal-desk app on Studio at localhost:3456, OR \`preview_start\` if you've got the Claude Preview tools loaded).\n` +
-    `2. Navigate the preview to the route you just changed.\n` +
-    `3. Take a screenshot (\`preview_screenshot\` if Claude Preview is loaded; otherwise read the rendered HTML via \`preview_snapshot\` and confirm the structure matches what you expect).\n` +
-    `4. Look for: did the SHARED CHROME (sidebar nav, header, status bar) survive the route change? Are tables / charts / forms actually rendering or empty? Is the layout broken on this viewport?\n` +
-    `5. If the screenshot shows what you expected, say so explicitly in the reply. If it doesn't, fix and re-screenshot — don't claim done.\n\n` +
+    `Russell's rule: **when doing UI, you MUST use the preview tools and take a screenshot before claiming done.** ` +
+    `Compile passing is not the spec. Reading the compiled HTML is not the spec. The user-visible pixels are the spec.\n\n` +
+    `**The exact tool sequence to run BEFORE this turn ends:**\n` +
+    `1. **Load the preview tools** if not already loaded:\n` +
+    `   ToolSearch with query "preview" (max_results 10) — pulls in preview_start, preview_screenshot, preview_navigate, preview_snapshot, preview_click, preview_inspect, preview_console_logs, preview_logs, preview_resize.\n` +
+    `2. **Start a preview server** with \`preview_start\`. Pick the right config from \`.claude/launch.json\` — for Clear apps, use the matching marcus-* entry (e.g. \`marcus-deal-desk\` for the deal desk). The launch.json already has entries for every Marcus app on dedicated ports. If your target isn't listed, ADD it before calling preview_start.\n` +
+    `3. **Take a screenshot** with \`preview_screenshot\` for the FIRST page you changed.\n` +
+    `4. **Click each affected nav / button** with \`preview_click\` (CSS selector) and screenshot AGAIN after each — this is how you catch sidebar-disappears, dead buttons, empty tables.\n` +
+    `5. **Use \`preview_snapshot\` for accessibility-tree verification** of text content (more accurate than reading pixels for "did the heading render", "did the table populate").\n` +
+    `6. **Use \`preview_inspect\` for color / spacing / size verification** (more accurate than screenshot for those specific properties).\n` +
+    `7. **Tell Russell what you saw.** Quote the screenshot or snapshot finding directly. If anything is broken, fix and re-screenshot before claiming done.\n\n` +
     `**Common UI failures this hook is designed to catch:**\n` +
     `- Sidebar / nav disappears when navigating between pages (each page is self-contained HTML; needs a shell-page router OR a shared component)\n` +
     `- Empty-state text reads "undefined" or "[object Object]" instead of friendly copy\n` +
-    `- Action buttons render but click does nothing (dead button)\n` +
+    `- Action buttons render but click does nothing (dead button — verify with preview_click + console check)\n` +
     `- Tables show "OUTPUT" or column headers but no rows\n` +
     `- Hover/focus states missing (only light mode considered)\n` +
-    `- Mobile / narrow-viewport layout broken\n\n` +
-    `If you can't take a screenshot in this turn for any reason (no preview tool loaded, no server running and you don't have time to start one), say so EXPLICITLY in your reply: "UI changed, screenshot pending — Russell please verify visually." Don't silently skip.`;
+    `- Mobile / narrow-viewport layout broken (use preview_resize with preset 'mobile' to verify)\n\n` +
+    `**If a tool actually fails** (preview_start errors, screenshot fails, server won't boot), report the error directly — don't silently skip. Saying "UI changed, screenshot pending — please verify visually" is the LAST RESORT, only when a real tool failure blocks you. Default path is screenshot in-conversation.`;
 
   console.log(JSON.stringify({
     hookSpecificOutput: {
