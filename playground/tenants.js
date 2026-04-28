@@ -1174,6 +1174,142 @@ export function newTenantSlug() {
 	return `clear-${randomBytes(3).toString('hex')}`;
 }
 
+/**
+ * CC-1 cycle 9 — DualWriteTenantStore. Wraps two stores (primary + mirror).
+ * Every write goes to BOTH. Reads come from primary first; if primary returns
+ * null/empty AND mirror has data, mirror's data is returned (read-through
+ * fallback). Mirror failures are logged via console.error but never raise
+ * to the caller — the primary's result is what callers see.
+ *
+ * Used during the in-memory → Postgres cutover. Once Postgres is fully
+ * populated and stable for 24h+, drop this wrapper entirely.
+ */
+export class DualWriteTenantStore {
+	constructor({ primary, mirror }) {
+		if (!primary) throw new Error('DualWriteTenantStore: primary is required');
+		if (!mirror) throw new Error('DualWriteTenantStore: mirror is required');
+		this._primary = primary;
+		this._mirror = mirror;
+	}
+
+	async _mirrorCall(method, args) {
+		try {
+			return await this._mirror[method](...args);
+		} catch (err) {
+			console.error(`[DualWriteTenantStore] mirror.${method} failed (non-fatal):`, err.message || err);
+			return undefined;
+		}
+	}
+
+	// Mutating methods — primary first (must succeed), then mirror best-effort.
+	async create(input) {
+		const result = await this._primary.create(input);
+		await this._mirrorCall('create', [input]);
+		return result;
+	}
+	async upsert(slug, patch) {
+		const result = await this._primary.upsert(slug, patch);
+		await this._mirrorCall('upsert', [slug, patch]);
+		return result;
+	}
+	async incrementAppsDeployed(slug) {
+		const result = await this._primary.incrementAppsDeployed(slug);
+		await this._mirrorCall('incrementAppsDeployed', [slug]);
+		return result;
+	}
+	async setPlan(slug, plan, graceExpiresAt) {
+		const result = await this._primary.setPlan(slug, plan, graceExpiresAt);
+		await this._mirrorCall('setPlan', [slug, plan, graceExpiresAt]);
+		return result;
+	}
+	async recordApp(slug, appSlug, appName) {
+		const result = await this._primary.recordApp(slug, appSlug, appName);
+		await this._mirrorCall('recordApp', [slug, appSlug, appName]);
+		return result;
+	}
+	async markAppDeployed(input) {
+		const result = await this._primary.markAppDeployed(input);
+		await this._mirrorCall('markAppDeployed', [input]);
+		return result;
+	}
+	async recordVersion(input) {
+		const result = await this._primary.recordVersion(input);
+		await this._mirrorCall('recordVersion', [input]);
+		return result;
+	}
+	async updateSecretKeys(input) {
+		const result = await this._primary.updateSecretKeys(input);
+		await this._mirrorCall('updateSecretKeys', [input]);
+		return result;
+	}
+	async recordStripeEvent(eventId) {
+		const result = await this._primary.recordStripeEvent(eventId);
+		await this._mirrorCall('recordStripeEvent', [eventId]);
+		return result;
+	}
+	async appendAuditEntry(input) {
+		const result = await this._primary.appendAuditEntry(input);
+		await this._mirrorCall('appendAuditEntry', [input]);
+		return result;
+	}
+	async markAuditEntry(input) {
+		const result = await this._primary.markAuditEntry(input);
+		await this._mirrorCall('markAuditEntry', [input]);
+		return result;
+	}
+
+	// Read methods — primary first; fall back to mirror if primary returns
+	// null/empty and mirror has data. This makes the read path tolerant of
+	// the cutover gap where Postgres is still being populated.
+	async get(slug) {
+		const r = await this._primary.get(slug);
+		if (r) return r;
+		return await this._mirrorCall('get', [slug]) || null;
+	}
+	async getByStripeCustomer(id) {
+		const r = await this._primary.getByStripeCustomer(id);
+		if (r) return r;
+		return await this._mirrorCall('getByStripeCustomer', [id]) || null;
+	}
+	async appNameFor(slug, appSlug) {
+		const r = await this._primary.appNameFor(slug, appSlug);
+		if (r) return r;
+		return await this._mirrorCall('appNameFor', [slug, appSlug]) || null;
+	}
+	async getAppRecord(tenantSlug, appSlug) {
+		const r = await this._primary.getAppRecord(tenantSlug, appSlug);
+		if (r) return r;
+		return await this._mirrorCall('getAppRecord', [tenantSlug, appSlug]) || null;
+	}
+	async lookupAppBySubdomain(subdomain) {
+		const r = await this._primary.lookupAppBySubdomain(subdomain);
+		if (r) return r;
+		return await this._mirrorCall('lookupAppBySubdomain', [subdomain]) || null;
+	}
+	async loadKnownApps() {
+		// Union of both — reconcile job needs the full picture during cutover.
+		const p = await this._primary.loadKnownApps();
+		const m = (await this._mirrorCall('loadKnownApps', [])) || { scripts: new Set(), databases: new Set() };
+		const scripts = new Set([...(p?.scripts || []), ...(m.scripts || [])]);
+		const databases = new Set([...(p?.databases || []), ...(m.databases || [])]);
+		return { scripts, databases };
+	}
+	async seenStripeEvent(eventId) {
+		// True if EITHER store has seen it — safer for idempotency.
+		const p = await this._primary.seenStripeEvent(eventId);
+		if (p) return true;
+		return Boolean(await this._mirrorCall('seenStripeEvent', [eventId]));
+	}
+	async getAuditLog(tenantSlug, appSlug) {
+		// Primary's log wins — audit is append-only and primary is the source
+		// of truth post-cutover. Empty primary falls through to mirror.
+		const p = await this._primary.getAuditLog(tenantSlug, appSlug);
+		if (Array.isArray(p) && p.length > 0) return p;
+		const m = await this._mirrorCall('getAuditLog', [tenantSlug, appSlug]);
+		return Array.isArray(m) ? m : (Array.isArray(p) ? p : []);
+	}
+}
+
 export function overQuota(tenant) {
 	const limit = planFor(tenant.plan).appsLimit;
 	return (tenant.apps_deployed || 0) >= limit;
