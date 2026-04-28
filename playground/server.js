@@ -31,6 +31,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
+import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
 // UI button) bypasses dispatchTool — it doesn't want the Meph-facing tab-
@@ -3091,6 +3092,14 @@ app.post('/api/chat', async (req, res) => {
     // out of iterations before finishing register/login/full-CRUD flows. 25
     // gives him enough room without risking runaway sessions.
     const MEPH_MAX_ITER = Number(process.env.MEPH_MAX_ITER) || 25;
+
+    // Snap layer config — when Meph "thinks he's done" but compile errors
+    // remain, inject a synthetic user follow-up asking him to fix them and
+    // re-roll. Up to N retries. The user only ever sees converged output.
+    // Disable with SNAP_LAYER_OFF=1; override cap with SNAP_MAX_RETRIES.
+    const snapConfig = readSnapConfig(process.env);
+    let snapRetryCount = 0;
+
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
       // Prompt-caching strategy (added Session 38):
       //   1. System array has cache_control on the stable block → caches tools
@@ -3299,6 +3308,39 @@ app.post('/api/chat', async (req, res) => {
       if (accText) assistantContent.push({ type: 'text', text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
+        // Snap layer: if Meph stopped with compile errors still on screen,
+        // re-prompt him with the errors and continue the loop. Caps at
+        // snapConfig.maxRetries to avoid infinite re-rolls. Hidden from the
+        // user — they only see the final converged output.
+        if (shouldSnapRetry({
+          currentErrors,
+          snapRetryCount,
+          maxRetries: snapConfig.maxRetries,
+          layerOff: snapConfig.layerOff,
+        })) {
+          snapRetryCount++;
+          messages.push({ role: 'assistant', content: assistantContent });
+          messages.push({
+            role: 'user',
+            content: formatSnapMessage({
+              errors: currentErrors,
+              retryIndex: snapRetryCount,
+              maxRetries: snapConfig.maxRetries,
+            }),
+          });
+          if (_factorDB) {
+            try {
+              _factorDB.logEvent?.({
+                kind: 'snap_retry',
+                session_id: sessionId,
+                payload: { retry_index: snapRetryCount, error_count: currentErrors.length, max_retries: snapConfig.maxRetries },
+              });
+            } catch { /* telemetry best-effort */ }
+          }
+          console.log(`[snap-layer] retry ${snapRetryCount}/${snapConfig.maxRetries} — ${currentErrors.length} compile error${currentErrors.length === 1 ? '' : 's'} remained at end_turn`);
+          continue; // re-enter the iteration loop with the augmented messages
+        }
+
         _captureHintUsage('end_turn');
         writeSessionQuality();
         send({ type: 'done', toolResults, source: currentSource });
