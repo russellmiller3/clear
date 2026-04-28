@@ -53,11 +53,11 @@ Verified via the preview tools (preview_eval across all 11 routes of a live deal
 - /all and /reports show their charts and tables (because all_deals loads on /)
 - /approved, /rejected, /awaiting, /reps, /accounts, /rules, /integrations show their headings + sidebar but EMPTY tables.
 
-This is a runtime / router gap, not a compile error. The compiler emits the on-page-load fetch correctly; the client-side router just doesn't trigger it on route swap. Two paths to fix:
-- (a) Make the runtime re-fire `on page load` blocks when the route changes to that page.
-- (b) Cherry-pick Codex's shell-page router (still in stash@{0}) which mounts each page's content into an outlet on route change — its mount path naturally re-runs the page's setup.
+This is a runtime / router gap, not a compile error. The compiler emits the on-page-load fetch correctly; the client-side router just doesn't trigger it on route swap.
 
-Path (b) is on the cherry-pick queue below. Path (a) might be cheaper if the compiler already knows which routes own which fetches.
+**The right-way fix:** cherry-pick Codex's shell-page router (chunk #10 in the queue below). It mounts each page's content into an outlet on route change, so the page mount lifecycle re-runs naturally and on-page-load blocks fire again. Per CLAUDE.md "Always do things the right way" + PHILOSOPHY.md "fix the compiler / runtime — every future app benefits." This is the same kind of bug as the components-drop-children one fixed today — a compiler / runtime layer issue that should be fixed at the right layer, not papered over per-app.
+
+Do NOT consider a per-app workaround (manually writing client-side fetch on route change in deal-desk's main.clear). That's the shortcut path. The compiler / runtime is the right layer. Cherry-pick chunk #10 first when the next session starts the cherry-pick — it's the load-bearing fix that unblocks everything else customer-visible.
 
 ## Verification on pickup
 
