@@ -74,3 +74,4 @@ test-*.clear
 # Python cache artifacts
 __pycache__/
 *.pyc
+.claude/state/
