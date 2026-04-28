@@ -68,8 +68,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .tests-stats-badge { color: var(--green); background: color-mix(in oklch, var(--green) 12%, transparent); border-color: color-mix(in oklch, var(--green) 25%, transparent); cursor: pointer; }
 .tests-stats-badge.has-failures { color: var(--red); background: color-mix(in oklch, var(--red) 12%, transparent); border-color: color-mix(in oklch, var(--red) 25%, transparent); }
 @keyframes stats-pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-#chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; margin-left: auto; }
+#chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; order: -10; margin-right: 8px; }
 #chat-toggle-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
+/* Show Source toggle gets the far-right slot — sits next to where the source pane appears in builder mode. */
+#source-toggle-btn { order: 100; margin-left: auto; }
 @media (max-width: 1100px) { #chat-pane { width: 0 !important; } }
 
 /* Toolbar */
@@ -119,8 +121,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .warning-line::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--amber); flex-shrink: 0; margin-top: 5px; }
 
 /* Preview */
-#preview-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--bd); }
-.prev-tab { padding: 10px 16px; font-size: 12px; font-weight: 500; color: var(--tx3); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .15s; position: relative; }
+#preview-tabs { display: flex; flex-wrap: wrap; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--bd); row-gap: 0; }
+.prev-tab { padding: 7px 11px; font-size: 11.5px; font-weight: 500; color: var(--tx3); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .15s; position: relative; white-space: nowrap; }
 .prev-tab:hover { color: var(--tx2); }
 .prev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .prev-tab.active::after { display: none; }
@@ -495,46 +497,87 @@ body.builder-mode:not(.has-compiled) #tile-gallery { display: block; }
 }
 
 /* ==========================================================================
-   BUILDER MODE v0.1 (Marcus-first layout — opt-in via ?studio-mode=builder)
-   Feature-flagged. Classic 3-panel remains the default.
+   BUILDER MODE v0.2 (Marcus-first layout — opt-in via ?studio-mode=builder)
+   Layout: Meph on LEFT rail, preview center, source toggleable right pane.
+   Updated 2026-04-28 per Russell's review (chat below app was wrong).
    ========================================================================== */
-body.builder-mode #main-area { flex-direction: column; position: relative; }
+body.builder-mode #main-area { flex-direction: row; position: relative; }
 
-/* BM-2: Preview as hero — full-width, ~60vh. DOM order is chat → editor → preview,
-   so we need `order` to put preview on top in column layout. */
-body.builder-mode #preview-pane {
-  order: 0;
-  flex: 1 1 auto;
-  min-height: 60vh;
-  width: 100%;
-  border-left: 0;
-  border-bottom: 1px solid var(--bd);
-}
-
-/* BM-1: Chat as bottom driver — full-width, ~40vh */
+/* BM-1 (v0.2): Chat as left rail — same width as classic, full height.
+   DOM order is chat → chat-resizer → editor → ep-resizer → preview, which
+   maps to a row layout naturally. */
 body.builder-mode #chat-pane {
-  order: 1;
-  flex: 0 0 40vh;
-  width: 100% !important;   /* overrides mobile breakpoint at line 73 */
+  order: 0;
+  flex: 0 0 360px;   /* JS resizer overrides this when user drags */
+  width: auto !important;
   min-width: 0;
-  border-top: 1px solid var(--bd);
+  height: 100%;
+  border-top: 0;
+  border-right: 1px solid var(--bd);
   border-bottom: 0;
 }
-/* Defense-in-depth for E-4: .collapsed class gets removed on mode enter,
-   but if something else toggles it after, keep the 40vh layout. */
-body.builder-mode #chat-pane.collapsed { flex-basis: 40vh !important; }
+body.builder-mode #chat-pane.collapsed { flex-basis: 0 !important; }
 
-/* Hide classic-mode horizontal resizers in builder mode */
+/* Chat resizer between Meph and preview — re-enabled in builder mode.
+   Slightly wider in builder mode so it's easier to grab. */
+body.builder-mode #chat-resizer { display: block; order: 1; width: 8px; }
+body.builder-mode #chat-resizer::after {
+  content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 32px; background: var(--bd2); border-radius: 2px;
+  pointer-events: none; transition: background .15s;
+}
+body.builder-mode #chat-resizer:hover::after { background: var(--accent); }
+
+/* BM-2 (v0.2): Preview takes remaining space. */
+body.builder-mode #preview-pane {
+  order: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: auto;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+/* Source pane on right when toggled — inline (not overlay), so the
+   resizer can adjust width and the layout stays predictable.
+   The resizer is HIDDEN when source is hidden — otherwise it floats in
+   the wrong slot due to CSS order interaction with default order:0. */
 body.builder-mode #ep-resizer { display: none; }
-body.builder-mode #chat-resizer { display: none; }
+body.builder-mode.show-source #ep-resizer {
+  display: block; order: 3; width: 8px;
+}
+body.builder-mode.show-source #ep-resizer::after {
+  content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 32px; background: var(--bd2); border-radius: 2px;
+  pointer-events: none; transition: background .15s;
+}
+body.builder-mode.show-source #ep-resizer:hover::after { background: var(--accent); }
+body.builder-mode #editor-pane { display: none; }
+body.builder-mode.show-source #editor-pane {
+  display: flex;
+  order: 4;
+  position: static;        /* clear v0.1's absolute overlay */
+  flex: 0 0 480px;         /* slightly wider than v0.1's 400px; JS resizer overrides */
+  width: auto;
+  min-width: 280px;
+  max-width: 80vw;
+  height: 100%;
+  background: var(--bg);
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
+  border-left: 1px solid var(--bd);
+  border-right: 0;
+  z-index: auto;
+}
 
 /* Override mobile breakpoint specifically for builder mode (E-6) */
 @media (max-width: 1100px) {
-  body.builder-mode #chat-pane { width: 100% !important; }
+  body.builder-mode #chat-pane { width: auto !important; flex: 0 0 280px; }
 }
 
-/* BM-6: Chat can't collapse below 40vh in builder mode — hide the toggle */
-body.builder-mode #chat-toggle-btn { display: none; }
+/* Chat toggle stays usable in builder mode now that chat has a real width.
+   Source toggle gets pushed to the right side of the toolbar (near source). */
+body.builder-mode #source-toggle-btn { margin-left: auto; }
 
 /* BM-5: Publish button — builder-mode restyle of #deploy-btn. Applied via
    detectStudioMode() adding .publish-btn class. */
@@ -5199,13 +5242,23 @@ window.toggleSource = function() {
 };
 
 // ==========================================================================
-// EDITOR / PREVIEW DRAG RESIZER
+// EDITOR / PREVIEW DRAG RESIZER (with localStorage persistence)
 // ==========================================================================
 (function() {
   const resizer = document.getElementById('ep-resizer');
   const editorPane = document.getElementById('editor-pane');
   const previewPane = document.getElementById('preview-pane');
   let dragging = false, startX = 0, startEditorW = 0, startPreviewW = 0;
+
+  // Restore saved width on boot (sticky slider — Russell's review 2026-04-28)
+  try {
+    const saved = localStorage.getItem('clear_editor_width_px');
+    if (saved && Number(saved) >= 200) {
+      // Use absolute width so builder-mode (right-side source pane) and
+      // classic-mode (middle source pane) both honor the user's preference.
+      editorPane.style.flex = `0 0 ${Number(saved)}px`;
+    }
+  } catch {}
 
   resizer.addEventListener('mousedown', e => {
     dragging = true;
@@ -5219,13 +5272,20 @@ window.toggleSource = function() {
 
   document.addEventListener('mousemove', e => {
     if (!dragging) return;
+    const isBuilder = document.body.classList.contains('builder-mode');
     const dx = e.clientX - startX;
-    const newEditorW = Math.max(200, startEditorW + dx);
-    const newPreviewW = Math.max(200, startPreviewW - dx);
-    // Use flex-grow ratios so window resize stays proportional
-    const total = newEditorW + newPreviewW;
-    editorPane.style.flex = `${newEditorW / total} 1 0`;
-    previewPane.style.flex = `${newPreviewW / total} 1 0`;
+    if (isBuilder) {
+      // Builder-mode: editor is the RIGHT pane, so dragging left widens it.
+      const newEditorW = Math.max(280, Math.min(window.innerWidth * 0.8, startEditorW - dx));
+      editorPane.style.flex = `0 0 ${newEditorW}px`;
+    } else {
+      // Classic mode: editor is left of preview; dragging right widens editor.
+      const newEditorW = Math.max(200, startEditorW + dx);
+      const newPreviewW = Math.max(200, startPreviewW - dx);
+      const total = newEditorW + newPreviewW;
+      editorPane.style.flex = `${newEditorW / total} 1 0`;
+      previewPane.style.flex = `${newPreviewW / total} 1 0`;
+    }
   });
 
   document.addEventListener('mouseup', () => {
@@ -5234,16 +5294,29 @@ window.toggleSource = function() {
     resizer.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    // Persist width so it sticks across reloads
+    try {
+      const w = Math.round(editorPane.getBoundingClientRect().width);
+      if (w >= 200) localStorage.setItem('clear_editor_width_px', String(w));
+    } catch {}
   });
 })();
 
 // ==========================================================================
-// CHAT PANEL DRAG RESIZER
+// CHAT PANEL DRAG RESIZER (with localStorage persistence)
 // ==========================================================================
 (function() {
   const resizer = document.getElementById('chat-resizer');
   const chatPane = document.getElementById('chat-pane');
   let dragging = false, startX = 0, startW = 0;
+
+  // Restore saved width on boot
+  try {
+    const saved = localStorage.getItem('clear_chat_width_px');
+    if (saved && Number(saved) >= 280) {
+      chatPane.style.flex = `0 0 ${Number(saved)}px`;
+    }
+  } catch {}
 
   resizer.addEventListener('mousedown', e => {
     dragging = true;
@@ -5268,6 +5341,10 @@ window.toggleSource = function() {
     resizer.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    try {
+      const w = Math.round(chatPane.getBoundingClientRect().width);
+      if (w >= 280) localStorage.setItem('clear_chat_width_px', String(w));
+    } catch {}
   });
 })();
 

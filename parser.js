@@ -4532,6 +4532,44 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
 // Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
 // =============================================================================
 
+// Levenshtein-style closest-match suggestion for queue body clauses.
+// Used by F1 (hard-fail on unknown queue body lines). Returns the closest
+// known clause within edit-distance 3, or null if nothing's close.
+function closestQueueClause(input, candidates) {
+  if (!input) return null;
+  const lower = input.toLowerCase();
+  let best = null;
+  let bestDist = 4; // hard cap — anything farther isn't a typo, it's a different word
+  for (const cand of candidates) {
+    const candFirst = cand.split(' ')[0]; // for 'no export', match against 'no'
+    const d = editDistance(lower, candFirst);
+    if (d < bestDist) {
+      bestDist = d;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+function editDistance(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
 function parseQueueDef(lines, startIdx, _parentIndent, errors) {
   const tokens = lines[startIdx].tokens;
   const line = lines[startIdx].line || startIdx + 1;
@@ -4621,7 +4659,22 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
       continue;
     }
 
-    // Unknown body line — skip but don't error (tolerant for forward-compat)
+    // F1 — hard-fail on unknown body lines with did-you-mean hint.
+    // Russell, 2026-04-28: silent skip swallows typos and the user has no idea
+    // why their email/notify clause didn't take effect. Every unknown line
+    // becomes an explicit error.
+    const lineText = bodyTokens.map(t => t.value).join(' ').trim();
+    const lineNum = lines[i].line || (i + 1);
+    const knownClauses = ['reviewer', 'actions', 'notify', 'no export'];
+    const suggestion = closestQueueClause(first, knownClauses);
+    const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
+    errors.push({
+      line: lineNum,
+      message:
+        `queue '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}.${didYouMean} ` +
+        `Valid clauses inside a queue block: \`reviewer is 'X'\`, \`actions: a, b, c\`, ` +
+        `\`notify <role> on <action>, <action>\`, \`no export\`.`,
+    });
     i++;
   }
 

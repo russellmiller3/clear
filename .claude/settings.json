@@ -22,6 +22,12 @@
             "command": "node .claude/hooks/doc-cascade.mjs",
             "timeout": 5,
             "statusMessage": "Checking if doc cascade applies..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/screenshot-ui-work.mjs",
+            "timeout": 5,
+            "statusMessage": "Reminding to screenshot UI changes before claiming done..."
           }
         ]
       }
@@ -70,6 +76,12 @@
             "command": "node .claude/hooks/landing-design-on-write.mjs",
             "timeout": 5,
             "statusMessage": "Injecting landing-page design constraints..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/no-stub-nav.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking nav items resolve to real or TBD-stubbed pages..."
           }
         ]
       }

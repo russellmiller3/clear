@@ -19,7 +19,9 @@ database is local memory
 
 create a Deals table:
   rep_name, required
+  rep_email
   customer, required
+  customer_email
   account_segment
   deal_type
   list_price (number), default 0
@@ -35,6 +37,42 @@ create a Deals table:
   health_signal
   precedent_note
   created_at_date, auto
+
+# Reps, Accounts, ApprovalRules, Integrations
+# These tables back the sidebar pages so nav items reach real data instead
+# of 404. Cherry-picked from Codex's stashed deal-desk on 2026-04-28.
+
+create a Reps table:
+  rep_name, required, unique
+  team
+  open_requests (number), default 0
+  approved_today (number), default 0
+  average_discount
+  value_at_stake
+  risk_flag
+
+create a Accounts table:
+  customer, required, unique
+  account_segment
+  owner
+  active_requests (number), default 0
+  total_value (number), default 0
+  last_decision
+  health_signal
+
+create a ApprovalRules table:
+  rule_name, required, unique
+  threshold
+  owner
+  status
+  last_updated
+
+create a Integrations table:
+  system_name, required, unique
+  sync_status
+  last_sync
+  records_synced (number), default 0
+  owner
 
 # Approval queue
 # The queue primitive auto-generates: deal_decisions audit table,
@@ -76,6 +114,31 @@ define function draft_approval(deal_data):
 
 when user requests data from /api/deals/pending:
   send back all Deals where status is 'pending'
+
+# Filter URLs feeding the sidebar pages.
+when user requests data from /api/deals/approved:
+  send back all Deals where status is 'approved'
+
+when user requests data from /api/deals/rejected:
+  send back all Deals where status is 'rejected'
+
+when user requests data from /api/deals/awaiting:
+  send back all Deals where status is 'awaiting'
+
+when user requests data from /api/deals/all:
+  send back all Deals
+
+when user requests data from /api/reps:
+  send back all Reps
+
+when user requests data from /api/accounts:
+  send back all Accounts
+
+when user requests data from /api/approval-rules:
+  send back all ApprovalRules
+
+when user requests data from /api/integrations:
+  send back all Integrations
 
 when user sends deal to /api/deals:
   requires login
@@ -223,9 +286,160 @@ when user sends seed to /api/seed:
     submitted_label is '1h ago'
     recommendation is 'rejected'
   save d7 as new Deal
+
+  # Seed Reps so /reps page shows populated rows.
+  create r1:
+    rep_name is 'Sarah Chen'
+    team is 'Enterprise West'
+    open_requests = 4
+    approved_today = 2
+    average_discount is '24%'
+    value_at_stake is '$340K'
+    risk_flag is 'Green'
+  save r1 as new Rep
+  create r2:
+    rep_name is 'Marcus Wong'
+    team is 'Mid-market East'
+    open_requests = 3
+    approved_today = 1
+    average_discount is '21%'
+    value_at_stake is '$112K'
+    risk_flag is 'Green'
+  save r2 as new Rep
+  create r3:
+    rep_name is 'Priya Patel'
+    team is 'Mid-market East'
+    open_requests = 2
+    approved_today = 0
+    average_discount is '32%'
+    value_at_stake is '$118K'
+    risk_flag is 'Amber'
+  save r3 as new Rep
+  create r4:
+    rep_name is 'Daniel Kim'
+    team is 'Enterprise East'
+    open_requests = 1
+    approved_today = 0
+    average_discount is '22%'
+    value_at_stake is '$96K'
+    risk_flag is 'Green'
+  save r4 as new Rep
+
+  # Seed Accounts.
+  create a1:
+    customer is 'Acme Corp'
+    account_segment is 'Enterprise'
+    owner is 'Sarah Chen'
+    active_requests = 1
+    total_value = 84000
+    last_decision is 'pending'
+    health_signal is 'Green'
+  save a1 as new Account
+  create a2:
+    customer is 'Globex Industries'
+    account_segment is 'Mid-market'
+    owner is 'Marcus Wong'
+    active_requests = 1
+    total_value = 42500
+    last_decision is 'pending'
+    health_signal is 'Green'
+  save a2 as new Account
+  create a3:
+    customer is 'Initech'
+    account_segment is 'Mid-market'
+    owner is 'Priya Patel'
+    active_requests = 1
+    total_value = 118000
+    last_decision is 'pending'
+    health_signal is 'Amber'
+  save a3 as new Account
+  create a4:
+    customer is 'Hooli'
+    account_segment is 'Enterprise'
+    owner is 'Daniel Kim'
+    active_requests = 1
+    total_value = 96800
+    last_decision is 'pending'
+    health_signal is 'Green'
+  save a4 as new Account
+
+  # Seed ApprovalRules.
+  create rule1:
+    rule_name is 'CRO above 25 percent'
+    threshold is '25% discount'
+    owner is 'CRO'
+    status is 'active'
+    last_updated is 'Apr 15, 2026'
+  save rule1 as new ApprovalRule
+  create rule2:
+    rule_name is 'Auto-approve below 10 percent'
+    threshold is '10% discount'
+    owner is 'System'
+    status is 'active'
+    last_updated is 'Mar 1, 2026'
+  save rule2 as new ApprovalRule
+  create rule3:
+    rule_name is 'Strategic account review'
+    threshold is 'Any discount on tagged accounts'
+    owner is 'CRO + AE Manager'
+    status is 'active'
+    last_updated is 'Feb 22, 2026'
+  save rule3 as new ApprovalRule
+
+  # Seed Integrations.
+  create i1:
+    system_name is 'Salesforce CRM'
+    sync_status is 'Connected'
+    last_sync is '5m ago'
+    records_synced = 1248
+    owner is 'RevOps'
+  save i1 as new Integration
+  create i2:
+    system_name is 'Slack notifications'
+    sync_status is 'Connected'
+    last_sync is '2m ago'
+    records_synced = 312
+    owner is 'IT'
+  save i2 as new Integration
+  create i3:
+    system_name is 'DocuSign'
+    sync_status is 'Connected'
+    last_sync is '12m ago'
+    records_synced = 84
+    owner is 'Legal'
+  save i3 as new Integration
+
   send back 'seeded' with success message
 
 # Frontend
+
+# Shared sidebar — referenced from every page so nav persists across routes.
+# Compiler fix shipped 2026-04-28 lets nav-section + nav-item render inside
+# `define component` bodies. Single source of truth for the sidebar layout.
+
+define component DealDeskSidebar:
+  heading 'Deal Desk'
+
+  nav section 'Approvals':
+    nav item 'Pending' to '/' with icon 'inbox'
+    nav item 'Approved today' to '/approved' with icon 'check-circle-2'
+    nav item 'Rejected' to '/rejected' with icon 'x-circle'
+    nav item 'Awaiting customer' to '/awaiting' with icon 'clock'
+
+  nav section 'Pipeline':
+    nav item 'All deals' to '/all' with icon 'layers'
+    nav item 'Reps' to '/reps' with icon 'users'
+    nav item 'Accounts' to '/accounts' with icon 'building-2'
+    nav item 'Reports' to '/reports' with icon 'bar-chart-3'
+
+  nav section 'Workspace':
+    nav item 'Approval rules' to '/rules' with icon 'git-branch'
+    nav item 'Integrations' to '/integrations' with icon 'puzzle'
+    nav item 'Settings' to '/settings' with icon 'settings'
+
+  section 'Quota' with style app_card:
+    small text 'Quota: 78%'
+    text '$2.3M of $3M'
 
 page 'Deal Desk' at '/':
   on page load:
@@ -331,6 +545,120 @@ page 'Deal Desk' at '/':
           small text '{pending_count} pending'
           small text 'synced 12 sec ago'
           small text 'Clear Cloud'
+
+page 'Approved today' at '/approved':
+  on page load:
+    get approved_deals from '/api/deals/approved'
+
+  page header 'Approved today':
+    subtitle 'Approved requests cleared today and ready for audit.'
+
+  section 'Approved Deals' with style app_table:
+    display approved_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
+
+page 'Rejected' at '/rejected':
+  on page load:
+    get rejected_deals from '/api/deals/rejected'
+
+  page header 'Rejected deals':
+    subtitle 'Requests rejected after CRO review.'
+
+  section 'Rejected Deals' with style app_table:
+    display rejected_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
+
+page 'Awaiting customer' at '/awaiting':
+  on page load:
+    get awaiting_deals from '/api/deals/awaiting'
+
+  page header 'Awaiting customer':
+    subtitle 'Counters, signatures, and procurement follow-ups needing customer action.'
+
+  section 'Customer Follow-up' with style app_table:
+    display awaiting_deals as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label
+
+page 'All deals' at '/all':
+  on page load:
+    get all_deals from '/api/deals/all'
+
+  page header 'All deals':
+    subtitle 'Total deal-desk requests across every status.'
+
+  chart 'Approval mix' as pie showing all_deals by status
+  chart 'Segment pressure' as bar showing all_deals by account_segment
+
+  section 'Deal Audit Trail' with style app_table:
+    display all_deals as table showing customer, account_segment, rep_name, deal_type, list_price, discount_percent, status, submitted_label
+
+page 'Reps' at '/reps':
+  on page load:
+    get reps from '/api/reps'
+
+  page header 'Reps':
+    subtitle 'Reps with active or recent discount requests.'
+
+  section 'Rep Performance' with style app_table:
+    display reps as table showing rep_name, team, open_requests, approved_today, average_discount, value_at_stake, risk_flag
+
+page 'Accounts' at '/accounts':
+  on page load:
+    get accounts from '/api/accounts'
+
+  page header 'Accounts':
+    subtitle 'Accounts with recent deal-desk context.'
+
+  section 'Account Context' with style app_table:
+    display accounts as table showing customer, account_segment, owner, active_requests, total_value, last_decision, health_signal
+
+page 'Reports' at '/reports':
+  on page load:
+    get all_deals from '/api/deals/all'
+
+  page header 'Reports':
+    subtitle 'Approval velocity, discount pressure, and value-at-stake reporting.'
+
+  chart 'Status mix' as pie showing all_deals by status
+  chart 'Segment pressure' as bar showing all_deals by account_segment
+  chart 'Deal types' as pie showing all_deals by deal_type
+
+  section 'Reports Detail' with style app_table:
+    display all_deals as table showing customer, status, list_price, discount_percent, submitted_label
+
+page 'Approval rules' at '/rules':
+  on page load:
+    get approval_rules from '/api/approval-rules'
+
+  page header 'Approval rules':
+    subtitle 'Policies that explain why deals route to CRO review.'
+
+  section 'Rules' with style app_table:
+    display approval_rules as table showing rule_name, threshold, owner, status, last_updated
+
+page 'Integrations' at '/integrations':
+  on page load:
+    get integrations from '/api/integrations'
+
+  page header 'Integrations':
+    subtitle 'Sync health for the systems that keep deal context trustworthy.'
+
+  section 'Integration Health' with style app_table:
+    display integrations as table showing system_name, sync_status, last_sync, records_synced, owner
+
+page 'Settings' at '/settings':
+  approval_threshold = 20
+  auto_approve_limit = 10
+  crm_sync_enabled = true
+  email_alerts_enabled = true
+
+  page header 'Settings':
+    subtitle 'Workspace controls for approval policy, notifications, and sync defaults.'
+
+  section 'Approval Controls' with style form:
+    'Approval threshold (%)' as number input saves to approval_threshold
+    'Auto-approve limit (%)' as number input saves to auto_approve_limit
+    'CRM sync enabled' as checkbox saves to crm_sync_enabled
+    'Email alerts enabled' as checkbox saves to email_alerts_enabled
+    button 'Save settings':
+      show 'Settings saved'
 
 page 'New discount request' at '/new':
   section 'Header' centered, padded:

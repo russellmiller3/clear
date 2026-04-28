@@ -6,6 +6,51 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 — Shell-page router (chunk #10) + chart polish (chunk #7) cherry-picked
+
+The compiler now emits a smarter router for multi-page apps that have an `app_layout`. The first page that wraps its body in `app_layout` becomes THE **shell page** — its sidebar, header, and chrome stay mounted across every route. When the user clicks `/approved`, the router parks the shell's default content and unparks `page_Approved_today` into the shell's content slot, then kicks `_recompute()` so the newly-visible table re-binds to data already fetched on initial page load. Sidebar persists, tables hydrate, page mount lifecycle is implicit.
+
+What this fixes in plain English: before today, a multi-page app like Deal Desk would lose its sidebar (or duplicate it) when you clicked from `/` to `/approved`, and the approved-deals table would render empty even though the data had loaded — because the table was built while its page was hidden and never re-bound when it became visible. Now the sidebar stays, the table fills in, you don't think about routing at all.
+
+What you write to opt in: declare `app_layout` once on your shell page (typically `/`); other pages contain just their content. The compiler does the rest. Apps without `app_layout` get the original simple show/hide router (no behavior change there).
+
+New compiled-output attributes (Meph + downstream tools should know about these):
+- `data-clear-shell-root="true"` on the shell page's `app_layout` div
+- `data-clear-shell-outlet="true"` on the shell page's `app_content` div
+- `data-clear-routed-content="<pageId>"` on the shell's default content wrapper AND on every non-shell page's outer div
+- `data-clear-page-id`, `data-clear-page-route`, `data-clear-page-title` on every page wrapper (single-page apps now get the marker too, so generated browser tests can prove the page rendered)
+
+Plus chart polish from the same stash (chunk #7):
+- Charts in routed pages now check `_chartEl.offsetParent !== null` before initializing — so ECharts doesn't try to render into a 0-width canvas while the page is hidden, then never recover
+- `_chart.resize()` after init fixes the post-route-swap case where the chart was built hidden then revealed
+- New `clear-chart-card` + `clear-chart-canvas` classes; pie config gets a legend, formatter, and scale-on-hover animation
+
+5 new TDD tests cover shell-outlet emit, routed-content markers, page wrapper attributes, helper functions, and the `_recompute()` after route swap. 2 prior tests updated for the new emit format (single-page apps now get the marker; page wrappers carry data-attrs between id and style). 2702 passing, 0 failing. All 8 core templates + 6 Marcus apps compile clean.
+
+Deal Desk's `apps/deal-desk/main.clear` was simplified in the same commit — non-shell pages dropped their inline `app_layout > sidebar > main > content` shells (left over from a workaround for the components-drop-children bug fixed earlier today). With chunk #10 landed, those shells were duplicating the sidebar. Now non-shell pages contain just their page header + content sections.
+
+**Carve-out for the next session.** Deal Desk's local SQLite (`apps/deal-desk/clear-data.db`) is still seeded with rows from the old schema (`status='pending_cro'` instead of `'pending'`/`'approved'`/etc.), and a Windows file lock blocked deleting it from this session. After the lock clears (or the file is renamed manually), reset the DB and re-seed via the on-page-load — every page should then show real rows, not just `/all` and `/reports`.
+
+---
+
+## 2026-04-28 — Queue parser hard-fails on unknown body lines (F1)
+
+The queue primitive's parser used to silently skip body lines it didn't recognize. Type `email rep when approve` instead of `notify rep on approve` and the parser shrugged — app builds, app is wrong, no error. That's the failure mode of the 14-year-old test in production.
+
+Fixed: every unrecognized clause inside a `queue for X:` block now emits an explicit error with a "did you mean..." hint computed by edit-distance:
+
+```
+queue 'deal': don't know what to do with 'email rep when approve' on line 5.
+Did you mean 'notify'? Valid clauses inside a queue block: `reviewer is 'X'`,
+`actions: a, b, c`, `notify <role> on <action>, <action>`, `no export`.
+```
+
+The 4 migrated Marcus apps (Deal Desk, Approval Queue, Onboarding Tracker, Internal Request Queue) all still compile clean — they only use known clauses, so the stricter parser doesn't bite them.
+
+Plan: `plans/plan-queue-primitive-followup-04-28-2026.md` Phase F1.
+
+---
+
 ## 2026-04-27 (overnight, 3rd ship) — CSV export auto-included on every queue
 
 Every `queue for X:` block now auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row in the entity's table, with proper RFC 4180 escaping (commas, quotes, and newlines wrapped + doubled correctly) and sensitive fields (password / token / api_key / secret / hash) automatically omitted. Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow for reporting and handoffs — explicit MVP item from the GTM list.

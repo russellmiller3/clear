@@ -4020,6 +4020,92 @@ page 'HN Daily Digest':
   });
 });
 
+// Cherry-picked from Codex stash (chunk #10, 2026-04-28). Fixes the bug where
+// data tables are empty after a route change: the on-page-load fetches all
+// fire on initial load, but tables built inside hidden page divs never re-bind.
+// The shell-page router parks/unparks page content into a single shared outlet
+// and re-runs _recompute after the swap so newly-visible tables show their data.
+describe('Shell-page router (chunk #10) — fixes empty-tables-after-route-change', () => {
+  const SHELL_APP = `
+build for web
+
+page 'Home' at '/':
+  on page load:
+    get items from '/api/items'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Nav'
+      nav item 'Home' to '/'
+      nav item 'Other' to '/other'
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        heading 'Home'
+        display items as table
+
+page 'Other' at '/other':
+  on page load:
+    get more_items from '/api/more'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Nav'
+      nav item 'Home' to '/'
+      nav item 'Other' to '/other'
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        heading 'Other'
+        display more_items as table
+  `;
+
+  it('emits data-clear-shell-outlet on the shell page app_content', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('data-clear-shell-outlet="true"');
+  });
+
+  it('marks non-shell pages with data-clear-routed-content', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/data-clear-routed-content="Other"/);
+  });
+
+  it('every page div carries id, route, and title attributes', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.html).toContain('data-clear-page-id="Home"');
+    expect(result.html).toContain('data-clear-page-route="/"');
+    expect(result.html).toContain('data-clear-page-title="Home"');
+    expect(result.html).toContain('data-clear-page-id="Other"');
+    expect(result.html).toContain('data-clear-page-route="/other"');
+  });
+
+  it('emits the shell-render helper functions when an app_layout exists', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.html).toContain('_clearRenderRouteIntoShell');
+    expect(result.html).toContain('_clearParkMountedRoutes');
+    expect(result.html).toContain('_clearTemplateHost');
+  });
+
+  it('the router calls _recompute after route swap so tables re-bind', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.html).toContain('_clearRenderRouteIntoShell(current)');
+    expect(result.html).toMatch(/requestAnimationFrame\(function\(\)\s*\{\s*_recompute\(\);\s*\}\)/);
+  });
+
+  it('apps without an app_layout do not emit the shell router', () => {
+    const result = compileProgram(`
+build for web
+
+page 'Home' at '/':
+  heading 'Home'
+
+page 'About' at '/about':
+  heading 'About'
+    `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).not.toContain('_clearRenderRouteIntoShell');
+    expect(result.html).not.toContain('data-clear-shell-outlet');
+  });
+});
+
 // =============================================================================
 // PHASE 8C: DATA FETCHING
 // =============================================================================
@@ -7188,6 +7274,73 @@ when user calls POST /api/chat receiving chat_data:
 // =============================================================================
 // COMPONENT HTML RENDERING
 // =============================================================================
+
+describe('Component - nav-section / nav-item children render (2026-04-28 fix)', () => {
+  it('compiled component preserves nav-section + nav-item children', () => {
+    const result = compileProgram(`build for web
+define component Sidebar:
+  heading 'My App'
+  nav section 'Group':
+    nav item 'Home' to '/' with icon 'home'
+    nav item 'Settings' to '/settings' with icon 'settings'
+
+page 'Home' at '/':
+  show Sidebar()
+
+page 'Settings' at '/settings':
+  show Sidebar()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function Sidebar');
+    expect(fnIdx).toBeGreaterThan(-1);
+    // Slice the body of the Sidebar function for inspection
+    const fnBody = js.slice(fnIdx, fnIdx + 1500);
+    // Heading should still be there (existing behavior)
+    expect(fnBody).toContain('My App');
+    // The nav-section label should now be in the compiled HTML
+    expect(fnBody).toContain('clear-nav-section-label');
+    expect(fnBody).toContain('Group');
+    // Each nav item should be in the compiled HTML
+    expect(fnBody).toContain('Home');
+    expect(fnBody).toContain('Settings');
+    // The icon attribute should be present
+    expect(fnBody).toContain('data-lucide');
+  });
+
+  it('compiled component preserves page-header inside body', () => {
+    const result = compileProgram(`build for web
+define component MyHeader:
+  page header 'Welcome':
+    subtitle 'A friendly greeting'
+
+page 'Home' at '/':
+  show MyHeader()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function MyHeader');
+    const fnBody = js.slice(fnIdx, fnIdx + 1000);
+    expect(fnBody).toContain('Welcome');
+    // page-header generates a clear-page-title or clear-page-header marker
+    expect(fnBody).toMatch(/clear-page-(title|header)/);
+  });
+
+  it('SHOW node still interpolates dynamic values inside components', () => {
+    const result = compileProgram(`build for web
+define component Greeting:
+  heading 'Welcome'
+  show user_name
+
+page 'Home' at '/':
+  user_name is 'Alice'
+  show Greeting()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function Greeting');
+    const fnBody = js.slice(fnIdx, fnIdx + 600);
+    // SHOW should still interpolate (not embed as static)
+    expect(fnBody).toMatch(/_html\s*\+=\s*user_name/);
+  });
+});
 
 describe('Component - HTML rendering', () => {
   it('compiles component to return HTML string in web mode', () => {
@@ -16298,18 +16451,28 @@ page 'Settings' at '/settings':
   heading 'Settings'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
+    // The page wrapper now also carries data-clear-page-id/route/title attrs
+    // (chunk #10), so the assertion checks the route attr + style:none combo
+    // rather than the old id-then-style adjacency.
     expect(r.html).toContain('id="page_Home"');
-    expect(r.html).not.toContain('id="page_Home" style="display:none"');
-    expect(r.html).toContain('id="page_Settings" style="display:none"');
+    expect(r.html).toContain('data-clear-page-route="/settings"');
+    expect(r.html).toMatch(/data-clear-page-route="\/settings"[^>]*style="display:none"/);
+    expect(r.html).not.toMatch(/data-clear-page-route="\/"[^>]*style="display:none"/);
   });
 
-  it('single-page app does NOT add page wrapper divs', () => {
+  it('single-page app gets a page wrapper too (chunk #10 — for browser-test markers)', () => {
     const src = `build for web
 page 'App' at '/':
   heading 'Hello'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).not.toContain('id="page_');
+    // Chunk #10 changed `if (pages.length > 1)` to `if (pages.length > 0)` so
+    // single-page apps emit the marker div too. Generated browser tests can
+    // assert the page actually rendered, not just that HTML fetched.
+    expect(r.html).toContain('id="page_App"');
+    expect(r.html).toContain('data-clear-page-id="App"');
+    expect(r.html).toContain('data-clear-page-route="/"');
+    expect(r.html).not.toContain('style="display:none"');
   });
 
   it('hash router references correct page IDs', () => {
@@ -22191,6 +22354,53 @@ queue for deal:
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
     expect(ast.errors.some(e => e.message.includes('actions'))).toBe(true);
+  });
+});
+
+// =============================================================================
+// F1 — hard-fail on unknown queue body lines (no silent skip)
+// Plan: plans/plan-queue-primitive-followup-04-28-2026.md Phase F1
+// =============================================================================
+
+describe('Queue primitive — parser hard-fail (F1)', () => {
+  it('errors on unknown clause inside queue block', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  email rep when approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('email rep when approve');
+  });
+
+  it('errors on a typo of a known clause with did-you-mean hint', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  notif rep on approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('did you mean');
+    expect(ast.errors[0].message).toContain('notify');
+  });
+
+  it('keeps every recognized clause parsing cleanly (no false positives)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  rep_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  notify customer on counter
+  notify rep on approve, reject
+  no export`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
   });
 });
 
