@@ -1274,6 +1274,12 @@ queue for deal:
 
 **Canonical clause is `email <role> when <action>, <action>`** — the verb names HOW (email), the connector reads naturally (when, not on). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but write `email when` in new code. Future communication primitives will follow the same pattern (`slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`). Don't reach for `notify` — it doesn't say HOW the recipient gets reached.
 
+**`actions:` synonyms (F4)** — `options:` and `buttons:` are accepted as synonyms for `actions:` inside the queue body. Reach for whichever reads most natural for the manager you're writing for: `actions:` for abstract pipelines, `options:` when it's a menu, `buttons:` when the UI is the framing. All three parse to the same shape.
+
+**`waiting on customer` is the canonical multi-word action (F4)** for the same terminal status as legacy `awaiting customer`. Reads more naturally for the CRO. URL slug is `/api/deals/:id/waiting`. The status field still lands on `'awaiting'`, so an `email customer when deal's status changes to 'awaiting':` trigger fires correctly with either form.
+
+**Plural input is accepted (F2)** — `queue for deals:` produces the same audit table + URLs as `queue for deal:`. The parser singularizes English plurals (`-s`, `-ies`, `-(s|x|z|sh|ch)es`) on the way in. `-ss` endings (`address`, `business`, `status`) stay as-is so they don't get truncated wrong.
+
 What the compiler emits for free:
 - A `deal_decisions` audit table with `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`.
 - A `deal_notifications` outbound queue table — only when `email` or `notify` clauses are present.
