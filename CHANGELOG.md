@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-28 (late evening) — Triggered email Phase B-1 part 1: template substitution at queue-insert
+
+Every queued email used to get the same literal subject + body. Now `{customer}`, `{amount}`, `{customer_email}` and any other `{field}` reference in the Clear source resolves at queue-insert time against the entity record. Each row in `workflow_email_queue` carries the per-customer text that's actually intended.
+
+**Why this matters:** without per-record substitution, live sending (Phase B-1 part 2) would be useless — every customer gets "Sarah from our team has prepared a counter offer for you" with no name, no deal, no amount. Validator Cycle 5.2 already catches `{ident}` references that don't match an entity field at compile time (so typos surface early). Now the runtime resolves the legitimate ones.
+
+**How it lands:** new utility helper `_clear_interpolate(template, record)` ships with any compiled output that needs it (auto-included via the existing tree-shake pass). Both queue-insert injection sites — the queue's auto-PUT handlers in `compileQueueDef` and the user-defined endpoint inject in `compileEndpoint` — now wrap subject + body with the helper. Missing fields render as empty string, never the literal "undefined".
+
+3 new tests under `Triggered email — template substitution (Phase B-1)` (2737 → 2740 passing, 0 failing).
+
+Phase B-1 part 2 (the `email delivery using <provider>` directive, real sending worker, provider adapters, reply webhook) is gated on Russell providing AgentMail/SendGrid keys + explicit go to send real customer email.
+
 ## 2026-04-28 (evening) — Queue primitive F2 + F4 — plural input + action keyword synonyms + waiting on customer canonical
 
 Two follow-ups from Russell's 2026-04-28 red-team review of the queue primitive plan, both backwards-compatible.

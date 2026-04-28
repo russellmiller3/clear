@@ -22791,6 +22791,81 @@ when user requests data from /api/deals:
   });
 });
 
+describe('Triggered email — template substitution (Phase B-1)', () => {
+  // Today every queued email gets the SAME literal subject + body. With this
+  // change, {field} references in the Clear source resolve at queue-insert
+  // time against the entity record — so each email mentions THIS customer's
+  // name, THIS deal's amount, etc. Without this, live sending would be
+  // useless ("Sarah from our team has prepared a counter offer for you" with
+  // no name, no deal, no number).
+  it('queue auto-PUT handler interpolates {field} references in subject + body', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  amount
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer for {customer}'
+  body is 'Hi {customer}, we countered your {amount} request.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The compiled queue-insert must wrap subject + body with the runtime
+    // helper, NOT pass through literal strings unchanged.
+    expect(result.javascript).toContain('_clear_interpolate');
+    expect(result.javascript).toContain('function _clear_interpolate');
+    // The literal templates must be present (as the first arg to the helper).
+    expect(result.javascript).toContain('"Counter offer for {customer}"');
+    expect(result.javascript).toContain('"Hi {customer}, we countered your {amount} request."');
+  });
+
+  it('user-defined endpoint email injection also wraps subject + body with the helper', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  amount
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter for {customer}'
+  body is 'Counter on amount {amount}'
+when user calls PUT /api/deals/:id/awaiting sending deal:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_clear_interpolate');
+  });
+
+  it('helper handles missing fields safely — empty string, never undefined', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'no fields'
+  body is 'still no fields'`;
+    const result = compileProgram(src);
+    // Helper is included whenever the queue insert references it.
+    expect(result.javascript).toContain('function _clear_interpolate');
+    // The helper body must guard against missing fields — `record[key] == null`
+    // returns empty string, not the literal "undefined".
+    const helperMatch = result.javascript.match(/function _clear_interpolate[\s\S]*?\n\}/);
+    expect(helperMatch).toBeTruthy();
+    expect(helperMatch[0]).toMatch(/== ?null|=== ?undefined|null \?|null \&\&/);
+  });
+});
+
 describe('Triggered email — validator (Phase 5)', () => {
   it("hard-errors on an unknown provider name with did-you-mean suggestion", () => {
     const src = `create a Deals table:

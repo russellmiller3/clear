@@ -1306,6 +1306,8 @@ email customer when deal's status changes to 'awaiting':
 
 The compiler emits a single shared `workflow_email_queue` table per app and wires queue auto-PUT handlers (whose terminalStatus matches the trigger value) to insert email rows alongside the audit + notify inserts. **No real provider sends in default builds** — rows queue only. Live delivery is gated behind an explicit `enable live email delivery via X` directive (not yet shipped). Tests, previews, and dev never accidentally email a customer.
 
+**Per-customer text via `{field}` substitution.** Subject and body interpolate `{field}` references against the entity record at queue-insert time. So `body is 'Hi {customer}, we countered your {amount} request.'` produces a different per-row body for every queued email — the actual customer's name and amount, not the literal `{customer}` placeholder. Missing fields render as empty string. Validator Cycle 5.2 catches typos at compile time (a `{nonexistent_field}` warns before you ever queue a row).
+
 **Sub-clauses inside the body:**
 - `subject is '...'` (required)
 - `body is '...'` (required)
