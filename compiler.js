@@ -217,55 +217,129 @@ export const UTILITY_FUNCTIONS = [
   // reactive re-renders, only the visible slice is repainted.
   { name: '_clear_render_table', code: `function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
-  tableEl._clear_rows = Array.isArray(data) ? data : [];
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
-  if (!Array.isArray(data) || data.length === 0) {
+  if (rows.length === 0) {
     if (thead) thead.innerHTML = '';
     if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
     return;
   }
-  if (thead) thead.innerHTML = renderHead(data);
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}`, deps: ['_clear_apply_table_view'] },
+  // SHELL-5 (Codex chunk #5): rows-for-view applies user sort + filter on top
+  // of raw rows. Sort handles numeric, currency-prefixed, percent-suffixed, and
+  // text columns; empty values sort to the end regardless of direction.
+  { name: '_clear_table_rows_for_view', code: `function _clear_table_rows_for_view(rows, sortCol, sortDir, filterText) {
+  var out = Array.isArray(rows) ? rows.slice() : [];
+  var query = String(filterText || '').trim().toLowerCase();
+  if (query) {
+    out = out.filter(function(row) {
+      return Object.keys(row || {}).some(function(key) {
+        var value = row[key];
+        if (value == null) return false;
+        var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        return text.toLowerCase().indexOf(query) !== -1;
+      });
+    });
+  }
+  if (sortCol) {
+    var dir = sortDir === 'desc' ? -1 : 1;
+    function normalized(value) {
+      if (value == null || value === '') return { empty: true, value: '' };
+      var raw = String(value).trim();
+      var numeric = raw.replace(/[$,%]/g, '').replace(/,/g, '');
+      if (numeric !== '' && /^-?\\d+(\\.\\d+)?$/.test(numeric)) {
+        return { empty: false, kind: 'number', value: Number(numeric) };
+      }
+      return { empty: false, kind: 'text', value: raw.toLowerCase() };
+    }
+    out.sort(function(a, b) {
+      var av = normalized(a && a[sortCol]);
+      var bv = normalized(b && b[sortCol]);
+      if (av.empty && bv.empty) return 0;
+      if (av.empty) return 1;
+      if (bv.empty) return -1;
+      if (av.kind === 'number' && bv.kind === 'number') return (av.value - bv.value) * dir;
+      return String(av.value).localeCompare(String(bv.value), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }
+  return out;
+}`, deps: [] },
+  // SHELL-5 (Codex chunk #5): apply-table-view re-paints the body using the
+  // current sort + filter attrs on the table element. Called by the sort/filter
+  // event handlers AND on initial render. Preserves the virtualized-scroll path
+  // for tables over 100 rows.
+  { name: '_clear_apply_table_view', code: `function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
   var VIRT_THRESHOLD = 100;
-  if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(function(row, idx) { return renderRow(row, idx); }).join('');
-    return;
-  }
   var ROW_HEIGHT = 40;
   var BUFFER = 5;
   var scroller = tableEl.parentElement;
-  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
   scroller.style.maxHeight = '560px';
   scroller.style.overflowY = 'auto';
-  function paint() {
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
     var top = scroller.scrollTop;
     var h = scroller.clientHeight || 560;
     var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
-    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
     var topPad = first * ROW_HEIGHT;
-    var botPad = (data.length - last) * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
     var html = '';
     if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
-    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
     if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
     tbody.innerHTML = html;
-  }
+  };
   if (!scroller._clear_virt_bound) {
     scroller._clear_virt_bound = true;
-    scroller.addEventListener('scroll', paint, { passive: true });
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
   }
-  paint();
+  tableEl._clear_paint_table();
+}`, deps: ['_clear_table_rows_for_view'] },
+  // SHELL-5 (Codex chunk #5): column-key → header-text formatter.
+  // 'rep_name' → 'Rep name', 'list_price' → 'List price'. Same logic as the
+  // existing inline header emit but reusable from the sort/filter path.
+  { name: '_clear_table_header', code: `function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
 }`, deps: [] },
   // SHELL-5: per-cell type detection. Each table cell goes through this so
   // the same compiled code yields a status pill, an avatar circle, or a
   // right-aligned money column purely based on the column key. No CSS in
   // .clear required — the column NAME drives the styling.
-  { name: '_clear_cell', code: `function _clear_cell(key, val) {
+  { name: '_clear_cell', code: `function _clear_cell(key, val, selectable) {
   var k = String(key).toLowerCase();
   var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
   if (k === 'status' || k === 'state' || k === 'stage') {
     var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
-    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
   }
   if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\\$/.test(v)) {
     var formatted = v;
@@ -273,7 +347,7 @@ export const UTILITY_FUNCTIONS = [
       var n = Number(val);
       formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
     }
-    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
   }
   if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
     var parts = v.trim().split(/[\\s@.]+/).filter(Boolean);
@@ -281,9 +355,9 @@ export const UTILITY_FUNCTIONS = [
       ? (parts[0][0] || '') + (parts[1][0] || '')
       : v.slice(0, 2);
     initials = initials.toUpperCase();
-    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
   }
-  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
 }`, deps: ['_esc'] },
   // SHELL-5: one-time wiring per table — click-to-select on rows, sort
   // toggling on header clicks. Idempotent (guarded via _clear_init flag) so
@@ -293,6 +367,16 @@ export const UTILITY_FUNCTIONS = [
   if (selectedVar) tableEl._clear_selected_var = selectedVar;
   if (tableEl._clear_init) return;
   tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
   tableEl.addEventListener('click', function(e) {
     var th = e.target.closest('th[data-sortable]');
     if (th) {
@@ -301,8 +385,10 @@ export const UTILITY_FUNCTIONS = [
       var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
       tableEl.setAttribute('data-sort-col', col);
       tableEl.setAttribute('data-sort-dir', dir);
-      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
       th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
       return;
     }
     var tr = e.target.closest('tbody tr');
@@ -318,7 +404,7 @@ export const UTILITY_FUNCTIONS = [
       }
     }
   });
-}`, deps: [] },
+}`, deps: ['_clear_apply_table_view'] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
@@ -10240,8 +10326,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       const headKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(d[0])';
       const rowKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(row)';
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
-      const headCols = `_keys.map(function(k) { return '<th class="${thClass}" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join('')`;
-      const dataCols = `_keys.map(function(k) { return _clear_cell(k, row[k]); }).join('')`;
+      const headCols = `_keys.map(function(k) { return '<th class="${thClass}" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join('')`;
+      const selectableCellExpr = detailTarget ? 'idx === 0' : 'false';
+      const dataCols = `_keys.map(function(k, idx) { return _clear_cell(k, row[k], ${selectableCellExpr}); }).join('')`;
       let rowHtmlExpr;
       if (hasActions) {
         const buttonExprs = [];
@@ -12055,8 +12142,9 @@ ${options}
           const _cl = clAttr(node);
           if (ui.tag === 'table') {
             parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}"${_cl}>
-      <div class="px-6 py-4 border-b border-base-300/40">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="${displayId}_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="${displayId}_table">
