@@ -6034,6 +6034,63 @@ function compileValidate(node, ctx, pad) {
   return `${pad}const _vErrs = _validate(req.body, [${rules.join(', ')}]);\n${pad}if (_vErrs) return res.status(400).json({ errors: _vErrs });`;
 }
 
+// =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` declares a human-approval queue. Compiler auto-emits:
+//   - `<entity>_decisions` audit table (always)
+//   - `<entity>_notifications` outbound queue table (when notify clauses present)
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+function compileQueueDef(node, ctx, pad) {
+  // Phase 2 scope: emit the auto-generated tables (decisions + optional notifications).
+  // Phase 3 will add URL handlers; Phase 4 will add UI elements.
+
+  // Local-memory backend is the default for Marcus apps. We emit `db.createTable(...)`
+  // calls matching the pattern used by compileDataShape's JS branch.
+  // Python and other backends to follow if Marcus uses them.
+  if (ctx.lang === 'python') {
+    return `${pad}# queue for ${node.entityName}: tables emitted by Phase 2 (Python target TBD)`;
+  }
+
+  const entityNameLower = node.entityName.toLowerCase();
+  const decisionsTableName = `${entityNameLower}_decisions`;
+  const decisionsSchemaName = `${node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1)}DecisionsSchema`;
+
+  let result = `${pad}// Auto-generated audit table for queue '${node.entityName}'\n`;
+  result += `${pad}const ${decisionsSchemaName} = {\n`;
+  result += `${pad}  ${entityNameLower}_id: { type: "text", required: true },\n`;
+  result += `${pad}  decision: { type: "text", required: true },\n`;
+  result += `${pad}  decided_by: { type: "text" },\n`;
+  result += `${pad}  decision_note: { type: "text" },\n`;
+  result += `${pad}  next_status: { type: "text" },\n`;
+  result += `${pad}  decided_at: { type: "timestamp", auto: true }\n`;
+  result += `${pad}};\n`;
+  if (ctx.mode === 'backend') {
+    result += `${pad}db.createTable('${decisionsTableName}', ${decisionsSchemaName});`;
+  }
+
+  // Notifications table: only when notify clauses present.
+  if (node.notifications && node.notifications.length > 0) {
+    const notifTableName = `${entityNameLower}_notifications`;
+    const notifSchemaName = `${node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1)}NotificationsSchema`;
+    result += `\n${pad}// Auto-generated notifications outbound queue for '${node.entityName}'\n`;
+    result += `${pad}const ${notifSchemaName} = {\n`;
+    result += `${pad}  ${entityNameLower}_id: { type: "text", required: true },\n`;
+    result += `${pad}  recipient_role: { type: "text" },\n`;
+    result += `${pad}  recipient_email: { type: "text" },\n`;
+    result += `${pad}  notification_type: { type: "text" },\n`;
+    result += `${pad}  queue_status: { type: "text", default: "pending" },\n`;
+    result += `${pad}  queued_at: { type: "timestamp", auto: true }\n`;
+    result += `${pad}};\n`;
+    if (ctx.mode === 'backend') {
+      result += `${pad}db.createTable('${notifTableName}', ${notifSchemaName});`;
+    }
+  }
+
+  return result;
+}
+
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
     // Supabase: tables managed in dashboard, emit comment only
@@ -6908,6 +6965,9 @@ ${pad}}`;
 
     case NodeType.ENDPOINT:
       return compileEndpoint(node, ctx, pad);
+
+    case NodeType.QUEUE_DEF:
+      return compileQueueDef(node, ctx, pad);
 
     case NodeType.RESPOND:
       return compileRespond(node, ctx, pad);

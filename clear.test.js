@@ -22194,6 +22194,76 @@ queue for deal:
   });
 });
 
+describe('Queue primitive — compiler tables', () => {
+  it('emits a deal_decisions audit table when queue for deal: declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // JS backend emits db.createTable() rather than literal CREATE TABLE SQL.
+    // Backend code is in result.javascript (not serverJS).
+    expect(result.javascript).toContain('deal_decisions');
+    expect(result.javascript).toContain('deal_id');
+    expect(result.javascript).toContain('decision');
+    expect(result.javascript).toContain('decided_by');
+    expect(result.javascript).toContain('decided_at');
+  });
+
+  it('does NOT emit decisions table when no queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('deal_decisions');
+  });
+
+  it('emits a deal_notifications table when notify clauses present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  notify customer on counter
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('deal_notifications');
+    expect(result.javascript).toContain('recipient_role');
+    expect(result.javascript).toContain('recipient_email');
+    expect(result.javascript).toContain('queue_status');
+  });
+
+  it('does NOT emit notifications table when no notify clauses', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('deal_notifications');
+  });
+});
+
 // =============================================================================
 // CANONICAL SYNTAX: receives + returning JSON text
 // =============================================================================
