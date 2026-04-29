@@ -141,6 +141,20 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 ## Where is X?
 
+### Where does the routing primitive live?
+
+Parser: `parseRouteDef` in `parser.js` (after `parseQueueDef`). Dispatch: `CANONICAL_DISPATCH.set('route', ...)` next to the queue dispatch. Validator (5 rules): `case NodeType.ROUTE_DEF` in `validator.js`'s `checkNode` (hard errors for `ROUTE_ENTITY_NOT_IN_SCOPE` and `ROUTE_AFTER_SAVE`) plus `validateRouteBlocks` for the warning-tier rules. JS + Python compiler emit: `compileRouteDef` and `compileRouteDefPython` in `compiler.js` (after `compileQueueDef`). Dispatch case: `case NodeType.ROUTE_DEF` next to `QUEUE_DEF` and `EMAIL_TRIGGER`. Cursor table + helper emit: prelude pass walks the AST for any round-robin default and emits the `_clear_route_cursors` table + `_clear_route_pick` async function once at module top. Plan: `plans/plan-routing-primitive-2026-04-29.md`.
+
+### How does round-robin survive a restart?
+
+The cursor row persists in the `_clear_route_cursors` SQLite table — primary key is the route id (a content hash of entity + field + rules + pool, NOT a line number). On every pick, the helper reads `last_index`, increments `(last_index + 1) % pool.length`, writes back, returns `pool[next]`. After a process restart, the next pick reads the saved `last_index` from disk and continues from where it left off. SQLite WAL mode serializes writes across processes for multi-instance deploys.
+
+### Why must the route match value be a quoted string?
+
+Clear's tokenizer treats `-` as a minus operator. So `Mid-market to bob` would tokenize as `Mid`, `-`, `market`, `to`, `bob` — five tokens — not one identifier. The parser would reject it. Forcing the LHS to be a quoted string (`'Mid-market' to bob`) means hyphenated values like `Mid-market`, `Asia-Pacific`, `2024-Q1` all work without parser hacks. It also matches the existing if-chain form (`if lead's size is 'Mid-market'`), so authors don't switch mental models.
+
+---
+
 ### Where is the feature list / what can Clear do today?
 
 **`FEATURES.md`** at repo root. Capability reference by category: core language, expressions, web frontend, backend, database, service integrations, data operations, AI agents, workflows, scheduling, testing, policies, Studio IDE.

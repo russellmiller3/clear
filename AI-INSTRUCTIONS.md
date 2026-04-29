@@ -1269,6 +1269,42 @@ when user deletes user at /api/users/:id:
 **`broadcast to all message`** inside a WebSocket handler sends the value to all connected clients.
 **`block arguments matching 'pattern'`** in an agent adds a regex guard on tool inputs — rejects matching arguments before execution.
 
+## Routing — `route X by FIELD:`
+
+**Use this when an endpoint needs to assign an owner based on a record's field.** The block reads `<entity>.<field>` and writes `<entity>.assigned_to`, replacing 50+ lines of nested if-chains with 5 lines of declarative routing. Round-robin pools are built in.
+
+Canonical form:
+
+```clear
+when user sends lead to /api/leads:
+  validate lead:
+    name is text, required
+    size is text
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead
+  send back new_lead with success message
+```
+
+Round-robin variant for the default:
+
+```clear
+route lead by region:
+  'West' to alice
+  default round-robin across [bob, charlie, diana]
+```
+
+**Two strict rules to remember:**
+- **Match values must be quoted strings** on the LHS (`'SMB' to alice`, not `SMB to alice`). The tokenizer splits hyphens, so bare `Mid-market` becomes 3 tokens. Quoted strings match the existing if-chain form (`if lead's size is 'Mid-market'`).
+- **The route block must come BEFORE `save lead as new Lead`** in the endpoint. The route mutates the in-memory variable; the save then writes the assigned owner. Violating this order is a HARD compile error (`ROUTE_AFTER_SAVE`), not a warning, because the silent failure is too costly — the assignment lands on the in-memory record but never persists.
+
+**When to use it:** any endpoint that decides who-handles-this based on a record field — lead routers, ticket queues, approval triage, territory assignment. Whenever you'd otherwise write 2+ branches with a fallback, prefer the primitive.
+
+**Round-robin survives restarts.** The cursor lives in a SQLite table (`_clear_route_cursors`); the cursor key is a content hash of (entity + field + rules + pool), so adding comments above a route block doesn't reset the cursor. Changing the rules or pool DOES start a fresh cursor — which is the right invalidation behavior.
+
 ## Approval Queues — `queue for X:`
 
 **Use this when an entity needs human approval before its status changes.** One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action. About 150 lines of hand-rolled JavaScript per app collapse to 5 lines of declaration.

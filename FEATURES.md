@@ -322,6 +322,18 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Checkpoint | `save progress to Table` | DB persistence |
 | Run workflow | `result = run workflow 'Name' with data` | |
 
+## Routing
+
+| Feature | Syntax | Notes |
+|---------|--------|-------|
+| Routing block | `route lead by size:` + indented body | Statement-level. Compiles to an if/else chain over `<entity>.<field>`, mutating `<entity>.assigned_to`. Replaces 50+ lines of nested if-chains for assignment. |
+| Fixed-mapping rule | `'SMB' to alice` | Match value MUST be a quoted string (the tokenizer splits hyphenated identifiers like `Mid-market`). Owner is bare identifier or quoted string. |
+| Single-owner default | `default to alice` | Catch-all owner when no fixed rule matches. |
+| Round-robin default | `default round-robin across [alice, bob, diana]` | Rotates through the pool. State persists in the `_clear_route_cursors` SQLite table — cursor key is a content hash of (entity + field + rules + pool), stable across line-number edits. Survives restarts. |
+| Validator (hard error) | `ROUTE_ENTITY_NOT_IN_SCOPE` | Route block references an undefined variable — catches `route foo by size:` where `foo` was never bound. |
+| Validator (hard error) | `ROUTE_AFTER_SAVE` | Route block runs after `save X as new T` — assignment never persists. The most common silent bug. |
+| Validator (warning) | `ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE` | Likely-typo / likely-mistake patterns. Program still compiles. |
+
 ## Approval Queues
 
 | Feature | Syntax | Notes |

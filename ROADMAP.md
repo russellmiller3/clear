@@ -340,7 +340,7 @@ Tier-1 queue primitive shipped 2026-04-27 (`queue for X:` — single-stage appro
 | QP-T2 | **Multi-stage queues** — `queue for X:` with `stage 'Manager' with reviewer 'X':` sub-blocks for sequential approval ladders | Gated on a second multi-stage workflow app being built (likely expense tracker). Single-stage covers Marcus's actual deal-desk + onboarding + internal-request flows. |
 | QP-UI | **Queue UI auto-render** — auto-emit action buttons + history table block on pages that host the queue | App authors hand-add buttons that call the auto-generated URLs. Defer until a customer complains about boilerplate. |
 | QP-COL | **Queue/audit-table collision detection** — validator-level guard for user-defined `<Entity>Decisions` tables overlapping the auto-generated one | Add when first customer trips it. |
-| RR-1 | **`routing rules for X:` primitive** — automated routing (Lead Router shape) — different from queue (no human reviewer) | Build when a second routing app exists to validate against. Lead Router stays hand-rolled until then. |
+| ~~RR-1~~ | ~~**`routing rules for X:` primitive**~~ | **SHIPPED 2026-04-29** as `route X by FIELD:` — see CHANGELOG. Replaced if-chains in lead-router. |
 
 ---
 
