@@ -37,11 +37,19 @@ CREATE TABLE IF NOT EXISTS users (
     CHECK (status IN ('active', 'frozen', 'deleted')),
   role               VARCHAR(32) NOT NULL DEFAULT 'member'
     CHECK (role IN ('member', 'admin')),
+  -- Each Clear Cloud user belongs to one tenant. Auto-created at signup
+  -- (1:1 mapping for v1 — teams come later via a tenant_users join table).
+  -- Not a FK because the tenants table lives in the clear_cloud schema and
+  -- pg-mem chokes on cross-schema foreign keys; the slug uniqueness on
+  -- clear_cloud.tenants gives the integrity guarantee we need at app code.
+  tenant_slug        VARCHAR(64),
   last_login_at      TIMESTAMPTZ,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email              ON users(email);
+CREATE INDEX        IF NOT EXISTS idx_users_tenant_slug        ON users(tenant_slug)
+  WHERE tenant_slug IS NOT NULL;
 CREATE INDEX        IF NOT EXISTS idx_users_status             ON users(status);
 CREATE INDEX        IF NOT EXISTS idx_users_email_verify_token ON users(email_verify_token)
   WHERE email_verify_token IS NOT NULL;

@@ -273,6 +273,36 @@ export class InMemoryTenantStore {
 		}
 		return { scripts, databases };
 	}
+
+	// CC-2 cycle 10 — list every deployed app for one tenant, newest first.
+	// Backs GET /api/apps (the dashboard's app grid). Returns a flat array
+	// of app records with the fields the UI needs:
+	//   {appSlug, scriptName, hostname, deployedAt, latestVersionId}
+	// Empty array if the tenant has no deploys (or doesn't exist — no auth
+	// happens here; the URL handler is responsible for filtering by the
+	// authed user's tenant_slug).
+	async listAppsByTenant(tenantSlug) {
+		if (!this.cfDeploys || !tenantSlug) return [];
+		const rows = [];
+		for (const row of this.cfDeploys.values()) {
+			if (row.tenantSlug !== tenantSlug) continue;
+			const versions = Array.isArray(row.versions) ? row.versions : [];
+			rows.push({
+				appSlug: row.appSlug,
+				scriptName: row.scriptName,
+				hostname: row.hostname,
+				deployedAt: row.deployedAt,
+				latestVersionId: versions[0]?.versionId || null,
+			});
+		}
+		// Newest-first by deployedAt — empty/missing deployedAt sinks to bottom.
+		rows.sort((a, b) => {
+			const ta = a.deployedAt ? Date.parse(a.deployedAt) : 0;
+			const tb = b.deployedAt ? Date.parse(b.deployedAt) : 0;
+			return tb - ta;
+		});
+		return rows;
+	}
 	async seenStripeEvent(eventId) {
 		return this.stripeEvents.has(eventId);
 	}
@@ -1018,6 +1048,37 @@ export class PostgresTenantStore {
 		}
 	}
 
+	// CC-2 cycle 10 — Postgres mirror of InMemoryTenantStore.listAppsByTenant.
+	// Backs GET /api/apps. Joins cf_deploys with the latest app_versions row
+	// (uploaded_at DESC) so the dashboard can show the current version id
+	// per app. Empty array if the tenant has no deploys.
+	async listAppsByTenant(tenantSlug) {
+		if (!tenantSlug) return [];
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT cd.app_slug, cd.script_name, cd.hostname, cd.deployed_at,
+				        (SELECT av.version_id
+				         FROM clear_cloud.app_versions av
+				         WHERE av.tenant_slug = cd.tenant_slug AND av.app_slug = cd.app_slug
+				         ORDER BY av.uploaded_at DESC LIMIT 1) AS latest_version_id
+				 FROM clear_cloud.cf_deploys cd
+				 WHERE cd.tenant_slug = $1
+				 ORDER BY cd.deployed_at DESC`,
+				[tenantSlug]
+			);
+			return r.rows.map((row) => ({
+				appSlug: row.app_slug,
+				scriptName: row.script_name,
+				hostname: row.hostname,
+				deployedAt: row.deployed_at instanceof Date ? row.deployed_at.toISOString() : row.deployed_at,
+				latestVersionId: row.latest_version_id || null,
+			}));
+		} finally {
+			client.release();
+		}
+	}
+
 	// CC-1 cycle 3 — Stripe webhook deduplication. seenStripeEvent is the
 	// gate the billing handler runs BEFORE processing each webhook event;
 	// recordStripeEvent is what the handler runs AFTER successful processing.
@@ -1293,6 +1354,17 @@ export class DualWriteTenantStore {
 		const scripts = new Set([...(p?.scripts || []), ...(m.scripts || [])]);
 		const databases = new Set([...(p?.databases || []), ...(m.databases || [])]);
 		return { scripts, databases };
+	}
+
+	// CC-2 cycle 10 — primary's view of the tenant's apps wins. During cutover
+	// the mirror is the older in-memory store; if primary returns rows we
+	// trust those (fresher Postgres state). Mirror falls through only on
+	// primary-empty so a recently-cut-over tenant still sees their apps.
+	async listAppsByTenant(tenantSlug) {
+		const p = await this._primary.listAppsByTenant(tenantSlug);
+		if (Array.isArray(p) && p.length > 0) return p;
+		const m = await this._mirrorCall('listAppsByTenant', [tenantSlug]);
+		return Array.isArray(m) ? m : (Array.isArray(p) ? p : []);
 	}
 	async seenStripeEvent(eventId) {
 		// True if EITHER store has seen it — safer for idempotency.

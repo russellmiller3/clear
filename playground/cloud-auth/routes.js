@@ -26,12 +26,21 @@
 // header is a simple `name=value; name2=value2` string; ~10 lines covers the
 // signup/login/me/logout surface we need.
 
+import { randomBytes } from 'crypto';
 import {
   signupUser, loginUser, validateSession, revokeSession,
   SESSION_HARD_TTL_DAYS,
 } from './index.js';
 
 export const SESSION_COOKIE_NAME = 'clear_session';
+
+// CC-2 cycle 10 — slug format for auto-created tenants. Matches the
+// `clear-<6hex>` shape used elsewhere in the cloud layer (CC-1 cycle 1).
+// Customers never see this slug; it shows up only in subdomain URLs and
+// internal references. 6 hex chars = 16M unique slugs, plenty for now.
+function generateTenantSlug() {
+  return 'clear-' + randomBytes(3).toString('hex');
+}
 
 // Parse the Cookie request header into a name → value map. Returns {} for
 // missing or malformed headers. Tolerates leading/trailing whitespace and
@@ -118,19 +127,25 @@ function publicUser(u) {
     role: u.role,
     status: u.status,
     email_verified_at: u.email_verified_at || null,
+    tenant_slug: u.tenant_slug || null,
   };
 }
 
 /**
- * Mount the 4 auth routes on an Express app. Idempotent in the sense that
- * calling it twice on the same app double-registers — don't do that.
+ * Mount the 5 auth + dashboard routes on an Express app. Idempotent in the
+ * sense that calling it twice on the same app double-registers — don't.
  *
  * @param {object} app   — Express app (must already have express.json mounted)
  * @param {object} opts
- * @param {object} opts.pool — pg.Pool (or pg-mem equivalent). When null/undefined,
- *                             every route returns 503 "auth not configured".
+ * @param {object} opts.pool        — pg.Pool (or pg-mem equivalent). When null,
+ *                                    every route returns 503 "auth not configured".
+ * @param {object} opts.tenantStore — InMemory/Postgres/DualWrite tenant store.
+ *                                    Used to (a) auto-create a tenant on signup
+ *                                    and (b) list a customer's deployed apps.
+ *                                    When null, signup still works but the apps
+ *                                    list is always empty (degraded mode).
  */
-export function mountCloudAuthRoutes(app, { pool } = {}) {
+export function mountCloudAuthRoutes(app, { pool, tenantStore } = {}) {
   // No DB → every endpoint stubs out. Keeps Studio dev-mode (no DATABASE_URL)
   // working without weird 500s if anyone hits the URLs accidentally.
   if (!pool) {
@@ -143,6 +158,7 @@ export function mountCloudAuthRoutes(app, { pool } = {}) {
     app.post('/api/auth/login', stub);
     app.get('/api/auth/me', stub);
     app.post('/api/auth/logout', stub);
+    app.get('/api/apps', stub);
     return { mounted: false };
   }
 
@@ -154,6 +170,26 @@ export function mountCloudAuthRoutes(app, { pool } = {}) {
     }
     try {
       const user = await signupUser(pool, { email, password, name });
+      // CC-2 cycle 10 — auto-create a tenant for this account and write the
+      // slug back onto the user. 1:1 user→tenant for v1 (teams come later
+      // via a tenant_users join). Best-effort: if the tenant store isn't
+      // configured (degraded mode) the signup still succeeds, the user just
+      // has no tenant_slug until something backfills it.
+      let tenantSlug = null;
+      if (tenantStore && typeof tenantStore.create === 'function') {
+        try {
+          tenantSlug = generateTenantSlug();
+          await tenantStore.create({ slug: tenantSlug, plan: 'pro' });
+          await pool.query(`UPDATE users SET tenant_slug = $1 WHERE id = $2`, [tenantSlug, user.id]);
+          user.tenant_slug = tenantSlug;
+        } catch (tenantErr) {
+          // Don't fail signup just because the tenant didn't materialize —
+          // log and continue. Whoever inspects the failed tenant later
+          // can backfill via a one-shot script.
+          console.warn('[cloud-auth] tenant auto-create failed for user', user.id, tenantErr.message);
+          tenantSlug = null;
+        }
+      }
       // Auto-login the new account so the next request hits /api/auth/me cleanly.
       const { token } = await loginUser(pool, {
         email, password,
@@ -221,6 +257,34 @@ export function mountCloudAuthRoutes(app, { pool } = {}) {
       try { await revokeSession(pool, token); } catch { /* idempotent */ }
     }
     return res.json({ ok: true });
+  });
+
+  // CC-2 cycle 10 — dashboard's app grid. Reads the session cookie, looks
+  // up the user's tenant_slug, asks the tenant store for that tenant's
+  // deployed apps. Returns {apps: []} with one row per deploy:
+  //   {appSlug, scriptName, hostname, deployedAt, latestVersionId}
+  // 401 if no session. Empty array if the user has no tenant_slug yet
+  // (signup ran before the tenant store was wired) or the tenant has no
+  // deploys yet.
+  app.get('/api/apps', async (req, res) => {
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[SESSION_COOKIE_NAME];
+    if (!token) {
+      return res.status(401).json({ ok: false, error: 'not_authenticated' });
+    }
+    try {
+      const user = await validateSession(pool, token);
+      if (!user) {
+        return res.status(401).json({ ok: false, error: 'session_invalid' });
+      }
+      if (!user.tenant_slug || !tenantStore || typeof tenantStore.listAppsByTenant !== 'function') {
+        return res.json({ ok: true, apps: [] });
+      }
+      const apps = await tenantStore.listAppsByTenant(user.tenant_slug);
+      return res.json({ ok: true, apps: Array.isArray(apps) ? apps : [] });
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: 'apps_failed', message: err.message });
+    }
   });
 
   return { mounted: true };

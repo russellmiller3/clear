@@ -113,9 +113,15 @@ const _cloudTenantStore = _cloudTenantHandle.store;
 console.log(`[cloud] tenant store mode: ${_cloudTenantHandle.mode}`);
 const _cloudRouted = mountCloudRouting(app, { store: _cloudTenantStore });
 if (_cloudRouted) console.log('[cloud] CC-1 multi-tenant routing active (CLEAR_CLOUD_MODE=1)');
-// CC-2 — Clear Cloud auth URLs. Wires /api/auth/{signup,login,me,logout}.
+// CC-2 — Clear Cloud auth URLs. Wires /api/auth/{signup,login,me,logout}
+// plus GET /api/apps for the dashboard's app grid. The tenant store is
+// passed in so signup can auto-create a tenant per account, and so the
+// apps list URL can read the customer's deployed apps.
 // Without DATABASE_URL the routes return 503; Studio dev loops keep working.
-const _cloudAuth = mountCloudAuthRoutes(app, { pool: _cloudTenantHandle.pool });
+const _cloudAuth = mountCloudAuthRoutes(app, {
+  pool: _cloudTenantHandle.pool,
+  tenantStore: _cloudTenantStore,
+});
 console.log(`[cloud] auth routes ${_cloudAuth.mounted ? 'mounted' : 'stubbed (no DATABASE_URL)'}`);
 
 // =============================================================================
