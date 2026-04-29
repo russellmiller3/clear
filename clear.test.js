@@ -28031,6 +28031,83 @@ when user sends lead to /api/leads:
   });
 });
 
+describe('Routing primitive — JS compiler emit', () => {
+  it('cycle 3.1: fixed-mapping rules compile to if/else over the field', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    // Reads from lead.size into a local
+    expect(js).toContain('lead.size');
+    // Each rule writes to lead.assigned_to. Compiler uses JSON.stringify so
+    // string literals are double-quoted in the output.
+    expect(js).toContain('lead.assigned_to = "alice"');
+    expect(js).toContain('lead.assigned_to = "bob"');
+    expect(js).toContain('lead.assigned_to = "charlie"');
+  });
+
+  it('cycle 3.2: round-robin default compiles to await _clear_route_pick', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob, diana, evan]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).toContain('_clear_route_pick');
+    expect(js).toMatch(/pool:\s*\[\s*"alice"/);
+    expect(js).toContain('routeId:');
+  });
+
+  it('cycle 3.3: stable id is a content hash, not a line number', () => {
+    // Content-hash invariant: same rules + pool produce the same routeId
+    // regardless of where the route block lives in the file.
+    const a = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    // Same program, but with comments above shifting the line number.
+    const b = `build for javascript backend
+# leading comment
+# another comment
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    const ra = compileProgram(a);
+    const rb = compileProgram(b);
+    const jsA = ra.serverJS || ra.javascript || '';
+    const jsB = rb.serverJS || rb.javascript || '';
+    const idA = jsA.match(/routeId:\s*"([^"]+)"/);
+    const idB = jsB.match(/routeId:\s*"([^"]+)"/);
+    expect(idA).toBeTruthy();
+    expect(idB).toBeTruthy();
+    expect(idA[1]).toBe(idB[1]);
+  });
+});
+
 describe('Routing primitive — parser hard-fail', () => {
   it('errors on missing `by`', () => {
     const src = `when user sends lead to /api/leads:
