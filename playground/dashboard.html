@@ -135,29 +135,150 @@
     return trimmed ? trimmed[0].toUpperCase() : '?';
   }
 
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function statusPill(status) {
+    const map = {
+      pending:  { color: 'bg-amber-50 text-amber-700 border border-amber-200', label: 'Verifying DNS' },
+      verified: { color: 'bg-emerald-50 text-emerald-700 border border-emerald-200', label: 'Live' },
+      failed:   { color: 'bg-rose-50 text-rose-700 border border-rose-200', label: 'DNS error' },
+    };
+    const s = map[status] || { color: 'bg-gray-100 text-gray-600', label: status || '?' };
+    return `<span class="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${s.color}">${escapeHtml(s.label)}</span>`;
+  }
+
+  function domainRowHTML(d) {
+    const id = Number(d.id) || 0;
+    const target = d.expected_cname ? `Point CNAME → <code class="bg-gray-100 px-1.5 py-0.5 rounded">${escapeHtml(d.expected_cname)}</code>` : '';
+    const errorLine = d.status === 'failed' && d.last_error
+      ? `<div class="text-[11px] text-rose-500 mt-0.5">${escapeHtml(d.last_error.slice(0, 200))}</div>`
+      : '';
+    return `
+      <div class="flex items-start justify-between gap-2 py-1.5 border-t border-gray-100" data-domain-id="${id}">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-[12px] text-gray-700 font-medium truncate">${escapeHtml(d.domain || '')}</span>
+            ${statusPill(d.status)}
+          </div>
+          ${d.status === 'pending' ? `<div class="text-[11px] text-gray-400 mt-0.5">${target}</div>` : ''}
+          ${errorLine}
+        </div>
+        <button class="domain-remove-btn text-[11px] text-gray-400 hover:text-rose-600 transition" data-domain-id="${id}">Remove</button>
+      </div>
+    `;
+  }
+
   function appCardHTML(app) {
     const slug = app.appSlug || 'app';
     const host = app.hostname || (slug + '.buildclear.dev');
     const versionLabel = app.latestVersionId ? ('v' + app.latestVersionId.slice(-6)) : 'no versions yet';
     const deployed = app.deployedAt ? new Date(app.deployedAt).toLocaleDateString() : '';
     return `
-      <div class="card px-5 py-4">
+      <div class="card px-5 py-4" data-app-card data-app-slug="${escapeHtml(slug)}">
         <div class="flex items-center justify-between mb-2">
-          <div class="font-semibold text-gray-800 text-[14px]">${slug}</div>
-          <span class="text-[11px] text-gray-400">${versionLabel}</span>
+          <div class="font-semibold text-gray-800 text-[14px]">${escapeHtml(slug)}</div>
+          <span class="text-[11px] text-gray-400">${escapeHtml(versionLabel)}</span>
         </div>
-        <div class="text-[12px] text-gray-400 mb-3">${host}</div>
-        <div class="flex items-center gap-2">
-          <a href="https://${host}" target="_blank"
+        <div class="text-[12px] text-gray-400 mb-3">${escapeHtml(host)}</div>
+        <div class="flex items-center gap-2 mb-3">
+          <a href="https://${escapeHtml(host)}" target="_blank"
              class="btn-ghost text-[12px] px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5">
             <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
             <span>Open</span>
           </a>
-          <span class="text-[11px] text-gray-300 ml-auto">${deployed}</span>
+          <span class="text-[11px] text-gray-300 ml-auto">${escapeHtml(deployed)}</span>
+        </div>
+
+        <!-- Custom domains panel — populated by loadDomainsFor(slug) -->
+        <div class="mt-2" data-domains-panel data-app-slug="${escapeHtml(slug)}">
+          <div class="text-[11px] text-gray-400 uppercase tracking-wider font-medium mb-1">Custom domains</div>
+          <div class="domains-list" data-app-slug="${escapeHtml(slug)}">
+            <div class="text-[12px] text-gray-300">Loading…</div>
+          </div>
+          <form class="domain-add-form mt-2 flex gap-2" data-app-slug="${escapeHtml(slug)}">
+            <input type="text" name="domain" placeholder="deals.acme.com"
+                   class="flex-1 text-[12px] px-2.5 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100" />
+            <button type="submit" class="btn-primary text-white text-[12px] px-3 py-1.5 rounded-lg font-medium transition">
+              Attach
+            </button>
+          </form>
+          <div class="domain-add-error text-[11px] text-rose-500 mt-1 hidden"></div>
         </div>
       </div>
     `;
   }
+
+  async function loadDomainsFor(slug) {
+    const list = document.querySelector(`.domains-list[data-app-slug="${slug}"]`);
+    if (!list) return;
+    try {
+      const res = await fetch(`/api/apps/${encodeURIComponent(slug)}/domains`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({ domains: [] }));
+      const domains = data?.domains || [];
+      if (domains.length === 0) {
+        list.innerHTML = '<div class="text-[12px] text-gray-300 py-1">No custom domains yet.</div>';
+      } else {
+        list.innerHTML = domains.map(domainRowHTML).join('');
+      }
+    } catch {
+      list.innerHTML = '<div class="text-[12px] text-rose-500 py-1">Could not load domains.</div>';
+    }
+  }
+
+  async function attachDomain(slug, domain) {
+    const errEl = document.querySelector(`.domain-add-form[data-app-slug="${slug}"]`)
+      ?.parentElement?.querySelector('.domain-add-error');
+    if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+    try {
+      const res = await fetch(`/api/apps/${encodeURIComponent(slug)}/domains`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (errEl) { errEl.textContent = data?.message || 'Could not attach domain.'; errEl.classList.remove('hidden'); }
+        return;
+      }
+      await loadDomainsFor(slug);
+    } catch {
+      if (errEl) { errEl.textContent = 'Network error. Try again.'; errEl.classList.remove('hidden'); }
+    }
+  }
+
+  async function removeDomain(slug, domainId) {
+    try {
+      await fetch(`/api/apps/${encodeURIComponent(slug)}/domains/${domainId}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+    } catch { /* swallow — refresh anyway */ }
+    await loadDomainsFor(slug);
+  }
+
+  // Wire up the per-card domain forms (event delegation — works for cards
+  // rendered after the listener is attached too).
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('.domain-add-form');
+    if (!form) return;
+    e.preventDefault();
+    const slug = form.getAttribute('data-app-slug');
+    const input = form.querySelector('input[name="domain"]');
+    const domain = (input?.value || '').trim();
+    if (!domain) return;
+    attachDomain(slug, domain).then(() => { if (input) input.value = ''; });
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.domain-remove-btn');
+    if (!btn) return;
+    const card = btn.closest('[data-app-card]');
+    const slug = card?.getAttribute('data-app-slug');
+    const id = btn.getAttribute('data-domain-id');
+    if (slug && id) removeDomain(slug, Number(id));
+  });
 
   function renderApps(apps) {
     const grid = document.getElementById('appGrid');
@@ -174,6 +295,10 @@
     grid.innerHTML = apps.map(appCardHTML).join('');
     grid.classList.remove('hidden');
     empty.classList.add('hidden');
+    // Each app card has a Custom domains panel; fire one fetch per card
+    // to populate it. Independent fetches → Promise.all in parallel rather
+    // than serial round-trips.
+    Promise.all(apps.map(a => loadDomainsFor(a.appSlug))).catch(() => {});
     if (countEl) countEl.textContent = apps.length + (apps.length === 1 ? ' app deployed' : ' apps deployed');
     lucide.createIcons();
   }
