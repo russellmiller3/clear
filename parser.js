@@ -7034,13 +7034,15 @@ function parseSaveAssignment(name, tokens, pos, line) {
     pos++;
   }
   // Skip optional "new" before target: "save X as new Todo"
-  if (pos < tokens.length && tokens[pos].value === 'new') pos++;
+  let isInsert = false;
+  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
   let target = 'unknown';
   if (pos < tokens.length) {
     target = tokens[pos].value;
   }
 
   const node = crudNode('save', variable, target, null, line);
+  if (isInsert) node.isInsert = true;
   node.resultVar = name; // "new_todo = save incoming as Todo" -> resultVar is new_todo
 
   // Parse optional "with field is value" overrides. Lets the user set a

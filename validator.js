@@ -124,6 +124,7 @@ export function validate(ast) {
   validateTermination(ast.body, warnings);
   validateDeprecatedKeywords(ast.body, warnings);
   validateEmailTriggers(ast.body, warnings);
+  validateRouteBlocks(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -285,6 +286,71 @@ function validateEmailTriggers(body, warnings) {
       }
     }
   }
+}
+
+/**
+ * Routing primitive (2026-04-29). Three warnings on `route X by FIELD:` blocks:
+ *   - ROUTE_FIELD_NOT_ON_ENTITY: field isn't declared on the entity's table
+ *   - ROUTE_NO_DEFAULT: block has no default rule (unmatched values silently
+ *     leave assigned_to unset)
+ *   - ROUTE_UNREACHABLE_RULE: a fixed rule appears after the default (the
+ *     default catches everything; the rule never fires)
+ * Walks the AST recursively because route_def nodes live inside endpoint bodies.
+ */
+function validateRouteBlocks(body, warnings) {
+  // Build entity → field set map from data_shape declarations. Match the
+  // pattern used by validateEmailTriggers: store under both the table name
+  // and the singularized form so `route lead by size:` resolves to a `Leads`
+  // table.
+  const tableFields = new Map();
+  for (const node of body) {
+    if (!node || node.type !== 'data_shape') continue;
+    const tableName = String(node.name || '').toLowerCase();
+    if (!tableName) continue;
+    const fieldSet = new Set();
+    for (const field of (node.fields || [])) {
+      if (field && field.name) fieldSet.add(String(field.name).toLowerCase());
+    }
+    tableFields.set(tableName, fieldSet);
+    if (tableName.endsWith('s')) tableFields.set(tableName.slice(0, -1), fieldSet);
+  }
+
+  walkAll(body, (node) => {
+    if (!node || node.type !== 'route_def') return;
+    const rules = Array.isArray(node.rules) ? node.rules : [];
+
+    // ROUTE_FIELD_NOT_ON_ENTITY — field isn't on the entity's table
+    const entity = String(node.entityName || '').toLowerCase();
+    const fields = tableFields.get(entity);
+    if (fields && node.field && !fields.has(String(node.field).toLowerCase())) {
+      const fieldList = [...fields].slice(0, 6).join(', ');
+      warnings.push({
+        line: node.line,
+        message: `Route field '${node.field}' isn't on the ${entity} table. Add it to the table or use one of: ${fieldList}.`,
+      });
+    }
+
+    // ROUTE_NO_DEFAULT — block has no default rule
+    const defaultIdx = rules.findIndex(r => r && r.type === 'default');
+    if (defaultIdx === -1) {
+      warnings.push({
+        line: node.line,
+        message: `Route block has no default. If ${entity || node.entityName}'s ${node.field} doesn't match any rule, no owner gets assigned. Add \`default round-robin across [...]\` or \`default to <owner>\`.`,
+      });
+    }
+
+    // ROUTE_UNREACHABLE_RULE — fixed rule appears after the default
+    if (defaultIdx !== -1) {
+      for (let i = defaultIdx + 1; i < rules.length; i++) {
+        const r = rules[i];
+        if (!r || r.type !== 'fixed') continue;
+        warnings.push({
+          line: node.line,
+          message: `Rule '${r.match}' to ${r.owner} appears after default. The default catches everything; this rule never fires.`,
+        });
+      }
+    }
+  });
 }
 
 /**
@@ -598,6 +664,11 @@ function validateForwardReferences(body, errors) {
     // newScope=true creates an isolated scope (functions, endpoints)
     // newScope=false (default) shares the parent's mutable set
     const localDefined = newScope ? new Set(scopeVars || defined) : (scopeVars || defined);
+    // Track entities that have been saved-as-new within this scope. Reset
+    // per scope boundary. Used by ROUTE_DEF to catch the "route block runs
+    // after save" silent bug — assignment lands on the in-memory variable
+    // but never reaches the database.
+    const savedInThisScope = new Set();
 
     for (const node of nodes) {
       switch (node.type) {
@@ -678,6 +749,28 @@ function validateForwardReferences(body, errors) {
           checkNode(node.body, epScope, true);
           break;
         }
+        case NodeType.ROUTE_DEF: {
+          // Routing primitive (2026-04-29). The block reads from
+          // <entityName>.<field> and writes to <entityName>.assigned_to.
+          // Hard error if the entity isn't in scope — otherwise the compiled
+          // JS hits ReferenceError at request time.
+          if (node.entityName && !localDefined.has(node.entityName)) {
+            errors.push({
+              line: node.line,
+              message: `Route block references '${node.entityName}' but no variable named '${node.entityName}' is in scope here. Did you mean to put this inside \`when user sends ${node.entityName} to /api/${node.entityName}s:\`?`,
+            });
+          }
+          // Hard error if the entity has already been saved-as-new in this
+          // scope. The route block mutates the in-memory variable, but if the
+          // save already happened the assignment never persists — silent bug.
+          if (node.entityName && savedInThisScope.has(node.entityName)) {
+            errors.push({
+              line: node.line,
+              message: `Route block runs after \`save ${node.entityName} as new ...\` — the assignment never reaches the database. Move the route block ABOVE the save line.`,
+            });
+          }
+          break;
+        }
         case NodeType.TEST_DEF:
           checkNode(node.body, new Set(localDefined), true);
           break;
@@ -701,6 +794,11 @@ function validateForwardReferences(body, errors) {
             // save with resultVar defines the result
             if (node.resultVar) localDefined.add(node.resultVar);
             if (node.condition) checkExpr(node.condition, localDefined, node.line);
+            // Track saved-as-new entities so a later ROUTE_DEF can warn that
+            // its assignment never reaches the database.
+            if (node.variable && node.isInsert) {
+              savedInThisScope.add(node.variable);
+            }
           } else if (node.operation === 'remove') {
             // where conditions reference column names -- don't validate as variables
           }

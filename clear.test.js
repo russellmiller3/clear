@@ -27929,6 +27929,108 @@ when user sends lead to /api/leads:
   });
 });
 
+describe('Routing primitive — validator', () => {
+  it('ROUTE_ENTITY_NOT_IN_SCOPE: hard error when route entity is undefined', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route foo by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /Route block references|in scope/i.test(e.message || ''));
+    expect(err).toBeTruthy();
+    expect(err.message).toContain('foo');
+  });
+
+  it('ROUTE_AFTER_SAVE: hard error when route block runs after save', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  new_lead = save lead as new Lead
+  route lead by size:
+    'SMB' to alice`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /never reaches|after.*save|Move the route block/i.test(e.message || ''));
+    expect(err).toBeTruthy();
+  });
+
+  it('no ROUTE_AFTER_SAVE error when route comes BEFORE save', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const afterSaveErr = result.errors.find(e => /never reaches|after.*save|Move the route block/i.test(e.message || ''));
+    expect(afterSaveErr).toBeFalsy();
+  });
+
+  it('ROUTE_NO_DEFAULT: warning when block has no default rule', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /no default|unmatched values/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+  });
+
+  it('ROUTE_NO_DEFAULT does NOT fire when default is present', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /no default|unmatched values/i.test(w.message || ''));
+    expect(warn).toBeFalsy();
+  });
+
+  it('ROUTE_FIELD_NOT_ON_ENTITY: warning when field is not on the entity table', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by status:
+    'open' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /isn't on the/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+    expect(warn.message).toContain('status');
+  });
+
+  it('ROUTE_UNREACHABLE_RULE: warning when a fixed rule appears after default', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+    'Enterprise' to charlie
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /never fires|after default|unreachable/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+  });
+});
+
 describe('Routing primitive — parser hard-fail', () => {
   it('errors on missing `by`', () => {
     const src = `when user sends lead to /api/leads:
