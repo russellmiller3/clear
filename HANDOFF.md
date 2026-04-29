@@ -11,11 +11,14 @@
 
 ## Next priorities
 
-1. **Finish routing primitive plan** (~30-60 min). `plan/routing-primitive` (`fc972ba`) is ~50% drafted. Still TODO: validator rules, JS + Python compiler emit, round-robin cursor runtime helper, TDD cycles, doc cascade list, resume prompt. Then `/red-team-plan` before any parser/compiler code. **Why for launch:** Russell's first paying job is custom variants of these apps; lead routing is where customers diverge most.
-2. **Search-input-filters-table primitive** (~1-2 hr). Per the primitives audit. Every queue app needs filter-by-text once data scales beyond ~20 rows. One parser node + ~30 lines of compiled JS, then every Marcus app inherits it. **Why for launch:** apps look amateur once data scales — cheap fix that compounds.
-3. **CC-5b DNS verification poller** (~30 lines + cron). Wakes every minute, finds `pending` domains, calls `node:dns resolveCname`, flips status to verified or failed. **Why for launch:** without this, the attach UX shipped today shows "Verifying DNS" forever — cycle 1's value is gated on this.
-4. **CC-5c Fly cert provisioner** (small, depends on CC-5b). Once a domain verifies, request a Fly cert + write the cert id back. **Why for launch:** the customer's domain has to actually serve HTTPS, not just resolve.
-5. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND your live keys both land.
+1. **CC-5b DNS verification poller** (~30 lines + cron). Wakes every minute, finds `pending` domains in `app_domains`, calls `node:dns resolveCname`, calls existing `verifyCname` helper, updates status. The pure helpers (`normalizeDomain`, `expectedCnameFor`, `verifyCname`, `listPendingDomains`) already exist in `playground/cloud-domains/index.js` — only the poller glue is missing. **Why for launch:** without this, the attach UX shipped 2026-04-29 shows "Verifying DNS" forever — cycle 1's value is gated on this.
+2. **CC-5c Fly cert provisioner** (small, depends on CC-5b). Once a domain verifies, request a Fly cert + write the cert id back. **Why for launch:** the customer's domain has to actually serve HTTPS, not just resolve.
+3. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND your live keys both land.
+
+## Already done (do not rebuild)
+
+- ✅ **Routing primitive** — Phases 1-6 shipped 2026-04-29 (`5e8b17c`). Lead-router uses `route lead by size` instead of if-chain. 8-surface doc cascade complete. Tests: 2773/0.
+- ✅ **Search-input-filters-table primitive** — already shipped via Codex chunk #5 on 2026-04-26. Every `display X as table` auto-emits a toolbar search input. Verified 2026-04-29 by compiling deal-desk; HTML contains `<input class="clear-table-filter">`. Listed in FEATURES.md:150.
 
 ## Blocked on Russell (skip these, grab the next item)
 
