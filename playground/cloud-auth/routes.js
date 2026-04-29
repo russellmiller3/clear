@@ -31,6 +31,7 @@ import {
   signupUser, loginUser, validateSession, revokeSession,
   SESSION_HARD_TTL_DAYS,
 } from './index.js';
+import { normalizeDomain, expectedCnameFor } from '../cloud-domains/index.js';
 
 export const SESSION_COOKIE_NAME = 'clear_session';
 
@@ -159,6 +160,9 @@ export function mountCloudAuthRoutes(app, { pool, tenantStore } = {}) {
     app.get('/api/auth/me', stub);
     app.post('/api/auth/logout', stub);
     app.get('/api/apps', stub);
+    app.get('/api/apps/:appSlug/domains', stub);
+    app.post('/api/apps/:appSlug/domains', stub);
+    app.delete('/api/apps/:appSlug/domains/:id', stub);
     return { mounted: false };
   }
 
@@ -257,6 +261,130 @@ export function mountCloudAuthRoutes(app, { pool, tenantStore } = {}) {
       try { await revokeSession(pool, token); } catch { /* idempotent */ }
     }
     return res.json({ ok: true });
+  });
+
+  // CC-5 cycle 1 — shared helper for the domain routes. Reads cookie,
+  // validates session, returns the authed user OR a 401-shaped error so
+  // the caller can early-return without duplicating the gate.
+  async function authedUserFor(req, res) {
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[SESSION_COOKIE_NAME];
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'not_authenticated' });
+      return null;
+    }
+    const user = await validateSession(pool, token);
+    if (!user) {
+      res.status(401).json({ ok: false, error: 'session_invalid' });
+      return null;
+    }
+    return user;
+  }
+
+  // CC-5 cycle 1 — verify the (tenant_slug, app_slug) belongs to the authed
+  // user's tenant before any domain mutation. Without this check, any logged-
+  // in user could attach a domain to any other tenant's app. Returns true on
+  // success and writes the right error response on failure.
+  async function ensureAppOwnedByUser(req, res, user, appSlug) {
+    if (!user.tenant_slug) {
+      res.status(403).json({ ok: false, error: 'no_tenant',
+        message: 'Your account has no tenant yet. Wait a moment and refresh.' });
+      return false;
+    }
+    if (!tenantStore || typeof tenantStore.getAppRecord !== 'function') {
+      res.status(503).json({ ok: false, error: 'tenant_store_unavailable' });
+      return false;
+    }
+    const record = await tenantStore.getAppRecord(user.tenant_slug, appSlug);
+    if (!record) {
+      res.status(404).json({ ok: false, error: 'app_not_found',
+        message: `No app "${appSlug}" found in your tenant.` });
+      return false;
+    }
+    return true;
+  }
+
+  // CC-5 cycle 1 — list custom domains for one of the customer's apps.
+  app.get('/api/apps/:appSlug/domains', async (req, res) => {
+    const user = await authedUserFor(req, res);
+    if (!user) return;
+    const appSlug = String(req.params.appSlug || '');
+    if (!(await ensureAppOwnedByUser(req, res, user, appSlug))) return;
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, domain, expected_cname, status, verified_at, last_checked_at,
+                last_error, created_at
+         FROM app_domains
+         WHERE tenant_slug = $1 AND app_slug = $2 AND status != 'removed'
+         ORDER BY created_at DESC`,
+        [user.tenant_slug, appSlug]
+      );
+      return res.json({ ok: true, domains: rows });
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: 'list_domains_failed', message: err.message });
+    }
+  });
+
+  // CC-5 cycle 1 — attach a custom domain to one of the customer's apps.
+  // Body: { domain }. Normalizes the domain via cloud-domains.normalizeDomain
+  // (rejects garbage), computes the expected CNAME target, inserts the
+  // pending row. The DNS verification poller (CC-5b) flips status to
+  // verified or failed once it's looked up the customer's CNAME records.
+  app.post('/api/apps/:appSlug/domains', async (req, res) => {
+    const user = await authedUserFor(req, res);
+    if (!user) return;
+    const appSlug = String(req.params.appSlug || '');
+    if (!(await ensureAppOwnedByUser(req, res, user, appSlug))) return;
+    const rawDomain = req.body?.domain;
+    const domain = normalizeDomain(rawDomain);
+    if (!domain) {
+      return res.status(400).json({ ok: false, error: 'invalid_domain',
+        message: `"${rawDomain}" is not a DNS-valid hostname. Try something like "deals.acme.com".` });
+    }
+    const expectedCname = expectedCnameFor(appSlug);
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO app_domains (tenant_slug, app_slug, domain, expected_cname)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, domain, expected_cname, status, verified_at, last_checked_at, last_error, created_at`,
+        [user.tenant_slug, appSlug, domain, expectedCname]
+      );
+      return res.status(201).json({ ok: true, domain: rows[0] });
+    } catch (err) {
+      // 23505 = Postgres unique_violation. Domain already attached somewhere.
+      if (err.code === '23505') {
+        return res.status(409).json({ ok: false, error: 'domain_taken',
+          message: `${domain} is already attached to another app.` });
+      }
+      return res.status(500).json({ ok: false, error: 'add_domain_failed', message: err.message });
+    }
+  });
+
+  // CC-5 cycle 1 — soft-delete a custom domain. Marks status='removed' so
+  // the audit trail survives but the dashboard, the DNS poller, and the
+  // customer's app stop seeing it.
+  app.delete('/api/apps/:appSlug/domains/:id', async (req, res) => {
+    const user = await authedUserFor(req, res);
+    if (!user) return;
+    const appSlug = String(req.params.appSlug || '');
+    if (!(await ensureAppOwnedByUser(req, res, user, appSlug))) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: 'invalid_id' });
+    }
+    try {
+      const { rowCount } = await pool.query(
+        `UPDATE app_domains SET status = 'removed', updated_at = NOW()
+         WHERE id = $1 AND tenant_slug = $2 AND app_slug = $3 AND status != 'removed'`,
+        [id, user.tenant_slug, appSlug]
+      );
+      if (rowCount === 0) {
+        return res.status(404).json({ ok: false, error: 'domain_not_found' });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: 'remove_domain_failed', message: err.message });
+    }
   });
 
   // CC-2 cycle 10 — dashboard's app grid. Reads the session cookie, looks

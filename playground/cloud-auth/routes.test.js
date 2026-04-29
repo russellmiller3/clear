@@ -476,5 +476,155 @@ await runAsync(async () => {
   assert(r.body?.error === 'auth_not_configured', 'auth_not_configured error');
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n🌐 Custom domains: POST/GET/DELETE /api/apps/:appSlug/domains');
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper — sign up and seed an app for that tenant. Returns { cookie, app, tenantSlug }.
+async function signupAndDeploy(app, tenantStore, opts = {}) {
+  const email = opts.email || ('marcus' + Math.floor(Math.random() * 1e9) + '@x.com');
+  const signup = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email, password: 'pass1234', name: opts.name || 'Marcus' },
+  });
+  const cookieToken = extractSessionCookie(signup.headers['set-cookie']);
+  const tenantSlug = signup.body.user.tenant_slug;
+  const appSlug = opts.appSlug || 'deal-desk';
+  await tenantStore.markAppDeployed({
+    tenantSlug, appSlug,
+    scriptName: tenantSlug + '-' + appSlug,
+    d1_database_id: 'd1-' + appSlug,
+    hostname: appSlug + '.buildclear.dev',
+  });
+  return { cookie: `${SESSION_COOKIE_NAME}=${cookieToken}`, appSlug, tenantSlug };
+}
+
+await runAsync(async () => {
+  const { app } = await makeApp();
+  const r = await request(app, { method: 'GET', path: '/api/apps/foo/domains' });
+  assert(r.status === 401, `unauthed list → 401 (got ${r.status})`);
+  assert(r.body?.error === 'not_authenticated', 'error=not_authenticated');
+});
+
+await runAsync(async () => {
+  const { app, tenantStore } = await makeApp();
+  const { cookie, appSlug } = await signupAndDeploy(app, tenantStore);
+  const r = await request(app, {
+    method: 'GET', path: `/api/apps/${appSlug}/domains`, cookie,
+  });
+  assert(r.status === 200, `200 (got ${r.status})`);
+  assert(Array.isArray(r.body?.domains) && r.body.domains.length === 0,
+    `empty list when no domains attached (got ${JSON.stringify(r.body?.domains)})`);
+});
+
+await runAsync(async () => {
+  // Adding a clean domain — happy path
+  const { app, tenantStore } = await makeApp();
+  const { cookie, appSlug } = await signupAndDeploy(app, tenantStore);
+  const r = await request(app, {
+    method: 'POST', path: `/api/apps/${appSlug}/domains`, cookie,
+    body: { domain: 'deals.acme.com' },
+  });
+  assert(r.status === 201, `add domain → 201 (got ${r.status})`);
+  assert(r.body?.domain?.domain === 'deals.acme.com', `domain stored normalized (got ${r.body?.domain?.domain})`);
+  assert(r.body?.domain?.status === 'pending', 'starts pending');
+  assert(r.body?.domain?.expected_cname?.includes(appSlug),
+    `expected_cname mentions the app slug (got ${r.body?.domain?.expected_cname})`);
+});
+
+await runAsync(async () => {
+  // Garbage input → 400
+  const { app, tenantStore } = await makeApp();
+  const { cookie, appSlug } = await signupAndDeploy(app, tenantStore);
+  const r = await request(app, {
+    method: 'POST', path: `/api/apps/${appSlug}/domains`, cookie,
+    body: { domain: 'no spaces in domains' },
+  });
+  assert(r.status === 400, `garbage domain → 400 (got ${r.status})`);
+  assert(r.body?.error === 'invalid_domain', 'error=invalid_domain');
+});
+
+await runAsync(async () => {
+  // Cross-tenant isolation — Marcus tries to attach a domain to Dave's app slug
+  const { app, tenantStore } = await makeApp();
+  await signupAndDeploy(app, tenantStore, { email: 'dave@x.com', appSlug: 'lead-router' });
+  const marcus = await signupAndDeploy(app, tenantStore, { email: 'marcus@x.com', appSlug: 'deal-desk' });
+  // Marcus tries to attach a domain to "lead-router" — which exists in Dave's tenant
+  // but NOT Marcus's. ensureAppOwnedByUser should 404.
+  const r = await request(app, {
+    method: 'POST', path: `/api/apps/lead-router/domains`, cookie: marcus.cookie,
+    body: { domain: 'sneaky.acme.com' },
+  });
+  assert(r.status === 404, `cross-tenant attach → 404 (got ${r.status})`);
+  assert(r.body?.error === 'app_not_found', 'error=app_not_found');
+});
+
+await runAsync(async () => {
+  // Duplicate domain → 409
+  const { app, tenantStore } = await makeApp();
+  const { cookie, appSlug } = await signupAndDeploy(app, tenantStore);
+  await request(app, {
+    method: 'POST', path: `/api/apps/${appSlug}/domains`, cookie,
+    body: { domain: 'taken.acme.com' },
+  });
+  const r = await request(app, {
+    method: 'POST', path: `/api/apps/${appSlug}/domains`, cookie,
+    body: { domain: 'taken.acme.com' },
+  });
+  assert(r.status === 409, `duplicate → 409 (got ${r.status})`);
+  assert(r.body?.error === 'domain_taken', 'error=domain_taken');
+});
+
+await runAsync(async () => {
+  // Add then list — domain shows up
+  const { app, tenantStore } = await makeApp();
+  const { cookie, appSlug } = await signupAndDeploy(app, tenantStore);
+  await request(app, {
+    method: 'POST', path: `/api/apps/${appSlug}/domains`, cookie,
+    body: { domain: 'deals.acme.com' },
+  });
+  const r = await request(app, {
+    method: 'GET', path: `/api/apps/${appSlug}/domains`, cookie,
+  });
+  assert(r.status === 200, '200');
+  assert(r.body?.domains?.length === 1, `1 domain listed (got ${r.body?.domains?.length})`);
+  assert(r.body.domains[0].domain === 'deals.acme.com', 'domain matches');
+});
+
+await runAsync(async () => {
+  // Delete (soft) — list stops showing it
+  const { app, tenantStore } = await makeApp();
+  const { cookie, appSlug } = await signupAndDeploy(app, tenantStore);
+  const add = await request(app, {
+    method: 'POST', path: `/api/apps/${appSlug}/domains`, cookie,
+    body: { domain: 'deals.acme.com' },
+  });
+  const id = add.body.domain.id;
+  const del = await request(app, {
+    method: 'DELETE', path: `/api/apps/${appSlug}/domains/${id}`, cookie,
+  });
+  assert(del.status === 200, `delete → 200 (got ${del.status})`);
+  assert(del.body?.ok === true, 'ok:true');
+  const list = await request(app, {
+    method: 'GET', path: `/api/apps/${appSlug}/domains`, cookie,
+  });
+  assert(list.body?.domains?.length === 0, 'list omits removed domain');
+});
+
+await runAsync(async () => {
+  // Stub mode (no pool) → 503 on every domain URL
+  const stubApp = express();
+  stubApp.use(express.json());
+  mountCloudAuthRoutes(stubApp, { pool: null });
+  for (const [method, path] of [
+    ['GET', '/api/apps/x/domains'],
+    ['POST', '/api/apps/x/domains'],
+    ['DELETE', '/api/apps/x/domains/1'],
+  ]) {
+    const r = await request(stubApp, { method, path, body: method === 'POST' ? { domain: 'x.com' } : undefined });
+    assert(r.status === 503, `${method} ${path} → 503 (got ${r.status})`);
+  }
+});
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
