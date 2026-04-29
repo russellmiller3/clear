@@ -1,4 +1,4 @@
-# Handoff — 2026-04-28 night (post CC-2 + Deal Desk polish)
+# Handoff — 2026-04-29 (post Marcus apps list + UAT runner)
 
 > ## How this file works (READ FIRST when writing or updating it)
 >
@@ -21,24 +21,20 @@
 
 ## Where you are
 
-- **Branch:** `main`. CC-2 merged (e75816c) + CC-2 doc cascade merged (6090ef7) + Deal Desk polish merged (bed20b3). Deal-desk doc cascade is on `docs/deal-desk-cascade` waiting for merge.
-- **Tests:** 2749 main + 24 factory + 50 routes + 57 helpers + 56 migrations runner + 25 deal-desk app tests — all green.
-- **Critical-path standing:** **CC-1 closed + CC-2 closed + Deal Desk demo-clean.** Login wall exists. Demo app has no fake pages or dead buttons. The moment Russell sets `DATABASE_URL` on production, the full signup → login → dashboard flow is reachable. Every remaining launch-gate item needs Russell's hands.
+- **Branch:** `main`. Marcus apps list shipped (27a6bf2). UAT runner across all 5 Marcus apps shipped (28590c7). Subtitle interpolation + NaN guard shipped (e146efc). Deal Desk polish + CC-2 close shipped earlier in the day.
+- **Tests:** 2749 main + 24 factory + 72 routes + 57 helpers + 121 tenant store + 56 migrations + 25 deal-desk app tests — all green. Plus 52/52 across all 5 Marcus apps in the browser walker.
+- **Critical-path standing:** **The full happy path is reachable.** Sign up → log in → dashboard shows deployed apps → click into any. Every step works. CC-3 (Stripe webhook) is the only remaining cloud piece, gated on Russell's Stripe live keys.
 
 ## Next session — priority order
 
-1. **Marcus apps list endpoint — bigger than 30 min, plan first** (a session). I poked at this and the user→tenant mapping doesn't exist yet — `users` rows have no tenant_slug column, `tenants` rows have no user_id. Three options to chew on first:
-   - (a) add a `tenant_slug` column on `users` for 1:1 user→tenant — simplest, matches single-customer accounts
-   - (b) add a `tenant_users` join table — supports teams (matches the CC-2b/c/d "Scaffolding shipped" team work)
-   - (c) derive `tenant_slug = clear-${hash(user.email)}` deterministically on the fly — no migration, but ties the slug to the email forever
-   Use `/write-plan` to pick + plan the migration + signup-creates-tenant flow before charging at the URL itself. Tenant store + auth helpers are ready; the wire-up is the design call.
-   - **Why for launch:** dashboard's empty state ships, but Marcus seeing real deployments needs this mapping decided.
-2. **Deal Desk: subtitle interpolation + empty detail panel NaN guard** (~1-2 hr — bigger than I first thought). Two pre-existing compiler bugs surfaced during the polish snapshot. Subtitle text in `page header` bakes the literal at compile time via `formatInlineText` (compiler.js ~line 11455) — only handles `*bold*`/`_italic_`, not `{var}` interpolation. `text` and `small text` nodes go through a different reactive pipeline that DOES interpolate. The fix: thread `subtitle` through the reactive emit path (probably emit a `<span>` with an ID + add to state-bindings). Detail panel `$NaN` / `undefined` is a separate fix — runtime format helpers (`as dollars`, `as percent`) need a guard for unset source values.
-   - **Why for launch:** stops Marcus from seeing literal `{pending_count}` and `$NaN` on the demo. Both pre-date the polish commit but block a clean Marcus walk-through.
-3. **CC-3 webhook receiver** (~1 hr code, gated on Russell's Stripe live keys). Wire the production webhook route in `playground/server.js`. Test in test mode until live keys land.
-   - **Why for launch:** customers can't pay until this lands AND Russell's Stripe live keys arrive.
-4. **CC-5 custom domain UX polish** (a session). Phase 85 scaffolding shipped (CC-5/5a/5b); the open work is end-to-end: customer enters a domain, sees verification status, gets a green check when ready. From `ROADMAP.md` Q2 2026 section.
+1. **CC-5 custom domain UX polish** (a session). Phase 85 scaffolding shipped (CC-5/5a/5b); the open work is end-to-end: customer enters a domain, sees verification status, gets a green check when ready. From `ROADMAP.md` Q2 2026 section.
    - **Why for launch:** Marcus's company wants `deals.acme.com`, not `acme.buildclear.dev`. Custom domains are table stakes at SaaS price points.
+2. **Routing primitive design** (a session — write-plan first). The primitives audit flagged this as the #1 compiler gap. Today the lead-router uses raw `if X is Y` chains, breaks for round-robin / territory / workload-balance / skill-based. Recommended: `route X by field` with rules + round-robin fallback. Use `/write-plan` to design before charging at parser/compiler edits.
+   - **Why for launch:** Russell's first paying job is building custom variants of these apps. Lead routing is where customers diverge most — without this primitive each variant is 50+ lines of if-chains; with it, 5 lines.
+3. **Search-input-filters-table primitive** (~1-2 hr). Per the primitives audit. Every queue app needs filter-by-text once data scales beyond ~20 rows; today Russell would hand-roll the filter input every variant.
+   - **Why for launch:** apps look amateur the moment data scales. One parser node + ~30 lines of compiled JS pays for itself across every Marcus app.
+4. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook route. Test in Stripe test mode until live keys land.
+   - **Why for launch:** customers can't pay until this AND Russell's Stripe live keys both land.
 
 ## Blocked on Russell (skip these, grab the next item)
 
@@ -60,4 +56,4 @@ Build priority queue from ROADMAP at session start, lead don't ask, big-picture 
 
 ## Resume prompt (paste into fresh session)
 
-> Read HANDOFF.md. Item 1 (apps list URL) needs the user→tenant mapping decided FIRST — use `/write-plan` to pick between the three options and plan the migration before charging at code. Item 2 (subtitle interpolation + NaN guard) is a real compiler change — make sure to read the existing reactive emit path before edits. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: f27f0be.
+> Read HANDOFF.md and start on item 1 (CC-5 custom-domain UX polish). The whole signup → dashboard happy path is reachable now — the next push is making domain attachment feel finished. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: 27a6bf2.

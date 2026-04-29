@@ -6,6 +6,25 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 (later) — Marcus apps list: dashboard shows the customer's deployed apps
+
+The piece between Marcus signing up and Marcus actually seeing his deployments. Picked the simplest of the three user→tenant mapping options sketched earlier — each customer = one tenant, auto-created at signup.
+
+**The chain that lights up:**
+- Sign up at buildclear.dev → user row created → a tenant row gets auto-created with a `clear-<6hex>` slug → the slug gets written back onto the user.
+- Log in → cookie set as before.
+- Hit the dashboard → it asks "what apps belong to my tenant?" → the new URL returns the list → the page renders one card per app with a link to the live URL.
+
+**Cross-tenant isolation is load-bearing.** Two customers sign up, one deploys an app, the other's app list returns `[]`. That's the property that makes this safe to ship and the test that locks it in.
+
+**What the dashboard renders:** for each deployed app it shows the app slug, the hostname, the latest version label, the deploy date, and an "Open" link. Empty state still shows when the tenant has zero deploys (no apps yet — go build one).
+
+**Degraded modes covered:** signup without a tenant store still succeeds (tenant_slug stays null); the apps URL returns 503 when DATABASE_URL isn't set; the dashboard's auth gate bounces unauth'd users to the login page. None of these surface broken text to a customer.
+
+121/121 tenant store tests + 72/72 routes tests + 57/57 auth helpers + 24/24 factory tests, all green. 9 new tests for listAppsByTenant + 22 new tests for the apps URL and tenant auto-create.
+
+The "first paying Marcus customer" path is now: register account → log in → land on dashboard → see deployed apps → click into one → continue. Every step works.
+
 ## 2026-04-29 — Browser UAT runner: every Marcus app passes a real Playwright walk-through
 
 **The 5 Marcus-targeted apps each ship with an auto-generated Playwright test that actually runs.** Wired the existing browser-UAT generator (cherry-picked from a Codex stash earlier this week) into `clear build` so every app gets a `browser-uat.mjs` file alongside its server.js. New runner script `scripts/run-marcus-uat.mjs` builds each Marcus app, spins up its server on a dedicated port, runs the walker, kills the server, and reports per-app pass/fail.

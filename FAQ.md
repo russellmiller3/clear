@@ -205,6 +205,47 @@ So Clear treats any change to `migrations/*.sql` or `wrangler.toml` as schema-cl
 
 ---
 
+### Where does the browser UAT runner live? How do I run it?
+
+The auto-generated Playwright walker shipped 2026-04-29. Every Clear app the compiler builds gets a `browser-uat.mjs` next to its `server.js` — a real Playwright script that drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown, and screenshots each route.
+
+End-to-end:
+
+- **Contract generator** — `lib/uat-contract.js`: `generateUATContract(body)` walks the AST and produces a JSON description of every interactive surface (pages, controls, tables, drilldowns, expected text). `generateBrowserUAT(contract)` turns that contract into a runnable Playwright script.
+- **CLI hook** — `cli/clear.js`: `clear build` writes `result.browserUAT` to `apps/<name>/browser-uat.mjs` whenever the compiler returns it. Uses `.mjs` so top-level `await import('playwright')` parses correctly without touching the app's `package.json`.
+- **Multi-app runner** — `scripts/run-marcus-uat.mjs`: runs all 5 Marcus apps in sequence — builds each, spins up its server on a dedicated port (4400+i), runs the walker, kills the server, reports per-app pass/fail. Wipes per-app `clear-data.db` first so seeds always re-fire. Writes `snapshots/marcus-uat-failures-<date>.md` with stdout/stderr of any failing app for offline debug. Per-route screenshots land in `.clear-uat-screenshots/` (gitignored).
+- **Tests + parity guards** — `lib/uat-contract.test.js`: covers contract shape + generator smoke. The 5 Marcus apps' walkers are the integration test — 52/52 walker assertions green is the regression net for any compiler emit change.
+- **Requires** — the `playwright` dev dep (already in package.json). The script logs a clear "run npm install --save-dev playwright" hint if it's missing.
+
+Run a single app's walker:
+
+```sh
+node cli/clear.js build apps/deal-desk/main.clear
+node apps/deal-desk/server.js &   # listens on :3000 by default
+TEST_URL=http://localhost:3000 node apps/deal-desk/browser-uat.mjs
+```
+
+Or run all 5 Marcus apps end-to-end:
+
+```sh
+node scripts/run-marcus-uat.mjs
+```
+
+Why this matters strategically: every app's compile produces a verification oracle for free. AI-generated apps especially benefit — the LLM doesn't have to also write the tests, and the walker catches "the code compiles but the page is broken" failures the LLM would never notice.
+
+### Where do the Clear Cloud customer's deployed apps live? (the dashboard's app grid)
+
+`GET /api/apps` returns the authed user's tenant's apps, shipped 2026-04-29. End-to-end:
+
+- **Schema** — `playground/db/migrations/0002_users_sessions.sql`: `users.tenant_slug VARCHAR(64)` + a partial index on it. Not a FK because `clear_cloud.tenants` lives in a different schema and pg-mem chokes on cross-schema FKs; uniqueness on the tenants slug is the integrity guarantee.
+- **Tenant store method** — `playground/tenants.js`: `listAppsByTenant(slug)` on InMemory + Postgres + DualWrite. Returns `{appSlug, scriptName, hostname, deployedAt, latestVersionId}` per row, newest deploy first.
+- **Auto-tenant on signup** — `playground/cloud-auth/routes.js` POST `/api/auth/signup`: after `signupUser`, creates a `clear-<6hex>` tenant via the store + writes the slug back to `users.tenant_slug`. Best-effort: signup still succeeds even if the tenant store isn't wired (degraded mode).
+- **URL handler** — `playground/cloud-auth/routes.js` GET `/api/apps`: reads session cookie, calls `validateSession` (now returns `tenant_slug`), calls `tenantStore.listAppsByTenant(user.tenant_slug)`. 401 with no session, empty array when no deploys yet.
+- **Dashboard** — `playground/dashboard.html`: after auth, fetches `/api/apps` and renders one card per deploy with the live URL.
+- **Cross-tenant isolation** — load-bearing test in `playground/cloud-auth/routes.test.js`: two customers sign up, one deploys, the other's `/api/apps` returns `[]`. That's the safety property.
+
+72 routes integration tests + 121 tenant store tests cover the surface.
+
 ### Where does the queue primitive live?
 
 The `queue for X:` primitive is a brand-new Clear node type added 2026-04-27. End-to-end:
