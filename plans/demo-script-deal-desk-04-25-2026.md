@@ -215,7 +215,32 @@ Each section: **Visual** (what's on screen) — **Talk track** (exactly what to 
 
 ---
 
-### 26:00 — 30:00 — The pitch close
+### 26:00 — 27:00 — The 60-second proof Clear is a real language, not just AI output
+
+**Why this segment exists.** Without this beat, the demo proves AI can build an app. It does NOT prove the source is OWNED — that Marcus can actually read it, change it, trust it. Other AI builders (Lovable, Bolt, v0) generate code Marcus can't read or edit. The whole "ownership beats authorship" wedge dies if this segment isn't in the cut. See `FAQ.md → "Why is Clear a language at all if AI does the writing?"` for the strategic reasoning.
+
+**Visual:** Cut from the live URL back to Studio. The compiled `main.clear` file is open in the editor. Russell scrolls to the auto-approve threshold line.
+
+**Talk track:**
+> "Last thing. Watch this.
+>
+> The AI built this app. But here's the file. Plain English. I can read it — and so can you. Look — *[scroll to the line]* — `if discount is greater than 20`. That's the auto-approve rule. One line.
+>
+> CFO calls. Says we're being too generous, drop the threshold to 15 percent. Watch.
+>
+> *[Click into the line. Change the `20` to `15`. Hit save / recompile.]*
+>
+> Done. No AI. No engineering ticket. No Retool seat. I just changed one number. The CFO's edit shipped in 5 seconds.
+>
+> THIS is the difference. Lovable would've sent that change to the AI, hoped it didn't break the rest of the app, and burned credits trying to fix it if it did. Retool would've meant calling a developer. Clear — I read the file, changed a number, kept moving. The app is mine."
+
+**Pacing:** This is short and tight. 60 seconds max. The point lands when the viewer sees Russell's hand on the keyboard — not Meph's chat panel. Don't let it run long; the close at 27:00 needs the energy.
+
+**Why this is the load-bearing beat for the moat.** If real Marcus prospects watch the demo and the FIRST thing they say is *"can I really edit it myself?"* — answer is right there on tape. If they never engage with this beat (skip past, "I just want to use the AI"), the language layer is illusory and Clear is competing on AI quality only. This segment is the discriminator between "Clear has a moat" and "Clear is a wrapper."
+
+---
+
+### 27:00 — 30:00 — The pitch close
 
 **Visual:** Russell back on camera, full screen. Maybe a simple side-by-side title card: "Engineering: 6 weeks. Retool: $50/seat. Lovable: rewrites your file. Clear: 30 minutes."
 
@@ -257,14 +282,16 @@ Each section: **Visual** (what's on screen) — **Talk track** (exactly what to 
 | 10:30 | "App built. Running on his laptop." | Lower third |
 | 17:30 | "← AI just wrote the analyst's job." | Pointing at the summary |
 | 22:30 | "← Real URL. Real internet. Live." | Pointing at the published URL |
-| 27:00 | "Retool: $900/mo. Clear: $99/mo." | Comparison title card |
+| 26:15 | "← Marcus owns this. No AI needed." | Pointing at the threshold line as Russell scrolls to it |
+| 26:35 | "20 → 15. One number. 5 seconds." | As Russell types the change |
+| 28:00 | "Retool: $900/mo. Clear: $99/mo." | Comparison title card |
 | 29:30 | "russell@buildclear.dev" | Sticky bottom for the last 30 sec |
 
 ### B-roll to film separately and intercut
 1. **Russell's hand on a trackpad** — for cuts during the Meph build, when you want to break up the "watching code appear" rhythm.
 2. **Close-up of the published URL bar** — frame on the URL only, ~3 sec. Use at 23:00.
-3. **A spreadsheet with `TBD` typed in a discount column, breaking a downstream formula** — 5-second insert at 27:30 when you mention the spreadsheet horror story. Optional but lands hard.
-4. **A laptop screen showing a JIRA ticket with status "Backlog — Q3"** — 3-second insert at 26:30. Sales-ops viewers will feel this in their bones.
+3. **A spreadsheet with `TBD` typed in a discount column, breaking a downstream formula** — 5-second insert at 28:30 when you mention the spreadsheet horror story. Optional but lands hard.
+4. **A laptop screen showing a JIRA ticket with status "Backlog — Q3"** — 3-second insert at 27:30. Sales-ops viewers will feel this in their bones.
 
 ---
 
