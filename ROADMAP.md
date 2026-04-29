@@ -376,6 +376,56 @@ Tier-1 queue primitive shipped 2026-04-27 (`queue for X:` — single-stage appro
 
 ---
 
+## From 2026-04-29 strategy conversation (Russell-decisions on which to commit)
+
+Captured here so they aren't lost. Mix of near-term polish, mid-term strategic bets, long-term distribution moves, and language-primitive gaps that surfaced from the Studio-in-Clear thought experiment. Each item carries a recommendation; nothing is committed without Russell's nod.
+
+### Near-term Marcus polish (small, high-leverage, defensible to ship soon)
+
+| Item | Effort | Notes |
+|------|--------|-------|
+| Demo script: "Marcus edits a number himself" beat | 1 hr (script + reshoot if recorded) | The single moment that proves Clear is a real language vs decoration. Add a 30-second segment ~minute 24 of the demo: open `main.clear`, change threshold from 20% to 15%, recompile, done — no AI. If real Marcus prospects don't engage with this beat (skip past, "I just want to use the AI"), the language-as-moat thesis is illusory. See FAQ → *Why is Clear a language at all if AI does the writing?* |
+| Tauri wrapper around current Studio (click-to-open desktop) | ~half-day | Bundle Node + Studio source as a child process; Tauri webview points at localhost:3456. One installer per OS (.dmg / .msi / .exe). Effectively zero risk — Tauri's been doing this for 3 years; sidecar pattern is well-trodden. Studio's machinery (factor-db, MCP, child process spawning) stays in Node. Doesn't preclude the bigger Tauri compile target; they compose. |
+
+### Mid-term strategic bets (multi-session, post-Marcus revenue or in parallel as energy permits)
+
+| Item | Effort | Recommendation |
+|------|--------|----------------|
+| Tauri compile target for Clear (`build for desktop`) | 1-2 weeks | Already listed under "Niche / Desktop apps" but elevating: every Clear app ships as a desktop installer. Real differentiator vs Retool / Lovable / Bolt (browser-only). **Defer until vertical pivot.** Marcus's customers don't need desktop; legal / healthcare / finance / defense (the secondary ICP) do. Re-evaluate when secondary ICP becomes load-bearing. |
+| Studio chat-shell rebuild in Clear (dogfooding bet) | 1-2 days for the shell only | The CHAT-FACING shell — chat panel, app picker, theme switcher, login, save-to-Desktop — is tractable in Clear today and dogfoods the language. Editor / compiler / MCP / sweep stay in JS as escape-hatch infrastructure. Each thing the shell needs that Clear can't express becomes a roadmap entry below. If too much ends up in `script:` blocks, that's a useful negative signal that Clear isn't ready for self-hosting and that's fine to know. |
+
+### Long-term HyperCard expansion (post first 10-20 paying Marcuses; multi-quarter)
+
+These three items together compose the "HyperCard moment" for Clear — see FAQ for full reasoning. None are 2026 bets; all are 2027-2028 if Marcus revenue lands.
+
+| Item | Notes |
+|------|-------|
+| Free local-only Tauri Studio (offline-capable, no account) | The HyperCard-on-every-Mac equivalent. Free tier is the on-ramp for hobbyists / teachers / ops people; paid Cloud is for collaboration + publish. Could be branded separately ("Clear Desktop" / "Clear Stacks") to protect Marcus pricing. Pairs with the Tauri compile target above. |
+| Self-contained HTML+JS Clear app file format (blueprint / share-a-stack) | Compile a Clear app to ONE file anyone can open + edit. Email it, GitHub it, drag-drop to a colleague. The HyperCard "share a stack" mechanism for the AI era. Pairs with free local Tauri to enable viral distribution. Russell already wrote about the "blueprint" idea — this is making it a real distribution unit. |
+| Drag-and-drop UI builder layered on Clear source (WYSIWYG) | HyperCard's killer was you painted buttons + dragged fields. Clear is text-first today. The GAN-against-mocks workflow could evolve into interactive WYSIWYG that generates Clear source as the user drags. Hard, but it's the missing piece for the HyperCard authoring experience. The AI angle helps here — Meph as natural-language authoring is structurally better than HyperCard's HyperTalk-by-hand. |
+
+### Clear-language primitive gaps (surfaced from Studio-in-Clear thought experiment)
+
+These are what Studio NEEDS that Clear can't express today. Each one would unlock a class of apps beyond Studio. Russell-call on which (if any) to commit; the dogfooding signal might be: ship the chat shell first, see which gaps actually bite, build those.
+
+| Primitive | Why we'd need it | Difficulty |
+|---|---|---|
+| `iframe` element | Embed sandboxed app previews — load a compiled Clear app into a Studio-shaped Clear app. Today only doable via `script:` block. | Easy — one new node type, plus security/sandbox decisions. |
+| `exec` / subprocess primitive | Spawn child processes from a Clear backend — workers, claude CLI, system tools. Crosses Clear's web-server boundary. | Medium — security model is the hard part (when does a Clear app get to spawn arbitrary processes?). |
+| MCP server protocol | Expose a Clear app's runtime as an MCP server so AI tools call into a Clear app the same way Meph's tools call into Studio. Sister capability to `agent` + `has tools:`. | Medium-Hard — protocol surface is real; could be a Phase B of the agent system. |
+| Compiler self-hosting (`use raw 'clear'`) | Run the Clear compiler from inside a Clear app. Recursive bootstrap problem; needs the obfuscated bundle to be importable as a real adapter. Today blocks Studio dogfooding entirely. | Medium — mostly packaging / API design. The compiler is already pure ESM. |
+| Editor adapter (`use 'codemirror'`) | Embed code editors. Studio-in-Clear can't render its own editor without one. Could generalize to `use 'editor'` with multiple back-ends (CodeMirror, Monaco, Ace). | Medium — adapter pattern Clear already has for `data` / `database` / `email`. |
+
+### Sweep infrastructure follow-ups (defensive, complement Pieces 1-3 from this session)
+
+| Item | Notes |
+|------|-------|
+| cc-agent worker-startup health check (proactive) | Before a sweep dispatches its first trial, the harness pings `/api/cc-agent-health` which does a 1-token Claude call and confirms a non-empty response. If it errors, fail loud — don't run 60 minutes producing garbage. Defensive complement to Pieces 1-3 instrumentation, which is reactive (catches failures during a run). |
+| Real hint-lift measurement at L7+ | In progress — sweep `b0xvxmyd7` (Marcus-archetype tasks: approval-queue + kpi-dashboard, 5 trials per condition each). Counter at L3 was too easy (100/100 both conditions); L7 is the right difficulty band for differentiating hint_on vs hint_off. Result feeds RESEARCH.md's "Meph improves with data" claim. |
+| Inter-trial backoff option in ab-hint-sweep | If/when cc-agent rate-limit IS the failure mode (hasn't reproduced today), add `--delay-between-trials=Nms` flag. Not needed yet — placeholder for the real diagnostic. |
+
+---
+
 ## Stats (for headlines / quick reference)
 
 Up-to-date numbers live in `FEATURES.md`. Roadmap-relevant deltas:
