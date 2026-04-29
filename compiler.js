@@ -13850,6 +13850,41 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("if (!_COOKIE_SECRET) console.warn('[cookies] COOKIE_SECRET env var is unset — signed cookies will use an ephemeral fallback secret. Set COOKIE_SECRET in production.');");
     lines.push("const _cookieSecretResolved = _COOKIE_SECRET || ('clear-dev-' + Math.random().toString(36).slice(2));");
   }
+  // Routing primitive (2026-04-29) — detect any `route X by FIELD:` block
+  // with a round-robin default. If present, emit the shared cursor table +
+  // helper at module top so every route block can call `_clear_route_pick`.
+  function walkForRoutingRR(nodes, acc) {
+    if (!Array.isArray(nodes)) return acc;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.ROUTE_DEF) {
+        const rules = Array.isArray(n.rules) ? n.rules : [];
+        if (rules.some(r => r && r.type === 'default' && r.strategy === 'round_robin')) {
+          acc.found = true;
+        }
+      }
+      if (Array.isArray(n.body)) walkForRoutingRR(n.body, acc);
+      if (Array.isArray(n.thenBody)) walkForRoutingRR(n.thenBody, acc);
+      if (Array.isArray(n.elseBody)) walkForRoutingRR(n.elseBody, acc);
+    }
+    return acc;
+  }
+  const _routingScan = walkForRoutingRR(body, { found: false });
+  if (_routingScan.found) {
+    lines.push('// Routing primitive — round-robin cursor state lives in a shared SQLite table.');
+    lines.push("db.createTable('_clear_route_cursors', { route_id: { type: 'text', required: true }, last_index: { type: 'number', default: -1 }, updated_at_date: { type: 'timestamp', auto: true } });");
+    lines.push('async function _clear_route_pick({ routeId, pool }) {');
+    lines.push('  if (!Array.isArray(pool) || pool.length === 0) return null;');
+    lines.push("  const _row = db.lookupOne('_clear_route_cursors', { route_id: routeId });");
+    lines.push('  const _next = (((_row && typeof _row.last_index === "number" ? _row.last_index : -1) + 1) + pool.length) % pool.length;');
+    lines.push('  if (_row) {');
+    lines.push("    db.update('_clear_route_cursors', { ..._row, last_index: _next, updated_at_date: new Date().toISOString() });");
+    lines.push('  } else {');
+    lines.push("    db.save('_clear_route_cursors', { route_id: routeId, last_index: _next, updated_at_date: new Date().toISOString() });");
+    lines.push('  }');
+    lines.push('  return pool[_next];');
+    lines.push('}');
+  }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
   if (hasSignedCookies) {

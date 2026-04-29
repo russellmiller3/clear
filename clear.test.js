@@ -28074,6 +28074,84 @@ when user sends lead to /api/leads:
     expect(js).toContain('routeId:');
   });
 
+  it('cycle 4.1: round-robin program emits the cursor table + helper at module top', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).toContain("createTable('_clear_route_cursors'");
+    expect(js).toContain('async function _clear_route_pick');
+    // Helper picks pool[(last_index + 1) % pool.length]
+    expect(js).toMatch(/last_index[\s\S]+pool\.length/);
+  });
+
+  it('cycle 4.2: cursor table + helper emit exactly once with multiple route blocks', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  region
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  route lead by region:
+    default round-robin across [charlie, diana]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    const createMatches = js.match(/createTable\(['"]_clear_route_cursors['"]/g) || [];
+    expect(createMatches.length).toBe(1);
+    const helperMatches = js.match(/async function _clear_route_pick/g) || [];
+    expect(helperMatches.length).toBe(1);
+  });
+
+  it('cycle 4.3: a fixed-mapping-only route block does NOT emit cursor table or helper', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).not.toContain('_clear_route_cursors');
+    expect(js).not.toContain('_clear_route_pick');
+  });
+
+  it('cycle 5.1: Python emit — fixed-mapping rules compile to if/elif chain', () => {
+    const src = `build for python backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Enterprise' to charlie
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const py = result.python || '';
+    // Python uses elif chains and dict-style assignment
+    expect(py).toContain("lead.get('size')");
+    expect(py).toContain("lead['assigned_to'] = \"alice\"");
+    expect(py).toContain("lead['assigned_to'] = \"charlie\"");
+    expect(py).toContain("lead['assigned_to'] = \"bob\"");
+  });
+
   it('cycle 3.3: stable id is a content hash, not a line number', () => {
     // Content-hash invariant: same rules + pool produce the same routeId
     // regardless of where the route block lives in the file.
