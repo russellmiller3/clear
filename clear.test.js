@@ -27874,6 +27874,118 @@ when user sends lead to /api/leads:
     expect(route.rules).toHaveLength(1);
     expect(route.rules[0]).toEqual({ type: 'fixed', match: 'SMB', owner: 'alice' });
   });
+
+  it('parses default to owner (single-owner default)', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.rules).toHaveLength(2);
+    expect(route.rules[1]).toEqual({ type: 'default', strategy: 'fixed', owner: 'bob' });
+  });
+
+  it('parses default round-robin across [pool] into the right AST', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob, diana, evan]
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.rules).toHaveLength(2);
+    expect(route.rules[1]).toEqual({
+      type: 'default',
+      strategy: 'round_robin',
+      pool: ['alice', 'bob', 'diana', 'evan'],
+    });
+  });
+
+  it('singularizes plural entity name (queue F2 pattern)', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route leads by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.entityName).toBe('lead');
+  });
+});
+
+describe('Routing primitive — parser hard-fail', () => {
+  it('errors on missing `by`', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead size:
+    'SMB' to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain("'by'");
+  });
+
+  it('errors on missing field name', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by:
+    'SMB' to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('field');
+  });
+
+  it('errors on empty body', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('at least one rule');
+  });
+
+  it('errors on bare-identifier match value (must be string)', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    SMB to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('quoted strings');
+  });
+
+  it('errors on multiple `default` rules', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+    default round-robin across [diana, evan]`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('only one default');
+  });
+
+  it('errors on empty round-robin pool', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default round-robin across []`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('non-empty pool');
+  });
 });
 
 run();
