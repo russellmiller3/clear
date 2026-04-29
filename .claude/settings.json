@@ -63,6 +63,17 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/before-rebuild-check.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking whether the new feature already exists in FEATURES.md / parser..."
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {

@@ -147,7 +147,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 
 | Display Format | Syntax | Output |
 |----------------|--------|--------|
-| Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows |
+| Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows; **auto-emitted toolbar search input** that filters rows in-place across all visible columns (Codex chunk #5, 2026-04-26 — every `display X as table` gets it for free, no syntax to opt in) |
 | Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
 | Detail panel | `detail panel for selected_deal:` + body + `actions:` | 340px right rail populated from the selected table row, with sticky bottom action buttons |
 | Cards | `display X as cards showing name, description` | Card grid |
