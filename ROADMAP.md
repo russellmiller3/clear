@@ -1,5 +1,26 @@
 # Clear Language — Roadmap
 
+## Table of Contents (jump to)
+
+- [How to use this file (READ BEFORE EDITING)](#how-to-use-this-file-read-before-editing) — the rules, where each kind of content lives, end-of-session checklist
+- [Critical path to first paying customer](#critical-path-to-first-paying-customer-2026-04-26--read-this-first) — the linear sequence of unlocks toward Marcus paying
+- [Strategic pivot under review (Dave-first)](#strategic-pivot-under-review-2026-04-24--dave-first-wedge) — open decision points
+- [Vision](#vision) — north star reminder
+- [Immediate Priorities — Critical Path](#immediate-priorities--critical-path-to-first-paying-customer) — the Marcus-launch shopping list
+- [P0 — Ship Marcus on Clear Cloud (Q2 2026)](#p0--ship-marcus-on-clear-cloud-q2-2026) — cloud platform must-haves
+- [P0 — Marcus GTM (Q2 2026)](#p0--marcus-gtm-q2-2026) — pitch + sales motion
+- [P1 — Live App Editing](#p1--live-app-editing-flagship-completion) — flagship completion
+- [P2 — Compiler Flywheel](#p2--compiler-flywheel-second-order-moat) — second-order moat
+- [P2 — Ghost Meph last mile](#p2--ghost-meph-last-mile)
+- [P2 — Refactoring backlog](#p2--refactoring-backlog)
+- [P2 — Session 46 follow-up](#p2--session-46-follow-up)
+- [P3 — Research portfolio (laptop-feasible)](#p3--research-portfolio-laptop-feasible)
+- [P4 — Private moonshots](#p4--private-moonshots-if-the-goal-is-delight)
+
+**Before adding anything here:** is the work already shipped? Check `FEATURES.md` first (capability surface) and `intent.md` (node-type spec). Shipped work does NOT belong in ROADMAP — it goes in CHANGELOG (history) and FEATURES (current capability).
+
+---
+
 ## How to use this file (READ BEFORE EDITING)
 
 **The bright line: ROADMAP is forward-looking ONLY.** If a row describes something already shipped, it does NOT belong here. If you're tempted to add a "DONE (Session N)" tag inline — stop, that's the regression that turned this file into 846 lines of accumulated rubble. Done work belongs in `CHANGELOG.md` (history) and `FEATURES.md` (capability surface).
