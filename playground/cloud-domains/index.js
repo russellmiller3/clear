@@ -28,6 +28,7 @@ const MAX_DOMAIN_LEN = 253;  // DNS spec — full-qualified name cap
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { resolveCname as _defaultResolveCname } from 'node:dns/promises';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_001_PATH = join(__dirname, 'migrations', '001-domains.sql');
@@ -232,6 +233,42 @@ export async function listPendingDomains(db) {
      ORDER BY last_checked_at NULLS FIRST, created_at ASC`
   );
   return rows;
+}
+
+// =============================================================================
+// resolveDomainCname — production DNS resolver (CC-5b)
+// =============================================================================
+/**
+ * Production-side DNS resolver. Wraps node:dns/promises.resolveCname so
+ * pollOnce gets a stable contract:
+ *
+ *   - Array<string> of CNAME records on success (passthrough).
+ *   - null when the domain isn't in DNS yet (ENOTFOUND) or has no CNAME
+ *     records (ENODATA). Both are "still propagating" from the customer's
+ *     point of view, not errors — pollOnce treats them as still-pending.
+ *   - Throws on other errors (ESERVFAIL, ETIMEOUT, network down, etc.)
+ *     so pollOnce's per-row try/catch captures the message into last_error.
+ *     Surfacing real errors lets the dashboard say "DNS server timed out
+ *     — we'll retry" instead of pretending nothing happened.
+ *
+ * The second argument is a dependency-injection seam for tests so the
+ * wrapper logic verifies without hitting real DNS. Production callers
+ * pass domain only.
+ *
+ * @param {string} domain
+ * @param {(domain: string) => Promise<string[]>} [resolveCnameFn]
+ * @returns {Promise<string[]|null>}
+ */
+export async function resolveDomainCname(domain, resolveCnameFn = _defaultResolveCname) {
+  try {
+    const records = await resolveCnameFn(domain);
+    return records;
+  } catch (err) {
+    if (err && (err.code === 'ENOTFOUND' || err.code === 'ENODATA')) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 // =============================================================================
