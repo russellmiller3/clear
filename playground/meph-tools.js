@@ -75,7 +75,11 @@ export async function dispatchTool(name, input, ctx, helpers) {
   }
   switch (name) {
     case 'edit_code':
-      return editCodeTool(input, ctx, helpers.compileProgram);
+      // Pass full helpers bag (not just compileProgram) so editCodeTool can
+      // route auto-compile through the shared hint pipeline once cycle 2 of
+      // plans/plan-cc-agent-hint-gap-fix-2026-04-29.md lands. Today the only
+      // helper editCodeTool reads is compileProgram — backward-compatible.
+      return editCodeTool(input, ctx, helpers);
 
     case 'compile':
       return compileTool(input, ctx, {
@@ -425,7 +429,13 @@ export function highlightCodeTool(input) {
  * @param {function} compileProgram - the Clear compiler entry point
  * @returns {string} JSON-stringified result
  */
-export function editCodeTool(input, ctx, compileProgram) {
+export function editCodeTool(input, ctx, helpersOrCompileProgram) {
+  // Accept either the full helpers bag (preferred — gives cycle 2 access to
+  // sha1, safeArchetype, rerankers, etc.) or a bare compileProgram function
+  // (backward-compatible with the existing meph-tools.test.js call sites).
+  const compileProgram = typeof helpersOrCompileProgram === 'function'
+    ? helpersOrCompileProgram
+    : helpersOrCompileProgram?.compileProgram;
   if (input.action === 'read') {
     return JSON.stringify({ source: ctx.source, errors: ctx.errors });
   }
