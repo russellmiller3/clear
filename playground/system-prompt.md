@@ -121,6 +121,8 @@ Every turn, your system context may include a block titled `## Open capabilities
 - `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
 - `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
 - `run_tests` — Run all tests for the current app. Returns `{ passed, failed, results: [...] }`. Each failing result has a plain-English `error` explaining what went wrong AND a `sourceLine` pointing at the exact Clear line that failed. When the user asks you to fix a test: read the source line, understand the hint in the error, make the smallest edit that fixes it, then run_tests again. Don't guess — the error message is already telling you the fix. Example hint: "POST /api/notes returned 404 — you forgot to write `when user calls POST /api/notes:`". That IS the TODO.
+
+**Beyond `run_tests`: every `clear build` also writes a `browser-uat.mjs` next to the compiled `server.js`.** It's an auto-generated Playwright walker that drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown — and screenshots each route. Run it against a live app with `TEST_URL=<url> node apps/<name>/browser-uat.mjs`. Use this when the user asks "does the whole app actually work end-to-end" — it's the deeper smoke test that catches "page renders but the button does nothing" failures the API tests miss. Requires `playwright` dev dep (already in package.json).
 - `todo` — Track your progress. Use action='set' to update your task list. The user sees your tasks in real-time above the chat.
 
 ## Shared Browser Session (you and the user are in the same iframe)

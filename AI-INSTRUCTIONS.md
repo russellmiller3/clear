@@ -367,6 +367,23 @@ Visual hint for the human reader: `=` lines are formulas to check,
 
 ## Testing (MANDATORY — every app gets tests)
 
+**Two layers of auto-generated tests ship with every `clear build`:**
+
+1. **`test.js`** — the API + smoke tests (every URL, every button, every page, every agent). Run with `node cli/clear.js test <file.clear>`.
+2. **`browser-uat.mjs`** — a real Playwright walker that drives the compiled HTML in a real browser. Visits every page directly via its route, asserts the right page renders + the persistent shell stays mounted + no horizontal overflow. Clicks every nav, every route tab, every button that navigates somewhere. Exercises every table's sort + filter and every row-click drilldown into a detail panel. Screenshots each route to `.clear-uat-screenshots/`.
+
+Run the browser walker against a running app:
+
+```sh
+node cli/clear.js build apps/<name>/main.clear
+node apps/<name>/server.js &
+TEST_URL=http://localhost:3000 node apps/<name>/browser-uat.mjs
+```
+
+For all 5 Marcus apps in one shot: `node scripts/run-marcus-uat.mjs`.
+
+Both layers are derived from the source — no human writes them — so they can't drift from the code. Add custom `test:` blocks ONLY for business logic the auto layers can't infer (specific assertions about what gets stored, what error is returned, etc.).
+
 The compiler auto-generates tests for every endpoint, button, page, agent,
 and CRUD flow. You don't need to write these. But you SHOULD add custom tests
 for business logic. Use nameless `test:` blocks — the body IS the name:

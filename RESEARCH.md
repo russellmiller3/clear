@@ -91,6 +91,8 @@ Clear sidesteps this because **Meph writes the test before the code.** The test 
 
 Cursor generates code and you validate. Clear generates, self-validates, and the validation is written *before* the generation.
 
+**Two oracles per app, both compiler-derived (added 2026-04-29).** The TDD oracle (`test:` blocks) covers business logic. The browser-walker oracle (`browser-uat.mjs`) covers user-visible behavior — every page renders, every nav goes where it says, every button does something, every table sorts and filters, every detail panel drills down. Both ship for free at `clear build` time; neither is hand-written. Combined, they catch "code compiles but the page is broken" failures the LLM would never notice. The UAT runner's first session surfaced four real compiler bugs — including a tree-shake gap that had been silently broken for who-knows-how-long. **Every successful `clear build` now produces a verification contract that proves the AI's output works end-to-end without a human grader.** That's the oracle insight extended from "tests written before code" to "the entire user-visible surface gets walked, by a real browser, with zero hand-written test code."
+
 ---
 
 ## TDD as Reversed GAN
