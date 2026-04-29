@@ -450,15 +450,105 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
         <div class="text-[11px] text-slate-400">Live</div>
       </div>
 
-      <!-- The screenshot itself: real img if file exists, otherwise the placeholder.
-           Swap this div for <img src="images/deal-desk-demo.png" alt="Deal Desk app — pending discount approval queue"> when the asset lands. -->
-      <div class="screenshot-placeholder">
-        <div class="ph-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <!-- Inline HTML/CSS mock of the CRO approver view. Pairs with the
+           hero's submitter view: hero shows the rep submitting, this shows
+           the CRO approving. No PNG needed — the mock IS the visual. -->
+      <div class="p-8 bg-[#f8f9fb]">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <div class="text-[18px] font-bold text-slate-800 mb-0.5">Pending Approvals</div>
+            <div class="text-[12px] text-slate-400">Sara Chen, CRO &middot; 7 awaiting review</div>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] font-medium text-slate-500 bg-white border border-black/[0.06] px-3 py-1.5 rounded-lg">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            Auto-approved 12 today (under 15%)
+          </div>
         </div>
-        <div class="ph-label">Deal-desk demo screenshot — TODO</div>
-        <div class="ph-title">Drop image at <span class="mono" style="font-family: 'JetBrains Mono', monospace; background: rgba(99,102,241,0.08); padding: 2px 8px; border-radius: 4px;">landing/images/deal-desk-demo.png</span></div>
-        <div class="ph-meta">Recommended: 1600&times;1000 PNG of the /cro Pending Queue view, ivory theme.</div>
+
+        <!-- Stat row -->
+        <div class="grid grid-cols-3 gap-3 mb-5">
+          <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm p-4">
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Avg ask</div>
+            <div class="text-[22px] font-bold text-slate-800 leading-none">22%</div>
+            <div class="text-[11px] text-slate-400 mt-1">+3pts vs last week</div>
+          </div>
+          <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm p-4">
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Auto-approved</div>
+            <div class="text-[22px] font-bold text-slate-800 leading-none">63%</div>
+            <div class="text-[11px] text-slate-400 mt-1">Under your 15% threshold</div>
+          </div>
+          <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm p-4">
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Median time-to-decision</div>
+            <div class="text-[22px] font-bold text-slate-800 leading-none">11min</div>
+            <div class="text-[11px] text-slate-400 mt-1">Down from 2 days</div>
+          </div>
+        </div>
+
+        <!-- Detailed approval card -->
+        <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm overflow-hidden mb-5">
+          <div class="px-5 py-3 border-b border-black/[0.04] flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="text-[14px] font-semibold text-slate-800">Acme Health &middot; 30% discount</div>
+              <span class="bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Pending your call</span>
+            </div>
+            <div class="text-[11px] text-slate-400">Submitted 2 hrs ago by Jamie</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-0">
+            <!-- Left: request facts -->
+            <div class="px-5 py-4 border-r border-black/[0.04]">
+              <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-3">The ask</div>
+              <div class="space-y-2 text-[13px]">
+                <div class="flex justify-between"><span class="text-slate-500">Customer ARR</span><span class="text-slate-800 font-medium">$284K</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Term</span><span class="text-slate-800 font-medium">3-year renewal</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Last discount</span><span class="text-slate-800 font-medium">20% (2024)</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Reason</span><span class="text-slate-800 font-medium">Renewal lock-in</span></div>
+              </div>
+            </div>
+            <!-- Right: agent recommendation -->
+            <div class="px-5 py-4 bg-indigo-50/30">
+              <div class="flex items-center gap-2 mb-3">
+                <div class="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/></svg>
+                </div>
+                <div class="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider">Agent recommendation</div>
+              </div>
+              <div class="text-[12px] text-slate-700 leading-relaxed mb-3">
+                Counter at <span class="font-semibold text-indigo-700">25%</span> with a 3-year lock-in clause. Precedent supports up to 25%; 30% is 5pts above your stated cap on this segment.
+              </div>
+              <div class="text-[11px] text-slate-500">Drafted reply ready for your edit.</div>
+            </div>
+          </div>
+
+          <div class="px-5 py-3 border-t border-black/[0.04] bg-slate-50/40 flex items-center justify-end gap-2">
+            <div class="text-[11px] font-medium text-slate-500 px-3 py-1.5 rounded-lg border border-black/[0.06] bg-white">Reject</div>
+            <div class="text-[11px] font-medium text-slate-500 px-3 py-1.5 rounded-lg border border-black/[0.06] bg-white">Approve at 30%</div>
+            <div class="text-[11px] font-semibold text-white bg-indigo-500 px-3 py-1.5 rounded-lg">Counter at 25% &middot; send reply</div>
+          </div>
+        </div>
+
+        <!-- Audit log strip -->
+        <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm">
+          <div class="px-5 py-2.5 border-b border-black/[0.04] flex items-center justify-between">
+            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Audit log</div>
+            <div class="text-[11px] text-slate-400">Every decision, every change, signed</div>
+          </div>
+          <div class="px-5 py-2.5 text-[12px] text-slate-600 border-b border-black/[0.03] flex items-center gap-3">
+            <span class="text-slate-400 text-[11px] w-14">11:42 am</span>
+            <span class="font-medium text-slate-800 w-24">Sara Chen</span>
+            <span>approved <span class="font-medium">TechFlow 25%</span> &middot; agent flagged precedent at 22%</span>
+          </div>
+          <div class="px-5 py-2.5 text-[12px] text-slate-600 border-b border-black/[0.03] flex items-center gap-3">
+            <span class="text-slate-400 text-[11px] w-14">10:08 am</span>
+            <span class="font-medium text-slate-800 w-24">Auto</span>
+            <span>approved <span class="font-medium">Notion 10%</span> &middot; under 15% threshold, agent verified</span>
+          </div>
+          <div class="px-5 py-2.5 text-[12px] text-slate-600 flex items-center gap-3">
+            <span class="text-slate-400 text-[11px] w-14">Yesterday</span>
+            <span class="font-medium text-slate-800 w-24">Sara Chen</span>
+            <span>edited approval threshold from <span class="font-medium">10% to 15%</span> &middot; effective immediately</span>
+          </div>
+        </div>
       </div>
     </div>
 
