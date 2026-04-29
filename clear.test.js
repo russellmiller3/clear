@@ -27849,4 +27849,31 @@ describe('SHELL-5: data tables — backwards compat with `with delete and edit`'
   });
 });
 
+// =============================================================================
+// Routing primitive — `route X by FIELD:` (Phase 1, 2026-04-29)
+// Plan: plans/plan-routing-primitive-2026-04-29.md
+// =============================================================================
+
+describe('Routing primitive — parser', () => {
+  it('parses route lead by size: with one fixed rule', () => {
+    const src = `create a Leads table:
+  size, default 'SMB'
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    expect(endpoint).toBeTruthy();
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route).toBeTruthy();
+    expect(route.entityName).toBe('lead');
+    expect(route.field).toBe('size');
+    expect(route.rules).toHaveLength(1);
+    expect(route.rules[0]).toEqual({ type: 'fixed', match: 'SMB', owner: 'alice' });
+  });
+});
+
 run();
