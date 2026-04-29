@@ -6,6 +6,40 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 (session 2) — Sweep diagnostic Pieces 1-3 stop garbage-data shipping; GTM-2 marcus.html broken section replaced; cast/clear/ folder retired
+
+The 04-29 morning A/B hint sweep produced 11 KB of useless data: 30 of 40 trials silently fast-failed in ~2.3 seconds each with `error: null`, every one bucketed as "Meph failed" when in fact the cc-agent backend had died after the first 10 counter+hint_on trials and returned 200 OK + empty SSE for every request after. The lift number from that JSON is meaningless. This session closed the gap so future sweeps either produce honest numbers or fail loud — and surfaced the actual silent-fall-through path (`playground/ghost-meph/cc-agent.js:270-276` swallows `runClaudeCliStreamJson` rejections as a text-mode SSE that says `[cc-agent tool-mode error: <real claude error>]`).
+
+**Sweep diagnostic — three commits:**
+
+- **Piece 1 (`62ac833`)** — added `detectInfraFailure({elapsedMs, dbPassed, saidTaskComplete, stuck, rowsInWindow})` pure helper. Patched `driveTaskOnWorker` in `playground/supervisor/curriculum-sweep.js` to: (a) accumulate the SSE stream into `streamText` for diagnostic preview, (b) count code_actions rows in the trial window via Factor DB, (c) compute elapsed, (d) call the helper, (e) return `error: 'no-meph-activity (Nms, 0 rows): <stream preview>'` when a sub-5s trial has zero compile rows + no TASK COMPLETE + no STUCK. 7 new tests cover positive case + slow / passed / compiled / stuck / TASK_COMPLETE / 5000ms boundary negatives.
+- **Piece 2 (`96fdd83`)** — `summarizeAbResults` in `playground/supervisor/ab-hint-sweep.js` now tracks `infraFailures` separately and EXCLUDES them from `trials` / `passes` / `passRate`. `lift` is null when either side has zero genuine trials. `runCondition` early-aborts a bucket on 2 consecutive `no-meph-activity` errors so future damage caps at ~2 wasted trials instead of 30. `formatSummaryTable` adds an `infra` column. 6 new tests + updated existing summarizer fixture.
+- **Piece 3 (`97fa51d`)** — `driveTaskOnWorker` scans the SSE stream for the `[cc-agent tool-mode error: ...]` pattern and surfaces it as `error: 'cc-agent-backend-error (Nms): <real claude error>'`. The actual failure message is preserved instead of thrown away. `isInfraFailure` + `runCondition` early-abort updated to match both `no-meph-activity` AND `cc-agent-backend-error` patterns. 1 new test.
+
+**GTM-2 marcus.html polish — two commits:**
+
+- **`d058257`** — `landing/marcus.html` "Live demo" section was pointing at `landing/images/deal-desk-demo.png` (doesn't exist) AND `https://deals.demo.buildclear.dev` (returns nothing — live deploy not landed yet per HANDOFF). Customer-facing TODO placeholder text was unprofessional. Replaced with inline HTML/CSS mock of the CRO approver view: Sara Chen sees the queue, agent recommends counter at 25% with 3-year lock-in, approve/reject UI, audit log strip. Pairs with hero's submitter view for both sides of the deal-desk workflow without depending on assets that don't exist. README updated to reflect the inline-mock decision.
+- **`cea97b0`** — bottom "Open Studio — free" CTA was `href='#'`. Marcus reads to the end, ready to convert, clicks, gets nothing. Wired to `/studio` (matches every other Studio CTA on the page). Two other dead `#` links remain in nav + footer (Docs, Changelog) — left in place pending those pages existing.
+
+**Demo recording prep — one commit:**
+
+- **`e41a0fd`** — added pre-recording fact-check table to `plans/demo-script-deal-desk-04-25-2026.md` verifying every script claim against current `apps/deal-desk/main.clear` (453 lines). All major claims hold (20% threshold, fields, /cro login, AI summary + risk score, seeded deals). Three minor seed/script drifts flagged: Globex seeded at 18% auto-approves so queue is 3 not 4 deals, Mike's 30% Acme submission duplicates seed Acme 28%, `cro@demo.com` / `demo123` needs `/signup` registration pre-recording.
+
+**Cast/clear cleanup — two pushes (one per repo):**
+
+- **Cast push `ca11750` (on `claude/handoff-tasks-YGByV` branch)** — deleted `cast/clear/` (192 files, 54,523 lines of frozen v1 Clear) and `cast/HANDOFF.md` from the cast repo. Clear lived inside cast/ from 2026-04-01 to 2026-04-05 (sessions 8-9), then forked into its own repo where active development continues; the stale duplicate had been rotting for 3+ weeks.
+- **Clear push `e9d6790`** — archived 4 historical docs from cast/clear/ to `clear/archive/2026-04-05-clear-v1-{HANDOFF,ROADMAP,intent,PHILOSOPHY}.md` with notation headers explaining provenance and pointing at current versions. Preserves the v1 snapshot for historical reference without keeping a stale source tree around.
+
+**HANDOFF.md update — one commit:**
+
+- **`eb8c1ee`** — removed stale "WIP plan/routing-primitive ~50% drafted" item (verified merged into main yesterday); replaced "A/B hint sweep RUNNING" priority with "Piece 4 cc-agent fix" gated on the diagnostic; added today's commits with hashes; flagged the morning sweep JSON as garbage.
+
+**Tests:** 2773 compiler + 24 ab-hint pure helpers + 7 detectInfraFailure cases — all green. Net: 14 new tests across 3 sweep commits. No existing test touched except the ab-hint summarizer fixture (extended to cover infra-failure exclusion).
+
+**In-flight at session end:** diagnostic sweep `bx0ofh7h9` running in background (`MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/ab-hint-sweep.js --tasks=counter --trials=10 --workers=1 --strict`). Trial 1/20 passed at 180s elapsed via Factor DB grade — cc-agent functional initially. Wall-clock estimate ~60 min total because Meph is doing real work this time. When the sweep hits its cumulative-failure threshold (or all 20 trials succeed), the JSON at `playground/sessions/ab-hint-sweep-<latest>.json` will have either `cc-agent-backend-error: <real claude error>` or `no-meph-activity` in any failed `error` field — Piece 4 ships against the actual diagnostic message.
+
+---
+
 ## 2026-04-29 (evening) — CC-5b DNS verification poller closes the "Verifying DNS" loop
 
 The piece between "customer types `deals.acme.com` and sees a Verifying DNS pill" and "the pill never updates because nothing's looking up DNS." Studio's bootstrap now starts a 1-minute tick that resolves pending domains and flips them to `verified` or `failed`. Without this, the attach UX shipped earlier on 2026-04-29 was a UI for a dead end.
