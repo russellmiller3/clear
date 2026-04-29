@@ -75,3 +75,4 @@ test-*.clear
 __pycache__/
 *.pyc
 .claude/state/
+.clear-uat-screenshots/

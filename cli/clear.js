@@ -613,6 +613,17 @@ async function buildCommand(args) {
     writeFileSync(resolve(dir, 'test.js'), result.tests);
     files.push('test.js');
   }
+  // Browser UAT — auto-generated Playwright walker that drives every page,
+  // every nav, every button, every table sort/filter, every detail-panel
+  // drilldown end-to-end. Lives next to the standard test.js so the dev
+  // can run either with one node command. Uses `.mjs` because the script
+  // needs top-level await (dynamic playwright import) — apps' package.json
+  // is CJS by default. Requires `playwright` dev dep (the script logs an
+  // install hint if it can't import it).
+  if (result.browserUAT) {
+    writeFileSync(resolve(dir, 'browser-uat.mjs'), result.browserUAT);
+    files.push('browser-uat.mjs');
+  }
 
   // Copy runtime if needed
   const allJS = (result.javascript || '') + (result.serverJS || '');

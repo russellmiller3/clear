@@ -297,16 +297,17 @@ body {
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
-    <div class="flex min-h-screen" data-clear-line="134">
+<div id="page_Lead_Router" data-clear-page-id="Lead_Router" data-clear-page-route="/" data-clear-page-title="Lead Router">
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="134">
     <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="135">
     <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="136"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">L</div><span class="text-base font-bold text-base-content tracking-tight">Lead Router</span></div>
     <nav class="flex-1 overflow-y-auto py-4 px-4">
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Queues</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="138"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New leads</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_138_New_leads" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="138"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New leads</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
         <li class="clear-nav-section-label">Operations</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="140"><i data-lucide="route" aria-hidden="true"></i><span class="clear-nav-label">Routing rules</span><span class="clear-nav-count num" data-clear-tpl="{rules}">{rules}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="141"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Owners</span><span class="clear-nav-count num" data-clear-tpl="{owners}">{owners}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_140_Routing_rules" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="140"><i data-lucide="route" aria-hidden="true"></i><span class="clear-nav-label">Routing rules</span><span class="clear-nav-count num" data-clear-tpl="{rules}">{rules}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_141_Owners" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="141"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Owners</span><span class="clear-nav-count num" data-clear-tpl="{owners}">{owners}</span></a></li>
       </ul>
     </nav>
     </aside>
@@ -321,14 +322,15 @@ body {
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="148">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="148">
+      <div data-clear-routed-content="Lead_Router" data-clear-routed-route="/">
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="149">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">New lead queue</h1>
-        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{total} leads awaiting follow-up</p>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{total} leads awaiting follow-up">{total} leads awaiting follow-up</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
-    <button class="btn btn-primary" id="btn_Refresh" data-clear-line="152">Refresh</button>
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_152_Refresh" data-clear-control-kind="button" data-clear-line="152">Refresh</button>
       </div>
     </div>
     <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{total} new leads, {owners} owners, and {rules} routing rules are live." data-clear-line="155">{total} new leads, {owners} owners, and {rules} routing rules are live.</span>
@@ -385,13 +387,14 @@ body {
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Source</legend>
       <input id="input_source" class="input input-bordered w-full" type="text" placeholder="Source">
     </fieldset>
-    <button class="btn btn-primary" id="btn_Add_Lead" data-clear-line="179">Add Lead</button>
+    <button class="btn btn-primary" id="btn_Add_Lead" data-clear-uat-id="button_179_Add_Lead" data-clear-control-kind="button" data-clear-line="179">Add Lead</button>
     </div>
     <div class="grid grid-cols-2 gap-5" data-clear-line="187">
     <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="188">
     <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_New_Leads" data-clear-line="189">
-      <div class="px-6 py-4 border-b border-base-300/40">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">New Leads</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_New_Leads_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_New_Leads_table">
@@ -412,9 +415,11 @@ body {
       </div>
     </aside>
     </div>
+      </div>
     </div>
     </main>
     </div>
+</div>
   </main>
 
   <!-- ┌─────────────────────────────────────────────┐
@@ -468,51 +473,115 @@ function _toast(msg, type) {
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
-  tableEl._clear_rows = Array.isArray(data) ? data : [];
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
-  if (!Array.isArray(data) || data.length === 0) {
+  if (rows.length === 0) {
     if (thead) thead.innerHTML = '';
     if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
     return;
   }
-  if (thead) thead.innerHTML = renderHead(data);
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}
+function _clear_table_rows_for_view(rows, sortCol, sortDir, filterText) {
+  var out = Array.isArray(rows) ? rows.slice() : [];
+  var query = String(filterText || '').trim().toLowerCase();
+  if (query) {
+    out = out.filter(function(row) {
+      return Object.keys(row || {}).some(function(key) {
+        var value = row[key];
+        if (value == null) return false;
+        var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        return text.toLowerCase().indexOf(query) !== -1;
+      });
+    });
+  }
+  if (sortCol) {
+    var dir = sortDir === 'desc' ? -1 : 1;
+    function normalized(value) {
+      if (value == null || value === '') return { empty: true, value: '' };
+      var raw = String(value).trim();
+      var numeric = raw.replace(/[$,%]/g, '').replace(/,/g, '');
+      if (numeric !== '' && /^-?\d+(\.\d+)?$/.test(numeric)) {
+        return { empty: false, kind: 'number', value: Number(numeric) };
+      }
+      return { empty: false, kind: 'text', value: raw.toLowerCase() };
+    }
+    out.sort(function(a, b) {
+      var av = normalized(a && a[sortCol]);
+      var bv = normalized(b && b[sortCol]);
+      if (av.empty && bv.empty) return 0;
+      if (av.empty) return 1;
+      if (bv.empty) return -1;
+      if (av.kind === 'number' && bv.kind === 'number') return (av.value - bv.value) * dir;
+      return String(av.value).localeCompare(String(bv.value), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }
+  return out;
+}
+function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
   var VIRT_THRESHOLD = 100;
-  if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(function(row, idx) { return renderRow(row, idx); }).join('');
-    return;
-  }
   var ROW_HEIGHT = 40;
   var BUFFER = 5;
   var scroller = tableEl.parentElement;
-  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
   scroller.style.maxHeight = '560px';
   scroller.style.overflowY = 'auto';
-  function paint() {
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
     var top = scroller.scrollTop;
     var h = scroller.clientHeight || 560;
     var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
-    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
     var topPad = first * ROW_HEIGHT;
-    var botPad = (data.length - last) * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
     var html = '';
     if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
-    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
     if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
     tbody.innerHTML = html;
-  }
+  };
   if (!scroller._clear_virt_bound) {
     scroller._clear_virt_bound = true;
-    scroller.addEventListener('scroll', paint, { passive: true });
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
   }
-  paint();
+  tableEl._clear_paint_table();
 }
-function _clear_cell(key, val) {
+function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
+}
+function _clear_cell(key, val, selectable) {
   var k = String(key).toLowerCase();
   var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
   if (k === 'status' || k === 'state' || k === 'stage') {
     var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
-    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
   }
   if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\$/.test(v)) {
     var formatted = v;
@@ -520,7 +589,7 @@ function _clear_cell(key, val) {
       var n = Number(val);
       formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
     }
-    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
   }
   if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
     var parts = v.trim().split(/[\s@.]+/).filter(Boolean);
@@ -528,15 +597,25 @@ function _clear_cell(key, val) {
       ? (parts[0][0] || '') + (parts[1][0] || '')
       : v.slice(0, 2);
     initials = initials.toUpperCase();
-    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
   }
-  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
 }
 function _clear_table_init(tableEl, selectedVar) {
   if (!tableEl) return;
   if (selectedVar) tableEl._clear_selected_var = selectedVar;
   if (tableEl._clear_init) return;
   tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
   tableEl.addEventListener('click', function(e) {
     var th = e.target.closest('th[data-sortable]');
     if (th) {
@@ -545,8 +624,10 @@ function _clear_table_init(tableEl, selectedVar) {
       var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
       tableEl.setAttribute('data-sort-col', col);
       tableEl.setAttribute('data-sort-dir', dir);
-      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
       th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
       return;
     }
     var tr = e.target.closest('tbody tr');
@@ -597,8 +678,8 @@ function _recompute() {
   _clear_render_table(
     document.getElementById('output_New_Leads_table'),
     _state.new_leads,
-    function(d) { var _keys = ["name","company","size","source","assigned_to"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join(''); },
-    function(row, rowIndex) { var _keys = ["name","company","size","source","assigned_to"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k) { return _clear_cell(k, row[k]); }).join('') + '</tr>'; }
+    function(d) { var _keys = ["name","company","size","source","assigned_to"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["name","company","size","source","assigned_to"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_New_Leads_table'), 'selected_lead');
   document.getElementById('input_name').value = _state.name;

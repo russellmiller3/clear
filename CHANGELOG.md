@@ -6,6 +6,49 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 — Browser UAT runner: every Marcus app passes a real Playwright walk-through
+
+**The 5 Marcus-targeted apps each ship with an auto-generated Playwright test that actually runs.** Wired the existing browser-UAT generator (cherry-picked from a Codex stash earlier this week) into `clear build` so every app gets a `browser-uat.mjs` file alongside its server.js. New runner script `scripts/run-marcus-uat.mjs` builds each Marcus app, spins up its server on a dedicated port, runs the walker, kills the server, and reports per-app pass/fail.
+
+**Result:** 52 of 52 walker assertions pass across all 5 Marcus apps (Deal Desk 24/24, Approval Queue 5/5, Lead Router 6/6, Onboarding Tracker 8/8, Internal Request Queue 9/9). The walker drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown — and screenshots each route to `.clear-uat-screenshots/`.
+
+**Compiler bugs the walker surfaced (and fixed in the same phase):**
+
+3. **Tree-shake walked dependencies one level deep instead of transitively.** The deal-desk app threw `_clear_table_rows_for_view is not defined` on every page load because `_clear_bind_table` pulled in `_clear_apply_table_view` (its direct dep) but stopped there — `_clear_apply_table_view`'s own dep on `_clear_table_rows_for_view` was silently dropped. Now the resolver loops until no new helper is added.
+
+4. **`save X as new T` discarded the inserted row.** Onboarding-tracker's seed had `customer_id is c1's id` after `save c1 as new Customer` — but the compiler emitted `await db.insert(...)` without capturing the return into `c1`, so `c1.id` stayed undefined and every subsequent FK insert failed with "customer_id is required". Now the variable is reassigned to whatever the insert returns.
+
+**UAT-contract fixes (also surfaced by the walker):**
+
+- The contract collected raw `{var}` placeholders in expected page text. The walker asserted "{pending_count} deals waiting on you." appeared on screen, but the runtime substitutes `{pending_count}` to a real number — the assertion always failed. Now placeholders get stripped at contract-build time, so the walker only checks the stable surrounding text.
+- The contract used the page-title declaration as the page's required body text. But onboarding-tracker's title is "Onboarding Tracker" while the body reads "Customer Success" / "Customer Onboarding" — title is `<title>` metadata, not body. Now the contract prefers the first body-visible heading and falls back to title only when the body has nothing.
+
+**Runner ergonomics:**
+
+- Wipes per-app `clear-data.db` before each run so the seed always re-fires (idempotent seeds skip inserts when a row already exists, silently masking newly-added seed entries).
+- Outputs `snapshots/marcus-uat-failures-<date>.md` with the full stdout/stderr of any failing app — debug without retracing.
+
+This closes the loop on "make sure all 5 Marcus apps work." Russell can now build custom variants for paying customers and have a runnable acceptance test suite the moment compile succeeds.
+
+## 2026-04-28 (late night) — Two compiler fixes + Marcus apps validation + primitive audit
+
+**Compiler fixes that ship across every Clear app:**
+
+1. **Page header subtitle now does `{var}` interpolation.** Previously the subtitle baked literal `{pending_count}` into the page because its compile path only handled bold/italic. Now subtitles use the same data-clear-tpl pattern that text/small-text already use, so the runtime resubstitutes on every state change. "0 deals waiting on you." now shows the real count instead of `{pending_count}`.
+
+2. **Format helpers (`as dollars`, `as percent`, `as date`, `as json`, `as count`) guard for null/undefined.** Previously an unset value rendered as "$NaN", "NaN%", "Invalid Date", "null", or "undefined". Now each emits an empty string when the source is null/undefined — the layout shape stays right but no broken text leaks to the user. Caught when the deal-desk's empty detail panel showed `$NaN` and `NaN%` before a row was selected.
+
+Both bugs visible in the deal-desk demo snapshot. Both fixes tracked the same pattern: a runtime helper had the right guard, but the inline-emitted code path didn't. Now they match.
+
+**Marcus apps validation (background research):** The 5 apps Clear has today — Deal Desk, Approval Queue, Internal Request Queue, Onboarding Tracker, Lead Router — match the market evidence on what RevOps customers actually build. Strong agreement on Approval Queue + Internal Request Queue + Onboarding Tracker (covered by 4-of-4 competing platforms). Deal Desk is thesis-grade (Russell's domain expertise replaces the missing market signal). Lead Router is the weakest by market signal but cheap to keep. After Marcus #1 conversation, consider rebranding Approval Queue → "Invoice Approval Queue" if his pain is finance — same primitive, much stronger evidence (Qonto, Fintecture, Plaid).
+
+**Primitive audit (background research):** All 6 Marcus apps compile clean today (0 errors). Russell can build custom variants now. The biggest gap is **lead routing** — today the lead-router app uses raw `if X is Y` chains. Works for fixed mapping but breaks for round-robin, territory, workload-balance, skill-based routing. Top 3 primitives to add next:
+1. `route X by field` with rules + round-robin fallback (the explicit ask)
+2. `search input filters table` UI primitive (every queue app needs filter-by-text)
+3. Activity log / comments-on-record primitive (every approval app variant wants a timeline)
+
+**Rule update:** CLAUDE.md gets a new sub-rule under Documentation Rule — the 11-surface doc cascade runs at PHASE-end, not commit-end. A phase ships as one cascade even if it lands across several commits. Saves the energy of writing five overlapping CHANGELOG entries that all describe the same thing.
+
 ## 2026-04-28 (night) — Deal Desk demo polish: kill 5 fake pages + Draft AI summary button + live stat counts
 
 The deal-desk Marcus would see at a demo had 5 pages backed by hand-coded seed data — Reps, Accounts, Approval Rules, Integrations, Settings. Each one looked real. None of them worked. The Integrations page was the most dangerous — it claimed "Salesforce / Slack / DocuSign — Connected" with zero of those actually connected. Marcus would lose trust the moment he poked at any of them.

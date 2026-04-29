@@ -450,19 +450,19 @@ app.post('/api/seed', async (req, res) => {
     // clear:85
     let l1 = { name: "Priya Shah", email: "priya@acmecorp.com", company: "Acme Corp", size: "Enterprise", source: "webinar", assigned_to: "charlie", status: "new" };
     // clear:93
-    await _clearTry(() => db.insert('leads', _pick(l1, LeadsSchema)), { op: 'insert', table: 'leads', line: 93, file: 'main.clear', source: "" }); // clear:93
+    l1 = await _clearTry(() => db.insert('leads', _pick(l1, LeadsSchema)), { op: 'insert', table: 'leads', line: 93, file: 'main.clear', source: "" }); // clear:93
     // clear:94
     let l2 = { name: "Marcus Jones", email: "mj@shopify-shops.com", company: "Shopify Shops", size: "Mid-market", source: "content", assigned_to: "bob", status: "new" };
     // clear:102
-    await _clearTry(() => db.insert('leads', _pick(l2, LeadsSchema)), { op: 'insert', table: 'leads', line: 102, file: 'main.clear', source: "" }); // clear:102
+    l2 = await _clearTry(() => db.insert('leads', _pick(l2, LeadsSchema)), { op: 'insert', table: 'leads', line: 102, file: 'main.clear', source: "" }); // clear:102
     // clear:103
     let l3 = { name: "Jenna Liu", email: "jenna@tinystudio.co", company: "Tiny Studio", size: "SMB", source: "referral", assigned_to: "alice", status: "new" };
     // clear:111
-    await _clearTry(() => db.insert('leads', _pick(l3, LeadsSchema)), { op: 'insert', table: 'leads', line: 111, file: 'main.clear', source: "" }); // clear:111
+    l3 = await _clearTry(() => db.insert('leads', _pick(l3, LeadsSchema)), { op: 'insert', table: 'leads', line: 111, file: 'main.clear', source: "" }); // clear:111
     // clear:112
     let l4 = { name: "Derek Patel", email: "dp@biginc.com", company: "Big Inc", size: "Enterprise", source: "outbound", assigned_to: "charlie", status: "qualified" };
     // clear:120
-    await _clearTry(() => db.insert('leads', _pick(l4, LeadsSchema)), { op: 'insert', table: 'leads', line: 120, file: 'main.clear', source: "" }); // clear:120
+    l4 = await _clearTry(() => db.insert('leads', _pick(l4, LeadsSchema)), { op: 'insert', table: 'leads', line: 120, file: 'main.clear', source: "" }); // clear:120
     // clear:121
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
