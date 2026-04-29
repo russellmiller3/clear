@@ -180,11 +180,13 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
     const decoder = new TextDecoder();
     let saidTaskComplete = false;
     let stuck = false;
+    let streamText = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value, { stream: true });
+      streamText += chunk;
       if (chunk.includes('TASK COMPLETE')) saidTaskComplete = true;
       if (chunk.includes('STUCK:')) stuck = true;
     }
@@ -196,13 +198,37 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
     // endpoints via http_request (which updates test_pass=1 on the latest row),
     // but forgets to type "TASK COMPLETE" in his final message.
     let dbPassed = false;
+    let rowsInWindow = 0;
     if (factorDB) {
       try {
         const row = factorDB._db
           .prepare('SELECT 1 FROM code_actions WHERE test_pass = 1 AND created_at >= ? LIMIT 1')
           .get(start);
         dbPassed = !!row;
+        // Count ANY rows during the trial — distinguishes "Meph tried + failed"
+        // from "Meph never ran" (infrastructure failure).
+        const countRow = factorDB._db
+          .prepare('SELECT COUNT(*) AS n FROM code_actions WHERE created_at >= ?')
+          .get(start);
+        rowsInWindow = countRow?.n || 0;
       } catch { /* non-fatal */ }
+    }
+
+    // Silent-fail guard: trial returned fast with zero Meph activity = the
+    // worker silently fell through (cc-agent dead, MCP server broken, etc.),
+    // NOT a real task failure. Bubble up as `error: 'no-meph-activity: ...'`
+    // so it doesn't get bucketed into pass-rate data.
+    const elapsed = Date.now() - start;
+    if (detectInfraFailure({ elapsedMs: elapsed, dbPassed, saidTaskComplete, stuck, rowsInWindow })) {
+      const preview = streamText.slice(0, 500).replace(/\n/g, ' \\n ');
+      return {
+        ok: false,
+        stuck: false,
+        timedOut: false,
+        dbPassed: false,
+        saidTaskComplete: false,
+        error: `no-meph-activity (${elapsed}ms, 0 rows): ${preview}`,
+      };
     }
 
     const outcome = computeTaskOutcome({ dbPassed, saidTaskComplete, strict: options.strict });
@@ -288,6 +314,36 @@ export function computeTaskOutcome({ dbPassed, saidTaskComplete, strict = false 
     };
   }
   return { ok: false };
+}
+
+/**
+ * Pure detector for infrastructure-failure trials — chat handler returned
+ * fast (<5s) with no Meph activity at all (no compile rows, no TASK COMPLETE,
+ * no STUCK signal). This is cc-agent dead / worker unhealthy / silent backend
+ * fall-through, NOT a real Meph task failure.
+ *
+ * Distinguishes infra failures from real failures so pass-rate data isn't
+ * polluted by infrastructure flakiness. The 04-29 hint sweep ran 30 garbage
+ * trials because every one returned in 2.3s with `error: null` and got
+ * bucketed as "ok: false" — looked like Meph failed when in fact the
+ * workers had silently stopped doing anything after the cc-agent backend
+ * exhausted.
+ *
+ * @param {object} input
+ * @param {number} input.elapsedMs        — wall-clock elapsed for the trial
+ * @param {boolean} input.dbPassed        — at least one test_pass=1 row landed
+ * @param {boolean} input.saidTaskComplete— Meph's stream contained "TASK COMPLETE"
+ * @param {boolean} input.stuck           — Meph's stream contained "STUCK:"
+ * @param {number} input.rowsInWindow     — count of code_actions rows during trial
+ * @returns {boolean}                     — true iff trial looks like infra failure
+ */
+export function detectInfraFailure({ elapsedMs, dbPassed, saidTaskComplete, stuck, rowsInWindow }) {
+  if (elapsedMs >= 5000) return false;
+  if (dbPassed) return false;
+  if (saidTaskComplete) return false;
+  if (stuck) return false;
+  if (rowsInWindow > 0) return false;
+  return true;
 }
 
 function collectErrorStrings(err) {

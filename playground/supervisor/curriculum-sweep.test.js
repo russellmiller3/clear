@@ -6,6 +6,7 @@ import {
   validateSweepPreconditions,
   computeTaskOutcome,
   gradeAbortedRun,
+  detectInfraFailure,
   isWorkerDeathError,
   processBucket,
   buildPerLevelStats,
@@ -269,6 +270,92 @@ describe('gradeAbortedRun', () => {
     expect(r.ok).toEqual(false);
     expect(r.timedOut).toEqual(true);
     expect(r.dbPassed).toEqual(false);
+  });
+});
+
+describe('detectInfraFailure', () => {
+  // The "no Meph activity" pattern: chat handler returned 200 OK with an
+  // empty SSE stream — no compile rows, no TASK COMPLETE, no STUCK signal,
+  // sub-5s elapsed. This is infrastructure failure (cc-agent dead, MCP
+  // server broken, worker silently falling through), NOT a Meph task
+  // failure. Don't pollute pass-rate data with these. The 04-29 hint
+  // sweep ran 30 such trials before this guard existed.
+
+  it('flags a sub-5s trial with zero activity as infra failure', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 2300,
+      dbPassed: false,
+      saidTaskComplete: false,
+      stuck: false,
+      rowsInWindow: 0,
+    });
+    expect(flagged).toEqual(true);
+  });
+
+  it('does NOT flag a slow trial with zero activity (Meph timed out trying)', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 30000,
+      dbPassed: false,
+      saidTaskComplete: false,
+      stuck: false,
+      rowsInWindow: 0,
+    });
+    expect(flagged).toEqual(false);
+  });
+
+  it('does NOT flag a fast trial that passed (rare but possible)', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 2300,
+      dbPassed: true,
+      saidTaskComplete: false,
+      stuck: false,
+      rowsInWindow: 5,
+    });
+    expect(flagged).toEqual(false);
+  });
+
+  it('does NOT flag a fast trial where Meph at least compiled', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 2300,
+      dbPassed: false,
+      saidTaskComplete: false,
+      stuck: false,
+      rowsInWindow: 1,
+    });
+    expect(flagged).toEqual(false);
+  });
+
+  it('does NOT flag a fast STUCK exit (Meph honestly gave up)', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 2300,
+      dbPassed: false,
+      saidTaskComplete: false,
+      stuck: true,
+      rowsInWindow: 0,
+    });
+    expect(flagged).toEqual(false);
+  });
+
+  it('does NOT flag a fast TASK COMPLETE (Meph claimed done)', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 2300,
+      dbPassed: false,
+      saidTaskComplete: true,
+      stuck: false,
+      rowsInWindow: 0,
+    });
+    expect(flagged).toEqual(false);
+  });
+
+  it('boundary: exactly 5000ms is NOT flagged (slow enough that Meph likely tried)', () => {
+    const flagged = detectInfraFailure({
+      elapsedMs: 5000,
+      dbPassed: false,
+      saidTaskComplete: false,
+      stuck: false,
+      rowsInWindow: 0,
+    });
+    expect(flagged).toEqual(false);
   });
 });
 
