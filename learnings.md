@@ -53,6 +53,45 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ---
 
+## Session: cc-agent hint pipeline gap (2026-04-29)
+
+### The bug: 386 cc-agent compile cycles silently produced zero hints
+Diagnostic against `playground/factor-db.sqlite` showed the cc-agent backend has NEVER fired a hint, ever. 386 mcp_* session rows, 100% with `hint_applied=NULL`. Anthropic-direct sweeps from earlier in April had 41 hint fires (rated helpful 73% of the time), but everything since 2026-04-21 was the silent zero. Three honest A/B sweeps on 2026-04-29 (counter L3, approval-queue L7, kpi-dashboard L7) "measured" 0% / -20% / 0% lift respectively because BOTH conditions in each sweep were operationally identical: no hints in either bucket.
+
+### Root cause: the retrieval and the auto-compile lived in different code paths
+`compileTool` in `playground/meph-tools.js` had the entire retrieval block inline — Tier 1+2+3 querySuggestions, EBM/pairwise reranker, prose hint composition, ctx.hintState updates. Meph in cc-agent mode never CALLS `compile` though. He uses `edit_code` (which auto-compiles silently via `compileProgram` directly) and then `http_request` against the running app. Both bypass `compileTool`. The retrieval was unreachable by construction from the actual user code path.
+
+### Fix: extract the helper, wire it into both paths, log the row
+- `attachHintsForCompileResult(source, r, ctx, helpers, result)` lifted out of `compileTool`. Mutates `result.hints` + `ctx.hintState` exactly like the inline code did. Called from BOTH compileTool and editCodeTool now.
+- `editCodeTool` got the full `helpers` bag threaded through dispatch (was just `compileProgram`). Backward-compatible — bare `compileProgram` shape still works for legacy test sites.
+- `editCodeTool` also calls `ctx.factorDB.logAction` BEFORE the helper, mirroring `compileTool`'s row shape. Without that, `ctx.hintState.lastFactorRowId` is null when the helper runs, so the post-turn HINT_APPLIED parser has no row id to update — cycle 4 plugs that.
+
+### Lesson: when one code path bypasses another, extract the side-effect into a helper
+Every "tool A and tool B both need behavior X" situation is a candidate for a shared helper. The CLAUDE.md rule "Cross-Path Tool Side-Effects Belong IN The Tool" was added 2026-04-22 for the same shape — Factor DB writes that lived in `/api/chat`'s post-tool callback never fired in cc-agent mode because cc-agent dispatches through MCP, not through `/api/chat`. This bug is the same shape one layer deeper: the side-effect WAS in the tool (`compileTool`), but the user's path to it wasn't through that tool.
+
+When you see a behavior that "fires in tests but not in production traffic," ask: is the production code path THROUGH the function that owns the behavior? If no, hoist into a helper called from BOTH.
+
+### Diagnostic value of the SQL probe
+The diagnosis was 30 minutes of querying `factor-db.sqlite` directly:
+```sql
+SELECT COUNT(*) FROM code_actions WHERE hint_applied=1 AND session_id LIKE 'mcp_%';  -- 0
+SELECT COUNT(*) FROM code_actions WHERE session_id LIKE 'mcp_%';  -- 386
+```
+Two queries. Reveals the entire problem. Saved another half-day of "maybe the retriever is broken" investigation. Every Factor DB column is a potential filter — when measurements don't match expectations, query the DB directly before assuming the code is right.
+
+### Tests + regression coverage
+6 new tool tests in `playground/meph-tools.test.js` (277 → 289):
+- edit_code with full helpers + factorDB calls querySuggestions once
+- edit_code attaches hints.text with tier label
+- edit_code with bare compileProgram does NOT fire (compat preserved)
+- edit_code with clean compile does NOT fire (guard works)
+- edit_code logs Factor DB row + sets lastFactorRowId
+- edit_code with bare compileProgram does NOT log (compat)
+
+Live measurement deferred until the API cap clears May 1 — fresh A/B sweep then will produce the first measured lift number for cc-agent.
+
+---
+
 ## Session D-1: Namespaced component calls (2026-04-24)
 
 ### The bug: `show ns's Card()` silently dropped the component
