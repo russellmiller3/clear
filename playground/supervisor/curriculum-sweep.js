@@ -214,10 +214,33 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
       } catch { /* non-fatal */ }
     }
 
+    // cc-agent backend-error detector. When runClaudeCliStreamJson rejects
+    // (claude CLI rate limit / auth / subprocess crash), cc-agent.js
+    // swallows the error as a text-mode SSE starting with "[cc-agent
+    // tool-mode error:" or "[cc-agent error:". The harness would see a
+    // 200 OK with one event containing the error text + no TASK COMPLETE
+    // + no compile rows — looks like a Meph fail. Surface the actual
+    // error string so we know whether to fix rate-limiting, re-auth,
+    // or restart claude. This was the root cause of the 04-29 sweep's
+    // 30 silent fast-fails (cc-agent died after first 10 trials).
+    const ccAgentErrMatch = streamText.match(/\[cc-agent(?: tool-mode)? error: ([^\]]+)\]/);
+    if (ccAgentErrMatch) {
+      const elapsedNow = Date.now() - start;
+      return {
+        ok: false,
+        stuck: false,
+        timedOut: false,
+        dbPassed: false,
+        saidTaskComplete: false,
+        error: `cc-agent-backend-error (${elapsedNow}ms): ${ccAgentErrMatch[1].slice(0, 400)}`,
+      };
+    }
+
     // Silent-fail guard: trial returned fast with zero Meph activity = the
-    // worker silently fell through (cc-agent dead, MCP server broken, etc.),
-    // NOT a real task failure. Bubble up as `error: 'no-meph-activity: ...'`
-    // so it doesn't get bucketed into pass-rate data.
+    // worker silently fell through some OTHER way (not the explicit
+    // cc-agent error path — could be MCP server crash, network blip, etc.).
+    // Bubble up as `error: 'no-meph-activity: ...'` so it doesn't get
+    // bucketed into pass-rate data.
     const elapsed = Date.now() - start;
     if (detectInfraFailure({ elapsedMs: elapsed, dbPassed, saidTaskComplete, stuck, rowsInWindow })) {
       const preview = streamText.slice(0, 500).replace(/\n/g, ' \\n ');

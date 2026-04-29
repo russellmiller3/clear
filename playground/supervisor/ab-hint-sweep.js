@@ -88,13 +88,16 @@ export function expandTrials(taskIds, trialsPerCondition, condition) {
 }
 
 /**
- * True iff this trial result is an infrastructure failure (no-meph-activity).
- * Set by driveTaskOnWorker when a sub-5s trial returns with zero compile
- * rows AND no TASK COMPLETE / STUCK signal — cc-agent dead, worker
- * silently fell through. These do NOT belong in pass-rate math.
+ * True iff this trial is an infrastructure failure — the worker / cc-agent
+ * backend died, NOT a real Meph attempt. Two patterns:
+ *  - 'no-meph-activity (...)' — sub-5s return, 0 compile rows, silent fall-through
+ *  - 'cc-agent-backend-error (...)' — claude CLI rejected (rate limit / auth / crash),
+ *    cc-agent.js swallowed it as a text-mode error response
+ * Both get tracked separately and EXCLUDED from pass-rate math.
  */
 function isInfraFailure(r) {
-  return typeof r.error === 'string' && r.error.startsWith('no-meph-activity');
+  if (typeof r.error !== 'string') return false;
+  return r.error.startsWith('no-meph-activity') || r.error.startsWith('cc-agent-backend-error');
 }
 
 /**
@@ -218,7 +221,10 @@ async function runCondition({ trials, workers, timeoutMs, hintsDisabled, strict,
         const t0 = Date.now();
         const r = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps, factorDB, t0, { strict });
         const elapsed = Date.now() - t0;
-        const isInfra = typeof r.error === 'string' && r.error.startsWith('no-meph-activity');
+        const isInfra = typeof r.error === 'string' && (
+          r.error.startsWith('no-meph-activity') ||
+          r.error.startsWith('cc-agent-backend-error')
+        );
         if (isInfra) consecutiveInfra += 1;
         else consecutiveInfra = 0;
         const status = isInfra ? '💥' : r.ok ? '✅' : r.timedOut ? '⏱️' : r.stuck ? '🔶' : '❌';

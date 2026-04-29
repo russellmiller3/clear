@@ -86,6 +86,14 @@ assert(allInfraOff.counter.lift === null,
 assert(allInfraOff.counter.hint_off.infraFailures === 1 && allInfraOff.counter.hint_off.trials === 0,
   'all-infra side: 1 infra failure, 0 genuine trials');
 
+// cc-agent-backend-error pattern is also tracked as infra failure (Piece 3)
+const ccAgentErr = summarizeAbResults([
+  { taskId: 'counter', condition: 'hint_on', ok: true, elapsedMs: 40000 },
+  { taskId: 'counter', condition: 'hint_on', ok: false, elapsedMs: 1800, error: 'cc-agent-backend-error (1800ms): claude exited with code 1: rate limit exceeded' },
+]);
+assert(ccAgentErr.counter.hint_on.trials === 1 && ccAgentErr.counter.hint_on.infraFailures === 1,
+  'cc-agent-backend-error counts as infra failure, not as a genuine trial');
+
 // ── formatSummaryTable ──
 const table = formatSummaryTable(summary);
 assert(table.includes('counter'), 'table mentions the task ids');
