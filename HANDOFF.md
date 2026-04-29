@@ -1,21 +1,21 @@
-# Handoff — 2026-04-29 morning
+# Handoff — 2026-04-29 morning (post CC-5 cycle 1)
 
 ## Where you are
 
-- **Branch:** `main`. Last shipped: `8271df2` (Marcus apps list doc cascade).
-- **Two WIP branches pushed but not merged:**
-  - `feature/cc-5-custom-domains` (`d25aaeb`) — CC-5 cycle 1: custom-domain attach + dashboard panel + 23 new tests (95/95 routes green). Ready to merge as-is OR iterate.
-  - `plan/routing-primitive` (`fc972ba`) — partial draft of the routing primitive plan, ~50% written.
+- **Branch:** `main`. Last shipped: `da0de35` (CC-5 cycle 1 merged).
+- **One WIP branch still pushed, unmerged:**
+  - `plan/routing-primitive` (`fc972ba`) — partial draft of the routing primitive plan, ~50% written. Resume + finish there.
 - **Tests:** 2749 main + 95 routes + 121 tenants + 24 factory + 56 migrations + 25 deal-desk app + 52/52 across 5 Marcus apps in browser walker — all green.
-- **Critical-path standing:** full sign-up → log-in → dashboard → see-deployed-apps path lives. CC-5 (custom domains) is one merge from being demo-ready. CC-3 (Stripe) and the routing primitive are the remaining cloud + compiler pieces.
+- **Critical-path standing:** full sign-up → log-in → dashboard → see-deployed-apps → attach-a-custom-domain path is reachable. CC-5b (DNS poller) + CC-5c (cert provisioner) are the cycles that turn "Verifying DNS" into "Live". CC-3 (Stripe) and the routing primitive are the remaining cloud + compiler pieces.
 - **Studio Meph backend note:** Anthropic API hit its monthly spending cap (resets May 1 00:00 UTC). Studio was restarted with `MEPH_BRAIN=cc-agent` so chat routes through the local Claude Code subscription, $0 cost. Restart Studio normally on/after May 1 to go back to API direct (or keep cc-agent forever — also fine).
 
-## Next session — priority order
+## Next priorities
 
-1. **CC-5 cycle 1 — decide + merge** (~10 min). The work is done and tested green on `feature/cc-5-custom-domains`. Either merge to main + cascade docs, or iterate. **Why for launch:** Marcus's company wants `deals.acme.com`, not `acme.buildclear.dev`. One short merge unlocks the demo-able domain UX.
-2. **Finish routing primitive plan** (~30-60 min). `plan/routing-primitive` has Phase Order, problem statement, reuse audit (queue primitive is the cousin), 3 example programs, phone test, synonym audit, parser shape. Still TODO: validator rules, JS + Python compiler emit, round-robin cursor runtime, TDD cycles, doc cascade list, resume prompt. Then `/red-team-plan` before any code. **Why for launch:** Russell's first paying job is custom variants of these apps; lead routing is where customers diverge most.
-3. **Search-input-filters-table primitive** (~1-2 hr). Per the primitives audit. Every queue app needs filter-by-text once data scales beyond ~20 rows. One parser node + ~30 lines of compiled JS, then every Marcus app inherits it. **Why for launch:** apps look amateur once data scales — cheap fix that compounds.
-4. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND your live keys both land.
+1. **Finish routing primitive plan** (~30-60 min). `plan/routing-primitive` (`fc972ba`) is ~50% drafted. Still TODO: validator rules, JS + Python compiler emit, round-robin cursor runtime helper, TDD cycles, doc cascade list, resume prompt. Then `/red-team-plan` before any parser/compiler code. **Why for launch:** Russell's first paying job is custom variants of these apps; lead routing is where customers diverge most.
+2. **Search-input-filters-table primitive** (~1-2 hr). Per the primitives audit. Every queue app needs filter-by-text once data scales beyond ~20 rows. One parser node + ~30 lines of compiled JS, then every Marcus app inherits it. **Why for launch:** apps look amateur once data scales — cheap fix that compounds.
+3. **CC-5b DNS verification poller** (~30 lines + cron). Wakes every minute, finds `pending` domains, calls `node:dns resolveCname`, flips status to verified or failed. **Why for launch:** without this, the attach UX shipped today shows "Verifying DNS" forever — cycle 1's value is gated on this.
+4. **CC-5c Fly cert provisioner** (small, depends on CC-5b). Once a domain verifies, request a Fly cert + write the cert id back. **Why for launch:** the customer's domain has to actually serve HTTPS, not just resolve.
+5. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND your live keys both land.
 
 ## Blocked on Russell (skip these, grab the next item)
 
@@ -37,4 +37,4 @@ Build priority queue from ROADMAP/RESEARCH/HANDOFF at session start, lead don't 
 
 ## Resume prompt (paste into fresh session)
 
-> Read HANDOFF.md and start on item 1 — decide what to do with the CC-5 cycle 1 WIP on `feature/cc-5-custom-domains`. Then item 2 if time permits. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: `8271df2`.
+> Read HANDOFF.md and start on item 1 — finish the routing primitive plan on `plan/routing-primitive`. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: `da0de35`.
