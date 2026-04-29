@@ -1022,6 +1022,44 @@ This mirrors lexical scoping: inner scope shadows outer. Applies to any built-in
 
 ---
 
+### Why is Clear a language at all if AI does the writing?
+
+The honest answer: today Clear is ~90% AI-written, ~10% human-written. The "humans write Clear from scratch" thesis is aspirational — Russell is the main human author. Most code in any given app comes from Meph.
+
+So why have a language layer instead of just generating JS+comments?
+
+**Ownership beats authorship as the wedge.** The pitch isn't "learn this language" — it's "finally, code you can own." Plain English isn't there so Marcus can author a Clear app from a blank file. It's there so Marcus can READ what Meph wrote, TRUST it, AUDIT it, and EDIT it when he needs to without re-engaging the AI.
+
+The single failure mode that sinks the thesis: if Marcus NEVER edits the source — always asks Meph for everything — then Clear's plain English is decorative. Could be JavaScript with comments and Marcus wouldn't know the difference. The "code you own" pitch collapses to an output format, and Clear is competing with Lovable / Bolt / v0 on raw AI quality, not on a structural moat.
+
+The demo HAS to include a moment where Marcus opens the file and changes a number himself. Threshold from 20% to 15%, with no AI involved. If real Marcuses say "I don't want to look at code, just have the AI do it for me," the language layer is illusory. If they make even occasional small edits — a number, a string, a new field — the moat is real.
+
+Three real human-author segments, in order of how load-bearing each is:
+
+1. **Marcus making quick edits** (the case the wedge depends on). Once a quarter is enough.
+2. **Freelancers + agencies** (the volume case). They type Clear directly because the keyboard is faster than dictating to Meph for routine work.
+3. **Hobbyists, teachers, ops people** (the long-tail HyperCard case). Plain English is the on-ramp. Multi-year bet, comes after distribution + free tier.
+
+The reframe that holds up: Clear is **for AI to write, for humans to read and edit, in that order.** The 90/10 split is the design. The plain-English-ness exists so the human OWNS what the AI produced — not so the human authors from scratch.
+
+---
+
+### Why did the 04-29 morning hint sweep produce garbage data?
+
+The sweep ran 40 trials and returned a JSON file with `lift = +0.2` on counter and `lift = 0` on todo-crud — except 30 of those 40 trials had `error: null`, `dbPassed: false`, `saidTaskComplete: false`, `elapsedMs: ~2300`. They weren't real Meph attempts. The cc-agent backend died after the first 10 counter+hint_on trials (likely a transient rate-limit or auth interaction with the Anthropic API cap that hit that morning), and every subsequent request returned 200 OK + an empty SSE stream. The harness counted those silent fast-fails as "Meph failed" and bucketed them into pass-rate math.
+
+Three pieces of instrumentation shipped 2026-04-29 (commits `62ac833`, `96fdd83`, `97fa51d`) ensure this can't repeat:
+
+1. **`detectInfraFailure`** in `playground/supervisor/curriculum-sweep.js` — surfaces sub-5s trials with zero compile rows + no TASK COMPLETE + no STUCK as `error: 'no-meph-activity (Nms, 0 rows): <stream preview>'` instead of `error: null`.
+2. **Summarizer exclusion** in `summarizeAbResults` — infra-failure trials are tracked separately as `infraFailures` and EXCLUDED from `trials` / `passes` / `passRate`. `lift = null` when either side has zero genuine trials.
+3. **cc-agent error pattern detection** — `driveTaskOnWorker` scans the SSE stream for `[cc-agent tool-mode error: ...]` (the text-mode wrap that `cc-agent.js:270-276` produces when `runClaudeCliStreamJson` rejects) and surfaces it as `error: 'cc-agent-backend-error (Nms): <real claude error>'`. The actual claude failure message is preserved instead of thrown away.
+
+Plus an early-abort: `runCondition` aborts a bucket on 2 consecutive infra failures, so the next time cc-agent dies mid-sweep the damage caps at ~2 wasted trials instead of 30.
+
+The 2026-04-29 afternoon re-run on counter passed 20/20 trials cleanly, confirming the failure was transient and the infrastructure now catches it loud if it recurs.
+
+---
+
 ### Why mechanical signals before ML for test quality?
 
 ML needs labeled data. You don't have it yet. Mechanical signals (weak assertion patterns, red-step check) are deterministic — they produce a quality score immediately and become features in the learned model later. Full explanation: **[RESEARCH.md — Mechanical Quality Signals](RESEARCH.md#mechanical-quality-signals-the-bootstrap)**
