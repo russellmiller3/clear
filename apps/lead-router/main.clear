@@ -65,12 +65,11 @@ when user sends lead to /api/leads:
     name is text, required, min 1, max 100
     email is text, required
     size is text
-  if lead's size is 'Enterprise':
-    lead's assigned_to is 'charlie'
-  if lead's size is 'Mid-market':
-    lead's assigned_to is 'bob'
-  if lead's size is 'SMB':
-    lead's assigned_to is 'alice'
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
   new_lead = save lead as new Lead
   send back new_lead with success message
 
