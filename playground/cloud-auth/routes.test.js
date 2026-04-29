@@ -51,13 +51,21 @@ async function makePool() {
   return pool;
 }
 
-// Build a fresh app with the 4 routes mounted. Returns { app, pool }.
-async function makeApp() {
+// Build a fresh app with the 5 routes mounted. Returns { app, pool, tenantStore }.
+async function makeApp(opts = {}) {
   const pool = await makePool();
   const app = express();
   app.use(express.json());
-  mountCloudAuthRoutes(app, { pool });
-  return { app, pool };
+  // CC-2 cycle 10 — most tests want a real in-memory tenant store so signup
+  // auto-creates a tenant + GET /api/apps can list deploys. Pass
+  // `noTenantStore: true` to test the degraded mode.
+  let tenantStore = null;
+  if (!opts.noTenantStore) {
+    const { InMemoryTenantStore } = await import('../tenants.js');
+    tenantStore = new InMemoryTenantStore();
+  }
+  mountCloudAuthRoutes(app, { pool, tenantStore });
+  return { app, pool, tenantStore };
 }
 
 // Make an HTTP request against the app on a one-shot listener. Returns
@@ -325,6 +333,147 @@ await runAsync(async () => {
   assert(r.status === 200, 'logout with no cookie → 200 (idempotent)');
   const clearedHeader = (Array.isArray(r.headers['set-cookie']) ? r.headers['set-cookie'] : [r.headers['set-cookie']]).join(';');
   assert(/Max-Age=0/.test(clearedHeader), 'still sends the clearing Set-Cookie');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n🏷  Signup auto-creates a tenant + writes back tenant_slug');
+// ─────────────────────────────────────────────────────────────────────────────
+
+await runAsync(async () => {
+  const { app, pool, tenantStore } = await makeApp();
+  const r = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email: 'tenant@widgetco.com', password: 'pass1234', name: 'Tenant Test' },
+  });
+  assert(r.status === 201, `signup → 201 (got ${r.status})`);
+  assert(r.body?.user?.tenant_slug && /^clear-[a-f0-9]{6}$/.test(r.body.user.tenant_slug),
+    `tenant_slug auto-assigned with clear-<6hex> shape (got ${r.body?.user?.tenant_slug})`);
+  // The slug exists in the tenant store too
+  const t = await tenantStore.get(r.body.user.tenant_slug);
+  assert(t && t.slug === r.body.user.tenant_slug,
+    'tenant row exists in the store with the same slug');
+  // And users.tenant_slug is set in the DB
+  const dbRow = await pool.query(`SELECT tenant_slug FROM users WHERE id = $1`, [r.body.user.id]);
+  assert(dbRow.rows[0]?.tenant_slug === r.body.user.tenant_slug,
+    'users.tenant_slug column is set in the DB');
+});
+
+await runAsync(async () => {
+  // Without a tenant store, signup still succeeds — tenant_slug just stays null
+  const { app } = await makeApp({ noTenantStore: true });
+  const r = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email: 'no-tenant@x.com', password: 'pass1234', name: 'NoTenant' },
+  });
+  assert(r.status === 201, `signup still works without a tenant store (got ${r.status})`);
+  assert(r.body?.user?.tenant_slug === null,
+    `tenant_slug is null when no tenant store wired (got ${r.body?.user?.tenant_slug})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n📋 GET /api/apps');
+// ─────────────────────────────────────────────────────────────────────────────
+
+await runAsync(async () => {
+  const { app } = await makeApp();
+  const r = await request(app, { method: 'GET', path: '/api/apps' });
+  assert(r.status === 401, `no cookie → 401 (got ${r.status})`);
+  assert(r.body?.error === 'not_authenticated', 'error=not_authenticated');
+});
+
+await runAsync(async () => {
+  const { app } = await makeApp();
+  const r = await request(app, {
+    method: 'GET', path: '/api/apps',
+    cookie: `${SESSION_COOKIE_NAME}=bogus-token`,
+  });
+  assert(r.status === 401, `bogus cookie → 401 (got ${r.status})`);
+  assert(r.body?.error === 'session_invalid', 'error=session_invalid');
+});
+
+await runAsync(async () => {
+  // Authed user with no deployed apps → empty array
+  const { app } = await makeApp();
+  const signup = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email: 'marcus@widgetco.com', password: 'pass1234', name: 'Marcus' },
+  });
+  const cookieToken = extractSessionCookie(signup.headers['set-cookie']);
+  const r = await request(app, {
+    method: 'GET', path: '/api/apps',
+    cookie: `${SESSION_COOKIE_NAME}=${cookieToken}`,
+  });
+  assert(r.status === 200, `valid cookie → 200 (got ${r.status})`);
+  assert(r.body?.ok === true, 'ok:true');
+  assert(Array.isArray(r.body?.apps) && r.body.apps.length === 0,
+    `empty array when no deploys (got ${JSON.stringify(r.body?.apps)})`);
+});
+
+await runAsync(async () => {
+  // Authed user with one deployed app → that app comes back
+  const { app, tenantStore } = await makeApp();
+  const signup = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email: 'marcus@widgetco.com', password: 'pass1234', name: 'Marcus' },
+  });
+  const cookieToken = extractSessionCookie(signup.headers['set-cookie']);
+  const tenantSlug = signup.body.user.tenant_slug;
+
+  // Pretend Marcus deployed an app
+  await tenantStore.markAppDeployed({
+    tenantSlug, appSlug: 'deal-desk',
+    scriptName: tenantSlug + '-deal-desk',
+    d1_database_id: 'd1-deal-desk',
+    hostname: 'deals.buildclear.dev',
+    versionId: 'v-001', sourceHash: 'sh1',
+  });
+
+  const r = await request(app, {
+    method: 'GET', path: '/api/apps',
+    cookie: `${SESSION_COOKIE_NAME}=${cookieToken}`,
+  });
+  assert(r.status === 200, `200 (got ${r.status})`);
+  assert(r.body?.apps?.length === 1, `1 app (got ${r.body?.apps?.length})`);
+  assert(r.body.apps[0].appSlug === 'deal-desk', 'appSlug surfaces');
+  assert(r.body.apps[0].hostname === 'deals.buildclear.dev', 'hostname surfaces');
+  assert(r.body.apps[0].latestVersionId === 'v-001', 'latestVersionId surfaces');
+});
+
+await runAsync(async () => {
+  // Cross-tenant isolation — other customer's apps don't leak into Marcus's list
+  const { app, tenantStore } = await makeApp();
+  const marcus = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email: 'marcus@widgetco.com', password: 'pass1234', name: 'Marcus' },
+  });
+  const dave = await request(app, {
+    method: 'POST', path: '/api/auth/signup',
+    body: { email: 'dave@othercorp.com', password: 'pass1234', name: 'Dave' },
+  });
+  // Dave deploys an app
+  await tenantStore.markAppDeployed({
+    tenantSlug: dave.body.user.tenant_slug, appSlug: 'lead-router',
+    scriptName: 'dave-lead-router', d1_database_id: 'd1', hostname: 'leads.x',
+  });
+  // Marcus's list should NOT include Dave's app
+  const cookieToken = extractSessionCookie(marcus.headers['set-cookie']);
+  const r = await request(app, {
+    method: 'GET', path: '/api/apps',
+    cookie: `${SESSION_COOKIE_NAME}=${cookieToken}`,
+  });
+  assert(r.status === 200, `marcus list 200 (got ${r.status})`);
+  assert(r.body?.apps?.length === 0,
+    `marcus sees 0 apps (got ${r.body?.apps?.length}) — cross-tenant isolation`);
+});
+
+await runAsync(async () => {
+  // Stub mode (no pool) → 503
+  const stubApp = express();
+  stubApp.use(express.json());
+  mountCloudAuthRoutes(stubApp, { pool: null });
+  const r = await request(stubApp, { method: 'GET', path: '/api/apps' });
+  assert(r.status === 503, `no pool → 503 (got ${r.status})`);
+  assert(r.body?.error === 'auth_not_configured', 'auth_not_configured error');
 });
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

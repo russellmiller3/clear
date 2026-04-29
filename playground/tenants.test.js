@@ -112,6 +112,66 @@ await runAsync(async () => {
   assert(rec.versions[2].versionId === 'v-oldest', 'versions[2] is oldest');
 });
 
+// ── CYCLE 10 — listAppsByTenant returns the tenant's deployed apps ─────────
+console.log('\n🧩 Cycle 10 — listAppsByTenant');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  // Empty tenant returns []
+  const empty = await s.listAppsByTenant('clear-empty');
+  assert(Array.isArray(empty) && empty.length === 0, 'empty tenant returns []');
+  // Missing/unknown slug returns []
+  const missing = await s.listAppsByTenant(null);
+  assert(Array.isArray(missing) && missing.length === 0, 'null slug returns []');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  // Two apps for one tenant
+  await s.markAppDeployed({
+    tenantSlug: 'clear-marcus', appSlug: 'deal-desk',
+    scriptName: 'clear-marcus-deal-desk', d1_database_id: 'd1-a',
+    hostname: 'deals.buildclear.dev',
+    versionId: 'v-001', sourceHash: 'sh1',
+  });
+  // Tiny pause so deployedAt timestamps differ
+  await new Promise(r => setTimeout(r, 5));
+  await s.markAppDeployed({
+    tenantSlug: 'clear-marcus', appSlug: 'lead-router',
+    scriptName: 'clear-marcus-lead-router', d1_database_id: 'd1-b',
+    hostname: 'leads.buildclear.dev',
+    versionId: 'v-002', sourceHash: 'sh2',
+  });
+  // One app for a different tenant
+  await s.markAppDeployed({
+    tenantSlug: 'clear-other', appSlug: 'todo',
+    scriptName: 'clear-other-todo', d1_database_id: 'd1-c',
+    hostname: 'todo.buildclear.dev',
+  });
+  const list = await s.listAppsByTenant('clear-marcus');
+  assert(list.length === 2, `marcus has 2 apps (got ${list.length})`);
+  assert(list.every(a => a.appSlug && a.scriptName && a.hostname && a.deployedAt),
+    'each row has appSlug, scriptName, hostname, deployedAt');
+  assert(list.some(a => a.appSlug === 'deal-desk'), 'list includes deal-desk');
+  assert(list.some(a => a.appSlug === 'lead-router'), 'list includes lead-router');
+  assert(!list.some(a => a.appSlug === 'todo'), 'other tenant\'s app is not in marcus list');
+  // Newest first by deployedAt
+  const ts0 = Date.parse(list[0].deployedAt);
+  const ts1 = Date.parse(list[1].deployedAt);
+  assert(ts0 >= ts1, 'newest deployedAt comes first');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 't', appSlug: 'a',
+    scriptName: 't-a', d1_database_id: 'd', hostname: 'a.x',
+    versionId: 'v-001', sourceHash: 'sh1',
+  });
+  const list = await s.listAppsByTenant('t');
+  assert(list[0].latestVersionId === 'v-001',
+    `latestVersionId surfaced in row (got ${list[0].latestVersionId})`);
+});
+
 // ── CYCLE 1.3 — versions[] caps at 20 ──────────────────────────────────────
 console.log('\n🧩 Cycle 1.3 — versions[] caps at 20 entries');
 await runAsync(async () => {

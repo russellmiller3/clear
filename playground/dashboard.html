@@ -94,8 +94,8 @@
         </button>
       </div>
 
-      <!-- Empty state — shown until the user has apps. Wired to /api/apps later. -->
-      <div id="emptyState" class="card px-8 py-12 text-center">
+      <!-- Empty state — shown when /api/apps returns zero rows. -->
+      <div id="emptyState" class="card px-8 py-12 text-center hidden">
         <div class="empty-illus mx-auto mb-4">
           <i data-lucide="sparkles" class="w-7 h-7"></i>
         </div>
@@ -109,8 +109,12 @@
         </button>
       </div>
 
-      <!-- Future: app grid lands here when /api/apps returns rows -->
+      <!-- App grid — shown when /api/apps returns at least one row. Each card
+           is one of the customer's deployed apps. -->
       <div id="appGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
+      <!-- Loading placeholder shown while /api/apps is in flight -->
+      <div id="appsLoading" class="text-[13px] text-gray-400">Loading your apps…</div>
 
     </div>
   </div>
@@ -129,6 +133,59 @@
     if (!name) return '?';
     const trimmed = name.trim();
     return trimmed ? trimmed[0].toUpperCase() : '?';
+  }
+
+  function appCardHTML(app) {
+    const slug = app.appSlug || 'app';
+    const host = app.hostname || (slug + '.buildclear.dev');
+    const versionLabel = app.latestVersionId ? ('v' + app.latestVersionId.slice(-6)) : 'no versions yet';
+    const deployed = app.deployedAt ? new Date(app.deployedAt).toLocaleDateString() : '';
+    return `
+      <div class="card px-5 py-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-gray-800 text-[14px]">${slug}</div>
+          <span class="text-[11px] text-gray-400">${versionLabel}</span>
+        </div>
+        <div class="text-[12px] text-gray-400 mb-3">${host}</div>
+        <div class="flex items-center gap-2">
+          <a href="https://${host}" target="_blank"
+             class="btn-ghost text-[12px] px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            <span>Open</span>
+          </a>
+          <span class="text-[11px] text-gray-300 ml-auto">${deployed}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderApps(apps) {
+    const grid = document.getElementById('appGrid');
+    const empty = document.getElementById('emptyState');
+    const countEl = document.getElementById('appsCount');
+    const loadingApps = document.getElementById('appsLoading');
+    if (loadingApps) loadingApps.classList.add('hidden');
+    if (!apps || apps.length === 0) {
+      grid.classList.add('hidden');
+      empty.classList.remove('hidden');
+      if (countEl) countEl.textContent = 'No apps yet — create your first one to get started.';
+      return;
+    }
+    grid.innerHTML = apps.map(appCardHTML).join('');
+    grid.classList.remove('hidden');
+    empty.classList.add('hidden');
+    if (countEl) countEl.textContent = apps.length + (apps.length === 1 ? ' app deployed' : ' apps deployed');
+    lucide.createIcons();
+  }
+
+  function loadApps() {
+    fetch('/api/apps', { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) return { apps: [] };
+        return res.json().catch(() => ({ apps: [] }));
+      })
+      .then((data) => renderApps(data?.apps || []))
+      .catch(() => renderApps([]));
   }
 
   // Gate: if not authenticated, bounce to /login.html
@@ -150,6 +207,8 @@
       appShell.classList.remove('hidden');
       // Re-render any icons that were inside the hidden shell
       lucide.createIcons();
+      // Now fetch and render the customer's deployed apps
+      loadApps();
     })
     .catch(() => {
       window.location.href = '/login.html';
