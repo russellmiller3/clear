@@ -447,6 +447,46 @@ export function editCodeTool(input, ctx, helpersOrCompileProgram) {
       ctx.setErrors(r.errors);
       ctx.setLastCompileResult(r);
       const result = { applied: true, errors: r.errors, warnings: r.warnings };
+
+      // Factor DB trajectory logging — mirrors compileTool's logAction shape.
+      // Cycle 4 of the cc-agent hint fix: without a row logged here, the
+      // post-turn HINT_APPLIED parser (in server.js / cc-agent) has no row id
+      // to update, so hint_applied stays NULL even when Meph reads + uses the
+      // hints. Setting ctx.hintState.lastFactorRowId before attachHintsForCompileResult
+      // runs gives the helper a real row to track against.
+      if (fullHelpers && ctx.factorDB && input.code) {
+        try {
+          const { sha1, safeArchetype, currentStep } = fullHelpers;
+          const compileOk = r.errors.length === 0 ? 1 : 0;
+          const errorSig = r.errors.length > 0
+            ? sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(input.code))
+            : null;
+          const sourceForLog = ctx.sourceBeforeEdit && ctx.sourceBeforeEdit.length > 0
+            ? ctx.sourceBeforeEdit
+            : input.code;
+          const step = currentStep(input.code, ctx.sessionSteps);
+          ctx.hintState.lastFactorRowId = ctx.factorDB.logAction({
+            session_id: ctx.sessionId,
+            archetype: safeArchetype(input.code),
+            task_type: 'compile_cycle',
+            error_sig: errorSig,
+            file_state_hash: sha1(input.code),
+            source_before: sourceForLog.slice(0, 5000),
+            patch_ops: [],
+            patch_summary: r.errors.length === 0
+              ? `Clean edit_code compile (${input.code.split('\n').length} lines)`
+              : `edit_code compile with ${r.errors.length} error(s): ${r.errors[0]?.message?.slice(0, 120) || 'unknown'}`,
+            compile_ok: compileOk,
+            test_pass: 0,
+            test_score: 0.0,
+            score_delta: 0.0,
+            step_id: step?.id || null,
+            step_index: step?.index ?? null,
+            step_name: step?.name || null,
+          });
+        } catch { /* non-fatal — logging is observability, not correctness */ }
+      }
+
       // Hint pipeline attach — runs only when called via dispatch (full helpers
       // bag) AND ctx has the Factor DB wired. cc-agent's edit_code lands here
       // and now gets the same retrieval + reranker output that compileTool's

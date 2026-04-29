@@ -1424,6 +1424,55 @@ assert(legacyQueryCalls === 0,
 assert(!legacyResult.hints,
   `edit_code legacy call site keeps {applied,errors,warnings} shape with no hints field (got ${legacyResult.hints ? 'unexpected hints' : 'clean'})`);
 
+// edit_code logs a Factor DB row and sets ctx.hintState.lastFactorRowId
+// (cycle 4 — needed so the post-turn HINT_APPLIED parser updates the right row)
+let editLoggedActions = [];
+const fdbForRowLog = {
+  logAction: (row) => { editLoggedActions.push(row); return 4242; },
+  querySuggestions: () => [],
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const rowLogCtx = new MephContext({
+  source: '',
+  factorDB: fdbForRowLog,
+  sessionId: 'rowlog-sess',
+});
+JSON.parse(editCodeTool(
+  { action: 'write', code: 'database:\n  bad\n' },
+  rowLogCtx,
+  compileHelpers
+));
+assert(editLoggedActions.length === 1,
+  `edit_code with full helpers + factorDB logs exactly one row (got ${editLoggedActions.length})`);
+assert(editLoggedActions[0].session_id === 'rowlog-sess',
+  `edit_code logAction carries sessionId (got ${editLoggedActions[0].session_id})`);
+assert(editLoggedActions[0].task_type === 'compile_cycle',
+  `edit_code logAction tags row task_type=compile_cycle (got ${editLoggedActions[0].task_type})`);
+assert(editLoggedActions[0].compile_ok === 0,
+  `edit_code logAction records compile_ok=0 when source has errors (got ${editLoggedActions[0].compile_ok})`);
+assert(rowLogCtx.hintState.lastFactorRowId === 4242,
+  `edit_code mirrors logAction return into hintState.lastFactorRowId (got ${rowLogCtx.hintState.lastFactorRowId})`);
+
+// edit_code with bare compileProgram (legacy) does NOT log to Factor DB
+let legacyLogCalls = 0;
+const fdbLegacyLog = {
+  logAction: () => { legacyLogCalls++; return 7777; },
+  querySuggestions: () => [],
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const legacyLogCtx = new MephContext({
+  source: '',
+  factorDB: fdbLegacyLog,
+  sessionId: 'legacy-log-sess',
+});
+JSON.parse(editCodeTool(
+  { action: 'write', code: 'database:\n  bad\n' },
+  legacyLogCtx,
+  compileProgram
+));
+assert(legacyLogCalls === 0,
+  `edit_code with bare compileProgram does NOT log to Factor DB (got ${legacyLogCalls} calls — backward compat preserved)`);
+
 // edit_code with no compile errors should NOT fire hints (querySuggestions guard)
 let editCleanQueryCalls = 0;
 const editFdbClean = {
