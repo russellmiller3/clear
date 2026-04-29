@@ -4,6 +4,29 @@
 **Used for:** Cold-pitch DM on LinkedIn + email follow-up to prospects
 **Asset built live:** `apps/deal-desk/main.clear` — discount approval workflow with AI-drafted CRO summaries
 **Date:** 2026-04-25
+**Fact-checked against `apps/deal-desk/main.clear`:** 2026-04-29 (453 lines, all script claims verified except minor seed drifts noted below)
+
+---
+
+## Pre-Recording Fact-Check (verified 2026-04-29 against current app)
+
+| Script claim | App source | Status |
+|---|---|---|
+| Threshold at 20% — auto-approve below, queue above | `if deal's discount_percent is greater than 20:` (line 111) | ✅ matches |
+| Fields: rep_name, customer, list_price, discount_percent | `Deals` table has all four + summary, recommendation, risk_score, term | ✅ matches |
+| /cro page requires login | Multiple endpoints have `requires login` (lines 105, 120, 125) | ✅ matches |
+| AI summary + risk score on Draft button | `draft_approval` agent uses `ask claude ... returning JSON` with summary + risk_score | ✅ matches |
+| 3 seeded sample deals so queue isn't empty | Seed at line 137 creates Acme (28%), Globex (18%), Initech (35%) | ⚠️ see drift |
+
+**Minor drifts to know about before recording:**
+
+1. **Globex is seeded at 18% — UNDER threshold.** It auto-approves on seed and won't appear in the CRO queue. Script says "4 deals waiting on me" at 16:00 — actual count after Mike's submission will be **3** (Acme 28% seeded + Initech 35% seeded + Mike's 30% Acme submission). Either fix the script line ("3 deals" instead of "4") or change the seed to put Globex at 21%+ before recording.
+
+2. **Mike's submission creates a SECOND Acme row.** The seed already has Acme at 28%; Mike submitting Acme at 30% adds a duplicate. On screen the queue will show two Acme rows — the script glosses over this. Either bump the seed customer to a different name, or swap Mike's submission to `Initech — expansion deal` and rewrite the 12:00-16:00 segment accordingly.
+
+3. **Login credentials.** Script says `cro@demo.com` / `demo123`. Confirm these match the seeded user in the app's signup/seed flow before recording — `allow signup and login` is on (line 67) but the script doesn't say where the user is created. Pre-flight: visit /signup once, register `cro@demo.com` / `demo123`, then it works for the recording.
+
+4. **The `ask claude ... returning JSON text:` shape on line 80** uses structured AI output (one of Clear's flagship features). Demo at 16:00-22:00 will show the AI's response streaming in — verify the model is set to Haiku 4.5 in Studio (the script says "fast" but doesn't specify) so the response is fast enough to not feel laggy on camera.
 
 ---
 
