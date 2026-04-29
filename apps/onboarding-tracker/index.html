@@ -9,6 +9,7 @@
 
 
 
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <link rel="preconnect" href="https://rsms.me/" crossorigin>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
@@ -98,48 +99,277 @@ body {
   --border: 1px; --depth: 0; --noise: 0;
 }
 
-.clear-section { padding: 1.5rem; }
-.clear-section-card {
-  margin-bottom: 2rem;
-  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
-  border-radius: 0.75rem; padding: 1.5rem;
+.clear-nav-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clear-ink-subtle);
+  padding: 0 13px;
+  margin: 18px 0 6px;
+}
+.clear-nav-item {
+  position: relative;
+  min-height: 34px;
+  padding: 7px 10px 7px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--clear-ink-soft);
+  font-weight: 500;
+  transition: background-color 100ms ease, color 100ms ease;
+  cursor: pointer;
+}
+.clear-nav-item:hover {
+  background: var(--clear-bg-row-hover);
+  color: var(--clear-ink);
+}
+.clear-nav-item svg,
+.clear-nav-item i {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.clear-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clear-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--clear-ink-muted);
+  background: var(--clear-bg-chip);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-variant-numeric: tabular-nums;
+}
+.clear-nav-item.is-active,
+.clear-nav-item.active {
+  background: var(--clear-bg-active);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active .clear-nav-count,
+.clear-nav-item.active .clear-nav-count {
+  background: rgba(79,70,229,.10);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active::before,
+.clear-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--clear-accent);
 }
 
+.clear-page-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-page-title {
+  color: var(--clear-ink);
+  line-height: 1.2;
+}
+.clear-page-subtitle {
+  line-height: 1.45;
+}
+.clear-page-actions .btn {
+  min-height: 34px;
+  height: 34px;
+}
 
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: var(--clear-bg-panel);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+}
+.clear-stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.clear-stat-label {
+  color: var(--clear-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.clear-stat-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--clear-ink-muted);
+  flex: 0 0 auto;
+}
+.clear-stat-value {
+  margin-top: 10px;
+  color: var(--clear-ink);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.clear-stat-delta {
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.clear-stat-delta-positive {
+  color: #15803d;
+}
+.clear-stat-delta-negative {
+  color: #b42318;
+}
+.clear-stat-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 10px;
+  overflow: visible;
+}
+.clear-stat-sparkline polyline {
+  fill: none;
+  stroke: var(--clear-accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
-/* --- Inline Layout --- */
-.section-header { max-width: 800px; margin-left: auto; margin-right: auto; padding: 1.5rem; }</style>
+.clear-detail-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}
+.clear-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+.clear-detail-empty {
+  display: none;
+  padding: 18px;
+  color: var(--clear-ink-muted);
+  font-size: 13px;
+}
+.clear-detail-panel.is-empty .clear-detail-empty {
+  display: block;
+}
+.clear-detail-panel.is-empty .clear-detail-body,
+.clear-detail-panel.is-empty .clear-detail-actions {
+  opacity: .42;
+}
+.clear-detail-title {
+  margin-bottom: 6px;
+}
+.clear-detail-subtitle {
+  margin-bottom: 14px;
+}
+.clear-detail-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}</style>
 </head>
 <body class="min-h-screen bg-base-100">
-  <main id="app" class="max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6">
-    <div class="section-header" data-clear-line="138">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="139">Onboarding Tracker</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-tpl="{total} customers actively onboarding" data-clear-line="141">{total} customers actively onboarding</p>
+  <main id="app" class="">
+<div id="page_Onboarding_Tracker" data-clear-page-id="Onboarding_Tracker" data-clear-page-route="/" data-clear-page-title="Onboarding Tracker">
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="152">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="154">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="155"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">O</div><span class="text-base font-bold text-base-content tracking-tight">Onboarding</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queue</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_158_Dashboard" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="158"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span class="clear-nav-label">Dashboard</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_159_Customers" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="159"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Customers</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_160_Steps" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="160"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">Steps</span><span class="clear-nav-count num" data-clear-tpl="{step_total}">{step_total}</span></a></li>
+        <li class="clear-nav-section-label">Team</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_163_Managers" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="163"><i data-lucide="user-check" aria-hidden="true"></i><span class="clear-nav-label">Managers</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="165">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="167">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="168">Customer Success</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="169">Onboarding command center</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="171">
+      <div data-clear-routed-content="Onboarding_Tracker" data-clear-routed-route="/">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="173">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Customer Onboarding</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Active setup queue for new accounts</p>
+      </div>
+      <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_176_Refresh" data-clear-control-kind="button" data-clear-line="176">Refresh</button>
+      </div>
     </div>
-    <div class="bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4" data-clear-line="143">
-    <fieldset class="fieldset" data-clear-line="144">
-      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer name</legend>
-      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Customer name">
-    </fieldset>
-    <fieldset class="fieldset" data-clear-line="145">
-      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
-      <input id="input_company" class="input input-bordered w-full" type="text" placeholder="Company">
-    </fieldset>
-    <fieldset class="fieldset" data-clear-line="146">
-      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
-      <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
-    </fieldset>
-    <fieldset class="fieldset" data-clear-line="147">
-      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Account manager</legend>
-      <input id="input_account_manager" class="input input-bordered w-full" type="text" placeholder="Account manager">
-    </fieldset>
-    <button class="btn btn-primary w-full" id="btn_Add_Customer" data-clear-line="148">Add Customer</button>
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="180">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="181">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Active Customers</div>
+          <i class="clear-stat-icon" data-lucide="users" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{total}">{total}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">+2 this week</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,17.3 48.0,17.3 71.0,10.7 94.0,4.0"></polyline></svg>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="186">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Open Steps</div>
+          <i class="clear-stat-icon" data-lucide="list-checks" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{step_total}">{step_total}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-negative">-1 overdue</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,4.0 25.0,4.0 48.0,14.0 71.0,14.0 94.0,24.0"></polyline></svg>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="191">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Managers</div>
+          <i class="clear-stat-icon" data-lucide="user-check" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums">2</div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Sarah and Mike</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,24.0 48.0,4.0 71.0,4.0 94.0,4.0"></polyline></svg>
+      </div>
     </div>
-    <div class="clear-section bg-base-200 rounded-box p-6 mb-6" data-clear-line="154">
-      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Onboarding Customers</h2>
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Customers" data-clear-line="155">
-      <div class="px-6 py-4 border-b border-base-300/40">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-tpl="{total} customers actively onboarding" data-clear-line="197">{total} customers actively onboarding</p>
+    <div class="grid grid-cols-2 gap-5" data-clear-line="199">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="200">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Customers" data-clear-line="201">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Customers</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Customers_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Customers_table">
@@ -149,11 +379,47 @@ body {
       </div>
     </div>
     </div>
-    <div class="clear-section bg-base-200 rounded-box p-6 mb-6" data-clear-line="157">
-      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">All Steps</h2>
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Steps" data-clear-line="158">
-      <div class="px-6 py-4 border-b border-base-300/40">
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_customer" data-clear-line="203">
+      <div class="clear-detail-empty">Select a row to inspect it.</div>
+      <div class="clear-detail-body">
+    <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_3" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_4" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+      </div>
+      <div class="clear-detail-actions" data-detail-actions="true">
+    <button class="btn btn-primary" id="btn_Mark_Active" data-clear-uat-id="button_210_Mark_Active" data-clear-control-kind="button" data-action="mark-active" data-clear-line="210">Mark Active</button>
+    <button class="btn btn-primary" id="btn_Escalate" data-clear-uat-id="button_211_Escalate" data-clear-control-kind="button" data-action="escalate" data-clear-line="211">Escalate</button>
+    <button class="btn btn-primary" id="btn_Email" data-clear-uat-id="button_212_Email" data-clear-control-kind="button" data-action="email" data-clear-line="212">Email</button>
+      </div>
+    </aside>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="214">
+    <h2 class="text-lg font-semibold text-base-content" data-clear-line="215">New Customer</h2>
+    <fieldset class="fieldset mb-4" data-clear-line="216">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer name</legend>
+      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Customer name">
+    </fieldset>
+    <fieldset class="fieldset mb-4" data-clear-line="217">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
+      <input id="input_company" class="input input-bordered w-full" type="text" placeholder="Company">
+    </fieldset>
+    <fieldset class="fieldset mb-4" data-clear-line="218">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <fieldset class="fieldset mb-4" data-clear-line="219">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Account manager</legend>
+      <input id="input_account_manager" class="input input-bordered w-full" type="text" placeholder="Account manager">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Customer" data-clear-uat-id="button_220_Add_Customer" data-clear-control-kind="button" data-clear-line="220">Add Customer</button>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="226">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Steps" data-clear-line="227">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Steps</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Steps_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Steps_table">
@@ -163,6 +429,11 @@ body {
       </div>
     </div>
     </div>
+      </div>
+    </div>
+    </main>
+    </div>
+</div>
   </main>
 
   <!-- ┌─────────────────────────────────────────────┐
@@ -170,21 +441,21 @@ body {
  └─────────────────────────────────────────────┘
 
  TABLES:
-   Customers: name*, company*, email, status, started_at_date, account_manager, notes (line 21)
-   OnboardingSteps: customer_id*, step_name*, completed, completed_at_date, customer (line 30)
+   Customers: name*, company*, email, status, started_at_date, account_manager, notes (line 23)
+   OnboardingSteps: customer_id*, step_name*, completed, completed_at_date, customer (line 41)
 
  ENDPOINTS:
-   GET /api/customers (line 47)
-   GET /api/customers/onboarding (line 50)
-   POST /api/customers [auth] (line 53)
-   PUT /api/customers/:id [auth] (line 61)
-   GET /api/steps (line 66)
-   POST /api/steps [auth] (line 69)
-   PUT /api/steps/:id [auth] (line 74)
-   POST /api/seed (line 81)
+   GET /api/customers (line 58)
+   GET /api/customers/onboarding (line 61)
+   POST /api/customers [auth] (line 64)
+   PUT /api/customers/:id [auth] (line 72)
+   GET /api/steps (line 77)
+   POST /api/steps [auth] (line 80)
+   PUT /api/steps/:id [auth] (line 85)
+   POST /api/seed (line 92)
 
  PAGES:
-   'Onboarding Tracker' at / (line 132)
+   'Onboarding Tracker' at / (line 143)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -220,43 +491,176 @@ function _toast(msg, type) {
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
-  if (!Array.isArray(data) || data.length === 0) {
+  if (rows.length === 0) {
     if (thead) thead.innerHTML = '';
     if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
     return;
   }
-  if (thead) thead.innerHTML = renderHead(data);
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}
+function _clear_table_rows_for_view(rows, sortCol, sortDir, filterText) {
+  var out = Array.isArray(rows) ? rows.slice() : [];
+  var query = String(filterText || '').trim().toLowerCase();
+  if (query) {
+    out = out.filter(function(row) {
+      return Object.keys(row || {}).some(function(key) {
+        var value = row[key];
+        if (value == null) return false;
+        var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        return text.toLowerCase().indexOf(query) !== -1;
+      });
+    });
+  }
+  if (sortCol) {
+    var dir = sortDir === 'desc' ? -1 : 1;
+    function normalized(value) {
+      if (value == null || value === '') return { empty: true, value: '' };
+      var raw = String(value).trim();
+      var numeric = raw.replace(/[$,%]/g, '').replace(/,/g, '');
+      if (numeric !== '' && /^-?\d+(\.\d+)?$/.test(numeric)) {
+        return { empty: false, kind: 'number', value: Number(numeric) };
+      }
+      return { empty: false, kind: 'text', value: raw.toLowerCase() };
+    }
+    out.sort(function(a, b) {
+      var av = normalized(a && a[sortCol]);
+      var bv = normalized(b && b[sortCol]);
+      if (av.empty && bv.empty) return 0;
+      if (av.empty) return 1;
+      if (bv.empty) return -1;
+      if (av.kind === 'number' && bv.kind === 'number') return (av.value - bv.value) * dir;
+      return String(av.value).localeCompare(String(bv.value), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }
+  return out;
+}
+function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
   var VIRT_THRESHOLD = 100;
-  if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(renderRow).join('');
-    return;
-  }
   var ROW_HEIGHT = 40;
   var BUFFER = 5;
   var scroller = tableEl.parentElement;
-  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
   scroller.style.maxHeight = '560px';
   scroller.style.overflowY = 'auto';
-  function paint() {
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
     var top = scroller.scrollTop;
     var h = scroller.clientHeight || 560;
     var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
-    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
     var topPad = first * ROW_HEIGHT;
-    var botPad = (data.length - last) * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
     var html = '';
     if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
-    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
     if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
     tbody.innerHTML = html;
-  }
+  };
   if (!scroller._clear_virt_bound) {
     scroller._clear_virt_bound = true;
-    scroller.addEventListener('scroll', paint, { passive: true });
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
   }
-  paint();
+  tableEl._clear_paint_table();
+}
+function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
+}
+function _clear_cell(key, val, selectable) {
+  var k = String(key).toLowerCase();
+  var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
+  if (k === 'status' || k === 'state' || k === 'stage') {
+    var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+  }
+  if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\$/.test(v)) {
+    var formatted = v;
+    if (typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(v)) {
+      var n = Number(val);
+      formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+    }
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
+  }
+  if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
+    var parts = v.trim().split(/[\s@.]+/).filter(Boolean);
+    var initials = parts.length >= 2
+      ? (parts[0][0] || '') + (parts[1][0] || '')
+      : v.slice(0, 2);
+    initials = initials.toUpperCase();
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+  }
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
+}
+function _clear_table_init(tableEl, selectedVar) {
+  if (!tableEl) return;
+  if (selectedVar) tableEl._clear_selected_var = selectedVar;
+  if (tableEl._clear_init) return;
+  tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
+  tableEl.addEventListener('click', function(e) {
+    var th = e.target.closest('th[data-sortable]');
+    if (th) {
+      var col = th.getAttribute('data-sortable');
+      var prev = tableEl.getAttribute('data-sort-col');
+      var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
+      tableEl.setAttribute('data-sort-col', col);
+      tableEl.setAttribute('data-sort-dir', dir);
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
+      th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
+      return;
+    }
+    var tr = e.target.closest('tbody tr');
+    if (tr && !e.target.closest('button') && !e.target.closest('a')) {
+      tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
+      tr.classList.toggle('is-selected');
+      var rowIndex = Number(tr.getAttribute('data-row-index'));
+      var row = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows[rowIndex] : null;
+      var selectedName = tableEl._clear_selected_var;
+      if (selectedName && typeof _state === 'object') {
+        _state[selectedName] = tr.classList.contains('is-selected') ? row : null;
+        if (typeof _recompute === 'function') _recompute();
+      }
+    }
+  });
 }
 document.title = "Onboarding Tracker";
 
@@ -269,27 +673,63 @@ let _state = {
   email: "",
   account_manager: "",
   customers: null,
-  steps: null
+  steps: null,
+  selected_customer: null
 };
 
 // --- Recompute derived values and update displays ---
 function _recompute() {
-  // clear:17
+  // clear:19
   // Database: local memory (JSON file backup)
-  // clear:140
+  // clear:16
+  // Auto-generated audit table for queue 'customer'
+  const CustomerDecisionsSchema = {
+    customer_id: { type: "text", required: true },
+    decision: { type: "text", required: true },
+    decided_by: { type: "text" },
+    decision_note: { type: "text" },
+    next_status: { type: "text" },
+    decided_at: { type: "timestamp", auto: true }
+  };
+
+  // Auto-generated notifications outbound queue for 'customer'
+  const CustomerNotificationsSchema = {
+    customer_id: { type: "text", required: true },
+    recipient_role: { type: "text" },
+    recipient_email: { type: "text" },
+    notification_type: { type: "text" },
+    queue_status: { type: "text", default: "pending" },
+    queued_at: { type: "timestamp", auto: true }
+  };
+
+  // clear:149
   let total = _clear_len(_state.customers);
+  // clear:150
+  let step_total = _clear_len(_state.steps);
+  // clear:204
+  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_customer?.company; }
+  // clear:205
+  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_customer?.name; }
+  // clear:206
+  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_customer?.email; }
+  // clear:207
+  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_customer?.account_manager; }
+  // clear:208
+  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_customer?.status; }
   _clear_render_table(
     document.getElementById('output_Customers_table'),
     _state.customers,
-    function(d) { var _keys = ["company","name","account_manager","status"]; return _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join(''); },
-    function(row) { var _keys = ["company","name","account_manager","status"]; return '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>'; }
+    function(d) { var _keys = ["company","name","account_manager","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["company","name","account_manager","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
   );
+  _clear_table_init(document.getElementById('output_Customers_table'), 'selected_customer');
   _clear_render_table(
     document.getElementById('output_Steps_table'),
     _state.steps,
-    function(d) { var _keys = ["customer_id","step_name","completed"]; return _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join(''); },
-    function(row) { var _keys = ["customer_id","step_name","completed"]; return '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>'; }
+    function(d) { var _keys = ["customer_id","step_name","completed"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer_id","step_name","completed"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
   );
+  _clear_table_init(document.getElementById('output_Steps_table'));
   document.getElementById('input_name').value = _state.name;
   document.getElementById('input_company').value = _state.company;
   document.getElementById('input_email').value = _state.email;
@@ -304,6 +744,7 @@ function _recompute() {
       return (_val == null) ? '' : String(_val);
     });
   });
+  { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="selected_customer"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.selected_customer); }
 }
 
 // --- Input listeners ---
@@ -325,6 +766,19 @@ document.getElementById('input_account_manager').addEventListener('input', funct
 });
 
 // --- Button handlers ---
+document.getElementById('btn_Refresh').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Refresh');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:177]', e.message); return _state.customers; });
+    _state.steps = await fetch("/api/steps").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/steps] [clear:178]', e.message); return _state.steps; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
 document.getElementById('btn_Add_Customer').addEventListener('click', async function() {
     if (_state.name === '' || _state.name == null) { _toast('name is required', 'error'); return; }
     if (_state.company === '' || _state.company == null) { _toast('company is required', 'error'); return; }
@@ -335,9 +789,9 @@ document.getElementById('btn_Add_Customer').addEventListener('click', async func
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    { const _r = await fetch("/api/customers", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: _state.name, company: _state.company, email: _state.email, account_manager: _state.account_manager }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/customers] [clear:149]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:150]', e.message); return _state.customers; });
+    { const _r = await fetch("/api/customers", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ name: _state.name, company: _state.company, email: _state.email, account_manager: _state.account_manager }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/customers] [clear:221]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:222]', e.message); return _state.customers; });
     _state.name = "";
     _state.company = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
@@ -351,14 +805,44 @@ _recompute(); // initial render with default state
 (async () => {
   try {
     { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:134]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:135]', e.message); return _state.customers; });
-    _state.steps = await fetch("/api/steps").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/steps] [clear:136]', e.message); return _state.steps; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:145]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:146]', e.message); return _state.customers; });
+    _state.steps = await fetch("/api/steps").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/steps] [clear:147]', e.message); return _state.steps; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
 
+if (window.lucide && lucide.createIcons) lucide.createIcons();
 
+
+  </script>
+  <script>
+  (function _initClearNav() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\/$/, '');
+      return raw || '/';
+    }
+    function currentPath() {
+      return normalize(location.pathname || '/');
+    }
+    function syncActiveNav() {
+      var current = currentPath();
+      document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+        var target = normalize(el.getAttribute('data-nav-path') || el.getAttribute('href') || '');
+        var active = target === current;
+        el.classList.toggle('is-active', active);
+        el.classList.toggle('active', active);
+      });
+    }
+    document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        setTimeout(syncActiveNav, 0);
+      });
+    });
+    window.addEventListener('popstate', syncActiveNav);
+    window.addEventListener('hashchange', syncActiveNav);
+    syncActiveNav();
+  })();
   </script>
 
   <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->

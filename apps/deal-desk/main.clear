@@ -247,6 +247,17 @@ when user sends seed to /api/seed:
     submitted_label is '1h ago'
     recommendation is 'rejected'
   save d7 as new Deal
+  create d8:
+    rep_name is 'Priya Patel'
+    customer is 'Wonka Industries'
+    account_segment is 'Enterprise'
+    deal_type is 'Renewal'
+    list_price = 72000
+    discount_percent = 30
+    status is 'awaiting'
+    submitted_label is '4h ago'
+    recommendation is 'Counter sent at 25%, awaiting customer reply'
+  save d8 as new Deal
 
   send back 'seeded' with success message
 

@@ -1205,8 +1205,23 @@ function _getUsedUtilities(compiledCode) {
     // like _revive(...) or as a callback reference like .map(_revive)
     if (compiledCode.includes(util.name + '(') || compiledCode.includes(util.name + ')') || compiledCode.includes(util.name + ',') || compiledCode.includes(util.name + ';')) {
       needed.add(util.name);
-      // Also include dependencies
-      for (const dep of util.deps) needed.add(dep);
+    }
+  }
+  // Transitive dep closure — keep walking until no new helper is added.
+  // The single-pass `for (const dep of util.deps) needed.add(dep)` only catches
+  // direct deps; chains like bind_table → apply_table_view → table_rows_for_view
+  // were silently truncated, leaving the leaf helper undefined at runtime
+  // (caught by the browser UAT walker session 04-28-2026).
+  const byName = new Map(UTILITY_FUNCTIONS.map(u => [u.name, u]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const name of Array.from(needed)) {
+      const util = byName.get(name);
+      if (!util) continue;
+      for (const dep of util.deps) {
+        if (!needed.has(dep)) { needed.add(dep); changed = true; }
+      }
     }
   }
   // Return definitions in dependency order
@@ -4786,7 +4801,13 @@ function compileCrud(node, ctx, pad) {
       insertArg = `{ ...${picked}, ${spreads} }`;
     }
     if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
-    if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
+    // `save X as new T` (no result variable). Write the inserted row back into
+    // X so the freshly-assigned id is available to anything downstream
+    // (e.g. seeds that say `customer_id is c1's id` after `save c1 as new
+    // Customer`). Before this rewrite, X stayed as the literal pre-insert
+    // shape and `c1.id` was undefined — every dependent FK insert failed.
+    // Caught by the browser UAT walker session 04-29-2026.
+    if (node.isInsert) return `${pad}${varCode} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
     const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
     if (ctx.endpointHasId) {
