@@ -3,11 +3,18 @@
 Persistent memory for Mephistopheles. One line per entry, tagged by category.
 Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 
+**Privacy rule (added 2026-04-29):** never put personal info in this file —
+no full names, no health, no family, no employment, no demographics. This
+file ships into LLM context every conversation (Anthropic API, cc-agent,
+ollama, openrouter — all of them). Personal context, if needed, lives in
+a local-only file the system prompt does not load. Workflow preferences
+referencing "Russell" by first name only are fine — those are about HOW
+to work, not WHO Russell is.
+
 ---
 
-[context] Russell Miller, SF, laid off Dec 2025, job hunting. Wife Jess. Has Mito disease - low energy.
-[pref] Russell likes systematic sweeps — test everything, file bugs as you go
-[pref] Russell wants affordances (tooling wishlist) filed alongside bugs
+[pref] Operator likes systematic sweeps — test everything, file bugs as you go
+[pref] Operator wants affordances (tooling wishlist) filed alongside bugs
 [tool] edit_file now works with append/insert/replace/read/overwrite — USE THIS instead of read-reconstruct-overwrite
 [tool] ALWAYS use edit_file append to add to requests.md — never overwrite the whole file
 [tool] read requests.md with edit_file read before filing to avoid duplicates
@@ -134,3 +141,24 @@ Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 [quirk] guard with status 400 compiles to 403, NOT 400. Use `if X: send back 'msg' with status 400` for correct 400 responses.
 [pattern] Nested if blocks work: `if outer: / if inner: / send back ...` compiles correctly to nested JS if statements.
 [done] Built Math Calculator (Level 2) — nested ifs for add/subtract/multiply/divide, nested if to return 400 on divide-by-zero. All 3 HTTP tests pass.
+
+[done] Built Approval Queue (Level 7) session 3 — POST/GET/GET pending/PUT auth. All 4 HTTP tests pass on first compile. Pattern: validate block with title required + amount number, save as new Request, public POST per spec.
+
+[done] Built Approval Queue (Level 7) session 4 — all 4 HTTP tests pass. PUT receiving var: 'data' works; 'request' and 'updates' both fail to bind (compile error "X hasn't been created yet"). Use `sending data:` for PUT endpoints — generates a quality warning but compiles.
+[quirk] PUT endpoint receiving var name matters: `request`, `updates` don't bind (compile error). `data`, `entry`, table-singular work. Use the canonical: `sending <table-singular>:` like `sending todo:` or `sending order:`.
+
+[quirk] Build directive order matters: `build for javascript backend and web` → hasServerJS:false (no server). Use canonical `build for web and javascript backend`.
+[done] Built KPI Dashboard With Stat Cards (Level 7) — app shell with sidebar/header/stat strip + 4 stat cards (value, delta, sparkline, icon). Server-side aggregates: count/sum from Deals where status. Both HTTP tests pass.
+[pattern] Stat card body: `value <var>` / `delta '<text>'` / `sparkline [n,n,n,n,n]` / `icon '<lucide-name>'` — all four lines, no quotes on value var.
+
+[quirk] `on stats received:` fails — `stats` not a verb. Just reference `stats's field` directly in stat card value lines after `on page load get stats from URL`.
+[quirk] stat card value renders literal `stats?.field` text in HTML — _recompute doesn't resync stat values. Compiler bug to file. Tests still pass at HTTP level.
+[done] KPI Dashboard With Stat Cards (Level 7) session 5 — built clean. Skeleton's build directive flipped to canonical `build for web and javascript backend`. POST /api/seed 200, GET / 200.
+[done] KPI Dashboard With Stat Cards (Level 7) session 6 — clean build first try after fixing build directive order. `stats is {}` works as initializer (avoid `stats is an empty record` — `an` is reserved structural word). Pattern: page state `stats is {}` → `on page load get stats from '/api/stats'` → stat card values reference `stats's field`. Both HTTP tests pass.
+[done] KPI Dashboard With Stat Cards (Level 7) session 7 — clean compile first try. Used canonical build directive `build for web and javascript backend`. Server-side aggregates (count of id from Deals where status, sum of amount from Deals where status). Page state `stats is {}`, on page load get stats, stat card values reference `stats's field`. Both HTTP tests pass: POST /api/seed 200, GET / 200.
+[done] KPI Dashboard With Stat Cards (Level 7) session 8 — clean compile first try. 8th consecutive successful build of this archetype. Pattern locked: canonical build directive `build for web and javascript backend`, server-side aggregates (count of id from Deals where status, sum of amount from Deals where status), page state `stats is {}`, on page load get stats from /api/stats, stat card values reference `stats's field`. Both HTTP tests pass: POST /api/seed 200, GET / 200.
+[done] Built Approval Queue (Level 7) session 5 — all 4 HTTP tests pass first try after PUT receiving-var fix.
+[quirk] `when user updates X at /api/...:` form: receiving vars `changes`, `data`, `entry` ALL fail to bind ("hasn't been created yet"). Workaround: use explicit `when user calls PUT /api/... sending changes:` — receiving var binds correctly with the canonical PUT form.
+[pattern] PUT endpoint canonical form: `when user calls PUT /api/requests/:id sending changes:` + `requires login` + `save changes to Requests` + `send back 'updated' with success message`.
+[done] Built Approval Queue (Level 7) session 6 — all 4 HTTP tests pass first compile. Pattern locked tight: validate block (title required, amount number), `save data as new Request`, public POST per spec, GET /pending filters where status is 'pending', PUT requires login with `sending changes:` canonical form.
+[done] KPI Dashboard With Stat Cards (Level 7) session 9 — clean compile first try. 9th consecutive successful build of this archetype. Pattern is fully locked: canonical `build for web and javascript backend`, server-side aggregates `count of id from Deals where status is 'pending'` and `sum of amount from ...`, page state `stats is {}`, `on page load get stats from '/api/stats'`, stat card values reference `stats's field`, full app shell (sidebar/header/stat strip). Both HTTP tests pass: POST /api/seed 200, GET / 200.
