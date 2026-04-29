@@ -48,7 +48,8 @@
 ## Tested vs. assumed
 
 - ✅ **Tested + saw work this stretch:** Meph chat via cc-agent returns plain text response (no 401); attachHintsForCompileResult fires when called via edit_code with full helpers + factorDB + errors; Factor DB row logs with correct session_id + task_type + compile_ok; lastFactorRowId mirrors logAction return; bare-compileProgram legacy shape preserves backward compat; UAT 52/52 across all 5 Marcus apps; line wrapping renders break-spaces in CodeMirror; toolbar mode-classic-btn has active-mode class with accent color.
-- ⚠️ **Assumed worked (verification deferred):** cc-agent edit_code with hint_applied=1 actually firing on a real compile error in production (smoke-tested via unit tests with fake factorDB; needs a real Meph turn that hits a compile error AND has matching hint candidates in the corpus); fresh A/B sweep showing measured lift on the cycles 2+4 fix (gated on May-1 API cap).
+- ✅ **In-vivo against real factor-db.sqlite (no LLM cost):** `tools/verify-cc-agent-hint-fix.mjs` calls editCodeTool with the real Factor DB open, hits compile error, observes the helper retrieve **3 BM25 candidates from the existing 234 general-archetype gold rows** (`top_tier=same_archetype_gold`) plus 2 shape-matched canonical examples. Row inserts with correct schema, lastFactorRowId mirrors, probe row cleaned up. The pipeline fires end-to-end on real data, not just fake fixtures.
+- ⚠️ **Still assumed:** the hint, when shown to Meph, actually moves his pass rate (the lift question). That needs a real Meph turn — `hint_applied=1` only flips when Meph emits a HINT_APPLIED tag, which requires a live cc-agent session. Fresh A/B sweep on counter L3 / approval-queue L7 / kpi-dashboard L7 — the same 3 tasks the 04-29 sweeps used — gated on May-1 API cap reset.
 
 ## Session rules
 
