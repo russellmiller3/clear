@@ -667,5 +667,51 @@ console.log('\n⏱️  startDomainPoller — interval scheduler\n');
   }
 }
 
+// ─── bootstrapDomainPoller — server-startup gate (CC-5b) ────────────────
+// Thin helper Studio's bootstrap calls. Decides whether to start the
+// poller based on whether a real Postgres pool is available. Without
+// DATABASE_URL set, _cloudTenantHandle.pool is null and there's no
+// app_domains table to poll — skip cleanly with a reason.
+console.log('\n🚏 bootstrapDomainPoller — startup gate\n');
+
+{
+  const { bootstrapDomainPoller } = await import('./index.js');
+
+  // Cycle 4.1 — no pool → skipped, reason captured
+  {
+    const result = bootstrapDomainPoller({ pool: null });
+    assert(result.started === false, `no pool → started=false`);
+    assert(result.handle === null, `no pool → handle null`);
+    assert(typeof result.reason === 'string' && result.reason.length > 0,
+      `no pool → reason explains why (got "${result.reason}")`);
+  }
+
+  // Cycle 4.2 — pool present → poller started, handle returned
+  {
+    let startCalledWith = null;
+    const fakeStart = (opts) => {
+      startCalledWith = opts;
+      return { stop: () => {}, tickNow: async () => ({ checked: 0, verified: 0, wrong: 0, stillPending: 0 }) };
+    };
+    const dummyPool = { query: async () => ({ rows: [] }) };
+    const result = bootstrapDomainPoller({ pool: dummyPool, startFn: fakeStart });
+    assert(result.started === true, `pool present → started=true`);
+    assert(result.handle && typeof result.handle.stop === 'function',
+      `handle has stop()`);
+    assert(startCalledWith && startCalledWith.db === dummyPool,
+      `pool forwarded to startDomainPoller as opts.db`);
+  }
+
+  // Cycle 4.3 — extra options pass through (intervalMs override, etc.)
+  {
+    let startCalledWith = null;
+    const fakeStart = (opts) => { startCalledWith = opts; return { stop: () => {}, tickNow: async () => {} }; };
+    const dummyPool = { query: async () => ({ rows: [] }) };
+    bootstrapDomainPoller({ pool: dummyPool, intervalMs: 30_000, startFn: fakeStart });
+    assert(startCalledWith.intervalMs === 30_000,
+      `intervalMs forwarded (got ${startCalledWith.intervalMs})`);
+  }
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

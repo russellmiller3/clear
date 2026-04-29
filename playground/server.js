@@ -103,6 +103,7 @@ app.use(express.json({ limit: '1mb' }));
 import { mountCloudRouting } from './cloud-routing/index.js';
 import { makeTenantStore } from './tenant-store-factory.js';
 import { mountCloudAuthRoutes } from './cloud-auth/routes.js';
+import { bootstrapDomainPoller } from './cloud-domains/index.js';
 // CC-1 cycle 9 — pick the right tenant store from env. DATABASE_URL unset
 // → InMemoryTenantStore (default, dev/test). DATABASE_URL set → migrations
 // run + PostgresTenantStore. TENANT_STORE_PRIMARY=dual-write → wrapper
@@ -123,6 +124,17 @@ const _cloudAuth = mountCloudAuthRoutes(app, {
   tenantStore: _cloudTenantStore,
 });
 console.log(`[cloud] auth routes ${_cloudAuth.mounted ? 'mounted' : 'stubbed (no DATABASE_URL)'}`);
+
+// CC-5b — Custom domain DNS verification poller. Wakes every minute, finds
+// pending app_domains rows, resolves their CNAME records, flips status to
+// verified or failed. Without DATABASE_URL there's no app_domains table —
+// the bootstrap helper skips cleanly with a reason in the startup log.
+const _domainPollerHandle = bootstrapDomainPoller({ pool: _cloudTenantHandle.pool });
+if (_domainPollerHandle.started) {
+  console.log('[cloud] CC-5b domain poller started (1-min tick)');
+} else {
+  console.log(`[cloud] CC-5b domain poller skipped: ${_domainPollerHandle.reason}`);
+}
 
 // =============================================================================
 // STATIC FILES

@@ -418,3 +418,31 @@ export function startDomainPoller(options) {
 
   return { stop, tickNow };
 }
+
+// =============================================================================
+// bootstrapDomainPoller — server-startup gate (CC-5b)
+// =============================================================================
+/**
+ * Thin helper that Studio's bootstrap calls. Decides whether to start
+ * the poller based on whether a real Postgres pool is available. Without
+ * DATABASE_URL there's no app_domains table to poll — skip cleanly with
+ * a human-readable reason for the startup log.
+ *
+ * @param {object} opts
+ * @param {object|null} opts.pool - pg Pool from makeTenantStore, or null
+ * @param {number} [opts.intervalMs] - forwarded to startDomainPoller
+ * @param {function} [opts.startFn=startDomainPoller] - DI seam for tests
+ * @returns {{ started: boolean, handle: object|null, reason: string|null }}
+ */
+export function bootstrapDomainPoller(opts = {}) {
+  const { pool, startFn = startDomainPoller, ...rest } = opts;
+  if (!pool) {
+    return {
+      started: false,
+      handle: null,
+      reason: 'no DATABASE_URL pool — domain verification skipped (in-memory mode)',
+    };
+  }
+  const handle = startFn({ db: pool, ...rest });
+  return { started: true, handle, reason: null };
+}
