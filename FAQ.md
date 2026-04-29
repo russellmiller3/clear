@@ -1044,6 +1044,23 @@ The reframe that holds up: Clear is **for AI to write, for humans to read and ed
 
 ---
 
+### Why does meph-memory.md have a privacy rule banning personal info?
+
+Discovered 2026-04-29 while inspecting cc-agent transcripts: every Meph conversation was shipping a `[context]` line containing Russell's full name, location, employment status, family member name, and health condition into the LLM context window. Source: `meph-memory.md` at repo root, which `playground/system-prompt.md` instructs Meph to read at the start of every conversation. Backends affected: every LLM Meph routes through (Anthropic API direct, cc-agent via Claude Code subscription, ollama, openrouter).
+
+The fix (commit `0cf0f56`):
+- Removed the `[context]` line containing personal demographics.
+- Added an explicit privacy rule at the top of `meph-memory.md` forbidding future personal info — full names, health, family, employment, demographics. Workflow preferences referencing first names are fine; demographic facts are not.
+- Renamed two `[pref]` lines from "Russell" to "Operator" out of caution.
+
+The other 150+ entries in the file (Clear language bug reports, feature gaps, workflow patterns) stayed verbatim — those are about Clear, not Russell, and Meph genuinely needs them to write Clear apps without hitting known bugs.
+
+**Audit checklist for future sessions:** before adding any file that gets loaded into Meph's context (`system-prompt.md`, `meph-memory.md`, `requests.md`, etc.), grep for personal markers: `grep -rln "Mito\|laid off\|<full name>\|<family member name>" --include="*.md"`. The 2026-04-29 audit found no other leaks — meph-memory.md was the only place — but the pattern could re-emerge if Meph "remembers" personal context in a future conversation. Consider periodic audits.
+
+If you NEED Meph to know personal context for some reason (e.g., adapting tone), put it in a local-only file the system prompt does NOT load, not in `meph-memory.md`.
+
+---
+
 ### Does the hint retriever actually help Meph at runtime?
 
 **Honest answer as of 2026-04-29: not in any data we've collected.** Three tasks tested across two clean sweeps that day:
