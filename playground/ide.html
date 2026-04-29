@@ -84,6 +84,12 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .toolbar-btn:active { transform: translateY(0); }
 .toolbar-btn.primary { background: var(--accent2); color: #dde4ff; border-color: var(--accent2); }
 .toolbar-btn.primary:hover { background: var(--accent); border-color: var(--accent); box-shadow: 0 2px 8px rgba(108,140,255,.3); }
+
+/* Dev/Builder view switcher (toolbar mode toggle). The active mode gets the
+   accent background; the inactive one stays muted so it reads as a click target. */
+.toolbar-btn.mode-btn { padding: 4px 11px; font-weight: 500; }
+.toolbar-btn.mode-btn.active-mode { background: var(--accent); color: #fff; border-color: var(--accent); }
+.toolbar-btn.mode-btn:not(.active-mode):hover { background: var(--bg2); color: var(--tx); }
 #status { font-family: var(--mono); font-size: 11px; font-weight: 500; margin-left: auto; padding: 4px 10px; border-radius: 20px; transition: all .2s; }
 .status-ok { color: var(--green); background: var(--green-bg); }
 .status-err { color: var(--red); background: var(--red-bg); }
@@ -628,6 +634,12 @@ body.builder-mode.show-source #editor-pane {
       <span style="font-family:'Orbitron',sans-serif;font-weight:700;color:var(--accent);font-size:14px;letter-spacing:.5px;">Clear</span><span style="font-family:var(--font);color:var(--tx3);font-weight:400;font-size:11px;letter-spacing:0;">studio</span>
     </span>
     <span class="toolbar-sep"></span>
+    <!-- View switcher: Dev = 3-panel classic IDE, Builder = Marcus-first chat-driven layout. -->
+    <span class="mode-switcher" style="display:inline-flex;border:1px solid var(--bd);border-radius:5px;overflow:hidden;">
+      <button id="mode-classic-btn" class="toolbar-btn mode-btn" onclick="setStudioMode('classic')" title="3-panel IDE: editor + preview + Meph chat" style="border:none;border-radius:0;margin:0;">Dev</button>
+      <button id="mode-builder-btn" class="toolbar-btn mode-btn" onclick="setStudioMode('builder')" title="Marcus-first layout: chat drives the build, source hidden by default" style="border:none;border-radius:0;margin:0;border-left:1px solid var(--bd);">Builder</button>
+    </span>
+    <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="newFile()">New</button>
     <button class="toolbar-btn" onclick="document.getElementById('load-file-input').click()" title="Load a .clear file from disk">Load</button>
     <input type="file" id="load-file-input" accept=".clear,.txt" style="display:none">
@@ -917,6 +929,9 @@ show 'Hello, Clear!'
     clearLang,
     syntaxHighlighting(clearHighlight),
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    // Wrap long lines so the editor reflows to the panel width — no horizontal
+    // scroll on a narrow Dev pane. Reflows automatically as the column resizes.
+    EditorView.lineWrapping,
     EditorView.updateListener.of(update => {
       if (update.docChanged && !suppressAutoCompile) {
         clearTimeout(compileTimer);
@@ -5465,6 +5480,32 @@ function detectStudioMode() {
       ? 'What do you want to build today, or which app to change? (Enter to send)'
       : 'Ask Meph to build something... (Enter to send)';
   }
+
+  // 11. Sync the toolbar Dev/Builder switcher to highlight the active mode.
+  syncModeButtons(mode);
+}
+
+// Highlight whichever toolbar mode button matches the current mode.
+function syncModeButtons(mode) {
+  const isBuilder = (mode || (document.body.classList.contains('builder-mode') ? 'builder' : 'classic')) === 'builder';
+  const classicBtn = document.getElementById('mode-classic-btn');
+  const builderBtn = document.getElementById('mode-builder-btn');
+  if (classicBtn) classicBtn.classList.toggle('active-mode', !isBuilder);
+  if (builderBtn) builderBtn.classList.toggle('active-mode', isBuilder);
+}
+
+// Toolbar Dev/Builder switcher click handler. Persists the choice in
+// localStorage and reloads the page with ?studio-mode=<target> so
+// detectStudioMode picks it up cleanly. Reload is intentional: a live
+// in-place swap would need to redo every layout-affecting class + clear
+// every resizer drag state, easier to just reset.
+function setStudioMode(target) {
+  const current = document.body.classList.contains('builder-mode') ? 'builder' : 'classic';
+  if (current === target) return;
+  try { localStorage.setItem('studio-mode-pref', target); } catch (e) { /* private browsing — ignored */ }
+  const url = new URL(window.location.href);
+  url.searchParams.set('studio-mode', target);
+  window.location.href = url.toString();
 }
 
 // Run on initial load. Every mode change is a full navigation (URL param),
