@@ -193,8 +193,10 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | # | Piece | Status | Scope |
 |---|---|---|---|
 | CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 hr code, gated on Russell providing live Stripe keys |
-| CC-5b | DNS verification poller for custom domains | Cycle 1 attach UX shipped 2026-04-29. Cycle 2 open: small worker that wakes every minute, calls `node:dns resolveCname` on pending rows, flips status to verified or failed. | ~30 lines + a cron handle |
-| CC-5c | Fly cert provisioner for custom domains | Cycle 2 prereq. Open: when a domain flips to verified, request a Fly cert + write the cert id back. | small — gated on CC-5b |
+| CC-5b | DNS verification poller for custom domains | ✅ **Shipped 2026-04-29 morning** — `pollOnce` + `resolveDomainCname` + `startDomainPoller` + `bootstrapDomainPoller` in `playground/cloud-domains/index.js`, 4 TDD cycles, 33 tests. | done |
+| CC-5c | Fly cert provisioner for custom domains | When a verified domain needs HTTPS, call Fly's `/v1/apps/:app/certificates` API. Gated on Russell providing a Fly API token. | ~30 lines, gated on Fly token |
+| Studio cc-agent path | Meph routes through user's Claude Code subscription + retrieval pipeline reaches edit_code | ✅ **Shipped 2026-04-29 evening** on `feature/cc-agent-hint-pipeline` — launcher sets `MEPH_BRAIN=cc-agent`, hint helper extracted from `compileTool` and called from `editCodeTool`, Factor DB row logged before retrieval so the post-turn HINT_APPLIED parser updates the right row. 289 tool tests + 2773 compiler tests green. Live A/B verification deferred to post-API-cap-reset May 1. | done |
+| Desktop launcher | One-click Windows shortcut → Clear Studio in a Chrome app window with the latest code | ✅ **Shipped 2026-04-29 evening** — `start-clear.bat` + crystal `clear-icon.ico` desktop shortcut. Pulls latest, restarts server, opens `?studio-mode=classic` for Dev view by default. Toolbar `Dev | Builder` switcher; editor lines wrap. | done |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
 
