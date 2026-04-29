@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 (evening) — Studio launches off the desktop + cc-agent hint pipeline closes
+
+The piece between "Russell wants to use Studio every day" and "Studio actually works as a daily-driver desktop app." Diagnostic work surfaced that the flywheel claim has been measured against an unreachable code path; this stretch fixes both the user-facing launch experience AND the underlying hint plumbing so future measurements actually run on the path users take.
+
+**What shipped:**
+- One-click Windows launcher (`start-clear.bat` + a desktop crystal-icon shortcut). Pulls the latest code on each launch, restarts the server, opens Studio in a Chrome `--app` window with no URL bar or tabs. Defaults to the 3-panel Dev view via `?studio-mode=classic`.
+- Toolbar `Dev | Builder` segmented switcher next to the logo — click either to swap views without typing a URL.
+- Editor lines wrap to whatever pane width you set; no more horizontal scroll on a narrow Dev pane.
+- Meph chat routes through the local Claude Code CLI by default (`MEPH_BRAIN=cc-agent` + `GHOST_MEPH_CC_TOOLS=1` set by the launcher). Bills against the user's Claude Code subscription instead of an Anthropic API key — the 401-when-key-is-empty failure is gone. Tool mode is mandatory because text mode loses a stdin race on Windows 100% of the time per a known cc-agent.js gotcha.
+- **cc-agent hint gap closed.** Diagnostic in `snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md` showed 386 cc-agent rows had `hint_applied=NULL` because edit_code's auto-compile bypassed the retrieval path that lives in compileTool. Three TDD cycles fixed it: cycle 1 threaded the helpers bag through the dispatch site, cycle 2 extracted `attachHintsForCompileResult` into a shared helper called from BOTH compileTool and editCodeTool, cycle 4 added Factor DB row logging in editCodeTool so the post-turn HINT_APPLIED parser updates the right row. (Cycle 3 was already covered — the helper checks `CLEAR_HINT_DISABLE` internally.)
+- Honest-flywheel-claim doc cascade. `landing/how-meph-learns.html` and `RESEARCH.md` "Read This First" now distinguish "the architecture works in principle" from "we have measured lift in a controlled A/B" — the latter is still pending. Stats refreshed against current Factor DB (1,886 logged / 768 passing / 41 hint fires). New 4th honest limitation explicitly names hint-delivery coverage as the bottleneck.
+
+**Why for launch:** every recent A/B sweep "measured" the flywheel through a code path that was structurally bypassing the hint mechanism. With cycles 2+4 shipped, a fresh sweep after the API cap clears (May 1) can finally measure hint effect on Meph in the path users actually take. If that sweep shows positive lift, the marketing copy I just softened can be re-strengthened with measured evidence.
+
+**Tests:** 2773 compiler + 289 meph-tools (was 277) — all green. 12 new tool tests across the cc-agent hint pipeline. UAT smoke green: 52/52 across all 5 Marcus apps.
+
+---
+
 ## 2026-04-29 (afternoon) — Routing primitive: `route X by FIELD:` replaces if-chains
 
 The piece between "Marcus customer wants a custom routing variant" and "Russell rewrites 50 lines of nested if-chains by hand for every variant." The new primitive lifts the assignment pattern into a first-class language construct. Every Marcus app that decides who-gets-the-lead based on size / region / territory / round-robin now collapses from 50+ lines to 5.
