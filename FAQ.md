@@ -153,6 +153,17 @@ The cursor row persists in the `_clear_route_cursors` SQLite table — primary k
 
 Clear's tokenizer treats `-` as a minus operator. So `Mid-market to bob` would tokenize as `Mid`, `-`, `market`, `to`, `bob` — five tokens — not one identifier. The parser would reject it. Forcing the LHS to be a quoted string (`'Mid-market' to bob`) means hyphenated values like `Mid-market`, `Asia-Pacific`, `2024-Q1` all work without parser hacks. It also matches the existing if-chain form (`if lead's size is 'Mid-market'`), so authors don't switch mental models.
 
+### Where does the DNS verification poller live? (CC-5b)
+
+`playground/cloud-domains/index.js` exports four pieces:
+
+- **`pollOnce(db, dnsResolver)`** — runs one verification cycle. Reads pending `app_domains` rows, calls the resolver per row, classifies via `verifyCname`, updates `status`, `verified_at`, `last_checked_at`, `last_error`. Returns counts. Per-row try/catch isolates failures.
+- **`resolveDomainCname(domain)`** — production wrapper around `node:dns/promises.resolveCname`. Returns `string[]` on success, `null` on `ENOTFOUND` / `ENODATA` (DNS not configured yet — treated as still-pending), rethrows other errors.
+- **`startDomainPoller(options)`** — interval scheduler. Returns `{ stop, tickNow }`. `tickNow` forces a cycle on demand (CLI / manual "verify now"); `stop` cancels the interval. `setIntervalFn` / `clearIntervalFn` are dependency-injected for tests.
+- **`bootstrapDomainPoller({ pool })`** — startup gate. If `pool` is null (no `DATABASE_URL`), skips with a reason for the startup log. If pool present, starts the poller. Wired into `playground/server.js` next to the cloud-auth bootstrap.
+
+The pure helpers `normalizeDomain`, `expectedCnameFor`, `verifyCname`, `addDomain`, `listDomainsForApp`, `listPendingDomains` from CC-5 cycle 1 are unchanged. Tests live alongside in `playground/cloud-domains/index.test.js` (97 passing).
+
 ---
 
 ### Where is the feature list / what can Clear do today?

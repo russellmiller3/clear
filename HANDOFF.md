@@ -11,13 +11,14 @@
 
 ## Next priorities
 
-1. **CC-5b DNS verification poller** (~30 lines + cron). Wakes every minute, finds `pending` domains in `app_domains`, calls `node:dns resolveCname`, calls existing `verifyCname` helper, updates status. The pure helpers (`normalizeDomain`, `expectedCnameFor`, `verifyCname`, `listPendingDomains`) already exist in `playground/cloud-domains/index.js` — only the poller glue is missing. **Why for launch:** without this, the attach UX shipped 2026-04-29 shows "Verifying DNS" forever — cycle 1's value is gated on this.
-2. **CC-5c Fly cert provisioner** (small, depends on CC-5b). Once a domain verifies, request a Fly cert + write the cert id back. **Why for launch:** the customer's domain has to actually serve HTTPS, not just resolve.
-3. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND your live keys both land.
+1. **CC-5c Fly cert provisioner** (~30 lines, gated on a Fly API token). When a domain flips from `pending` to `verified` (CC-5b is now doing that on a 1-min tick), call Fly's `/v1/apps/:app/certificates` API to request an HTTPS cert, write the returned cert id back to the row. **Why for launch:** customer's domain has to actually serve HTTPS, not just resolve. CC-5b made `verified` real; CC-5c makes `verified` useful.
+2. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire the production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND your live keys both land.
+3. **A/B hint sweep — RUNNING in background as of 2026-04-29 evening** (~70 min wall clock, $0 via cc-agent). 40 paired trials × 2 tasks (counter, todo-crud) measure the hint retriever's lift on Meph's live pass rate — closes RESEARCH.md's "offline val_auc 0.96 but live effect unmeasured" gap. Output lands in `playground/sessions/ab-hint-sweep-*.json`. **Why for launch:** the load-bearing claim "Meph gets smarter as the data grows" needs a real production number, not a lab number.
 
 ## Already done (do not rebuild)
 
-- ✅ **Routing primitive** — Phases 1-6 shipped 2026-04-29 (`5e8b17c`). Lead-router uses `route lead by size` instead of if-chain. 8-surface doc cascade complete. Tests: 2773/0.
+- ✅ **CC-5b DNS verification poller** — shipped 2026-04-29 evening. `playground/cloud-domains/index.js` has `pollOnce`, `resolveDomainCname`, `startDomainPoller`, `bootstrapDomainPoller`. 4 TDD cycles, 33 new tests. Wired into Studio bootstrap on a 1-min tick (gated on `DATABASE_URL`). Tests: 97/97 green in cloud-domains test file.
+- ✅ **Routing primitive** — Phases 1-6 shipped 2026-04-29 afternoon (`5e8b17c`). Lead-router uses `route lead by size` instead of if-chain. 8-surface doc cascade complete. Tests: 2773/0.
 - ✅ **Search-input-filters-table primitive** — already shipped via Codex chunk #5 on 2026-04-26. Every `display X as table` auto-emits a toolbar search input. Verified 2026-04-29 by compiling deal-desk; HTML contains `<input class="clear-table-filter">`. Listed in FEATURES.md:150.
 
 ## Blocked on Russell (skip these, grab the next item)

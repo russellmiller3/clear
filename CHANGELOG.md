@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 (evening) — CC-5b DNS verification poller closes the "Verifying DNS" loop
+
+The piece between "customer types `deals.acme.com` and sees a Verifying DNS pill" and "the pill never updates because nothing's looking up DNS." Studio's bootstrap now starts a 1-minute tick that resolves pending domains and flips them to `verified` or `failed`. Without this, the attach UX shipped earlier on 2026-04-29 was a UI for a dead end.
+
+**What shipped (4 TDD cycles, all on `feature/cc-5b-dns-poller`):**
+- **F1.1 `pollOnce(db, dnsResolver)`** — runs one verification cycle. Reads pending `app_domains` rows, classifies each via the existing `verifyCname` helper, updates `status` / `verified_at` / `last_checked_at` / `last_error`. Per-row try/catch so one bad lookup never kills the whole cycle. Idempotent — verified rows are skipped on the next pass so `verified_at` doesn't drift. 11 new tests.
+- **F1.2 `resolveDomainCname(domain)`** — production wrapper around `node:dns/promises.resolveCname`. Returns records on success, `null` on `ENOTFOUND` / `ENODATA` (DNS not propagated — still-pending semantic), rethrows other errors so the poller's per-row catch captures them in `last_error`. Second arg is a dependency-injection seam for tests. 5 new tests.
+- **F1.3 `startDomainPoller(options)`** — interval scheduler. Returns `{ stop, tickNow }` so server shutdown can clean up and ops can force a cycle. `setIntervalFn` / `clearIntervalFn` are injectable for testability without real-timer latency. Async wrapper around the registered tick callback so awaiting it actually awaits the underlying work (caught in cycle 3.2 — first impl was fire-and-forget). 9 new tests.
+- **F1.4 `bootstrapDomainPoller({ pool })` + Studio wire-up** — startup gate next to the cloud-auth bootstrap. Skips cleanly in in-memory mode (no `DATABASE_URL`); starts the 1-minute tick when a real Postgres pool is present. Logs which path it took so the startup line shows whether DNS verification is alive. 3 new tests.
+
+**Why for launch:** CC-5 cycle 1 (the attach UX) shipped earlier 2026-04-29 but had no engine — every customer who pointed a domain saw "Verifying DNS" forever. This closes that loop. Combined with CC-5c (Fly cert provisioner, the remaining follow-up), the customer's domain goes from "I added a CNAME" → "verified" → "serving HTTPS" without anyone touching a Fly dashboard.
+
+**Tests:** 97/97 green in `playground/cloud-domains/index.test.js` (33 new across 4 TDD cycles). 81 → 90 → 97 staircase across cycles. Compiler test suite stays green; this lives entirely in `playground/cloud-domains/`.
+
+**Where it lives:** `playground/cloud-domains/index.js` (additions: `pollOnce`, `resolveDomainCname`, `startDomainPoller`, `bootstrapDomainPoller`) + a 6-line wire-up in `playground/server.js`. The pure helpers from cycle 1 (`normalizeDomain`, `expectedCnameFor`, `verifyCname`, `addDomain`, `listDomainsForApp`, `listPendingDomains`) are unchanged.
+
+**Caught in flight:** the priority queue inherited a stale entry telling Claude to rebuild the search-input filter primitive (already shipped via Codex chunk #5 on 2026-04-26). The before-rebuild hook flagged it; HANDOFF was updated so future sessions don't fall into the same trap. CC-5b moved up to top priority because its building blocks (`normalizeDomain`, `expectedCnameFor`, `verifyCname`, `listPendingDomains`) had been sitting wired-but-unused since cycle 1.
+
+---
+
 ## 2026-04-29 (afternoon) — Routing primitive: `route X by FIELD:` replaces if-chains
 
 The piece between "Marcus customer wants a custom routing variant" and "Russell rewrites 50 lines of nested if-chains by hand for every variant." The new primitive lifts the assignment pattern into a first-class language construct. Every Marcus app that decides who-gets-the-lead based on size / region / territory / round-robin now collapses from 50+ lines to 5.
