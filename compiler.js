@@ -6641,6 +6641,108 @@ function compileQueueDef(node, ctx, pad) {
   return result;
 }
 
+// Routing primitive (2026-04-29). Plan: plans/plan-routing-primitive-2026-04-29.md
+//
+// `route X by FIELD:` compiles to a statement-level if/else chain inside an
+// endpoint body, mutating X.assigned_to. Round-robin defaults call out to a
+// runtime helper that picks the next owner from a SQLite-backed cursor.
+//
+// Cursor table emit: when ANY route_def in the program has a round-robin
+// default, the program's prelude pass adds a `_clear_route_cursors` table.
+// Dedupe via ctx._clearRouteCursorsEmitted so multiple route blocks share one
+// table.
+
+// Portable djb2 hash → first 4 hex chars. Used for stable route ids across
+// edits. Must work in both Node and the browser bundle, so no crypto module.
+function _routeShortHash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  }
+  return ((h >>> 0).toString(16) + '0000').slice(0, 4);
+}
+
+function compileRouteDef(node, ctx, pad) {
+  if (ctx.lang === 'python') {
+    return compileRouteDefPython(node, ctx, pad);
+  }
+
+  const entityName = node.entityName || 'lead';
+  const field = node.field || 'unknown';
+  const rules = Array.isArray(node.rules) ? node.rules : [];
+
+  // Separate fixed rules from the (at most one) default rule.
+  const fixedRules = rules.filter(r => r && r.type === 'fixed');
+  const defaultRule = rules.find(r => r && r.type === 'default');
+
+  let result = `${pad}// clear:${node.line} — route ${entityName} by ${field}\n`;
+  result += `${pad}{\n`;
+  result += `${pad}  const _v = ${entityName}.${field};\n`;
+  for (let i = 0; i < fixedRules.length; i++) {
+    const r = fixedRules[i];
+    const prefix = i === 0 ? 'if' : 'else if';
+    result += `${pad}  ${prefix} (_v === ${JSON.stringify(r.match)}) ${entityName}.assigned_to = ${JSON.stringify(r.owner)};\n`;
+  }
+  if (defaultRule) {
+    const elseKw = fixedRules.length > 0 ? 'else ' : '';
+    if (defaultRule.strategy === 'round_robin') {
+      const pool = Array.isArray(defaultRule.pool) ? defaultRule.pool : [];
+      const routeId = 'route_' + entityName + '_' + field + '_' + _routeShortHash(JSON.stringify({ entityName, field, rules }));
+      const poolJs = JSON.stringify(pool);
+      result += `${pad}  ${elseKw}${entityName}.assigned_to = await _clear_route_pick({\n`;
+      result += `${pad}    routeId: ${JSON.stringify(routeId)},\n`;
+      result += `${pad}    pool: ${poolJs},\n`;
+      result += `${pad}  });\n`;
+    } else {
+      result += `${pad}  ${elseKw}${entityName}.assigned_to = ${JSON.stringify(defaultRule.owner)};\n`;
+    }
+  }
+  result += `${pad}}`;
+  return result;
+}
+
+function compileRouteDefPython(node, ctx, pad) {
+  const entityName = node.entityName || 'lead';
+  const field = node.field || 'unknown';
+  const rules = Array.isArray(node.rules) ? node.rules : [];
+  const fixedRules = rules.filter(r => r && r.type === 'fixed');
+  const defaultRule = rules.find(r => r && r.type === 'default');
+
+  let result = `${pad}# clear:${node.line} — route ${entityName} by ${field}\n`;
+  result += `${pad}_v = ${entityName}.get('${field}') if isinstance(${entityName}, dict) else getattr(${entityName}, '${field}', None)\n`;
+  for (let i = 0; i < fixedRules.length; i++) {
+    const r = fixedRules[i];
+    const prefix = i === 0 ? 'if' : 'elif';
+    const matchPy = JSON.stringify(r.match);
+    const ownerPy = JSON.stringify(r.owner);
+    result += `${pad}${prefix} _v == ${matchPy}: ${entityName}['assigned_to'] = ${ownerPy}\n`;
+  }
+  if (defaultRule) {
+    if (defaultRule.strategy === 'round_robin') {
+      const pool = Array.isArray(defaultRule.pool) ? defaultRule.pool : [];
+      const routeId = 'route_' + entityName + '_' + field + '_' + _routeShortHash(JSON.stringify({ entityName, field, rules }));
+      const poolPy = '[' + pool.map(p => JSON.stringify(p)).join(', ') + ']';
+      const elseKw = fixedRules.length > 0 ? 'else:\n' : '';
+      const indent = fixedRules.length > 0 ? `${pad}    ` : pad;
+      result += `${pad}${elseKw}`;
+      result += `${indent}${entityName}['assigned_to'] = _clear_route_pick(\n`;
+      result += `${indent}    route_id=${JSON.stringify(routeId)},\n`;
+      result += `${indent}    pool=${poolPy},\n`;
+      result += `${indent})\n`;
+    } else {
+      const ownerPy = JSON.stringify(defaultRule.owner);
+      const elseKw = fixedRules.length > 0 ? 'else:' : '';
+      const indent = fixedRules.length > 0 ? `${pad}    ` : pad;
+      if (elseKw) {
+        result += `${pad}${elseKw}\n${indent}${entityName}['assigned_to'] = ${ownerPy}\n`;
+      } else {
+        result += `${indent}${entityName}['assigned_to'] = ${ownerPy}\n`;
+      }
+    }
+  }
+  return result;
+}
+
 // Map a queue action name to its terminal status value.
 // Convention from the queue plan: approve→approved, reject→rejected,
 // counter→awaiting (because "counter" means "now waiting on customer"),
@@ -7534,6 +7636,9 @@ ${pad}}`;
 
     case NodeType.QUEUE_DEF:
       return compileQueueDef(node, ctx, pad);
+
+    case NodeType.ROUTE_DEF:
+      return compileRouteDef(node, ctx, pad);
 
     case NodeType.EMAIL_TRIGGER:
       return compileEmailTrigger(node, ctx, pad);
@@ -13744,6 +13849,41 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("const _COOKIE_SECRET = process.env.COOKIE_SECRET;");
     lines.push("if (!_COOKIE_SECRET) console.warn('[cookies] COOKIE_SECRET env var is unset — signed cookies will use an ephemeral fallback secret. Set COOKIE_SECRET in production.');");
     lines.push("const _cookieSecretResolved = _COOKIE_SECRET || ('clear-dev-' + Math.random().toString(36).slice(2));");
+  }
+  // Routing primitive (2026-04-29) — detect any `route X by FIELD:` block
+  // with a round-robin default. If present, emit the shared cursor table +
+  // helper at module top so every route block can call `_clear_route_pick`.
+  function walkForRoutingRR(nodes, acc) {
+    if (!Array.isArray(nodes)) return acc;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.ROUTE_DEF) {
+        const rules = Array.isArray(n.rules) ? n.rules : [];
+        if (rules.some(r => r && r.type === 'default' && r.strategy === 'round_robin')) {
+          acc.found = true;
+        }
+      }
+      if (Array.isArray(n.body)) walkForRoutingRR(n.body, acc);
+      if (Array.isArray(n.thenBody)) walkForRoutingRR(n.thenBody, acc);
+      if (Array.isArray(n.elseBody)) walkForRoutingRR(n.elseBody, acc);
+    }
+    return acc;
+  }
+  const _routingScan = walkForRoutingRR(body, { found: false });
+  if (_routingScan.found) {
+    lines.push('// Routing primitive — round-robin cursor state lives in a shared SQLite table.');
+    lines.push("db.createTable('_clear_route_cursors', { route_id: { type: 'text', required: true }, last_index: { type: 'number', default: -1 }, updated_at_date: { type: 'timestamp', auto: true } });");
+    lines.push('async function _clear_route_pick({ routeId, pool }) {');
+    lines.push('  if (!Array.isArray(pool) || pool.length === 0) return null;');
+    lines.push("  const _row = db.lookupOne('_clear_route_cursors', { route_id: routeId });");
+    lines.push('  const _next = (((_row && typeof _row.last_index === "number" ? _row.last_index : -1) + 1) + pool.length) % pool.length;');
+    lines.push('  if (_row) {');
+    lines.push("    db.update('_clear_route_cursors', { ..._row, last_index: _next, updated_at_date: new Date().toISOString() });");
+    lines.push('  } else {');
+    lines.push("    db.save('_clear_route_cursors', { route_id: routeId, last_index: _next, updated_at_date: new Date().toISOString() });");
+    lines.push('  }');
+    lines.push('  return pool[_next];');
+    lines.push('}');
   }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');

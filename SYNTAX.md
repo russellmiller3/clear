@@ -2944,6 +2944,39 @@ when user sends ticket to /api/support:
 
 ---
 
+## Routing (`route X by FIELD:`)
+
+Inside an endpoint, `route X by FIELD:` decides who-owns-this-record from a quoted-string match value, optionally with a round-robin pool for the default. Replaces nested if-chains for assignment.
+
+### Fixed mapping
+```clear
+when user sends lead to /api/leads:
+  validate lead:
+    name is text, required
+    size is text
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead
+  send back new_lead with success message
+```
+
+### Round-robin default
+```clear
+route lead by region:
+  'West' to alice
+  default round-robin across [bob, charlie, diana]
+```
+
+**Strict rules:**
+- Match values on the LHS must be **quoted strings** (`'SMB' to alice`). Bare identifiers with hyphens (e.g. `Mid-market`) tokenize as 3 tokens and parse-fail.
+- The route block must come BEFORE `save X as new T` in the endpoint, otherwise the assignment never persists. Compile-time HARD ERROR (`ROUTE_AFTER_SAVE`).
+- Plural entity name singularizes — `route leads by size:` produces the same AST as `route lead by size:`.
+
+**Round-robin state.** The cursor lives in `_clear_route_cursors` (auto-emitted SQLite table). Cursor key is a content hash of (entity + field + rules + pool), so adding comments above doesn't reset the cursor. Survives restarts via SQLite WAL.
+
 ## Approval Queues (Single-Stage Reviewer)
 
 When an entity needs human approval before its status changes, declare a queue. One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action.

@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 (afternoon) — Routing primitive: `route X by FIELD:` replaces if-chains
+
+The piece between "Marcus customer wants a custom routing variant" and "Russell rewrites 50 lines of nested if-chains by hand for every variant." The new primitive lifts the assignment pattern into a first-class language construct. Every Marcus app that decides who-gets-the-lead based on size / region / territory / round-robin now collapses from 50+ lines to 5.
+
+**What shipped (Phases 1-6 of the plan, end-to-end):**
+- New `ROUTE_DEF` node type and `parseRouteDef` parser path. Recognizes `route <entity> by <field>:` followed by indented body of `'value' to <owner>` rules and at most one `default to <owner>` or `default round-robin across [<pool>]` rule. Match values must be quoted strings (the tokenizer splits hyphens like `Mid-market` into 3 tokens).
+- Five validator rules: two HARD ERRORS (`ROUTE_ENTITY_NOT_IN_SCOPE` and `ROUTE_AFTER_SAVE` — the second catches the silent-bug class where the route block runs after the save and the assignment never persists); three WARNINGS (`ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE`).
+- JS compiler emit: fixed-mapping rules become a clean if/else chain over `<entity>.<field>`, mutating `<entity>.assigned_to`. Round-robin defaults call `await _clear_route_pick({routeId, pool})` against a shared `_clear_route_cursors` SQLite table emitted once per app.
+- Python compiler emit: same shape, FastAPI/dict-style (`if _v == 'SMB': lead['assigned_to'] = 'alice'`).
+- Cursor runtime helper inlined at module top — reads the cursor row, increments `(last_index + 1) % pool.length`, writes back, returns `pool[next]`. Empty pool returns null. Survives restarts via SQLite WAL persistence.
+- **Stable route id is a content hash, not a line number.** `route_<entity>_<field>_<4-hex-djb2>` of the canonicalized rules + pool. Adding a comment above a route block doesn't reset the cursor — only changing the rules or pool does (which is the correct invalidation).
+- `apps/lead-router/main.clear` rewritten — 5 lines of if-chain → 5 lines of `route lead by size:`. All 13 embedded tests still pass.
+
+**Why for launch:** Russell's first paying Marcus customer will want a custom variant of one of the 5 Marcus apps. Lead routing is where customer requirements diverge most. Without this primitive, every variant means rewriting 50+ lines of nested if-chains AND maintaining round-robin cursor state by hand. With it, the variant is a 5-line declarative block — the kind of change Russell can ship in 30 minutes during a customer call.
+
+**Tests:** 2773 passing, 0 failing. 17 new tests across parser, validator, and JS compiler emit cycles. 8 core templates + lead-router all compile clean.
+
+**Open work for follow-up cycles (NOT in this commit):**
+- 5 Marcus apps UAT regression smoke (browser walker)
+- Doc cascade across remaining surfaces (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, FEATURES.md, ROADMAP.md, FAQ.md, playground/system-prompt.md)
+- Phase B research-tier variants (territory-with-Owners-table, workload-balanced, skill-based) — gated on a real customer asking
+
 ## 2026-04-29 (morning) — CC-5 cycle 1: custom domain attach + dashboard panel
 
 The piece between Marcus deploying an app and Marcus pointing `deals.acme.com` at it. The customer types a domain in the dashboard's per-app panel, sees a "Verifying DNS" pill, gets a copy-pasteable CNAME hint. Soft-delete via the same panel. Cross-tenant attack returns 404 (locked in by tests).

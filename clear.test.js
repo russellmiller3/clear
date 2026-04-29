@@ -27849,4 +27849,400 @@ describe('SHELL-5: data tables — backwards compat with `with delete and edit`'
   });
 });
 
+// =============================================================================
+// Routing primitive — `route X by FIELD:` (Phase 1, 2026-04-29)
+// Plan: plans/plan-routing-primitive-2026-04-29.md
+// =============================================================================
+
+describe('Routing primitive — parser', () => {
+  it('parses route lead by size: with one fixed rule', () => {
+    const src = `create a Leads table:
+  size, default 'SMB'
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    expect(endpoint).toBeTruthy();
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route).toBeTruthy();
+    expect(route.entityName).toBe('lead');
+    expect(route.field).toBe('size');
+    expect(route.rules).toHaveLength(1);
+    expect(route.rules[0]).toEqual({ type: 'fixed', match: 'SMB', owner: 'alice' });
+  });
+
+  it('parses default to owner (single-owner default)', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.rules).toHaveLength(2);
+    expect(route.rules[1]).toEqual({ type: 'default', strategy: 'fixed', owner: 'bob' });
+  });
+
+  it('parses default round-robin across [pool] into the right AST', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob, diana, evan]
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.rules).toHaveLength(2);
+    expect(route.rules[1]).toEqual({
+      type: 'default',
+      strategy: 'round_robin',
+      pool: ['alice', 'bob', 'diana', 'evan'],
+    });
+  });
+
+  it('singularizes plural entity name (queue F2 pattern)', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route leads by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.entityName).toBe('lead');
+  });
+});
+
+describe('Routing primitive — validator', () => {
+  it('ROUTE_ENTITY_NOT_IN_SCOPE: hard error when route entity is undefined', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route foo by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /Route block references|in scope/i.test(e.message || ''));
+    expect(err).toBeTruthy();
+    expect(err.message).toContain('foo');
+  });
+
+  it('ROUTE_AFTER_SAVE: hard error when route block runs after save', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  new_lead = save lead as new Lead
+  route lead by size:
+    'SMB' to alice`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /never reaches|after.*save|Move the route block/i.test(e.message || ''));
+    expect(err).toBeTruthy();
+  });
+
+  it('no ROUTE_AFTER_SAVE error when route comes BEFORE save', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const afterSaveErr = result.errors.find(e => /never reaches|after.*save|Move the route block/i.test(e.message || ''));
+    expect(afterSaveErr).toBeFalsy();
+  });
+
+  it('ROUTE_NO_DEFAULT: warning when block has no default rule', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /no default|unmatched values/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+  });
+
+  it('ROUTE_NO_DEFAULT does NOT fire when default is present', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /no default|unmatched values/i.test(w.message || ''));
+    expect(warn).toBeFalsy();
+  });
+
+  it('ROUTE_FIELD_NOT_ON_ENTITY: warning when field is not on the entity table', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by status:
+    'open' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /isn't on the/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+    expect(warn.message).toContain('status');
+  });
+
+  it('ROUTE_UNREACHABLE_RULE: warning when a fixed rule appears after default', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+    'Enterprise' to charlie
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /never fires|after default|unreachable/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+  });
+});
+
+describe('Routing primitive — JS compiler emit', () => {
+  it('cycle 3.1: fixed-mapping rules compile to if/else over the field', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    // Reads from lead.size into a local
+    expect(js).toContain('lead.size');
+    // Each rule writes to lead.assigned_to. Compiler uses JSON.stringify so
+    // string literals are double-quoted in the output.
+    expect(js).toContain('lead.assigned_to = "alice"');
+    expect(js).toContain('lead.assigned_to = "bob"');
+    expect(js).toContain('lead.assigned_to = "charlie"');
+  });
+
+  it('cycle 3.2: round-robin default compiles to await _clear_route_pick', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob, diana, evan]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).toContain('_clear_route_pick');
+    expect(js).toMatch(/pool:\s*\[\s*"alice"/);
+    expect(js).toContain('routeId:');
+  });
+
+  it('cycle 4.1: round-robin program emits the cursor table + helper at module top', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).toContain("createTable('_clear_route_cursors'");
+    expect(js).toContain('async function _clear_route_pick');
+    // Helper picks pool[(last_index + 1) % pool.length]
+    expect(js).toMatch(/last_index[\s\S]+pool\.length/);
+  });
+
+  it('cycle 4.2: cursor table + helper emit exactly once with multiple route blocks', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  region
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  route lead by region:
+    default round-robin across [charlie, diana]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    const createMatches = js.match(/createTable\(['"]_clear_route_cursors['"]/g) || [];
+    expect(createMatches.length).toBe(1);
+    const helperMatches = js.match(/async function _clear_route_pick/g) || [];
+    expect(helperMatches.length).toBe(1);
+  });
+
+  it('cycle 4.3: a fixed-mapping-only route block does NOT emit cursor table or helper', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).not.toContain('_clear_route_cursors');
+    expect(js).not.toContain('_clear_route_pick');
+  });
+
+  it('cycle 5.1: Python emit — fixed-mapping rules compile to if/elif chain', () => {
+    const src = `build for python backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Enterprise' to charlie
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const py = result.python || '';
+    // Python uses elif chains and dict-style assignment
+    expect(py).toContain("lead.get('size')");
+    expect(py).toContain("lead['assigned_to'] = \"alice\"");
+    expect(py).toContain("lead['assigned_to'] = \"charlie\"");
+    expect(py).toContain("lead['assigned_to'] = \"bob\"");
+  });
+
+  it('cycle 3.3: stable id is a content hash, not a line number', () => {
+    // Content-hash invariant: same rules + pool produce the same routeId
+    // regardless of where the route block lives in the file.
+    const a = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    // Same program, but with comments above shifting the line number.
+    const b = `build for javascript backend
+# leading comment
+# another comment
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    const ra = compileProgram(a);
+    const rb = compileProgram(b);
+    const jsA = ra.serverJS || ra.javascript || '';
+    const jsB = rb.serverJS || rb.javascript || '';
+    const idA = jsA.match(/routeId:\s*"([^"]+)"/);
+    const idB = jsB.match(/routeId:\s*"([^"]+)"/);
+    expect(idA).toBeTruthy();
+    expect(idB).toBeTruthy();
+    expect(idA[1]).toBe(idB[1]);
+  });
+});
+
+describe('Routing primitive — parser hard-fail', () => {
+  it('errors on missing `by`', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead size:
+    'SMB' to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain("'by'");
+  });
+
+  it('errors on missing field name', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by:
+    'SMB' to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('field');
+  });
+
+  it('errors on empty body', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('at least one rule');
+  });
+
+  it('errors on bare-identifier match value (must be string)', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    SMB to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('quoted strings');
+  });
+
+  it('errors on multiple `default` rules', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+    default round-robin across [diana, evan]`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('only one default');
+  });
+
+  it('errors on empty round-robin pool', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default round-robin across []`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('non-empty pool');
+  });
+});
+
 run();

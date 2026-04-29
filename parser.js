@@ -199,6 +199,12 @@ export const NodeType = Object.freeze({
   // `queue for X:` declares a human-approval queue with reviewer + actions + notifications
   // Distinct from WORKFLOW which orchestrates AI agents over shared state.
   QUEUE_DEF: 'queue_def',
+  // Routing primitive (2026-04-29). Statement-level node inside an endpoint.
+  // `route X by FIELD:` + indented body of `'value' to owner` lines and an
+  // optional `default` rule (single-owner or round-robin pool). Compiles to
+  // an if/else chain mutating X.assigned_to. Round-robin default uses the
+  // _clear_route_cursors SQLite table. Plan: plans/plan-routing-primitive-2026-04-29.md
+  ROUTE_DEF: 'route_def',
   TRIGGERED_SEND_EMAIL: 'triggered_send_email',
   // Triggered email primitive (2026-04-28). Top-level block:
   // `email <role> when <entity>'s status changes to <value>:` + body
@@ -2735,6 +2741,16 @@ CANONICAL_DISPATCH.set('queue', (ctx) => {
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
 });
+CANONICAL_DISPATCH.set('route', (ctx) => {
+    // Statement-level routing primitive. Shape: `route <entity> by <field>:`
+    // followed by indented body of `'value' to <owner>` and `default ...` rules.
+    // Must have at least the entity name to dispatch — parseRouteDef reports
+    // structural errors (missing 'by', missing field, etc.) with line context.
+    if (ctx.tokens.length < 2) return undefined;
+    const result = parseRouteDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
 CANONICAL_DISPATCH.set('email', (ctx) => {
     // Two top-level forms share the `email` keyword. Disambiguate by token[1]:
     //   1. `email delivery using <provider>`     — flips live sending on
@@ -4937,6 +4953,170 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
   };
 }
 
+// Routing primitive (2026-04-29). Plan: plans/plan-routing-primitive-2026-04-29.md
+//
+// Shape: `route <entity> by <field>:` + indented body of rule lines.
+// Body line forms:
+//   'value' to owner             — fixed rule, match value is a quoted string
+//   default to owner             — default rule, single owner
+//   default round-robin across [a, b, c]   — default rule, round-robin pool
+//
+// AST: {type: 'route_def', entityName, field, rules: [...], line}
+//   rules[i] = {type: 'fixed', match, owner}
+//             | {type: 'default', strategy: 'fixed', owner}
+//             | {type: 'default', strategy: 'round_robin', pool: [...]}
+function parseRouteDef(lines, startIdx, _parentIndent, errors) {
+  const tokens = lines[startIdx].tokens;
+  const line = lines[startIdx].line || startIdx + 1;
+  // tokens[0] = 'route', tokens[1] = entity, tokens[2] = 'by', tokens[3] = field
+  if (tokens.length < 2) {
+    errors.push({ line, message: "route needs an entity name. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const entityNameRaw = tokens[1] && tokens[1].value;
+  if (!entityNameRaw) {
+    errors.push({ line, message: "route needs an entity name. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  if (!tokens[2] || tokens[2].value !== 'by') {
+    errors.push({ line, message: "route needs 'by'. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const field = tokens[3] && tokens[3].value;
+  if (!field) {
+    errors.push({ line, message: "route needs a field. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // Singularize plural input — `route leads by size:` should produce the same
+  // AST as `route lead by size:`. Reuses queue's helper (F2 pattern).
+  const entityName = singularizeEntityName(entityNameRaw);
+
+  const rules = [];
+  const routeIndent = lines[startIdx].indent;
+  let i = startIdx + 1;
+
+  while (i < lines.length && lines[i].indent > routeIndent) {
+    const bodyTokens = lines[i].tokens;
+    const lineNum = lines[i].line || (i + 1);
+    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
+    const first = bodyTokens[0];
+
+    // `default ...` rule. Two shapes:
+    //   default to <owner>
+    //   default round-robin across [<pool>]
+    if (first.value === 'default') {
+      // round-robin shape: tokens are `default round - robin across [...]`
+      // (the tokenizer splits round-robin into `round`, `-`, `robin`).
+      if (bodyTokens.length >= 6 &&
+          (bodyTokens[1].canonical === 'round' || bodyTokens[1].value === 'round') &&
+          bodyTokens[2].value === '-' &&
+          bodyTokens[3].value === 'robin' &&
+          bodyTokens[4].value === 'across') {
+        // Pool starts after `[` (token 5 is '[' if well-formed).
+        if (bodyTokens[5].value !== '[') {
+          errors.push({ line: lineNum, message: "round-robin needs a non-empty pool: `[alice, bob, ...]`" });
+          i++;
+          continue;
+        }
+        const pool = [];
+        for (let j = 6; j < bodyTokens.length; j++) {
+          const t = bodyTokens[j];
+          if (t.value === ',') continue;
+          if (t.value === ']') break;
+          pool.push(t.value);
+        }
+        if (pool.length === 0) {
+          errors.push({ line: lineNum, message: "round-robin needs a non-empty pool: `[alice, bob, ...]`" });
+          i++;
+          continue;
+        }
+        if (rules.some(r => r.type === 'default')) {
+          errors.push({ line: lineNum, message: "only one default allowed per route block" });
+          i++;
+          continue;
+        }
+        rules.push({ type: 'default', strategy: 'round_robin', pool });
+        i++;
+        continue;
+      }
+      // single-owner default: `default to <owner>`
+      if (bodyTokens.length >= 3 && bodyTokens[1].value === 'to') {
+        const owner = bodyTokens[2].value;
+        if (rules.some(r => r.type === 'default')) {
+          errors.push({ line: lineNum, message: "only one default allowed per route block" });
+          i++;
+          continue;
+        }
+        rules.push({ type: 'default', strategy: 'fixed', owner });
+        i++;
+        continue;
+      }
+      errors.push({
+        line: lineNum,
+        message: `route '${entityName}': don't know what to do with default on line ${lineNum}. ` +
+                 `Use \`default to <owner>\` or \`default round-robin across [a, b, c]\`.`,
+      });
+      i++;
+      continue;
+    }
+
+    // Fixed rule: `'value' to <owner>`. Match value MUST be a quoted string —
+    // the tokenizer splits hyphenated bare identifiers (`Mid-market` becomes
+    // 3 tokens), so quoted strings are the only consistent form.
+    if (first.type === TokenType.STRING) {
+      if (bodyTokens.length >= 3 && bodyTokens[1].value === 'to') {
+        const ownerTok = bodyTokens[2];
+        const owner = ownerTok.type === TokenType.STRING ? ownerTok.value : ownerTok.value;
+        rules.push({ type: 'fixed', match: first.value, owner });
+        i++;
+        continue;
+      }
+      errors.push({
+        line: lineNum,
+        message: `route '${entityName}': rule '${first.value}' needs 'to <owner>'. Example: '${first.value}' to alice`,
+      });
+      i++;
+      continue;
+    }
+
+    // Bare-identifier match value — reject with a friendly hint.
+    if (first.type === TokenType.IDENTIFIER || first.type === TokenType.KEYWORD) {
+      errors.push({
+        line: lineNum,
+        message: `route match values must be quoted strings: \`'${first.value}' to <owner>\`, not \`${first.value} to <owner>\`. ` +
+                 `Quotes match the if-chain form (\`if lead's size is '${first.value}'\`).`,
+      });
+      i++;
+      continue;
+    }
+
+    // Anything else — hard fail with the canonical forms.
+    const lineText = bodyTokens.map(t => t.value).join(' ').trim();
+    errors.push({
+      line: lineNum,
+      message:
+        `route '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}. ` +
+        `Valid lines: \`'<value>' to <owner>\`, \`default to <owner>\`, \`default round-robin across [a, b, c]\`.`,
+    });
+    i++;
+  }
+
+  if (rules.length === 0) {
+    errors.push({ line, message: `route '${entityName}' block needs at least one rule. Example: 'SMB' to alice` });
+  }
+
+  return {
+    node: {
+      type: NodeType.ROUTE_DEF,
+      entityName,
+      field,
+      rules,
+      line,
+    },
+    endIdx: i,
+  };
+}
+
 // Block-form if: "if condition:" + indented body, optional "otherwise:" block
 // "match X:" with "when Y:" cases
 function parseMatch(lines, startIdx, blockIndent, errors) {
@@ -6854,13 +7034,15 @@ function parseSaveAssignment(name, tokens, pos, line) {
     pos++;
   }
   // Skip optional "new" before target: "save X as new Todo"
-  if (pos < tokens.length && tokens[pos].value === 'new') pos++;
+  let isInsert = false;
+  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
   let target = 'unknown';
   if (pos < tokens.length) {
     target = tokens[pos].value;
   }
 
   const node = crudNode('save', variable, target, null, line);
+  if (isInsert) node.isInsert = true;
   node.resultVar = name; // "new_todo = save incoming as Todo" -> resultVar is new_todo
 
   // Parse optional "with field is value" overrides. Lets the user set a

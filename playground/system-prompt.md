@@ -747,6 +747,44 @@ workflow 'Pipeline' with state:
   step 'Publish' with 'Publisher Agent'
 ```
 
+## Routing — `route X by FIELD:`
+
+**When an endpoint needs to assign an owner based on a field of the incoming record** — lead routers (size, region, territory), ticket triage (urgency, product), approval triage (amount, requester) — reach for `route X by FIELD:` BEFORE writing if-chains.
+
+Canonical form:
+
+```clear
+when user sends lead to /api/leads:
+  validate lead:
+    name is text, required
+    size is text
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead
+  send back new_lead with success message
+```
+
+Round-robin variant for the default (rotates through the pool on each new record):
+
+```clear
+route lead by region:
+  'West' to alice
+  default round-robin across [bob, charlie, diana]
+```
+
+**TWO STRICT RULES — getting these wrong is a HARD compile error:**
+1. **Match values must be quoted strings on the LHS** (`'SMB' to alice`, NOT `SMB to alice`). Bare hyphenated identifiers (`Mid-market`) tokenize as 3 tokens and parse-fail.
+2. **The route block must come BEFORE `save X as new T`** in the endpoint. Otherwise the assignment lands on the in-memory variable but never persists. Compile-time HARD ERROR (`ROUTE_AFTER_SAVE`).
+
+**DO use `route X by FIELD:`** whenever there are 2+ branches and a fallback. Replaces 50+ lines of nested if-chains with 5 lines.
+
+**DO NOT use `route X by FIELD:`** when:
+- Only one assignment, no fallback (just write `lead's assigned_to is 'alice'` once)
+- The decision needs richer logic than equality on a single field — fall back to `if/then` for those
+
 ## Approval Queues — `queue for X:`
 
 **When the user asks for an approval flow** — discount approvals, time-off requests, deal review, onboarding sign-off, anything where a human reviews items piled up in a list and clicks Approve / Reject / Counter — reach for `queue for X:` BEFORE writing hand-rolled CRUD URLs.
