@@ -38,7 +38,18 @@ The 04-29 morning A/B hint sweep produced 11 KB of useless data: 30 of 40 trials
 
 **Diagnostic sweep result (`bx0ofh7h9` completed):** `playground/sessions/ab-hint-sweep-2026-04-29T16-26-54.json` — 20/20 trials passed cleanly across both conditions. cc-agent did NOT fail this time, no infra failures detected, wall clock 57 min, $0 cost. The morning sweep's silent fast-fails appear to have been a transient state interaction with the Anthropic API cap that hit that morning, not a structural cc-agent bug — **Piece 4 is not needed today.** Pieces 1-3 remain in place as the safety net the next time cc-agent does fail.
 
-Counter-task lift: **+0.0%** (both conditions 100% pass). Counter at L3 is too easy to differentiate hint_on from hint_off — Meph solves it either way. Slight inverse on elapsed time (avg 177s with hints vs 164s without) suggests hints add overhead without changing outcome on this task; sample of 10 per side is small. **For a meaningful hint-effect measurement, the next sweep needs a harder task (todo-crud L4 or higher) and probably 20+ trials per condition.** This was the morning sweep's intent (counter + todo-crud) — but cc-agent died before reaching todo-crud, which is exactly why the lift number from that JSON is meaningless.
+Counter-task lift: **+0.0%** (both conditions 100% pass). Counter at L3 is too easy to differentiate hint_on from hint_off — Meph solves it either way. Slight inverse on elapsed time (avg 177s with hints vs 164s without) suggests hints add overhead without changing outcome on this task.
+
+**L7 follow-up sweep (`b0xvxmyd7`):** `playground/sessions/ab-hint-sweep-2026-04-29T17-35-52.json` — 20 trials across `approval-queue` + `kpi-dashboard` (Marcus archetypes), 5 trials per condition each, 18 min wall clock, no infra failures. Honest data:
+
+| task | hint_on | hint_off | lift | avg_on | avg_off |
+|---|---|---|---|---|---|
+| approval-queue | 4/5 (80%) | 5/5 (100%) | -20.0% | 54s | 46s |
+| kpi-dashboard | 5/5 (100%) | 5/5 (100%) | 0.0% | 71s | 44s |
+
+Across all three tasks tested today (counter L3, approval-queue L7, kpi-dashboard L7), **zero trials show hint_on outperforming hint_off**. approval-queue showed a weak negative (1 fewer pass out of 5; statistically indistinguishable from noise at this sample size). kpi-dashboard showed a +27s elapsed-time penalty with hints that's more credible (averaged across 5 trials, consistent direction). 5 trials per condition is too small for statistical significance, but the *direction* of every signal is at-best-flat-and-at-worst-negative.
+
+**Implication for the data-flywheel pitch:** the claim "Meph gets smarter as the data grows" has no live-production positive evidence as of 2026-04-29. RESEARCH.md's offline `val_auc = 0.96` doesn't appear to transfer to live tasks at L3 or L7. Three options going forward: (a) run a much bigger sweep — 20+ trials × 5+ tasks at varied difficulty — before believing the result either way, (b) inspect the specific hints that fired on the failed approval-queue trial to find whether the retriever is surfacing wrong patterns, or (c) acknowledge the flywheel claim is research-in-progress and drop it from cold-pitch Marcus DMs until positive-lift evidence exists. **Don't put "Meph improves with data" in customer-facing copy until it's fact, not thesis.** Defensible claims that ARE supported: every Meph session adds rows to the Factor DB; the compiler accumulates quality on recompile; Meph's pass rate doesn't drop with the retriever active (no harm above noise). The "actively gets smarter" claim is the one that's not yet backed.
 
 ---
 

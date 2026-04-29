@@ -1044,6 +1044,35 @@ The reframe that holds up: Clear is **for AI to write, for humans to read and ed
 
 ---
 
+### Does the hint retriever actually help Meph at runtime?
+
+**Honest answer as of 2026-04-29: not in any data we've collected.** Three tasks tested across two clean sweeps that day:
+
+| task | level | hint_on pass | hint_off pass | hint_on avg elapsed | hint_off avg elapsed |
+|---|---|---|---|---|---|
+| counter | L3 | 10/10 (100%) | 10/10 (100%) | 177s | 164s |
+| approval-queue | L7 | 4/5 (80%) | 5/5 (100%) | 54s | 46s |
+| kpi-dashboard | L7 | 5/5 (100%) | 5/5 (100%) | 71s | 44s |
+
+Across all three tasks: zero pass-rate improvement from hints; +13-27s elapsed-time penalty with hints. The L7 approval-queue case showed weak NEGATIVE lift (-20%, 1 fewer pass out of 5) but the sample is too small to call statistically significant.
+
+This is a tension with RESEARCH.md's offline `val_auc = 0.96` reranker validation. Possible explanations:
+
+1. **Distribution shift.** The reranker was trained on offline pairs that don't match the live-task distribution. Offline AUC measures pair-ranking, not final-task pass-rate.
+2. **Variance in the retriever.** Sometimes the retriever surfaces a useful pattern, sometimes a misleading one. Net effect on a 5-trial-per-condition sample is dominated by which kind of hint fires when.
+3. **Sample size.** 5-10 trials per condition can't differentiate small lifts from noise. A real measurement needs 20-30+ trials per condition.
+4. **Tasks chosen.** Counter was too easy (Meph solves with or without). L7 may be the wrong place too — Meph might need the right *difficulty band* where hints make a marginal difference but not a categorical one.
+
+**What this means for the Marcus pitch.** The flywheel claim ("Meph gets smarter as the data grows") doesn't currently have positive live-production evidence behind it. Three defensible substitute claims that ARE supported:
+
+- Every Meph session adds rows to the Factor DB (mechanical, true).
+- The compiler accumulates quality on recompile — fix one error, every app benefits (mechanical, true).
+- Meph's live pass rate doesn't *drop* with the retriever active (the negative case is at-noise, not catastrophic).
+
+The "actively gets smarter on tasks the retriever has seen" claim should sit in research-in-progress until a 20+ trial × 5+ task sweep produces positive lift. Putting unverified claims in cold-pitch DMs to Marcuses is reputational risk.
+
+---
+
 ### Why did the 04-29 morning hint sweep produce garbage data?
 
 The sweep ran 40 trials and returned a JSON file with `lift = +0.2` on counter and `lift = 0` on todo-crud — except 30 of those 40 trials had `error: null`, `dbPassed: false`, `saidTaskComplete: false`, `elapsedMs: ~2300`. They weren't real Meph attempts. The cc-agent backend died after the first 10 counter+hint_on trials (likely a transient rate-limit or auth interaction with the Anthropic API cap that hit that morning), and every subsequent request returned 200 OK + an empty SSE stream. The harness counted those silent fast-fails as "Meph failed" and bucketed them into pass-rate math.
