@@ -1359,6 +1359,91 @@ const comp11 = JSON.parse(compileTool({}, new MephContext({ source: 'x' }), thro
 assert(comp11.error?.includes('synthetic compile crash'),
   `compileTool catches compiler throws and returns { error } (got ${JSON.stringify(comp11)})`);
 
+// =====================================================================
+// editCodeTool — hint pipeline integration (cycle 2 of the cc-agent fix)
+// Closes the gap where cc-agent's edit_code auto-compile bypassed the
+// hint retrieval entirely. With the full helpers bag passed, edit_code
+// now calls attachHintsForCompileResult and ships hints back to Meph.
+// =====================================================================
+
+// edit_code with full helpers + factorDB + a compile error should fire hints
+let editQuerySuggestionCalls = 0;
+const editHintRow = {
+  tier: 'exact_error_same_archetype',
+  patch_summary: 'fixed by adding the missing variable',
+  source_before: 'database is local memory\nset name = "demo"\n',
+  test_score: 1,
+  session_id: 'past-sess-edit',
+  created_at: 1,
+  pairwise_score: 0.91,
+};
+const fdbForEdit = {
+  logAction: () => 1234,
+  querySuggestions: () => { editQuerySuggestionCalls++; return [editHintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const editCtx = new MephContext({
+  source: '',
+  factorDB: fdbForEdit,
+  sessionId: 'edit-test-sess',
+  pairwiseBundle: { weights: 'fake' },
+});
+// Pass the FULL helpers bag (the cc-agent dispatch path), not just compileProgram
+const editResult = JSON.parse(editCodeTool(
+  { action: 'write', code: 'database:\n  bogus garbage\n' },
+  editCtx,
+  compileHelpers
+));
+assert(editQuerySuggestionCalls === 1,
+  `edit_code with errors + factorDB calls querySuggestions once via the helper (got ${editQuerySuggestionCalls})`);
+assert(editResult.hints && typeof editResult.hints.text === 'string',
+  `edit_code attaches hints.text when called via dispatch with errors (got ${editResult.hints ? 'yes' : 'no'})`);
+assert(editResult.hints.text.includes('SAME ERROR in same archetype'),
+  'edit_code hint text includes tier label for exact_error_same_archetype rows');
+
+// edit_code with bare compileProgram (legacy test call site) should NOT fire hints
+let legacyQueryCalls = 0;
+const fdbLegacy = {
+  logAction: () => 5678,
+  querySuggestions: () => { legacyQueryCalls++; return [editHintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const legacyCtx = new MephContext({
+  source: '',
+  factorDB: fdbLegacy,
+  sessionId: 'legacy-sess',
+});
+// Pass JUST compileProgram (the old shape)
+const legacyResult = JSON.parse(editCodeTool(
+  { action: 'write', code: 'database:\n  garbage\n' },
+  legacyCtx,
+  compileProgram
+));
+assert(legacyQueryCalls === 0,
+  `edit_code with bare compileProgram (legacy) does NOT fire hint retrieval (got ${legacyQueryCalls} calls)`);
+assert(!legacyResult.hints,
+  `edit_code legacy call site keeps {applied,errors,warnings} shape with no hints field (got ${legacyResult.hints ? 'unexpected hints' : 'clean'})`);
+
+// edit_code with no compile errors should NOT fire hints (querySuggestions guard)
+let editCleanQueryCalls = 0;
+const editFdbClean = {
+  logAction: () => 9999,
+  querySuggestions: () => { editCleanQueryCalls++; return []; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const editCleanCtx = new MephContext({
+  source: '',
+  factorDB: editFdbClean,
+  sessionId: 'clean-edit-sess',
+});
+const editCleanResult = JSON.parse(editCodeTool(
+  { action: 'write', code: 'show "hello"\n' },
+  editCleanCtx,
+  compileHelpers
+));
+assert(editCleanQueryCalls === 0,
+  `edit_code with clean compile (no errors) does NOT fire hint retrieval (got ${editCleanQueryCalls} calls)`);
+
 console.log('\n🧭 dispatchTool\n');
 
 // Unknown tool names are caught by the validator (schemaError path) BEFORE
