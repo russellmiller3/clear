@@ -172,7 +172,8 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | # | Piece | Status | Scope |
 |---|---|---|---|
 | CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 hr code, gated on Russell providing live Stripe keys |
-| CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | a session of work |
+| CC-5b | DNS verification poller for custom domains | Cycle 1 attach UX shipped 2026-04-29. Cycle 2 open: small worker that wakes every minute, calls `node:dns resolveCname` on pending rows, flips status to verified or failed. | ~30 lines + a cron handle |
+| CC-5c | Fly cert provisioner for custom domains | Cycle 2 prereq. Open: when a domain flips to verified, request a Fly cert + write the cert id back. | small — gated on CC-5b |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
 

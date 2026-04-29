@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-29 (morning) — CC-5 cycle 1: custom domain attach + dashboard panel
+
+The piece between Marcus deploying an app and Marcus pointing `deals.acme.com` at it. The customer types a domain in the dashboard's per-app panel, sees a "Verifying DNS" pill, gets a copy-pasteable CNAME hint. Soft-delete via the same panel. Cross-tenant attack returns 404 (locked in by tests).
+
+**What shipped:**
+- New `app_domains` table keyed by `(tenant_slug, app_slug, domain)` with a `pending / verified / failed / removed` state machine. Migration applies cleanly under pg-mem (no PL/pgSQL trigger).
+- Three URL handlers on `playground/cloud-auth/routes.js`: POST (attach), GET (list), DELETE (soft-delete). All gate on session cookie + verify the app belongs to the authed user's tenant before any DB op.
+- Per-app card on the dashboard now has a Custom domains section: status pill (Verifying DNS / Live / DNS error), CNAME hint for pending, last-error message for failed, Remove button per row. HTML escaping on every customer-controlled string.
+- 23 new routes integration tests including the cross-tenant-attack-returns-404 isolation test. Total in `routes.test.js` now 95/95 passing.
+
+**Why for launch:** Marcus's company wants `deals.acme.com`, not `acme.buildclear.dev`. Custom domains are table stakes at SaaS pricing — the moment Marcus's CFO sees the marketing brand on the URL, the platform reads as a product instead of a demo.
+
+**Open work for cycles 2+ (NOT in this commit):**
+- DNS verification poller (CC-5b) — wakes every minute, finds pending rows, calls `node:dns resolveCname`, flips to verified or failed.
+- Fly cert provisioner (CC-5c) — issues SSL once a domain verifies.
+
 ## 2026-04-29 (later) — Marcus apps list: dashboard shows the customer's deployed apps
 
 The piece between Marcus signing up and Marcus actually seeing his deployments. Picked the simplest of the three user→tenant mapping options sketched earlier — each customer = one tenant, auto-created at signup.
