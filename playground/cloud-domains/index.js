@@ -347,3 +347,74 @@ export async function pollOnce(db, dnsResolver) {
   }
   return counts;
 }
+
+// =============================================================================
+// startDomainPoller — interval scheduler (CC-5b)
+// =============================================================================
+/**
+ * Production glue that drives pollOnce on a tick. Returns a handle the
+ * server can use to stop the loop on shutdown.
+ *
+ * Why this is its own function (vs. a one-liner setInterval call):
+ *   - Wraps each tick in try/catch so a single failed cycle (db blip,
+ *     network hiccup) doesn't crash the host process via unhandledRejection.
+ *   - tickNow() lets callers force a cycle on demand (CLI tools, manual
+ *     "verify now" buttons, integration tests) without waiting for the
+ *     next tick.
+ *   - Timer hooks are injectable so tests can drive the tick logic
+ *     without real setTimeout latency.
+ *
+ * @param {object} options
+ * @param {object} options.db - pg Pool or compatible
+ * @param {function} [options.dnsResolver] - defaults to resolveDomainCname
+ * @param {number}   [options.intervalMs=60000] - tick spacing; default 1 min
+ * @param {boolean}  [options.autoStart=true] - register the setInterval immediately
+ * @param {function} [options.setIntervalFn=globalThis.setInterval]
+ * @param {function} [options.clearIntervalFn=globalThis.clearInterval]
+ * @param {function} [options.onError=console.error] - called with errors from
+ *                   pollOnce that escape its per-row try/catch (e.g. db down)
+ * @returns {{ stop: () => void, tickNow: () => Promise<object> }}
+ */
+export function startDomainPoller(options) {
+  const {
+    db,
+    dnsResolver = resolveDomainCname,
+    intervalMs = 60_000,
+    autoStart = true,
+    setIntervalFn = globalThis.setInterval,
+    clearIntervalFn = globalThis.clearInterval,
+    onError = (err) => console.error('[domain-poller]', err && err.message ? err.message : err),
+  } = options || {};
+
+  if (!db || typeof db.query !== 'function') {
+    throw new Error('startDomainPoller: options.db with .query() is required.');
+  }
+
+  let intervalToken = null;
+
+  async function tickNow() {
+    try {
+      return await pollOnce(db, dnsResolver);
+    } catch (err) {
+      onError(err);
+      return { checked: 0, verified: 0, wrong: 0, stillPending: 0, error: err };
+    }
+  }
+
+  function stop() {
+    if (intervalToken !== null) {
+      clearIntervalFn(intervalToken);
+      intervalToken = null;
+    }
+  }
+
+  if (autoStart) {
+    // Async wrapper so awaiting the registered callback in a test (or
+    // any caller that wants to drive the tick synchronously) actually
+    // awaits the underlying work. tickNow already swallows its own errors
+    // via onError, so this is fire-and-forget-safe in production.
+    intervalToken = setIntervalFn(async () => { await tickNow(); }, intervalMs);
+  }
+
+  return { stop, tickNow };
+}

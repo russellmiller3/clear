@@ -529,5 +529,143 @@ console.log('\n📡 resolveDomainCname — node:dns wrapper\n');
   }
 }
 
+// ─── startDomainPoller — interval scheduler (CC-5b) ─────────────────────
+// Production glue that calls pollOnce every intervalMs. Returns a stop
+// handle so server shutdown can clean it up. setInterval / clearInterval
+// are dependency-injected so tests can drive the tick without real timers.
+console.log('\n⏱️  startDomainPoller — interval scheduler\n');
+
+{
+  const { startDomainPoller, addDomain } = await import('./index.js');
+
+  function mockDomainsDbForPoller() {
+    const rows = [];
+    let nextId = 1;
+    return {
+      rows,
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/^INSERT INTO app_domains/i.test(t)) {
+          const [app_id, domain, expected_cname] = params;
+          if (rows.some(r => r.domain === domain && r.status !== 'removed')) {
+            const err = new Error('duplicate'); err.code = '23505'; throw err;
+          }
+          const row = {
+            id: nextId++, app_id, domain, expected_cname,
+            status: 'pending', verified_at: null, last_checked_at: null,
+            last_error: null, created_at: new Date(), updated_at: new Date(),
+          };
+          rows.push(row);
+          return { rows: [row] };
+        }
+        if (/^SELECT \* FROM app_domains WHERE status\s*=\s*'pending'/i.test(t)) {
+          return { rows: rows.filter(r => r.status === 'pending') };
+        }
+        if (/^SELECT \* FROM app_domains WHERE app_id/i.test(t)) {
+          const [app_id] = params;
+          return { rows: rows.filter(r => r.app_id === app_id && r.status !== 'removed') };
+        }
+        if (/^UPDATE app_domains/i.test(t)) {
+          const id = params[params.length - 1];
+          const row = rows.find(r => r.id === id);
+          if (!row) return { rows: [] };
+          const setMatch = t.match(/SET\s+(.+?)\s+WHERE/i);
+          if (!setMatch) return { rows: [] };
+          const cols = setMatch[1].split(',').map(s => s.trim().split(/\s*=\s*/)[0].trim());
+          for (let i = 0; i < cols.length; i++) row[cols[i]] = params[i];
+          row.updated_at = new Date();
+          return { rows: [row] };
+        }
+        throw new Error('mock unhandled: ' + t.slice(0, 80));
+      },
+    };
+  }
+
+  // Cycle 3.1 — startDomainPoller returns { stop, tickNow } and tickNow
+  // runs one verification cycle synchronously
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 100, domain: 'a.example.com', appSlug: 'a' });
+    const expected = db.rows[0].expected_cname;
+    const handle = startDomainPoller({
+      db,
+      dnsResolver: async () => [expected],
+      intervalMs: 60_000,  // long enough that timer never fires during the test
+      autoStart: false,
+    });
+    assert(typeof handle.stop === 'function', `handle has stop()`);
+    assert(typeof handle.tickNow === 'function', `handle has tickNow()`);
+    const result = await handle.tickNow();
+    assert(result.checked === 1 && result.verified === 1,
+      `tickNow ran one cycle (checked=${result.checked}, verified=${result.verified})`);
+    assert(db.rows[0].status === 'verified', `row flipped to verified`);
+    handle.stop();
+  }
+
+  // Cycle 3.2 — autoStart=true registers a setInterval that fires the
+  // tick on its own; verified by injecting a mock setInterval that runs
+  // the callback inline (synchronous fire)
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 200, domain: 'b.example.com', appSlug: 'b' });
+    const expected = db.rows[0].expected_cname;
+    let registered = null;
+    const fakeSetInterval = (fn, ms) => { registered = { fn, ms }; return Symbol('fake-interval'); };
+    const fakeClearInterval = () => {};
+    const handle = startDomainPoller({
+      db,
+      dnsResolver: async () => [expected],
+      intervalMs: 60_000,
+      autoStart: true,
+      setIntervalFn: fakeSetInterval,
+      clearIntervalFn: fakeClearInterval,
+    });
+    assert(registered !== null, `setInterval registered with autoStart=true`);
+    assert(registered.ms === 60_000, `interval is intervalMs (got ${registered.ms})`);
+    // Fire the registered callback once — it should run pollOnce
+    await registered.fn();
+    assert(db.rows[0].status === 'verified', `tick fired by setInterval did the work`);
+    handle.stop();
+  }
+
+  // Cycle 3.3 — stop() unregisters the interval (via injected clearInterval)
+  {
+    let cleared = null;
+    const fakeSetInterval = () => 'interval-token';
+    const fakeClearInterval = (token) => { cleared = token; };
+    const handle = startDomainPoller({
+      db: mockDomainsDbForPoller(),
+      dnsResolver: async () => null,
+      intervalMs: 60_000,
+      autoStart: true,
+      setIntervalFn: fakeSetInterval,
+      clearIntervalFn: fakeClearInterval,
+    });
+    handle.stop();
+    assert(cleared === 'interval-token',
+      `stop() called clearInterval with the interval token (got ${cleared})`);
+  }
+
+  // Cycle 3.4 — onError captures pollOnce throws (db down, resolver crash
+  // outside per-row try/catch, etc.) so a busted poller doesn't crash
+  // the whole server with an unhandled rejection
+  {
+    const errors = [];
+    const brokenDb = {
+      async query() { throw new Error('database connection lost'); },
+    };
+    const handle = startDomainPoller({
+      db: brokenDb,
+      dnsResolver: async () => null,
+      intervalMs: 60_000,
+      autoStart: false,
+      onError: (err) => errors.push(err.message),
+    });
+    await handle.tickNow();
+    assert(errors.length === 1 && errors[0].includes('database connection lost'),
+      `onError invoked with the thrown message (got ${JSON.stringify(errors)})`);
+  }
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
