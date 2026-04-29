@@ -191,3 +191,161 @@ Confirmed via `grep -n` against `synonyms.js`:
 - Empty body → "route block needs at least one rule. Example: SMB to alice"
 - Multiple `default` rules → "only one default allowed per route block"
 - `round-robin across []` (empty pool) → "round-robin needs a non-empty pool: [alice, bob, ...]"
+
+## Validator rules (Phase 2)
+
+Three checks, all warnings (not errors — the program still compiles). Pattern matches the queue primitive's validator hooks.
+
+| Rule | Trigger | Message | Why |
+|------|---------|---------|-----|
+| `ROUTE_FIELD_NOT_ON_ENTITY` | `route lead by FIELD:` where `FIELD` doesn't appear in the `Leads` table definition | "Route field 'FIELD' isn't on the Leads table. Add it to the table or use one of: name, email, size, source, ..." | Catches typos. The most common mistake. |
+| `ROUTE_NO_DEFAULT` | route block has no `default` rule | "Route block has no default. If lead's FIELD doesn't match any rule, no owner gets assigned. Add `default round-robin across [...]` or `default to <owner>`." | Without a default, unmatched values silently leave `assigned_to` unset. |
+| `ROUTE_UNREACHABLE_RULE` | rule appears after `default` | "Rule '<value> to <owner>' appears after default. The default catches everything; this rule never fires." | Author probably reordered by accident. |
+
+**Skip:** owner-name validation. The owners are loose strings (`alice`, `bob`) — there's no Owners table primitive yet. Future `route ... by ... using Owners` can validate against an Owners table. Out of scope for cycle 1.
+
+## JS compiler emit (Phase 3)
+
+**Statement-level form:** `route lead by size:` inside an endpoint compiles to a statement block that mutates `lead.assigned_to`. The block is inline JS — no helper call for the fixed-mapping path, a tiny helper call for the round-robin path.
+
+**Compiled output for Example 1 (fixed mapping only):**
+
+```js
+// clear:N — route lead by size
+{
+  const _v = lead.size;
+  if (_v === 'SMB')              lead.assigned_to = 'alice';
+  else if (_v === 'Mid-market')  lead.assigned_to = 'bob';
+  else if (_v === 'Enterprise')  lead.assigned_to = 'charlie';
+  else                           lead.assigned_to = 'alice';
+}
+```
+
+**Compiled output for Example 2 (round-robin default):**
+
+```js
+// clear:N — route lead by size (round-robin default across [alice, bob, diana, evan])
+{
+  const _v = lead.size;
+  if (_v === 'Enterprise') lead.assigned_to = 'charlie';
+  else lead.assigned_to = await _clear_route_pick({
+    routeId: 'route_42_lead_by_size',  // stable id from line + entity + field
+    pool: ['alice', 'bob', 'diana', 'evan'],
+  });
+}
+```
+
+**Stable route id** = `'route_' + line + '_' + entity + '_by_' + field` — same shape as `stableUatId` (used by the UAT contract). Stable across rebuilds so the cursor table doesn't lose state on recompile.
+
+**`_clear_route_cursors` table emit:** the compiler adds the table once per app — first time any `route ... default round-robin ...` block appears in the source. Dedupe via `ctx._clearRouteCursorsEmitted` flag (same trick queue uses for the email queue table).
+
+**Endpoint side-effect — none in cycle 1.** The route block mutates the variable in place; `save lead as new Lead` (already in scope) writes the assigned owner to the row. No magic injection.
+
+## Python compiler emit (Phase B-1, parity-required)
+
+Mechanical port of the JS branch. Same shape:
+
+```python
+# clear:N — route lead by size
+_v = lead.get('size')
+if _v == 'SMB':            lead['assigned_to'] = 'alice'
+elif _v == 'Mid-market':   lead['assigned_to'] = 'bob'
+elif _v == 'Enterprise':   lead['assigned_to'] = 'charlie'
+else:                      lead['assigned_to'] = 'alice'
+```
+
+**Round-robin default:** Python helper `_clear_route_pick(route_id, pool)` lives in the same runtime module that ships the JS one. Same SQLite cursor table.
+
+## Round-robin cursor runtime (Phase 4)
+
+**Where state lives:** `_clear_route_cursors` SQLite table. Per-deploy (matches the rest of Clear's local-memory model). Survives restarts.
+
+**Schema:**
+```sql
+CREATE TABLE IF NOT EXISTS _clear_route_cursors (
+  route_id        TEXT PRIMARY KEY,
+  last_index      INTEGER NOT NULL DEFAULT -1,
+  updated_at_date TEXT NOT NULL
+);
+```
+
+**Helper signature (`runtime/route-cursor.js`):**
+```js
+async function _clear_route_pick({ routeId, pool }) {
+  if (!Array.isArray(pool) || pool.length === 0) return null;
+  // Atomic read-modify-write: increment cursor, pick pool[(cursor) % pool.length].
+  const row = db.queryFirst('SELECT last_index FROM _clear_route_cursors WHERE route_id = ?', [routeId]);
+  const next = ((row?.last_index ?? -1) + 1) % pool.length;
+  db.exec('INSERT INTO _clear_route_cursors (route_id, last_index, updated_at_date) VALUES (?, ?, ?) ON CONFLICT (route_id) DO UPDATE SET last_index = ?, updated_at_date = ?',
+    [routeId, next, new Date().toISOString(), next, new Date().toISOString()]);
+  return pool[next];
+}
+```
+
+**Concurrency:** SQLite WAL mode (already on in Clear's runtime) serializes the write. Two simultaneous lead inserts can't both pick `pool[0]` — the second one sees the updated cursor.
+
+**Python sibling:** `runtime/route_cursor.py` — same shape, `db.execute` instead of `db.exec`, same SQLite table.
+
+**Cross-target parity (PHILOSOPHY Rule 17):** the cursor table name + helper signature are identical on JS and Python. A program that compiles round-robin under either target reads from the same `_clear_route_cursors` rows.
+
+## TDD cycles per phase
+
+### Phase 1 — parser + node type
+- **Cycle 1.1:** parser test — `route lead by size:` with one fixed rule produces the expected AST. Red → green via new `parseRouteDef` + `CANONICAL_DISPATCH.set('route', ...)`.
+- **Cycle 1.2:** all hard-fail conditions (missing `by`, empty body, multiple defaults, etc.) produce the right error messages.
+- **Cycle 1.3:** `default round-robin across [a, b, c]` parses into the right AST shape.
+- **Cycle 1.4:** plural input (`route leads by size:`) singularizes to the same shape (queue F2 pattern).
+
+### Phase 2 — validator rules
+- **Cycle 2.1:** `ROUTE_FIELD_NOT_ON_ENTITY` warning fires when field isn't on the table.
+- **Cycle 2.2:** `ROUTE_NO_DEFAULT` warning fires when block has no default.
+- **Cycle 2.3:** `ROUTE_UNREACHABLE_RULE` warning fires when a rule comes after default.
+
+### Phase 3 — JS compiler emit
+- **Cycle 3.1:** Example 1 compiles to the expected if/else chain.
+- **Cycle 3.2:** Example 2 compiles to if/else + `await _clear_route_pick(...)` for the round-robin default.
+- **Cycle 3.3:** the cursor table emits exactly once per app even with multiple route blocks.
+- **Cycle 3.4:** all 8 core templates + 5 Marcus apps still compile clean (no regressions).
+
+### Phase 4 — round-robin cursor runtime
+- **Cycle 4.1:** runtime helper picks `pool[0]` on first call, `pool[1]` second, wraps to `pool[0]` after `pool.length`.
+- **Cycle 4.2:** survives restart — two helper calls with a process restart between them produce sequential picks.
+- **Cycle 4.3:** concurrent calls don't collide (two near-simultaneous picks return different owners).
+
+### Phase 5 — doc cascade + 3 example apps
+- Update lead-router to use the new primitive (the demo app for the wedge).
+- Update the deal-desk and approval-queue apps with `route` blocks where they make sense (optional — only if the variant is more legible than the existing if-chain).
+- Doc cascade per the list below.
+
+### Phase B-1 — Python parity
+- **Cycle B-1.1:** Python emit for fixed-mapping case.
+- **Cycle B-1.2:** Python emit for round-robin default.
+- **Cycle B-1.3:** `runtime/route_cursor.py` matches the JS helper's behavior on a Python smoke test.
+
+## Doc cascade list (Phase 5)
+
+Per the project rule, all eleven surfaces:
+
+- [ ] `intent.md` — new `ROUTE_DEF` row in the spec table.
+- [ ] `SYNTAX.md` — section with the canonical example + round-robin variant.
+- [ ] `AI-INSTRUCTIONS.md` — when to use `route X by field` vs an if-chain. Convention: prefer the primitive whenever there are 2+ branches and a fallback.
+- [ ] `USER-GUIDE.md` — tutorial with the lead-router walkthrough.
+- [ ] `ROADMAP.md` — mark phase complete; add follow-up cycles for territory + workload variants if Marcus customer asks.
+- [ ] `landing/*.html` — none required for cycle 1 (not user-facing marketing yet); revisit when the variant ships.
+- [ ] `playground/system-prompt.md` — Meph should use this when building queue/lead/triage apps.
+- [ ] `FAQ.md` — "Where does the routing primitive live?" + "How does round-robin survive a restart?"
+- [ ] `RESEARCH.md` — none required (no training-signal change).
+- [ ] `FEATURES.md` — new row in the language reference table.
+- [ ] `CHANGELOG.md` — session-dated entry.
+
+## Pre-flight checklist (Section 9 equivalent)
+
+- [ ] `learnings.md` exists at project root
+- [ ] Branch named `feature/routing-primitive`
+- [ ] All 8 core templates compile clean before any change (baseline)
+- [ ] `_clear_route_cursors` table doesn't already exist (grep `compiler.js` + `runtime/`)
+- [ ] No existing `route` keyword dispatch in `synonyms.js` or `parser.js` (re-verify)
+
+## Resume prompt (paste into fresh session)
+
+> Read `plans/plan-routing-primitive-2026-04-29.md`. Cut `feature/routing-primitive` from `main`. Start Phase 1 cycle 1.1 — parser test for `route lead by size:` with one fixed rule. Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: `b8e7d92`.
