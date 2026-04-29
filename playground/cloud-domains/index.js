@@ -233,3 +233,80 @@ export async function listPendingDomains(db) {
   );
   return rows;
 }
+
+// =============================================================================
+// pollOnce — single DNS verification cycle (CC-5b)
+// =============================================================================
+/**
+ * Read every pending domain, resolve its CNAME records via the injected
+ * resolver, decide verified | wrong | still-pending against expected_cname,
+ * and update the row. Returns a counts summary so the cron tick can log
+ * how much work it did.
+ *
+ * Resolver contract:
+ *   - Returns Array<string> of CNAME records on success.
+ *   - Returns null when DNS not configured yet (treated as still-pending).
+ *   - Throws on unexpected errors (DNS server down, network blip, etc.).
+ *     Per-row try/catch keeps one bad lookup from killing the whole cycle.
+ *
+ * Idempotency: only rows with status='pending' get checked. Verified or
+ * failed rows are left alone, so verified_at doesn't drift on re-checks.
+ * Re-verification of a verified row would happen via a separate manual
+ * trigger (e.g. customer rotates DNS).
+ *
+ * @param {object} db - pg Pool or compatible { query(text, params) }
+ * @param {(domain: string) => Promise<string[]|null>} dnsResolver
+ * @returns {Promise<{checked: number, verified: number, wrong: number, stillPending: number}>}
+ */
+export async function pollOnce(db, dnsResolver) {
+  const pending = await listPendingDomains(db);
+  const counts = { checked: 0, verified: 0, wrong: 0, stillPending: 0 };
+  for (const row of pending) {
+    counts.checked++;
+    const now = new Date();
+    let records = null;
+    let resolverError = null;
+    try {
+      records = await dnsResolver(row.domain);
+    } catch (err) {
+      resolverError = (err && err.message) ? err.message : String(err);
+    }
+    if (resolverError) {
+      // Resolver threw — keep the row pending but record the message so
+      // the dashboard can show "still trying — last error was X" instead
+      // of pretending nothing went wrong.
+      await db.query(
+        `UPDATE app_domains SET status = $1, last_checked_at = $2, last_error = $3 WHERE id = $4`,
+        ['pending', now, String(resolverError).slice(0, 500), row.id]
+      );
+      counts.stillPending++;
+      continue;
+    }
+    const verdict = verifyCname(records, row.expected_cname);
+    if (verdict === 'verified') {
+      await db.query(
+        `UPDATE app_domains SET status = $1, verified_at = $2, last_checked_at = $3, last_error = $4 WHERE id = $5`,
+        ['verified', now, now, null, row.id]
+      );
+      counts.verified++;
+    } else if (verdict === 'wrong') {
+      const got = (records || []).join(', ') || '(none)';
+      const msg = `Your CNAME points at ${got}; we expected ${row.expected_cname}.`;
+      await db.query(
+        `UPDATE app_domains SET status = $1, last_checked_at = $2, last_error = $3 WHERE id = $4`,
+        ['failed', now, msg.slice(0, 500), row.id]
+      );
+      counts.wrong++;
+    } else {
+      // verdict === 'pending' — DNS not propagated yet. Update last_checked_at
+      // so the dashboard shows the poller actually ran; clear any stale error
+      // from a previous transient resolver failure.
+      await db.query(
+        `UPDATE app_domains SET status = $1, last_checked_at = $2, last_error = $3 WHERE id = $4`,
+        ['pending', now, null, row.id]
+      );
+      counts.stillPending++;
+    }
+  }
+  return counts;
+}

@@ -281,5 +281,171 @@ console.log('\n🗂️  addDomain + listDomainsForApp + listPendingDomains\n');
     `all returned rows have status='pending'`);
 }
 
+// ─── pollOnce — single verification cycle (CC-5b) ───────────────────────
+// Reads pending rows, resolves CNAME per row (via injected resolver so
+// tests don't hit real DNS), updates the row's status to verified|failed
+// or leaves it pending. Returns a counts summary so the cron tick can
+// log how much it did.
+console.log('\n🛰️  pollOnce — DNS verification cycle\n');
+
+{
+  // Mock that handles INSERT, SELECT pending, SELECT by app_id, AND
+  // UPDATE shapes the poller will run. Generic SET-clause parser so
+  // the mock survives reasonable poller-side query rewrites.
+  function mockDomainsDbForPoller() {
+    const rows = [];
+    let nextId = 1;
+    return {
+      rows,
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/^INSERT INTO app_domains/i.test(t)) {
+          const [app_id, domain, expected_cname] = params;
+          if (rows.some(r => r.domain === domain && r.status !== 'removed')) {
+            const err = new Error('duplicate'); err.code = '23505'; throw err;
+          }
+          const row = {
+            id: nextId++, app_id, domain, expected_cname,
+            status: 'pending', verified_at: null, last_checked_at: null,
+            last_error: null,
+            created_at: new Date(), updated_at: new Date(),
+          };
+          rows.push(row);
+          return { rows: [row] };
+        }
+        if (/^SELECT \* FROM app_domains WHERE status\s*=\s*'pending'/i.test(t)) {
+          return { rows: rows.filter(r => r.status === 'pending') };
+        }
+        if (/^SELECT \* FROM app_domains WHERE app_id/i.test(t)) {
+          const [app_id] = params;
+          return { rows: rows.filter(r => r.app_id === app_id && r.status !== 'removed') };
+        }
+        if (/^UPDATE app_domains/i.test(t)) {
+          const id = params[params.length - 1];
+          const row = rows.find(r => r.id === id);
+          if (!row) return { rows: [] };
+          const setMatch = t.match(/SET\s+(.+?)\s+WHERE/i);
+          if (!setMatch) return { rows: [] };
+          const cols = setMatch[1].split(',').map(s => s.trim().split(/\s*=\s*/)[0].trim());
+          for (let i = 0; i < cols.length; i++) {
+            row[cols[i]] = params[i];
+          }
+          row.updated_at = new Date();
+          return { rows: [row] };
+        }
+        throw new Error('mock unhandled: ' + t.slice(0, 80));
+      },
+    };
+  }
+
+  const { addDomain, listDomainsForApp, pollOnce } = await import('./index.js');
+
+  // Cycle 1.1 — matching CNAME → row flips to 'verified' + verified_at set
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 100, domain: 'deals.acme.com', appSlug: 'deals' });
+    const expected = db.rows[0].expected_cname;
+    const resolver = async () => [expected];
+    const result = await pollOnce(db, resolver);
+    assert(result.checked === 1, `pollOnce reports 1 checked (got ${result.checked})`);
+    assert(result.verified === 1, `pollOnce reports 1 verified (got ${result.verified})`);
+    const [row] = await listDomainsForApp(db, 100);
+    assert(row.status === 'verified', `row status flipped to 'verified' (got ${row.status})`);
+    assert(row.verified_at instanceof Date, `verified_at set to a Date`);
+    assert(row.last_checked_at instanceof Date, `last_checked_at set`);
+  }
+
+  // Cycle 1.2 — wrong CNAME → row flips to 'failed', last_error populated
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 200, domain: 'wrong.example.com', appSlug: 'wrong' });
+    const resolver = async () => ['something.else.com'];
+    const result = await pollOnce(db, resolver);
+    assert(result.wrong === 1, `pollOnce reports 1 wrong (got ${result.wrong})`);
+    const [row] = await listDomainsForApp(db, 200);
+    assert(row.status === 'failed', `row status flipped to 'failed' (got ${row.status})`);
+    assert(row.verified_at === null, `verified_at stays null when target is wrong`);
+    assert(row.last_checked_at instanceof Date, `last_checked_at set`);
+    assert(typeof row.last_error === 'string' && row.last_error.length > 0,
+      `last_error captures the wrong-target message`);
+  }
+
+  // Cycle 1.3 — empty/null records (still propagating) → status stays 'pending'
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 300, domain: 'still-pending.example.com', appSlug: 'sp' });
+    const resolver = async () => null;
+    const result = await pollOnce(db, resolver);
+    assert(result.stillPending === 1, `pollOnce reports 1 still-pending (got ${result.stillPending})`);
+    const [row] = await listDomainsForApp(db, 300);
+    assert(row.status === 'pending', `row status still 'pending' (got ${row.status})`);
+    assert(row.last_checked_at instanceof Date,
+      `last_checked_at updated even when still pending — proves the poller actually ran`);
+  }
+
+  // Cycle 1.4 — multiple rows handled in a single pollOnce call
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 100, domain: 'a.example.com', appSlug: 'a' });
+    await addDomain(db, { appId: 200, domain: 'b.example.com', appSlug: 'b' });
+    await addDomain(db, { appId: 300, domain: 'c.example.com', appSlug: 'c' });
+    const aExpected = db.rows.find(r => r.domain === 'a.example.com').expected_cname;
+    const resolver = async (domain) => {
+      if (domain === 'a.example.com') return [aExpected];
+      if (domain === 'b.example.com') return ['something.else.com'];
+      return null; // c — still propagating
+    };
+    const result = await pollOnce(db, resolver);
+    assert(result.checked === 3, `3 rows checked (got ${result.checked})`);
+    assert(result.verified === 1, `1 verified (got ${result.verified})`);
+    assert(result.wrong === 1, `1 wrong (got ${result.wrong})`);
+    assert(result.stillPending === 1, `1 still-pending (got ${result.stillPending})`);
+  }
+
+  // Cycle 1.5 — resolver throws (DNS server down, network error)
+  // → row stays pending, last_error captures the message. The poller
+  // must NEVER fail the whole cycle because one row's lookup blew up.
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 400, domain: 'broken.example.com', appSlug: 'broken' });
+    const resolver = async () => { throw new Error('ECONNREFUSED'); };
+    const result = await pollOnce(db, resolver);
+    assert(result.stillPending === 1,
+      `resolver throw counts as still-pending (got ${result.stillPending})`);
+    const [row] = await listDomainsForApp(db, 400);
+    assert(row.status === 'pending', `row stays 'pending' on resolver throw`);
+    assert(typeof row.last_error === 'string' && row.last_error.includes('ECONNREFUSED'),
+      `last_error captures the error message (got "${row.last_error}")`);
+  }
+
+  // Cycle 1.6 — empty pending list → no-op, returns zero counts
+  {
+    const db = mockDomainsDbForPoller();
+    const resolver = async () => { throw new Error('should not be called'); };
+    const result = await pollOnce(db, resolver);
+    assert(result.checked === 0, `nothing pending → 0 checked (got ${result.checked})`);
+    assert(result.verified === 0 && result.wrong === 0 && result.stillPending === 0,
+      `all counts zero on empty input`);
+  }
+
+  // Cycle 1.7 — non-pending rows are NOT re-checked (idempotency: once
+  // verified, the poller leaves the row alone so verified_at doesn't drift)
+  {
+    const db = mockDomainsDbForPoller();
+    await addDomain(db, { appId: 500, domain: 'verified.example.com', appSlug: 'v' });
+    const expected = db.rows[0].expected_cname;
+    // First pass — verifies it
+    await pollOnce(db, async () => [expected]);
+    const verifiedAtBefore = db.rows[0].verified_at;
+    // Second pass — resolver should NOT be called for already-verified rows
+    let resolverCalls = 0;
+    await pollOnce(db, async () => { resolverCalls++; return [expected]; });
+    assert(resolverCalls === 0,
+      `verified rows are skipped on the next pass (got ${resolverCalls} resolver calls)`);
+    assert(db.rows[0].verified_at === verifiedAtBefore,
+      `verified_at unchanged on second pass`);
+  }
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
