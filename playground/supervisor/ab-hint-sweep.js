@@ -88,9 +88,21 @@ export function expandTrials(taskIds, trialsPerCondition, condition) {
 }
 
 /**
+ * True iff this trial result is an infrastructure failure (no-meph-activity).
+ * Set by driveTaskOnWorker when a sub-5s trial returns with zero compile
+ * rows AND no TASK COMPLETE / STUCK signal — cc-agent dead, worker
+ * silently fell through. These do NOT belong in pass-rate math.
+ */
+function isInfraFailure(r) {
+  return typeof r.error === 'string' && r.error.startsWith('no-meph-activity');
+}
+
+/**
  * Aggregate trial results into {taskId → {hint_on, hint_off, lift}} buckets.
- * Each bucket has { trials, passes, passRate }. Lift is the signed delta
- * (hint_on − hint_off) pass rate.
+ * Each bucket has { trials, passes, infraFailures, passRate }. Infra failures
+ * are tracked separately and EXCLUDED from trials/passes/passRate so the
+ * lift number reflects genuine Meph attempts only — not silent backend
+ * fall-through. Lift is the signed delta (hint_on − hint_off) pass rate.
  *
  * Pure. Tolerates empty input.
  */
@@ -99,7 +111,11 @@ export function summarizeAbResults(results) {
   for (const r of results) {
     if (!byTask[r.taskId]) byTask[r.taskId] = { hint_on: null, hint_off: null };
     const cond = r.condition;
-    if (!byTask[r.taskId][cond]) byTask[r.taskId][cond] = { trials: 0, passes: 0, timedOut: 0, elapsedMsTotal: 0 };
+    if (!byTask[r.taskId][cond]) byTask[r.taskId][cond] = { trials: 0, passes: 0, timedOut: 0, infraFailures: 0, elapsedMsTotal: 0 };
+    if (isInfraFailure(r)) {
+      byTask[r.taskId][cond].infraFailures += 1;
+      continue;
+    }
     byTask[r.taskId][cond].trials += 1;
     if (r.ok) byTask[r.taskId][cond].passes += 1;
     if (r.timedOut) byTask[r.taskId][cond].timedOut += 1;
@@ -115,7 +131,8 @@ export function summarizeAbResults(results) {
     }
     const on = byTask[taskId].hint_on;
     const off = byTask[taskId].hint_off;
-    if (on && off) {
+    // Lift is null if either side is all-infra (no genuine trials to compare).
+    if (on && off && on.trials > 0 && off.trials > 0) {
       byTask[taskId].lift = on.passRate - off.passRate;
     } else {
       byTask[taskId].lift = null;
@@ -126,23 +143,27 @@ export function summarizeAbResults(results) {
 
 /**
  * Render a short ASCII table from summarizeAbResults output. Pure.
+ * Trailing infra-failure column surfaces silent backend fall-through —
+ * if it's nonzero on either side, the lift number is suspect (or null).
  */
 export function formatSummaryTable(summary) {
   const rows = [];
-  rows.push('| task         | hint_on    | hint_off   | lift    | avg_on  | avg_off |');
-  rows.push('|--------------|------------|------------|---------|---------|---------|');
+  rows.push('| task         | hint_on    | hint_off   | lift    | avg_on  | avg_off | infra |');
+  rows.push('|--------------|------------|------------|---------|---------|---------|-------|');
   for (const taskId of Object.keys(summary)) {
-    const on = summary[taskId].hint_on || { passes: 0, trials: 0, passRate: 0, avgElapsedMs: 0 };
-    const off = summary[taskId].hint_off || { passes: 0, trials: 0, passRate: 0, avgElapsedMs: 0 };
+    const on = summary[taskId].hint_on || { passes: 0, trials: 0, passRate: 0, avgElapsedMs: 0, infraFailures: 0 };
+    const off = summary[taskId].hint_off || { passes: 0, trials: 0, passRate: 0, avgElapsedMs: 0, infraFailures: 0 };
     const lift = summary[taskId].lift;
     const liftStr = lift === null
       ? '   —   '
       : (lift >= 0 ? `+${(lift * 100).toFixed(1)}%` : `${(lift * 100).toFixed(1)}%`).padStart(7);
+    const infraTotal = (on.infraFailures || 0) + (off.infraFailures || 0);
     rows.push(
       `| ${taskId.padEnd(12)} | ${(on.passes + '/' + on.trials + ' (' + (on.passRate * 100).toFixed(0) + '%)').padEnd(10)} | ` +
       `${(off.passes + '/' + off.trials + ' (' + (off.passRate * 100).toFixed(0) + '%)').padEnd(10)} | ` +
       `${liftStr} | ${(on.avgElapsedMs / 1000).toFixed(0)}s`.padEnd(10) +
-      ` | ${(off.avgElapsedMs / 1000).toFixed(0)}s`.padEnd(10) + '|'
+      ` | ${(off.avgElapsedMs / 1000).toFixed(0)}s`.padEnd(10) +
+      `| ${String(infraTotal).padStart(5)} |`
     );
   }
   return rows.join('\n');
@@ -186,6 +207,7 @@ async function runCondition({ trials, workers, timeoutMs, hintsDisabled, strict,
     const bucketPromises = buckets.map(async (bucket, workerIdx) => {
       const port = WORKER_BASE_PORT + workerIdx;
       const bucketResults = [];
+      let consecutiveInfra = 0;
       for (const trial of bucket) {
         const task = allTasks.find(t => t.id === trial.taskId);
         if (!task) {
@@ -196,7 +218,10 @@ async function runCondition({ trials, workers, timeoutMs, hintsDisabled, strict,
         const t0 = Date.now();
         const r = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps, factorDB, t0, { strict });
         const elapsed = Date.now() - t0;
-        const status = r.ok ? '✅' : r.timedOut ? '⏱️' : r.stuck ? '🔶' : '❌';
+        const isInfra = typeof r.error === 'string' && r.error.startsWith('no-meph-activity');
+        if (isInfra) consecutiveInfra += 1;
+        else consecutiveInfra = 0;
+        const status = isInfra ? '💥' : r.ok ? '✅' : r.timedOut ? '⏱️' : r.stuck ? '🔶' : '❌';
         const whyOk = r.ok
           ? (r.saidTaskComplete && r.dbPassed ? ' (TC+DB)'
             : r.saidTaskComplete ? ' (TC)'
@@ -213,6 +238,14 @@ async function runCondition({ trials, workers, timeoutMs, hintsDisabled, strict,
           elapsedMs: elapsed,
           error: r.error || null,
         });
+        // Early abort: 2 consecutive infra failures = backend is dead. Stop
+        // burning wall-clock on the remaining trials. The 04-29 sweep wasted
+        // ~5 min running 30 trials after the first 10 worked — this guard
+        // bounds future damage to ~2 trials of waste.
+        if (consecutiveInfra >= 2) {
+          console.error(`  💥 ABORTING bucket — ${consecutiveInfra} consecutive 'no-meph-activity' (cc-agent likely dead). Skipping remaining ${bucket.length - bucketResults.length} trials.`);
+          break;
+        }
       }
       return bucketResults;
     });

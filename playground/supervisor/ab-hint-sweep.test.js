@@ -54,6 +54,38 @@ assert(summary['todo-crud'].hint_on.passes === 1 && summary['todo-crud'].hint_on
 assert(Math.abs(summary.counter.lift - (2 / 3 - 1 / 3)) < 1e-9,
   `counter lift = hint_on − hint_off (got ${summary.counter.lift})`);
 
+// ── infra-failure exclusion ──
+// 04-29 sweep regression: trials that returned in 2.3s with no Meph activity
+// got bucketed as ok:false and dragged pass rates to 0%. After the fix, those
+// trials are tracked separately as infraFailures and excluded from the
+// numerator + denominator of passRate.
+const mixedResults = [
+  { taskId: 'counter', condition: 'hint_on', ok: true, elapsedMs: 40000 },
+  { taskId: 'counter', condition: 'hint_on', ok: true, elapsedMs: 50000 },
+  { taskId: 'counter', condition: 'hint_off', ok: false, elapsedMs: 2300, error: 'no-meph-activity (2300ms, 0 rows): ' },
+  { taskId: 'counter', condition: 'hint_off', ok: false, elapsedMs: 2400, error: 'no-meph-activity (2400ms, 0 rows): ' },
+  { taskId: 'counter', condition: 'hint_off', ok: true, elapsedMs: 60000 },
+];
+const mixed = summarizeAbResults(mixedResults);
+assert(mixed.counter.hint_on.trials === 2 && mixed.counter.hint_on.infraFailures === 0,
+  `hint_on side has 0 infra failures, 2 genuine trials (got ${mixed.counter.hint_on.trials} trials, ${mixed.counter.hint_on.infraFailures} infra)`);
+assert(mixed.counter.hint_off.trials === 1 && mixed.counter.hint_off.infraFailures === 2,
+  `hint_off side excludes 2 infra failures, leaves 1 genuine trial (got ${mixed.counter.hint_off.trials} trials, ${mixed.counter.hint_off.infraFailures} infra)`);
+assert(mixed.counter.hint_off.passRate === 1,
+  `passRate over GENUINE trials only — 1/1 = 100% (got ${mixed.counter.hint_off.passRate})`);
+assert(Math.abs(mixed.counter.lift - (1 - 1)) < 1e-9,
+  `lift uses genuine-trial pass rates: 100% − 100% = 0 (got ${mixed.counter.lift})`);
+
+// All-infra side → lift is null (no comparison possible)
+const allInfraOff = summarizeAbResults([
+  { taskId: 'counter', condition: 'hint_on', ok: true, elapsedMs: 40000 },
+  { taskId: 'counter', condition: 'hint_off', ok: false, elapsedMs: 2300, error: 'no-meph-activity (2300ms, 0 rows): ' },
+]);
+assert(allInfraOff.counter.lift === null,
+  `lift = null when one side has 0 genuine trials (got ${allInfraOff.counter.lift})`);
+assert(allInfraOff.counter.hint_off.infraFailures === 1 && allInfraOff.counter.hint_off.trials === 0,
+  'all-infra side: 1 infra failure, 0 genuine trials');
+
 // ── formatSummaryTable ──
 const table = formatSummaryTable(summary);
 assert(table.includes('counter'), 'table mentions the task ids');
