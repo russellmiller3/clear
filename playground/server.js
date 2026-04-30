@@ -31,6 +31,13 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
+import {
+  publicMephModelChoices,
+  resolveDefaultMephModelChoice,
+  resolveMephModelChoice,
+  selectedModelNeedsOpenRouterKey,
+  selectChatMessagesForModel,
+} from './ghost-meph/model-picker.js';
 import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
@@ -2531,7 +2538,12 @@ const WEB_TOOLS = [
 ];
 
 app.get('/api/config', (req, res) => {
-  res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
+  res.json({
+    hasServerKey: !!process.env.ANTHROPIC_API_KEY,
+    hasOpenRouterKey: !!process.env.OPENROUTER_API_KEY,
+    defaultMephModel: resolveDefaultMephModelChoice(process.env),
+    mephModels: publicMephModelChoices(),
+  });
 });
 
 // Lightweight cache for API health — checked at most once per 5 min.
@@ -2859,17 +2871,21 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSou
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged } = req.body;
   // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
   // A step "passes" if ALL its sourceMatches regexes appear in the current source.
   // currentStep = the highest-index step whose regexes all match. This lets us
   // label every compile row with "which milestone of the task Meph has hit so far."
   // Hidden from Meph by design — we measure natural trajectory, not guided behavior.
   const sessionSteps = Array.isArray(taskSteps) && taskSteps.length > 0 ? taskSteps : null;
+  const selectedModel = resolveMephModelChoice(mephModel);
+  const ghostActive = isGhostMephActive();
+  const useOpenRouterPicker = selectedModelNeedsOpenRouterKey(selectedModel, { ghostActive });
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   // GM-1: when MEPH_BRAIN is set, route via local backend instead of Anthropic.
   // Skip the API-key gate in that case — local backends don't need one.
-  if (!resolvedKey && !isGhostMephActive()) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
+  if (!resolvedKey && !ghostActive && !useOpenRouterPicker) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
+  if (useOpenRouterPicker && !process.env.OPENROUTER_API_KEY) return res.status(400).json({ error: 'Set OPENROUTER_API_KEY to use this Meph model' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
 
   // SSE streaming
@@ -3089,11 +3105,11 @@ app.post('/api/chat', async (req, res) => {
   // Multi-turn tool-use loop with streaming.
   // Meph runs on Haiku 4.5 by default — ~3x cheaper than Sonnet on this workload.
   // Override with MEPH_MODEL=claude-sonnet-4-6 to A/B against baseline.
-  const MEPH_MODEL = process.env.MEPH_MODEL || 'claude-haiku-4-5-20251001';
+  const MEPH_MODEL = process.env.MEPH_MODEL || selectedModel.anthropicModel || selectedModel.openRouterModel || 'claude-haiku-4-5-20251001';
   // 200k is Haiku 4.5's hard cap and Sonnet 4.6's default (1M needs a beta header
   // we don't send). Either way, the effective cap here is 200k.
   const MEPH_CTX_MAX = 200000;
-  let currentMessages = messages.slice(-50);
+  let currentMessages = selectChatMessagesForModel(messages, { modelChanged: !!modelChanged, limit: 50 });
   let toolResults = [];
 
   // Estimate context usage (rough: ~4 chars per token)
@@ -3194,6 +3210,10 @@ app.post('/api/chat', async (req, res) => {
           if (isGhostMephActive()) {
             console.log(`[chat] routing via Ghost Meph (MEPH_BRAIN=${getBackendId()})`);
             r = await fetchViaBackend(payload, headers);
+          } else if (useOpenRouterPicker) {
+            console.log(`[chat] routing via OpenRouter picker (${selectedModel.id}/${selectedModel.openRouterModel})`);
+            const { chatViaOpenRouter } = await import('./ghost-meph/openrouter.js');
+            r = await chatViaOpenRouter(payload, { model: selectedModel.openRouterModel });
           } else {
             r = await fetch(endpoint, {
               method: 'POST', headers, body: JSON.stringify(payload),

@@ -1,4 +1,16 @@
-# Handoff - 2026-04-30 compiler-error trace
+# Handoff - 2026-04-30 Meph model picker
+
+## Where you are now
+
+- **Branch:** `feature/meph-model-picker`.
+- **What shipped here:** Studio chat can pick Claude Haiku, OpenRouter Claude, OpenRouter GLM, OpenRouter DeepSeek, or OpenRouter Kimi. Env `MEPH_BRAIN` still wins when set.
+- **Why it matters:** Meph can keep working when Anthropic is capped or when a different model is cheaper, without losing tools, memory, requests access, personality, or chat history.
+- **Verification target:** unit tests for model choice/history selection and Anthropic<->OpenAI tool bridging; browser picker smoke; real OpenRouter GLM smoke through `/api/chat`.
+- **Live smoke result:** GLM used `read_file` for `meph-memory.md` and `requests.md`, read editor state, compiled, updated/read todos, read terminal, obeyed the personality marker, and saw the earlier full-history marker.
+
+---
+
+# Previous handoff - 2026-04-30 compiler-error trace
 
 ## Where you are now
 

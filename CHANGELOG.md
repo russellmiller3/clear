@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Meph model picker keeps tools across providers
+
+The piece between "Anthropic is capped" and "Meph still works like Meph." Studio chat now has a model picker for Anthropic Haiku plus OpenRouter Claude, GLM, DeepSeek, and Kimi. Switching models sends the full chat history on the next turn so the new model is not dropped into the middle of a conversation blind.
+
+**What shipped:**
+- `/api/config` exposes available Meph model choices and whether the server has Anthropic/OpenRouter keys.
+- `/api/chat` resolves the selected model, routes OpenRouter choices without requiring an Anthropic key, and preserves `MEPH_BRAIN` as the env-forced override.
+- OpenAI-compatible backends now translate Meph tool definitions, assistant tool calls, tool results, and streamed tool-call deltas back into Anthropic-shaped SSE.
+- Studio stores the selected model, shows key setup for the selected provider, and sends full history after a model change.
+
+**Verification:** unit tests cover model resolution, full-history selection, OpenRouter model overrides, and tool-call translation. Browser smoke verified picker rendering and the outgoing `modelChanged` request. Real OpenRouter GLM smoke verified `meph-memory.md`, `requests.md`, editor read, compile, todo, terminal, personality override, and prior-chat marker.
+
+**Why for launch:** provider failure or spend caps should not stop the builder. This makes Meph a portable tool-using loop instead of a single-vendor chat box.
+
+---
+
 ## 2026-04-30 - Template interactions must state data effects
 
 The piece between "this app has a button" and "the reader knows what the button

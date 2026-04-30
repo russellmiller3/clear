@@ -1,12 +1,12 @@
 /*
  * Ghost Meph backend — OpenRouter (multi-provider model gateway).
  *
- * `MEPH_BRAIN=openrouter:qwen` (or just `openrouter`) routes /api/chat
+ * `MEPH_BRAIN=openrouter` routes /api/chat
  * through OpenRouter's OpenAI-compatible /v1/chat/completions endpoint.
- * Default model: qwen/qwen3.6-plus-preview:free. Override with
+ * Default model: ~anthropic/claude-sonnet-latest. Override with
  * `OPENROUTER_MODEL`. API key required: `OPENROUTER_API_KEY`.
  *
- * Text-only — tool support arrives with the GM-2 tool-use upgrade.
+ * Supports Meph tool calls through format-bridge.js.
  *
  * Reuses format-bridge.js, so this file is mostly Ollama with auth +
  * referer header + better rate-limit hints.
@@ -14,8 +14,8 @@
  * Setup:
  *   1. Create account at openrouter.ai
  *   2. export OPENROUTER_API_KEY=sk-or-v1-...
- *   3. (optional) export OPENROUTER_MODEL=qwen/qwen3.6-plus-preview:free
- *   4. MEPH_BRAIN=openrouter:qwen node playground/server.js
+ *   3. (optional) export OPENROUTER_MODEL=~anthropic/claude-sonnet-latest
+ *   4. MEPH_BRAIN=openrouter node playground/server.js
  *
  * Quirks (per plans/plan-ghost-meph-openrouter-ollama-...):
  *   - Preview-tier models can disappear without notice. We surface the
@@ -35,17 +35,17 @@ import { buildSSEEvents } from './router.js';
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const REFERER = 'https://buildclear.dev';
 const REQUEST_TIMEOUT_MS = 60_000;
-const DEFAULT_MODEL = 'qwen/qwen3.6-plus-preview:free';
+const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
 
 /** Public entry — called from router.js when MEPH_BRAIN starts with 'openrouter'. */
-export async function chatViaOpenRouter(payload) {
+export async function chatViaOpenRouter(payload, opts = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return errorResponse(
       '[openrouter: OPENROUTER_API_KEY not set. Get one at openrouter.ai/keys, then `export OPENROUTER_API_KEY=sk-or-v1-...`. Drop MEPH_BRAIN to fall back to the real Anthropic API.]'
     );
   }
-  const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+  const model = opts.model || process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
   const openAIPayload = anthropicToOpenAI({ ...payload, model });
 
   let r;

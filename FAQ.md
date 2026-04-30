@@ -317,33 +317,32 @@ Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live emai
 
 ### Where does Ghost Meph live?
 
-`playground/ghost-meph/` — env-gated chat-backend dispatch. When `MEPH_BRAIN` is set, `/api/chat` routes through a local backend instead of paying Anthropic per call.
+`playground/ghost-meph/` - chat-backend dispatch plus the Studio model picker. `MEPH_BRAIN` still forces an env-selected backend; otherwise the browser can pick Anthropic Haiku or an OpenRouter model per chat turn.
 
 | File | What |
 |---|---|
 | `router.js` | `isGhostMephActive()` + `fetchViaBackend(payload, headers)` dispatch. Returns Anthropic-shaped Response-like object so `/api/chat`'s reader loop is unchanged. |
-| `cc-agent.js` | `MEPH_BRAIN=cc-agent` — spawns `claude --print` subprocess. Text-only MVP; tool support pending (`plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`). |
-| `ollama.js` | `MEPH_BRAIN=ollama:<model>` — POSTs to local Ollama daemon at `OLLAMA_HOST`. Default model from `OLLAMA_MODEL` env or the brain string suffix. |
-| `openrouter.js` | `MEPH_BRAIN=openrouter` (or `openrouter:qwen`) — POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model `qwen/qwen3.6-plus-preview:free`. |
-| `format-bridge.js` | Anthropic ↔ OpenAI translation. Used by both Ollama and OpenRouter (any backend speaking OpenAI's chat-completions shape). |
+| `model-picker.js` | Declares the Studio picker choices, default selection, selected-model resolution, and "send full chat history when the model changes" rule. |
+| `cc-agent.js` | `MEPH_BRAIN=cc-agent` - spawns Claude Code. Tool mode is available through the MCP bridge when enabled. |
+| `ollama.js` | `MEPH_BRAIN=ollama:<model>` - POSTs to local Ollama daemon at `OLLAMA_HOST`. OpenAI-compatible tool calls flow through the shared bridge when the model supports them. |
+| `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is OpenRouter Claude; picker options also include GLM, DeepSeek, and Kimi. |
+| `format-bridge.js` | Anthropic <-> OpenAI translation, including tool definitions, assistant tool calls, tool results, text deltas, and tool-call SSE back into Anthropic shape. |
 
-Tests: `playground/ghost-meph.test.js` (~60 assertions across 9 phases). Run: `node playground/ghost-meph.test.js`. No real network or subprocess required — tests exercise deterministic failure paths (missing key, refused connection, missing CLI) so they pass without daemons or API keys.
+Tests: `node playground/ghost-meph.test.js`, `node playground/ghost-meph/model-picker.test.js`, and `node playground/ghost-meph/format-bridge.test.js`. The live smoke test for this feature used `openrouter-glm` and verified tool calls, `meph-memory.md`, `requests.md`, editor read, compile, todos, terminal access, personality override, and the full-history marker on model switch.
 
 ### How does Ghost Meph route requests?
 
-`/api/chat` checks `isGhostMephActive()` (true iff `MEPH_BRAIN` is set + non-empty). When active:
-1. The API-key 400 gate is skipped (local backends don't need a key).
-2. The fetch site (line ~3740 of `playground/server.js`) calls `fetchViaBackend(payload, headers)` instead of `fetch('https://api.anthropic.com/v1/messages', ...)`.
-3. The router dispatches based on `MEPH_BRAIN`:
-   - `cc-agent` → spawns Claude Code subprocess (text-only today)
-   - `ollama:<model>` → HTTP POST to Ollama daemon
-   - `openrouter` / `openrouter:qwen` → HTTP POST to OpenRouter
-   - `haiku-dev` → still stub (calibration backend, future)
-   - any other value → stub with "unknown backend" warning, doesn't crash
+`/api/chat` resolves the backend in this order:
+1. If `MEPH_BRAIN` is set, route through `fetchViaBackend(payload, headers)`.
+2. Otherwise, resolve the browser-selected `mephModel`.
+3. If the selected model is OpenRouter, route through `chatViaOpenRouter(payload, { model })`.
+4. Otherwise, call Anthropic directly.
 
-Each backend returns a Response-like object whose body streams Anthropic-shaped SSE events. The `/api/chat` reader loop consumes that unchanged — it doesn't know whether the response came from real Claude or a local backend.
+The API-key gate now accepts either `ANTHROPIC_API_KEY` for Anthropic choices or `OPENROUTER_API_KEY` for OpenRouter choices. When the user changes models, Studio sends the full chat history instead of the usual recent-message slice.
 
-**The point:** during long Meph sessions or sweeps, the dollar cost is in real Anthropic API calls. Routing through Russell's `claude` CLI subscription (cc-agent), a local Ollama model, or OpenRouter's free tier moves that cost off the production key. Once cc-agent gains tool-use support, curriculum sweeps run for free.
+Every backend returns a Response-like object whose body streams Anthropic-shaped SSE events. The `/api/chat` reader loop consumes that unchanged, so the tool loop does not care whether the model is Anthropic, OpenRouter, Ollama, or Ghost Meph.
+
+**The point:** long Meph sessions can keep working when one provider is capped or too expensive, without giving up tools, memory, requests access, or the existing chat UI.
 
 ### Where does the Studio server run?
 

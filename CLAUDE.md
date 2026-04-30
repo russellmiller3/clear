@@ -253,9 +253,11 @@ Run `node playground/server.js` → opens `http://localhost:3456`.
 Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 43 template apps in dropdown. Light/dark theme. Save to Desktop.
 
-The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, and requests.md. Meph can only write .clear files and requests.md.
+The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, and meph-memory.md. Meph can only write .clear files and requests.md.
 
-Meph has tools: edit_code, read_file, run_command, compile, run_app, stop_app, http_request, write_file.
+Meph has tools: edit_code, read_file, edit_file, run_command, compile, run_app, stop_app, http_request, read_terminal, run_tests, eval tools, browser tools, todo, source_map, patch_code, and browse_templates.
+
+Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
 Tests: `node playground/server.test.js` (85 tests).
 
 `playground/index.html` is the old static playground (compiler bundle only).

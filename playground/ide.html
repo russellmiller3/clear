@@ -690,6 +690,10 @@ body.builder-mode.show-source #editor-pane {
         <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
         🌐 Web search + fetch
       </label>
+      <label id="model-picker-label" title="Choose which model Meph uses. Switching models sends the full chat history on the next turn." style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);user-select:none;">
+        Model
+        <select id="meph-model-picker" onchange="updateMephModel()" style="background:var(--bg3);color:var(--tx2);border:1px solid var(--bd2);border-radius:6px;padding:3px 7px;font-size:11px;font-family:var(--font);"></select>
+      </label>
       <div id="voice-mode-group" title="Voice: Off = text only. Speak = Meph talks but mic is off. Converse = Meph talks and listens.">
         <button class="voice-seg active" data-mode="off" onclick="setVoiceMode('off')">Off</button>
         <button class="voice-seg" data-mode="speak" onclick="setVoiceMode('speak')">🔊 Speak</button>
@@ -3720,6 +3724,11 @@ let chatMessages = [];
 let apiKey = localStorage.getItem('clear_api_key') || '';
 let personality = localStorage.getItem('clear_personality') || '';
 let serverHasKey = false;
+let serverHasOpenRouterKey = false;
+let mephModelChoices = [];
+let selectedMephModel = localStorage.getItem('clear_meph_model') || '';
+let lastSentMephModel = selectedMephModel;
+let mephModelChangedSinceLastSend = false;
 
 let showingKeySetup = false;
 
@@ -3808,7 +3817,10 @@ window.closeMemory = function() {
 window.showKeySetup = function() {
   showingKeySetup = true;
   const el = document.getElementById('chat-messages');
-  const hint = serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Meph.';
+  const choice = selectedMephModelChoice();
+  const hint = choice?.backend === 'openrouter'
+    ? 'Set OPENROUTER_API_KEY on the server to use this Meph model.'
+    : (serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Meph.');
   el.innerHTML = `<div id="api-key-setup">
     <div style="font-size:16px;margin-bottom:8px;">Set up Meph</div>
     <div style="margin-bottom:12px;">${hint}</div>
@@ -3829,7 +3841,12 @@ window.saveKey = function() {
 // Check if server has a key configured; if not, fall back to localStorage flow
 fetch('/api/config').then(r => r.json()).then(cfg => {
   serverHasKey = cfg.hasServerKey;
-  if (serverHasKey || apiKey) {
+  serverHasOpenRouterKey = cfg.hasOpenRouterKey;
+  mephModelChoices = Array.isArray(cfg.mephModels) ? cfg.mephModels : [];
+  if (!selectedMephModel) selectedMephModel = cfg.defaultMephModel || 'anthropic-haiku';
+  lastSentMephModel = selectedMephModel;
+  renderMephModelPicker();
+  if (serverHasKey || serverHasOpenRouterKey || apiKey) {
     restoreChatOrWelcome();
   } else {
     showKeySetup();
@@ -3838,6 +3855,41 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
   if (apiKey) restoreChatOrWelcome();
   else showKeySetup();
 });
+
+function selectedMephModelChoice() {
+  return mephModelChoices.find(choice => choice.id === selectedMephModel) || null;
+}
+
+function selectedMephModelHasKey() {
+  const choice = selectedMephModelChoice();
+  if (choice?.backend === 'openrouter') return serverHasOpenRouterKey;
+  return !!apiKey || serverHasKey;
+}
+
+function renderMephModelPicker() {
+  const picker = document.getElementById('meph-model-picker');
+  if (!picker) return;
+  const choices = mephModelChoices.length ? mephModelChoices : [
+    { id: 'anthropic-haiku', label: 'Claude Haiku', backend: 'anthropic', needs: 'ANTHROPIC_API_KEY' },
+  ];
+  picker.innerHTML = choices.map(choice => {
+    const needsKey = choice.backend === 'openrouter' && !serverHasOpenRouterKey;
+    const suffix = needsKey ? ' (needs key)' : '';
+    return `<option value="${choice.id}">${choice.label}${suffix}</option>`;
+  }).join('');
+  picker.value = selectedMephModel || choices[0].id;
+}
+
+window.updateMephModel = function() {
+  const picker = document.getElementById('meph-model-picker');
+  if (!picker) return;
+  const next = picker.value;
+  if (!next || next === selectedMephModel) return;
+  selectedMephModel = next;
+  localStorage.setItem('clear_meph_model', selectedMephModel);
+  mephModelChangedSinceLastSend = selectedMephModel !== lastSentMephModel;
+  showToast('Meph model changed. Next turn will include full chat history.');
+};
 
 window.updateWebToggle = function() {
   const on = document.getElementById('web-tools-toggle')?.checked;
@@ -4651,7 +4703,7 @@ window.sendChat = async function() {
   if (!msg && !pendingImages.length) return;
   input.value = '';
 
-  if (!apiKey && !serverHasKey) { showKeySetup(); return; }
+  if (!selectedMephModelHasKey()) { showKeySetup(); return; }
 
   // Build user message content (text + images)
   let userContent;
@@ -4709,6 +4761,8 @@ window.sendChat = async function() {
       messages: apiMessages,
       apiKey,
       personality,
+      mephModel: selectedMephModel,
+      modelChanged: mephModelChangedSinceLastSend,
       editorContent: editor.state.doc.toString(),
       errors: lastCompiled?.errors || [],
       testResults: testSnapshot,
@@ -4758,6 +4812,8 @@ window.sendChat = async function() {
       }
     }
     const reader = r.body.getReader();
+    lastSentMephModel = selectedMephModel;
+    mephModelChangedSinceLastSend = false;
     const decoder = new TextDecoder();
     let buf = '';
 

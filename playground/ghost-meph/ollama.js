@@ -6,7 +6,8 @@
  * http://localhost:11434). Uses Ollama's OpenAI-compatible endpoint so we
  * share the format-bridge with future GM-3 (OpenRouter).
  *
- * Text-only — tool support arrives with the GM-2 tool-use upgrade.
+ * Supports Meph tool calls through format-bridge.js when the local model
+ * returns OpenAI-compatible tool_calls.
  *
  * Install path documented in plans/plan-ghost-meph-openrouter-ollama-...:
  *   1. brew install ollama  (or download from ollama.ai)
