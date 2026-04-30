@@ -183,23 +183,40 @@ export const UTILITY_FUNCTIONS = [
   { name: '_clear_fetch', code: "async function _clear_fetch(url) {\n  const r = await fetch(url);\n  if (!r.ok) throw new Error('Could not load data from ' + url + ' (status ' + r.status + ')');\n  return await r.json();\n}", deps: [] },
   { name: '_clear_env', code: "function _clear_env(name) {\n  if (typeof process !== 'undefined' && process.env) return process.env[name] || '';\n  return '';\n}", deps: [] },
   { name: '_toast', code: `function _toast(msg, type) {
+  const variant = String(type || 'success').replace(/^alert-/, '');
   let c = document.getElementById('_toast_container');
   if (!c) {
-    c = document.createElement('div'); c.id = '_toast_container';
-    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    c = document.createElement('div');
+    c.id = '_toast_container';
+    c.className = 'toast toast-end toast-bottom';
+    c.setAttribute('aria-live', 'polite');
+    c.style.cssText = 'z-index:9999;pointer-events:none;';
     document.body.appendChild(c);
   }
   const icons = {
     error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
     success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
     info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
   };
-  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
-  const icon = icons[type] || icons.info;
+  const variants = { error: 'alert-error', success: 'alert-success', warning: 'alert-warning', info: 'alert-info' };
+  const cls = variants[variant] || variants.success;
+  const icon = icons[variant] || icons.info;
   const el = document.createElement('div');
+  el.setAttribute('role', 'alert');
+  el.setAttribute('data-clear-toast', variant);
   el.className = 'alert ' + cls + ' shadow-lg text-sm';
-  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
-  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:min(400px, calc(100vw - 2rem));border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  const iconSlot = document.createElement('span');
+  iconSlot.innerHTML = icon;
+  el.appendChild(iconSlot.firstElementChild || iconSlot);
+  const message = document.createElement('span');
+  message.style.flex = '1';
+  message.textContent = String(msg);
+  el.appendChild(message);
+  const timer = document.createElement('div');
+  timer.style.cssText = 'position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%';
+  el.appendChild(timer);
   if (!document.getElementById('_toast_style')) {
     const s = document.createElement('style'); s.id = '_toast_style';
     s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
@@ -9231,9 +9248,9 @@ ${pad}}`;
 
     case NodeType.TOAST: {
       const msg = JSON.stringify(node.message);
-      const variantMap = { success: 'alert-success', warning: 'alert-warning', error: 'alert-error', info: 'alert-info' };
-      const alertClass = variantMap[node.variant] || 'alert-success';
-      return `${pad}_toast(${msg}, "${alertClass}");`;
+      const variantMap = { success: 'success', warning: 'warning', error: 'error', info: 'info' };
+      const variant = variantMap[node.variant] || 'success';
+      return `${pad}_toast(${msg}, "${variant}");`;
     }
 
     case NodeType.PANEL_ACTION: {

@@ -1234,7 +1234,7 @@ The label auto-generates from the variable name: `subtotal` -> "Subtotal",
 ```
 show loading                    # full-page spinner overlay
 hide loading                    # remove spinner
-show toast 'Saved!'             # temporary notification with message data (also: alert, notification)
+show toast 'Saved!'             # native alert toast with message data rendered as text (also: alert, notification)
 hide the sidebar                # set display:none on element
 copy invite_link to clipboard   # navigator.clipboard.writeText
 download report as 'data.csv'  # trigger browser file download

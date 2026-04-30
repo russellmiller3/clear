@@ -1172,9 +1172,9 @@ show loading
 response = ask claude 'Analyze this' with data
 hide loading
 
-# Flash a temporary message
-show toast 'Settings saved!'
-show alert 'Something went wrong'
+# Show a native toast with message data rendered as text
+show toast 'Settings saved!' as success
+show alert 'Something went wrong' as error
 ```
 
 ---

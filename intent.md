@@ -55,7 +55,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |
 | `STORE` | `store settings` / `store settings as 'prefs'` | Save to localStorage (JSON) |
 | `RESTORE` | `restore settings` / `restore settings as 'prefs'` | Load from localStorage (JSON) |
-| `TOAST` | `show toast 'message'` / `show alert 'message'` | Toast notification UI; message is required data |
+| `TOAST` | `show toast 'message'` / `show alert 'message'` | Native DaisyUI-style toast UI; message is required data and renders as text |
 | `TRANSACTION` | `transaction:` + block | Atomic database operations (begin/commit/rollback) |
 | `RETRY` | `retry 3 times:` + block | Retry loop with catch |
 | `TIMEOUT` | `with timeout 5 seconds:` + block | `Promise.race` with timeout |

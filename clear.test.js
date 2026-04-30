@@ -11411,16 +11411,31 @@ describe('Toast', () => {
   it('compiles to _toast call with DaisyUI class', () => {
     const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast 'Done'");
     expect(result.errors).toHaveLength(0);
-    const js = result.javascript || result.html;
-    expect(js).toContain('_toast(');
-    expect(js).toContain('alert-success');
+    expect(result.javascript).toContain('_toast("Done", "success");');
+    expect(result.html).toContain('alert-success');
+  });
+
+  it('emits a native DaisyUI toast container with alert semantics', () => {
+    const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast 'Done' as success");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain("c.className = 'toast toast-end toast-bottom'");
+    expect(result.html).toContain("el.setAttribute('role', 'alert')");
+    expect(result.html).toContain("el.className = 'alert ' + cls");
+    expect(result.javascript).toContain('_toast("Done", "success");');
+  });
+
+  it('writes toast message data as text, never injected HTML', () => {
+    const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast '<img src=x onerror=alert(1)>' as error");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('message.textContent = String(msg)');
+    expect(result.html).not.toContain("'<span style=\"flex:1\">' + msg");
   });
 
   it('compiles error variant', () => {
     const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast 'Failed' as error");
     expect(result.errors).toHaveLength(0);
-    const js = result.javascript || result.html;
-    expect(js).toContain('alert-error');
+    expect(result.javascript).toContain('_toast("Failed", "error");');
+    expect(result.html).toContain('alert-error');
   });
 });
 
@@ -25722,7 +25737,8 @@ page 'Test' at '/':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('_toast');
-    expect(r.javascript).toContain('alert-error');
+    expect(r.javascript).toContain('_toast("Failed!", "error");');
+    expect(r.html).toContain('alert-error');
   });
 
   it('show notification compiles to _toast', () => {

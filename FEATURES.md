@@ -172,7 +172,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 
 | UI Action | Syntax | Notes |
 |-----------|--------|-------|
-| Toast | `show toast 'Saved!'` | Message required; also `show alert`, `show notification` |
+| Toast | `show toast 'Saved!' as success` | Native DaisyUI-style alert toast; message required and rendered as text; also `show alert`, `show notification` |
 | Show/hide | `hide the sidebar` | Toggle element visibility |
 | Loading | `show loading` / `hide loading` | Overlay spinner |
 | Clipboard | `copy X to clipboard` | |

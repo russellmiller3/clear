@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Toasts are native UI, not HTML strings
+
+The piece between "show a success message" and "ship a real component." Toasts
+now render as a native DaisyUI-style alert stack instead of concatenated HTML.
+
+**What shipped:**
+- Toast calls now pass semantic variants like `success`, `warning`, `error`, and `info` into the runtime helper.
+- The runtime maps those variants to DaisyUI alert classes and uses a `toast toast-end toast-bottom` container.
+- Each toast has `role="alert"` and `data-clear-toast`, so browser tests can inspect the actual UI.
+- Toast message data now renders through `textContent`, which blocks HTML/script injection in notifications.
+- Syntax, features, intent, and AI docs now describe the native component contract.
+
+**Why for launch:** Notifications are part of every useful workflow. They need to be accessible, testable, and safe by default.
+
+**Tests:** `node clear.test.js` passed 2,785 checks.
+
+---
+
 ## 2026-04-30 - Inline button actions read like English
 
 The piece between "the button has a data effect" and "a person can read the

@@ -3316,7 +3316,18 @@ show notification 'New message received'
 
 All three are synonyms. The quoted message is required because it is the
 notification data. They display a temporary notification message and compile to
-a DaisyUI toast that auto-dismisses after 3 seconds.
+a native DaisyUI-style toast component that auto-dismisses after 4 seconds.
+The container uses `toast toast-end toast-bottom`; each message is an `alert`
+with `role="alert"`. Message data is written as text, never injected as HTML.
+
+Variants:
+
+```clear
+show toast 'Saved' as success
+show toast 'Check the form' as warning
+show toast 'Save failed' as error
+show toast 'New message' as info
+```
 
 ## Hide Element
 
