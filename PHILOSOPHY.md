@@ -873,6 +873,8 @@ Every directive in Clear must unambiguously name what it does. The reader (human
 **How to write a directive that passes the no-guessing test:**
 - Name the THING, not the metaphor. `database is sqlite` beats `database is local memory`.
 - Name the SHAPE, not the host. `database is sqlite` is portable; `database is d1` couples the source to one host. The host belongs in the build target, not the directive — same source ships to Node + Cloudflare + Python by changing the target, not the source.
+- Name the DATA EFFECT after every interaction. A button that says `Approve` must immediately say which record changes, which endpoint is called, or which queue/audit row is written.
+- Keep `#` as navigation only. Use `//` for one-line explanation and `/* */` for longer explanation, so Studio's table of contents stays useful.
 - When in doubt, write the phrase out loud to a 14-year-old. If they ask "what does that mean?", the syntax is failing the test.
 
 **When two readers would guess differently, change the syntax.** Don't add a comment explaining what it does — the comment proves the syntax is wrong. The fix is always at the syntax level, not the doc level.

@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Template interactions must state data effects
+
+The piece between "this app has a button" and "the reader knows what the button
+does to data." Featured templates now reserve `#` comments for navigation and
+use `//` or `/* */` for explanatory notes. Auto-wired buttons and row actions
+now name the generated endpoint or record update immediately under the control.
+
+**What shipped:**
+- Deal Desk, approval queue, onboarding tracker, support triage, internal request queue, and ecommerce templates now avoid narrative `#` comments.
+- Deal Desk and onboarding action buttons now state the queue-generated data effect under the visible control.
+- Featured-template hygiene test catches narrative `#` comments, bare buttons, and row action shortcuts without data notes.
+- AI instructions, Meph's prompt, and philosophy now record the rule.
+
+**Why for launch:** Marcus can inspect a generated app and see what each action
+does without guessing. That matters for trust. A button that only says
+"Approve" is theater; a button that names the record update is software.
+
+**Tests:** `node playground/server.test.js` now includes 246 passing checks,
+including the featured-template hygiene gate.
+
+---
+
 ## 2026-04-30 - Compiler-error packets make failures handoff-ready
 
 The piece between "Clear failed to compile" and "the debugging session has enough context to fix the right layer." Compile failures now produce a copy-pasteable compiler-error packet with source context, normalized diagnostics, and explicit instructions for deciding whether the fix belongs in the Clear program or the compiler.

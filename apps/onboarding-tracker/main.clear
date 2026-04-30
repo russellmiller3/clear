@@ -29,9 +29,9 @@ create a Customers table:
   account_manager
   notes
 
-# Customer-success queue — auto-generates audit, notification queue, and
-# action URLs. Each action records who acted, when, and (where declared)
-# queues an email to the customer.
+# Customer-success queue
+// Auto-generates audit, notification queue, and action URLs. Each action
+// records who acted, when, and where declared, queues an email to the customer.
 
 queue for customer:
   reviewer is 'success_manager'
@@ -207,9 +207,12 @@ page 'Onboarding Tracker' at '/':
             text selected_customer's account_manager
             text selected_customer's status
             actions:
-              button 'Mark Active'
-              button 'Escalate'
-              button 'Email'
+              button 'Mark Active':
+                // Calls queue-generated PUT /api/customers/:id/mark-active with selected_customer, records the decision, and queues the customer email.
+              button 'Escalate':
+                // Calls queue-generated PUT /api/customers/:id/escalate with selected_customer and records the escalation decision.
+              button 'Email':
+                // Calls queue-generated PUT /api/customers/:id/email with selected_customer and records the customer email decision.
 
         section 'New Customer' with style app_card:
           heading 'New Customer'

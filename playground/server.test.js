@@ -7,9 +7,11 @@
 
 import { spawn } from 'child_process';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = join(__dirname, '..');
 let passed = 0, failed = 0, total = 0;
 const BASE = 'http://localhost:3457'; // Different port so it doesn't collide
 
@@ -17,6 +19,45 @@ function assert(condition, msg) {
   total++;
   if (condition) { passed++; console.log(`  ✅ ${msg}`); }
   else { failed++; console.log(`  ❌ ${msg}`); }
+}
+
+function templateHygieneFindings(source) {
+  const findings = [];
+  const lines = source.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const navComment = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (navComment) {
+      const text = navComment[1].trim();
+      const looksLikeNarrative = text.length > 36 || /[.,;:]|\s--\s|\s—\s/.test(text) || /^[a-z]/.test(text);
+      if (looksLikeNarrative) findings.push(`${i + 1}: use // or /* */ for non-nav comment: ${trimmed}`);
+    }
+
+    const button = line.match(/^(\s*)button\s+['"][^'"]+['"]\s*(:?)\s*$/);
+    if (button) {
+      const baseIndent = button[1].length;
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === '') j++;
+      const nextLine = lines[j] || '';
+      const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
+      if (button[2] !== ':' || nextIndent <= baseIndent || nextLine.trim().startsWith('#')) {
+        findings.push(`${i + 1}: button must immediately declare what it does with data`);
+      }
+    }
+
+    const actionShortcut = line.match(/^(\s*)['"][^'"]+['"]\s+is\s+(primary|secondary|danger|ghost)\s*$/);
+    if (actionShortcut) {
+      const baseIndent = actionShortcut[1].length;
+      const nextLine = lines[i + 1] || '';
+      const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
+      const nextTrimmed = nextLine.trim();
+      if (!(nextIndent > baseIndent && nextTrimmed.startsWith('//'))) {
+        findings.push(`${i + 1}: row action shortcut needs an immediate // data-action note`);
+      }
+    }
+  }
+  return findings;
 }
 
 async function post(path, body) {
@@ -170,6 +211,13 @@ try {
     // the list; the test tolerates a window that tracks the FEATURED list.
     assert(data.length >= 8, `has ${data.length} templates (expected 8+ for the Core showcase)`);
     assert(data[0].name !== undefined, 'templates have name');
+
+    const findings = [];
+    for (const { name } of data) {
+      const source = readFileSync(join(ROOT_DIR, 'apps', name, 'main.clear'), 'utf8');
+      for (const finding of templateHygieneFindings(source)) findings.push(`${name}:${finding}`);
+    }
+    assert(findings.length === 0, `featured templates use nav-only # comments and explicit interaction bodies (${findings.slice(0, 5).join('; ')})`);
   }
 
   // =========================================================================

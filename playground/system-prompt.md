@@ -318,6 +318,8 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - One operation per line — no chaining, no nesting
 - Possessive access: `person's name` (never person.name)
 - Colons signal blocks: anything with `:` at the end has an indented body below
+- `#` comments are navigation only. Use `//` for one-line explanation and `/* */` for longer notes.
+- Every button or row action must state its data effect immediately below it.
 
 ## TBD — Use Placeholders When the Spec Is Open (Lean Lesson 1)
 
@@ -880,7 +882,8 @@ section 'Dashboard' with style app_layout:
       page header 'Dashboard':
         subtitle 'Open work and key actions'
         actions:
-          button 'Refresh'
+          button 'Refresh':
+            get pending_deals from '/api/deals/pending'
       tab strip:
         active tab is 'Home'
         tab 'Home' to '/'
@@ -896,9 +899,12 @@ section 'Dashboard' with style app_layout:
         display selected_deal's amount as dollars called 'Value'
         text selected_deal's status
         actions:
-          button 'Reject'
-          button 'Counter'
-          button 'Approve'
+          button 'Reject':
+            // Calls queue-generated PUT /api/deals/:id/reject with selected_deal.
+          button 'Counter':
+            // Calls queue-generated PUT /api/deals/:id/counter with selected_deal.
+          button 'Approve':
+            // Calls queue-generated PUT /api/deals/:id/approve with selected_deal.
 ```
 
 **App shell shape (Phase 1-6 polish, 2026-04-25/26).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
@@ -1219,6 +1225,8 @@ Safer: always use multi-word variable names. `todo_id` never collides; `id` some
 - DON'T forget `database is local memory` for apps with tables
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)
+- DON'T use `#` for prose. `#` is for navigation; use `//` or `/* */` for explanation.
+- DON'T write a button or row action without the data effect immediately below it.
 - DON'T leave a `-` or `+` at the start of a line when editing code. These are diff-markers — not valid syntax. The parser reads `-  send back draft` as `-(send back)` and emits a "stray '-' at the start" error. When adapting code from diffs or chat messages, strip every leading `-` and `+` before saving.
 
 ## Studio Layout Modes

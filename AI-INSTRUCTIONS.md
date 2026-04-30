@@ -18,16 +18,19 @@ code to match. If the code disagrees with the diagram, the diagram wins.
 **The check:** before you call `compile`, scroll to the top of your file. If
 you don't see a `/* ... */` block with boxes and arrows, STOP and add one.
 
-**USE `/* */` FOR ANYTHING MULTI-LINE.** Every `#` line becomes a clickable
-pill in Studio's editor TOC. That's useful for section headers; it's
-terrible for narrative prose, diagrams, and multi-line explanations.
+**USE `#` ONLY FOR NAVIGATION, `//` FOR INLINE NOTES, AND `/* */` FOR
+MULTI-LINE NOTES.** Every `#` line becomes a clickable pill in Studio's editor
+TOC. That's useful for section headers; it's terrible for narrative prose,
+diagrams, and multi-line explanations.
 
 Hard rule:
-- `#` — **one-word section headers only** (`# Database`, `# Backend`,
+- `#` — **short section headers only** (`# Database`, `# Backend`,
   `# Specialists`, `# Endpoints`). These appear as TOC pills.
-- `/* ... */` — **everything else**: architecture diagrams, pattern
-  explanations, "why this agent exists" notes, anything that runs
-  more than one line. Hidden from the TOC.
+- `//` — **one-line explanations** attached to the next or previous line.
+  Hidden from the TOC.
+- `/* ... */` — **multi-line explanations**: architecture diagrams, pattern
+  explanations, "why this agent exists" notes, anything longer than one line.
+  Hidden from the TOC.
 
 Anti-pattern — three `#` lines in a row. If you've written more than one
 `#` comment in a block, convert to `/* */`:
@@ -237,6 +240,21 @@ set saved to save scored_lead as new Lead
 **One idea per line.** Each line should do exactly one thing. If you're
 reading a line and need to pause to parse it, split it up. The goal:
 a non-programmer should be able to point at any line and say what it does.
+
+**Every interaction names its data effect immediately.** Never leave a visible
+control as a bare label. A `button`, row action, table action shortcut, or
+auto-wired queue action must be followed by the data fetch, send, update, or a
+`//` note naming the generated endpoint and changed records.
+
+```clear
+// BAD: the reader sees a button but not the data effect
+button 'Approve'
+
+// GOOD: the source says what happens to the selected record
+button 'Approve':
+  // Calls queue-generated PUT /api/deals/:id/approve with selected_deal,
+  // updates status, records the decision, and refreshes pending deals.
+```
 
 ## Assignment Convention
 

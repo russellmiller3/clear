@@ -152,7 +152,7 @@ background 'Inventory Monitor':
 
 background 'Daily Report':
   runs every 1 day at '9:00 AM'
-  # Use SQL aggregates so the totals stay correct even if there are more than 50 rows
+  // Use SQL aggregates so the totals stay correct even if there are more than 50 rows
   total_orders = count of id from Orders
   total_revenue = sum of total from Orders
   total_returns = count of id from Returns
@@ -191,7 +191,7 @@ when user requests data from /api/inventory/low:
   send back low_items
 
 when user requests data from /api/stats:
-  # SQL aggregates — stay correct past 50 rows, and only one SQL query per stat
+  // SQL aggregates stay correct past 50 rows, and only one SQL query per stat
   order_count = count of id from Orders
   revenue_sum = sum of total from Orders
   return_count = count of id from Returns
@@ -205,7 +205,8 @@ when user requests data from /api/stats:
     low_stock_count is length of low_stock
   send back stats
 
-# Seed Data — realistic e-commerce store
+# Seed Data
+// Realistic e-commerce store.
 
 when user deletes messages at /api/messages:
   requires login
