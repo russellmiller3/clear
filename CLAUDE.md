@@ -307,8 +307,10 @@ Always have an opinionated take on the right way to do things, backed by facts o
 UI controls must say what they do in plain words. Never use a bare arrow, icon, or symbol as the only label for an action — pair it with a word (e.g. "Hide Chat" not "◀", "Delete" not "✕" alone). The label should change to reflect current state ("Hide Chat" → "Show Chat"). A user should never have to guess what a button does.
 
 ## Branching
-Always create a new branch for features and fixes. Never commit directly to main.
-Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
+Always create a new branch before changing files. Never edit, patch, stage, or commit on main.
+Branch naming: `feature/[name]`, `fix/[name]`, or `docs/[name]`.
+Allowed on main: status checks, branch creation/switching, fast-forward-only merge of a finished branch, and pushing main after merge.
+Hook backstop: `.claude/hooks/require-branch-work.mjs` blocks direct edits and common shell-based mutations on main.
 
 ## GAN Frontend Directly (MANDATORY)
 When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.
