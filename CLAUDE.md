@@ -299,6 +299,10 @@ When debugging any browser/UI issue, **always check console errors first** befor
 ## Ross Perot Rule
 Proactively do what makes sense. Don't wait to be told. If something obviously needs doing — fix it, build it, clean it up. Act on judgment, not just instructions.
 
+If a reply identifies a fixable repo gap, do the safe next step before stopping. Don't end with "the gap is X" and "the next move is Y" when Y is a hook, test, doc update, compiler fix, template cleanup, or other change you can make on a branch.
+
+Hook backstop: `.claude/hooks/ross-perot-gap-guard.mjs` runs on Stop and blocks fixable-gap punts unless the user explicitly asked for read-only analysis. This turns the rule into machinery instead of vibes.
+
 ## Next Steps Rule
 At the end of every task, come up with the next relevant tasks and suggest them. Don't stop at "done" — show what's next and offer to keep going.
 
