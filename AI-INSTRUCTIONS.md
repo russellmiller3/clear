@@ -249,7 +249,8 @@ the variable, record, endpoint, queue, or audit row it changes.
 A toast, alert, or notification counts as a data effect because the message is
 notification data. It must include a quoted message. But a domain action like
 Approve, Reject, Assign, Resolve, Save, or Delete cannot use a toast as its only
-effect. It must also name the record, endpoint, queue, or audit row it changes.
+effect. The compiler rejects that. It must also name the record, endpoint, queue,
+or audit row it changes.
 
 ```clear
 // BAD: the reader sees a button but not the data effect
