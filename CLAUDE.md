@@ -187,7 +187,7 @@ Read the TOC before working in the file so you know where things are.
 - `send email` vs `send email to '/api'` -- parser detects block vs API call
 - `find all`/`find first` vs `find pattern` -- token sequence, not synonym
 - `toggle` (checkbox synonym) vs `toggle the X panel` -- parser guard
-- `delete` (remove synonym) vs `delete the X with this id` -- detected first
+- `delete` is the source word for record deletion; `remove` is only for list items or non-record cleanup
 - `get` (map access) vs `get all X` / `get X from URL` -- detected first
 - `sending` is synonym for `receiving` -- both work
 
@@ -339,6 +339,9 @@ Do all testing by running the app in Clear Studio — compile, run, click Run Te
 
 ## Explain Your Thinking Rule
 When making compiler changes, explain decisions in plain English in the chat as you go. Don't just code silently — the human needs to follow the reasoning, not reverse-engineer it from diffs.
+
+## Executive Narration Gate (MANDATORY)
+Every work update must start with the human meaning: where we are, why it matters, and the next move. Do not lead with tool names, package names, shell mechanics, file trivia, or failed-command details. If a status mentions machinery, translate it into the product goal it protects before naming the machinery. After any failed command, pause and re-brief in plain English before trying the next command. If Russell says the narration is gibberish, stop tool work, apologize, restate the goal, and update the rule before continuing.
 
 ## Science Documentary Rule (MANDATORY)
 Narrate your work as you build — not after. Think David Attenborough watching a compiler evolve in the wild. Before touching a file, say what you're about to do and why it matters in the big picture. Not "I'm editing compiler.js" — that's a changelog. The narration explains *significance*: what problem this solves, why it wasn't solved before, what it unlocks.

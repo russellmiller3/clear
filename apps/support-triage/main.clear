@@ -178,11 +178,17 @@ page 'Support Triage' at '/':
             text selected_ticket's from_email
             actions:
               button 'Escalate':
-                // Updates selected_ticket through PUT /api/tickets/:id with urgent priority.
+                change selected_ticket's priority from selected_ticket's priority to 'Urgent'
+                update selected_ticket at /api/tickets/:id
+                get tickets from '/api/tickets/open'
               button 'Assign':
-                // Updates selected_ticket through PUT /api/tickets/:id with the assigned support owner.
+                change selected_ticket's assigned_to from empty to 'support'
+                update selected_ticket at /api/tickets/:id
+                get tickets from '/api/tickets/open'
               button 'Close':
-                // Updates selected_ticket through PUT /api/tickets/:id with closed status and resolution.
+                change selected_ticket's status from 'open' to 'closed'
+                update selected_ticket at /api/tickets/:id
+                get tickets from '/api/tickets/open'
 
 # Tests
 

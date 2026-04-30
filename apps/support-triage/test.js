@@ -145,21 +145,21 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a ticket with subject is 'Test issue' , body is 'Testing'", async () => {
-      // clear:187
+      // clear:196
       _response = await fetch(_baseUrl + "/api/tickets", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ "subject": "Test issue", "body": "Testing" })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:188
+      // clear:197
       _expectSuccess(_response);
-      // clear:189
+      // clear:198
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("updating a ticket should require login", async () => {
-      // clear:192
+      // clear:201
       // Could not find PUT endpoint for ticket
   });
 

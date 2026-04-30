@@ -221,7 +221,7 @@ All features below are **implemented, tested, and compiling**.
 | Save | Done | `save new_user to Users` |
 | Look up | Done | `all_users = look up all Users` |
 | Look up where | Done | `active = look up Users where active is true` |
-| Remove | Done | `remove from Users where age is less than 18` |
+| Delete | Done | `delete from Users where age is less than 18` |
 
 ### Config & Testing (Phase 10-11)
 | Feature | Status | Canonical Syntax |
@@ -2391,4 +2391,3 @@ implement — just need a `run command 'X'` syntax that compiles to `child_proce
 **Total: ~14 days for remaining 8 features.** First 3 done. Next 3 (deploy, types, JS import)
 are the critical path — ~7 days. They turn Clear from "a playground" into "a platform you
 ship production apps on."
-

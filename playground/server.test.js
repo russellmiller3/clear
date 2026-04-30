@@ -550,7 +550,7 @@ try {
   }
 
   {
-    const { data } = await post('/api/compile', { source: "build for javascript backend\nallow signup and login\nwhen user calls DELETE /api/items/:id:\n  remove from Items with this id\n  send back 'deleted'" });
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nallow signup and login\nwhen user calls DELETE /api/items/:id:\n  delete the Item with this id\n  send back 'deleted'" });
     assert(data.errors.length > 0, 'catches DELETE without auth');
     // Compiler's actual error string says "requires login" (clearer than
     // "auth" — Meph sees the exact keyword he needs to add). Match on

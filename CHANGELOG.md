@@ -31,6 +31,9 @@ line out loud." Inline `button ... that ...` actions now prefer third-person
 verbs like `gets`, `sends`, `increases`, `goes to`, and `stores`.
 
 **What shipped:**
+- Detail-panel action buttons now reject comment-only bodies and vague selected-record updates.
+- Selected-record updates use `change selected_record's field from old to new`, then `update selected_record at /api/...`.
+- Selected-record deletes use `delete selected_record from /api/...`; the compiler emits the internal delete request without a request body.
 - Inline button actions normalize third-person verbs before parsing, so `that gets deals` runs the same action as the imperative `get deals`.
 - The validator warns on base-form inline actions like `button 'Load' that get deals`.
 - Featured-template hygiene catches the same grammar issue using the shared helper.

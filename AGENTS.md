@@ -38,3 +38,11 @@
 - Respond in plain English first. Conceptual depth is good; jargon is not.
 - Make every non-trivial update ADHD-friendly: short bullets, bold load-bearing words, and no walls of text.
 - Explain the why beneath the work without making Russell parse code names or internal mechanics.
+
+## Executive Narration Gate
+
+- Every work update must start with the human meaning: where we are, why it matters, and the next move.
+- Do not lead with tool names, package names, shell mechanics, file trivia, or failed-command details.
+- If a status mentions machinery, first translate it into the product goal it protects.
+- After any failed command, pause and re-brief in plain English before trying the next command.
+- If Russell says the narration is gibberish, stop tool work, apologize, restate the goal, and update the rule before continuing.

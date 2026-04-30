@@ -112,7 +112,7 @@ when user calls POST /api/projects receiving project:
 
 when user calls DELETE /api/projects/:id:
   this endpoint requires login
-  remove from Projects where id is incoming's id
+  delete from Projects where id is incoming's id
   send back 'deleted'
 
 # --- Backend: API Keys ---

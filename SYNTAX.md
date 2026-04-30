@@ -484,6 +484,15 @@ button 'Add':
 button 'Refresh':
   get todos from '/api/todos'
 
+button 'Approve':
+  change selected_request's status from 'pending' to 'approved'
+  update selected_request at /api/requests/:id/approve
+  get pending_requests from /api/requests/pending
+
+button 'Delete':
+  delete selected_request from /api/requests/:id
+  get pending_requests from /api/requests/pending
+
 add button 'Reload' that gets todos from '/api/todos'
 button 'Reset' for todo is ''
 ```
@@ -496,6 +505,11 @@ Toast-only buttons are valid when the button only creates notification data:
 `button 'Notify': show toast 'Saved'`. Domain actions like Approve, Reject,
 Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or
 audit row they change.
+
+Selected-record updates need two lines: first `change <record>'s <field> from
+<old> to <new>`, then `update <record> at <url>`. A bare `update selected_deal
+at /api/deals/:id/approve` is rejected because it does not say what data
+changed. Selected-record deletes use `delete <record> from <url>`.
 
 ## Display
 
@@ -510,8 +524,8 @@ display response as table called 'Results'            # all columns (no 'showing
 display contacts as table showing name, email with delete
 display contacts as table showing name, email with edit
 display contacts as table showing name, email with delete and edit
-# "with delete" adds a Delete button per row (needs DELETE /api/contacts/:id)
-# "with edit" adds an Edit button that populates the form (needs PUT /api/contacts/:id)
+// "with delete" adds a Delete button per row.
+// "with edit" adds an Edit button that populates the form.
 ```
 
 ## Charts (ECharts)
@@ -1066,8 +1080,10 @@ section 'Content' with style app_content:
   page header 'CRO Review':
     subtitle '5 deals waiting'
     actions:
-      button 'Refresh'
-      button 'Export'
+      button 'Refresh':
+        get pending from /api/deals/pending
+      button 'Export':
+        get export_rows from /api/deals/export
 
   tab strip:
     active tab is 'Pending'
@@ -1102,9 +1118,18 @@ detail panel for selected_deal:
   display selected_deal's amount as dollars called 'Value'
   text selected_deal's status
   actions:
-    button 'Reject'
-    button 'Counter'
-    button 'Approve'
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
 ```
 
 Use `detail panel for selected_row:` next to a selectable table when the user
@@ -3124,15 +3149,24 @@ queue for deal:
 When suppressed, the CSV URL is not emitted and the auto-rendered Download button (when Phase 2 lands) is hidden.
 
 ### Wiring action buttons
-The queue primitive does not yet auto-render UI buttons (deferred). Hand-add buttons that call the auto-generated PUT URLs:
+The queue primitive does not yet auto-render detail-panel buttons. Hand-add
+buttons that name the exact record change, update the selected record through
+the generated action URL, and reload the affected queue:
 
 ```clear
-display pending as table showing customer, status with actions:
-  'Approve' is primary
-  'Reject' is danger
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
 ```
-
-Bind each button to the matching PUT URL the queue emitted.
 
 ---
 

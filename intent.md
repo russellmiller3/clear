@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (171 total)
+## Node Types (172 total)
 
 ### Core Language
 
@@ -31,6 +31,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 |-----------|--------|-------------|
 | `THEME` | `theme 'midnight'` / `theme 'ivory'` / `theme 'nova'` | Sets `data-theme` on `<html>` |
 | `ASSIGN` | `x = 5` / `name is 'Alice'` / `define x as: expr` | `const x = 5` / `x = 5` |
+| `FIELD_CHANGE` | `change selected_deal's status from 'pending' to 'approved'` | Checks the selected record has the expected old value, then sets the named field to the new value |
 | `SHOW` | `show x` / `display x as dollars` | `console.log(x)` / `print(x)` |
 | `IF_THEN` | `if x is 5 then show 'yes'` / `if x is 5:` block | `if (x === 5) { ... }` |
 | `FUNCTION_DEF` | `define function greet(name):` / `define function add(a is number, b is number) returns number:` | `function greet(name) { ... }` — typed params emit JSDoc `@param`/`@returns`. Self-recursive functions are auto-wrapped in a depth counter (default 1000; override via `max depth N`). |
@@ -128,7 +129,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `LOADING_ACTION` | `show loading` / `hide loading` | Loading indicator |
 | `ON_CHANGE` | `when X changes:` + block | Reactive input handler |
 
-Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table control, and row drilldown must produce a UAT control with a plain `dataEffect`. Input-like controls must name the state variable they change with `saved as` or `saves to`. Buttons may use `that` or `for` as connector words when the inline action names the endpoint, state variable, or record it changes. Toast/alert/notification actions count as notification data only when they include a message. Domain action buttons like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change. After `that`, use third-person verbs because the button is the subject: `gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`.
+Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table control, and row drilldown must produce a UAT control with a plain `dataEffect`. Input-like controls must name the state variable they change with `saved as` or `saves to`. Buttons may use `that` or `for` as connector words when the inline action names the endpoint, state variable, or record it changes. Toast/alert/notification actions count as notification data only when they include a message. Domain action buttons like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change. Selected-record updates require `change <record>'s <field> from <old> to <new>` before `update <record> at <url>`. Selected-record deletes use `delete <record> from <url>`. After `that`, use third-person verbs because the button is the subject: `gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`.
 
 ### Backend (Phase 5-6)
 
@@ -150,7 +151,7 @@ Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table cont
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `DATA_SHAPE` | `create a Users table:` \| `table Users:` \| `create data shape User:` + fields | Table schema with constraints. All three lead forms parse identically. Field declarations accept both `price, number` and `name is text`. |
-| `CRUD` | `save X as User` / `look up all records in Users table` / `remove from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
+| `CRUD` | `save X as User` / `look up all records in Users table` / `delete from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
 | `SQL_AGGREGATE` | `sum of price from Orders` / `avg of score from Reviews where team is 'support'` | Server-side aggregation: compiles to `db.aggregate(table, fn, field, filter)` → `SELECT FN(col) FROM ... WHERE ...`. Distinguished from `sum of X in variable` (client-side JS reduce) by capitalized table name after `from`. Only supports equality filters (`is X`, `is 'Y' and Z is W`) — non-equality like `>` emits a runtime error. |
 
 Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hidden`, `renamed to NEW_NAME`, `(number)` type hint, FK by capitalized name.
@@ -351,16 +352,16 @@ Workflow step types (inside workflow body):
 
 | Node Type | Syntax | Compiles To |
 |-----------|--------|-------------|
-| `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action PUT handlers (auth-gated), CSV export URL (`GET /api/<entity>/export.csv`). Suppress CSV with `no export` clause inside the body. |
+| `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action update handlers (auth-gated), CSV export URL (`GET /api/<entity>/export.csv`). Suppress CSV with `no export` clause inside the body. |
 | `ROUTE_DEF` | `route <entity> by <field>:` + indented body of `'value' to <owner>` rules and at most one `default to <owner>` or `default round-robin across [<pool>]` rule | Statement-level node inside an endpoint body. Compiles to an if/else chain over `<entity>.<field>`, mutating `<entity>.assigned_to`. Round-robin default emits `await _clear_route_pick({routeId, pool})` against the auto-emitted `_clear_route_cursors` SQLite table (cursor key is a content hash of entity+field+rules+pool, stable across line edits). No top-level emit (no auto-tables, URLs, or UI). Validator hard-errors on `ROUTE_ENTITY_NOT_IN_SCOPE` (entity not in scope) and `ROUTE_AFTER_SAVE` (route block after the save line — assignment never persists); warns on `ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE`. Match values on the LHS must be quoted strings. Both targets (JS + Python) supported. |
-| `EMAIL_TRIGGER` | `email <role> when <entity>'s status changes to <value>:` + indented body (`subject is`, `body is`, `provider is`, `track replies as`) | Top-level block. Auto-emits the shared `workflow_email_queue` table once per app. Both queue auto-PUT handlers (Phase 4.1) AND user-defined `when user updates <entity> at <path>:` endpoints (Phase 4.1-extension) that assign the entity's status to the trigger value inject an email-queue row before the response statement. Validator warns when the entity table has no `<role>_email` field (Phase 4.3) or when body / subject reference `{ident}` that doesn't match an entity field (Phase 5.2). Real provider sends deferred behind `enable live email delivery via X` directive. |
+| `EMAIL_TRIGGER` | `email <role> when <entity>'s status changes to <value>:` + indented body (`subject is`, `body is`, `provider is`, `track replies as`) | Top-level block. Auto-emits the shared `workflow_email_queue` table once per app. Both queue-generated update handlers (Phase 4.1) AND user-defined `when user updates <entity> at <path>:` endpoints (Phase 4.1-extension) that assign the entity's status to the trigger value inject an email-queue row before the response statement. Validator warns when the entity table has no `<role>_email` field (Phase 4.3) or when body / subject reference `{ident}` that doesn't match an entity field (Phase 5.2). Real provider sends deferred behind `enable live email delivery via X` directive. |
 
 Queue body clauses:
 
 | Clause | What it does |
 |--------|-------------|
 | `reviewer is 'Role'` | Stamps `decided_by` on every audit row |
-| `actions: a, b, c` | Each action becomes a `PUT /api/<entity>s/:id/<action>` handler |
+| `actions: a, b, c` | Each action becomes a generated update handler at `/api/<entity>s/:id/<action>` |
 | `notify <role> on <action>, <action>` | Inserts a row into the notifications queue for those actions |
 
 **Given:** a `Deals` table with a `status` field and the block:
@@ -384,7 +385,7 @@ queue for deal:
 
 **Recipient-email convention:** `notify customer on ...` resolves recipient_email by reading `<entity>.customer_email`. If the entity has no `<role>_email` field, the validator warns; the row is still queued with a blank email.
 
-UI auto-render (Phase 4 of the queue plan) is deferred: app authors hand-add buttons that call the auto-generated PUT URLs. Backend, audit, notifications, and tests are fully generated.
+UI auto-render (Phase 4 of the queue plan) is deferred: app authors hand-add buttons that change a named field, update the selected record through the generated action URL, and reload the affected queue. Backend, audit, notifications, and tests are fully generated.
 
 ### Testing (Phases 46b, 84)
 
@@ -452,7 +453,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `paid = sum of price from Orders where status is 'paid'` | `db.aggregate('orders', 'SUM', 'price', { status: 'paid' })` | Filtered aggregate — equality only |
 | `new_todo = save X as new Todo` | `save X as Todo` | "new" is optional clarity |
 | `send back X with success message` | `send back X status 201` | Wraps with `message` field |
-| `delete the Todo with this id` | `remove from Todos where id is incoming's id` | URL param auto-bound |
+| `delete the Todo with this id` | `delete from Todos where id is incoming's id` | URL param auto-bound |
 | `send back all Todos` | `x = get all Todos; send back x` | Inline retrieval shorthand (parser desugars to [CRUD, RESPOND]) |
 | `send back the User with this id` | `x = look up User with this id; send back x` | Inline single-record lookup |
 | `send back all Users where active is true` | `x = get all Users where active is true; send back x` | Inline filtered list |
@@ -593,7 +594,7 @@ Canonical names map to arrays of aliases. The tokenizer does longest-match greed
 - `send email` collides with `send email to '/api'` -- parser detects block form vs API call
 - `find all` / `find first` -- parsed by token sequence, not synonym (avoids collision with `find pattern`)
 - `toggle` is a synonym for `checkbox` -- parser guards `toggle the X panel` vs bare `toggle`
-- `delete` is a synonym for `remove` -- `delete the X with this id` detected before list remove
+- `delete` is the source word for data deletion -- `delete the X with this id` is detected before list removal
 - `get` maps to `get_key` (map access) -- `get all X` and `get X from URL` detected before map get
 - `sending` is a synonym for `receiving` -- both work, `sending` is canonical
 

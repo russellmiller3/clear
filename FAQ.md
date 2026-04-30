@@ -841,13 +841,24 @@ detail panel for selected_deal:
   display selected_deal's amount as dollars called 'Value'
   text selected_deal's status
   actions:
-    button 'Reject'
-    button 'Counter'
-    button 'Approve'
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
 ```
 
 The body can use normal Clear UI primitives. Put final decisions inside
-`actions:` so they render as the sticky bottom action bar.
+`actions:` so they render as the sticky bottom action bar. An update action
+must name the changed field before the `update` line. A delete action uses
+`delete selected_record from /api/...`.
 
 ### How do I add a new node type?
 

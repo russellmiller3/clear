@@ -257,8 +257,9 @@ button 'Approve'
 
 // GOOD: the source says what happens to the selected record
 button 'Approve':
-  // Calls queue-generated PUT /api/deals/:id/approve with selected_deal,
-  // updates status, records the decision, and refreshes pending deals.
+  change selected_deal's status from 'pending' to 'approved'
+  update selected_deal at /api/deals/:id/approve
+  get pending_deals from /api/deals/pending
 ```
 
 `that` and `for` are allowed as connector words when they make inline actions

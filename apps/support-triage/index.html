@@ -297,16 +297,17 @@ body {
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
-    <div class="flex min-h-screen" data-clear-line="121">
+<div id="page_Support_Triage" data-clear-page-id="Support_Triage" data-clear-page-route="/" data-clear-page-title="Support Triage">
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="121">
     <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="122">
     <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="123"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">S</div><span class="text-base font-bold text-base-content tracking-tight">Support Triage</span></div>
     <nav class="flex-1 overflow-y-auto py-4 px-4">
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Queues</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="125"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Open tickets</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_125_Open_tickets" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="125"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Open tickets</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
         <li class="clear-nav-section-label">Triage</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="127"><i data-lucide="tags" aria-hidden="true"></i><span class="clear-nav-label">Categories</span><span class="clear-nav-count num" data-clear-tpl="{category_count}">{category_count}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-nav-path="/" data-clear-line="128"><i data-lucide="flame" aria-hidden="true"></i><span class="clear-nav-label">Priorities</span><span class="clear-nav-count num" data-clear-tpl="{priority_count}">{priority_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_127_Categories" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="127"><i data-lucide="tags" aria-hidden="true"></i><span class="clear-nav-label">Categories</span><span class="clear-nav-count num" data-clear-tpl="{category_count}">{category_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_128_Priorities" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="128"><i data-lucide="flame" aria-hidden="true"></i><span class="clear-nav-label">Priorities</span><span class="clear-nav-count num" data-clear-tpl="{priority_count}">{priority_count}</span></a></li>
       </ul>
     </nav>
     </aside>
@@ -321,14 +322,15 @@ body {
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="135">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="135">
+      <div data-clear-routed-content="Support_Triage" data-clear-routed-route="/">
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="136">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Open support queue</h1>
-        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">{total} tickets waiting for triage</p>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{total} tickets waiting for triage">{total} tickets waiting for triage</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
-    <button class="btn btn-primary" id="btn_Refresh" data-clear-line="139">Refresh</button>
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_139_Refresh" data-clear-control-kind="button" data-clear-line="139">Refresh</button>
       </div>
     </div>
     <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="142">
@@ -372,13 +374,14 @@ body {
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your email</legend>
       <input id="input_from_email" class="input input-bordered w-full" type="text" placeholder="Your email">
     </fieldset>
-    <button class="btn btn-primary" id="btn_Submit_ticket" data-clear-line="162">Submit ticket</button>
+    <button class="btn btn-primary" id="btn_Submit_ticket" data-clear-uat-id="button_162_Submit_ticket" data-clear-control-kind="button" data-clear-line="162">Submit ticket</button>
     </div>
     <div class="grid grid-cols-2 gap-5" data-clear-line="169">
     <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="170">
     <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Tickets" data-clear-line="171">
-      <div class="px-6 py-4 border-b border-base-300/40">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Tickets</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Tickets_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Tickets_table">
@@ -398,15 +401,17 @@ body {
     <p id="show_3" class="text-sm font-medium text-base-content/90 leading-snug"></p>
       </div>
       <div class="clear-detail-actions" data-detail-actions="true">
-    <button class="btn btn-primary" id="btn_Escalate" data-action="escalate" data-clear-line="180">Escalate</button>
-    <button class="btn btn-primary" id="btn_Assign" data-action="assign" data-clear-line="181">Assign</button>
-    <button class="btn btn-ghost" id="btn_Close" data-action="close" data-clear-line="182">Close</button>
+    <button class="btn btn-primary" id="btn_Escalate" data-clear-uat-id="button_180_Escalate" data-clear-control-kind="button" data-action="escalate" data-clear-line="180">Escalate</button>
+    <button class="btn btn-primary" id="btn_Assign" data-clear-uat-id="button_184_Assign" data-clear-control-kind="button" data-action="assign" data-clear-line="184">Assign</button>
+    <button class="btn btn-ghost" id="btn_Close" data-clear-uat-id="button_188_Close" data-clear-control-kind="button" data-action="close" data-clear-line="188">Close</button>
       </div>
     </aside>
     </div>
+      </div>
     </div>
     </main>
     </div>
+</div>
   </main>
 
   <!-- ┌─────────────────────────────────────────────┐
@@ -434,23 +439,40 @@ body {
 // --- Runtime ---
 function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
 function _toast(msg, type) {
+  const variant = String(type || 'success').replace(/^alert-/, '');
   let c = document.getElementById('_toast_container');
   if (!c) {
-    c = document.createElement('div'); c.id = '_toast_container';
-    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    c = document.createElement('div');
+    c.id = '_toast_container';
+    c.className = 'toast toast-end toast-bottom';
+    c.setAttribute('aria-live', 'polite');
+    c.style.cssText = 'z-index:9999;pointer-events:none;';
     document.body.appendChild(c);
   }
   const icons = {
     error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
     success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
     info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
   };
-  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
-  const icon = icons[type] || icons.info;
+  const variants = { error: 'alert-error', success: 'alert-success', warning: 'alert-warning', info: 'alert-info' };
+  const cls = variants[variant] || variants.success;
+  const icon = icons[variant] || icons.info;
   const el = document.createElement('div');
+  el.setAttribute('role', 'alert');
+  el.setAttribute('data-clear-toast', variant);
   el.className = 'alert ' + cls + ' shadow-lg text-sm';
-  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
-  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:min(400px, calc(100vw - 2rem));border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  const iconSlot = document.createElement('span');
+  iconSlot.innerHTML = icon;
+  el.appendChild(iconSlot.firstElementChild || iconSlot);
+  const message = document.createElement('span');
+  message.style.flex = '1';
+  message.textContent = String(msg);
+  el.appendChild(message);
+  const timer = document.createElement('div');
+  timer.style.cssText = 'position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%';
+  el.appendChild(timer);
   if (!document.getElementById('_toast_style')) {
     const s = document.createElement('style'); s.id = '_toast_style';
     s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
@@ -463,51 +485,115 @@ function _toast(msg, type) {
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
-  tableEl._clear_rows = Array.isArray(data) ? data : [];
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
-  if (!Array.isArray(data) || data.length === 0) {
+  if (rows.length === 0) {
     if (thead) thead.innerHTML = '';
     if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
     return;
   }
-  if (thead) thead.innerHTML = renderHead(data);
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}
+function _clear_table_rows_for_view(rows, sortCol, sortDir, filterText) {
+  var out = Array.isArray(rows) ? rows.slice() : [];
+  var query = String(filterText || '').trim().toLowerCase();
+  if (query) {
+    out = out.filter(function(row) {
+      return Object.keys(row || {}).some(function(key) {
+        var value = row[key];
+        if (value == null) return false;
+        var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        return text.toLowerCase().indexOf(query) !== -1;
+      });
+    });
+  }
+  if (sortCol) {
+    var dir = sortDir === 'desc' ? -1 : 1;
+    function normalized(value) {
+      if (value == null || value === '') return { empty: true, value: '' };
+      var raw = String(value).trim();
+      var numeric = raw.replace(/[$,%]/g, '').replace(/,/g, '');
+      if (numeric !== '' && /^-?\d+(\.\d+)?$/.test(numeric)) {
+        return { empty: false, kind: 'number', value: Number(numeric) };
+      }
+      return { empty: false, kind: 'text', value: raw.toLowerCase() };
+    }
+    out.sort(function(a, b) {
+      var av = normalized(a && a[sortCol]);
+      var bv = normalized(b && b[sortCol]);
+      if (av.empty && bv.empty) return 0;
+      if (av.empty) return 1;
+      if (bv.empty) return -1;
+      if (av.kind === 'number' && bv.kind === 'number') return (av.value - bv.value) * dir;
+      return String(av.value).localeCompare(String(bv.value), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }
+  return out;
+}
+function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
   var VIRT_THRESHOLD = 100;
-  if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(function(row, idx) { return renderRow(row, idx); }).join('');
-    return;
-  }
   var ROW_HEIGHT = 40;
   var BUFFER = 5;
   var scroller = tableEl.parentElement;
-  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
   scroller.style.maxHeight = '560px';
   scroller.style.overflowY = 'auto';
-  function paint() {
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
     var top = scroller.scrollTop;
     var h = scroller.clientHeight || 560;
     var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
-    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
     var topPad = first * ROW_HEIGHT;
-    var botPad = (data.length - last) * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
     var html = '';
     if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
-    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
     if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
     tbody.innerHTML = html;
-  }
+  };
   if (!scroller._clear_virt_bound) {
     scroller._clear_virt_bound = true;
-    scroller.addEventListener('scroll', paint, { passive: true });
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
   }
-  paint();
+  tableEl._clear_paint_table();
 }
-function _clear_cell(key, val) {
+function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
+}
+function _clear_cell(key, val, selectable) {
   var k = String(key).toLowerCase();
   var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
   if (k === 'status' || k === 'state' || k === 'stage') {
     var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
-    return '<td class="text-sm"><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
   }
   if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\$/.test(v)) {
     var formatted = v;
@@ -515,7 +601,7 @@ function _clear_cell(key, val) {
       var n = Number(val);
       formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
     }
-    return '<td class="text-sm text-right tabular-nums">' + _esc(formatted) + '</td>';
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
   }
   if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
     var parts = v.trim().split(/[\s@.]+/).filter(Boolean);
@@ -523,15 +609,25 @@ function _clear_cell(key, val) {
       ? (parts[0][0] || '') + (parts[1][0] || '')
       : v.slice(0, 2);
     initials = initials.toUpperCase();
-    return '<td class="text-sm"><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
   }
-  return '<td class="text-sm text-base-content">' + _esc(v) + '</td>';
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
 }
 function _clear_table_init(tableEl, selectedVar) {
   if (!tableEl) return;
   if (selectedVar) tableEl._clear_selected_var = selectedVar;
   if (tableEl._clear_init) return;
   tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
   tableEl.addEventListener('click', function(e) {
     var th = e.target.closest('th[data-sortable]');
     if (th) {
@@ -540,8 +636,10 @@ function _clear_table_init(tableEl, selectedVar) {
       var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
       tableEl.setAttribute('data-sort-col', col);
       tableEl.setAttribute('data-sort-dir', dir);
-      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); });
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
       th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
       return;
     }
     var tr = e.target.closest('tbody tr');
@@ -590,8 +688,8 @@ function _recompute() {
   _clear_render_table(
     document.getElementById('output_Tickets_table'),
     _state.tickets,
-    function(d) { var _keys = ["subject","category","priority","from_email"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ')) + '</th>'; }).join(''); },
-    function(row, rowIndex) { var _keys = ["subject","category","priority","from_email"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k) { return _clear_cell(k, row[k]); }).join('') + '</tr>'; }
+    function(d) { var _keys = ["subject","category","priority","from_email"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["subject","category","priority","from_email"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_Tickets_table'), 'selected_ticket');
   document.getElementById('input_subject').value = _state.subject;
@@ -642,6 +740,78 @@ document.getElementById('btn_Submit_ticket').addEventListener('click', async fun
     _state.subject = "";
     _state.body = "";
     _state.from_email = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Escalate').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Escalate');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_ticket;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["priority"];
+      if (_current !== _state.selected_ticket?.priority) throw new Error('Expected priority to be priority before changing it to Urgent');
+      _record["priority"] = "Urgent";
+    }
+    { const _record = _state.selected_ticket;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/tickets/" + _id + "", { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/tickets/:id]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:183]', e.message); return _state.tickets; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Assign').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Assign');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_ticket;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["assigned_to"];
+      if (_current != null && _current !== '') throw new Error('Expected assigned_to to be empty before changing it to support');
+      _record["assigned_to"] = "support";
+    }
+    { const _record = _state.selected_ticket;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/tickets/" + _id + "", { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/tickets/:id]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:187]', e.message); return _state.tickets; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Close').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Close');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_ticket;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["status"];
+      if (_current !== "open") throw new Error('Expected status to be open before changing it to closed');
+      _record["status"] = "closed";
+    }
+    { const _record = _state.selected_ticket;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/tickets/" + _id + "", { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/tickets/:id]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.tickets = await fetch("/api/tickets/open").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tickets/open] [clear:191]', e.message); return _state.tickets; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;

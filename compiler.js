@@ -46,6 +46,7 @@
 //   │         insideAgent, _astBody }                       │
 //   │                                                       │
 //   │  Dispatches to _compileNodeInner → switch(node.type): │
+//   │    FIELD_CHANGE → selected record field mutation       │
 //   │    ASSIGN ────→ const x = expr;                       │
 //   │    ENDPOINT ──→ compileEndpoint() → app.get(...)      │
 //   │    CRUD ──────→ compileCrud() → db.insert/update/etc  │
@@ -54,7 +55,7 @@
 //   │    VALIDATE ──→ compileValidate() → _validate(...)    │
 //   │    DATA_SHAPE → compileDataShape() → schema + table   │
 //   │    IF_THEN ───→ if (...) { ... }                      │
-//   │    (96 node types total — see _compileNodeInner)       │
+//   │    (many node types total — see _compileNodeInner)     │
 //   │                                                       │
 //   │  Expressions: exprToCode(expr, ctx) → string          │
 //   │    Handles: literals, variables, binary ops,           │
@@ -7044,6 +7045,29 @@ function _compileNodeInner(node, ctx) {
       return `${pad}try { const _v = localStorage.getItem(${key}); if (_v !== null) ${stateRef} = JSON.parse(_v); } catch(_) {}`;
     }
 
+    case NodeType.FIELD_CHANGE: {
+      if (ctx.lang === 'python') return `${pad}# change ${node.recordVar}'s ${node.field}`;
+      const recordVar = sanitizeName(node.recordVar);
+      const recordRef = ctx.stateVars && ctx.stateVars.has(recordVar) ? `_state.${recordVar}` : recordVar;
+      const fieldKey = JSON.stringify(node.field);
+      const fromCode = exprToCode(node.fromValue, ctx);
+      const toCode = exprToCode(node.toValue, ctx);
+      const fromLabel = node.fromEmpty ? 'empty' : String(node.fromValue?.value ?? node.field);
+      const toLabel = node.toEmpty ? 'empty' : String(node.toValue?.value ?? node.field);
+      const lines = [];
+      lines.push(`${pad}{ const _record = ${recordRef};`);
+      lines.push(`${pad}  if (!_record) throw new Error('Select a record first');`);
+      lines.push(`${pad}  const _current = _record[${fieldKey}];`);
+      if (node.fromEmpty) {
+        lines.push(`${pad}  if (_current != null && _current !== '') throw new Error('Expected ${node.field} to be empty before changing it to ${toLabel}');`);
+      } else {
+        lines.push(`${pad}  if (_current !== ${fromCode}) throw new Error('Expected ${node.field} to be ${fromLabel} before changing it to ${toLabel}');`);
+      }
+      lines.push(`${pad}  _record[${fieldKey}] = ${toCode};`);
+      lines.push(`${pad}}`);
+      return lines.join('\n');
+    }
+
     case NodeType.ASSIGN: {
       const rawName = sanitizeName(node.name);
       const name = ctx.lang === 'python' ? sanitizeNamePython(node.name) : rawName;
@@ -9051,6 +9075,31 @@ ${pad}}`;
           : '';
       };
 
+      if (node.recordVar && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(node.method || '').toUpperCase())) {
+        const method = String(node.method || 'POST').toUpperCase();
+        const recordVar = sanitizeName(node.recordVar);
+        const recordRef = ctx.stateVars && ctx.stateVars.has(recordVar) ? `_state.${recordVar}` : recordVar;
+        const parts = String(node.url || '').split(':id');
+        const fetchUrl = parts.length > 1
+          ? `${JSON.stringify(parts[0])} + _id + ${JSON.stringify(parts.slice(1).join(':id'))}`
+          : JSON.stringify(node.url || '');
+        const lines = [];
+        lines.push(`${pad}{ const _record = ${recordRef};`);
+        if (parts.length > 1) {
+          lines.push(`${pad}  const _id = _record && _record.id;`);
+          lines.push(`${pad}  if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }`);
+        }
+        const failureLabel = method === 'DELETE' ? 'delete failed' : method === 'PUT' || method === 'PATCH' ? 'update failed' : 'save failed';
+        if (method === 'DELETE') {
+          lines.push(`${pad}  const _r = await fetch(${fetchUrl}, { method: '${method}', headers: ${browserHeadersFor(method, node.url)} });`);
+        } else {
+          lines.push(`${pad}  const _r = await fetch(${fetchUrl}, { method: '${method}', headers: ${browserHeadersFor(method, node.url)}, body: JSON.stringify(_record || {}) });`);
+        }
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[${method} ${node.url}]', _e.error || '${failureLabel}'); throw new Error(_e.error || _e.message || '${failureLabel}'); }`);
+        lines.push(`${pad}}`);
+        return lines.join('\n');
+      }
+
       // Auto-upgrade: if the endpoint streams, use the streaming reader
       // regardless of whether the user wrote `stream ...` or `get ... from`.
       // Streaming is the default for `ask claude` in endpoints — the client
@@ -10196,6 +10245,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
         flatten(node.body || [], pageRoute);
+        flatten(node.actions || [], pageRoute);
       } else if (node.type === NodeType.PAGE_HEADER) {
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
@@ -11253,21 +11303,6 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
 
     lines.push(`});`);
-
-    if (detailTarget && rowActions.length > 0) {
-      for (const action of rowActions) {
-        const fnName = `_clear_action_${sanitizeName(outputId)}_${sanitizeName(action.slug.replace(/-/g, '_'))}`;
-        const detailVar = sanitizeName(detailTarget);
-        lines.push(`{ const detailBtn = document.querySelector('[data-detail-for="${detailTarget}"] [data-action="${action.slug}"]');`);
-        lines.push(`  if (detailBtn) detailBtn.addEventListener('click', async function(e) {`);
-        lines.push(`    e.preventDefault();`);
-        lines.push(`    const row = _state.${detailVar};`);
-        lines.push(`    const id = row && row.id;`);
-        lines.push(`    await ${fnName}(id, row);`);
-        lines.push(`  });`);
-        lines.push(`}`);
-      }
-    }
   }
 
   // 7. On page load handlers (if any, these call _recompute at the end)

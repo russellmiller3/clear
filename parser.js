@@ -40,6 +40,7 @@
 //   │     │    ├─ agent 'X' → AGENT                  │      │
 //   │     │    ├─ define function → FUNCTION_DEF     │      │
 //   │     │    ├─ if/while/repeat/for → CONTROL FLOW │      │
+//   │     │    ├─ change/update/delete → RECORD FX   │      │
 //   │     │    ├─ save/look up/delete → CRUD         │      │
 //   │     │    ├─ send back → RESPOND                │      │
 //   │     │    ├─ validate → VALIDATE                │      │
@@ -87,14 +88,14 @@
 //   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
 //   STATIC CONTENT ELEMENTS ........... parseContent(), parseImage(), parseMedia()
 //   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
-//   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
+//   CRUD OPERATIONS ................... parseSave, parseDeleteFrom, parseDefineAs,
 //                                      parseLookUpAssignment, parseSaveAssignment
 //   TEST BLOCKS ....................... parseTestDef(), parseExpect(), UNIT_ASSERT detection
 //   ASK FOR (legacy) .................. parseAskFor()
 //   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
 //   CHART ............................. parseChart(), parseChartTypeFirst(), parseChartTitleFirst(),
 //                                      parseChartRemainder() — ECharts (line, bar, pie, area)
-//   BUTTON ............................ parseButton()
+//   BUTTON ............................ parseButton(), button action data-effect guards
 //   ENDPOINT .......................... parseEndpoint()
 //   ADVANCED FEATURES ................. parseStream, parseBackground, parseCron,
 //                                      parseSubscribe, parseUpdateDatabase, parseMigration, parseWait
@@ -132,6 +133,7 @@ export const NodeType = Object.freeze({
   ASSIGN: 'assign',
   SHOW: 'show',
   IF_THEN: 'if_then',
+  FIELD_CHANGE: 'field_change',
 
   // Functions
   FUNCTION_DEF: 'function_def',
@@ -636,6 +638,28 @@ function buttonNode(label, body, line) {
   return { type: NodeType.BUTTON, label, body, line, ui };
 }
 
+function hasExecutableBody(body) {
+  return Array.isArray(body) && body.some(node => node && node.type !== NodeType.COMMENT);
+}
+
+function firstRecordUpdateWithoutChange(body) {
+  if (!Array.isArray(body)) return null;
+  const changedRecords = new Set();
+  for (const node of body) {
+    if (!node || node.type === NodeType.COMMENT) continue;
+    if (node.type === NodeType.FIELD_CHANGE && node.recordVar) {
+      changedRecords.add(String(node.recordVar));
+      continue;
+    }
+    const method = String(node.method || '').toUpperCase();
+    if (node.type === NodeType.API_CALL && node.recordVar && (method === 'PUT' || method === 'PATCH')) {
+      const recordVar = String(node.recordVar);
+      if (!changedRecords.has(recordVar)) return node;
+    }
+  }
+  return null;
+}
+
 // Phase 5: Backend
 function endpointNode(method, path, body, line) {
   return { type: NodeType.ENDPOINT, method, path, body, line };
@@ -913,7 +937,7 @@ const ZONE_OVERRIDES = {
     remove: 'action_delete',  // 'remove' also means action button in UI context
   },
   crud: {
-    delete: 'remove',         // In CRUD context, 'delete' = remove from database (tokenizer default)
+    delete: 'remove',         // Internal operation name for source-level database deletion
   },
   comparison: {},  // 'is' context-sensitivity already handled by parser
   agent: {
@@ -1269,10 +1293,13 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['delete_from', (ctx) => {
-    const method = 'DELETE';
-    let url = '';
-    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
-    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      ctx.body.push({ type: NodeType.API_CALL, method: 'DELETE', url: ctx.tokens[1].value, fields: [], line: ctx.line });
+      return ctx.i + 1;
+    }
+    const parsed = parseDeleteFrom(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
     return ctx.i + 1;
   }],
   ['sort_by', (ctx) => {
@@ -1321,9 +1348,8 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['remove_from', (ctx) => {
-    const parsed = parseRemoveFrom(ctx.tokens, ctx.line);
-    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-    else ctx.body.push(parsed.node);
+    const target = ctx.tokens[1]?.value || 'Records';
+    ctx.errors.push({ line: ctx.line, message: `Use delete from ${target} for database deletion. Use remove X from list only for list items.` });
     return ctx.i + 1;
   }],
   ['wait_kw', (ctx) => {
@@ -2486,14 +2512,19 @@ const CANONICAL_DISPATCH = new Map([
     // is a regular JSON endpoint, the fields are currently ignored (plain GET).
     if (ctx.tokens.length >= 4 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
       const fromIdx = ctx.tokens.findIndex((t, idx) => idx >= 2 && t.value === 'from');
-      if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length && ctx.tokens[fromIdx + 1].type === TokenType.STRING) {
+      if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length) {
         const targetVar = ctx.tokens[1].value;
-        const url = ctx.tokens[fromIdx + 1].value;
+        let url = '';
         // Optional: "with field1, field2, ..." → collect input fields
         const fields = [];
         let withPos = -1;
         for (let k = fromIdx + 2; k < ctx.tokens.length; k++) {
           if (ctx.tokens[k].value === 'with' || ctx.tokens[k].canonical === 'with') { withPos = k; break; }
+        }
+        url = tokenPathText(ctx.tokens.slice(fromIdx + 1, withPos > 0 ? withPos : ctx.tokens.length));
+        if (!url) {
+          ctx.errors.push({ line: ctx.line, message: "get needs an endpoint after 'from'. Example: get pending_deals from /api/deals/pending" });
+          return ctx.i + 1;
         }
         if (withPos > 0) {
           for (let k = withPos + 1; k < ctx.tokens.length; k++) {
@@ -2891,6 +2922,102 @@ CANONICAL_DISPATCH.set('close', (ctx) => {
   return undefined;
 });
 
+function tokenPathText(tokens) {
+  if (!tokens || tokens.length === 0) return '';
+  if (tokens.length === 1 && tokens[0].type === TokenType.STRING) return tokens[0].value;
+  return tokens
+    .filter(t => t.type !== TokenType.COMMENT)
+    .map(t => String(t.rawValue ?? t.value ?? ''))
+    .join('');
+}
+
+function parseChangeValue(tokens, line) {
+  if (!tokens || tokens.length === 0) return { error: 'change needs a value.' };
+  if (tokens.length === 1 && String(tokens[0].value || '').toLowerCase() === 'empty') {
+    return { node: { type: NodeType.LITERAL_STRING, value: '', line }, isEmpty: true };
+  }
+  return parseExpression(tokens, 0, line);
+}
+
+function parseFieldChange(tokens, line) {
+  if (!tokens || tokens.length < 8) return null;
+  if (String(tokens[0].rawValue ?? tokens[0].value ?? '').toLowerCase() !== 'change') return null;
+  const record = tokens[1];
+  if (record.type !== TokenType.IDENTIFIER && record.type !== TokenType.KEYWORD) {
+    return { error: "change needs a record variable. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  let pos = 2;
+  if (tokens[pos]?.type !== TokenType.POSSESSIVE && tokens[pos]?.type !== TokenType.DOT) {
+    return { error: "change needs a field after the record. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  pos++;
+  const fieldToken = tokens[pos];
+  if (!fieldToken || (fieldToken.type !== TokenType.IDENTIFIER && fieldToken.type !== TokenType.KEYWORD)) {
+    return { error: "change needs a field name. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  pos++;
+  const fromIdx = tokens.findIndex((t, idx) => idx >= pos && String(t.rawValue ?? t.value ?? '').toLowerCase() === 'from');
+  const toIdx = tokens.findIndex((t, idx) => idx > fromIdx && String(t.rawValue ?? t.value ?? '').toLowerCase() === 'to');
+  if (fromIdx === -1 || toIdx === -1 || toIdx <= fromIdx + 1 || toIdx + 1 >= tokens.length) {
+    return { error: "change needs both old and new values. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  const fromValue = parseChangeValue(tokens.slice(fromIdx + 1, toIdx), line);
+  if (fromValue.error) return { error: fromValue.error };
+  const toValue = parseChangeValue(tokens.slice(toIdx + 1), line);
+  if (toValue.error) return { error: toValue.error };
+  return {
+    node: {
+      type: NodeType.FIELD_CHANGE,
+      recordVar: String(record.value),
+      field: String(fieldToken.value),
+      fromValue: fromValue.node,
+      fromEmpty: Boolean(fromValue.isEmpty),
+      toValue: toValue.node,
+      toEmpty: Boolean(toValue.isEmpty),
+      line,
+    },
+  };
+}
+
+function parseRecordApiEffect(tokens, line) {
+  if (!tokens || tokens.length < 4) return null;
+  const verb = String(tokens[0].rawValue ?? tokens[0].value ?? '').toLowerCase();
+  const isUpdate = verb === 'update';
+  const isDelete = verb === 'delete';
+  if (!isUpdate && !isDelete) return null;
+  if (isUpdate && String(tokens[1]?.rawValue ?? tokens[1]?.value ?? '').toLowerCase() === 'database') {
+    return null;
+  }
+
+  let recordPos = 1;
+  if (tokens[recordPos]?.value === 'the' || tokens[recordPos]?.value === 'this') recordPos++;
+  const record = tokens[recordPos];
+  if (!record || (record.type !== TokenType.IDENTIFIER && record.type !== TokenType.KEYWORD)) {
+    return null;
+  }
+
+  let connectorIdx = -1;
+  for (let k = recordPos + 1; k < tokens.length; k++) {
+    const word = String(tokens[k].rawValue ?? tokens[k].value ?? '').toLowerCase();
+    if (isUpdate && (word === 'at' || word === 'to')) { connectorIdx = k; break; }
+    if (isDelete && (word === 'from' || word === 'at')) { connectorIdx = k; break; }
+  }
+  if (connectorIdx === -1) return null;
+
+  const url = tokenPathText(tokens.slice(connectorIdx + 1));
+  if (!url || !url.startsWith('/')) return null;
+  return {
+    node: {
+      type: NodeType.API_CALL,
+      method: isUpdate ? 'PUT' : 'DELETE',
+      url,
+      recordVar: String(record.value),
+      fields: [],
+      line,
+    },
+  };
+}
+
 // "refresh page" / "reload page" — page refresh in web apps
 CANONICAL_DISPATCH.set('refresh', (ctx) => {
   ctx.body.push({ type: NodeType.REFRESH, line: ctx.line });
@@ -3197,6 +3324,22 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // Comment-only line
       if (firstToken.type === TokenType.COMMENT) {
         body.push(commentNode(firstToken.value, line));
+        i++;
+        continue;
+      }
+
+      const recordApiEffect = parseRecordApiEffect(tokens, line);
+      if (recordApiEffect) {
+        if (recordApiEffect.error) errors.push({ line, message: recordApiEffect.error });
+        else body.push(recordApiEffect.node);
+        i++;
+        continue;
+      }
+
+      const fieldChange = parseFieldChange(tokens, line);
+      if (fieldChange) {
+        if (fieldChange.error) errors.push({ line, message: fieldChange.error });
+        else body.push(fieldChange.node);
         i++;
         continue;
       }
@@ -5694,13 +5837,7 @@ function parsePageHeader(lines, startIdx, blockIndent, errors) {
     }
 
     if (first === 'actions') {
-      const actionErrors = [];
-      const parsed = parseBlock(lines, j + 1, child.indent, actionErrors);
-      for (const actionError of actionErrors) {
-        if (!/The button ".*" has no action/.test(actionError.message || '')) {
-          errors.push(actionError);
-        }
-      }
+      const parsed = parseBlock(lines, j + 1, child.indent, errors);
       actions.push(...parsed.body);
       j = parsed.endIdx;
       continue;
@@ -5879,13 +6016,7 @@ function parseDetailPanel(lines, startIdx, blockIndent, errors) {
     if (first === 'actions') {
       let actionEnd = j + 1;
       while (actionEnd < lines.length && lines[actionEnd].indent > child.indent) actionEnd++;
-      const actionErrors = [];
-      const parsed = parseBlock(lines.slice(j + 1, actionEnd), 0, child.indent, actionErrors);
-      for (const actionError of actionErrors) {
-        if (!/The button ".*" has no action/.test(actionError.message || '')) {
-          errors.push(actionError);
-        }
-      }
+      const parsed = parseBlock(lines.slice(j + 1, actionEnd), 0, child.indent, errors);
       actions.push(...parsed.body);
       j = actionEnd;
       continue;
@@ -6686,6 +6817,22 @@ function parseSave(tokens, line) {
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a variable and target. Example: save new_user to Users' };
   }
+  if (String(tokens[pos].value || '').toLowerCase() === 'updated') {
+    pos++;
+    const record = tokens[pos];
+    if (!record || (record.type !== TokenType.IDENTIFIER && record.type !== TokenType.KEYWORD)) {
+      return { error: "Use update <record> at <url> for selected-record UI updates. Example: update selected_deal at /api/deals/:id/approve" };
+    }
+    const toIdx = tokens.findIndex((t, idx) => idx > pos && String(t.rawValue ?? t.value ?? '').toLowerCase() === 'to');
+    if (toIdx === -1) {
+      return { error: `Use update ${record.value} at /api/... for selected-record UI updates.` };
+    }
+    const url = tokenPathText(tokens.slice(toIdx + 1));
+    if (!url) {
+      return { error: `Use update ${record.value} at /api/... for selected-record UI updates.` };
+    }
+    return { error: `Use update ${record.value} at ${url} for selected-record UI updates.` };
+  }
   // Reject inline object/array/string literals. Clear's "one operation per
   // line" philosophy says assign first, then save — and the compiler can't
   // emit a correct db.insert/update from an inline {...} anyway (we saw
@@ -6743,10 +6890,10 @@ function parseSave(tokens, line) {
   return { node };
 }
 
-function parseRemoveFrom(tokens, line) {
-  let pos = 1; // skip "remove from"
+function parseDeleteFrom(tokens, line) {
+  let pos = 1; // skip "delete from"
   if (pos >= tokens.length) {
-    return { error: 'The remove statement needs a target. Example: remove from Users where age is less than 18' };
+    return { error: 'The delete statement needs a target. Example: delete from Users where age is less than 18' };
   }
   const target = tokens[pos].value;
   pos++;
@@ -7727,6 +7874,13 @@ function parseButton(lines, startIdx, blockIndent, errors) {
 
   if (body.length === 0) {
     errors.push({ line, message: `The button "${label}" has no action — add code that runs when clicked, indented below it. Example:\n  button "${label}":\n    show "clicked!"` });
+  } else if (!hasExecutableBody(body)) {
+    errors.push({ line, message: `The button "${label}" has no executable action — comments explain behavior, but they do not run. Example:\n  button "${label}":\n    change selected_deal's status from 'pending' to 'approved'\n    update selected_deal at /api/deals/:id/approve` });
+  } else {
+    const vagueUpdate = firstRecordUpdateWithoutChange(body);
+    if (vagueUpdate) {
+      errors.push({ line: vagueUpdate.line || line, message: `The button "${label}" updates ${vagueUpdate.recordVar} but does not say what data changes. It needs a change line before it. Example:\n  button "${label}":\n    change ${vagueUpdate.recordVar}'s status from 'pending' to 'approved'\n    update ${vagueUpdate.recordVar} at ${vagueUpdate.url}` });
+    }
   }
 
   return { node: buttonNode(label, body, line), endIdx };

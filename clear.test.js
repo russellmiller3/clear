@@ -4315,11 +4315,16 @@ describe('CRUD operations', () => {
     expect(node.condition).toBeDefined();
   });
 
-  it('parses remove from', () => {
-    const ast = parse(`remove from Users where age is less than 18`);
+  it('parses delete from', () => {
+    const ast = parse(`delete from Users where age is less than 18`);
     expect(ast.errors).toHaveLength(0);
     const node = ast.body.find(n => n.type === 'crud');
     expect(node.operation).toBe('remove');
+  });
+
+  it('rejects remove from for database deletion with delete wording', () => {
+    const ast = parse(`remove from Users where age is less than 18`);
+    expect(ast.errors.some(e => e.message.includes('Use delete from Users'))).toBe(true);
   });
 });
 
@@ -5962,11 +5967,11 @@ when user calls GET /api/items/:id:
     expect(result.javascript).toContain('{ id: incoming?.id }');
   });
 
-  it('compiles remove where to filter object', () => {
+  it('compiles delete where to filter object', () => {
     const result = compileProgram(`
 build for javascript backend
 when user calls DELETE /api/items/:id:
-  remove from Items where id is incoming's id
+  delete from Items where id is incoming's id
   send back 'deleted'
     `);
     expect(result.javascript).toContain("db.remove('items', { id: incoming?.id })");
@@ -6828,7 +6833,7 @@ describe('Compiler - auth middleware injection', () => {
 build for javascript backend
 when user calls DELETE /api/items/:id:
   requires auth
-  remove from Items where id is incoming's id
+  delete from Items where id is incoming's id
   send back 'deleted'
     `);
     expect(result.javascript).toContain("require('./clear-runtime/auth')");
@@ -16726,8 +16731,10 @@ page 'Deals' at '/cro':
   page header 'CRO Review':
     subtitle '5 deals waiting'
     actions:
-      button 'Refresh'
-      button 'Export'`);
+      button 'Refresh':
+        get deals from /api/deals
+      button 'Export':
+        get exported_deals from /api/deals/export`);
     expect(ast.errors).toHaveLength(0);
     const page = ast.body.find(n => n.type === NodeType.PAGE);
     const header = page.body.find(n => n.type === 'page_header');
@@ -16743,8 +16750,10 @@ page 'Deals' at '/cro':
   page header 'CRO Review':
     subtitle '5 deals waiting'
     actions:
-      button 'Refresh'
-      button 'Export'`);
+      button 'Refresh':
+        get deals from /api/deals
+      button 'Export':
+        get exported_deals from /api/deals/export`);
     expect(r.errors).toHaveLength(0);
     expect(r.html).toContain('data-page-header="true"');
     expect(r.html).toContain('class="clear-page-title text-2xl"');
@@ -16810,7 +16819,8 @@ page 'Deals' at '/cro':
         page header 'CRO Review':
           subtitle '5 deals waiting'
           actions:
-            button 'Refresh'
+            button 'Refresh':
+              get deals from /api/deals/pending
         tab strip:
           tab 'Pending' to '/cro'
           tab 'Approved' to '/approved'`);
@@ -16946,8 +16956,12 @@ page 'Deals' at '/cro':
     text selected_deal's customer
     display selected_deal's amount as dollars called 'Value'
     actions:
-      button 'Reject'
-      button 'Approve'`);
+      button 'Reject':
+        change selected_deal's status from 'pending' to 'rejected'
+        update selected_deal at /api/deals/:id/reject
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve`);
     expect(ast.errors).toHaveLength(0);
     const page = ast.body.find(n => n.type === NodeType.PAGE);
     const panel = page.body.find(n => n.type === 'detail_panel');
@@ -16972,14 +16986,121 @@ page 'Deals' at '/cro':
     text selected_deal's customer
     display selected_deal's amount as dollars called 'Value'
     actions:
-      button 'Reject'
-      button 'Approve'`);
+      button 'Reject':
+        change selected_deal's status from 'pending' to 'rejected'
+        update selected_deal at /api/deals/:id/reject
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve`);
     expect(r.errors).toHaveLength(0);
     expect(r.html).toContain('data-detail-panel="true"');
     expect(r.html).toContain('data-detail-for="selected_deal"');
     expect(r.html).toContain('clear-detail-actions');
     expect(r.html).toContain('Reject');
     expect(r.html).toContain('Approve');
+  });
+
+  it('rejects detail action buttons that explain behavior only in comments', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        // Approves the selected deal`);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('has no executable action');
+  });
+
+  it('parses 14-year-old detail action syntax as a record update plus data load', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve
+        get pending_deals from /api/deals/pending`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const panel = page.body.find(n => n.type === 'detail_panel');
+    const approve = panel.actions[0];
+    expect(approve.body[0].type).toBe(NodeType.FIELD_CHANGE);
+    expect(approve.body[0].recordVar).toBe('selected_deal');
+    expect(approve.body[0].field).toBe('status');
+    expect(approve.body[0].fromValue.value).toBe('pending');
+    expect(approve.body[0].toValue.value).toBe('approved');
+    expect(approve.body[1].type).toBe(NodeType.API_CALL);
+    expect(approve.body[1].method).toBe('PUT');
+    expect(approve.body[1].recordVar).toBe('selected_deal');
+    expect(approve.body[2].method).toBe('GET');
+    expect(approve.body[2].targetVar).toBe('pending_deals');
+  });
+
+  it('parses 14-year-old detail delete syntax as selected-record deletion plus data load', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Delete':
+        delete selected_deal from /api/deals/:id
+        get pending_deals from /api/deals/pending`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const panel = page.body.find(n => n.type === 'detail_panel');
+    const deleteButton = panel.actions[0];
+    expect(deleteButton.body[0].type).toBe(NodeType.API_CALL);
+    expect(deleteButton.body[0].method).toBe('DELETE');
+    expect(deleteButton.body[0].recordVar).toBe('selected_deal');
+    expect(deleteButton.body[0].url).toBe('/api/deals/:id');
+    expect(deleteButton.body[1].method).toBe('GET');
+    expect(deleteButton.body[1].targetVar).toBe('pending_deals');
+  });
+
+  it('rejects selected-record updates that do not name the changed field', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        update selected_deal at /api/deals/:id/approve`);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('needs a change line before it');
+  });
+
+  it('rejects old save-updated wording for selected-record UI actions', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        save updated selected_deal to /api/deals/:id/approve`);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('Use update selected_deal at /api/deals/:id/approve');
+  });
+
+  it('compiles selected-record deletes without sending a request body', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Delete':
+        delete selected_deal from /api/deals/:id
+        get pending_deals from /api/deals/pending`);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || '';
+    const deleteFetchIndex = js.indexOf("fetch(\"/api/deals/\" + _id");
+    expect(deleteFetchIndex >= 0).toBe(true);
+    const deleteFetchEnd = js.indexOf(');', deleteFetchIndex);
+    const deleteFetch = js.slice(deleteFetchIndex, deleteFetchEnd);
+    expect(deleteFetch).toContain("method: 'DELETE'");
+    expect(deleteFetch).not.toContain('body:');
   });
 
   it('initializes selected row state for detail panels', () => {
@@ -20610,7 +20731,7 @@ describe('Guardrails - validator', () => {
 create a Products table:
   name, required
 define function clear_products():
-  remove from Products where name is 'test'
+  delete from Products where name is 'test'
   return 'done'
 agent 'Bot' receiving msg:
   can use: clear_products
@@ -20663,7 +20784,7 @@ agent 'PublicBot' receiving msg:
 create a Products table:
   name, required
 define function nuke_products():
-  remove from Products where name is 'all'
+  delete from Products where name is 'all'
   return 'done'
 agent 'SafeBot' receiving msg:
   can use: nuke_products
@@ -27863,7 +27984,7 @@ page 'App':
     expect(out).toContain('Review');
   });
 
-  it('wires table and detail Approve buttons to a matching row action endpoint', () => {
+  it('wires table actions to matching row action endpoints without wiring detail buttons by label', () => {
     const src = `build for web and javascript backend
 database is local memory
 
@@ -27892,6 +28013,42 @@ page 'App' at '/':
       button 'Approve'`;
 
     const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('has no action');
+  });
+
+  it('wires detail Approve buttons from explicit 14-year-old action syntax', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+page 'App' at '/':
+  on page load get pending from '/api/deals/pending'
+
+  display pending as table showing customer, status with actions:
+    'Approve' is primary
+
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve
+        get pending from /api/deals/pending`;
+
+    const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const js = result.javascript || '';
     const html = result.html || '';
@@ -27905,6 +28062,9 @@ page 'App' at '/':
 
     expect(html).toContain('data-detail-for="selected_deal"');
     expect(html).toContain('data-action="approve"');
+    expect(js).toContain("_record[\"status\"] = \"approved\"");
+    expect(js).toContain("fetch(\"/api/deals/\" + _id + \"/approve\"");
+    expect(js).not.toContain("document.querySelector('[data-detail-for=\"selected_deal\"] [data-action=\"approve\"]')");
     expect(js).toContain("_state.selected_deal");
   });
 

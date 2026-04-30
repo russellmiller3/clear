@@ -14,7 +14,7 @@ LAYOUT:
 DATAFLOW:
 Employee -> POST /api/requests -> Requests table
 Ops team -> GET /api/requests/new -> table -> detail panel
-Ops team -> PUT /api/requests/:id -> assigned or resolved
+Ops team -> update selected request -> assigned or resolved
 */
 
 build for web and javascript backend
@@ -191,9 +191,15 @@ page 'Request Queue' at '/':
             text selected_request's status
             actions:
               button 'Assign':
-                // Calls queue-generated PUT /api/requests/:id/assign with selected_request, updates status, records the assignment decision, and refreshes new requests.
+                change selected_request's status from 'new' to 'assigned'
+                update selected_request at /api/requests/:id/assign
+                get new_requests from '/api/requests/new'
+                get all_requests from '/api/requests'
               button 'Resolve':
-                // Calls queue-generated PUT /api/requests/:id/resolve with selected_request, updates status, records the resolution, and refreshes new requests.
+                change selected_request's status from 'new' to 'resolved'
+                update selected_request at /api/requests/:id/resolve
+                get new_requests from '/api/requests/new'
+                get all_requests from '/api/requests'
 
         section 'Submit Request' with style app_card:
           subheading 'Submit Request'

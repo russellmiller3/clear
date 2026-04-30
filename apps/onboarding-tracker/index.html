@@ -390,33 +390,33 @@ body {
       </div>
       <div class="clear-detail-actions" data-detail-actions="true">
     <button class="btn btn-primary" id="btn_Mark_Active" data-clear-uat-id="button_210_Mark_Active" data-clear-control-kind="button" data-action="mark-active" data-clear-line="210">Mark Active</button>
-    <button class="btn btn-primary" id="btn_Escalate" data-clear-uat-id="button_211_Escalate" data-clear-control-kind="button" data-action="escalate" data-clear-line="211">Escalate</button>
-    <button class="btn btn-primary" id="btn_Email" data-clear-uat-id="button_212_Email" data-clear-control-kind="button" data-action="email" data-clear-line="212">Email</button>
+    <button class="btn btn-primary" id="btn_Escalate" data-clear-uat-id="button_214_Escalate" data-clear-control-kind="button" data-action="escalate" data-clear-line="214">Escalate</button>
+    <button class="btn btn-primary" id="btn_Email" data-clear-uat-id="button_218_Email" data-clear-control-kind="button" data-action="email" data-clear-line="218">Email</button>
       </div>
     </aside>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="214">
-    <h2 class="text-lg font-semibold text-base-content" data-clear-line="215">New Customer</h2>
-    <fieldset class="fieldset mb-4" data-clear-line="216">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="223">
+    <h2 class="text-lg font-semibold text-base-content" data-clear-line="224">New Customer</h2>
+    <fieldset class="fieldset mb-4" data-clear-line="225">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer name</legend>
       <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Customer name">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="217">
+    <fieldset class="fieldset mb-4" data-clear-line="226">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
       <input id="input_company" class="input input-bordered w-full" type="text" placeholder="Company">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="218">
+    <fieldset class="fieldset mb-4" data-clear-line="227">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
       <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="219">
+    <fieldset class="fieldset mb-4" data-clear-line="228">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Account manager</legend>
       <input id="input_account_manager" class="input input-bordered w-full" type="text" placeholder="Account manager">
     </fieldset>
-    <button class="btn btn-primary" id="btn_Add_Customer" data-clear-uat-id="button_220_Add_Customer" data-clear-control-kind="button" data-clear-line="220">Add Customer</button>
+    <button class="btn btn-primary" id="btn_Add_Customer" data-clear-uat-id="button_229_Add_Customer" data-clear-control-kind="button" data-clear-line="229">Add Customer</button>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="226">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Steps" data-clear-line="227">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="235">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Steps" data-clear-line="236">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Steps</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Steps_table">
@@ -462,23 +462,40 @@ body {
 // --- Runtime ---
 function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
 function _toast(msg, type) {
+  const variant = String(type || 'success').replace(/^alert-/, '');
   let c = document.getElementById('_toast_container');
   if (!c) {
-    c = document.createElement('div'); c.id = '_toast_container';
-    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    c = document.createElement('div');
+    c.id = '_toast_container';
+    c.className = 'toast toast-end toast-bottom';
+    c.setAttribute('aria-live', 'polite');
+    c.style.cssText = 'z-index:9999;pointer-events:none;';
     document.body.appendChild(c);
   }
   const icons = {
     error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
     success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
     info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
   };
-  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
-  const icon = icons[type] || icons.info;
+  const variants = { error: 'alert-error', success: 'alert-success', warning: 'alert-warning', info: 'alert-info' };
+  const cls = variants[variant] || variants.success;
+  const icon = icons[variant] || icons.info;
   const el = document.createElement('div');
+  el.setAttribute('role', 'alert');
+  el.setAttribute('data-clear-toast', variant);
   el.className = 'alert ' + cls + ' shadow-lg text-sm';
-  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
-  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:min(400px, calc(100vw - 2rem));border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  const iconSlot = document.createElement('span');
+  iconSlot.innerHTML = icon;
+  el.appendChild(iconSlot.firstElementChild || iconSlot);
+  const message = document.createElement('span');
+  message.style.flex = '1';
+  message.textContent = String(msg);
+  el.appendChild(message);
+  const timer = document.createElement('div');
+  timer.style.cssText = 'position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%';
+  el.appendChild(timer);
   if (!document.getElementById('_toast_style')) {
     const s = document.createElement('style'); s.id = '_toast_style';
     s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
@@ -779,6 +796,78 @@ document.getElementById('btn_Refresh').addEventListener('click', async function(
   _btn.innerHTML = _btnHTML;
   _recompute();
 });
+document.getElementById('btn_Mark_Active').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Mark_Active');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_customer;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["status"];
+      if (_current !== "onboarding") throw new Error('Expected status to be onboarding before changing it to active');
+      _record["status"] = "active";
+    }
+    { const _record = _state.selected_customer;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/customers/" + _id + "/mark-active", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/customers/:id/mark-active]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:213]', e.message); return _state.customers; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Escalate').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Escalate');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_customer;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["status"];
+      if (_current !== "onboarding") throw new Error('Expected status to be onboarding before changing it to escalated');
+      _record["status"] = "escalated";
+    }
+    { const _record = _state.selected_customer;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/customers/" + _id + "/escalate", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/customers/:id/escalate]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:217]', e.message); return _state.customers; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Email').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Email');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_customer;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["status"];
+      if (_current !== "onboarding") throw new Error('Expected status to be onboarding before changing it to email');
+      _record["status"] = "email";
+    }
+    { const _record = _state.selected_customer;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/customers/" + _id + "/email", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/customers/:id/email]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:221]', e.message); return _state.customers; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
 document.getElementById('btn_Add_Customer').addEventListener('click', async function() {
     if (_state.name === '' || _state.name == null) { _toast('name is required', 'error'); return; }
     if (_state.company === '' || _state.company == null) { _toast('company is required', 'error'); return; }
@@ -790,8 +879,8 @@ document.getElementById('btn_Add_Customer').addEventListener('click', async func
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/customers", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ name: _state.name, company: _state.company, email: _state.email, account_manager: _state.account_manager }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/customers] [clear:221]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:222]', e.message); return _state.customers; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/customers] [clear:230]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:231]', e.message); return _state.customers; });
     _state.name = "";
     _state.company = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }

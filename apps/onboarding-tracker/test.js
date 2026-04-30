@@ -143,21 +143,21 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user create a customer with name is 'Test' , company is 'TestCo'", async () => {
-      // clear:232
+      // clear:241
       _response = await fetch(_baseUrl + "/api/customers", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "name": "Test", "company": "TestCo" })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:233
+      // clear:242
       _expectSuccess(_response);
-      // clear:234
+      // clear:243
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("creating a customer should require login", async () => {
-      // clear:237
+      // clear:246
       _response = await fetch(_baseUrl + "/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
