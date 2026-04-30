@@ -484,9 +484,18 @@ button 'Add':
 button 'Refresh':
   get todos from '/api/todos'
 
-add button 'Reload' that get todos from '/api/todos'
+add button 'Reload' that gets todos from '/api/todos'
 button 'Reset' for todo is ''
 ```
+
+After `that`, write the action as a phrase about the button: `gets`, `sends`,
+`increases`, `decreases`, `goes to`, `stores`, etc. Indented button bodies stay
+imperative: `get todos from '/api/todos'`.
+
+Toast-only buttons are valid when the button only creates notification data:
+`button 'Notify': show toast 'Saved'`. Domain actions like Approve, Reject,
+Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or
+audit row they change.
 
 ## Display
 
@@ -621,8 +630,8 @@ when search changes after 250ms:
 ```clear
 step = 1
 
-button 'Next' that increase step by 1
-button 'Back' that decrease step by 1
+button 'Next' that increases step by 1
+button 'Back' that decreases step by 1
 
 if step is 1:
   heading 'Step 1: Enter your name'
@@ -954,7 +963,7 @@ section 'Nav' with style page_navbar:
   heading 'Acme'
   link 'Features' to '#features'
   link 'Pricing' to '#pricing'
-  button 'Get Started' that go to '/signup'
+  button 'Get Started' that goes to '/signup'
 
 # Centered hero
 section 'Hero' with style page_hero:
@@ -3305,7 +3314,9 @@ show alert 'Something went wrong'
 show notification 'New message received'
 ```
 
-All three are synonyms — they display a temporary notification message. Compiles to a DaisyUI toast that auto-dismisses after 3 seconds.
+All three are synonyms. The quoted message is required because it is the
+notification data. They display a temporary notification message and compile to
+a DaisyUI toast that auto-dismisses after 3 seconds.
 
 ## Hide Element
 

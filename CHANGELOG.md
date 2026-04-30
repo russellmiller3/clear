@@ -6,6 +6,27 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Inline button actions read like English
+
+The piece between "the button has a data effect" and "a person can read the
+line out loud." Inline `button ... that ...` actions now prefer third-person
+verbs like `gets`, `sends`, `increases`, `goes to`, and `stores`.
+
+**What shipped:**
+- Inline button actions normalize third-person verbs before parsing, so `that gets deals` runs the same action as the imperative `get deals`.
+- The validator warns on base-form inline actions like `button 'Load' that get deals`.
+- Featured-template hygiene catches the same grammar issue using the shared helper.
+- Approval Queue and Internal Request Queue no longer hide domain actions behind notification-only bodies; they name the queue URL, selected record, status update, audit row, and refresh effect.
+- The hygiene gate counts toast as notification data, but domain-action buttons must also name the business data they change.
+- `show toast`, `show alert`, and `show notification` now compile-error when the message data is missing.
+- Syntax docs, AI instructions, Meph prompt, repo prompt, philosophy, README, features, and intent docs now teach the rule.
+
+**Why for launch:** Clear source is part of the product. Generated apps should read like a competent human wrote them, not like a stitched-together command list.
+
+**Tests:** `node clear.test.js` passed 2,783 checks. `node playground/server.test.js` passed 257 checks.
+
+---
+
 ## 2026-04-30 - Meph model picker keeps tools across providers
 
 The piece between "Anthropic is capped" and "Meph still works like Meph." Studio chat now has a model picker for Anthropic Haiku plus OpenRouter Claude, GLM, DeepSeek, and Kimi. Switching models sends the full chat history on the next turn so the new model is not dropped into the middle of a conversation blind.
@@ -32,14 +53,14 @@ now name the generated endpoint or record update immediately under the control.
 **What shipped:**
 - Deal Desk, approval queue, onboarding tracker, support triage, internal request queue, and ecommerce templates now avoid narrative `#` comments.
 - Deal Desk and onboarding action buttons now state the queue-generated data effect under the visible control.
-- Featured-template hygiene test catches narrative `#` comments, bare buttons, and row action shortcuts without data notes.
+- Featured-template hygiene test catches narrative `#` comments, bare buttons, row action shortcuts without data notes, and domain-action buttons that only name notification feedback.
 - AI instructions, Meph's prompt, and philosophy now record the rule.
 
 **Why for launch:** Marcus can inspect a generated app and see what each action
 does without guessing. That matters for trust. A button that only says
 "Approve" is theater; a button that names the record update is software.
 
-**Tests:** `node playground/server.test.js` now includes 246 passing checks,
+**Tests:** `node playground/server.test.js` now includes 257 passing checks,
 including the featured-template hygiene gate.
 
 ---

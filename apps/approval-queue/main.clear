@@ -179,9 +179,9 @@ page 'Approval Queue' at '/':
             text selected_request's status
             actions:
               button 'Approve':
-                show toast 'Sign in to approve this request'
+                // Calls queue-generated PUT /api/requests/:id/approve with selected_request, updates status, records the decision, and refreshes pending requests.
               button 'Reject':
-                show toast 'Sign in to reject this request'
+                // Calls queue-generated PUT /api/requests/:id/reject with selected_request, updates status, records the decision, and refreshes pending requests.
 
         section 'New Request' with style app_card:
           subheading 'Submit Request'

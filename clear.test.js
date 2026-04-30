@@ -2338,13 +2338,51 @@ describe('button', () => {
   });
 
   it('parses add button that <action> as an inline action body', () => {
-    const source = `add button "Load" that get deals from '/api/deals'`;
+    const source = `add button "Load" that gets deals from '/api/deals'`;
     const ast = parse(source);
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].type).toBe(NodeType.BUTTON);
     expect(ast.body[0].label).toBe('Load');
     expect(ast.body[0].body).toHaveLength(1);
     expect(ast.body[0].body[0].type).toBe(NodeType.API_CALL);
+  });
+
+  it('warns when inline button actions use base-form verbs after "that"', () => {
+    const result = compileProgram(`button "Load" that get deals from '/api/deals'`, { target: 'web' });
+    const warning = result.warnings.find(w => String(w.message || w).includes('Use "gets deals"'));
+    expect(result.errors).toHaveLength(0);
+    expect(warning).toBeTruthy();
+  });
+
+  it('accepts third-person inline button actions after "that"', () => {
+    const examples = [
+      `button "Load" that gets deals from '/api/deals'`,
+      `form is {}\nbutton "Save" that sends form to '/api/save'`,
+      `step = 1\nbutton "Next" that increases step by 1`,
+      `button "Details" that goes to '/details'`,
+      `invite_link is 'https://example.com'\nbutton "Copy" that copies invite_link to clipboard`,
+      `settings is 'dark'\nbutton "Save Settings" that stores settings`,
+    ];
+
+    for (const source of examples) {
+      const result = compileProgram(source, { target: 'web' });
+      const warnings = result.warnings.filter(w => /Use ".+" so the button reads/i.test(String(w.message || w)));
+      expect(result.errors).toHaveLength(0);
+      expect(warnings).toHaveLength(0);
+    }
+  });
+
+  it('keeps imperative button bodies and for-actions out of verb agreement warnings', () => {
+    const sources = [
+      `button "Reload":\n  get deals from '/api/deals'`,
+      `button "Reset" for count is 0`,
+    ];
+
+    for (const source of sources) {
+      const result = compileProgram(source, { target: 'web' });
+      const warnings = result.warnings.filter(w => /Use ".+" so the button reads/i.test(String(w.message || w)));
+      expect(warnings).toHaveLength(0);
+    }
   });
 
   it('parses button for <action> as an inline action body', () => {
@@ -11362,6 +11400,12 @@ describe('Toast', () => {
     const ast = parse("page 'App':\n  button 'Go':\n    show toast 'Check' as warning");
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].body[0].body[0].variant).toBe('warning');
+  });
+
+  it('errors when toast has no message data', () => {
+    const result = compileProgram("build for web\npage 'App':\n  button 'Notify':\n    show toast");
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Toast needs a message');
   });
 
   it('compiles to _toast call with DaisyUI class', () => {

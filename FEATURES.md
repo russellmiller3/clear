@@ -131,7 +131,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Checkbox | `'Active' is a checkbox input saved as active` | |
 | Textarea | `'Bio' is a textarea input saved as bio` | |
 | File input | `'Upload' is a file input saved as doc` | |
-| Buttons | `button 'Save':` + action block | |
+| Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback |
 | Sections | `section 'Results':` | With style presets |
 | App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs) |
 | Tabs | `tab 'Settings':` | Auto-grouped |
@@ -172,7 +172,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 
 | UI Action | Syntax | Notes |
 |-----------|--------|-------|
-| Toast | `show toast 'Saved!'` | Also `show alert`, `show notification` |
+| Toast | `show toast 'Saved!'` | Message required; also `show alert`, `show notification` |
 | Show/hide | `hide the sidebar` | Toggle element visibility |
 | Loading | `show loading` / `hide loading` | Overlay spinner |
 | Clipboard | `copy X to clipboard` | |

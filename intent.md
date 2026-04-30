@@ -55,7 +55,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |
 | `STORE` | `store settings` / `store settings as 'prefs'` | Save to localStorage (JSON) |
 | `RESTORE` | `restore settings` / `restore settings as 'prefs'` | Load from localStorage (JSON) |
-| `TOAST` | `show toast 'message'` / `show alert 'message'` | Toast notification UI |
+| `TOAST` | `show toast 'message'` / `show alert 'message'` | Toast notification UI; message is required data |
 | `TRANSACTION` | `transaction:` + block | Atomic database operations (begin/commit/rollback) |
 | `RETRY` | `retry 3 times:` + block | Retry loop with catch |
 | `TIMEOUT` | `with timeout 5 seconds:` + block | `Promise.race` with timeout |
@@ -128,7 +128,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `LOADING_ACTION` | `show loading` / `hide loading` | Loading indicator |
 | `ON_CHANGE` | `when X changes:` + block | Reactive input handler |
 
-Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table control, and row drilldown must produce a UAT control with a plain `dataEffect`. Input-like controls must name the state variable they change with `saved as` or `saves to`. Buttons may use `that` or `for` as connector words when the inline action names the endpoint, state variable, or record it changes.
+Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table control, and row drilldown must produce a UAT control with a plain `dataEffect`. Input-like controls must name the state variable they change with `saved as` or `saves to`. Buttons may use `that` or `for` as connector words when the inline action names the endpoint, state variable, or record it changes. Toast/alert/notification actions count as notification data only when they include a message. Domain action buttons like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change. After `that`, use third-person verbs because the button is the subject: `gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`.
 
 ### Backend (Phase 5-6)
 

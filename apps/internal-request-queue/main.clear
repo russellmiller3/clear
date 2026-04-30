@@ -191,9 +191,9 @@ page 'Request Queue' at '/':
             text selected_request's status
             actions:
               button 'Assign':
-                show toast 'Sign in to assign this request'
+                // Calls queue-generated PUT /api/requests/:id/assign with selected_request, updates status, records the assignment decision, and refreshes new requests.
               button 'Resolve':
-                show toast 'Sign in to resolve this request'
+                // Calls queue-generated PUT /api/requests/:id/resolve with selected_request, updates status, records the resolution, and refreshes new requests.
 
         section 'Submit Request' with style app_card:
           subheading 'Submit Request'

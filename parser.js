@@ -119,6 +119,7 @@
 // =============================================================================
 
 import { tokenize, tokenizeLine, TokenType } from './tokenizer.js';
+import { normalizeThirdPersonInteractionAction } from './lib/verb-agreement.js';
 
 // =============================================================================
 // AST NODE TYPES
@@ -1741,7 +1742,7 @@ const CANONICAL_DISPATCH = new Map([
       return ctx.i + 1;
     }
     // Toast: show toast|alert|notification 'message' [as warning/error/success]
-    if (ctx.tokens.length >= 3 && (ctx.tokens[1].value === 'toast' || ctx.tokens[1].value === 'alert' || ctx.tokens[1].value === 'notification')) {
+    if (ctx.tokens.length >= 2 && (ctx.tokens[1].value === 'toast' || ctx.tokens[1].value === 'alert' || ctx.tokens[1].value === 'notification')) {
       let tPos = 2;
       let message = '';
       if (tPos < ctx.tokens.length && ctx.tokens[tPos].type === TokenType.STRING) {
@@ -7678,6 +7679,18 @@ function isButtonActionConnector(token) {
   return raw === 'that' || raw === 'for' || token?.canonical === 'for_target';
 }
 
+function buttonActionConnectorKind(token) {
+  const raw = String(token?.rawValue ?? token?.value ?? '').toLowerCase();
+  if (raw === 'that') return 'that';
+  if (raw === 'for' || token?.canonical === 'for_target') return 'for';
+  return raw || token?.canonical || '';
+}
+
+function buttonActionTokenText(token) {
+  if (token?.type === TokenType.STRING) return JSON.stringify(token.value);
+  return String(token?.rawValue ?? token?.value ?? '');
+}
+
 function parseButton(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
@@ -7692,12 +7705,22 @@ function parseButton(lines, startIdx, blockIndent, errors) {
   const connectorIdx = tokens.findIndex((token, idx) => idx > pos && isButtonActionConnector(token));
   if (connectorIdx !== -1 && connectorIdx < tokens.length - 1) {
     const actionTokens = tokens.slice(connectorIdx + 1);
+    const connector = buttonActionConnectorKind(tokens[connectorIdx]);
+    const inlineActionText = actionTokens.map(buttonActionTokenText).join(' ');
+    const parserActionText = connector === 'that'
+      ? normalizeThirdPersonInteractionAction(inlineActionText)
+      : inlineActionText;
+    const parserActionTokens = parserActionText === inlineActionText
+      ? actionTokens
+      : tokenizeLine(parserActionText, line);
     const { body } = parseBlock([{
-      tokens: actionTokens,
+      tokens: parserActionTokens,
       indent: blockIndent + 1,
-      raw: actionTokens.map(t => t.rawValue ?? t.value).join(' '),
+      raw: parserActionText,
     }], 0, blockIndent, errors);
-    return { node: buttonNode(label, body, line), endIdx: startIdx + 1 };
+    const node = buttonNode(label, body, line);
+    node.inlineAction = { connector, text: inlineActionText, normalizedText: parserActionText, line };
+    return { node, endIdx: startIdx + 1 };
   }
 
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);

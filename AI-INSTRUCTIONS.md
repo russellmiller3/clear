@@ -246,6 +246,11 @@ control as a bare label. A `button`, slider, menu, dropdown, checkbox, text
 input, row action, table action shortcut, or auto-wired queue action must name
 the variable, record, endpoint, queue, or audit row it changes.
 
+A toast, alert, or notification counts as a data effect because the message is
+notification data. It must include a quoted message. But a domain action like
+Approve, Reject, Assign, Resolve, Save, or Delete cannot use a toast as its only
+effect. It must also name the record, endpoint, queue, or audit row it changes.
+
 ```clear
 // BAD: the reader sees a button but not the data effect
 button 'Approve'
@@ -260,9 +265,13 @@ button 'Approve':
 read better:
 
 ```clear
-add button 'Refresh' that get deals from '/api/deals'
+add button 'Refresh' that gets deals from '/api/deals'
 button 'Reset' for count is 0
 ```
+
+After `that`, use the third-person action because the button is the subject:
+`gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`. Use imperative
+verbs only in indented action bodies and lifecycle hooks.
 
 ## Assignment Convention
 
@@ -767,7 +776,7 @@ when user sends lead to /api/leads:
 | Wrong | Right | Why |
 |-------|-------|-----|
 | `show heading 'Title'` | `heading 'Title'` | `heading` is the keyword, `show` is for variables |
-| `button 'Save'` (no body) | `button 'Save':` + indented action, or `button 'Save' that send form to '/api/save'` | Empty buttons are a compile error |
+| `button 'Save'` (no body) | `button 'Save':` + indented action, or `button 'Save' that sends form to '/api/save'` | Empty buttons are a compile error |
 | `→` in diagrams | `>` or `-->` | Unicode arrows break monospace alignment |
 | `does X require login` | `X should require login` | `should` is canonical |
 | `with title is 'X'` | `with title: 'X'` | Colon is cleaner (both work) |
@@ -1225,7 +1234,7 @@ The label auto-generates from the variable name: `subtotal` -> "Subtotal",
 ```
 show loading                    # full-page spinner overlay
 hide loading                    # remove spinner
-show toast 'Saved!'             # temporary notification (also: alert, notification)
+show toast 'Saved!'             # temporary notification with message data (also: alert, notification)
 hide the sidebar                # set display:none on element
 copy invite_link to clipboard   # navigator.clipboard.writeText
 download report as 'data.csv'  # trigger browser file download
@@ -1770,7 +1779,7 @@ show Card:
 ```
 step = 1
 
-button 'Next' that increase step by 1
+button 'Next' that increases step by 1
 
 if step is 1:
   show heading 'Enter your name'
@@ -2287,7 +2296,7 @@ button 'Delete':
 ## Page Navigation
 
 ```
-button 'Go to Dashboard' that go to '/dashboard'
+button 'Go to Dashboard' that goes to '/dashboard'
 ```
 
 ## Full Example

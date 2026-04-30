@@ -41,6 +41,7 @@
 //   │    ├─ validateCallTargets ...... undefined agents etc  │
 //   │    ├─ validateMemberAccessTypes  field on primitive    │
 //   │    ├─ validateTypedCallArgs .... literal vs annotation │
+//   │    ├─ validateInteractionVerbAgreement inline buttons  │
 //   │    └─ validateInferredTypes ... (error) text in arith  │
 //   │                                                       │
 //   │  Errors block compilation. Warnings are advisory.     │
@@ -55,6 +56,10 @@
 //   2. Add call to validate() function (line ~48)
 //   3. Update this diagram
 //   4. Add test to clear.test.js
+//   5. If the pass protects generated app readability, update AI-INSTRUCTIONS.md
+//
+// Current error pass addendum: validateToastPayload rejects toast / alert /
+// notification nodes that do not include message data.
 //
 // DEPENDENCIES: parser.js (NodeType enum)
 // DEPENDENTS:   index.js (called in compileProgram pipeline)
@@ -62,6 +67,7 @@
 // =============================================================================
 
 import { NodeType } from './parser.js';
+import { checkInlineInteractionVerbAgreement } from './lib/verb-agreement.js';
 
 // Built-in names that don't need to be declared
 const BUILTINS = new Set([
@@ -101,6 +107,7 @@ export function validate(ast) {
   validateFieldNames(ast.body, warnings);
   validateEndpointURLs(ast.body, errors, warnings);
   validateSecurity(ast.body, errors, warnings);
+  validateToastPayload(ast.body, errors);
   validateDuplicateEndpoints(ast.body, warnings);
   validateDisplayActions(ast.body, warnings);
   validateEndpointResponses(ast.body, warnings);
@@ -123,9 +130,35 @@ export function validate(ast) {
   validateReservedEndpointPrefixes(ast.body, errors);
   validateTermination(ast.body, warnings);
   validateDeprecatedKeywords(ast.body, warnings);
+  validateInteractionVerbAgreement(ast.body, warnings);
   validateEmailTriggers(ast.body, warnings);
   validateRouteBlocks(ast.body, warnings);
   return { errors, warnings };
+}
+
+function validateToastPayload(body, errors) {
+  walkAll(body, (node) => {
+    if (!node || node.type !== NodeType.TOAST) return;
+    if (typeof node.message === 'string' && node.message.trim().length > 0) return;
+    errors.push({
+      line: node.line || 0,
+      message: "Toast needs a message. Use: show toast 'Saved' or show alert 'Something went wrong'.",
+    });
+  });
+}
+
+function validateInteractionVerbAgreement(body, warnings) {
+  walkAll(body, (node) => {
+    if (!node || node.type !== NodeType.BUTTON || node.inlineAction?.connector !== 'that') return;
+    const issue = checkInlineInteractionVerbAgreement(node.inlineAction.text, 'button');
+    if (!issue) return;
+    warnings.push({
+      line: node.inlineAction.line || node.line || 0,
+      severity: 'style',
+      code: 'interaction_verb_agreement',
+      message: issue.message,
+    });
+  });
 }
 
 // Phase 5.1 — every `email <role> when <entity>'s status changes to <value>:`

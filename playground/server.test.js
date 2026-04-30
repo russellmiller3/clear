@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -33,16 +34,37 @@ function templateHygieneFindings(source) {
     return { line: nextLine, indent: nextIndent, trimmed: nextLine.trim() };
   }
 
+  function isFeedbackEffect(text) {
+    return /^(?:show|shows|display|displays)\b.*\b(?:toast|alert|notification)\b/i.test(text.trim());
+  }
+
   function namesDataEffect(text) {
-    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|filters?|sorts?|selects?|copies?|downloads?|uploads?|exports?|opens?|closes?|shows?|hides?|stores?|go(?:es)?\s+to|navigates?(?:\s+to)?)\b/i.test(text) ||
-      /\bto\s+['"][^'"]+['"]/i.test(text) ||
-      /^[a-zA-Z_]\w*(?:'s\s+\w+)?\s*(?:=|\bis\b)\s+/.test(text);
+    const effectText = text.trim().replace(/^\/\/\s*/, '');
+    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|records?|queues?|filters?|sorts?|selects?|copies?|downloads?|uploads?|exports?|stores?|toggles?|clears?|resets?|go(?:es)?\s+to|navigates?(?:\s+to)?)\b/i.test(effectText) ||
+      isFeedbackEffect(effectText) ||
+      /\bto\s+['"][^'"]+['"]/i.test(effectText) ||
+      /^[a-zA-Z_]\w*(?:'s\s+\w+)?\s*(?:=|\bis\b)\s+/.test(effectText);
+  }
+
+  function namesNonFeedbackDataEffect(text) {
+    const effectText = text.trim().replace(/^\/\/\s*/, '');
+    return namesDataEffect(effectText) && !isFeedbackEffect(effectText);
+  }
+
+  function isDomainActionLabel(label) {
+    return /\b(approve|reject|assign|resolve|close|escalate|submit|save|delete|remove|archive|restore|publish|unpublish|send|route|mark|counter)\b/i.test(label);
   }
 
   function nextIndentedLineNamesDataEffect(index, baseIndent) {
     const next = nextMeaningfulLine(index);
     return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
-      (next.trimmed.startsWith('//') || namesDataEffect(next.trimmed));
+      namesDataEffect(next.trimmed);
+  }
+
+  function nextIndentedLineNamesNonFeedbackDataEffect(index, baseIndent) {
+    const next = nextMeaningfulLine(index);
+    return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
+      namesNonFeedbackDataEffect(next.trimmed);
   }
 
   function isInputLikeLine(trimmed) {
@@ -61,12 +83,21 @@ function templateHygieneFindings(source) {
       if (looksLikeNarrative) findings.push(`${i + 1}: use // or /* */ for non-nav comment: ${trimmed}`);
     }
 
-    const button = line.match(/^(\s*)(?:add\s+)?button\s+['"][^'"]+['"](?:\s*(:)\s*|\s+(that|for)\s+(.+))?$/i);
+    const button = line.match(/^(\s*)(?:add\s+)?button\s+(['"])([^'"]+)\2(?:\s*(:)\s*|\s+(that|for)\s+(.+))?$/i);
     if (button) {
       const baseIndent = button[1].length;
-      const inlineAction = button[4] || '';
-      if (!namesDataEffect(inlineAction) && (button[2] !== ':' || !nextIndentedLineNamesDataEffect(i, baseIndent))) {
+      const label = button[3];
+      const connector = (button[5] || '').toLowerCase();
+      const inlineAction = button[6] || '';
+      if (connector === 'that') {
+        const agreement = checkInlineInteractionVerbAgreement(inlineAction, 'button');
+        if (agreement) findings.push(`${i + 1}: ${agreement.message}`);
+      }
+      if (!namesDataEffect(inlineAction) && (button[4] !== ':' || !nextIndentedLineNamesDataEffect(i, baseIndent))) {
         findings.push(`${i + 1}: button must immediately declare what it does with data`);
+      }
+      if (isDomainActionLabel(label) && !namesNonFeedbackDataEffect(inlineAction) && (button[4] !== ':' || !nextIndentedLineNamesNonFeedbackDataEffect(i, baseIndent))) {
+        findings.push(`${i + 1}: domain action button must name the record, endpoint, queue, or audit row it changes`);
       }
     }
 
@@ -266,16 +297,48 @@ try {
   checkbox 'Only mine' saves to only_mine
   slider 'Budget' saves to budget
   menu 'Sort by' saves to sort_order
-  button 'Open Details' that go to '/details'
+  button 'Open Details' that goes to '/details'
   button 'Refresh':
     get deals from '/api/deals'`);
     assert(findings.length === 0, 'template hygiene accepts interactive controls that name their data effects');
   }
 
   {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  button 'Refresh' that get deals from '/api/deals'
+  button 'Save' that send form to '/api/save'
+  button 'Next' that increase step by 1`);
+    assert(findings.some(f => f.includes('Use "gets deals"')), 'template hygiene catches get/gets agreement');
+    assert(findings.some(f => f.includes('Use "sends form"')), 'template hygiene catches send/sends agreement');
+    assert(findings.some(f => f.includes('Use "increases step"')), 'template hygiene catches increase/increases agreement');
+  }
+
+  {
     const findings = templateHygieneFindings(`page 'Mystery' at '/':
   button 'Do it' that make magic happen`);
     assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene rejects vague button actions a 14-year-old could not trace to data');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Approvals' at '/':
+  button 'Approve':
+    show toast 'Sign in to approve this request'`);
+    assert(!findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene counts toast as notification data');
+    assert(findings.some(f => f.includes('domain action button must name')), 'template hygiene rejects domain-action buttons that only name notification data');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Approvals' at '/':
+  button 'Approve':
+    // Shows a notification after login.`);
+    assert(findings.some(f => f.includes('domain action button must name')), 'template hygiene rejects vague domain-action comments that only describe feedback');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Notice' at '/':
+  button 'Notify':
+    show toast 'Saved'`);
+    assert(findings.length === 0, 'template hygiene accepts toast-only buttons when the button is only a notification control');
   }
 
   // =========================================================================

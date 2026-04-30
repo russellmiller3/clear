@@ -320,6 +320,7 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - Colons signal blocks: anything with `:` at the end has an indented body below
 - `#` comments are navigation only. Use `//` for one-line explanation and `/* */` for longer notes.
 - Every button or row action must state its data effect immediately below it.
+- Toasts count as notification data only when they include a message. Domain actions like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change.
 
 ## TBD — Use Placeholders When the Spec Is Open (Lean Lesson 1)
 
@@ -1227,6 +1228,7 @@ Safer: always use multi-word variable names. `todo_id` never collides; `id` some
 - DON'T use `returning:` alone (use `returning JSON text:`)
 - DON'T use `#` for prose. `#` is for navigation; use `//` or `/* */` for explanation.
 - DON'T write a button or row action without the data effect immediately below it.
+- DON'T use a toast as the only effect for a domain action. A toast has notification data, but it does not say which business record changed.
 - DON'T leave a `-` or `+` at the start of a line when editing code. These are diff-markers — not valid syntax. The parser reads `-  send back draft` as `-(send back)` and emits a "stray '-' at the start" error. When adapting code from diffs or chat messages, strip every leading `-` and `+` before saving.
 
 ## Studio Layout Modes

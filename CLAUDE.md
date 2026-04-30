@@ -309,7 +309,7 @@ Always have an opinionated take on the right way to do things, backed by facts o
 ## Obvious Over Cryptic Rule
 UI controls must say what they do in plain words. Never use a bare arrow, icon, or symbol as the only label for an action — pair it with a word (e.g. "Hide Chat" not "◀", "Delete" not "✕" alone). The label should change to reflect current state ("Hide Chat" → "Show Chat"). A user should never have to guess what a button does.
 
-Interactive Clear syntax must also name the data effect. Buttons, dropdowns, checkboxes, sliders, menus, row actions, table controls, and text inputs must immediately say which state variable, endpoint, record, queue, or audit row they change. `that` and `for` are allowed connector words when they keep inline actions readable.
+Interactive Clear syntax must also name the data effect. Buttons, dropdowns, checkboxes, sliders, menus, row actions, table controls, and text inputs must immediately say which state variable, endpoint, record, queue, or audit row they change. Toasts count as notification data only when they have message text. Domain action buttons like Approve, Reject, Assign, Resolve, Save, or Delete must name the business record, endpoint, queue, or audit row too. `that` and `for` are allowed connector words when they keep inline actions readable. After `that`, use third-person verbs because the button is the subject: `gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`.
 
 ## Branching
 Always create a new branch before changing files. Never edit, patch, stage, or commit on main.

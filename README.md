@@ -171,8 +171,8 @@ agent 'Cleanup' runs every 1 hour:
 ```clear
 restore settings
 // load from localStorage on page load
-button 'Save' that store settings
-  // persist to localStorage
+button 'Save' that stores settings
+// persist to localStorage
 ```
 
 ### Multi-File Apps
