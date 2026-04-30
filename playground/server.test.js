@@ -134,6 +134,16 @@ try {
   }
 
   {
+    const { status, data } = await post('/api/compile', { source: "target: foobar\nshow 42" });
+    assert(status === 200, 'returns compile response for invalid target');
+    assert(data.compileTrace && data.compileTrace.ok === false, 'returns compile trace on failed compile');
+    assert(data.compileTrace.pasteText.includes('CLEAR COMPILE TRACE v1'), 'compile trace has pasteable header');
+    assert(data.compileTrace.pasteText.includes('target: foobar'), 'compile trace includes source context');
+    assert(data.compileTrace.pasteText.includes('Repair instructions:'), 'compile trace includes repair instructions');
+    assert(data.compileTrace.pasteText.includes('Full Clear source:'), 'compile trace includes full source');
+  }
+
+  {
     const { status, data } = await post('/api/compile', { source: "show '<script>alert(1)</script>'" });
     assert(data.errors.length === 0, 'compiles XSS attempt without error');
   }
@@ -438,6 +448,8 @@ try {
     assert(status === 200, 'serves ide.html at /');
     assert(text.includes('Clear'), 'ide.html contains Clear');
     assert(text.includes('CodeMirror') || text.includes('codemirror'), 'ide.html references CodeMirror');
+    assert(text.includes('Copy compiler error'), 'ide.html labels trace button as Copy compiler error');
+    assert(!text.includes('Copy trace for Codex'), 'ide.html does not use Codex-specific trace label');
   }
 
   {

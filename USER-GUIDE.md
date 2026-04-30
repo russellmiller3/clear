@@ -1754,6 +1754,15 @@ clear check main.clear
 Great for quick feedback while editing. Catches undefined variables,
 missing fields, security issues, and typos.
 
+If validation fails and you want the compiler error fixed, print the trace packet:
+
+```bash
+clear check main.clear --trace
+```
+
+Paste the whole `CLEAR COMPILE TRACE v1` packet into the debugging session. In Studio, use the
+**Copy compiler error** button that appears above compile errors.
+
 ### Run
 
 Compile and immediately run a backend server:
@@ -1847,6 +1856,7 @@ clear build main.clear --json      # Machine-readable JSON output
 clear build main.clear --quiet     # Suppress non-essential output
 clear build main.clear --no-test   # Skip test gate
 clear build main.clear --auto-fix  # Auto-patch errors during build
+clear check main.clear --trace     # Print copy-pasteable compile trace
 ```
 
 ### Exit Codes

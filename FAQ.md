@@ -106,6 +106,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
+- [How do I share a compile failure trace?](#how-do-i-share-a-compile-failure-trace)
 - [How do I add a new approval action?](#how-do-i-add-a-new-approval-action)
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
 - [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
@@ -716,6 +717,18 @@ Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:
 **Source:** `playground/ide.html` CSS block starting at "BUILDER MODE v0.1" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
 
 **Full spec:** `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
+
+---
+
+### How do I share a compile failure trace?
+
+When Clear refuses to compile, copy the compiler-error packet instead of describing the error by hand.
+
+- **Studio:** click **Copy compiler error** above the compile errors.
+- **CLI:** run `clear check main.clear --trace` or `clear build main.clear --trace`.
+- **JSON callers:** read `compileTrace.pasteText` from `/api/compile` or `--json` output.
+
+Paste the full `CLEAR COMPILE TRACE v1` packet. It includes the source context, normalized errors, full source when bounded, and repair instructions for deciding whether the fix belongs in the Clear source or the compiler.
 
 ---
 

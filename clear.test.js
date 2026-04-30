@@ -377,6 +377,52 @@ describe('Parser - Error Reporting', () => {
   });
 });
 
+describe('Compile Trace', () => {
+  it('creates a pasteable trace when compilation fails', () => {
+    const source = [
+      'target: foobar',
+      'show 42',
+    ].join('\n');
+    const result = compileProgram(source, { target: 'web' });
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.compileTrace).toBeDefined();
+    expect(result.compileTrace.ok).toBe(false);
+    expect(result.compileTrace.errorCount).toBe(result.errors.length);
+    expect(result.compileTrace.errors[0].line).toBe(1);
+    expect(result.compileTrace.errors[0].sourceLine).toBe('target: foobar');
+    expect(result.compileTrace.errors[0].context.map(l => l.text)).toContain('target: foobar');
+    expect(result.compileTrace.pasteText).toContain('CLEAR COMPILE TRACE v1');
+    expect(result.compileTrace.pasteText).toContain('target: foobar');
+    expect(result.compileTrace.pasteText).toContain('Please fix this Clear compilation failure');
+    expect(result.compileTrace.pasteText).toContain('Repair instructions:');
+    expect(result.compileTrace.pasteText).toContain('If the Clear source is wrong, return corrected Clear source.');
+    expect(result.compileTrace.pasteText).toContain('If the compiler/parser/validator is wrong, fix that layer and add a regression test.');
+    expect(result.compileTrace.pasteText).toContain('Full Clear source:');
+  });
+
+  it('does not create a trace for a clean compile', () => {
+    const result = compileProgram('show 42');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.compileTrace).toBeNull();
+  });
+
+  it('keeps the packet bounded for very large broken programs', () => {
+    const source = [
+      'target: foobar',
+      ...Array.from({ length: 350 }, (_, index) => `line_${index} = ${index}`),
+    ].join('\n');
+    const result = compileProgram(source, { target: 'web', sourceName: 'large.clear' });
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.compileTrace.fullSourceIncluded).toBe(false);
+    expect(result.compileTrace.pasteText).toContain('Full source omitted');
+    expect(result.compileTrace.pasteText).toContain('target: foobar');
+    expect(result.compileTrace.pasteText.length).toBeLessThan(12000);
+  });
+});
+
 // =============================================================================
 // PARSER - MULTI-LINE PROGRAMS
 // =============================================================================

@@ -50,6 +50,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
 - 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
 - Ghost Meph: route /api/chat to local Claude Code, Ollama, or OpenRouter for $0 research sweeps.
+- Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
 - Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 
 **Developer tooling (Dave-first wedge)**
@@ -404,6 +405,7 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | Light/dark theme | Toggle |
 | Save to Desktop | Download .clear file |
 | Compile + run + test | All from browser |
+| Copy compiler error | Compile errors show a "Copy compiler error" button with source context, diagnostics, and repair instructions |
 | Source maps | Click preview element -> jumps to Clear source line |
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |
 | Builder Mode (v0.3) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. v0.2 added a Marcus-first tile gallery on empty preview (5 featured apps + "See more"). v0.3 added a 3-ship counter (source pane defaults visible for first 3 successful Publishes, hidden after) + click-to-edit (clicking an iframe element prefills the chat input with `Change the "<text>" button/link — `). |

@@ -1,4 +1,14 @@
-# Handoff — 2026-04-29 morning (post CC-5 cycle 1)
+# Handoff - 2026-04-30 compiler-error trace
+
+## Where you are now
+
+- **What shipped here:** failed compiles now produce a copyable compiler-error packet across Studio, CLI, and API responses. The packet includes source context, normalized diagnostics, repair instructions, and bounded source.
+- **Done means clean:** no branch is complete until feature work is committed, unrelated dirty work is preserved or removed, the branch is merged, the branch is deleted, and `git status` is clean.
+- **Verification target:** compiler tests, Studio server tests, CLI `--trace`, browser copy loop, and malformed-source stress cases.
+
+---
+
+## Previous handoff - 2026-04-29 morning
 
 ## Where you are
 

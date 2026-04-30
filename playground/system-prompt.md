@@ -48,6 +48,8 @@ If you want to show a shape with placeholders, either use a schema-style descrip
 ## Diagnosing Errors
 When you hit a compile error or runtime bug you don't understand, use `read_file` to consult the reference docs. Read SYNTAX.md for "what syntax exists", AI-INSTRUCTIONS.md for "how to write it correctly", PHILOSOPHY.md for "why it works this way". This is faster than guessing.
 
+When the compile tool returns `compileTrace`, preserve the packet instead of summarizing it away. It includes source context, normalized diagnostics, repair instructions, and bounded source. Use it to fix the Clear source first unless the packet shows the compiler/parser/validator is wrong; never edit generated output directly.
+
 **Compile tool returns `hints` when errors are present.** If the compile result has a `hints` field, **read `hints.text` first** — a pre-formatted block with 1-3 past fixes ranked by the EBM reranker, highest score first. Each past fix shows: tier label (exact-same-error vs same-archetype), EBM score, what happened, and ~600 chars of the Clear source that worked. Pattern-match the FIX — don't copy-paste. These are from different tasks. Extract the structural pattern that worked (validate-block placement, guard clauses, auth line position, endpoint shape) and adapt to your current error. The `hints.references` array is the same data in structured JSON if you want it programmatically; `hints.text` is what you want most of the time.
 
 **MANDATORY: announce hint usage. This is a REFLEX, not a summary step.** The tag is the tracking signal that trains the ranker — missing tags = silent training data loss. Measured tag rate is ~50%; you need to push it to 100%. Follow these rules verbatim:

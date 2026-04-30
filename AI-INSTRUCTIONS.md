@@ -2932,6 +2932,14 @@ and metadata the agent can act on programmatically.
 **Use `check` before `build`.** `check` is faster — it validates without compiling.
 Use it in the tight edit loop. Use `build` when you need the output files.
 
+**When `check` or `build` fails, copy the compiler-error packet instead of paraphrasing.**
+In Studio, click **Copy compiler error**. In the CLI, run
+`clear check main.clear --trace` or `clear build main.clear --trace`. Tooling
+should pass through `compileTrace.pasteText` when present. The packet includes
+source context, diagnostics, repair instructions, and the bounded source. Use
+it to decide whether to fix the Clear source or file a compiler/parser/validator
+bug with a regression test. Never edit generated output directly.
+
 **Use `lint` before shipping.** It categorizes warnings into security, quality, and
 other. Zero security warnings is the bar for shipping.
 

@@ -400,8 +400,8 @@ app.post('/api/compile', (req, res) => {
   try {
     const { source } = req.body;
     if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
-    if (!source.trim()) return res.json({ errors: [], warnings: [], html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
-    const result = compileProgram(source, { sourceMap: true });
+    if (!source.trim()) return res.json({ errors: [], warnings: [], compileTrace: null, html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
+    const result = compileProgram(source, { sourceMap: true, sourceName: 'Studio editor' });
     _builderState.compiles_today++;
     _builderState.last_compile_at = Date.now();
     _builderState.last_compile_ok = (result.errors || []).length === 0;
@@ -410,6 +410,7 @@ app.post('/api/compile', (req, res) => {
     res.json({
       errors: result.errors || [],
       warnings: result.warnings || [],
+      compileTrace: result.compileTrace || null,
       html: result.html || null,
       javascript: result.javascript || null,
       serverJS: result.serverJS || null,

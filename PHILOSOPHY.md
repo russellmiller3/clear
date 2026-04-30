@@ -797,6 +797,7 @@ Error messages aren't afterthoughts — they're features. Every compiler error s
 3. **Say how to fix it** with a concrete example of correct syntax
 4. **Link to docs** — point to the SYNTAX.md or USER-GUIDE.md section that explains the feature
 5. **Be one-click fixable** in Studio when the fix is unambiguous
+6. **Be copyable for repair** when it leaves Studio -- include source context, normalized diagnostics, repair instructions, and enough Clear source to decide whether the bug is in the program or the compiler
 
 Meph should love error messages. When Meph gets an error, it should contain
 enough information to fix the bug without reading the source. The error IS

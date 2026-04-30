@@ -229,6 +229,11 @@ node cli/clear.js build app.clear --out dist/
 node cli/clear.js build app.clear --out dist/ --no-test
 ```
 
+If a check or build fails, copy the full compiler-error packet instead of a
+summary. Studio exposes **Copy compiler error**. The CLI exposes the same packet
+with `node cli/clear.js check app.clear --trace` or
+`node cli/clear.js build app.clear --trace`.
+
 The auto-generated `test.js` tests every endpoint:
 - GET returns 200
 - POST with valid data returns 201

@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Compiler-error packets make failures handoff-ready
+
+The piece between "Clear failed to compile" and "the debugging session has enough context to fix the right layer." Compile failures now produce a copy-pasteable compiler-error packet with source context, normalized diagnostics, and explicit instructions for deciding whether the fix belongs in the Clear program or the compiler.
+
+**What shipped:**
+- `compileProgram()` now attaches `compileTrace` on failed compiles and leaves it `null` on clean compiles.
+- Studio's compile-error panel now shows **Copy compiler error** so Russell can paste the packet directly into a debugging session.
+- `/api/compile`, CLI `--json`, and CLI `--trace` all expose the same packet.
+- CLI parse/check errors also get trace packets, not just full build errors.
+
+**Why for launch:** this turns every compiler failure into a clean handoff. Marcus can send the packet instead of narrating what happened, and Russell can fix the Clear source or compiler bug without reconstructing context from screenshots.
+
+**Tests:** core trace construction has red-first coverage, clean compiles assert no trace, and `/api/compile` verifies the packet reaches Studio callers.
+
+---
+
 ## 2026-04-29 (afternoon) — Routing primitive: `route X by FIELD:` replaces if-chains
 
 The piece between "Marcus customer wants a custom routing variant" and "Russell rewrites 50 lines of nested if-chains by hand for every variant." The new primitive lifts the assignment pattern into a first-class language construct. Every Marcus app that decides who-gets-the-lead based on size / region / territory / round-robin now collapses from 50+ lines to 5.

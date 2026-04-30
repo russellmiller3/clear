@@ -27,6 +27,7 @@
 //   --quiet          Suppress non-essential output
 //   --no-test        Skip compiler test gate on build
 //   --auto-fix       Auto-patch patchable errors during build
+//   --trace          Print a copy-pasteable compile failure trace on errors
 //
 // Exit codes:
 //   0  Success
@@ -64,6 +65,7 @@ function parseFlags(args) {
     noTest: args.includes('--no-test'),
     autoFix: args.includes('--auto-fix'),
     stdout: args.includes('--stdout'),
+    trace: args.includes('--trace'),
   };
   const outIdx = args.indexOf('--out');
   flags.outDir = outIdx !== -1 ? resolve(args[outIdx + 1]) : null;
@@ -83,6 +85,13 @@ function output(data, flags) {
     if (data.error) console.error(`Error: ${data.error}`);
     if (data.errors) data.errors.forEach(e => console.error(`  Line ${e.line}: ${e.message}`));
     if (data.warnings) data.warnings.forEach(w => console.warn(`  Warning: ${w}`));
+    if (data.compileTrace) {
+      if (flags.trace) {
+        console.error('\n' + data.compileTrace.pasteText);
+      } else {
+        console.error('  Compile trace available. Re-run with --trace or --json to copy the debugging packet.');
+      }
+    }
     if (data.message) console.log(data.message);
     if (data.files) data.files.forEach(f => console.log(`  Created ${f}`));
   }
@@ -268,10 +277,15 @@ async function checkCommand(args) {
   const loaded = loadSource(file);
   if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
 
-  const { parse, validate } = await getCompiler();
+  const { parse, validate, buildCompileTrace } = await getCompiler();
   const ast = parse(loaded.source);
   if (ast.errors.length > 0) {
-    output({ ok: false, errors: ast.errors, warnings: [] }, flags);
+    output({
+      ok: false,
+      errors: ast.errors,
+      warnings: [],
+      compileTrace: buildCompileTrace(loaded.source, { errors: ast.errors, warnings: [] }, { sourceName: loaded.filePath, target: flags.target || 'check' }),
+    }, flags);
     process.exit(1);
   }
 
@@ -282,6 +296,9 @@ async function checkCommand(args) {
     warnings: validation.warnings,
     nodeCount: ast.body.length,
   };
+  if (!result.ok) {
+    result.compileTrace = buildCompileTrace(loaded.source, result, { sourceName: loaded.filePath, target: flags.target || 'check' });
+  }
   output(result, flags);
   process.exit(result.ok ? 0 : 1);
 }
@@ -470,7 +487,7 @@ async function buildCommand(args) {
   const loaded = loadSource(file);
   if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
 
-  const options = { sourceMap: true };
+  const options = { sourceMap: true, sourceName: loaded.filePath };
   if (flags.target) options.target = flags.target;
   options.moduleResolver = makeModuleResolver(loaded.filePath);
 
@@ -478,7 +495,7 @@ async function buildCommand(args) {
   const result = compileProgram(loaded.source, options);
 
   if (result.errors.length > 0) {
-    output({ ok: false, errors: result.errors, warnings: result.warnings }, flags);
+    output({ ok: false, errors: result.errors, warnings: result.warnings, compileTrace: result.compileTrace }, flags);
     process.exit(1);
   }
 
@@ -1233,7 +1250,7 @@ function helpCommand(flags = {}) {
   if (flags.json) {
     output({
       commands: ['build', 'check', 'info', 'fix', 'test', 'eval', 'agent', 'run', 'serve', 'lint', 'dev', 'init', 'package', 'help'],
-      globalFlags: ['--json', '--quiet', '--no-test', '--auto-fix', '--stdout', '--out <dir>', '--port <n>'],
+      globalFlags: ['--json', '--quiet', '--no-test', '--auto-fix', '--stdout', '--trace', '--out <dir>', '--port <n>'],
       exitCodes: { 0: 'success', 1: 'compile error', 2: 'runtime error', 3: 'file not found', 4: 'test failure' },
     }, flags);
     return;
@@ -1266,6 +1283,7 @@ Flags:
   --out <dir>      Output directory
   --port <n>       Server port (default: 3000)
   --stdout         Print compiled output to stdout
+  --trace          Print copy-pasteable compile trace on errors
   --no-test        Skip compiler test gate
   --auto-fix       Auto-patch fixable errors
 

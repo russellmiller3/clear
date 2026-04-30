@@ -31,6 +31,7 @@ import { compile, resolveModules, generateEvalEndpoints } from './compiler.js';
 import { validate } from './validator.js';
 import { SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './synonyms.js';
 import { generateUATContract, generateBrowserUAT } from './lib/uat-contract.js';
+import { buildCompileTrace } from './lib/compileTrace.js';
 
 /**
  * Parse and compile a Clear program in one step.
@@ -138,6 +139,9 @@ function compileProgram(source, options = {}) {
   const stats = computeStats(ast, source, result.warnings);
   stats.ok = result.errors.length === 0;
   result.stats = stats;
+  result.compileTrace = result.errors.length > 0
+    ? buildCompileTrace(source, result, options)
+    : null;
   return result;
 }
 
@@ -171,6 +175,7 @@ export {
   compile,
   parse,
   validate,
+  buildCompileTrace,
   generateEvalEndpoints,
 
   // Low-level API
