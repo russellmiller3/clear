@@ -2385,6 +2385,38 @@ describe('button', () => {
     }
   });
 
+  it('rejects domain-action buttons that only show toast feedback', () => {
+    const result = compileProgram(`button "Approve":\n  show toast 'Deal approved' as success`, { target: 'web' });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('cannot only show a toast');
+    expect(result.errors[0].message).toContain('change the record');
+  });
+
+  it('rejects inline domain-action buttons that only show toast feedback', () => {
+    const result = compileProgram(`button "Approve" that shows toast 'Deal approved' as success`, { target: 'web' });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('cannot only show a toast');
+    expect(result.errors[0].message).toContain('change the record');
+  });
+
+  it('rejects toast-only feedback for all domain-action button labels', () => {
+    for (const label of ['Approve', 'Reject', 'Assign', 'Resolve', 'Save', 'Delete']) {
+      const result = compileProgram(`button "${label}":\n  show toast 'Done' as success`, { target: 'web' });
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('cannot only show a toast');
+    }
+  });
+
+  it('allows domain-action buttons when toast follows a real data mutation', () => {
+    const result = compileProgram(`button "Approve":\n  change selected_deal's status from 'pending' to 'approved'\n  update selected_deal at /api/deals/:id/approve\n  show toast 'Deal approved' as success`, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('allows notification buttons whose business action is the notification itself', () => {
+    const result = compileProgram(`button "Notify":\n  show toast 'Saved' as success`, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+  });
+
   it('parses button for <action> as an inline action body', () => {
     const source = `button "Reset" for count is 0`;
     const ast = parse(source);

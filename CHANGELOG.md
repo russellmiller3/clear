@@ -39,6 +39,7 @@ verbs like `gets`, `sends`, `increases`, `goes to`, and `stores`.
 - Featured-template hygiene catches the same grammar issue using the shared helper.
 - Approval Queue and Internal Request Queue no longer hide domain actions behind notification-only bodies; they name the queue URL, selected record, status update, audit row, and refresh effect.
 - The hygiene gate counts toast as notification data, but domain-action buttons must also name the business data they change.
+- The compiler now rejects domain-action buttons like `Approve` or `Save` when their only effect is a toast.
 - `show toast`, `show alert`, and `show notification` now compile-error when the message data is missing.
 - Syntax docs, AI instructions, Meph prompt, repo prompt, philosophy, README, features, and intent docs now teach the rule.
 

@@ -502,9 +502,10 @@ After `that`, write the action as a phrase about the button: `gets`, `sends`,
 imperative: `get todos from '/api/todos'`.
 
 Toast-only buttons are valid when the button only creates notification data:
-`button 'Notify': show toast 'Saved'`. Domain actions like Approve, Reject,
-Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or
-audit row they change.
+`button 'Notify': show toast 'Saved'`. The compiler rejects domain-action labels
+like Approve, Reject, Assign, Resolve, Save, or Delete when the button only shows
+a toast. Those buttons must also name the record, endpoint, queue, or audit row
+they change.
 
 Selected-record updates need two lines: first `change <record>'s <field> from
 <old> to <new>`, then `update <record> at <url>`. A bare `update selected_deal

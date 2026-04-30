@@ -1177,6 +1177,10 @@ show toast 'Settings saved!' as success
 show alert 'Something went wrong' as error
 ```
 
+Toast can be the whole action for a notification button. It cannot be the whole
+action for a business button like Approve, Save, Reject, Resolve, Assign, or
+Delete. Those buttons must also change/update/delete/send/save the actual data.
+
 ---
 
 ## Chapter 12: Security (The Part You Can't Skip)

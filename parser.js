@@ -660,6 +660,55 @@ function firstRecordUpdateWithoutChange(body) {
   return null;
 }
 
+const DOMAIN_ACTION_BUTTON_LABELS = new Set([
+  'approve', 'reject', 'assign', 'resolve', 'save', 'delete',
+]);
+
+function isDomainActionButtonLabel(label) {
+  const firstWord = String(label || '').trim().toLowerCase().match(/[a-z]+/)?.[0] || '';
+  return DOMAIN_ACTION_BUTTON_LABELS.has(firstWord);
+}
+
+function hasToastEffect(body) {
+  return Array.isArray(body) && body.some(node => node && node.type === NodeType.TOAST);
+}
+
+function hasBusinessMutationEffect(body) {
+  if (!Array.isArray(body)) return false;
+  for (const node of body) {
+    if (!node || node.type === NodeType.COMMENT || node.type === NodeType.TOAST) continue;
+    if (node.type === NodeType.FIELD_CHANGE) return true;
+    if (node.type === NodeType.API_CALL) {
+      const method = String(node.method || '').toUpperCase();
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true;
+    }
+    if (node.type === NodeType.CRUD) {
+      const operation = String(node.operation || '').toLowerCase();
+      if (['save', 'delete', 'remove', 'update'].includes(operation)) return true;
+    }
+    if (node.type === NodeType.LIST_PUSH) return true;
+  }
+  return false;
+}
+
+function validateButtonActionBody(label, body, line, errors) {
+  if (body.length === 0) {
+    errors.push({ line, message: `The button "${label}" has no action — add code that runs when clicked, indented below it. Example:\n  button "${label}":\n    show "clicked!"` });
+    return;
+  }
+  if (!hasExecutableBody(body)) {
+    errors.push({ line, message: `The button "${label}" has no executable action — comments explain behavior, but they do not run. Example:\n  button "${label}":\n    change selected_deal's status from 'pending' to 'approved'\n    update selected_deal at /api/deals/:id/approve` });
+    return;
+  }
+  if (isDomainActionButtonLabel(label) && hasToastEffect(body) && !hasBusinessMutationEffect(body)) {
+    errors.push({ line, message: `The button "${label}" cannot only show a toast. A toast is feedback, not the business action. Add the data action too: change the record, update or delete it at an endpoint, send data to an endpoint, or save an audit/queue row.` });
+  }
+  const vagueUpdate = firstRecordUpdateWithoutChange(body);
+  if (vagueUpdate) {
+    errors.push({ line: vagueUpdate.line || line, message: `The button "${label}" updates ${vagueUpdate.recordVar} but does not say what data changes. It needs a change line before it. Example:\n  button "${label}":\n    change ${vagueUpdate.recordVar}'s status from 'pending' to 'approved'\n    update ${vagueUpdate.recordVar} at ${vagueUpdate.url}` });
+  }
+}
+
 // Phase 5: Backend
 function endpointNode(method, path, body, line) {
   return { type: NodeType.ENDPOINT, method, path, body, line };
@@ -7867,21 +7916,12 @@ function parseButton(lines, startIdx, blockIndent, errors) {
     }], 0, blockIndent, errors);
     const node = buttonNode(label, body, line);
     node.inlineAction = { connector, text: inlineActionText, normalizedText: parserActionText, line };
+    validateButtonActionBody(label, body, line, errors);
     return { node, endIdx: startIdx + 1 };
   }
 
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
-
-  if (body.length === 0) {
-    errors.push({ line, message: `The button "${label}" has no action — add code that runs when clicked, indented below it. Example:\n  button "${label}":\n    show "clicked!"` });
-  } else if (!hasExecutableBody(body)) {
-    errors.push({ line, message: `The button "${label}" has no executable action — comments explain behavior, but they do not run. Example:\n  button "${label}":\n    change selected_deal's status from 'pending' to 'approved'\n    update selected_deal at /api/deals/:id/approve` });
-  } else {
-    const vagueUpdate = firstRecordUpdateWithoutChange(body);
-    if (vagueUpdate) {
-      errors.push({ line: vagueUpdate.line || line, message: `The button "${label}" updates ${vagueUpdate.recordVar} but does not say what data changes. It needs a change line before it. Example:\n  button "${label}":\n    change ${vagueUpdate.recordVar}'s status from 'pending' to 'approved'\n    update ${vagueUpdate.recordVar} at ${vagueUpdate.url}` });
-    }
-  }
+  validateButtonActionBody(label, body, line, errors);
 
   return { node: buttonNode(label, body, line), endIdx };
 }
