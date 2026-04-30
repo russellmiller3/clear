@@ -821,7 +821,8 @@ section 'Root'  with style app_layout:   # flex h-screen
       page header 'Queue':
         subtitle 'Open work and owner actions'
         actions:
-          button 'Refresh'
+          button 'Refresh':
+            get open_items from '/api/open'
       tab strip:
         active tab is 'Open'
         tab 'Open' to '/'
@@ -1425,7 +1426,9 @@ The compiler emits a single shared `workflow_email_queue` table per app and wire
 ```clear
 display pending as table showing customer, status with actions:
   'Approve' is primary
+    // Updates the selected deal to approved, records the decision, and refreshes pending deals.
   'Reject' is danger
+    // Updates the selected deal to rejected, records the decision, and refreshes pending deals.
 ```
 
 The button labels are case-insensitive matches against the action list. Bind each button to the matching `/api/deals/:id/<action>` URL.
@@ -1974,7 +1977,8 @@ section 'Content' with style app_content:
   page header 'CRO Review':
     subtitle '5 deals waiting'
     actions:
-      button 'Refresh'
+      button 'Refresh':
+        get pending_deals from /api/deals/pending
 
   tab strip:
     active tab is 'Pending'
@@ -2006,15 +2010,25 @@ detail panel for selected_deal:
   display selected_deal's amount as dollars called 'Value'
   text selected_deal's status
   actions:
-    button 'Reject'
-    button 'Counter'
-    button 'Approve'
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending_deals from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending_deals from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending_deals from /api/deals/pending
 ```
 
 Use `detail panel for selected_row:` next to a table when a queue needs one
 selected record, facts, and final actions. The body can use normal Clear UI
 primitives. Put approval / reject / counter buttons inside `actions:` so they
-stay pinned at the bottom.
+stay pinned at the bottom. Each button must name the field change, endpoint
+update, and queue refresh.
 
 #### Blog Presets (3)
 
@@ -2126,13 +2140,13 @@ page 'Landing' at '/':
     heading 'Acme'
     link 'Features' to '#features'
     link 'Pricing' to '#pricing'
-    button 'Get Started'
+    button 'Get Started' that goes to '/signup'
 
   section 'Hero' with style page_hero:
     show text 'Ship 10x faster with AI'
     show text 'Build production apps in plain English. No frameworks, no config.'
-    button 'Start Free'
-    button 'See Demo'
+    button 'Start Free' that goes to '/signup'
+    button 'See Demo' that goes to '/demo'
 
   section 'Logos' with style logo_bar:
     show text 'Trusted by 500+ teams'
@@ -2166,7 +2180,7 @@ page 'Landing' at '/':
   section 'CTA' with style page_cta:
     show heading 'Ready to ship?'
     show text 'Start building for free. No credit card required.'
-    button 'Get Started Free'
+    button 'Get Started Free' that goes to '/signup'
 
   section 'Footer' with style page_footer:
     show text '(c) 2026 Acme Inc.'
@@ -2191,7 +2205,8 @@ page 'Dashboard' at '/':
     section 'Main' with style app_main:
       section 'Header' with style app_header:
         show heading 'Dashboard'
-        button 'New Project'
+        button 'New Project':
+          open the New Project modal
 
       section 'Body' with style app_content:
         section 'Metrics' side by side:
@@ -2221,6 +2236,7 @@ section 'Confirm Delete' with style app_modal:
   show heading 'Delete this contact?'
   show text 'This cannot be undone.'
   button 'Delete':
+    delete selected_contact from /api/contacts/:id
     close modal
   button 'Cancel':
     close modal
@@ -2232,7 +2248,8 @@ if projects list is empty:
   section 'No Projects' with style empty_state:
     show heading 'No projects yet'
     show text 'Create your first project to get started.'
-    button 'New Project'
+    button 'New Project':
+      open the New Project modal
 ```
 
 **List preset:**
@@ -2287,6 +2304,7 @@ button 'Help':
 section 'Confirm' as modal:
   heading 'Are you sure?'
   button 'Yes':
+    delete selected_item from /api/items/:id
     close modal
   button 'Cancel':
     close modal

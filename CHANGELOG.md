@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Meph-facing docs stop teaching bare controls
+
+The piece between "the compiler enforces the rule" and "Meph copies the right
+examples." The Meph-facing authoring docs no longer show interactive controls
+whose data effect is missing or hidden in a comment.
+
+**What shipped:**
+- AI instructions now show header buttons, CTAs, empty-state buttons, detail-panel actions, and modal actions with explicit data effects.
+- Syntax docs now show toast-only notification buttons as a real indented button body, not invalid one-line syntax.
+- User Guide workbench examples now give Refresh and Export buttons concrete data actions.
+- User Guide input examples now name the checkbox variable they save.
+- README raw-JavaScript escape-hatch guidance now says the button label must name the visible effect.
+- A pre-push gate now fails when Meph-facing docs teach bare buttons, inputs without saved variables, row actions without data-effect notes, or toast-only domain actions.
+
+**Why for launch:** Meph learns by copying examples. Dirty examples create dirty apps even when the compiler rule exists.
+
+**Tests:** `node scripts/interaction-doc-hygiene.test.mjs`, `node scripts/interaction-doc-hygiene.mjs`, and `node playground/server.test.js` passed.
+
+---
+
 ## 2026-04-30 - Toasts are native UI, not HTML strings
 
 The piece between "show a success message" and "ship a real component." Toasts

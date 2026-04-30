@@ -19,6 +19,12 @@ fi
 echo "🧪 Running doc-drift self-tests..."
 node scripts/doc-drift.test.mjs || exit 1
 
+echo "Running interaction doc hygiene tests..."
+node scripts/interaction-doc-hygiene.test.mjs || exit 1
+
+echo "Scanning Meph-facing docs for vague interactive controls..."
+node scripts/interaction-doc-hygiene.mjs || exit 1
+
 # Doc-drift detector: scans HEAD vs origin/main for new node types or
 # synonyms that landed without doc updates. Warning-only — never blocks
 # a push. Complements .claude/hooks/doc-cascade.mjs (which fires at

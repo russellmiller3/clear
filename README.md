@@ -200,9 +200,11 @@ show Card('Hello')
 Circular dependencies detected at compile time.
 
 ### Raw JavaScript (Escape Hatch)
+Use raw JavaScript only when Clear has no native syntax yet. The button label
+must still name the visible effect.
+
 ```clear
-button 'Custom':
-  // updates the browser title through raw JavaScript
+button 'Change Browser Title':
   script:
     document.title = 'Changed by raw JS';
 ```

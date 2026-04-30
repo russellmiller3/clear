@@ -1134,7 +1134,7 @@ image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 'Bio' is a text area saved as a bio
 'Body' is a text editor saved as a body        # rich WYSIWYG with toolbar
 'Country' is a dropdown with ['US', 'UK', 'Canada'] saved as a country
-'Newsletter' is a checkbox
+'Newsletter' is a checkbox saved as newsletter
 'Resume' is a file input saved as a resume
 ```
 
@@ -1172,7 +1172,7 @@ show loading
 response = ask claude 'Analyze this' with data
 hide loading
 
-# Show a native toast with message data rendered as text
+// Show a native toast with message data rendered as text
 show toast 'Settings saved!' as success
 show alert 'Something went wrong' as error
 ```
@@ -3018,8 +3018,10 @@ section 'Content' with style app_content:
   page header 'CRO Review':
     subtitle '5 deals waiting'
     actions:
-      button 'Refresh'
-      button 'Export'
+      button 'Refresh':
+        get pending from /api/deals/pending
+      button 'Export':
+        get export_rows from /api/deals/export
 
   tab strip:
     active tab is 'Pending'

@@ -12,6 +12,7 @@
 - `playground/factor-db.sqlite` is source/training data for the flywheel, not a disposable artifact.
 - Run `node clear.test.js` after JavaScript/runtime/compiler changes. Use the bundled Node runtime if `node` is not available on PATH.
 - A task is not done while the worktree is dirty. Before calling work complete, every change must be intentionally committed, stashed with a clear name, or removed after confirming it is disposable. No loose modified, deleted, or untracked files.
+- When a review finds a repeatable miss, do not stop at advice. Add the smallest failing check or hook that would catch it next time, then fix the current instance until that check passes.
 
 ## Branch Discipline
 
