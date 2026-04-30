@@ -24,6 +24,32 @@ function assert(condition, msg) {
 function templateHygieneFindings(source) {
   const findings = [];
   const lines = source.split(/\r?\n/);
+
+  function nextMeaningfulLine(index) {
+    let j = index + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+    const nextLine = lines[j] || '';
+    const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
+    return { line: nextLine, indent: nextIndent, trimmed: nextLine.trim() };
+  }
+
+  function namesDataEffect(text) {
+    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|filters?|sorts?|selects?|copies?|downloads?|opens?|closes?|shows?|hides?|navigates?)\b/i.test(text) ||
+      /^[a-zA-Z_]\w*(?:'s\s+\w+)?\s*(?:=|\bis\b)\s+/.test(text);
+  }
+
+  function nextIndentedLineNamesDataEffect(index, baseIndent) {
+    const next = nextMeaningfulLine(index);
+    return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
+      (next.trimmed.startsWith('//') || namesDataEffect(next.trimmed));
+  }
+
+  function isInputLikeLine(trimmed) {
+    return /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:text|number|file)\s+input\b/i.test(trimmed) ||
+      /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor)\b/i.test(trimmed) ||
+      /^(?:(?:text|number|file)\s+input|dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor)\s+['"][^'"]+['"]/i.test(trimmed);
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -34,25 +60,27 @@ function templateHygieneFindings(source) {
       if (looksLikeNarrative) findings.push(`${i + 1}: use // or /* */ for non-nav comment: ${trimmed}`);
     }
 
-    const button = line.match(/^(\s*)button\s+['"][^'"]+['"]\s*(:?)\s*$/);
+    const button = line.match(/^(\s*)(?:add\s+)?button\s+['"][^'"]+['"](?:\s*(:)\s*|\s+(that|for)\s+(.+))?$/i);
     if (button) {
       const baseIndent = button[1].length;
-      let j = i + 1;
-      while (j < lines.length && lines[j].trim() === '') j++;
-      const nextLine = lines[j] || '';
-      const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
-      if (button[2] !== ':' || nextIndent <= baseIndent || nextLine.trim().startsWith('#')) {
+      const inlineAction = button[4] || '';
+      if (!namesDataEffect(inlineAction) && (button[2] !== ':' || !nextIndentedLineNamesDataEffect(i, baseIndent))) {
         findings.push(`${i + 1}: button must immediately declare what it does with data`);
+      }
+    }
+
+    if (isInputLikeLine(trimmed) && !namesDataEffect(trimmed)) {
+      const baseIndent = (line.match(/^\s*/) || [''])[0].length;
+      if (!nextIndentedLineNamesDataEffect(i, baseIndent)) {
+        findings.push(`${i + 1}: interactive control must immediately name its data effect`);
       }
     }
 
     const actionShortcut = line.match(/^(\s*)['"][^'"]+['"]\s+is\s+(primary|secondary|danger|ghost)\s*$/);
     if (actionShortcut) {
       const baseIndent = actionShortcut[1].length;
-      const nextLine = lines[i + 1] || '';
-      const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
-      const nextTrimmed = nextLine.trim();
-      if (!(nextIndent > baseIndent && nextTrimmed.startsWith('//'))) {
+      const next = nextMeaningfulLine(i);
+      if (!(next.indent > baseIndent && next.trimmed.startsWith('//'))) {
         findings.push(`${i + 1}: row action shortcut needs an immediate // data-action note`);
       }
     }
@@ -218,6 +246,24 @@ try {
       for (const finding of templateHygieneFindings(source)) findings.push(`${name}:${finding}`);
     }
     assert(findings.length === 0, `featured templates use nav-only # comments and explicit interaction bodies (${findings.slice(0, 5).join('; ')})`);
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  'Stage' as dropdown with ['Open', 'Won']
+  checkbox 'Only mine'
+  button 'Refresh'`);
+    assert(findings.some(f => f.includes('interactive control must immediately name its data effect')), 'template hygiene catches input-like controls without data effects');
+    assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene still catches empty buttons');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  'Stage' as dropdown with ['Open', 'Won'] saves to stage_filter
+  checkbox 'Only mine' saves to only_mine
+  button 'Refresh':
+    get deals from '/api/deals'`);
+    assert(findings.length === 0, 'template hygiene accepts interactive controls that name their data effects');
   }
 
   // =========================================================================

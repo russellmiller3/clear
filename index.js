@@ -116,15 +116,15 @@ function compileProgram(source, options = {}) {
   // can find them. The compiler emits runtime stubs at these lines; this list
   // tells callers WHICH lines are stubs without re-walking the AST.
   result.placeholders = collectPlaceholders(ast);
-  // UAT contract — JSON description of every page, route, button, and API
+  // UAT contract — JSON description of every page, route, interactive control, and API
   // call in the program. Test generators walk this to know what to assert
-  // (every button click, every nav target, every endpoint hit). Cherry-picked
-  // from a 2026-04-27 Codex stash; the deeper browser-test generator that
-  // consumes this contract lands in a follow-up commit.
+  // (every input change, button click, nav target, endpoint hit, table
+  // filter/sort, and drilldown). Every control carries a dataEffect so tests
+  // can explain what user data or app state the interaction changes.
   try {
     result.uatContract = generateUATContract(ast.body);
     // Browser test script — runnable Playwright that walks every page +
-    // clicks every nav/button + screenshots every route. Null when the app
+    // clicks every nav/button, changes inputs, and screenshots every route. Null when the app
     // has no pages (backend-only). Russell's Marcus demo: every Clear app
     // gets auto-generated browser tests for free, so a chat-driven edit
     // can't silently break a screen between iterations.

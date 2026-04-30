@@ -169,9 +169,10 @@ agent 'Cleanup' runs every 1 hour:
 
 ### Browser Storage
 ```clear
-restore settings          # load from localStorage on page load
-button 'Save':
-  store settings          # persist to localStorage
+restore settings
+// load from localStorage on page load
+button 'Save' that store settings
+  // persist to localStorage
 ```
 
 ### Multi-File Apps
@@ -201,6 +202,7 @@ Circular dependencies detected at compile time.
 ### Raw JavaScript (Escape Hatch)
 ```clear
 button 'Custom':
+  // updates the browser title through raw JavaScript
   script:
     document.title = 'Changed by raw JS';
 ```

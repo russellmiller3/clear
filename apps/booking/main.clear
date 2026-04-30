@@ -146,7 +146,7 @@ page 'Room Booking' at '/':
     'Guest Name' is a text input saved as a guest_name
     'Date' is a text input saved as a date
     'Time' is a text input saved as a time
-    'Room' is a dropdown with ['Conference A', 'Conference B', 'Lounge']
+    'Room' is a dropdown with ['Conference A', 'Conference B', 'Lounge'] saved as a room
     'Notes' is a text area saved as a notes
     button 'Book Now':
       send guest_name and date and time and room and notes to '/api/bookings'

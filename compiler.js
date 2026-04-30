@@ -10303,7 +10303,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const stateDefaults = {};
   for (const inp of inputNodes) {
     const name = sanitizeName(inp.variable);
-    stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : '""';
+    stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : inp.inputType === 'yes/no' ? 'false' : '""';
   }
   // Scan for API calls -- register their target variables as state
   function findApiTargets(nodes) {
@@ -10942,7 +10942,11 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     if (inp.inputType === 'file') continue;
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
-    lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
+    if (inp.inputType === 'yes/no') {
+      lines.push(`  document.getElementById('${inputId}').checked = Boolean(_state.${name});`);
+    } else {
+      lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
+    }
   }
 
   // Render text templates: replace {varname} with current values from
@@ -11071,9 +11075,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     const isNum = inp.inputType === 'number' || inp.inputType === 'percent';
+    const isCheckbox = inp.inputType === 'yes/no';
     const isFile = inp.inputType === 'file';
-    const eventType = isFile ? 'change' : 'input';
-    const valueExpr = isFile ? 'e.target.files[0] || null' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
+    const eventType = isFile || isCheckbox ? 'change' : 'input';
+    const valueExpr = isFile ? 'e.target.files[0] || null' : isCheckbox ? 'e.target.checked' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
     lines.push(`document.getElementById('${inputId}').addEventListener('${eventType}', function(e) {`);
     lines.push(`  _state.${name} = ${valueExpr};`);
     lines.push(`  _recompute();`);

@@ -439,9 +439,10 @@ page 'My App':
 'What needs to be done?' is a text input saved as a todo
 'How much?' is a number input saved as a price
 'Notes' is a text area saved as a note
-'Gift Wrap' is a checkbox
-'Color' is a dropdown with ['Red', 'Green', 'Blue']
-'Body' is a text editor saved as body          # rich WYSIWYG (Quill)
+'Gift Wrap' is a checkbox saved as a gift_wrap
+'Color' is a dropdown with ['Red', 'Green', 'Blue'] saved as a color
+'Body' is a text editor saved as body
+// rich WYSIWYG (Quill)
 'Resume' is a file input saved as a resume
 
 # Articles (a, an, the) are optional but encouraged
@@ -451,6 +452,10 @@ page 'My App':
 # Legacy form still works
 'Name' is a text input that saves to name
 ```
+
+Every interactive input must name the state variable it changes on the same
+line. This applies to text inputs, dropdowns, checkboxes, menus, sliders, file
+inputs, text areas, and text editors.
 
 `text editor` (alias: `rich text editor`, `rich text`) mounts a Quill editor
 via CDN with toolbar (headers, bold/italic/underline/strike, lists, links,
@@ -469,12 +474,18 @@ button 'Submit':
   send name and email to '/api/signup'
 
 button 'Add':
-  send todo as a new todo to '/api/todos'   # 'as a new todo' is for the reader
-  get todos from '/api/todos'               # named fetch -- result stored in 'todos'
-  todo is ''                                # clear the input
+  send todo as a new todo to '/api/todos'
+  // 'as a new todo' is for the reader.
+  get todos from '/api/todos'
+  // named fetch; result is stored in todos.
+  todo is ''
+  // clear the input.
 
 button 'Refresh':
   get todos from '/api/todos'
+
+add button 'Reload' that get todos from '/api/todos'
+button 'Reset' for todo is ''
 ```
 
 ## Display
@@ -610,8 +621,8 @@ when search changes after 250ms:
 ```clear
 step = 1
 
-button 'Next': increase step by 1
-button 'Back': decrease step by 1
+button 'Next' that increase step by 1
+button 'Back' that decrease step by 1
 
 if step is 1:
   heading 'Step 1: Enter your name'
@@ -943,8 +954,7 @@ section 'Nav' with style page_navbar:
   heading 'Acme'
   link 'Features' to '#features'
   link 'Pricing' to '#pricing'
-  button 'Get Started':
-    go to '/signup'
+  button 'Get Started' that go to '/signup'
 
 # Centered hero
 section 'Hero' with style page_hero:

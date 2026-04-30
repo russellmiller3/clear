@@ -873,7 +873,8 @@ Every directive in Clear must unambiguously name what it does. The reader (human
 **How to write a directive that passes the no-guessing test:**
 - Name the THING, not the metaphor. `database is sqlite` beats `database is local memory`.
 - Name the SHAPE, not the host. `database is sqlite` is portable; `database is d1` couples the source to one host. The host belongs in the build target, not the directive — same source ships to Node + Cloudflare + Python by changing the target, not the source.
-- Name the DATA EFFECT after every interaction. A button that says `Approve` must immediately say which record changes, which endpoint is called, or which queue/audit row is written.
+- Name the DATA EFFECT after every interaction. Buttons, sliders, menus, dropdowns, checkboxes, text inputs, row actions, and table controls must immediately say which variable, record, endpoint, queue, or audit row they change.
+- Connector words are allowed when they keep the effect readable. `add button 'Refresh' that get deals from '/api/deals'` and `button 'Reset' for count is 0` are valid because the action names the data effect.
 - Keep `#` as navigation only. Use `//` for one-line explanation and `/* */` for longer explanation, so Studio's table of contents stays useful.
 - When in doubt, write the phrase out loud to a 14-year-old. If they ask "what does that mean?", the syntax is failing the test.
 

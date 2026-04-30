@@ -82,6 +82,7 @@ Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 
 
 ## Never Test By Hand (MANDATORY)
 **Never manually click buttons in a browser to verify an app works.** If you're tempted to open Chrome and click something, that means the compiler is missing a generated test. Fix the compiler to emit the test, then run `clear test`. The compiler knows every button, link, input, endpoint, and page in the app — it should generate tests for ALL of them:
+- Every interactive control names its data effect in the UAT contract
 - Every button click triggers an action (not a dead button)
 - Every link navigates to its target page
 - Every input accepts and stores a value
@@ -307,6 +308,8 @@ Always have an opinionated take on the right way to do things, backed by facts o
 
 ## Obvious Over Cryptic Rule
 UI controls must say what they do in plain words. Never use a bare arrow, icon, or symbol as the only label for an action — pair it with a word (e.g. "Hide Chat" not "◀", "Delete" not "✕" alone). The label should change to reflect current state ("Hide Chat" → "Show Chat"). A user should never have to guess what a button does.
+
+Interactive Clear syntax must also name the data effect. Buttons, dropdowns, checkboxes, sliders, menus, row actions, table controls, and text inputs must immediately say which state variable, endpoint, record, queue, or audit row they change. `that` and `for` are allowed connector words when they keep inline actions readable.
 
 ## Branching
 Always create a new branch before changing files. Never edit, patch, stage, or commit on main.

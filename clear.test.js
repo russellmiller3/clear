@@ -2337,6 +2337,25 @@ describe('button', () => {
     expect(ast.body[0].body).toHaveLength(1);
   });
 
+  it('parses add button that <action> as an inline action body', () => {
+    const source = `add button "Load" that get deals from '/api/deals'`;
+    const ast = parse(source);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.BUTTON);
+    expect(ast.body[0].label).toBe('Load');
+    expect(ast.body[0].body).toHaveLength(1);
+    expect(ast.body[0].body[0].type).toBe(NodeType.API_CALL);
+  });
+
+  it('parses button for <action> as an inline action body', () => {
+    const source = `button "Reset" for count is 0`;
+    const ast = parse(source);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.BUTTON);
+    expect(ast.body[0].body).toHaveLength(1);
+    expect(ast.body[0].body[0].type).toBe(NodeType.ASSIGN);
+  });
+
   it('compiles to JS click handler', () => {
     const source = `button "Add One":\n  increase count by 1`;
     const result = compileProgram(source, { target: 'web' });
@@ -3701,6 +3720,14 @@ describe('Input Syntax (label-first canonical)', () => {
     const node = ast.body.find(n => n.type === 'ask_for');
     expect(node.inputType).toBe('yes/no');
     expect(node.variable).toBe('gift_wrap');
+  });
+
+  it('compiles checkbox inputs to store checked state, not the browser value string', () => {
+    const result = compileProgram(`build for web
+page 'Prefs':
+  'Gift Wrap' as checkbox saves to gift_wrap`);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_state.gift_wrap = e.target.checked;');
   });
 });
 
@@ -25066,7 +25093,7 @@ describe('Clear CLI test runner teardown', () => {
 
 when user requests data from /api/health:
   script:
-    setTimeout(() => process.exit(0), 10);
+    res.on('finish', () => setImmediate(() => process.exit(0)));
   send back 'ok'
 `);
 

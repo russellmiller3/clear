@@ -190,7 +190,7 @@ const SYNONYM_TABLE = Object.freeze({
   // NOTE: "display" is shared between show (synonym) and Phase 4 display.
   // The parser checks context: "display X as Y called Z" → Phase 4 DISPLAY node.
   // "display X" → show (same as "show X").
-  button: Object.freeze(['button']),
+  button: Object.freeze(['button', 'add button']),
   as_format: Object.freeze(['as']),
 
   // ---------------------------------------------------------------------------

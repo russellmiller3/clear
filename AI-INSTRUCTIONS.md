@@ -242,9 +242,9 @@ reading a line and need to pause to parse it, split it up. The goal:
 a non-programmer should be able to point at any line and say what it does.
 
 **Every interaction names its data effect immediately.** Never leave a visible
-control as a bare label. A `button`, row action, table action shortcut, or
-auto-wired queue action must be followed by the data fetch, send, update, or a
-`//` note naming the generated endpoint and changed records.
+control as a bare label. A `button`, slider, menu, dropdown, checkbox, text
+input, row action, table action shortcut, or auto-wired queue action must name
+the variable, record, endpoint, queue, or audit row it changes.
 
 ```clear
 // BAD: the reader sees a button but not the data effect
@@ -254,6 +254,14 @@ button 'Approve'
 button 'Approve':
   // Calls queue-generated PUT /api/deals/:id/approve with selected_deal,
   // updates status, records the decision, and refreshes pending deals.
+```
+
+`that` and `for` are allowed as connector words when they make inline actions
+read better:
+
+```clear
+add button 'Refresh' that get deals from '/api/deals'
+button 'Reset' for count is 0
 ```
 
 ## Assignment Convention
@@ -759,7 +767,7 @@ when user sends lead to /api/leads:
 | Wrong | Right | Why |
 |-------|-------|-----|
 | `show heading 'Title'` | `heading 'Title'` | `heading` is the keyword, `show` is for variables |
-| `button 'Save'` (no body) | `button 'Save':` + indented action | Empty buttons are a compile error |
+| `button 'Save'` (no body) | `button 'Save':` + indented action, or `button 'Save' that send form to '/api/save'` | Empty buttons are a compile error |
 | `→` in diagrams | `>` or `-->` | Unicode arrows break monospace alignment |
 | `does X require login` | `X should require login` | `should` is canonical |
 | `with title is 'X'` | `with title: 'X'` | Colon is cleaner (both work) |
@@ -768,7 +776,7 @@ when user sends lead to /api/leads:
 | `get 'q' from request` | `incoming's q` in endpoint | Request params via receiving var |
 | `display X as table` (no columns) | `display X as table showing col1, col2` | Always specify which columns |
 | `can user search todos` | `can user view all search` | Only create/view/delete/update are valid intents |
-| `'Label' is a dropdown ... saved as x` (two lines) | `'Label' is a dropdown ... saved as x` (one line) | The `saved as` must be on the same line as the input |
+| `'Label' is a dropdown ...` (no saved variable) | `'Label' is a dropdown ... saved as x` | Every interactive input must name the state variable it changes |
 | `section 'X' side by side:` | `section 'X' with style row:` | Use preset or style for layout |
 | `user's id` (when unbound) | `caller's id` | `caller` is the authenticated person set by `requires login` — one word, unambiguous with any entity var. Legacy `current user's id` still compiles. |
 | `result = for each X in Y:` | Use `filter` or loop + `add to` | Can't assign a for-each loop to a variable |
@@ -1136,12 +1144,17 @@ style card:
 ```
 'What needs to be done?' is a text input saved as a todo
 'How much?' is a number input saved as a price
-'Color' is a dropdown with ['Red', 'Green', 'Blue']
-'Gift Wrap' is a checkbox
+'Color' is a dropdown with ['Red', 'Green', 'Blue'] saved as a color
+'Gift Wrap' is a checkbox saved as a gift_wrap
 'Notes' is a text area saved as a note
-'Body' is a text editor saved as a body            # rich WYSIWYG (Quill)
+'Body' is a text editor saved as a body
+// rich WYSIWYG (Quill)
 'Resume' is a file input saved as a resume
 ```
+
+Every input-like control must name the state variable it changes on the same
+line. Use `saved as` for dropdowns, checkboxes, menus, sliders, file inputs,
+text areas, and text editors.
 
 **When to use `text editor` vs `text area`:** Plain-text users expect, use
 `text area`. Users writing formatted content (blog posts, docs, rich notes)
@@ -1757,7 +1770,7 @@ show Card:
 ```
 step = 1
 
-button 'Next': increase step by 1
+button 'Next' that increase step by 1
 
 if step is 1:
   show heading 'Enter your name'
@@ -2274,8 +2287,7 @@ button 'Delete':
 ## Page Navigation
 
 ```
-button 'Go to Dashboard':
-  go to '/dashboard'
+button 'Go to Dashboard' that go to '/dashboard'
 ```
 
 ## Full Example

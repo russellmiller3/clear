@@ -7673,6 +7673,11 @@ function parseChartRemainder(tokens, pos, title, chartType, line) {
 // CANONICAL: button "Click Me":
 //   (indented body — code that runs when clicked)
 
+function isButtonActionConnector(token) {
+  const raw = String(token?.rawValue ?? token?.value ?? '').toLowerCase();
+  return raw === 'that' || raw === 'for' || token?.canonical === 'for_target';
+}
+
 function parseButton(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
@@ -7683,6 +7688,17 @@ function parseButton(lines, startIdx, blockIndent, errors) {
     return { node: null, endIdx: startIdx + 1 };
   }
   const label = tokens[pos].value;
+
+  const connectorIdx = tokens.findIndex((token, idx) => idx > pos && isButtonActionConnector(token));
+  if (connectorIdx !== -1 && connectorIdx < tokens.length - 1) {
+    const actionTokens = tokens.slice(connectorIdx + 1);
+    const { body } = parseBlock([{
+      tokens: actionTokens,
+      indent: blockIndent + 1,
+      raw: actionTokens.map(t => t.rawValue ?? t.value).join(' '),
+    }], 0, blockIndent, errors);
+    return { node: buttonNode(label, body, line), endIdx: startIdx + 1 };
+  }
 
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 

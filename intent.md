@@ -128,6 +128,8 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `LOADING_ACTION` | `show loading` / `hide loading` | Loading indicator |
 | `ON_CHANGE` | `when X changes:` + block | Reactive input handler |
 
+Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table control, and row drilldown must produce a UAT control with a plain `dataEffect`. Input-like controls must name the state variable they change with `saved as` or `saves to`. Buttons may use `that` or `for` as connector words when the inline action names the endpoint, state variable, or record it changes.
+
 ### Backend (Phase 5-6)
 
 | Node Type | Syntax | Express / FastAPI |
