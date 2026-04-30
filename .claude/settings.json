@@ -50,6 +50,18 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/ross-perot-gap-guard.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking Ross Perot rule before stopping..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Agent",

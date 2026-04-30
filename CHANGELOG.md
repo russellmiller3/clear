@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-30 - Ross Perot gap guard blocks fixable-gap punts
+
+The piece between "the assistant noticed the missing enforcement" and "the missing enforcement actually got built." Claude Code now has a Stop hook that blocks answers ending with "the gap is X" and "the next move is Y" when Y is a safe repo change.
+
+**What shipped:**
+- `.claude/hooks/ross-perot-gap-guard.mjs` detects actionable repo gaps paired with punt language before the agent stops.
+- `.claude/settings.json` wires the guard into the Stop event.
+- `.claude/hooks/ross-perot-gap-guard.test.mjs` covers the exact failure Russell corrected, shipped summaries, read-only analysis, and a generic strategy false positive.
+- `CLAUDE.md` and `FAQ.md` record the rule and where the guardrail lives.
+
+**Why for launch:** repeated process failures tax Russell's attention and slow the path to a paying customer. The right fix is not another apology; it is a machine check that forces the obvious next safe step before the session can end.
+
+**Tests:** focused hook tests pass, including the CLI JSON contract.
+
+---
+
 ## 2026-04-30 - Meph model picker keeps tools across providers
 
 The piece between "Anthropic is capped" and "Meph still works like Meph." Studio chat now has a model picker for Anthropic Haiku plus OpenRouter Claude, GLM, DeepSeek, and Kimi. Switching models sends the full chat history on the next turn so the new model is not dropped into the middle of a conversation blind.
