@@ -67,6 +67,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node .claude/hooks/require-branch-work.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking branch discipline before shell work..."
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/before-rebuild-check.mjs",
             "timeout": 5,
             "statusMessage": "Checking whether the new feature already exists in FEATURES.md / parser..."

@@ -253,9 +253,11 @@ Run `node playground/server.js` → opens `http://localhost:3456`.
 Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 43 template apps in dropdown. Light/dark theme. Save to Desktop.
 
-The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, and requests.md. Meph can only write .clear files and requests.md.
+The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, and meph-memory.md. Meph can only write .clear files and requests.md.
 
-Meph has tools: edit_code, read_file, run_command, compile, run_app, stop_app, http_request, write_file.
+Meph has tools: edit_code, read_file, edit_file, run_command, compile, run_app, stop_app, http_request, read_terminal, run_tests, eval tools, browser tools, todo, source_map, patch_code, and browse_templates.
+
+Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
 Tests: `node playground/server.test.js` (85 tests).
 
 `playground/index.html` is the old static playground (compiler bundle only).
@@ -307,8 +309,10 @@ Always have an opinionated take on the right way to do things, backed by facts o
 UI controls must say what they do in plain words. Never use a bare arrow, icon, or symbol as the only label for an action — pair it with a word (e.g. "Hide Chat" not "◀", "Delete" not "✕" alone). The label should change to reflect current state ("Hide Chat" → "Show Chat"). A user should never have to guess what a button does.
 
 ## Branching
-Always create a new branch for features and fixes. Never commit directly to main.
-Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
+Always create a new branch before changing files. Never edit, patch, stage, or commit on main.
+Branch naming: `feature/[name]`, `fix/[name]`, or `docs/[name]`.
+Allowed on main: status checks, branch creation/switching, fast-forward-only merge of a finished branch, and pushing main after merge.
+Hook backstop: `.claude/hooks/require-branch-work.mjs` blocks direct edits and common shell-based mutations on main.
 
 ## GAN Frontend Directly (MANDATORY)
 When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.

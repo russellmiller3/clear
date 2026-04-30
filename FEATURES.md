@@ -49,7 +49,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Three-panel: editor + preview + Meph chat. Meph writes Clear, compiles, runs, tests, fixes errors.
 - Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
 - 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
-- Ghost Meph: route /api/chat to local Claude Code, Ollama, or OpenRouter for $0 research sweeps.
+- Ghost Meph: route /api/chat to Claude Code, Ollama, Anthropic, or OpenRouter models through the Studio model picker, with tool use preserved.
 - Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
 - Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 
@@ -410,7 +410,7 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |
 | Builder Mode (v0.3) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. v0.2 added a Marcus-first tile gallery on empty preview (5 featured apps + "See more"). v0.3 added a 3-ship counter (source pane defaults visible for first 3 successful Publishes, hidden after) + click-to-edit (clicking an iframe element prefills the chat input with `Change the "<text>" button/link — `). |
 | First-visit onboarding | localStorage `clear-onboarding-seen` | Studio shows a one-time welcome card prepended to the chat on first load + auto-focuses chat input. Per-mode copy. Dismissed on first keystroke or × click. |
-| Ghost Meph (chat backend dispatch) | `MEPH_BRAIN` env var | Routes /api/chat to local backends instead of Anthropic. Backends: `cc-agent` (spawns local `claude` CLI; text-only MVP, tool support pending), `ollama:<model>` (local Ollama daemon at `OLLAMA_HOST`), `openrouter` / `openrouter:qwen` (OpenRouter API, requires `OPENROUTER_API_KEY`). All return Anthropic-shaped SSE so /api/chat is unchanged. See `playground/ghost-meph/` and `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`. |
+| Ghost Meph (chat backend dispatch + model picker) | `MEPH_BRAIN` env var or Studio picker | Routes /api/chat to Anthropic Haiku, OpenRouter Claude, GLM, DeepSeek, Kimi, local Ollama, or cc-agent. OpenAI-compatible backends now preserve Meph tool use through the shared format bridge. Changing the selected model sends full chat history on the next turn. See `playground/ghost-meph/`. |
 | Shape-search retrieval (Lean Lesson 2) | Every Meph compile retrieves canonical worked examples whose program SHAPE matches the source — archetype, table/endpoint/agent histogram, presence flags (auth, db, charts, agents). Layered next to (not replacing) the existing text-match `querySuggestions` pipeline; combined hint cap stays at 5. CLI driver at `scripts/match-shape.mjs` reads `playground/canonical-examples.md`. Disabled by `CLEAR_HINT_DISABLE=1` for clean A/B. See `playground/supervisor/program-shape.js`. |
 
 ## Live App Editing (LAE — Phase A + B shipped)

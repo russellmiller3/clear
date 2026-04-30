@@ -255,7 +255,7 @@ CF-1 is the cheap optionality bet: 20 lines of instrumentation that starts colle
 
 ## P2 — Ghost Meph last mile
 
-cc-agent / ollama / openrouter backends shipped (see `FEATURES.md`). What remains for full $0-research-velocity unlock:
+cc-agent / ollama / openrouter backends and the Studio model picker shipped (see `FEATURES.md`). OpenRouter GLM has been live-smoked through tools, memory, requests, personality, and full-history model switching. What remains for full research-velocity unlock:
 
 | # | Item | Scope |
 |---|---|---|

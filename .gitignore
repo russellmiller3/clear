@@ -22,6 +22,7 @@ test-save-compiled/
 .clear-test-runner.cjs
 .clear-test-server.cjs
 .tmp/
+playground/.tmp-*
 
 # Build artifacts — regenerated from canonical runtime/ on every clear build
 # Canonical sources live in runtime/. These per-app copies are output, not source.
