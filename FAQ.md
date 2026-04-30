@@ -75,7 +75,6 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 **Where is X?**
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
-- [Where do the agent guardrails/hooks live?](#where-do-the-agent-guardrailshooks-live)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
@@ -172,20 +171,6 @@ Moved out of `ROADMAP.md` on 2026-04-21 so the roadmap can focus on what's *next
 **`CHANGELOG.md`** at repo root. Session-by-session history, newest at the top. Moved out of `ROADMAP.md` on 2026-04-21 for the same reason FEATURES.md was carved out — roadmap is forward-looking, changelog is backward-looking.
 
 If you want "what shipped this week?", check CHANGELOG. If you want "what's been committed but not yet merged?", check `git log main..` on the active feature branch.
-
----
-
-### Where do the agent guardrails/hooks live?
-
-`.claude/settings.json` wires the repo-local Claude Code hooks.
-
-Key guardrails:
-- `.claude/hooks/require-branch-work.mjs` blocks direct edits and common mutating shell work on `main`.
-- `.claude/hooks/ross-perot-gap-guard.mjs` runs before the agent stops. It blocks "I found a fixable gap; next step is..." answers unless the user explicitly asked for read-only analysis.
-- `.claude/hooks/require-plan-read.mjs` blocks plan-grounded agent briefs unless the plan was read in the current session.
-- `.claude/hooks/no-stub-nav.mjs` blocks nav items that point nowhere.
-
-If a hook changes behavior, update its test beside the hook and record the rule in `CLAUDE.md`.
 
 ---
 
