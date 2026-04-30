@@ -212,6 +212,7 @@ const SYNONYM_TABLE = Object.freeze({
   save_to: Object.freeze(['save']),
   look_up: Object.freeze(['look up']),
   records_in: Object.freeze(['records in', 'record in']),
+  // Legacy trap only: parser rejects this for database deletion and suggests `delete from`.
   remove_from: Object.freeze(['remove from']),
   where: Object.freeze(['where']),
 

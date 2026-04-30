@@ -2524,16 +2524,25 @@ The legacy form `notify customer on counter` still parses if you have older code
 The primitive does the backend, the audit, and the notifications. UI buttons are still hand-added — paste a few lines in your queue page:
 
 ```clear
-display pending as table showing customer, status with actions:
-  'Approve' is primary
-  'Reject' is danger
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
 ```
 
-Clear matches the button labels to the action names you declared and binds each one to the right login-gated URL. (Auto-rendering the buttons from the queue declaration is on the to-do list — coming once a real customer asks for it.)
+The `change` line says which field moves from which value to which value. The `update` line saves that selected record through the generated login-gated action URL. The final `get` line reloads the queue the user sees.
 
 ### When NOT to reach for `queue for X:`
 
-- A simple "yes/no" with no audit need — just write a single PUT URL.
+- A simple "yes/no" with no audit need — just write a normal update endpoint.
 - Automated routing where no human decides — that's a different shape, and a future `routing rules for X:` primitive will handle it cleanly.
 - Multi-stage approval where a deal needs Manager → Director → CRO — coming in Tier 2 once a second multi-stage app exists.
 
@@ -3042,14 +3051,24 @@ detail panel for selected_deal:
   display selected_deal's amount as dollars called 'Value'
   text selected_deal's status
   actions:
-    button 'Reject'
-    button 'Counter'
-    button 'Approve'
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
 ```
 
 The panel reads from the selected row. The normal content lines become the
 scrolling body. The `actions:` block becomes the sticky decision bar at the
-bottom.
+bottom. Update buttons need a `change` line before the `update` line, so the
+source names the exact data effect.
 
 Each `stat card` needs one `value` line. Use `delta` for trend copy,
 `sparkline` for a tiny trend line, and `icon` for a Lucide symbol.

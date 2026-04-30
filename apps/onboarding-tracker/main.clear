@@ -208,11 +208,17 @@ page 'Onboarding Tracker' at '/':
             text selected_customer's status
             actions:
               button 'Mark Active':
-                // Calls queue-generated PUT /api/customers/:id/mark-active with selected_customer, records the decision, and queues the customer email.
+                change selected_customer's status from 'onboarding' to 'active'
+                update selected_customer at /api/customers/:id/mark-active
+                get customers from '/api/customers/onboarding'
               button 'Escalate':
-                // Calls queue-generated PUT /api/customers/:id/escalate with selected_customer and records the escalation decision.
+                change selected_customer's status from 'onboarding' to 'escalated'
+                update selected_customer at /api/customers/:id/escalate
+                get customers from '/api/customers/onboarding'
               button 'Email':
-                // Calls queue-generated PUT /api/customers/:id/email with selected_customer and records the customer email decision.
+                change selected_customer's status from 'onboarding' to 'email'
+                update selected_customer at /api/customers/:id/email
+                get customers from '/api/customers/onboarding'
 
         section 'New Customer' with style app_card:
           heading 'New Customer'

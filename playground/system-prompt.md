@@ -321,6 +321,8 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - `#` comments are navigation only. Use `//` for one-line explanation and `/* */` for longer notes.
 - Every button or row action must state its data effect immediately below it.
 - Toasts count as notification data only when they include a message. Domain actions like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change.
+- Selected-record updates need an explicit field change before the update line: `change selected_deal's status from 'pending' to 'approved'`, then `update selected_deal at /api/deals/:id/approve`.
+- Selected-record deletes use `delete selected_deal from /api/deals/:id`. Do not write `PUT`, `DELETE`, or `call action` in UI action bodies.
 
 ## TBD — Use Placeholders When the Spec Is Open (Lean Lesson 1)
 
@@ -536,7 +538,7 @@ HTTP methods — what each one does:
 - **GET** — fetch data, no body. Use for listing records or getting one by id.
 - **POST** — create a new record. Send the new record in the body (`sending <entity>:` — name the var after the singular entity being sent, e.g. `sending todo:`).
 - **PUT** — update an existing record by id. Send the changed fields in the body (`sending changes:`).
-- **DELETE** — remove a record by id. No body needed.
+- **DELETE** — delete a record by id. No body needed.
 
 ```clear
 # GET fetches data — no body, just returns records
@@ -556,10 +558,10 @@ when user calls PUT /api/items/:id sending changes:
   save entry to Items
   send back 'updated' with success message
 
-# DELETE removes — targets a record by :id, no body
+# Delete records — targets a record by :id, no body
 when user calls DELETE /api/items/:id:
   requires login
-  remove from Items with this id
+  delete the Item with this id
   send back 'deleted'
 ```
 
@@ -846,15 +848,22 @@ Sub-clauses: `subject is '...'`, `body is '...'`, `provider is '...'` (default `
 - The flow is automated routing with no human in the loop (different shape — flag as a feature gap in `requests.md`).
 - The flow needs multi-stage approval (Manager → Director → CRO) — Tier 2 isn't built yet; flag in `requests.md` and use `workflow` for now.
 
-**Wiring action buttons.** The primitive doesn't auto-render UI yet. Hand-add buttons that call the generated URLs:
+**Wiring action buttons.** The primitive doesn't auto-render detail-panel buttons yet. Hand-add buttons that name the field change, update the selected record through the generated action URL, and reload the affected queue:
 
 ```clear
-display pending as table showing customer, status with actions:
-  'Approve' is primary
-  'Reject' is danger
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending_deals from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending_deals from /api/deals/pending
 ```
-
-Button labels match the action names (case-insensitive); each button binds to the matching `/api/deals/:id/<action>` URL.
 
 ## Policies (Safety Guards)
 
@@ -901,11 +910,17 @@ section 'Dashboard' with style app_layout:
         text selected_deal's status
         actions:
           button 'Reject':
-            // Calls queue-generated PUT /api/deals/:id/reject with selected_deal.
+            change selected_deal's status from 'pending' to 'rejected'
+            update selected_deal at /api/deals/:id/reject
+            get pending_deals from /api/deals/pending
           button 'Counter':
-            // Calls queue-generated PUT /api/deals/:id/counter with selected_deal.
+            change selected_deal's status from 'pending' to 'awaiting'
+            update selected_deal at /api/deals/:id/counter
+            get pending_deals from /api/deals/pending
           button 'Approve':
-            // Calls queue-generated PUT /api/deals/:id/approve with selected_deal.
+            change selected_deal's status from 'pending' to 'approved'
+            update selected_deal at /api/deals/:id/approve
+            get pending_deals from /api/deals/pending
 ```
 
 **App shell shape (Phase 1-6 polish, 2026-04-25/26).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:

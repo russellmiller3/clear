@@ -34,7 +34,7 @@ Requirements:
 - GET /api/items returns all items
 - GET /api/items/low returns items where quantity is less than 5
 - POST /api/items creates an item; validate everything; requires login
-- DELETE /api/items/:id removes; requires admin role
+- DELETE /api/items/:id deletes a record; requires admin role
 - A page 'Inventory' with heading, search input filtering items by name, items table, and an add-item form
 - One test that creates an item and verifies it appears in /api/items.
 

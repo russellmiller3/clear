@@ -146,21 +146,21 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a lead with name is 'Test' , email is 'test@x.com' , size is 'SMB'", async () => {
-      // clear:201
+      // clear:200
       _response = await fetch(_baseUrl + "/api/leads", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ "name": "Test", "email": "test@x.com", "size": "SMB" })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:202
+      // clear:201
       _expectSuccess(_response);
-      // clear:203
+      // clear:202
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("updating a lead should require login", async () => {
-      // clear:206
+      // clear:205
       // Could not find PUT endpoint for lead
   });
 

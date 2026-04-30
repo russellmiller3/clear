@@ -131,7 +131,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Checkbox | `'Active' is a checkbox input saved as active` | |
 | Textarea | `'Bio' is a textarea input saved as bio` | |
 | File input | `'Upload' is a file input saved as doc` | |
-| Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback |
+| Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback. Selected-record updates require a `change ... from ... to ...` line before `update ... at ...`; deletes use `delete selected_record from /api/...` |
 | Sections | `section 'Results':` | With style presets |
 | App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs) |
 | Tabs | `tab 'Settings':` | Auto-grouped |
@@ -150,7 +150,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 |----------------|--------|--------|
 | Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows; **auto-emitted toolbar search input** that filters rows in-place across all visible columns (Codex chunk #5, 2026-04-26 — every `display X as table` gets it for free, no syntax to opt in) |
 | Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
-| Detail panel | `detail panel for selected_deal:` + body + `actions:` | 340px right rail populated from the selected table row, with sticky bottom action buttons |
+| Detail panel | `detail panel for selected_deal:` + body + `actions:` | 340px right rail populated from the selected table row, with sticky bottom action buttons. Comment-only and vague update buttons are compile errors |
 | Cards | `display X as cards showing name, description` | Card grid |
 | List | `display X as list` | Bullet list |
 | Currency | `display X as dollars` | `$1,234.56` |
@@ -339,7 +339,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 | Feature | Syntax | Notes |
 |---------|--------|-------|
-| Queue declaration | `queue for deal:` + indented body | Auto-generates audit table, optional notifications queue, filtered GET, per-action login-gated PUT handlers |
+| Queue declaration | `queue for deal:` + indented body | Auto-generates audit table, optional notifications queue, filtered GET, per-action login-gated update handlers |
 | Reviewer role | `reviewer is 'CRO'` | Stamped on every audit row's `decided_by` |
 | Action list | `actions: approve, reject, counter, awaiting customer` | Each action becomes `PUT /api/<entity>s/:id/<action>` — multi-word actions slugify to first word |
 | Notify clause | `notify customer on counter, awaiting customer` | Inserts a row in `<entity>_notifications` for matching actions; recipient_email resolves from `<role>_email` field on the entity |

@@ -30,5 +30,5 @@ when user calls GET /api/links/:code:
 
 when user calls DELETE /api/links/:code:
   this endpoint requires login
-  remove from Links where code is incoming's code
+  delete from Links where code is incoming's code
   send back 'deleted'

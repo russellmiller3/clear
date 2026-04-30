@@ -42,7 +42,7 @@ create a Deals table:
 // The queue primitive auto-generates: deal_decisions audit table,
 // deal_notifications outbound queue, GET /api/deals/queue filtered by
 // pending status, GET /api/deal-decisions, GET /api/deal-notifications,
-// and PUT /api/deals/:id/<action> for each action below. Each PUT
+// and update URLs for each action below. Each update
 // requires login, updates deal status, records the decision, and queues
 // notifications to the listed roles.
 
@@ -53,7 +53,7 @@ queue for deal:
   email rep when approve, reject
 
 // When the CRO counters a deal, queue a reply-aware email to the customer
-// so they can accept or push back. The queue's PUT handler for the counter
+// so they can accept or push back. The queue's counter update
 // action automatically inserts the row into the shared email outbox.
 email customer when deal's status changes to 'awaiting':
   subject is 'We countered your offer'
@@ -329,7 +329,7 @@ page 'Deal Desk' at '/':
               'Review' is secondary
                 // Selects the row as selected_deal so the detail panel can show the live record.
               'Approve' is primary
-                // Calls queue-generated PUT /api/deals/:id/approve, updates status, records the decision, and refreshes pending deals.
+                // Updates the selected deal to approved, records the decision, and refreshes pending deals.
 
           detail panel for selected_deal:
             heading 'Deal details'
@@ -347,11 +347,17 @@ page 'Deal Desk' at '/':
               button 'Draft AI summary':
                 send selected_deal to '/api/deals/draft'
               button 'Reject':
-                // Calls queue-generated PUT /api/deals/:id/reject with selected_deal, updates status, records the decision, and refreshes pending deals.
+                change selected_deal's status from 'pending' to 'rejected'
+                update selected_deal at /api/deals/:id/reject
+                get pending from /api/deals/pending
               button 'Counter':
-                // Calls queue-generated PUT /api/deals/:id/counter with selected_deal, updates status, records the decision, and queues the customer email.
+                change selected_deal's status from 'pending' to 'awaiting'
+                update selected_deal at /api/deals/:id/counter
+                get pending from /api/deals/pending
               button 'Approve':
-                // Calls queue-generated PUT /api/deals/:id/approve with selected_deal, updates status, records the decision, and refreshes pending deals.
+                change selected_deal's status from 'pending' to 'approved'
+                update selected_deal at /api/deals/:id/approve
+                get pending from /api/deals/pending
 
         section 'Footer' as row:
           small text '{pending_count} pending'
