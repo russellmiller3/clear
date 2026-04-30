@@ -34,7 +34,8 @@ function templateHygieneFindings(source) {
   }
 
   function namesDataEffect(text) {
-    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|filters?|sorts?|selects?|copies?|downloads?|opens?|closes?|shows?|hides?|navigates?)\b/i.test(text) ||
+    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|filters?|sorts?|selects?|copies?|downloads?|uploads?|exports?|opens?|closes?|shows?|hides?|stores?|go(?:es)?\s+to|navigates?(?:\s+to)?)\b/i.test(text) ||
+      /\bto\s+['"][^'"]+['"]/i.test(text) ||
       /^[a-zA-Z_]\w*(?:'s\s+\w+)?\s*(?:=|\bis\b)\s+/.test(text);
   }
 
@@ -46,8 +47,8 @@ function templateHygieneFindings(source) {
 
   function isInputLikeLine(trimmed) {
     return /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:text|number|file)\s+input\b/i.test(trimmed) ||
-      /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor)\b/i.test(trimmed) ||
-      /^(?:(?:text|number|file)\s+input|dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor)\s+['"][^'"]+['"]/i.test(trimmed);
+      /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor|slider|range\s+slider|menu|dropdown\s+menu|select\s+menu|toggle|switch|segmented\s+control|tabs?)\b/i.test(trimmed) ||
+      /^(?:(?:text|number|file)\s+input|dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor|slider|range\s+slider|menu|dropdown\s+menu|select\s+menu|toggle|switch|segmented\s+control|tabs?)\s+['"][^'"]+['"]/i.test(trimmed);
   }
 
   for (let i = 0; i < lines.length; i++) {
@@ -252,6 +253,8 @@ try {
     const findings = templateHygieneFindings(`page 'Filters' at '/':
   'Stage' as dropdown with ['Open', 'Won']
   checkbox 'Only mine'
+  slider 'Budget'
+  menu 'Sort by'
   button 'Refresh'`);
     assert(findings.some(f => f.includes('interactive control must immediately name its data effect')), 'template hygiene catches input-like controls without data effects');
     assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene still catches empty buttons');
@@ -261,9 +264,18 @@ try {
     const findings = templateHygieneFindings(`page 'Filters' at '/':
   'Stage' as dropdown with ['Open', 'Won'] saves to stage_filter
   checkbox 'Only mine' saves to only_mine
+  slider 'Budget' saves to budget
+  menu 'Sort by' saves to sort_order
+  button 'Open Details' that go to '/details'
   button 'Refresh':
     get deals from '/api/deals'`);
     assert(findings.length === 0, 'template hygiene accepts interactive controls that name their data effects');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Mystery' at '/':
+  button 'Do it' that make magic happen`);
+    assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene rejects vague button actions a 14-year-old could not trace to data');
   }
 
   // =========================================================================
