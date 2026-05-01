@@ -2021,3 +2021,14 @@ Live verification also showed a reporting blind spot. Five Meph runs saw shape-m
 - **Test the boundary the agent actually sees.** Tool-local state is not enough; assert the serialized tool result contains the hint payload.
 - **A rejected hint still proves delivery.** `HINT_APPLIED: no` with a reason means Meph saw the hint. Treat that separately from "no hint reached Meph."
 - **Live verification summaries must distinguish no hint from weak hint.** Shape-match hints are weaker than exact-error hints, but they are not `none`.
+
+## Session 2026-05-01: Stripe Webhooks Need Exact Raw Bytes
+
+The CC-3 receiver looked wired because a route existed and signature helpers had unit coverage. The production gap was subtler: Stripe signs the exact request bytes, but the old route lived after `express.json()` and re-serialized `req.body` before verifying. That can pass canonical JSON tests and still fail a real Stripe delivery with whitespace or ordering differences.
+
+### Gotchas-as-rules
+
+- **Mount signed webhooks before JSON parsing.** Stripe, GitHub, and similar providers sign bytes, not parsed objects.
+- **Test with non-canonical JSON.** Pretty-printed fixtures catch receivers that verify a re-serialized object instead of the raw body.
+- **Webhook retries must be idempotent at the state boundary.** Assert the tenant row changes once when the same event arrives twice.
+- **Production secrets fail closed.** If the webhook secret is missing in production, reject the request instead of accepting unsigned billing changes.

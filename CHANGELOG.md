@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - CC-3 Stripe webhook receiver production hardening
+
+Clear Cloud now has a production-shaped Stripe webhook receiver for checkout completion. It mounts before the JSON parser, verifies Stripe's signature against the exact raw request body, and then updates the tenant's plan from the signed checkout event.
+
+**What shipped:**
+- `/api/stripe-webhook` now has a raw-body receiver in `playground/stripe-webhook-receiver.js`.
+- `checkout.session.completed` upgrades a tenant to the signed checkout metadata plan (`team` or `business`) and records the Stripe customer id.
+- Stripe event ids are deduped so webhook retries return success without duplicating tenant state.
+- Production fails closed when `STRIPE_WEBHOOK_SECRET` is missing.
+- The Studio server wires the receiver to the same cloud tenant store as deploy, auth, routing, and quota.
+
+**Why for launch:** Marcus can pay through Stripe and have Clear Cloud flip his tenant out of Free without a manual database edit.
+
+**Tests:** `node playground/billing.test.js` passed with local signed fixtures only. No live Stripe keys required.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:

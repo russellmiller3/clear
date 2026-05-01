@@ -7,6 +7,7 @@
 
 import { createHmac, timingSafeEqual } from 'crypto';
 import { newTenantSlug } from './tenants.js';
+import { PLANS, planFor } from './plans.js';
 
 const STRIPE_BASE = 'https://api.stripe.com/v1';
 
@@ -77,14 +78,37 @@ export function signStripeWebhookForTest(rawBody, secret, tsSeconds = Math.floor
 	return `t=${tsSeconds},v1=${sig}`;
 }
 
+function planFromMetadata(metadata = {}) {
+	const candidate = String(metadata.plan || metadata.clear_plan || '').toLowerCase();
+	return Object.prototype.hasOwnProperty.call(PLANS, candidate) ? candidate : 'team';
+}
+
 export async function handleWebhookEvent(event, store, opts = {}) {
 	const eventId = event.id;
 	if (!eventId) return { ok: false, reason: 'missing event id' };
 	if (await store.seenStripeEvent(eventId)) return { ok: true, deduped: true };
 
-	await store.recordStripeEvent(eventId);
-
 	switch (event.type) {
+		case 'checkout.session.completed': {
+			const session = event.data.object || {};
+			const customerId = session.customer;
+			const metadata = session.metadata || {};
+			const existing = customerId ? await store.getByStripeCustomer(customerId) : null;
+			const slug = metadata.tenant_slug || metadata.tenantSlug || session.client_reference_id || existing?.slug || newTenantSlug();
+			const plan = planFromMetadata(metadata);
+			const planDefaults = planFor(plan);
+			await store.upsert(slug, {
+				stripe_customer_id: customerId || existing?.stripe_customer_id || null,
+				plan,
+				grace_expires_at: null,
+				ai_credit_cents: existing?.ai_credit_cents ?? planDefaults.aiCreditCents,
+				apps_deployed: existing?.apps_deployed ?? 0,
+				ai_spent_cents: existing?.ai_spent_cents ?? 0,
+				created_at: existing?.created_at ?? new Date().toISOString(),
+			});
+			await store.recordStripeEvent(eventId);
+			return { ok: true, slug, plan };
+		}
 		case 'customer.subscription.created':
 		case 'customer.subscription.updated': {
 			const sub = event.data.object;
@@ -110,17 +134,23 @@ export async function handleWebhookEvent(event, store, opts = {}) {
 				ai_spent_cents: existing?.ai_spent_cents ?? 0,
 				created_at: existing?.created_at ?? new Date().toISOString(),
 			});
+			await store.recordStripeEvent(eventId);
 			return { ok: true, slug, plan };
 		}
 		case 'customer.subscription.deleted': {
 			const sub = event.data.object;
 			const existing = await store.getByStripeCustomer(sub.customer);
-			if (!existing) return { ok: true, noop: true };
+			if (!existing) {
+				await store.recordStripeEvent(eventId);
+				return { ok: true, noop: true };
+			}
 			const destroyAt = new Date(Date.now() + 30 * 86400_000).toISOString();
 			await store.setPlan(existing.slug, 'cancelled', destroyAt);
+			await store.recordStripeEvent(eventId);
 			return { ok: true, cancelledSlug: existing.slug, destroyAt };
 		}
 		default:
+			await store.recordStripeEvent(eventId);
 			return { ok: true, ignored: event.type };
 	}
 }

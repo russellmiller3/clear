@@ -8,8 +8,11 @@ import {
 	createCheckoutSession, verifyStripeWebhook, signStripeWebhookForTest,
 	handleWebhookEvent, setStripeFetchForTest, reportUsage,
 } from './billing.js';
+import { mountStripeWebhookReceiver } from './stripe-webhook-receiver.js';
 import { InMemoryTenantStore, canDeploy, overQuota, newTenantSlug } from './tenants.js';
 import { PLANS, planFor } from './plans.js';
+import express from 'express';
+import http from 'http';
 
 describe('newTenantSlug', () => {
 	it('produces clear-XXXXXX', () => {
@@ -137,6 +140,51 @@ testAsync('handleWebhookEvent — subscription.updated past_due sets 7-day grace
 	const graceDelta = new Date(t.grace_expires_at).getTime() - Date.now();
 	expect(graceDelta).toBeGreaterThan(6 * 86400_000);
 	expect(graceDelta).toBeLessThan(8 * 86400_000);
+});
+
+testAsync('Stripe webhook receiver updates plan from signed raw payload idempotently', async () => {
+	const store = new InMemoryTenantStore();
+	const app = express();
+	mountStripeWebhookReceiver(app, {
+		store,
+		webhookSecret: 'whsec_test',
+		isProduction: true,
+	});
+	app.use(express.json());
+	const server = http.createServer(app);
+	await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+	try {
+		const { port } = server.address();
+		const rawBody = JSON.stringify({
+			id: 'evt_checkout_completed_1',
+			type: 'checkout.session.completed',
+			data: {
+				object: {
+					customer: 'cus_checkout_1',
+					metadata: { tenant_slug: 'acme', plan: 'team' },
+					subscription: 'sub_team_1',
+				},
+			},
+		}, null, 2);
+		const sig = signStripeWebhookForTest(rawBody, 'whsec_test');
+		for (let i = 0; i < 2; i++) {
+			const response = await fetch(`http://127.0.0.1:${port}/api/stripe-webhook`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Stripe-Signature': sig,
+				},
+				body: rawBody,
+			});
+			expect(response.status).toBe(200);
+		}
+		const tenant = await store.get('acme');
+		expect(tenant.plan).toBe('team');
+		expect(tenant.stripe_customer_id).toBe('cus_checkout_1');
+		expect(store.tenants.size).toBe(1);
+	} finally {
+		await new Promise(resolve => server.close(resolve));
+	}
 });
 
 testAsync('createCheckoutSession — returns session URL (test 4.1)', async () => {

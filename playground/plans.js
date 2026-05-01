@@ -22,6 +22,12 @@ export const PLANS = {
 		appsLimit: 100,
 		aiCreditCents: 5000,
 	},
+	business: {
+		name: 'business',
+		monthlyCents: 49900,
+		appsLimit: 500,
+		aiCreditCents: 20000,
+	},
 };
 
 export function planFor(name) {

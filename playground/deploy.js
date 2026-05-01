@@ -739,20 +739,19 @@ export function wireDeploy(app, opts = {}) {
 		res.json({ ok: true, url: r.url });
 	});
 
-	// Stripe webhook — must accept raw body for signature verification.
-	// Caller should mount this endpoint BEFORE express.json() or use a raw
-	// middleware. For now we re-serialize because the existing server uses
-	// express.json globally; signature verify still works because we sign
-	// the canonical JSON we get back from req.body.
-	app.post('/api/stripe-webhook', async (req, res) => {
-		const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-		const sig = req.headers['stripe-signature'];
-		const v = verifyStripeWebhook(raw, sig);
-		if (!v.ok) return res.status(400).json({ ok: false, error: v.reason });
-		const r = await handleWebhookEvent(v.event, store);
-		if (r.ok && r.slug && r.plan !== 'cancelled') setTenantCookie(res, r.slug);
-		res.json(r);
-	});
+	if (!opts.stripeWebhookMounted) {
+		// Legacy dev fallback. Production mounts stripe-webhook-receiver.js
+		// before express.json() so Stripe signatures verify exact bytes.
+		app.post('/api/stripe-webhook', async (req, res) => {
+			const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+			const sig = req.headers['stripe-signature'];
+			const v = verifyStripeWebhook(raw, sig);
+			if (!v.ok) return res.status(400).json({ ok: false, error: v.reason });
+			const r = await handleWebhookEvent(v.event, store);
+			if (r.ok && r.slug && r.plan !== 'cancelled') setTenantCookie(res, r.slug);
+			res.json(r);
+		});
+	}
 
 	return { store, setStripeFetchForTest };
 }
