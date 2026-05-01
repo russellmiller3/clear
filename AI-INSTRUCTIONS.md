@@ -472,6 +472,50 @@ test 'tax rounds to two decimals':
 
 **When a test fails, read the error message — it's plain English and names the fix.** The compiler emits friendly errors like `"POST /api/notes returned 404 — that endpoint doesn't exist on the server. Check the path."` for every status mismatch (200/201/204/400/401/403/404/409/422/429/5xx). Each carries `[clear:N]` pointing at the exact line. Don't re-run tests just to "see" them — the snapshot Meph gets in his context already contains the failures. Read the error, make the smallest edit that fixes it, run once to confirm.
 
+### Provable correctness — `clear prove` (when to use it)
+
+Pure-function tests can also be VERIFIED via math proof, not just executed:
+
+```sh
+clear prove apps/my-app/main.clear            # proves every test block
+clear prove apps/my-app/main.clear --bundle   # also writes a .proof.json sidecar for auditors
+```
+
+Use the prover **in addition to** the test runner — they cover different things:
+
+| Use `clear test`                                     | Use `clear prove`                                       |
+|------------------------------------------------------|---------------------------------------------------------|
+| Endpoint behavior (auth, status codes, DB writes)    | Pure-function math (tax, discount, eligibility, score)  |
+| Anything that touches the world (AI, network, time)  | Refuses to verify any of those — gives UNVERIFIABLE     |
+| Concrete examples + integration coverage             | Concrete proofs **AND** universal "for any input" proofs |
+| Hot-loop iteration during development                | Pre-deployment / audit / regulated-tier sales surface   |
+
+The big win: any test where input variables are **free** (not bound by an assignment in the test body) auto-promotes to a "for any input" universal proof. Example:
+
+```clear
+define function add(a, b):
+  return a + b
+
+test 'addition is commutative for any inputs':
+  expect add(a, b) is add(b, a)        # a, b are free → forall a, b
+```
+
+The prover proves this for ALL possible inputs, not just specific examples. That's the moonshot claim — Clear is the only AI coding tool whose output comes with a math certificate.
+
+**What proves universally today:**
+- Arithmetic identities (`x + 0`, `x * 1`, `x * 0`)
+- Commutativity of `+` and `*`
+- Associativity of `+`
+- Like-term collection (`x + x` proves equal to `2 * x`)
+- Functions with `if/then/otherwise` whose branches reduce to the same canonical form
+
+**What does NOT prove yet (returns honest UNKNOWN):**
+- Full distributivity over division (e.g. `(2*a*b)/100` vs `2*(a*b/100)`)
+- Path-dependent claims that depend on assumed inequalities
+- Recursive functions (would need induction principles)
+
+**Demos to cargo-cult:** `examples/proofs/{invoice,pricing,eligibility,theorems,deal-desk-math}.clear`. 58 proofs total covering tax math, discounts, eligibility checks, universal theorems, and deal-desk business math.
+
 ## Auth Guards on Mutations (MANDATORY — top source of compile errors)
 
 **Every mutation endpoint needs `requires login` as the first line.** Mutations = POST, PUT, DELETE. The compiler blocks builds without it — but only when the app actually has auth set up.

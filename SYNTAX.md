@@ -1560,6 +1560,37 @@ test 'function works':
   expect result is 10
 ```
 
+### Provable correctness — `clear prove <file>`
+
+Run the prover instead of (or in addition to) the test runner:
+
+```sh
+clear prove apps/my-app/main.clear            # human-readable bundle
+clear prove apps/my-app/main.clear --bundle   # also writes a .proof.json sidecar
+clear prove apps/my-app/main.clear --json     # machine output
+```
+
+The prover walks the source AST directly — it does not compile to JavaScript. Each `test` block becomes a proof obligation. Concrete tests get concrete proofs:
+
+```clear
+test 'tax on $100 at 10% is $10':
+  result = tax_amount(100, 10)
+  expect result is 10
+```
+
+Tests with **free variables** (a name not bound by an assignment) automatically promote to "for any input" universal proofs:
+
+```clear
+test 'addition is commutative for any inputs':
+  expect add(a, b) is add(b, a)        # a, b are free → forall a, b
+```
+
+The simplifier knows constant folding, commutativity, associativity, identity rules (`x+0`, `x*1`, `x*0`), and like-term collection (`x + x → 2*x`). It does NOT yet know full distributivity over division.
+
+The prover refuses to verify anything that touches the world (database, network, AI, email, time, randomness, UI) — those get an UNVERIFIABLE verdict. The TDD test runner still covers them via `clear test`.
+
+Demos: `examples/proofs/{invoice,pricing,eligibility,theorems,deal-desk-math}.clear` (58 proofs total). Run any of them to see the prover output. See `examples/proofs/README.md` for the full pitch.
+
 ### Unit-Level Value Assertions
 
 Assert directly on values — no server or HTTP needed. Use inside any `test:` block.
