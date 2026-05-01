@@ -1,0 +1,61 @@
+# Invoice math — provable correctness demo.
+#
+# These are the kinds of tiny calculations that hurt people when they go wrong.
+# The Australian Robodebt bug averaged income wrong; the Post Office Horizon
+# bug summed accounts wrong. Both were source-level math errors. A proof of
+# the source against its tests would have caught them before deployment.
+#
+# Run: clear prove examples/proofs/invoice.clear
+
+define function tax_amount(subtotal, rate_percent):
+  return subtotal * rate_percent / 100
+
+define function total_with_tax(subtotal, rate_percent):
+  tax = tax_amount(subtotal, rate_percent)
+  return subtotal + tax
+
+define function is_overdue(due_day_of_year, current_day_of_year):
+  return current_day_of_year > due_day_of_year
+
+define function late_fee(days_late, daily_rate):
+  if days_late > 0:
+    return days_late * daily_rate
+  otherwise:
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — each one becomes a proof obligation when `clear prove` runs.
+# ---------------------------------------------------------------------------
+
+test 'tax on $100 at 10% is $10':
+  result = tax_amount(100, 10)
+  expect result is 10
+
+test 'tax on $250 at 8.5% is $21.25':
+  result = tax_amount(250, 8.5)
+  expect result is 21.25
+
+test 'total of $100 plus 8% tax is $108':
+  result = total_with_tax(100, 8)
+  expect result is 108
+
+test 'invoice due day 30, today day 31 is overdue':
+  result = is_overdue(30, 31)
+  expect result is true
+
+test 'invoice due day 30, today day 30 is NOT overdue':
+  result = is_overdue(30, 30)
+  expect result is false
+
+test '5 days late at $2 daily is $10':
+  result = late_fee(5, 2)
+  expect result is 10
+
+test 'no days late means no fee':
+  result = late_fee(0, 5)
+  expect result is 0
+
+test 'negative days late means no fee':
+  result = late_fee(-3, 5)
+  expect result is 0

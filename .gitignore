@@ -1,6 +1,7 @@
 .env
 node_modules/
 package-lock.json
+.claude/state/
 # Size-guard test fixtures — generated at test time, not committed
 test-fixtures/knows-about-large/
 apps/*/build/package.json

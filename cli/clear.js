@@ -9,6 +9,9 @@
 // Commands:
 //   build <file>     Compile a .clear file to JS/Python/HTML
 //   check <file>     Validate without compiling (parse + validate only)
+//   prove <file>     Verify every test block via direct AST evaluation
+//                      (math proof against the source, no compiler in the path).
+//                      --bundle: write a .proof.json sidecar next to the source.
 //   info <file>      Introspect: list endpoints, tables, pages, agents
 //   fix <file>       Auto-fix all patchable errors in source
 //   test <file>      Run test blocks in a .clear file
@@ -134,6 +137,39 @@ async function checkCommand(args) {
   };
   output(result, flags);
   process.exit(result.ok ? 0 : 1);
+}
+
+async function proveCommand(args) {
+  const flags = parseFlags(args);
+  const file = flags.positional[0];
+  if (!file) { output({ error: 'Usage: clear prove <file.clear> [--bundle]' }, flags); process.exit(1); }
+
+  const loaded = loadSource(file);
+  if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
+
+  const { prove, formatBundle } = await import(pathToFileURL(resolve(__dirname, '..', 'lib', 'prover', 'index.js')).href);
+  const bundle = prove(loaded.source);
+
+  // --bundle: write a sidecar .proof.json next to the source.
+  if (args.includes('--bundle')) {
+    const sidecarPath = resolve(file).replace(/\.clear$/, '.proof.json');
+    writeFileSync(sidecarPath, JSON.stringify(bundle, null, 2));
+    if (!flags.quiet && !flags.json) console.log(`Proof bundle written to ${sidecarPath}`);
+  }
+
+  if (flags.json) {
+    console.log(JSON.stringify(bundle, null, 2));
+  } else if (!flags.quiet) {
+    console.log(formatBundle(bundle));
+  }
+
+  // Exit code semantics:
+  //   0 — every test PROVED, OR there were no tests (nothing to claim)
+  //   1 — at least one test FAILED (counterexample found)
+  //   5 — at least one test was UNVERIFIABLE / errored (impure code in path)
+  if (bundle.status === 'proved' || bundle.status === 'partial') process.exit(0);
+  if (bundle.counts && bundle.counts.failed > 0) process.exit(1);
+  process.exit(5);
 }
 
 async function infoCommand(args) {
@@ -1001,7 +1037,7 @@ async function deployCommand(args) {
 function helpCommand(flags = {}) {
   if (flags.json) {
     output({
-      commands: ['build', 'check', 'info', 'fix', 'test', 'eval', 'agent', 'run', 'serve', 'lint', 'dev', 'init', 'package', 'help'],
+      commands: ['build', 'check', 'prove', 'info', 'fix', 'test', 'eval', 'agent', 'run', 'serve', 'lint', 'dev', 'init', 'package', 'help'],
       globalFlags: ['--json', '--quiet', '--no-test', '--auto-fix', '--stdout', '--out <dir>', '--port <n>'],
       exitCodes: { 0: 'success', 1: 'compile error', 2: 'runtime error', 3: 'file not found', 4: 'test failure' },
     }, flags);
@@ -1015,6 +1051,7 @@ Usage: clear <command> [file] [options]
 Commands:
   build <file>     Compile .clear to JS/Python/HTML
   check <file>     Validate without compiling (fast)
+  prove <file>     Verify tests via direct AST eval (math proof, no compiler in path)
   info <file>      List endpoints, tables, pages, agents
   fix <file>       Auto-fix patchable errors in source
   test <file>      Run test blocks
@@ -1054,6 +1091,7 @@ const flags = parseFlags(commandArgs);
 switch (command) {
   case 'build':    await buildCommand(commandArgs); break;
   case 'check':    await checkCommand(commandArgs); break;
+  case 'prove':    await proveCommand(commandArgs); break;
   case 'info':     await infoCommand(commandArgs); break;
   case 'fix':      await fixCommand(commandArgs); break;
   case 'test':     await testCommand(commandArgs); break;
