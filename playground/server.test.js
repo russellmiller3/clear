@@ -1054,6 +1054,48 @@ try {
 }
 
 // =============================================================================
+// STUDIO TELEMETRY — first click, first app, and bounce trail
+// =============================================================================
+{
+  console.log('\n📦 Studio telemetry endpoint');
+
+  const reset = await post('/api/studio-telemetry/clear', {});
+  assert(reset.status === 200, 'studio telemetry reset returns 200');
+
+  const payload = {
+    sessionId: 'test-session-1',
+    mode: 'builder',
+    events: [
+      { name: 'studio_loaded', atMs: 0, pageMs: 0 },
+      { name: 'first_click', atMs: 120, pageMs: 120, target: 'chat_send' },
+      { name: 'time_to_first_app', atMs: 620, pageMs: 620, ms: 620, via: 'template' },
+      { name: 'bounce', atMs: 900, pageMs: 900, reason: 'hidden_before_first_app' },
+    ],
+    source: "secret clear source should not be stored",
+    chat: 'secret chat should not be stored',
+    apiKey: 'sk-secret',
+  };
+
+  const recorded = await post('/api/studio-telemetry', payload);
+  assert(recorded.status === 200, 'studio telemetry accepts event batch');
+  assert(recorded.data.ok === true, 'studio telemetry returns ok:true');
+  assert(recorded.data.accepted === 4, 'studio telemetry accepts expected events');
+
+  const snapshot = await getJson('/api/studio-telemetry');
+  assert(snapshot.status === 200, 'studio telemetry snapshot returns 200');
+  assert(Array.isArray(snapshot.data.events), 'studio telemetry snapshot has events');
+  assert(snapshot.data.events.length === 4, 'studio telemetry stores four safe events');
+  assert(snapshot.data.summary.firstClickCount === 1, 'studio telemetry counts first-click events');
+  assert(snapshot.data.summary.timeToFirstAppCount === 1, 'studio telemetry counts first-app events');
+  assert(snapshot.data.summary.bounceCount === 1, 'studio telemetry counts bounce events');
+
+  const serialized = JSON.stringify(snapshot.data);
+  assert(!serialized.includes('secret clear source'), 'studio telemetry does not store source text');
+  assert(!serialized.includes('secret chat'), 'studio telemetry does not store chat text');
+  assert(!serialized.includes('sk-secret'), 'studio telemetry does not store secrets');
+}
+
+// =============================================================================
 // CC-4 cycle 5 — end-to-end smoke: deal-desk → /api/deploy → CF binding
 // =============================================================================
 // This is the load-bearing test for CC-4. Earlier cycles tested pieces in

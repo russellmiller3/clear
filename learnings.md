@@ -6,6 +6,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Studio Instrumentation](#studio-instrumentation-2026-05-01) | allow-list events, never store source/chat/secrets, in-memory first |
 | [Clear Compiler](#clear-compiler) | 1:1 rule, synonym collisions, tokenizer eats colons, CRUD in assignments |
 | [Clear Compiler Refactoring](#clear-compiler-refactoring-2026-04-01) | Context object unifies per-language functions, parser-owned UI metadata, validation separate from codegen |
 | [Clear CLI & Phases 12-14](#clear-cli--language-phases-12-14-2026-04-01) | Self-contained imports, parseExpression return shape, synonym gotchas, data shape field parsing |
@@ -50,6 +51,16 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 45b: Scheduled-task shutdown leak](#session-45b-scheduled-task-shutdown-leak-2026-04-24) | Every `background` / `cron` / `agent runs every` compiled to an anonymous `setInterval`/`setTimeout`, which kept the event loop alive after `server.close()`; unified `_scheduledCancellers[]` registry drained by SIGTERM and SIGINT; HH:MM recursive setTimeout solved by closure over a mutable `_curTimer` so the canceller always sees the currently-armed timer |
 | [Session 45c: Multipart upload middleware auto-wiring](#session-45c-multipart-upload-middleware-auto-wiring-2026-04-24) | Client-side `upload X to '/api/foo'` always worked; server half received empty `req.body` because only `express.json()` was wired; compiler now walks nested AST (page > button > body) for UPLOAD_TO/ACCEPT_FILE, emits module-top multer + memoryStorage, injects `_upload.any()` middleware only on POST endpoints whose path matches an upload target — plain JSON POSTs untouched |
 | [Session 45d: Auth-capability gate on mutation security check](#session-45d-auth-capability-gate-on-mutation-security-check-2026-04-24) | "DELETE/PUT needs `requires login`" was firing as a hard error even on apps with NO auth setup (no Users+password, no `allow signup and login`) — Meph had no valid move since `requires login` had nothing to check against; 25 rows / 50% give-up rate on Factor DB; fix gates the error on capability presence and batches auth-less cases into one summary warning at file top |
+
+---
+
+## Studio Instrumentation (2026-05-01)
+
+**Privacy-safe analytics need an allow-list, not "send the event object."** Studio has source text, chat contents, API keys, form values, and selectors in memory. Funnel telemetry must throw all of that away and keep only coarse event names, timing numbers, mode, and allow-listed targets.
+
+**Use in-memory first when the product question is the event contract.** GTM-7 needed first-click, time-to-first-app, and bounce shape. Durable analytics can wait until the events are proven useful.
+
+**Tests should post fake secrets.** The regression test sends fake source, chat, and API-key fields and asserts none appear in the telemetry snapshot. That catches future changes that accidentally store raw payloads.
 
 ---
 

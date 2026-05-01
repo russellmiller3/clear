@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Studio first-click instrumentation
+
+GTM-7 now has a local measurement path in Studio: first click, time to first app, and pre-app bounce events.
+
+**What shipped:**
+- Studio sends privacy-safe funnel events to a server endpoint.
+- The server keeps a testable in-memory event buffer and summary.
+- The server drops source text, chat text, API keys, form values, selectors, and arbitrary request fields.
+- Tests cover event capture, summary counts, and secret/source/chat redaction.
+
+**Why for launch:** Marcus demos need evidence about where a first user stalls. This gives Russell a local readout before wiring a paid analytics backend.
+
+**Backend still pending:** durable analytics storage and dashboarding. Current sink is intentionally in-memory.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:
