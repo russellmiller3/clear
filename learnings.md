@@ -2031,9 +2031,14 @@ We almost continued coding the measurement/retrieval fix before updating docs fo
 
 The measurement lesson is sharper. Easy tasks that pass in both arms do not "slightly support" or "slightly weaken" the flywheel claim. They are saturated. They should be excluded from the headline and shown only in an appendix. The headline should only use tasks that can discriminate between hint-on and hint-off.
 
+The first real report made the call cleanly: current hard-task evidence is **inconclusive**. Non-saturated tasks were 14/15 hint-on vs 12/15 hint-off (+13.3 points), but p=0.5977 and the 95% confidence interval crossed zero. That's useful because it stops the dangerous middle ground: positive-looking data that is not claim-worthy.
+
+Retrieval had the matching product bug. Exact-error fixes were being padded with generic same-archetype gold examples. That made the prompt look richer while making the actual hint set weaker. The fixed rule: if an exact-error fix exists, return it without generic padding; use generic gold only when no exact fix exists.
+
 ### Gotchas-as-rules
 
 - **Docs sweep after each phase, before continuing.** Phase context decays fast. Update `CHANGELOG.md`, `FEATURES.md`, `FAQ.md`, `RESEARCH.md`, `ROADMAP.md`, and `learnings.md` while the work is fresh.
 - **Saturated tasks are non-evidence.** If both arms pass at 90%+, remove that task from the headline lift number. Do not downweight it.
 - **"Statsig" means statistical significance here.** Report p-value, confidence interval, and `underpowered` when the sample is too small.
 - **Hard tasks prove the flywheel.** Deal Desk-style builds are the right measurement surface because toy tasks hide retrieval quality.
+- **Do not pad exact fixes with generic examples.** More hints is worse when the extra hints are weaker than the first one.

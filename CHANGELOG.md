@@ -6,6 +6,25 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Flywheel hint-effect report and precise retrieval
+
+The piece between "hints reach Meph" and "we can honestly say whether they help." The new report reads existing hint-on versus hint-off A/B artifacts, excludes saturated tasks from the headline, computes Fisher exact significance, prints a confidence interval, and returns `underpowered`, `inconclusive`, `significant_positive`, or `significant_negative`.
+
+**What shipped:**
+- `scripts/hint-effect-report.mjs` — read-only CLI over `playground/sessions/ab-hint-sweep-*.json`.
+- `scripts/hint-effect-report-helpers.mjs` — pure dependency-free math for task aggregation, saturated-task exclusion, suspicious-fast artifact rejection, Fisher exact p-values, and confidence intervals.
+- `scripts/hint-effect-report.test.mjs` — regression coverage for saturated-task exclusion, underpowered verdicts, suspicious-fast artifacts, significance math, and trial-row aggregation.
+- `factorDB.querySuggestions()` now returns exact-error fixes without padding them with generic same-archetype examples. Same-archetype exact fixes outrank newer cross-archetype fixes. Generic gold examples only appear when no exact-error fix exists.
+- `playground/supervisor/factor-db.test.js` now uses the OS temp directory, so the suite runs on Windows instead of failing on `/tmp`.
+
+**Current result on existing artifacts:** **inconclusive**. Non-saturated tasks show 14/15 hint-on versus 12/15 hint-off (+13.3 points), but p=0.5977 and 95% CI is [-10.5%, 37.2%]. Saturated tasks (`counter`, `kpi-dashboard`) moved to the appendix.
+
+**What this means:** do not claim "the flywheel makes Meph better" yet. Claim "delivery works; current hard-task evidence is positive but not statistically significant; Deal Desk-style hard tasks are next."
+
+**Tests:** `node scripts/hint-effect-report.test.mjs`, `node playground/supervisor/factor-db.test.js`, `node scripts/hint-effect-report.mjs`, and `node clear.test.js` passed. Broad suite: 2,813 passed, 0 failed.
+
+---
+
 ## 2026-05-01 - Launch verification and flywheel evidence hygiene
 
 The piece between "we think the launch path works" and "the repo can prove it on the next run." This batch wired real browser verification into the normal test path and made the flywheel telemetry report the data that actually exists.

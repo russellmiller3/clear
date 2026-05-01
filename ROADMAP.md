@@ -251,7 +251,7 @@ Tracks whether the JS/Python/HTML the compiler emits is actually optimal. Today'
 
 | # | Tier | Status | Scope | Unlock |
 |---|------|--------|-------|--------|
-| MF-1 | **Meph hint-effect significance gate** | In progress | Read existing A/B artifacts, exclude saturated tasks from headline, add hard-task report with p-value + confidence interval, then run Deal Desk-style A/B only if underpowered | Honest answer to "does the flywheel help?" before compiler-flywheel work depends on it |
+| MF-1 | **Meph hint-effect significance gate** | Local report shipped; hard-task run open | Existing A/B artifacts now exclude saturated tasks and report p-value + confidence interval. Current verdict is inconclusive. Next: Deal Desk-style A/B only if we want enough power to claim lift. | Honest answer to "does the flywheel help?" before compiler-flywheel work depends on it |
 | CF-2 | **Candidate emitters + deterministic A/B** — top 10 emit patterns get 2-3 variants, deterministic at compile time, production picks winner | Open | 1 week | Quantitative answer to "best JS pattern for X" |
 | CF-3 | **Compiler-strategy reranker** — EBM trained on (archetype, app shape, runtime outcome) → emit variant | Open (after Meph reranker trained) | 2 weeks | Per-pattern emit auto-selects |
 | CF-4 | **GA-evolved compiler** (research) — mutate emit functions, fitness = curriculum pass rate + runtime perf | Open | 2+ months | The compiler becomes a learned artifact |

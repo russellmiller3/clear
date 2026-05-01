@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 169 node types. 2635 compiler tests after the Phase 6 compiler tests land. Zero npm dependencies in the compiler.
+**Headline numbers:** 169 node types. 2,813 broad compiler/helper checks after the flywheel hint-effect report. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
@@ -54,6 +54,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
 - Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 - Flywheel hint telemetry proves whether hints reached Meph and whether he used, rejected, or partially used them.
+- Hint-effect reports say whether the flywheel evidence is significant, inconclusive, negative, or underpowered.
 
 **Developer tooling (Dave-first wedge)**
 - VSCode + Cursor extension with autocomplete + live diagnostics.
@@ -418,6 +419,7 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | Ghost Meph (chat backend dispatch + model picker) | `MEPH_BRAIN` env var or Studio picker | Routes /api/chat to Anthropic Haiku, OpenRouter Claude, GLM, DeepSeek, Kimi, local Ollama, or cc-agent. OpenAI-compatible backends now preserve Meph tool use through the shared format bridge. Changing the selected model sends full chat history on the next turn. See `playground/ghost-meph/`. |
 | Shape-search retrieval (Lean Lesson 2) | Every Meph compile retrieves canonical worked examples whose program SHAPE matches the source — archetype, table/endpoint/agent histogram, presence flags (auth, db, charts, agents). Layered next to (not replacing) the existing text-match `querySuggestions` pipeline; combined hint cap stays at 5. CLI driver at `scripts/match-shape.mjs` reads `playground/canonical-examples.md`. Disabled by `CLEAR_HINT_DISABLE=1` for clean A/B. See `playground/supervisor/program-shape.js`. |
 | Hint telemetry boundary checks | `node playground/supervisor/verify-hint-flow.js` + Factor DB summary | Verifies hints reach the tool-result string Meph sees, counts text labels (`yes`, `partial`, `inferred`) correctly, and distinguishes weak shape-match hints from no hint. |
+| Hint-effect significance report | `node scripts/hint-effect-report.mjs` | Reads A/B sweep artifacts, excludes saturated tasks from the headline, rejects suspicious-fast runs, and prints lift, p-value, confidence interval, and verdict. Current artifacts are inconclusive, not proof. |
 
 ## Live App Editing (LAE — Phase A + B shipped)
 

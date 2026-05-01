@@ -539,7 +539,21 @@ Telemetry notes:
 
 Use controlled hint-on versus hint-off A/B artifacts from `playground/supervisor/ab-hint-sweep.js`, not raw Factor DB rows. Raw rows are confounded because hints fire when Meph is already struggling.
 
-Current read as of 2026-05-01: delivery works, but lift is not statistically proved. Easy tasks like `counter` and `kpi-dashboard` are saturated and should not count in the headline. The next measurement must report hard-task lift only, with Deal Desk or similarly complex apps as the anchor.
+Run:
+
+```sh
+node scripts/hint-effect-report.mjs
+```
+
+The report:
+
+- excludes saturated tasks from the headline,
+- rejects empty and suspicious-fast artifacts,
+- reports hint-on versus hint-off lift,
+- prints a Fisher exact p-value and 95% confidence interval,
+- returns `underpowered`, `inconclusive`, `significant_positive`, or `significant_negative`.
+
+Current read as of 2026-05-01: delivery works, but lift is not statistically proved. Existing non-saturated artifacts show 14/15 hint-on versus 12/15 hint-off (+13.3 points), p=0.5977, 95% CI [-10.5%, 37.2%]. Easy tasks like `counter` and `kpi-dashboard` are saturated and belong in the appendix. The next measurement needs Deal Desk or similarly complex apps as the anchor.
 
 ### Where is session data stored?
 
