@@ -2041,4 +2041,5 @@ Retrieval had the matching product bug. Exact-error fixes were being padded with
 - **Saturated tasks are non-evidence.** If both arms pass at 90%+, remove that task from the headline lift number. Do not downweight it.
 - **"Statsig" means statistical significance here.** Report p-value, confidence interval, and `underpowered` when the sample is too small.
 - **Hard tasks prove the flywheel.** Deal Desk-style builds are the right measurement surface because toy tasks hide retrieval quality.
+- **Hard-task sweeps need a named preset.** If the task list lives only in chat, the next run will drift back to saturated toys. Put the hard task set in a script and import it into the main regression suite.
 - **Do not pad exact fixes with generic examples.** More hints is worse when the extra hints are weaker than the first one.

@@ -545,6 +545,17 @@ Run:
 node scripts/hint-effect-report.mjs
 ```
 
+To create new hard-task evidence without saturated toy tasks:
+
+```sh
+MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 \
+  node playground/supervisor/ab-hint-hard-sweep.js --trials=3 --workers=1
+```
+
+Default hard tasks are `deal-with-detail-panel`, `lead-router`,
+`multi-tab-queue`, and `internal-request-queue`. Direct Anthropic API spend is
+$0 in cc-agent mode.
+
 The report:
 
 - excludes saturated tasks from the headline,

@@ -14,6 +14,12 @@ import { parse, NodeType } from './parser.js';
 import { compile, compileNode, exprToCode, UTILITY_FUNCTIONS } from './compiler.js';
 import { validate } from './validator.js';
 import { compileProgram, SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './index.js';
+import {
+  HARD_HINT_SWEEP_DEFAULTS,
+  HARD_HINT_TASKS,
+  buildHardHintSweepEnv,
+  buildHardHintSweepOptions,
+} from './playground/supervisor/ab-hint-hard-sweep.js';
 
 const REPO_ROOT = pathDirname(fileURLToPath(import.meta.url));
 
@@ -28600,6 +28606,40 @@ describe('Launch browser regression wiring', () => {
     expect(runner).toContain('const NODE = process.execPath;');
     expect(runner).not.toContain("runProcess('node'");
     expect(runner).not.toContain("spawn('node'");
+  });
+});
+
+describe('Hard hint sweep preset', () => {
+  it('targets hard non-saturated launch tasks', () => {
+    expect(HARD_HINT_TASKS).toContain('deal-with-detail-panel');
+    expect(HARD_HINT_TASKS).toContain('lead-router');
+    expect(HARD_HINT_TASKS).toContain('multi-tab-queue');
+    expect(HARD_HINT_TASKS).toContain('internal-request-queue');
+    expect(HARD_HINT_TASKS).not.toContain('counter');
+    expect(HARD_HINT_TASKS).not.toContain('kpi-dashboard');
+  });
+
+  it('defaults to serial strict trials with longer timeout', () => {
+    expect(HARD_HINT_SWEEP_DEFAULTS.trialsPerCondition).toBe(3);
+    expect(HARD_HINT_SWEEP_DEFAULTS.workers).toBe(1);
+    expect(HARD_HINT_SWEEP_DEFAULTS.timeoutMs).toBe(300_000);
+    expect(HARD_HINT_SWEEP_DEFAULTS.strict).toBe(true);
+  });
+
+  it('parses CLI overrides without losing hard-task defaults', () => {
+    const opts = buildHardHintSweepOptions(['--trials=2', '--workers=2', '--timeout=240', '--loose']);
+    expect(opts.taskIds).toEqual(HARD_HINT_TASKS);
+    expect(opts.trialsPerCondition).toBe(2);
+    expect(opts.workers).toBe(2);
+    expect(opts.timeoutMs).toBe(240_000);
+    expect(opts.strict).toBe(false);
+  });
+
+  it('defaults the sweep to cc-agent tool mode without overwriting explicit env', () => {
+    const env = buildHardHintSweepEnv({ MEPH_BRAIN: 'mock' });
+    expect(env.MEPH_BRAIN).toBe('mock');
+    expect(env.GHOST_MEPH_CC_TOOLS).toBe('1');
+    expect(env.CLEAR_AB_PORT_BASE).toBe('3600');
   });
 });
 

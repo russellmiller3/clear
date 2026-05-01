@@ -14,6 +14,7 @@ The piece between "hints reach Meph" and "we can honestly say whether they help.
 - `scripts/hint-effect-report.mjs` — read-only CLI over `playground/sessions/ab-hint-sweep-*.json`.
 - `scripts/hint-effect-report-helpers.mjs` — pure dependency-free math for task aggregation, saturated-task exclusion, suspicious-fast artifact rejection, Fisher exact p-values, and confidence intervals.
 - `scripts/hint-effect-report.test.mjs` — regression coverage for saturated-task exclusion, underpowered verdicts, suspicious-fast artifacts, significance math, and trial-row aggregation.
+- `playground/supervisor/ab-hint-hard-sweep.js` — hard-task A/B preset for `deal-with-detail-panel`, `lead-router`, `multi-tab-queue`, and `internal-request-queue`. It excludes saturated tasks by construction and defaults to cc-agent tool mode, so direct Anthropic API spend is $0.
 - `factorDB.querySuggestions()` now returns exact-error fixes without padding them with generic same-archetype examples. Same-archetype exact fixes outrank newer cross-archetype fixes. Generic gold examples only appear when no exact-error fix exists.
 - `playground/supervisor/factor-db.test.js` now uses the OS temp directory, so the suite runs on Windows instead of failing on `/tmp`.
 
@@ -21,7 +22,7 @@ The piece between "hints reach Meph" and "we can honestly say whether they help.
 
 **What this means:** do not claim "the flywheel makes Meph better" yet. Claim "delivery works; current hard-task evidence is positive but not statistically significant; Deal Desk-style hard tasks are next."
 
-**Tests:** `node scripts/hint-effect-report.test.mjs`, `node playground/supervisor/factor-db.test.js`, `node scripts/hint-effect-report.mjs`, and `node clear.test.js` passed. Broad suite: 2,813 passed, 0 failed.
+**Tests:** `node scripts/hint-effect-report.test.mjs`, `node playground/supervisor/factor-db.test.js`, `node scripts/hint-effect-report.mjs`, and `node clear.test.js` passed. Broad suite after the hard preset: 2,817 passed, 0 failed.
 
 ---
 
