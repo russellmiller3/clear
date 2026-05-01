@@ -47,6 +47,19 @@ Anything that touches the world: the database, the network, AI calls, email, tim
 
 This is by design. Provable correctness covers the **business-logic layer** of an app — the math that determines outcomes. The integration layer (API calls, database writes, AI responses) is tested separately by Clear's existing test suite, which runs the compiled output end-to-end.
 
+## Known soundness boundary (be honest about it)
+
+The simplifier currently treats `+` as commutative even when its operands are untyped free variables. This is correct when both operands are numbers, but **wrong if either operand is a string** (string concatenation is NOT commutative — `'a' + 'b'` is `'ab'`, not `'ba'`).
+
+In practice this is a narrow gap because:
+- Clear's idiomatic string-building uses interpolation (`'Hello, {name}!'`), not `+`.
+- Real business logic in `examples/proofs/` is arithmetic, not string-shaped.
+- The prover refuses anything that touches data sources where strings typically come from (database reads, AI calls, HTTP).
+
+But it IS a real gap. If you write a function whose `+` could mean string concat and you write a symbolic test claiming commutativity, the prover will (incorrectly) say PROVED. The proper fix is type-aware simplification, which would respect Clear's typed parameters (`define function add(a is number, b is number)`). Tracked as future work.
+
+**For pure numeric business logic — every demo file in this directory — the proofs are sound.**
+
 ## How to add a new proof
 
 ```clear
