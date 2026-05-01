@@ -2021,3 +2021,15 @@ Live verification also showed a reporting blind spot. Five Meph runs saw shape-m
 - **Test the boundary the agent actually sees.** Tool-local state is not enough; assert the serialized tool result contains the hint payload.
 - **A rejected hint still proves delivery.** `HINT_APPLIED: no` with a reason means Meph saw the hint. Treat that separately from "no hint reached Meph."
 - **Live verification summaries must distinguish no hint from weak hint.** Shape-match hints are weaker than exact-error hints, but they are not `none`.
+
+## Session 2026-05-01: Studio Onboarding Must Be Meph-First
+
+GTM-5 is not just "Builder Mode is the default." A new user can still land in
+Builder Mode and feel dumped into source if the editor auto-opens. The product
+contract is: Meph asks what to build first; source is reachable, not primary.
+
+### Gotchas-as-rules
+
+- **Default mode is not the same as first screen.** Test the visible first load: prompt, editor hidden, source toggle reachable.
+- **Do not auto-open source for onboarding.** The old first-three-publishes rule taught Clear, but it made the editor the front door.
+- **Browser harnesses should wait on HTTP readiness, not stdout.** A "server ready" log can be a timeout path; probe the actual URL before opening the browser.

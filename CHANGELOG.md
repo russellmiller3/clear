@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Studio onboarding starts in Meph chat
+
+New users now land in Builder Mode with Meph asking what they want to build.
+The raw source editor no longer opens as the first screen.
+
+**What shipped:**
+- Fresh Studio loads default to the Meph build prompt, not the source editor.
+- The source editor remains reachable through **Show Source** for power users.
+- Builder Mode browser coverage now asserts the new first-load contract.
+- A static Studio onboarding contract locks the default, prompt, hidden editor, and source toggle.
+
+**Why for launch:** Marcus should describe the app first. Source is still there, but it no longer feels like the front door.
+
+**Tests:** `node playground/studio-onboarding-static.test.js` passed. The Builder Mode browser suite reached and passed the new first-load assertions; full rerun was blocked by the local escalation usage limit after stale layout assertions were updated.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:

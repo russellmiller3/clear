@@ -713,29 +713,28 @@ Validation: all 8 core templates classify to the correct archetype (see `archety
 
 ### How do I try Builder Mode (Marcus-first Studio layout)?
 
-Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:3456/?studio-mode=builder`.
+Open Studio normally. New users default to Builder Mode. Use `?studio-mode=builder` only to force it after opting out.
 
 **What changes in builder mode:**
-- Preview fills the top 60% of the screen (full width). Chat drops to the bottom 40%. Editor is hidden.
-- Chat input placeholder becomes "What do you want to build today, or which app to change?" — Marcus-first prompt instead of "Ask Meph."
-- Toolbar gains a **Show Source ◀** button that opens the `.clear` editor as a right-side overlay rail.
-- The Run/Deploy button becomes a loud **Publish** button (accent-filled, bolder type). Same handler, same `/api/deploy` endpoint.
-- The `Hide Chat` toggle is hidden (chat can't collapse below 40vh in this layout).
+- Meph is the left rail and asks what you want to build before showing source.
+- Preview keeps the main workspace. Editor is hidden until **Show Source** is clicked.
+- Chat input placeholder becomes "What do you want to build today, or which app to change?" - Marcus-first prompt instead of "Ask Meph."
+- Toolbar gains a **Show Source** button that opens the `.clear` editor as a right-side overlay rail.
+- The Run/Deploy button becomes a loud **Publish** button. Same handler, same `/api/deploy` endpoint.
+- The `Hide Chat` toggle stays reachable for power users.
 
 **Opt-out:** `?studio-mode=classic`. Preference persists in localStorage so you don't have to keep adding the param.
 
 **What's not in v0.1 (deferred):**
-- Auto-hide source editor after 3 successful ships (BM-3 full)
 - Click-to-edit on preview elements (BM-4)
-- "What are you building?" tile gallery on empty state (BM-6)
 - Status bar (users / agent spend / last ship)
 - `cmd+.` shortcut to force classic layout
 
-**Tests:** `node playground/builder-mode.test.js` (31 assertions, port 3459).
+**Tests:** `node playground/studio-onboarding-static.test.js` and `node playground/builder-mode.test.js` (port 3459).
 
-**Source:** `playground/ide.html` CSS block starting at "BUILDER MODE v0.1" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
+**Source:** `playground/ide.html` CSS block starting at "BUILDER MODE" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
 
-**Full spec:** `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
+**Full spec:** `ROADMAP.md` -> "Builder Mode - Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
 
 ---
 
