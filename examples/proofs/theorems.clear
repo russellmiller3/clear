@@ -9,19 +9,19 @@
 #
 # Run: clear prove examples/proofs/theorems.clear
 
-define function add(a, b):
+define function add(a is number, b is number):
   return a + b
 
-define function multiply(a, b):
+define function multiply(a is number, b is number):
   return a * b
 
 define function identity(x):
   return x
 
-define function double(x):
+define function double(x is number):
   return x * 2
 
-define function triple(x):
+define function triple(x is number):
   return x * 3
 
 
@@ -75,7 +75,7 @@ define function constant_either_way(flag):
   otherwise:
     return 42
 
-define function double_either_way(x, flag):
+define function double_either_way(x is number, flag):
   if flag:
     return x + x
   otherwise:
