@@ -1,0 +1,153 @@
+# Deal-desk math — provable correctness demo (#5 / Marcus pitch).
+#
+# This is the business math that runs Marcus's deal-desk app:
+#   - approval thresholds (does this deal need an exec sign-off?)
+#   - commission calculation (what's the rep's payout?)
+#   - margin checks (is the discount within policy?)
+#   - quote totals (the bottom-line number on the contract)
+#
+# In a regulated industry — finance, healthcare, defense — a buggy
+# version of any of these costs real money. The Australian Robodebt
+# scandal averaged income wrong; the UK Post Office Horizon scandal
+# summed accounts wrong. Both were source-level math errors. A proof
+# of the source against its tests would have caught them before
+# deployment.
+#
+# Every test in this file becomes a proof obligation when you run:
+#
+#     clear prove examples/proofs/deal-desk-math.clear
+#
+# A successful run produces a proof bundle you hand to your auditor —
+# not "we tested this with 5 examples", but "we proved this against
+# every assertion in the test suite, mathematically."
+
+# ---------------------------------------------------------------------------
+# Approval-threshold logic
+# ---------------------------------------------------------------------------
+
+define function needs_exec_approval(discount_percent):
+  if discount_percent > 25:
+    return true
+  otherwise:
+    return false
+
+define function needs_legal_review(annual_value, discount_percent):
+  if annual_value >= 500000:
+    return true
+  otherwise if discount_percent > 30:
+    return true
+  otherwise:
+    return false
+
+# ---------------------------------------------------------------------------
+# Commission calculation
+# ---------------------------------------------------------------------------
+
+define function commission_amount(deal_value, rep_tier_percent):
+  return deal_value * rep_tier_percent / 100
+
+define function commission_with_accelerator(deal_value, rep_tier_percent, hit_quota):
+  base = commission_amount(deal_value, rep_tier_percent)
+  if hit_quota:
+    return base * 2
+  otherwise:
+    return base
+
+# ---------------------------------------------------------------------------
+# Margin / pricing
+# ---------------------------------------------------------------------------
+
+define function discounted_price(list_price, discount_percent):
+  saved = list_price * discount_percent / 100
+  return list_price - saved
+
+define function gross_margin_percent(price, cost):
+  if price > 0:
+    return (price - cost) * 100 / price
+  otherwise:
+    return 0
+
+# ---------------------------------------------------------------------------
+# Quote total
+# ---------------------------------------------------------------------------
+
+define function quote_total(line_items_subtotal, tax_rate_percent, discount_percent):
+  after_discount = discounted_price(line_items_subtotal, discount_percent)
+  tax = after_discount * tax_rate_percent / 100
+  return after_discount + tax
+
+
+# ===========================================================================
+# CONCRETE PROOFS — specific examples Marcus would actually quote.
+# ===========================================================================
+
+test '15% discount stays under exec-approval threshold':
+  result = needs_exec_approval(15)
+  expect result is false
+
+test '30% discount triggers exec approval':
+  result = needs_exec_approval(30)
+  expect result is true
+
+test '$600K deal triggers legal review regardless of discount':
+  result = needs_legal_review(600000, 5)
+  expect result is true
+
+test '$50K deal at 35% discount triggers legal review':
+  result = needs_legal_review(50000, 35)
+  expect result is true
+
+test '$50K deal at 10% discount does NOT trigger legal review':
+  result = needs_legal_review(50000, 10)
+  expect result is false
+
+test '$100K deal at 8% commission tier is $8K':
+  result = commission_amount(100000, 8)
+  expect result is 8000
+
+test 'commission with accelerator doubles when quota is hit':
+  result = commission_with_accelerator(100000, 8, true)
+  expect result is 16000
+
+test 'commission without accelerator stays at base when quota missed':
+  result = commission_with_accelerator(100000, 8, false)
+  expect result is 8000
+
+test '20% off $100K is $80K':
+  result = discounted_price(100000, 20)
+  expect result is 80000
+
+test 'gross margin of $100 price with $60 cost is 40%':
+  result = gross_margin_percent(100, 60)
+  expect result is 40
+
+test 'zero price gross margin is zero (no division-by-zero)':
+  result = gross_margin_percent(0, 60)
+  expect result is 0
+
+test 'quote total: $10K subtotal, 8% tax, 10% discount':
+  # $10K - 10% = $9K; $9K + 8% tax = $9720
+  result = quote_total(10000, 8, 10)
+  expect result is 9720
+
+
+# ===========================================================================
+# UNIVERSAL THEOREMS — claims that hold for ANY input.
+# These are the "regulated industry" sales surface: not just tested,
+# proved.
+# ===========================================================================
+
+test 'commission_amount matches its defining formula':
+  expect commission_amount(deal_value, tier) is deal_value * tier / 100
+
+test 'commission with accelerator is exactly twice base when quota hit':
+  expect commission_with_accelerator(deal_value, tier, true) is 2 * commission_amount(deal_value, tier)
+
+test 'commission with accelerator equals base when quota missed':
+  expect commission_with_accelerator(deal_value, tier, false) is commission_amount(deal_value, tier)
+
+# TODO (next session, when the simplifier learns division-distributivity):
+#   test 'commission is linear in deal value':
+#     expect commission_amount(2 * deal_value, tier) is 2 * commission_amount(deal_value, tier)
+# Currently UNKNOWN because the simplifier doesn't normalize
+# (2 * a * b) / 100 against 2 * ((a * b) / 100).
