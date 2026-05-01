@@ -99,7 +99,6 @@ const SESSIONS_DIR = join(__dirname, 'sessions');
 if (!existsSync(SESSIONS_DIR)) mkdirSync(SESSIONS_DIR, { recursive: true });
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
 
 // CC-1 — Multi-tenant routing. When CLEAR_CLOUD_MODE=1 is set, the
 // subdomain router mounts FIRST so `<sub>.buildclear.dev` requests get
@@ -110,6 +109,7 @@ app.use(express.json({ limit: '1mb' }));
 import { mountCloudRouting } from './cloud-routing/index.js';
 import { makeTenantStore } from './tenant-store-factory.js';
 import { mountCloudAuthRoutes } from './cloud-auth/routes.js';
+import { mountStripeWebhookReceiver } from './stripe-webhook-receiver.js';
 // CC-1 cycle 9 — pick the right tenant store from env. DATABASE_URL unset
 // → InMemoryTenantStore (default, dev/test). DATABASE_URL set → migrations
 // run + PostgresTenantStore. TENANT_STORE_PRIMARY=dual-write → wrapper
@@ -118,6 +118,9 @@ import { mountCloudAuthRoutes } from './cloud-auth/routes.js';
 const _cloudTenantHandle = await makeTenantStore(process.env);
 const _cloudTenantStore = _cloudTenantHandle.store;
 console.log(`[cloud] tenant store mode: ${_cloudTenantHandle.mode}`);
+const _stripeWebhook = mountStripeWebhookReceiver(app, { store: _cloudTenantStore });
+console.log(`[cloud] Stripe webhook receiver mounted at ${_stripeWebhook.route}`);
+app.use(express.json({ limit: '1mb' }));
 const _cloudRouted = mountCloudRouting(app, { store: _cloudTenantStore });
 if (_cloudRouted) console.log('[cloud] CC-1 multi-tenant routing active (CLEAR_CLOUD_MODE=1)');
 // CC-2 — Clear Cloud auth URLs. Wires /api/auth/{signup,login,me,logout}
@@ -148,7 +151,7 @@ app.use(express.static(__dirname, { etag: false, lastModified: false, dotfiles: 
 // Deploy + billing endpoints (Phase 85 — one-click deploy). Needs express.json
 // already mounted above. Uses an in-memory tenant store by default — swap to
 // Postgres-backed store in production via wireDeploy({ store }).
-wireDeploy(app);
+wireDeploy(app, { store: _cloudTenantStore, stripeWebhookMounted: true });
 
 function _allowTestCloudHooks() {
   return process.env.NODE_ENV === 'test' || process.env.CLEAR_ALLOW_SEED;

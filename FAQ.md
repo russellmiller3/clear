@@ -96,6 +96,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where does the Stripe webhook receiver live?](#where-does-the-stripe-webhook-receiver-live)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
 - [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
@@ -203,6 +204,16 @@ If you want "what shipped this week?", check CHANGELOG. If you want "what's been
 **`ROADMAP.md` → `Auto-hosting by app type (v2, post-Clear-Cloud)`** — the v2 plan for compiler-driven routing to Cloudflare Workers + D1 (compatible apps), Modal (Python ETL), or Fly Docker (native binaries) once Clear Cloud is stable on Fly.
 
 Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as default**; Cloudflare auto-routing lands as v2 after Marcus is paying. Don't rebuild the hosting layer before shipping the product.
+
+---
+
+### Where does the Stripe webhook receiver live?
+
+`playground/stripe-webhook-receiver.js` mounts `POST /api/stripe-webhook`. It must mount before `express.json()` so Stripe signatures verify against the exact raw request body. `playground/server.js` does that and passes the same tenant store used by Clear Cloud deploy, auth, routing, and quota.
+
+The receiver verifies `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`, then delegates the signed event to `playground/billing.js`. `checkout.session.completed` marks the tenant's plan from checkout metadata (`team` or `business`) and saves the Stripe customer id. Replayed event ids are deduped through the tenant store, so Stripe retries are safe.
+
+Local tests use `signStripeWebhookForTest()` and never need live Stripe keys. Production fails closed when `STRIPE_WEBHOOK_SECRET` is missing.
 
 ---
 
