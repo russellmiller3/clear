@@ -3,6 +3,7 @@
 ## Session Startup
 
 - Read `HANDOFF.md`, `PHILOSOPHY.md`, and `CLAUDE.md` before making code changes in this repository.
+- Read `FAQ.md` and `learnings.md` before making repo changes. `FAQ.md` is the navigation map; `learnings.md` is the list of mistakes already paid for.
 - Treat `CLAUDE.md` as project-level compatibility guidance from Claude sessions. Follow it unless it conflicts with higher-priority Codex/developer instructions or newer user direction.
 - For language/compiler work, consult `intent.md`, `learnings.md`, `AI-INSTRUCTIONS.md`, and `SYNTAX.md` before editing parser, compiler, validator, runtime, or Meph-facing behavior.
 
@@ -11,14 +12,17 @@
 - Keep generated artifacts out of Git. Build outputs, sweep sessions, scratch apps, temp files, caches, and root-level generated app files should stay ignored and untracked.
 - `playground/factor-db.sqlite` is source/training data for the flywheel, not a disposable artifact.
 - Run `node clear.test.js` after JavaScript/runtime/compiler changes. Use the bundled Node runtime if `node` is not available on PATH.
+- Launch-facing features need browser regression coverage. If a customer can click it, the automated browser suite must cover it before the feature is called done.
 - A task is not done while the worktree is dirty. Before calling work complete, every change must be intentionally committed, stashed with a clear name, or removed after confirming it is disposable. No loose modified, deleted, or untracked files.
 - When a review finds a repeatable miss, do not stop at advice. Add the smallest failing check or hook that would catch it next time, then fix the current instance until that check passes.
+- Update `learnings.md` as work proceeds. After each meaningful fix, phase, or mistake, append the concrete lesson before moving to the next lane.
 
 ## Branch Discipline
 
 - Always do work on a branch. Never edit, stage, or commit feature/fix/doc work directly on `main`.
 - Before starting work from `main`, create a focused branch such as `feature/<name>`, `fix/<name>`, or `docs/<name>`.
-- Use one branch per epic. Do not create branch-per-phase, branch-per-worker, or branch-per-agent clutter for the same epic.
+- Use one branch per feature. Do not group multiple features onto one branch, and do not create branch-per-phase clutter inside the same feature.
+- Use one small feature, fix, or docs unit per commit. Never batch unrelated features into one giant commit.
 - Workers on the same epic should share the epic branch or work in temporary worktrees that are merged back and deleted promptly.
 - Merge back to `main` only after the branch is tested, committed, and ready to ship.
 

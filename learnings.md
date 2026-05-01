@@ -358,6 +358,13 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 ## Session 8c: Compiled Output Quality & Error Translator Plan (2026-04-07)
 
 - **Red-Team Compiled Output, Not Just Source.** Unit tests verify the compiler generates correct syntax. But deploying the compiled server and reading it as a senior dev found 5 production issues: no source mapping, error messages leaking DB internals, seed endpoints unguarded, silent fetch failures, no architecture comments. Always review the compiled output as if YOU had to debug it at 3am.
+
+## Session 2026-05-01: Branch Hygiene and Session Startup
+
+- **One branch per feature, one small feature per commit prevents archaeology tax.** A giant branch or commit that mixes prover work, docs, hooks, app changes, and launch work makes state hard to reason about later. Cut a new branch for each feature, then split that branch into small commits where each one has one purpose and one verification story.
+- **FAQ and learnings are startup inputs, not optional references.** The routing primitive and prover already had source-of-truth entries. Reading those first prevents rebuilding finished work and keeps new effort pointed at the real remaining gap.
+- **Write learnings while the mistake is fresh.** Waiting until the end loses the specific failure mode. When Russell corrects process, update `learnings.md` and the active rules before continuing.
+- **Launch means browser-tested behavior, not compiler-green code.** If a customer can click a feature, the automated browser suite needs to cover that path. Otherwise regressions hide behind passing unit tests until the demo.
 - **Source Line Comments Are Cheap, Invaluable.** Adding `// clear:LINE` to every endpoint and CRUD operation costs <1KB per app but transforms debuggability. Stack traces now map to Clear source lines.
 - **Error Classification Prevents Info Leaks.** Returning raw `err.message` for 500 errors leaks DB schema, table names, SQL. Fix: validation errors (400) are user-caused and safe to show. Server errors (500) get "Something went wrong." The distinction is one line: check if message contains "required" or "must be."
 - **Seed Endpoint Guard is Mandatory.** Every template app has `POST /api/seed`. Without `NODE_ENV=production` guard, anyone can reset production data with one HTTP request. The Replit incident (July 2025) was exactly this — AI deleted a production database.
@@ -1472,7 +1479,6 @@ The pattern that works: put `await testAsync(...)` at MODULE SCOPE (not inside d
 - Workers bundle drift-guards: hello+askAI and signup+agent both pass `grep -c 'require\|fs\.\|/tmp\|child_process'` → 0
 - Node (default) target: zero behavioral change. Temporal + AI tests all green.
 
-<<<<<<< HEAD
 ## Session: Cloudflare Workers for Platforms — Phase 6 (2026-04-23)
 
 `runs durably` was the architectural shift of the Cloudflare plan. Same three words in a `.clear` file, two totally different deployment realities: Node target keeps emitting Temporal SDK imports (so anyone running their own Temporal cluster is untouched), Cloudflare target emits a standalone `WorkflowEntrypoint` class per durable workflow, plus the `[[workflows]]` bindings that make CF accept the deploy. Six effective cycles landed as one commit (emitter + tests atomically coupled) with per-cycle prefixes in the message (`feat(cf-6.1,6.2,6.7,6.8,6.9)`). Four non-obvious pitfalls worth pinning.
