@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - CC-5c Fly certificate helper scaffold
+
+The piece between "DNS is verified" and "the custom domain can serve HTTPS"
+now has a mock-tested boundary. Clear Cloud can request a Fly certificate,
+poll its status, and return a normalized `ready` / `pending` / `failed` state
+without tests touching the real Fly network.
+
+**What shipped:**
+- New Fly certificate helper for create, status, polling, and a CC-5b-shaped integration call.
+- Mocked API tests for create-cert, poll-cert-status, ready/pending state mapping, and Fly error text.
+- `app_domains` now has certificate id/status columns so CC-5b has a real writeback target.
+- No DNS poller trigger wiring yet. CC-5b still owns waking up on verified domains and writing the cert id back.
+
+**Why for launch:** custom domains are not credible until HTTPS is automatic. This gives the poller a tiny, tested thing to call once DNS verification lands.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:

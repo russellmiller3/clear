@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS app_domains (
   -- Error message from the last verification attempt if status=failed.
   -- First 500 chars of whatever the DNS layer reported. Clears on retry.
   last_error       TEXT,
+  -- CC-5c SSL provisioning state. DNS verification (`status`) and cert
+  -- readiness are separate because verified DNS can still be waiting on
+  -- Fly/ACME issuance.
+  fly_certificate_id          VARCHAR(128),
+  certificate_status          VARCHAR(32) NOT NULL DEFAULT 'pending'
+    CHECK (certificate_status IN ('pending', 'ready', 'failed')),
+  certificate_ready_at        TIMESTAMPTZ,
+  certificate_last_checked_at TIMESTAMPTZ,
+  certificate_error           TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -52,6 +61,10 @@ CREATE INDEX IF NOT EXISTS idx_app_domains_status  ON app_domains(status);
 CREATE INDEX IF NOT EXISTS idx_app_domains_pending
   ON app_domains(last_checked_at NULLS FIRST)
   WHERE status = 'pending';
+-- CC-5c poller follow-up: rows whose DNS is verified but SSL is not ready.
+CREATE INDEX IF NOT EXISTS idx_app_domains_cert_pending
+  ON app_domains(certificate_last_checked_at NULLS FIRST)
+  WHERE status = 'verified' AND certificate_status = 'pending';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Trigger: keep updated_at fresh

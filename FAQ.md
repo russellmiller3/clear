@@ -96,6 +96,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where does Fly SSL certificate provisioning live?](#where-does-fly-ssl-certificate-provisioning-live)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
 - [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
@@ -203,6 +204,18 @@ If you want "what shipped this week?", check CHANGELOG. If you want "what's been
 **`ROADMAP.md` → `Auto-hosting by app type (v2, post-Clear-Cloud)`** — the v2 plan for compiler-driven routing to Cloudflare Workers + D1 (compatible apps), Modal (Python ETL), or Fly Docker (native binaries) once Clear Cloud is stable on Fly.
 
 Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as default**; Cloudflare auto-routing lands as v2 after Marcus is paying. Don't rebuild the hosting layer before shipping the product.
+
+---
+
+### Where does Fly SSL certificate provisioning live?
+
+**`playground/cloud-domains/fly-certificates.js`** is the CC-5c helper. It calls Fly's certificate API, polls certificate status, and normalizes every result to `ready`, `pending`, or `failed`.
+
+**What CC-5b should call:** after its DNS poller flips a domain row to verified, call `provisionFlyCertificateForDomain({ domainRow, token })`. The row needs `id`, `domain`, and `fly_app_name`. The return value includes `certId` and `state` so the poller can write the cert id/status back.
+
+**Writeback target:** `app_domains` now has `fly_certificate_id`, `certificate_status`, `certificate_ready_at`, `certificate_last_checked_at`, and `certificate_error`. DNS verification status stays separate from HTTPS readiness.
+
+**Tests:** `playground/cloud-domains/fly-certificates.test.js` mocks Fly create/status responses. No test performs a real Fly network call.
 
 ---
 

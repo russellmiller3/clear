@@ -53,6 +53,22 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ---
 
+## Session: CC-5c Fly certificate provisioner helper (2026-05-01)
+
+### Keep the Fly boundary mockable until production account access is real
+
+CC-5c depends on Fly's production certificate API, but the repo can still ship a useful seam now. The helper takes `fetchImpl`, `apiBase`, and token inputs directly, so tests prove request shape and state normalization without touching the real network.
+
+### Normalize provider states before CC-5b writes rows
+
+Fly can report certificate readiness through fields like `configured`, `client_status`, `status`, or provider-specific payloads. CC-5b should not learn those shapes. It should receive only `ready`, `pending`, or `failed`, plus `certId`, then write those values back to the domain row.
+
+### The trigger belongs to the DNS poller, not the cert helper
+
+The certificate helper should not wake itself, scan pending domains, or resolve DNS. CC-5b owns "domain flipped to verified"; CC-5c owns "given that verified row, ask Fly for HTTPS and poll until ready."
+
+---
+
 ## Session D-1: Namespaced component calls (2026-04-24)
 
 ### The bug: `show ns's Card()` silently dropped the component
