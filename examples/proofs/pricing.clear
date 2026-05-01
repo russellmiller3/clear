@@ -1,0 +1,78 @@
+# Pricing math — provable correctness demo (#2).
+#
+# Discount, tip, and percentage calculations. The kind of thing every SaaS
+# app does. When these go wrong silently, customers get charged the wrong
+# amount. With provable correctness, the math is verified against the
+# tests before deployment — no surprise overcharges.
+#
+# Run: clear prove examples/proofs/pricing.clear
+
+define function apply_discount(price, discount_percent):
+  saved = price * discount_percent / 100
+  return price - saved
+
+define function tip(bill, tip_percent):
+  return bill * tip_percent / 100
+
+define function bill_total(subtotal, tip_percent):
+  return subtotal + tip(subtotal, tip_percent)
+
+define function bulk_price(unit_price, quantity, bulk_discount_percent):
+  base = unit_price * quantity
+  if quantity >= 10:
+    return apply_discount(base, bulk_discount_percent)
+  otherwise:
+    return base
+
+define function loyalty_tier(years_as_customer):
+  if years_as_customer >= 5:
+    return 'gold'
+  otherwise if years_as_customer >= 2:
+    return 'silver'
+  otherwise:
+    return 'bronze'
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+test '20% off $100 is $80':
+  result = apply_discount(100, 20)
+  expect result is 80
+
+test '0% off leaves the price unchanged':
+  result = apply_discount(100, 0)
+  expect result is 100
+
+test '15% tip on $40 is $6':
+  result = tip(40, 15)
+  expect result is 6
+
+test 'bill total of $40 plus 20% tip is $48':
+  result = bill_total(40, 20)
+  expect result is 48
+
+test '10 units at $5 with 10% bulk discount is $45':
+  result = bulk_price(5, 10, 10)
+  expect result is 45
+
+test '5 units at $5 with 10% bulk discount is full price (no bulk threshold)':
+  result = bulk_price(5, 5, 10)
+  expect result is 25
+
+test '6 years of loyalty is gold':
+  result = loyalty_tier(6)
+  expect result is 'gold'
+
+test '3 years of loyalty is silver':
+  result = loyalty_tier(3)
+  expect result is 'silver'
+
+test '1 year of loyalty is bronze':
+  result = loyalty_tier(1)
+  expect result is 'bronze'
+
+test '0 years of loyalty is bronze':
+  result = loyalty_tier(0)
+  expect result is 'bronze'

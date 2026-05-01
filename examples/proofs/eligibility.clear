@@ -1,0 +1,91 @@
+# Eligibility logic — provable correctness demo (#3).
+#
+# These are the kinds of yes/no decisions that hurt people most when wrong.
+# The Australian Robodebt scandal, the UK Post Office Horizon scandal —
+# both were eligibility-style logic bugs. A proof against the source means
+# the rule the law writes down is the rule the code actually checks.
+#
+# Run: clear prove examples/proofs/eligibility.clear
+
+define function can_vote(age, is_citizen):
+  return age >= 18 and is_citizen
+
+define function eligible_for_senior_discount(age):
+  return age >= 65
+
+define function eligible_for_student_discount(age, is_full_time_student):
+  return age <= 25 and is_full_time_student
+
+define function can_open_account(age, has_consent, country_age_limit):
+  if age >= country_age_limit:
+    return true
+  otherwise if has_consent:
+    return true
+  otherwise:
+    return false
+
+define function loan_qualifies(income, debt, credit_score):
+  debt_ratio = debt * 100 / income
+  if debt_ratio > 40:
+    return false
+  otherwise if credit_score < 600:
+    return false
+  otherwise:
+    return true
+
+
+# ---------------------------------------------------------------------------
+# Tests — every branch covered.
+# ---------------------------------------------------------------------------
+
+test 'adult citizen can vote':
+  result = can_vote(25, true)
+  expect result is true
+
+test 'minor citizen cannot vote':
+  result = can_vote(17, true)
+  expect result is false
+
+test 'adult non-citizen cannot vote':
+  result = can_vote(25, false)
+  expect result is false
+
+test '65 is the senior cutoff exactly':
+  result = eligible_for_senior_discount(65)
+  expect result is true
+
+test '64 is not senior yet':
+  result = eligible_for_senior_discount(64)
+  expect result is false
+
+test 'full-time student aged 22 gets the student discount':
+  result = eligible_for_student_discount(22, true)
+  expect result is true
+
+test 'aged-out student does not get the discount':
+  result = eligible_for_student_discount(26, true)
+  expect result is false
+
+test '13 with parental consent can open an account':
+  result = can_open_account(13, true, 16)
+  expect result is true
+
+test '13 without consent cannot open an account':
+  result = can_open_account(13, false, 16)
+  expect result is false
+
+test '17 over the country age limit can open an account':
+  result = can_open_account(17, false, 16)
+  expect result is true
+
+test 'loan qualifies: low debt, good credit':
+  result = loan_qualifies(100000, 20000, 720)
+  expect result is true
+
+test 'loan rejected: high debt ratio':
+  result = loan_qualifies(100000, 50000, 720)
+  expect result is false
+
+test 'loan rejected: low credit even with low debt':
+  result = loan_qualifies(100000, 10000, 580)
+  expect result is false

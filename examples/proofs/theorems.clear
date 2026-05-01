@@ -1,0 +1,57 @@
+# Universal theorems — provable correctness demo (#4 / flagship).
+#
+# These tests don't pin down specific input numbers — they use FREE
+# variables. The prover sees the variables aren't bound, switches into
+# symbolic mode, and proves the claim holds for ALL possible inputs.
+#
+# This is the difference between "tested for these examples" and
+# "mathematically true forever" — the moonshot claim made real.
+#
+# Run: clear prove examples/proofs/theorems.clear
+
+define function add(a, b):
+  return a + b
+
+define function multiply(a, b):
+  return a * b
+
+define function identity(x):
+  return x
+
+define function double(x):
+  return x * 2
+
+
+# ---------------------------------------------------------------------------
+# Universal theorems — variables are free, so claims must hold for ANY input.
+# ---------------------------------------------------------------------------
+
+test 'addition is commutative for any inputs':
+  expect add(a, b) is add(b, a)
+
+test 'multiplication is commutative for any inputs':
+  expect multiply(a, b) is multiply(b, a)
+
+test 'addition is associative for any inputs':
+  expect add(add(a, b), c) is add(a, add(b, c))
+
+test 'adding zero leaves a number unchanged':
+  expect add(x, 0) is x
+
+test 'multiplying by 1 leaves a number unchanged':
+  expect multiply(x, 1) is x
+
+test 'multiplying by 0 always gives 0':
+  expect multiply(x, 0) is 0
+
+test 'identity returns its input':
+  expect identity(y) is y
+
+# ---------------------------------------------------------------------------
+# Honest "I don't know" — the simplifier doesn't yet handle distributivity,
+# so this test should come back UNKNOWN, not falsely PROVED.
+# Tomorrow's symbolic-mode work expands the simplifier here.
+# ---------------------------------------------------------------------------
+
+test 'double is the same as adding to itself (NOT YET PROVABLE — distributivity)':
+  expect double(x) is add(x, x)
