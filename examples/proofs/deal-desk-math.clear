@@ -146,8 +146,8 @@ test 'commission with accelerator is exactly twice base when quota hit':
 test 'commission with accelerator equals base when quota missed':
   expect commission_with_accelerator(deal_value, tier, false) is commission_amount(deal_value, tier)
 
-# TODO (next session, when the simplifier learns division-distributivity):
-#   test 'commission is linear in deal value':
-#     expect commission_amount(2 * deal_value, tier) is 2 * commission_amount(deal_value, tier)
-# Currently UNKNOWN because the simplifier doesn't normalize
-# (2 * a * b) / 100 against 2 * ((a * b) / 100).
+test 'commission is linear in deal value (doubling deal doubles commission)':
+  expect commission_amount(2 * deal_value, tier) is 2 * commission_amount(deal_value, tier)
+
+test 'commission scales by any factor':
+  expect commission_amount(scale * deal_value, tier) is scale * commission_amount(deal_value, tier)
