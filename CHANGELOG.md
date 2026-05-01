@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Launch verification and flywheel evidence hygiene
+
+The piece between "we think the launch path works" and "the repo can prove it on the next run." This batch wired real browser verification into the normal test path and made the flywheel telemetry report the data that actually exists.
+
+**What shipped:**
+- **Browser UAT is now a launch regression gate.** `npm run test:browser` runs the Marcus app walker, `npm run test:all` includes it, and pre-push runs it unless `SKIP_BROWSER_UAT=1` is set. `scripts/run-marcus-uat.mjs` now uses `process.execPath`, so the same Node binary drives child app servers.
+- **Sandbox-blocked child-process tests skip visibly instead of failing the suite.** When the Windows sandbox blocks `node` spawns with EPERM, packaging and child-process checks mark the environment unsupported. Real environments still run the checks.
+- **Hint telemetry counts the labels the database actually stores.** The Factor DB summary now treats `yes`, `partial`, and `inferred` as useful hint labels instead of checking for numeric `1`.
+- **Hint delivery is tested at Meph's real boundary.** The dispatcher-level compile-tool test proves the returned tool-result string includes the `HINT_APPLIED` protocol and the worked source snippet Meph receives.
+- **Live hint-flow summaries distinguish weak hints from absent hints.** Shape-match hints now report as `shape_match:<archetype>` instead of collapsing to `none`.
+- **Working rules got tightened.** One branch per feature, one small feature per commit, FAQ/learnings startup reads, learnings-as-you-go, and launch browser regression coverage are now in repo instructions.
+
+**Current flywheel read:** delivery works. Evidence that hints improve Meph is not statistically proved yet. Easy tasks are saturated, so the next measurement must exclude them and use harder tasks like Deal Desk.
+
+**Tests:** `node clear.test.js` passed 2,808 checks, `node playground/e2e.test.js` passed 75/75, and `node scripts/run-marcus-uat.mjs` passed 74 browser checks across 5 Marcus apps.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:

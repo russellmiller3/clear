@@ -97,7 +97,7 @@ The product is meaningfully ready. The gating items are mostly setup work Russel
 - Full shell upgrade remaining phases — Phase 6 right detail panel is the active shell primitive; Phase 7 Marcus app port is next after the Phase 6 compiler/doc/curriculum/eval merge.
 - Apply the sweep-diagnosis patch (`snapshots/sweep-diagnosis-04-26-2026.md`) — surfaces silent fast-fails in future sweeps.
 - Curate `playground/canonical-examples.md` (initial draft from winner-harvest waiting for human pass).
-- Lean Lesson 1 Phase 1.5 — the $10 measurement A/B sweep.
+- Flywheel hard-task significance gate — exclude saturated tasks, use Deal Desk / similarly complex builds, and report p-value + confidence interval before claiming hints improve Meph.
 
 **Honest call:** items #2–#6 are about $30–50 + 2–3 hours of Russell's time. Item #7 is a conversation, not a code move. Item #1 is 30 seconds. Everything else compounds quality but does not unblock the first customer.
 
@@ -251,6 +251,7 @@ Tracks whether the JS/Python/HTML the compiler emits is actually optimal. Today'
 
 | # | Tier | Status | Scope | Unlock |
 |---|------|--------|-------|--------|
+| MF-1 | **Meph hint-effect significance gate** | In progress | Read existing A/B artifacts, exclude saturated tasks from headline, add hard-task report with p-value + confidence interval, then run Deal Desk-style A/B only if underpowered | Honest answer to "does the flywheel help?" before compiler-flywheel work depends on it |
 | CF-2 | **Candidate emitters + deterministic A/B** — top 10 emit patterns get 2-3 variants, deterministic at compile time, production picks winner | Open | 1 week | Quantitative answer to "best JS pattern for X" |
 | CF-3 | **Compiler-strategy reranker** — EBM trained on (archetype, app shape, runtime outcome) → emit variant | Open (after Meph reranker trained) | 2 weeks | Per-pattern emit auto-selects |
 | CF-4 | **GA-evolved compiler** (research) — mutate emit functions, fitness = curriculum pass rate + runtime perf | Open | 2+ months | The compiler becomes a learned artifact |

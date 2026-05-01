@@ -1,12 +1,13 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-04-26 (shell Phase 6 detail-panel docs/curriculum prep added; overnight autonomous run closed the WIN-data asymmetry and unblocked regression measurement)**.
+Updated: **2026-05-01 (flywheel hint delivery verified; browser launch regression wired into the suite; causal hint-effect measurement still needs hard tasks)**.
 
 ## Session timeline (recent)
 
 | Session | Date | What shipped |
 |---------|------|--------------|
+| **54** | **2026-05-01** | **Flywheel evidence hygiene.** Hint delivery is now tested at the actual tool-result boundary Meph reads, Factor DB summaries count the text labels the database stores (`yes`, `partial`, `inferred`), and live hint-flow summaries distinguish weak shape-match hints from no hint. Current DB snapshot: **1,831 rows, 714 passing, 65 hint-served rows, 41 useful/partial/inferred labels**. Honest conclusion: hints reach Meph, but live pass-rate lift is not statistically proved. Easy tasks are saturated and must be excluded from the headline; next measurement needs hard tasks such as Deal Desk with hint-on versus hint-off and a significance gate. |
 | **2026-05-01** | **2026-05-01** | **Provable correctness — moonshot first slice shipped.** New `clear prove <file>` command walks the AST directly (bypasses the compiler) and verifies every test block as a math proof against the source. Two milestones merged: (1) concrete-mode prover with 15 unit tests + 8 invoice proofs, (2) symbolic-mode prover that promotes free variables in tests to forall-quantifiers and proves universal theorems via a simplifier with constant folding, commutativity sort, associativity flatten, and identity rules. **7 real mathematical theorems proved for any input** (commutativity of `+` and `*`, associativity of `+`, identity / annihilation, identity function). 31 concrete proofs + 7 universal theorems demonstrated end-to-end. Compiler tests 2533 unchanged. The flagship moonshot claim — "Clear is the only AI coding tool whose output comes with a math certificate against its tests" — now demonstrable. Branch: `feature/decidable-core-prover` (commits `a024e3b`, `7a533eb`). Honest scope: proves source matches spec; compiler + runtime are still trusted (CompCert-style verification is a year-2 move). The dual-target architecture (Clear → JS AND Clear → Python from the same source) is a structural belt-and-suspenders nobody else can match. Next session: distributivity rule, conditional handling in symbolic mode, Phase B-2 effect quarantine in the validator, Marcus deal-desk proof bundle as the regulated-tier demo. |
 | **52** | **2026-04-26** | **Shell Upgrade Phase 6 teaching surface prepared.** Docs, Meph prompt, and curriculum now teach `detail panel for selected_deal:` with a sticky `actions:` bar. Compiler and chrome-check work are landing in the main thread; this adds the training target so future sweeps can measure selected-row right rails instead of generic cards. |
 | 35 | 2026-04-16 | Marcus GTM lock, competitive landscape research, deal-desk hero use case |
@@ -55,9 +56,10 @@ The document below is structured **theory → architecture → current state →
 
 **What's actually live right now:**
 - A live dashboard in Studio ("Flywheel" tab) showing the database growing
-- **1771 total rows, 701 passing end-to-end** (was 107/38 at Session 37; sweeps + cold-start + grader fixes have grown the corpus 17× and the passing-row count 18×)
+- **1,831 total rows, 714 passing end-to-end** (was 107/38 at Session 37; sweeps + cold-start + grader fixes have grown the corpus 17× and the passing-row count 18×)
 - Every Meph compile auto-logs, tagged with which task-milestone he just hit
-- Every compile error auto-retrieves 3 past working examples and hands them to Meph
+- Every compile error auto-retrieves past fixes and worked examples, then hands the hint text to Meph in the compile-tool result
+- **Hint telemetry is now boundary-tested:** 65 rows have hints served, 41 are marked useful / partial / inferred, and a rejected hint is counted separately from "no hint arrived"
 - A classifier that tags each app by shape (16 archetypes including the new `kpi` bucket) so retrieval can filter by app type
 - 5 new template apps that match what Marcus's team actually builds
 - Haiku 4.5 is the default model — 3× cheaper per training row than Sonnet at ~94% of Sonnet's completion rate
@@ -74,7 +76,7 @@ The document below is structured **theory → architecture → current state →
 
 **What this doesn't buy you.** Claude itself doesn't change. The LLM is the same. What improves is the information Meph has in his context window before he writes code. Fine-tuning would be a bigger win, but we don't have access — this is the best version of "training" available without it.
 
-**The bottleneck:** we need ~200 rows where tests passed before we can train the ranker (**currently 46**). Every Meph session adds a few. A full 30-task Haiku sweep now adds ~8 passing rows in ~7 minutes at a cost of ~$5. That's ~20 sweeps — roughly $100 and a few hours of compute — to cross the EBM training threshold.
+**The current bottleneck:** not row count. The repo has enough passing rows to train early rankers. The blocker is causal proof that hints improve Meph on tasks hard enough to discriminate. Saturated tasks like `counter` and `kpi-dashboard` must move to an appendix. The headline needs hard tasks, hint-on versus hint-off, a p-value, a confidence interval, and an underpowered verdict when the sample is too small.
 
 ---
 
