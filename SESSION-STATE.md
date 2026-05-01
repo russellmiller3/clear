@@ -1,8 +1,8 @@
-# Session state — provable correctness sprint (LIVE)
+# Session state — provable correctness sprint (FINAL)
 
-**Last updated:** 2026-05-01 — overnight session ongoing
-**Branch:** `feature/decidable-core-prover` (11 commits, all pushed to origin)
-**Status:** PC-1, PC-1.5, PC-2, PC-4, PC-5 all shipped. PC-3 deferred. Russell asked me to keep working until he comes back.
+**Last updated:** 2026-05-01 end of overnight session
+**Branch:** `feature/decidable-core-prover` (16 commits, all pushed to origin)
+**Status:** PC-1, PC-1.5, PC-2, PC-4, PC-5, PC-7, PC-7.5 all shipped. 60 proofs across 5 demos. 2579 tests passing.
 
 ## Resume prompt for a fresh session
 
