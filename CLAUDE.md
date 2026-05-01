@@ -534,3 +534,23 @@ The Factor DB already knows which error messages cost Meph the most minutes — 
 - New AI-INSTRUCTIONS.md or SYNTAX.md guidance with a code example? The example must compile clean on BOTH targets.
 - For features that genuinely don't make sense on Python (e.g. browser-only DOM APIs), document the gap explicitly in the node-type's `intent.md` row — "JS-only: <reason>." Silent gaps are the failure mode; documented gaps are fine.
 - **Red flag:** a commit that touches `compileToJSBackend` without also touching `compileToPythonBackend` (or explicitly documenting why Python doesn't apply). Investigate before merging.
+
+## One Small Feature Per Commit (MANDATORY)
+
+Never bundle unrelated features, fixes, docs, and generated artifacts into one giant commit. Each commit must contain one small feature, one fix, or one coherent docs unit with its own verification note. If the branch needs five things, make five commits.
+
+## One Branch Per Feature (MANDATORY)
+
+Use one branch per feature. Do not group multiple features onto one branch, and do not create branch-per-phase branches inside one feature. If the next task is a different feature, cut a new branch before editing.
+
+## FAQ And Learnings Startup (MANDATORY)
+
+Every Clear session reads `FAQ.md` and `learnings.md` before changing files. `FAQ.md` answers where systems live and why decisions were made; `learnings.md` records the bugs and process failures already paid for. Do not start from memory when those files contain the map.
+
+## Learnings As You Go (MANDATORY)
+
+Update `learnings.md` during the work, not at some vague end-of-session moment. After each meaningful fix, completed phase, or repeated mistake, append the concrete lesson while the evidence is fresh.
+
+## Browser Regression For Launch (MANDATORY)
+
+Launch-facing features are not done until automated browser coverage drives the real UI path. If a customer can click, type, navigate, publish, edit, or inspect it, the browser test suite must exercise it and fail on regression. Compiler tests are necessary, not sufficient.
