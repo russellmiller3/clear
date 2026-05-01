@@ -6,6 +6,16 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Lead-router launch verification
+
+Added a fast launch guard for the lead-router demo. It proves the app still uses the shipped `route lead by size:` primitive, verifies the compiled server keeps the routing source trace, and checks the emitted owner assignments run before the database save.
+
+**Why for launch:** lead-router is one of the Marcus demo apps. The browser walker proves the UI still works; this guard proves the actual routing promise stays true.
+
+**Tests:** `node --check scripts/lead-router-launch-verification.mjs`, `node cli/clear.js test apps/lead-router/main.clear`, and `node scripts/run-marcus-uat.mjs lead-router` passed locally. A fuller verifier run was blocked after the final cleanup by the Codex approval limit, not by the app.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:
