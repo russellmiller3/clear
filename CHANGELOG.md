@@ -18,9 +18,23 @@ Built the first slice of provable correctness in one overnight session. Two mile
 
 **Honest scope of the claim.** What's proved: the Clear source matches its test spec. What isn't yet proved: the compiler translates that source faithfully to JS/Python, or that the runtime executes the translation faithfully. That's the standard industry trust boundary (Cedar, SPARK/Ada, Dafny, TLA+ all stop at the same line). Verifying the compiler too is a year-2 move (CompCert-style). The dual-target architecture (every Clear app compiles to both JS and Python from the same source) is a structural belt-and-suspenders that nobody else can match.
 
-**Test bump:** prover unit tests 0 → 30 (15 concrete + 15 symbolic). Compiler tests 2533 unchanged, all green. 31 concrete proofs + 7 universal theorems demonstrated end-to-end via the CLI.
+**Test bump:** prover unit tests 0 → 46 across the night (16 concrete + 30 symbolic). Compiler tests 2533 unchanged, all green. 60 proofs across 5 demo files demonstrated end-to-end via the CLI.
 
-**What's not in this commit (next session):** distributivity rule in the simplifier; conditional handling in symbolic mode (case-split on if/then); Phase B-2 effect quarantine in the validator (refuse impure calls outside `live:` blocks at parse time); Marcus deal-desk proof bundle as the regulated-tier demo; full doc cascade across landing pages + AI-INSTRUCTIONS + USER-GUIDE + system-prompt.
+**Continued same session — six more milestones (PC-1 through PC-7.5).** After M1 and M2 landed, the night extended into:
+
+- **PC-1 — distributivity / like-term collection** (`12e3326`). Simplifier now collects `x + x → 2*x`, `2*x + 3*x → 5*x`. Closes the honest UNKNOWN from M2.
+- **PC-1.5 — division-distribution** (`c78babb`). `c * (x / d) === (c * x) / d`. Unlocks linearity proofs for commission, tax, and similar business math.
+- **PC-2 — conditionals in symbolic mode** (`09f3306`). Functions with `if/then/otherwise` walk both branches in cloned environments and produce Phi values; the simplifier collapses `Phi(c, a, a)` to `a` (value-independent of branch). Lets functions like `constant_either_way(flag)` prove provably constant.
+- **PC-4 — Marcus deal-desk proof bundle** (`e8008ba`). Five demo files in `examples/proofs/` covering invoice math, pricing, eligibility, universal theorems, and full deal-desk math. Plus a README.md explaining the moonshot to compliance buyers.
+- **PC-5 — doc cascade** (`0427dae`, `c2cdb27`). SYNTAX.md, AI-INSTRUCTIONS.md, and Meph's system prompt now describe `clear prove`. (USER-GUIDE.md, intent.md, and landing pages still TODO — needs a polish pass.)
+- **PC-7 — type-aware soundness gate** (`db39261`). The `+` operator is overloaded (number addition vs string concat); commutativity is only sound on numeric operands. The simplifier now refuses to commute `+` unless both operands trace back to a `is number` type annotation. Function calls propagate parameter types back to the test's free variables. **Closes the soundness gap disclosed earlier.**
+- **PC-7.5 — forward type inference + partial-status bug fix** (`13acd75`). Two improvements: (1) parameters used in unambiguously-numeric ops (`*`, `/`, `-`, `%`, comparisons) auto-infer to `number`, so users don't need explicit `is number` annotations on most functions. (2) Critical soundness fix: the bundle's overall `summarize()` was silently classifying `partial` (UNKNOWN) results as contributing to overall PROVED — fixed with a regression test. Untyped `add(a, b): a + b` now correctly reports `partial / 1 unknown` instead of falsely PROVED.
+
+**Universal theorems proved tonight:** commutativity of `+` and `*`, associativity of `+`, additive/multiplicative identity and annihilation, like-term collection, conditional collapse, division-distribution, commission linearity (doubling deal value doubles commission, scales by any factor).
+
+**Branch:** `feature/decidable-core-prover` — 16 commits + the docs commits. Ready to merge to main when Russell pulls and reviews.
+
+**What's still not in this branch (next session):** Phase B-2 effect quarantine in the validator (PC-3 — needs `live:` parser shipped first); inequality reasoning in symbolic mode (PC-6); auto-prove integration with `clear test` (PC-8); counterexample generation when proofs fail (PC-9); USER-GUIDE.md / intent.md / landing-page polish.
 
 ---
 
