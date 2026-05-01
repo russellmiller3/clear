@@ -15,7 +15,7 @@ Every AI coding tool generates code. None of them tell you whether the generated
 | `invoice.clear` | tax math, late fees, overdue checks (8 proofs) | Software wrongly accusing customers of being overdue is exactly the bug class behind the Robodebt and Horizon scandals |
 | `pricing.clear` | discounts, tips, bulk pricing, loyalty tiers (10 proofs) | The smallest math errors in pricing software cost customers — and refunds — at scale |
 | `eligibility.clear` | voting, age limits, loan qualification (13 proofs) | Yes/no decisions on a person's life. Wrong rule in code = wrong rule in reality |
-| `theorems.clear` | universal mathematical theorems (12 proofs for ANY input) | Demonstrates symbolic mode — claims that hold for all possible inputs, not just specific examples |
+| `theorems.clear` | universal mathematical theorems (13 proofs for ANY input) | Demonstrates symbolic mode — claims that hold for all possible inputs, not just specific examples |
 | `deal-desk-math.clear` | approval thresholds, commission math, quote totals (15 proofs) | Marcus's deal-desk app math, audited at the source level — the regulated-tier sales surface |
 
 ## Run them

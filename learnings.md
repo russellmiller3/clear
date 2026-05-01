@@ -50,6 +50,17 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 45b: Scheduled-task shutdown leak](#session-45b-scheduled-task-shutdown-leak-2026-04-24) | Every `background` / `cron` / `agent runs every` compiled to an anonymous `setInterval`/`setTimeout`, which kept the event loop alive after `server.close()`; unified `_scheduledCancellers[]` registry drained by SIGTERM and SIGINT; HH:MM recursive setTimeout solved by closure over a mutable `_curTimer` so the canceller always sees the currently-armed timer |
 | [Session 45c: Multipart upload middleware auto-wiring](#session-45c-multipart-upload-middleware-auto-wiring-2026-04-24) | Client-side `upload X to '/api/foo'` always worked; server half received empty `req.body` because only `express.json()` was wired; compiler now walks nested AST (page > button > body) for UPLOAD_TO/ACCEPT_FILE, emits module-top multer + memoryStorage, injects `_upload.any()` middleware only on POST endpoints whose path matches an upload target — plain JSON POSTs untouched |
 | [Session 45d: Auth-capability gate on mutation security check](#session-45d-auth-capability-gate-on-mutation-security-check-2026-04-24) | "DELETE/PUT needs `requires login`" was firing as a hard error even on apps with NO auth setup (no Users+password, no `allow signup and login`) — Meph had no valid move since `requires login` had nothing to check against; 25 rows / 50% give-up rate on Factor DB; fix gates the error on capability presence and batches auth-less cases into one summary warning at file top |
+| [Session PC-6: Symbolic inequalities](#session-pc-6-symbolic-inequalities-2026-05-01) | Branch facts can prove floor invariants without a general solver |
+
+---
+
+## Session PC-6: Symbolic inequalities (2026-05-01)
+
+### Branch facts are enough for floor invariants
+The prover did not need a solver to prove "late fee never goes negative." The useful case was narrower: split a conditional, carry the branch fact (`fee > 0`) into that branch, and prove the bound there. The other branch was literal zero.
+
+### Keep PC-6 deliberately small
+Symbolic comparisons now cover literal comparisons, Phi branch splits, and one-variable numeric bounds. That is enough for floor/clamp business rules. Do not turn this into a general SMT engine until real proof examples force it.
 
 ---
 
@@ -1973,4 +1984,3 @@ Shipped Path A first as both a fix and a diagnostic. If Phase 7 measurement show
 - **Budget-first applies to plans too.** Phase 7 measurement is $10-capped per CLAUDE.md's Session 41 rule. The first draft of the plan said "run a curriculum sweep, compare infinite-loop rate" — that's the $168 pattern. Replay past failing Factor DB transcripts first (free), then A/B on 5 curriculum tasks ($2-5), then decide.
 - **Near-violations of PHILOSOPHY.md rules need precedent citations.** The WHILE counter emission (`_iter++; if (_iter > MAX) throw`) is extra lines that don't trace back to the Clear source — a brush with "1:1 mapping." It's acceptable only because `REPEAT UNTIL` already emits similar counter scaffolding; citing that precedent in the plan prevents the "did you really think about the rule?" pushback from becoming a real objection.
 - **New principles that codify existing behavior are stronger than ones that demand new behavior.** "Total by default, effects by label" deserves a PHILOSOPHY.md slot because the audit showed it's already ~94% true implicitly. The plan just closes the gap between what Clear does and what it claims to do.
-
