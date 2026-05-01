@@ -5499,9 +5499,8 @@ function detectStudioMode() {
   body.classList.toggle('builder-mode', mode === 'builder');
 
   // 8. Show/hide Source toggle button based on mode; reset show-source on exit.
-  // BM-3 full: counter-based auto-hide. First 3 successful Publishes the
-  // source defaults visible (helps new users learn what Clear looks like).
-  // After ship #3, source defaults hidden — they've seen enough.
+  // GTM-5: first-time users start in Meph chat, not raw source. Source
+  // stays reachable through the toolbar for power users and inspection.
   const srcBtn = document.getElementById('source-toggle-btn');
   if (srcBtn) {
     srcBtn.style.display = (mode === 'builder') ? '' : 'none';
@@ -5513,16 +5512,7 @@ function detectStudioMode() {
     themePicker.style.display = (mode === 'builder') ? '' : 'none';
     syncBuilderThemePicker();
   }
-  if (mode === 'builder') {
-    let shipCount = 0;
-    try { shipCount = parseInt(localStorage.getItem('clear-bm-ships-counter') || '0', 10) || 0; }
-    catch (e) { /* private browsing — treat as 0, source defaults visible */ }
-    if (shipCount < 3) {
-      body.classList.add('show-source');
-    } else {
-      body.classList.remove('show-source');
-    }
-  }
+  if (mode === 'builder') body.classList.remove('show-source');
 
   // 9. Rebrand Deploy button as Publish in builder mode
   const depBtn = document.getElementById('deploy-btn');

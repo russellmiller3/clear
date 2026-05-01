@@ -2067,3 +2067,15 @@ The CC-3 receiver looked wired because a route existed and signature helpers had
 - **Test with non-canonical JSON.** Pretty-printed fixtures catch receivers that verify a re-serialized object instead of the raw body.
 - **Webhook retries must be idempotent at the state boundary.** Assert the tenant row changes once when the same event arrives twice.
 - **Production secrets fail closed.** If the webhook secret is missing in production, reject the request instead of accepting unsigned billing changes.
+
+## Session 2026-05-01: Studio Onboarding Must Be Meph-First
+
+GTM-5 is not just "Builder Mode is the default." A new user can still land in
+Builder Mode and feel dumped into source if the editor auto-opens. The product
+contract is: Meph asks what to build first; source is reachable, not primary.
+
+### Gotchas-as-rules
+
+- **Default mode is not the same as first screen.** Test the visible first load: prompt, editor hidden, source toggle reachable.
+- **Do not auto-open source for onboarding.** The old first-three-publishes rule taught Clear, but it made the editor the front door.
+- **Browser harnesses should wait on HTTP readiness, not stdout.** A "server ready" log can be a timeout path; probe the actual URL before opening the browser.

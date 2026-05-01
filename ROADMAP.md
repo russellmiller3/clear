@@ -219,7 +219,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | GTM-2 | `landing/marcus.html` — GAN against ASCII mock, "ship the first one this Friday" headline | Open | 1 session |
 | GTM-3 | `landing/pricing.html` — Free / Team $99 / Business $499 / Enterprise | Open | 1 session |
 | GTM-4 | Find 5 real Marcuses on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
-| GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | Open | 2 days |
 | GTM-7 | Studio instrumentation — first-click tracking, time-to-first-app, where signups bounce | Open | 3 days |
 
 **Pitch + pricing locked Session 35** (Marcus over Sara, Vercel pattern, $99/$499/$Enterprise tiers). Full positioning + competitive analysis: `FAQ.md` → "Why does Clear Cloud beat Retool and Lovable?".

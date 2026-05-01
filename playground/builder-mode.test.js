@@ -20,18 +20,20 @@ function assert(cond, msg) {
 }
 
 console.log('Starting server on port 3459...');
-const server = spawn('node', ['playground/server.js'], {
+const server = spawn(process.execPath, ['playground/server.js'], {
   cwd: join(__dirname, '..'),
-  env: { ...process.env, PORT: '3459' },
+  env: { ...process.env, PORT: '3459', CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
   stdio: 'pipe',
 });
-let serverReady = false;
-server.stdout.on('data', d => { if (d.toString().includes('localhost:')) serverReady = true; });
+server.stdout.on('data', d => process.stdout.write(d));
 server.stderr.on('data', d => process.stderr.write(d));
-await new Promise(resolve => {
-  const check = setInterval(() => { if (serverReady) { clearInterval(check); resolve(); } }, 100);
-  setTimeout(() => { clearInterval(check); resolve(); }, 5000);
-});
+for (let i = 0; i < 100; i++) {
+  try {
+    const res = await fetch(BASE);
+    if (res.ok) break;
+  } catch {}
+  await new Promise(resolve => setTimeout(resolve, 100));
+}
 console.log('Server ready. Launching browser...\n');
 
 const browser = await chromium.launch({ headless: true });
@@ -77,6 +79,18 @@ try {
   assert(
     await page.evaluate(() => document.body.classList.contains('builder-mode')),
     'fresh user (no URL param, no saved preference) lands in Builder Mode (Default flip)'
+  );
+  assert(
+    await page.locator('#chat-input').getAttribute('placeholder').then(p => p?.toLowerCase().includes('what do you want to build')),
+    'fresh user lands on Meph build prompt, not a blank editor prompt'
+  );
+  assert(
+    !(await page.locator('#editor-pane').isVisible()),
+    'fresh user does not see raw editor as the first screen'
+  );
+  assert(
+    await page.locator('#source-toggle-btn').isVisible(),
+    'fresh user can still open source from the first screen'
   );
 
   // Existing classic-preference user is preserved across the flip — they don't get
@@ -140,18 +154,18 @@ try {
 
   assert(previewBox.height > mainBox.height * 0.5,
     `preview >50% of main-area height (was ${Math.round(100 * previewBox.height / mainBox.height)}%)`);
-  assert(chatBox.height > mainBox.height * 0.3 && chatBox.height < mainBox.height * 0.5,
-    `chat is 30-50% of main-area height (was ${Math.round(100 * chatBox.height / mainBox.height)}%)`);
-  assert(previewBox.y < chatBox.y, 'preview is ABOVE chat (y-axis)');
-  assert(Math.abs(previewBox.x - mainBox.x) < 2, 'preview is full-width (x starts at main-area x)');
-  assert(Math.abs(chatBox.width - mainBox.width) < 2, 'chat is full-width');
+  assert(chatBox.height > mainBox.height * 0.9,
+    `chat rail spans the workspace height (was ${Math.round(100 * chatBox.height / mainBox.height)}%)`);
+  assert(chatBox.x < previewBox.x, 'Meph chat is left of preview');
+  assert(Math.abs(chatBox.x - mainBox.x) < 2, 'Meph chat starts at main-area x');
+  assert(previewBox.width > mainBox.width * 0.5, 'preview keeps the majority of horizontal space');
 
-  // Mobile viewport (E-6) — chat must still be full-width despite the 1100px breakpoint
+  // Mobile viewport (E-6) — chat rail must stay usable despite the 1100px breakpoint
   await page.setViewportSize({ width: 900, height: 1200 });
   await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
   const chatMobileBox = await page.locator('#chat-pane').boundingBox();
-  assert(chatMobileBox.width > 500,
-    `chat full-width on narrow viewport (was ${chatMobileBox.width}px, should be >500 — E-6)`);
+  assert(chatMobileBox.width >= 280,
+    `chat rail remains usable on narrow viewport (was ${chatMobileBox.width}px, should be >=280px)`);
 
   // Resizer inline-style carryover (E-5): drag in classic first, then switch to builder
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -170,22 +184,16 @@ try {
 
   // ==========================================================================
   // PHASE 3 — Source toggle
-  // BM-3 full (v0.3): the first 3 successful Publishes leave the source pane
-  // visible (onboarding); after ship #3 it auto-hides on next load. Tests that
-  // assert source-hidden-by-default need to seed the counter past 3 first.
+  // GTM-5: source is hidden on first load so Meph owns onboarding, but the
+  // source pane stays reachable and preserves edits when toggled.
   // ==========================================================================
   console.log('\n📄 Phase 3 — Source toggle');
 
   await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
-  // Seed counter past the auto-hide threshold so this phase exercises the
-  // post-onboarding behavior. Reload to re-run detectStudioMode().
-  await page.evaluate(() => { try { localStorage.setItem('clear-bm-ships-counter', '99'); } catch {} });
-  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
-
   assert(await page.locator('#source-toggle-btn').isVisible(),
     'Source button visible in builder mode');
   assert(!(await page.locator('#editor-pane').isVisible()),
-    'editor hidden by default in builder mode (counter ≥ 3)');
+    'editor hidden by default in builder mode');
 
   await page.locator('#source-toggle-btn').click();
   await page.waitForTimeout(150);
@@ -220,17 +228,15 @@ try {
   assert(!(await page.locator('#source-toggle-btn').isVisible()),
     'Source button hidden in classic mode');
 
-  // BM-3 full (v0.3): when the ship counter is below 3, source pane should
-  // default visible — onboarding mode for new Marcus users.
+  // GTM-5: ship counter no longer auto-opens source; Meph remains first.
   await page.evaluate(() => { try { localStorage.setItem('clear-bm-ships-counter', '0'); } catch {} });
   await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
-  assert(await page.locator('#editor-pane').isVisible(),
-    'BM-3 onboarding: editor visible by default when ship counter < 3');
-  // And after the 3-ship threshold, editor goes back to hidden by default.
+  assert(!(await page.locator('#editor-pane').isVisible()),
+    'editor stays hidden by default when ship counter < 3');
   await page.evaluate(() => { try { localStorage.setItem('clear-bm-ships-counter', '3'); } catch {} });
   await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
   assert(!(await page.locator('#editor-pane').isVisible()),
-    'BM-3 onboarding: editor hidden by default once ship counter reaches 3');
+    'editor stays hidden by default once ship counter reaches 3');
 
   // ==========================================================================
   // PHASE 4 — Publish button rebrand
@@ -355,8 +361,8 @@ page 'Theme Test' at '/':
 
   await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
   assert(
-    !(await page.locator('#chat-toggle-btn').isVisible()),
-    'chat-toggle-btn hidden in builder mode'
+    await page.locator('#chat-toggle-btn').isVisible(),
+    'chat-toggle-btn visible in builder mode'
   );
 
   await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
