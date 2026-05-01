@@ -25,9 +25,11 @@
 const DEFAULT_ROOT_DOMAIN = process.env.CLEAR_CLOUD_ROOT_DOMAIN || 'buildclear.dev';
 const MAX_DOMAIN_LEN = 253;  // DNS spec — full-qualified name cap
 
+import { resolveCname as defaultResolveCname } from 'node:dns/promises';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { provisionFlyCertificateForDomain } from './fly-certificates.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_001_PATH = join(__dirname, 'migrations', '001-domains.sql');
@@ -232,4 +234,159 @@ export async function listPendingDomains(db) {
      ORDER BY last_checked_at NULLS FIRST, created_at ASC`
   );
   return rows;
+}
+
+/**
+ * Update one app_domains row after a DNS verification attempt.
+ *
+ * @param {object} db
+ * @param {object} row
+ * @param {'verified'|'failed'|'pending'} status
+ * @param {Date} checkedAt
+ * @param {string|null} [lastError]
+ * @returns {Promise<object>}
+ */
+export async function updateDomainVerification(db, row, status, checkedAt, lastError = null) {
+  const verifiedAt = status === 'verified' ? checkedAt : null;
+  const errorText = lastError ? String(lastError).slice(0, 500) : null;
+  const { rows } = await db.query(
+    `UPDATE app_domains
+     SET status = $1,
+         verified_at = $2,
+         last_checked_at = $3,
+         last_error = $4
+     WHERE id = $5
+     RETURNING *`,
+    [status, verifiedAt, checkedAt, errorText, row.id]
+  );
+  return rows[0];
+}
+
+/**
+ * Update one app_domains row after a certificate provisioning attempt.
+ *
+ * @param {object} db
+ * @param {object} row
+ * @param {object} result - normalized Fly cert result
+ * @param {Date} checkedAt
+ * @returns {Promise<object>}
+ */
+export async function updateDomainCertificateProvisioning(db, row, result, checkedAt) {
+  const state = result?.state === 'ready' ? 'ready'
+    : result?.state === 'failed' || result?.ok === false ? 'failed'
+    : 'pending';
+  const readyAt = state === 'ready' ? checkedAt : null;
+  const errorText = result?.error ? String(result.error).slice(0, 500) : null;
+  const { rows } = await db.query(
+    `UPDATE app_domains
+     SET fly_certificate_id = $1,
+         certificate_status = $2,
+         certificate_ready_at = $3,
+         certificate_last_checked_at = $4,
+         certificate_error = $5
+     WHERE id = $6
+     RETURNING *`,
+    [result?.certId || null, state, readyAt, checkedAt, errorText, row.id]
+  );
+  return rows[0];
+}
+
+/**
+ * Poll pending custom domains and persist their DNS verification state.
+ *
+ * Production scheduling should call this once per minute from the Clear Cloud
+ * server process or an external cron. Tests inject resolver/clock/store so
+ * they never hit real DNS.
+ *
+ * @param {object} opts
+ * @param {object} opts.db - pg Pool or compatible { query(text, params) }
+ * @param {(domain:string)=>Promise<Array<string>>} [opts.resolveCname]
+ * @param {(domainRow:object)=>Promise<object>} [opts.provisionCertificate]
+ * @param {()=>Date} [opts.now]
+ * @returns {Promise<{checked:number, verified:number, failed:number, pending:number, errors:number, certificatesRequested:number, certificatesReady:number, certificatesFailed:number}>}
+ */
+export async function pollPendingDomainVerifications(opts = {}) {
+  const db = opts.db;
+  if (!db || typeof db.query !== 'function') {
+    throw new Error('pollPendingDomainVerifications requires a db with query().');
+  }
+
+  const resolveCname = opts.resolveCname || defaultResolveCname;
+  const provisionCertificate = opts.provisionCertificate
+    || (opts.flyToken
+      ? (domainRow) => provisionFlyCertificateForDomain({
+          domainRow,
+          token: opts.flyToken,
+          fetchImpl: opts.fetchImpl,
+          apiBase: opts.flyApiBase,
+          maxAttempts: opts.flyMaxAttempts,
+          intervalMs: opts.flyIntervalMs,
+        })
+      : null);
+  const now = opts.now || (() => new Date());
+  const rows = await listPendingDomains(db);
+  const summary = {
+    checked: rows.length,
+    verified: 0,
+    failed: 0,
+    pending: 0,
+    errors: 0,
+    certificatesRequested: 0,
+    certificatesReady: 0,
+    certificatesFailed: 0,
+  };
+
+  for (const row of rows) {
+    const checkedAt = now();
+    let records;
+    try {
+      records = await resolveCname(row.domain);
+    } catch (err) {
+      const code = String(err?.code || '');
+      if (!['ENODATA', 'ENOTFOUND', 'ETIMEOUT', 'EAI_AGAIN'].includes(code)) {
+        summary.errors++;
+      }
+      records = [];
+    }
+
+    const result = verifyCname(records, row.expected_cname);
+    if (result === 'verified') {
+      const verifiedRow = await updateDomainVerification(db, row, 'verified', checkedAt, null);
+      summary.verified++;
+      if (provisionCertificate) {
+        summary.certificatesRequested++;
+        try {
+          const certificate = await provisionCertificate(verifiedRow);
+          await updateDomainCertificateProvisioning(db, verifiedRow, certificate, checkedAt);
+          if (certificate?.state === 'ready') summary.certificatesReady++;
+          if (certificate?.state === 'failed' || certificate?.ok === false) {
+            summary.certificatesFailed++;
+          }
+        } catch (err) {
+          summary.certificatesFailed++;
+          await updateDomainCertificateProvisioning(
+            db,
+            verifiedRow,
+            { ok: false, state: 'failed', error: err?.message || String(err) },
+            checkedAt
+          );
+        }
+      }
+    } else if (result === 'wrong') {
+      const found = records.map(r => String(r).replace(/\.$/, '')).join(', ');
+      await updateDomainVerification(
+        db,
+        row,
+        'failed',
+        checkedAt,
+        `CNAME points at ${found}; expected ${row.expected_cname}.`
+      );
+      summary.failed++;
+    } else {
+      await updateDomainVerification(db, row, 'pending', checkedAt, null);
+      summary.pending++;
+    }
+  }
+
+  return summary;
 }
