@@ -129,6 +129,14 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 - Builder Mode default flip (1 day, ships Builder Mode as the new-user default).
 - Charts T2#8 — donut/scatter/gauge/sparkline (6-cycle plan locked).
 
+**Provable correctness — moonshot, post-launch, on `feature/decidable-core-prover` (2026-05-01):**
+- **PC-1 — distributivity rule in the simplifier.** Currently the prover gives an honest UNKNOWN on `x*2 === x+x`. Adding distributivity unlocks a much wider class of theorems. ~1 hour agent work.
+- **PC-2 — conditional handling in symbolic mode.** Case-split on `if/then/otherwise` so functions with conditionals can be proved universally, not just on concrete inputs. The biggest single expansion of provable surface. ~3-4 hours.
+- **PC-3 — Phase B-2 effect quarantine.** Validator refuses effect-shaped calls (DB/net/AI/email/time) outside `live:` blocks at parse time. Currently the prover detects impurity at walk time; B-2 catches it earlier. Closes the Decidable Core epic. ~1-2 hours.
+- **PC-4 — Marcus deal-desk proof bundle.** Add pure-function tests to deal-desk, run `clear prove` against them, ship the resulting `.proof.json` as the regulated-tier demo artifact. The pitch surface for compliance buyers. ~2-3 hours.
+- **PC-5 — full doc cascade for prove command.** intent.md / SYNTAX.md / AI-INSTRUCTIONS.md / USER-GUIDE.md / system-prompt.md / landing pages. Tonight only updated CHANGELOG, FEATURES, ROADMAP, RESEARCH, FAQ. ~2 hours.
+- **PC-6 — verified compiler (year 2).** CompCert-style proof that Clear → JS and Clear → Python preserve semantics. Closes the trust gap; only blocker to claiming "proven from source to runtime."
+
 ---
 
 ## P0 — Ship Marcus on Clear Cloud (Q2 2026)

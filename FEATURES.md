@@ -93,6 +93,8 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Modules | `use 'helpers'` | Namespaced, selective, or inline-all |
 | Script escape | `script:` + raw JS | For anything Clear doesn't cover |
 | Transactions | `as one operation:` / `atomically:` / `transaction:` / `begin:` | BEGIN/COMMIT/ROLLBACK |
+| Provable correctness — concrete | `clear prove <file>` | Walks the AST directly (no compiler in the path); proves every `test` block's assertions hold for the inputs given. Pure-subset only — anything impure (DB/net/AI/time/UI) returns UNVERIFIABLE instead of false PROVED. |
+| Provable correctness — symbolic | Free variables in a `test` block | Triggers symbolic mode automatically: variables become forall-quantified placeholders; simplifier rewrites both sides into canonical form; equality decided structurally. Proves theorems like `add(a, b) === add(b, a)` for ANY input. Honest UNKNOWN when the simplifier can't decide. |
 
 ## Expressions
 

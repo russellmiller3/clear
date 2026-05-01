@@ -7,6 +7,26 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where does the proof checker live? (Session 2026-05-01)
+
+**Path:** `lib/prover/`. Three files: `evaluator.js` (concrete-value AST walker), `symbolic.js` (symbolic-value algebra + simplifier), `index.js` (public `prove(source)` API + bundle formatter). Tests: `index.test.js` (15 concrete tests) + `symbolic.test.js` (15 symbolic tests).
+
+**CLI:** `clear prove <file>` (in `cli/clear.js`). Flags: `--bundle` writes a `.proof.json` sidecar next to the source for auditor handoff; `--json` prints machine output. Exit codes: 0 proved, 1 failed (counterexample), 5 unverifiable / partial.
+
+**How it works in plain English.** Every `test` block becomes a proof obligation. The prover walks the AST directly — no compilation, no Node spawn — and either (a) verifies the assertion holds for the inputs given (concrete mode), or (b) when a test references a variable that wasn't bound by an assignment, automatically promotes it to a "for any input" placeholder and tries to prove the claim universally (symbolic mode). The symbolic simplifier knows constant folding, commutativity (`a+b == b+a`), associativity (`(a+b)+c == a+(b+c)`), and identity rules (`x+0 == x`, `x*1 == x`, `x*0 == 0`). It does NOT yet know distributivity, so claims like `2*x == x+x` come back as honest UNKNOWN.
+
+**What the prover refuses to verify.** Anything that touches the world: database, network, AI calls, email, time, randomness, UI side-effects. These get an UNVERIFIABLE verdict — the prover refuses to claim a math proof for code that depends on external state.
+
+**Why the AST-walking design (not compile-and-test).** Bypasses the compiler entirely so the proof path can never inherit a compiler bug. The Clear test suite's TDD oracle still runs against the compiled JavaScript — that's a separate guarantee. The prover gives a third, stronger guarantee for pure functions: their math matches their spec, regardless of what the compiler emits.
+
+**Why no external SMT solver (e.g. Z3).** Compiler is zero-deps. Prover stays consistent with that for now. A future production version could swap in Z3 for the symbolic simplifier if the in-house one hits its limits. For tonight's scope, the in-house simplifier handled the demo theorems cleanly.
+
+**Where to add new pure operations.** `lib/prover/evaluator.js` — `HANDLERS` map. For symbolic mode: `lib/prover/symbolic.js` — same map shape. New impure operations get added to `IMPURE_NODE_TYPES` in evaluator.js so they're refused.
+
+**Demo files:** `examples/proofs/invoice.clear` (8 concrete proofs), `examples/proofs/pricing.clear` (10 concrete proofs), `examples/proofs/eligibility.clear` (13 concrete proofs), `examples/proofs/theorems.clear` (7 universal theorems via symbolic mode). Run any of them: `node cli/clear.js prove examples/proofs/<file>`.
+
+---
+
 ## New Capabilities (Session 46 — plain English)
 
 **Total by default.** Every `while` loop, every recursive function, every `send email`, and every `ask claude` / `call api` now has a runtime bound. The compiler emits the counter / timeout for you. If a hallucinated bug hits the bound, you get a legible error with a copy-pasteable fix — not a silent hang.

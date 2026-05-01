@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
+
+Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:
+
+**Milestone 1 (`a024e3b`) — concrete-mode prover.** New CLI command `clear prove <file>` walks the AST directly and verifies every test block as a math proof against the source. Bypasses the compiler entirely so the proof path can never inherit a compiler bug. Pure-subset only: anything that touches the world (database, network, AI, time, UI) is refused with an UNVERIFIABLE verdict instead of being silently proved-as-wrong. New module: `lib/prover/` (evaluator, public API, proof-bundle formatter). 15 unit tests, 8 invoice-math proofs in `examples/proofs/invoice.clear`, all green. CLI exit codes 0/1/5 for proved/failed/unverifiable. Sidecar JSON output via `--bundle` for auditor-facing artifacts.
+
+**Milestone 2 (`7a533eb`) — symbolic mode for ALL inputs.** When a test references a free variable (one not bound by an assignment), the prover automatically promotes it to a forall-quantified placeholder and re-walks the test in symbolic mode. The simplifier rewrites both sides of an equality into canonical form (constant folding, commutativity sort, associativity flatten, identity rules for `+0` `*1` `*0`) and decides equality structurally. **Seven real mathematical theorems proved for any input:** commutativity of `+` and `*`, associativity of `+`, additive identity, multiplicative identity, multiplicative annihilation, identity function. One honest UNKNOWN (distributivity — deferred to next session). 15 new symbolic tests. Three new demo files: `pricing.clear` (10 proofs), `eligibility.clear` (13 proofs), `theorems.clear` (7 universal theorems).
+
+**Why it matters.** Clear is now the only AI coding tool whose output comes with a math certificate against its tests. Every other tool (Cursor, Lovable, Bolt, ChatGPT) generates JavaScript or Python — too big to formally verify at scale. Clear's small grammar makes verification tractable. This is the regulated-tier moat: banks, hospitals, defense contractors are locked out of current AI coding tools because nothing proves correctness; Clear can ship into those markets where everyone else can't play.
+
+**Honest scope of the claim.** What's proved: the Clear source matches its test spec. What isn't yet proved: the compiler translates that source faithfully to JS/Python, or that the runtime executes the translation faithfully. That's the standard industry trust boundary (Cedar, SPARK/Ada, Dafny, TLA+ all stop at the same line). Verifying the compiler too is a year-2 move (CompCert-style). The dual-target architecture (every Clear app compiles to both JS and Python from the same source) is a structural belt-and-suspenders that nobody else can match.
+
+**Test bump:** prover unit tests 0 → 30 (15 concrete + 15 symbolic). Compiler tests 2533 unchanged, all green. 31 concrete proofs + 7 universal theorems demonstrated end-to-end via the CLI.
+
+**What's not in this commit (next session):** distributivity rule in the simplifier; conditional handling in symbolic mode (case-split on if/then); Phase B-2 effect quarantine in the validator (refuse impure calls outside `live:` blocks at parse time); Marcus deal-desk proof bundle as the regulated-tier demo; full doc cascade across landing pages + AI-INSTRUCTIONS + USER-GUIDE + system-prompt.
+
+---
+
 ## 2026-04-25 — Mid-day session: LAE Phase D write path, Ghost defaults to free, MCP descriptions fixed
 
 Same-day session continued from the overnight run. Five small ships, all green, $0 production-Anthropic API spend.

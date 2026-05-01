@@ -1,89 +1,78 @@
-# Session state — provable correctness sprint
+# Session state — provable correctness sprint (FINAL)
 
-**Last updated:** 2026-05-01 evening
-**Branch:** `feature/decidable-core-prover`
-**Goal:** Build a working math proof checker for Clear's pure subset. Tonight = as far as possible.
+**Last updated:** 2026-05-01 end of overnight session
+**Branch:** `feature/decidable-core-prover` (NOT merged to main)
+**Status:** Two milestones shipped, all tests green, docs partially cascaded.
 
 ## Resume prompt for a fresh session
 
-> Read `SESSION-STATE.md` and continue from where it left off. We're building a proof checker for Clear's pure subset. Branch is `feature/decidable-core-prover`. Pick up at the next pending todo.
+> Read `HANDOFF.md` and `SESSION-STATE.md`. We're on `feature/decidable-core-prover` with the provable-correctness moonshot first slice shipped. All tests green. Critical path is still the lead-routing plan + Stripe + DNS + cert before first Marcus customer. Provable correctness work continues post-launch (ROADMAP PC-1..PC-6).
 
-## Why this matters
+## What shipped tonight (in order)
 
-Russell picked **provable correctness** as the moonshot — the only AI coding tool whose output comes with a math proof against its tests. Every other AI coding tool fights over the startup market; this opens regulated industries (banks, hospitals, defense) where AI-generated code is currently locked out. Real budgets, no competitors, structural moat (Clear's grammar is small enough to verify; JS/Python aren't).
+1. ✅ Concrete-mode prover (`lib/prover/evaluator.js` + `index.js`)
+2. ✅ CLI command `clear prove <file>` with `--bundle` and `--json` flags
+3. ✅ 15 concrete unit tests, all green
+4. ✅ Demo file: `examples/proofs/invoice.clear` (8 proofs, all PROVED)
+5. ✅ **Milestone 1 commit:** `a024e3b`
+6. ✅ Tried prover on Marcus deal-desk — correctly refused (integration-test shaped, not pure-math)
+7. ✅ Two more demo files: `pricing.clear` (10 proofs) + `eligibility.clear` (13 proofs)
+8. ✅ Symbolic-mode prover (`lib/prover/symbolic.js`) — simplifier with canonical form
+9. ✅ 15 symbolic unit tests, all green
+10. ✅ Symbolic mode wired into public `prove()` — auto-falls-back when test has free variables
+11. ✅ Theorem demo file: `theorems.clear` — 7 universal theorems PROVED + 1 honest UNKNOWN
+12. ✅ **Milestone 2 commit:** `7a533eb`
+13. ✅ Doc cascade priority surfaces: CHANGELOG, FEATURES, ROADMAP (with PC-1..PC-6 next-moves), RESEARCH, FAQ
+14. ✅ HANDOFF.md rewritten for tomorrow's pickup
+15. ⏳ Final docs commit (next)
 
-Decidable Core is an in-flight epic — `live:` is described in docs but **not actually shipped on main yet**. Tonight builds the prover; the `live:` parser work and the doc cascade come tomorrow.
+## Tests passing
 
-## Current todos
+| Suite | Count |
+|-------|-------|
+| Prover concrete tests (`lib/prover/index.test.js`) | 15/15 |
+| Prover symbolic tests (`lib/prover/symbolic.test.js`) | 15/15 |
+| Compiler tests (`clear.test.js`) | 2533/2533 |
+| **Total tonight** | **2563/2563** |
 
-1. ✅ Find existing live:/decidable-core code — confirmed `live:` not yet on main
-2. ✅ Map Clear's pure subset
-3. ✅ Design tiny in-house prover (no deps)
-4. 🔄 Build the prover evaluator (concrete walker)
-5. ⏳ Wire prover to read existing test blocks
-6. ⏳ Produce proof-bundle output (JSON + human summary)
-7. ⏳ Write unit tests for the prover
-8. ⏳ Add `clear prove` CLI command
-9. ⏳ End-to-end demo
-10. ⏳ Commit incrementally
-11. ⏳ Tomorrow handoff
+## Demonstrated proofs
 
-## Architecture
+| File | Concrete | Universal | Status |
+|------|----------|-----------|--------|
+| `examples/proofs/invoice.clear` | 8 | 0 | ✓ all PROVED |
+| `examples/proofs/pricing.clear` | 10 | 0 | ✓ all PROVED |
+| `examples/proofs/eligibility.clear` | 13 | 0 | ✓ all PROVED |
+| `examples/proofs/theorems.clear` | 0 | 7 + 1 UNKNOWN | ✓ 7 PROVED for ANY input, 1 honest UNKNOWN |
 
-```
-lib/prover/
-  index.js          — public API: prove(ast, source) → ProofBundle
-  evaluator.js      — concrete-value walker (literals, binary/unary, calls, conditionals)
-  test-extractor.js — pull EXPECT / UNIT_ASSERT nodes from TEST_DEF
-  bundle.js         — format result as JSON + human-readable
-  index.test.js     — unit tests
-cli/clear.js
-  + new `prove` command
-```
+## What's NOT in this branch (next session)
 
-## AST shape (confirmed by parsing a real example)
+- **PC-1:** Distributivity rule in the simplifier (`x*2 === x+x`) — ~1 hr
+- **PC-2:** Conditional handling in symbolic mode — ~3-4 hr
+- **PC-3:** Phase B-2 effect quarantine in validator — ~1-2 hr
+- **PC-4:** Marcus deal-desk proof bundle — ~2-3 hr
+- **PC-5:** Full doc cascade (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, landing/, system-prompt.md) — ~2 hr
+- **PC-6:** Verified compiler (CompCert-style) — year 2
 
-- `function_def`: `{ type, name, params:[{name,type}], body, line }`
-- `assign`: `{ type, name, expression, line }`
-- `respond`: `{ type, expression, status, line }` — used for `send back X`
-- `binary_op`: `{ type, operator, left, right, line }`
-- `variable_ref`: `{ type, name, line }`
-- `literal_number/string/boolean`: `{ type, value, line }`
-- `test_def`: `{ type, name, body, line }`
-- `unit_assert`: `{ type, left, check, right, line, rawLeft }` — for `expect X is Y`
+## Critical path (unchanged)
 
-## Surprises / pitfalls so far
+Provable correctness is research-backlog, NOT on critical path to first paying Marcus customer. That's still:
+1. Lead-routing primitive plan (`plan/routing-primitive`)
+2. Stripe webhook receiver (CC-3)
+3. DNS verification poller (CC-5b)
+4. Fly cert provisioner (CC-5c)
+5. Russell pitches Marcus
 
-1. **`live:` not on main.** Docs claim Phase B-1 shipped — actually on a feature branch that didn't merge. Doesn't block tonight; the prover refuses to verify impure ops by detection, not by parser fence.
-2. **Param parsing quirk:** `taking a and b` parses as 3 params `[a, and, b]` because `and` is treated as a name. Not blocking but worth noting — proof tests need to use a syntax that produces clean args.
-3. **`expect add with a 3 and b 4 is 7`** parses as `unit_assert` with `left = variable_ref(add)` and the args mashed into `rawLeft` as a string — NOT a structured CALL with args. Need a different test syntax for proofs, or reparse rawLeft.
-4. **No new npm deps.** The compiler's zero-dep rule. Prover must be pure JS.
+## Decisions Russell needs to make
 
-## Decisions made
-
-- **No external SMT solver tonight.** Build a tiny in-house prover. Z3 (or similar) is the year-2 upgrade.
-- **Concrete-value proof first.** Walk the AST with concrete inputs from the test, check assertion. Symbolic generality (∀ inputs) is phase 2.
-- **Bypass the compiler.** Prover walks the AST directly — never goes through compiled JS. Rules out compiler bugs on the proof path.
-- **Detect impurity by node-type allowlist.** Pure: literals, binary/unary ops, variable refs, calls to user functions, conditionals, assigns. Anything else → UNVERIFIABLE with a reason.
-
-## Commits made so far
-
-- (none yet)
-
-## Open questions for Russell
-
-- For test syntax that needs structured args (so the prover can extract args without reparsing rawLeft strings), which form do you prefer?
-  - **A:** `expect add with a 3 and b 4 is 7` (current — but rawLeft is a string)
-  - **B:** `result = add with a 3 and b 4 \n expect result is 7` (uses ASSIGN + CALL)
-  - **C:** New syntax just for proofs (more work)
-
-  I'm going with B for tonight unless you say otherwise — it produces clean structured AST and matches existing patterns.
+- **Merge `feature/decidable-core-prover` to main?** Recommendation: yes. Everything green, docs landed, no regressions.
+- **Continue provable-correctness work or pivot back to launch path?** Recommendation: pivot to launch. PC-1..PC-6 belong post-launch.
 
 ## How to resume tomorrow (local Claude Code)
 
 ```
 git checkout feature/decidable-core-prover
-git pull
-node clear.test.js   # confirm baseline green
-# then read SESSION-STATE.md, pick up next pending todo
+node clear.test.js                                  # confirm 2533/2533 green
+node lib/prover/index.test.js                       # confirm 15/15 green
+node lib/prover/symbolic.test.js                    # confirm 15/15 green
+node cli/clear.js prove examples/proofs/theorems.clear  # see the universal theorems prove
 ```
