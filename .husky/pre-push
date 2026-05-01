@@ -6,6 +6,15 @@ node clear.test.js || exit 1
 echo "🎯 Running e2e tests (templates + curriculum)..."
 node playground/e2e.test.js || exit 1
 
+# Launch browser UAT: drives every Marcus app in a real browser walker.
+# Zero API spend. Skip only with SKIP_BROWSER_UAT=1 for emergencies.
+if [ "$SKIP_BROWSER_UAT" != "1" ]; then
+  echo "Running launch browser UAT (Marcus apps)..."
+  node scripts/run-marcus-uat.mjs || exit 1
+else
+  echo "Skipping launch browser UAT (SKIP_BROWSER_UAT=1)"
+fi
+
 # Cross-target smoke: every template × every target, syntax-checks each
 # emission. Catches PHILOSOPHY Rule-17 drift (a change lands for Node
 # but silently regresses Python / Cloudflare / browser). ~10 seconds.

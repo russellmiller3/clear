@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { describe, it, expect, run } from './lib/testUtils.js';
-import { mkdtempSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname as pathDirname, join as pathJoin } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28567,6 +28567,27 @@ describe('Routing primitive — parser hard-fail', () => {
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
     expect(ast.errors[0].message).toContain('non-empty pool');
+  });
+});
+
+describe('Launch browser regression wiring', () => {
+  it('package scripts expose browser UAT and include it in the full test suite', () => {
+    const pkg = JSON.parse(readFileSync(pathJoin(REPO_ROOT, 'package.json'), 'utf8'));
+    expect(pkg.scripts['test:browser']).toContain('scripts/run-marcus-uat.mjs');
+    expect(pkg.scripts['test:all']).toContain('test:browser');
+  });
+
+  it('pre-push runs launch browser UAT by default with an explicit emergency skip', () => {
+    const prePush = readFileSync(pathJoin(REPO_ROOT, '.husky', 'pre-push'), 'utf8');
+    expect(prePush).toContain('scripts/run-marcus-uat.mjs');
+    expect(prePush).toContain('SKIP_BROWSER_UAT');
+  });
+
+  it('Marcus UAT runner uses the current Node executable for child processes', () => {
+    const runner = readFileSync(pathJoin(REPO_ROOT, 'scripts', 'run-marcus-uat.mjs'), 'utf8');
+    expect(runner).toContain('const NODE = process.execPath;');
+    expect(runner).not.toContain("runProcess('node'");
+    expect(runner).not.toContain("spawn('node'");
   });
 });
 

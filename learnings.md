@@ -1974,3 +1974,19 @@ Shipped Path A first as both a fix and a diagnostic. If Phase 7 measurement show
 - **Near-violations of PHILOSOPHY.md rules need precedent citations.** The WHILE counter emission (`_iter++; if (_iter > MAX) throw`) is extra lines that don't trace back to the Clear source — a brush with "1:1 mapping." It's acceptable only because `REPEAT UNTIL` already emits similar counter scaffolding; citing that precedent in the plan prevents the "did you really think about the rule?" pushback from becoming a real objection.
 - **New principles that codify existing behavior are stronger than ones that demand new behavior.** "Total by default, effects by label" deserves a PHILOSOPHY.md slot because the audit showed it's already ~94% true implicitly. The plan just closes the gap between what Clear does and what it claims to do.
 
+---
+
+## Session 2026-05-01: Launch Browser UAT Must Be Wired, Not Merely Present
+
+Russell's launch bar is not "we have a browser walker somewhere." It is "every
+customer-clickable feature is protected by a browser regression suite."
+
+The Marcus UAT runner already existed and drove the five launch apps. The gap
+was that neither the package scripts nor the push gate invoked it, so regressions
+could land while the most realistic test sat idle.
+
+### Gotchas-as-rules
+
+- **A test runner that is not in the default safety net is documentation, not protection.** If launch depends on it, wire it into the push gate.
+- **Browser coverage needs a real browser path, not just compiler assertions.** Static checks catch emitted strings; browser UAT catches broken routes, forms, buttons, and console failures.
+- **Child Node processes should reuse `process.execPath`.** Bare `node` can hit a blocked shim or a different runtime on Windows; the parent executable is the known-good one.
