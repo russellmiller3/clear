@@ -10,6 +10,7 @@
 
 import { spawn } from 'child_process';
 import { appendFileSync, writeFileSync, readFileSync } from 'fs';
+import { serverHintTier, serverInjectedHints } from './verify-hint-flow-helpers.js';
 
 const PORT = 3489;
 const BASE = `http://localhost:${PORT}`;
@@ -237,8 +238,7 @@ async function main() {
 
         // Compute agreement: did Meph self-report hints iff server actually injected them?
         // A log line with retrieved=0 is NOT injection — nothing reaches Meph's tool result.
-        const retrievedMatch = hintLine && hintLine.match(/retrieved=(\d+)/);
-        const serverInjected = !!(retrievedMatch && Number(retrievedMatch[1]) > 0);
+        const serverInjected = serverInjectedHints(hintLine);
         const agreement = serverInjected === selfReport.sawHintsSelf ? 'ok' : 'MISMATCH';
         const weird = serverInjected !== selfReport.sawHintsSelf;
         if (weird) anyWeirdness = true;
@@ -280,7 +280,7 @@ async function main() {
     console.log('SUMMARY');
     console.log('═'.repeat(72));
     for (const r of results) {
-      const serverTier = r.serverHint ? (r.serverHint.match(/top_tier=(\S+)/)?.[1] || 'none') : 'bail';
+      const serverTier = r.errorBail ? 'bail' : serverHintTier(r.serverHint);
       const appliedStr = r.applied === true ? 'yes' : r.applied === false ? 'no' : '?';
       console.log(`  ${r.name.padEnd(38)} server_tier=${serverTier.padEnd(26)} [${r.agreement}]`);
       console.log(`    applied=${appliedStr} tier=${r.tier || '-'} helpful=${r.helpful || '-'}${r.reason ? ' reason="' + r.reason.slice(0, 50) + '"' : ''}`);

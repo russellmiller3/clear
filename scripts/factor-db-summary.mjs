@@ -7,6 +7,7 @@
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { hintHelpfulSql } from './factor-db-summary-helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, '..', 'playground', 'factor-db.sqlite');
@@ -96,11 +97,11 @@ console.log('');
 
 // Hint-applied rows (re-ranker signal)
 const hintApplied = single(`SELECT COUNT(*) AS c FROM code_actions WHERE hint_applied IS NOT NULL`);
-const hintHelpful = single(`SELECT COUNT(*) AS c FROM code_actions WHERE hint_helpful = 1`);
+const hintHelpful = single(`SELECT COUNT(*) AS c FROM code_actions WHERE ${hintHelpfulSql()}`);
 console.log('## Hint Telemetry');
 console.log('');
 console.log(`- Rows with a hint applied: **${fmt(hintApplied?.c || 0)}**`);
-console.log(`- Hints marked helpful: **${fmt(hintHelpful?.c || 0)}**`);
+console.log(`- Hints marked helpful/partial/inferred: **${fmt(hintHelpful?.c || 0)}**`);
 console.log('');
 
 // Schema sanity — tables present

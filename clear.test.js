@@ -27907,6 +27907,8 @@ await import('./playground/deploy-cloudflare.test.js');
 
 // LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
 await import('./runtime/meph-widget.test.mjs');
+await import('./scripts/factor-db-summary.test.mjs');
+await import('./playground/supervisor/verify-hint-flow-helpers.test.js');
 
 // =============================================================================
 // SHELL-5: Data tables emit upgrade — pills, avatars, money, actions, sort, select

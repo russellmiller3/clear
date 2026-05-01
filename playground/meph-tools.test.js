@@ -1328,6 +1328,34 @@ assert(compReenabled.hints && compReenabled.hints.text,
   'flag unset: hints flow through normally (no inversion regression)');
 if (origHintDisable !== undefined) process.env.CLEAR_HINT_DISABLE = origHintDisable;
 
+// --- 9c. Dispatcher path: compile tool-result carries hint text to Meph.
+// /api/chat appends dispatchTool's string result into Anthropic's
+// tool_result.content. This locks the contract at the same boundary Meph sees.
+let dispatchedQueryCalls = 0;
+const dispatchedFdb = {
+  logAction: () => 902,
+  querySuggestions: () => { dispatchedQueryCalls++; return [hintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const dispatchedCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: dispatchedFdb,
+  sessionId: 'sess-dispatch-hints',
+  pairwiseBundle: { weights: 'fake' },
+});
+const dispatchedRaw = await dispatchTool('compile', {}, dispatchedCtx, compileHelpers);
+assert(typeof dispatchedRaw === 'string',
+  'dispatchTool compile returns a string suitable for tool_result.content');
+const dispatchedCompile = JSON.parse(dispatchedRaw);
+assert(dispatchedQueryCalls === 1,
+  `dispatchTool compile calls hint retrieval once (got ${dispatchedQueryCalls})`);
+assert(dispatchedCompile.hints?.text?.includes('HINT_APPLIED: yes'),
+  'dispatchTool compile result carries HINT_APPLIED guidance to Meph');
+assert(dispatchedCompile.hints?.text?.includes('Source that worked:'),
+  'dispatchTool compile result carries the worked source snippet to Meph');
+assert(dispatchedCtx.hintState.hintsInjectedRowId === 902,
+  `dispatchTool compile mirrors hint row id for later usage tracking (got ${dispatchedCtx.hintState.hintsInjectedRowId})`);
+
 // --- 10. Inference fallback: postHintMinErrorCount tracks drops after hint-serve
 const dropCtx = new MephContext({
   source: 'database:\n  bogus garbage\n',
