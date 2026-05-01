@@ -5,8 +5,9 @@ Clear app and ships it to a live URL via Cloudflare in a few seconds.
 
 **Status as of 2026-05-01:** `buildclear.dev` is registered. The remaining
 manual work is Cloudflare/Fly trust, Stripe live billing, Postgres, and an
-Anthropic org key. Agent work is running in parallel on DNS polling, cert
-provisioning, Stripe webhook hardening, Marcus page polish, and pricing.
+Anthropic org key. Agent launch branches have been cut for Stripe webhook
+hardening, DNS-to-certificate provisioning, Studio publish/onboarding polish,
+lead-router verification, Marcus page polish, and pricing.
 
 **These remaining items are the gating list to first paying Marcus customer.**
 Once they're in your hands, you can do a real publish, record the demo,
@@ -14,6 +15,24 @@ cold-pitch, and close.
 
 Order matters. The domain is done; the trust/platform item now unblocks live
 payments and production custom domains.
+
+---
+
+## Agent branches ready to integrate
+
+| Branch | What it covers |
+|---|---|
+| `feature/cc3-stripe-webhook-receiver` | Stripe checkout completion webhook, fail-closed production secret handling |
+| `feature/cc5-domain-cert-bridge` | DNS verification poller plus Fly HTTPS certificate provisioning |
+| `feature/studio-onboarding-meph-first` | New users start in Meph chat instead of source code |
+| `feature/cc4-publish-progress-ux` | Publish progress rail and live URL confirmation |
+| `feature/studio-first-click-instrumentation` | First-click, time-to-first-app, and bounce telemetry |
+| `feature/lead-router-launch-verification` | Lead-router launch regression guard |
+| `feature/gtm-marcus-deal-desk-page` | Marcus deal-desk pitch page |
+| `feature/gtm-pricing-page` | Pricing page with sales CTA |
+
+Integrate these before the final live publish rehearsal. Keep the prover
+branches post-launch unless Russell explicitly flips priority.
 
 ---
 

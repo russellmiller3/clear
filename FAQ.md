@@ -96,6 +96,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where are the 2026-05-01 launch fan-out branches?](#where-are-the-2026-05-01-launch-fan-out-branches)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
 - [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
@@ -204,6 +205,27 @@ If you want "what shipped this week?", check CHANGELOG. If you want "what's been
 **`ROADMAP.md` → `Auto-hosting by app type (v2, post-Clear-Cloud)`** — the v2 plan for compiler-driven routing to Cloudflare Workers + D1 (compatible apps), Modal (Python ETL), or Fly Docker (native binaries) once Clear Cloud is stable on Fly.
 
 Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as default**; Cloudflare auto-routing lands as v2 after Marcus is paying. Don't rebuild the hosting layer before shipping the product.
+
+---
+
+### Where are the 2026-05-01 launch fan-out branches?
+
+Use these branches as the launch integration queue:
+
+| Branch | Purpose |
+|---|---|
+| `feature/cc3-stripe-webhook-receiver` | Stripe checkout completion webhook and production secret guard |
+| `feature/cc5-domain-cert-bridge` | DNS verification plus Fly HTTPS certificate provisioning |
+| `feature/studio-onboarding-meph-first` | Meph-first Studio onboarding |
+| `feature/cc4-publish-progress-ux` | Publish progress rail and live URL confirmation |
+| `feature/studio-first-click-instrumentation` | First-click, time-to-first-app, and bounce telemetry |
+| `feature/lead-router-launch-verification` | Lead-router launch regression check |
+| `feature/gtm-marcus-deal-desk-page` | Marcus deal-desk pitch page |
+| `feature/gtm-pricing-page` | Pricing page with sales CTA |
+
+Merge `feature/cc5-domain-cert-bridge` instead of separately merging the older CC-5b and CC-5c branches first. It contains the bridge between the two.
+
+Keep `feature/prover-inequality-reasoning` post-launch unless Russell explicitly flips priority.
 
 ---
 

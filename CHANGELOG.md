@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Launch fan-out status doc sweep
+
+The roadmap and launch docs now reflect today's branch fan-out instead of treating those launch items as unstarted.
+
+**What shipped:**
+- `HANDOFF.md` now starts from the current launch state: hard sweep running, launch branches committed, manual blockers listed.
+- `LAUNCH.md` now separates agent-ready branches from Russell-owned external setup.
+- `ROADMAP.md` now calls out the integration path before the stale launch tables.
+- `FAQ.md` now has a lookup entry for the 2026-05-01 launch fan-out branches and merge order.
+
+**Why for launch:** tomorrow's session should start by finishing evidence and integrating branches, not rediscovering which worker built what.
+
+---
+
 ## 2026-05-01 - Flywheel hint-effect report and precise retrieval
 
 The piece between "hints reach Meph" and "we can honestly say whether they help." The new report reads existing hint-on versus hint-off A/B artifacts, excludes saturated tasks from the headline, computes Fisher exact significance, prints a confidence interval, and returns `underpowered`, `inconclusive`, `significant_positive`, or `significant_negative`.

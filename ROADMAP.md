@@ -162,6 +162,8 @@ D-1 through D-5 shipped 2026-04-24 (compiler fix + Compiler API + clear-lsp + VS
 
 Definition of launch: **first paying customer.** Not "we shipped a thing." Not "HN front page." A real human paying $200-2K/mo for an internal app.
 
+**2026-05-01 launch update:** the launch fan-out branches now exist. Treat the table below as superseded by the integration path until it is cleaned: merge Stripe webhook, domain/cert bridge, Studio onboarding, publish progress, telemetry, lead-router verifier, Marcus page, and pricing into one tested launch branch; then run the full browser launch regression. External manual setup still lives in `LAUNCH.md`.
+
 | # | Task | Owner | Days | Why it's next |
 |---|------|-------|------|---|
 | 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at the Publish URL. | agent | 1 | Pitch surface. |
@@ -198,6 +200,8 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 **Remaining pieces (CC-1 fully closed 2026-04-28, CC-2 fully closed 2026-04-28 night):**
 
+**2026-05-01 branch status:** CC-3 webhook work is on `feature/cc3-stripe-webhook-receiver`. CC-5b/CC-5c should be integrated through `feature/cc5-domain-cert-bridge`, which combines DNS verification and Fly certificate provisioning. The next forward-looking task is integration plus browser regression, not re-building those pieces.
+
 | # | Piece | Status | Scope |
 |---|---|---|---|
 | CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 hr code, gated on Russell providing live Stripe keys |
@@ -213,6 +217,8 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 ---
 
 ## P0 — Marcus GTM (Q2 2026)
+
+**2026-05-01 branch status:** Marcus page, pricing page, Meph-first onboarding, publish progress UX, and Studio telemetry all have feature branches. The next forward-looking task is integration plus final demo-recording prep.
 
 | # | Item | Status | Scope |
 |---|---|---|---|
