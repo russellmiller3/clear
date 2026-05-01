@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear — Write English, Ship Production Apps</title>
+  <meta name="description" content="Clear compiles plain English to JavaScript, Python, and HTML. The compiler eliminates 45 categories of bugs before your code runs.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%234ab8d8'/%3E%3Cstop offset='100%25' stop-color='%231a6a85'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M16 2L4 10v12l12 8 12-8V10L16 2z' fill='url(%23g)' opacity='0.9'/%3E%3Cpath d='M16 2L4 10l12 8 12-8L16 2z' fill='white' opacity='0.25'/%3E%3Cpath d='M4 10l12 8v12L4 22V10z' fill='%23000' opacity='0.1'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="bug-categories.css">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- HERO                                                    -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="section section-hero">
+    <div class="section-inner">
+      <span class="section-label">The Clear Programming Language</span>
+      <h1>Write English. Ship Production Apps.</h1>
+      <p>Clear compiles plain English to JavaScript, Python, and HTML.<br>The compiler eliminates 45 categories of bugs before your code runs.</p>
+      <div style="margin-top: 2rem;">
+        <a href="#playground" class="btn-primary">Try It Live</a>
+        <a href="#bugs" class="btn-outline">See What It Catches</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- BUGS THE COMPILER ELIMINATES                            -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section id="bugs" class="section section-light">
+    <div class="section-inner wide">
+      <span class="section-label" style="color: var(--color-text-muted);">Compiler-Enforced Quality</span>
+      <h1>45 Bug Categories. Eliminated at Compile Time.</h1>
+      <p>Other tools generate code and hope it works. Clear's compiler structurally prevents entire classes of bugs — security vulnerabilities, correctness errors, and runtime failures — before a single line of output runs.</p>
+
+      <div class="bug-grid">
+
+        <!-- Card 1: Security -->
+        <div class="bug-card bug-card-security">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Security <span class="bug-count">7</span>
+          </h3>
+          <ul>
+            <li><strong>SQL injection</strong> — DB uses filter objects, never string concatenation</li>
+            <li><strong>Stored XSS</strong> — all output auto-escaped, DB writes sanitized</li>
+            <li><strong>Missing auth on DELETE/PUT</strong> — compiler refuses to compile</li>
+            <li><strong>IDOR</strong> — compiler blocks unfiltered queries on user-owned tables</li>
+            <li><strong>Privilege escalation</strong> — warns when POST accepts owner_id from client</li>
+            <li><strong>Plaintext passwords</strong> — PBKDF2 with salt built into auth runtime</li>
+            <li><strong>Token forgery</strong> — HMAC-SHA256 signature verification automatic</li>
+          </ul>
+        </div>
+
+        <!-- Card 2: Correctness -->
+        <div class="bug-card bug-card-correctness">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Correctness <span class="bug-count">8</span>
+          </h3>
+          <ul>
+            <li><strong>Forward references</strong> — variables must be defined before use</li>
+            <li><strong>Type mixing</strong> — string + number flagged at compile time</li>
+            <li><strong>URL mismatch</strong> — compiler verifies frontend fetch URLs match backend endpoints</li>
+            <li><strong>Duplicate endpoints</strong> — compiler error on same method + path</li>
+            <li><strong>Missing validation</strong> — auto-generated from data model</li>
+            <li><strong>Wrong HTTP status codes</strong> — compiler sets 201 for POST, 400 for errors</li>
+            <li><strong>Undefined functions</strong> — caught at compile time</li>
+            <li><strong>Schema field mismatch</strong> — validation rules cross-checked against DB fields</li>
+          </ul>
+        </div>
+
+        <!-- Card 3: Runtime Safety -->
+        <div class="bug-card bug-card-safety">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Runtime Safety <span class="bug-count">8</span>
+          </h3>
+          <ul>
+            <li><strong>try/catch on every endpoint</strong> — automatic, no silent 500s</li>
+            <li><strong>Null/undefined guards</strong> — utility functions check before access</li>
+            <li><strong>localStorage errors</strong> — wrapped in try/catch (Safari private mode)</li>
+            <li><strong>CORS configuration</strong> — auto-applied when specified</li>
+            <li><strong>Middleware ordering</strong> — compiler ensures logging, CORS, then auth</li>
+            <li><strong>Structured error responses</strong> — JSON errors, not stack traces</li>
+            <li><strong>Request body validation</strong> — checks req.body exists before access</li>
+            <li><strong>Graceful shutdown</strong> — built into every server output</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <p style="text-align: center; margin-top: 2.5rem; font-size: 1rem; opacity: 0.7;">
+        Plus 22 more across input validation, auth/crypto, type coercion, and data persistence.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- CODE EXAMPLE — What the compiler does for 8 lines      -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="section section-dark">
+    <div class="section-inner">
+      <span class="section-label">See It In Action</span>
+      <h1>Eight Lines. Every Bug Handled.</h1>
+      <p>This is a real Clear endpoint. Read every line out loud — it means exactly what it says.</p>
+
+      <pre class="code-block"><code>when user calls PUT /api/invoices/:id/send:
+  requires auth
+  define invoice as: look up the Invoice with this id
+  guard invoice is not nothing or "Invoice not found"
+  guard invoice's status is "draft" or "Only drafts can be sent"
+  invoice's status is "sent"
+  save invoice to Invoices
+  send back "sent" with success message</code></pre>
+
+      <p>From these 8 lines, the compiler generates:</p>
+      <ul style="list-style: none; padding: 0; margin: 0;">
+        <li style="padding: 0.375rem 0; opacity: 0.85;">&#10003; Express route handler with <code>async (req, res)</code></li>
+        <li style="padding: 0.375rem 0; opacity: 0.85;">&#10003; JWT auth middleware — rejects unauthenticated requests</li>
+        <li style="padding: 0.375rem 0; opacity: 0.85;">&#10003; try/catch wrapping the entire handler</li>
+        <li style="padding: 0.375rem 0; opacity: 0.85;">&#10003; Guard clauses with proper 400/404 status codes</li>
+        <li style="padding: 0.375rem 0; opacity: 0.85;">&#10003; XSS-safe response — all output escaped</li>
+        <li style="padding: 0.375rem 0; opacity: 0.85;">&#10003; Correct HTTP 200 response with JSON body</li>
+      </ul>
+      <p style="margin-top: 1.5rem;">A developer writing this by hand would need 30-40 lines of Express.js and would likely forget at least one of those protections.</p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- WHAT LOVABLE/BOLT MISS                                  -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="section section-light">
+    <div class="section-inner">
+      <span class="section-label" style="color: var(--color-text-muted);">Why This Matters</span>
+      <h1>Other AI Builders Skip All of This</h1>
+      <p>Lovable, Bolt, and v0 generate code from scratch every time. They produce working apps — but with none of these protections. No compile-time security checks. No auto-generated validation. No structural guarantees.</p>
+      <p class="annotation">When Lovable generates a DELETE endpoint, it does not check for auth. When Bolt generates a form handler, it does not validate input types. When v0 generates a data table, it does not escape HTML. These are not edge cases — they are the default.</p>
+      <p>Clear's compiler catches these at build time. Not as warnings you can ignore — as <strong>errors that block compilation</strong> until you fix them.</p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- PLAYGROUND                                              -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section id="playground" class="section section-dark" style="padding-bottom: 3rem;">
+    <div class="section-inner wide">
+      <span class="section-label">Live Compiler</span>
+      <h1>Try Clear in Your Browser</h1>
+      <p>Write Clear code on the left. See compiled output on the right. No install, no signup.</p>
+
+      <div class="playground-wrap">
+        <iframe src="../playground/index.html" loading="lazy" title="Clear Playground" sandbox="allow-scripts allow-same-origin"></iframe>
+      </div>
+      <a href="../playground/index.html" target="_blank" class="playground-link">Open full-screen playground &rarr;</a>
+
+      <div class="playground-fallback" style="text-align: center; margin-top: 1.5rem;">
+        <p style="opacity: 0.7;">The interactive playground works best on larger screens.</p>
+        <a href="../playground/index.html" target="_blank" class="btn-primary" style="margin-top: 0.5rem;">Open Playground</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- COMPARISON TABLE                                        -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="section section-dark" style="padding-top: 2rem;">
+    <div class="section-inner wide">
+      <span class="section-label">Honest Comparison</span>
+      <h1>Clear vs the Alternatives</h1>
+      <div style="overflow-x: auto;">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>Clear</th>
+              <th>Lovable</th>
+              <th>Bolt</th>
+              <th>v0</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Starts from tested templates</td>
+              <td class="yes">Yes</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+            </tr>
+            <tr>
+              <td>Readable source code</td>
+              <td class="yes">37-250 lines</td>
+              <td class="no">2,400+ lines</td>
+              <td class="no">2,000+ lines</td>
+              <td class="no">Frontend only</td>
+            </tr>
+            <tr>
+              <td>Automated tests included</td>
+              <td class="yes">6-36 per app</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+            </tr>
+            <tr>
+              <td>Security enforced at build time</td>
+              <td class="yes">Compiler blocks insecure code</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+            </tr>
+            <tr>
+              <td>Full-stack (frontend + backend + DB)</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="no">Frontend only</td>
+            </tr>
+            <tr>
+              <td>Export and self-host</td>
+              <td class="yes">Standard Node.js</td>
+              <td class="no">Supabase lock-in</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Non-developer can make changes</td>
+              <td class="yes">Read and edit blueprint</td>
+              <td class="no">Ask the AI</td>
+              <td class="no">Ask the AI</td>
+              <td class="no">Ask the AI</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- FINAL CTA                                               -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="section section-hero">
+    <div class="section-inner">
+      <h1>Your App Is Already Built.</h1>
+      <p>Pick a template. Describe your changes. Ship today.</p>
+      <div style="margin-top: 2rem;">
+        <a href="#playground" class="btn-primary">Try the Playground</a>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

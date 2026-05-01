@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Clear Cloud</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #fafbfc; color: #1a1a2e; }
+  .card {
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02);
+    transition: box-shadow 0.2s, border-color 0.2s;
+  }
+  .card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.08);
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #4f6ef7 0%, #6366f1 100%);
+    box-shadow: 0 1px 3px rgba(99,102,241,0.3), 0 4px 12px rgba(99,102,241,0.15);
+  }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #4361ee 0%, #5558e6 100%);
+  }
+  .btn-ghost {
+    color: #64748b;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #fafbfc;
+  }
+  .btn-ghost:hover { background: #f1f3f5; border-color: rgba(0,0,0,0.12); }
+  nav.top-nav {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .empty-illus {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(79,110,247,0.08) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6366f1;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Loading state — visible until /api/auth/me responds -->
+  <div id="loadingState" class="min-h-screen flex items-center justify-center text-[13px] text-gray-400">
+    Loading…
+  </div>
+
+  <!-- Authenticated app -->
+  <div id="appShell" class="hidden">
+    <nav class="top-nav sticky top-0 z-10 border-b border-gray-100 px-6 py-3.5">
+      <div class="max-w-4xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <div class="text-lg font-semibold tracking-tight text-gray-800">Clear</div>
+          <div class="flex items-center gap-5 text-[13px]">
+            <a href="/dashboard.html" class="text-gray-800 font-medium">Dashboard</a>
+            <a href="#" class="text-gray-300 hover:text-gray-500 transition">Logs</a>
+            <a href="#" class="text-gray-300 hover:text-gray-500 transition">Settings</a>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="userName" class="text-[13px] text-gray-500"></span>
+          <div id="userInitial" class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white shadow-sm"></div>
+          <button id="logoutBtn" class="btn-ghost text-[12px] px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Sign out</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-4xl mx-auto px-6 pt-10 pb-24">
+
+      <!-- Greeting / header -->
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h1 id="greeting" class="text-[22px] font-semibold text-gray-800 mb-0.5">Your apps</h1>
+          <p id="appsCount" class="text-[13px] text-gray-400">No apps yet — create your first one to get started.</p>
+        </div>
+        <button id="newAppBtn" class="btn-primary text-white text-[13px] px-5 py-2.5 rounded-xl font-medium transition flex items-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>New app</span>
+        </button>
+      </div>
+
+      <!-- Empty state — shown when /api/apps returns zero rows. -->
+      <div id="emptyState" class="card px-8 py-12 text-center hidden">
+        <div class="empty-illus mx-auto mb-4">
+          <i data-lucide="sparkles" class="w-7 h-7"></i>
+        </div>
+        <h2 class="text-[16px] font-semibold text-gray-700 mb-1">Build something live</h2>
+        <p class="text-[13px] text-gray-400 max-w-sm mx-auto mb-6">
+          Describe the app you want in plain English. Clear writes the code, runs the tests, and ships it on a real URL — usually in a single conversation.
+        </p>
+        <button class="btn-primary text-white text-[13px] px-5 py-2.5 rounded-xl font-medium transition inline-flex items-center gap-2">
+          <i data-lucide="message-square-plus" class="w-4 h-4"></i>
+          <span>Start a conversation</span>
+        </button>
+      </div>
+
+      <!-- App grid — shown when /api/apps returns at least one row. Each card
+           is one of the customer's deployed apps. -->
+      <div id="appGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
+      <!-- Loading placeholder shown while /api/apps is in flight -->
+      <div id="appsLoading" class="text-[13px] text-gray-400">Loading your apps…</div>
+
+    </div>
+  </div>
+
+<script>
+  lucide.createIcons();
+
+  const loadingState = document.getElementById('loadingState');
+  const appShell = document.getElementById('appShell');
+  const userNameEl = document.getElementById('userName');
+  const userInitialEl = document.getElementById('userInitial');
+  const greetingEl = document.getElementById('greeting');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  function firstInitial(name) {
+    if (!name) return '?';
+    const trimmed = name.trim();
+    return trimmed ? trimmed[0].toUpperCase() : '?';
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function statusPill(status) {
+    const map = {
+      pending:  { color: 'bg-amber-50 text-amber-700 border border-amber-200', label: 'Verifying DNS' },
+      verified: { color: 'bg-emerald-50 text-emerald-700 border border-emerald-200', label: 'Live' },
+      failed:   { color: 'bg-rose-50 text-rose-700 border border-rose-200', label: 'DNS error' },
+    };
+    const s = map[status] || { color: 'bg-gray-100 text-gray-600', label: status || '?' };
+    return `<span class="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${s.color}">${escapeHtml(s.label)}</span>`;
+  }
+
+  function domainRowHTML(d) {
+    const id = Number(d.id) || 0;
+    const target = d.expected_cname ? `Point CNAME → <code class="bg-gray-100 px-1.5 py-0.5 rounded">${escapeHtml(d.expected_cname)}</code>` : '';
+    const errorLine = d.status === 'failed' && d.last_error
+      ? `<div class="text-[11px] text-rose-500 mt-0.5">${escapeHtml(d.last_error.slice(0, 200))}</div>`
+      : '';
+    return `
+      <div class="flex items-start justify-between gap-2 py-1.5 border-t border-gray-100" data-domain-id="${id}">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-[12px] text-gray-700 font-medium truncate">${escapeHtml(d.domain || '')}</span>
+            ${statusPill(d.status)}
+          </div>
+          ${d.status === 'pending' ? `<div class="text-[11px] text-gray-400 mt-0.5">${target}</div>` : ''}
+          ${errorLine}
+        </div>
+        <button class="domain-remove-btn text-[11px] text-gray-400 hover:text-rose-600 transition" data-domain-id="${id}">Remove</button>
+      </div>
+    `;
+  }
+
+  function appCardHTML(app) {
+    const slug = app.appSlug || 'app';
+    const host = app.hostname || (slug + '.buildclear.dev');
+    const versionLabel = app.latestVersionId ? ('v' + app.latestVersionId.slice(-6)) : 'no versions yet';
+    const deployed = app.deployedAt ? new Date(app.deployedAt).toLocaleDateString() : '';
+    return `
+      <div class="card px-5 py-4" data-app-card data-app-slug="${escapeHtml(slug)}">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-gray-800 text-[14px]">${escapeHtml(slug)}</div>
+          <span class="text-[11px] text-gray-400">${escapeHtml(versionLabel)}</span>
+        </div>
+        <div class="text-[12px] text-gray-400 mb-3">${escapeHtml(host)}</div>
+        <div class="flex items-center gap-2 mb-3">
+          <a href="https://${escapeHtml(host)}" target="_blank"
+             class="btn-ghost text-[12px] px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            <span>Open</span>
+          </a>
+          <span class="text-[11px] text-gray-300 ml-auto">${escapeHtml(deployed)}</span>
+        </div>
+
+        <!-- Custom domains panel — populated by loadDomainsFor(slug) -->
+        <div class="mt-2" data-domains-panel data-app-slug="${escapeHtml(slug)}">
+          <div class="text-[11px] text-gray-400 uppercase tracking-wider font-medium mb-1">Custom domains</div>
+          <div class="domains-list" data-app-slug="${escapeHtml(slug)}">
+            <div class="text-[12px] text-gray-300">Loading…</div>
+          </div>
+          <form class="domain-add-form mt-2 flex gap-2" data-app-slug="${escapeHtml(slug)}">
+            <input type="text" name="domain" placeholder="deals.acme.com"
+                   class="flex-1 text-[12px] px-2.5 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100" />
+            <button type="submit" class="btn-primary text-white text-[12px] px-3 py-1.5 rounded-lg font-medium transition">
+              Attach
+            </button>
+          </form>
+          <div class="domain-add-error text-[11px] text-rose-500 mt-1 hidden"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function loadDomainsFor(slug) {
+    const list = document.querySelector(`.domains-list[data-app-slug="${slug}"]`);
+    if (!list) return;
+    try {
+      const res = await fetch(`/api/apps/${encodeURIComponent(slug)}/domains`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({ domains: [] }));
+      const domains = data?.domains || [];
+      if (domains.length === 0) {
+        list.innerHTML = '<div class="text-[12px] text-gray-300 py-1">No custom domains yet.</div>';
+      } else {
+        list.innerHTML = domains.map(domainRowHTML).join('');
+      }
+    } catch {
+      list.innerHTML = '<div class="text-[12px] text-rose-500 py-1">Could not load domains.</div>';
+    }
+  }
+
+  async function attachDomain(slug, domain) {
+    const errEl = document.querySelector(`.domain-add-form[data-app-slug="${slug}"]`)
+      ?.parentElement?.querySelector('.domain-add-error');
+    if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+    try {
+      const res = await fetch(`/api/apps/${encodeURIComponent(slug)}/domains`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (errEl) { errEl.textContent = data?.message || 'Could not attach domain.'; errEl.classList.remove('hidden'); }
+        return;
+      }
+      await loadDomainsFor(slug);
+    } catch {
+      if (errEl) { errEl.textContent = 'Network error. Try again.'; errEl.classList.remove('hidden'); }
+    }
+  }
+
+  async function removeDomain(slug, domainId) {
+    try {
+      await fetch(`/api/apps/${encodeURIComponent(slug)}/domains/${domainId}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+    } catch { /* swallow — refresh anyway */ }
+    await loadDomainsFor(slug);
+  }
+
+  // Wire up the per-card domain forms (event delegation — works for cards
+  // rendered after the listener is attached too).
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('.domain-add-form');
+    if (!form) return;
+    e.preventDefault();
+    const slug = form.getAttribute('data-app-slug');
+    const input = form.querySelector('input[name="domain"]');
+    const domain = (input?.value || '').trim();
+    if (!domain) return;
+    attachDomain(slug, domain).then(() => { if (input) input.value = ''; });
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.domain-remove-btn');
+    if (!btn) return;
+    const card = btn.closest('[data-app-card]');
+    const slug = card?.getAttribute('data-app-slug');
+    const id = btn.getAttribute('data-domain-id');
+    if (slug && id) removeDomain(slug, Number(id));
+  });
+
+  function renderApps(apps) {
+    const grid = document.getElementById('appGrid');
+    const empty = document.getElementById('emptyState');
+    const countEl = document.getElementById('appsCount');
+    const loadingApps = document.getElementById('appsLoading');
+    if (loadingApps) loadingApps.classList.add('hidden');
+    if (!apps || apps.length === 0) {
+      grid.classList.add('hidden');
+      empty.classList.remove('hidden');
+      if (countEl) countEl.textContent = 'No apps yet — create your first one to get started.';
+      return;
+    }
+    grid.innerHTML = apps.map(appCardHTML).join('');
+    grid.classList.remove('hidden');
+    empty.classList.add('hidden');
+    // Each app card has a Custom domains panel; fire one fetch per card
+    // to populate it. Independent fetches → Promise.all in parallel rather
+    // than serial round-trips.
+    Promise.all(apps.map(a => loadDomainsFor(a.appSlug))).catch(() => {});
+    if (countEl) countEl.textContent = apps.length + (apps.length === 1 ? ' app deployed' : ' apps deployed');
+    lucide.createIcons();
+  }
+
+  function loadApps() {
+    fetch('/api/apps', { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) return { apps: [] };
+        return res.json().catch(() => ({ apps: [] }));
+      })
+      .then((data) => renderApps(data?.apps || []))
+      .catch(() => renderApps([]));
+  }
+
+  // Gate: if not authenticated, bounce to /login.html
+  fetch('/api/auth/me', { credentials: 'include' })
+    .then(async (res) => {
+      if (!res.ok) {
+        window.location.href = '/login.html';
+        return null;
+      }
+      return res.json();
+    })
+    .then((data) => {
+      if (!data || !data.user) return;
+      const u = data.user;
+      userNameEl.textContent = u.name || u.email;
+      userInitialEl.textContent = firstInitial(u.name || u.email);
+      greetingEl.textContent = `Welcome back, ${u.name || u.email}.`;
+      loadingState.classList.add('hidden');
+      appShell.classList.remove('hidden');
+      // Re-render any icons that were inside the hidden shell
+      lucide.createIcons();
+      // Now fetch and render the customer's deployed apps
+      loadApps();
+    })
+    .catch(() => {
+      window.location.href = '/login.html';
+    });
+
+  logoutBtn.addEventListener('click', async () => {
+    logoutBtn.disabled = true;
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch { /* swallow — we still want to bounce out */ }
+    window.location.href = '/login.html';
+  });
+</script>
+</body>
+</html>

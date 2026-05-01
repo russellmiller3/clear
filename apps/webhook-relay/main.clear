@@ -46,7 +46,7 @@ when user calls POST /api/destinations receiving dest:
 when user calls DELETE /api/destinations/:id:
   this endpoint requires login
   this endpoint requires role 'admin'
-  remove from Destinations where id is incoming's id
+  delete from Destinations where id is incoming's id
   send back 'deleted'
 
 # --- Delivery Status ---

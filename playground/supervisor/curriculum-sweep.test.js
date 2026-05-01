@@ -1,5 +1,16 @@
-import { describe, it, expect } from '../../lib/testUtils.js';
-import { partitionTasks, buildPrompt, runSweep, validateSweepPreconditions, computeTaskOutcome, gradeAbortedRun } from './curriculum-sweep.js';
+import { describe, it, testAsync, expect, run } from '../../lib/testUtils.js';
+import {
+  partitionTasks,
+  buildPrompt,
+  runSweep,
+  validateSweepPreconditions,
+  computeTaskOutcome,
+  gradeAbortedRun,
+  isWorkerDeathError,
+  processBucket,
+  buildPerLevelStats,
+  formatPerLevelStats,
+} from './curriculum-sweep.js';
 
 describe('partitionTasks', () => {
   it('splits evenly when divisible', () => {
@@ -77,22 +88,22 @@ describe('buildPrompt', () => {
   });
 });
 
-describe('runSweep dry-run', () => {
-  it('returns plan without spawning workers or hitting API', async () => {
-    const result = await runSweep({
-      workers: 2,
-      taskFilter: ['hello-world', 'greeting'],
-      dryRun: true,
-    });
-    expect(result.dryRun).toEqual(true);
-    expect(result.tasksRun).toEqual(0);
-  });
+console.log('\nrunSweep dry-run\n');
 
-  it('returns zero when taskFilter matches nothing', async () => {
-    const result = await runSweep({ taskFilter: ['does-not-exist'], dryRun: true });
-    expect(result.tasksRun).toEqual(0);
-    expect(result.rowsAdded).toEqual(0);
+await testAsync('runSweep dry-run: returns plan without spawning workers or hitting API', async () => {
+  const result = await runSweep({
+    workers: 2,
+    taskFilter: ['hello-world', 'greeting'],
+    dryRun: true,
   });
+  expect(result.dryRun).toEqual(true);
+  expect(result.tasksRun).toEqual(0);
+});
+
+await testAsync('runSweep dry-run: returns zero when taskFilter matches nothing', async () => {
+  const result = await runSweep({ taskFilter: ['does-not-exist'], dryRun: true });
+  expect(result.tasksRun).toEqual(0);
+  expect(result.rowsAdded).toEqual(0);
 });
 
 describe('validateSweepPreconditions', () => {
@@ -260,3 +271,84 @@ describe('gradeAbortedRun', () => {
     expect(r.dbPassed).toEqual(false);
   });
 });
+
+describe('worker death detection', () => {
+  it('recognizes ECONNRESET-style fetch failures as worker death', () => {
+    const err = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+    });
+    expect(isWorkerDeathError(err)).toEqual(true);
+    expect(isWorkerDeathError(new Error('HTTP 500'))).toEqual(false);
+  });
+});
+
+await testAsync('processBucket: worker death skips remaining tasks without retrying the dead worker', async () => {
+  const tasks = [
+    { id: 'l7-hard-one', level: 7, title: 'Hard One', description: '', tests: [] },
+    { id: 'l8-hard-two', level: 8, title: 'Hard Two', description: '', tests: [] },
+    { id: 'l9-hard-three', level: 9, title: 'Hard Three', description: '', tests: [] },
+  ];
+  const attempts = [];
+  const reported = [];
+
+  const results = await processBucket(3499, tasks, 5000, (task, result) => {
+    reported.push({ task: task.id, status: result.status, skipped: !!result.skipped });
+  }, null, {
+    driveTask: async (_port, prompt) => {
+      attempts.push(prompt);
+      return {
+        ok: false,
+        stuck: false,
+        timedOut: false,
+        workerDied: true,
+        status: 'worker-died',
+        error: 'read ECONNRESET',
+      };
+    },
+  });
+
+  expect(attempts.length).toEqual(1);
+  expect(results.length).toEqual(3);
+  expect(results.map(r => r.task)).toEqual(['l7-hard-one', 'l8-hard-two', 'l9-hard-three']);
+  expect(results.every(r => r.status === 'worker-died')).toEqual(true);
+  expect(results[0].skipped).toEqual(false);
+  expect(results[1].skipped).toEqual(true);
+  expect(results[2].skipped).toEqual(true);
+  expect(reported.map(r => `${r.task}:${r.status}:${r.skipped}`)).toEqual([
+    'l7-hard-one:worker-died:false',
+    'l8-hard-two:worker-died:true',
+    'l9-hard-three:worker-died:true',
+  ]);
+});
+
+describe('per-level stats', () => {
+  it('groups completed, timeout, worker-died, stuck, and failed results by curriculum level', () => {
+    const stats = buildPerLevelStats([
+      { task: 'l1-a', level: 1, ok: true },
+      { task: 'l1-b', level: 1, timedOut: true },
+      { task: 'l7-a', level: 7, workerDied: true, skipped: true },
+      { task: 'l7-b', level: 7, stuck: true },
+      { task: 'l10-a', level: 10, error: 'boom' },
+    ]);
+
+    expect(stats).toEqual([
+      { level: 1, total: 2, completed: 1, stuck: 0, timedOut: 1, workerDied: 0, failed: 0, skipped: 0, passRate: 0.5 },
+      { level: 7, total: 2, completed: 0, stuck: 1, timedOut: 0, workerDied: 1, failed: 0, skipped: 1, passRate: 0 },
+      { level: 10, total: 1, completed: 0, stuck: 0, timedOut: 0, workerDied: 0, failed: 1, skipped: 0, passRate: 0 },
+    ]);
+  });
+
+  it('formats per-level stats as a compact sweep table', () => {
+    const table = formatPerLevelStats([
+      { level: 1, total: 2, completed: 1, stuck: 0, timedOut: 1, workerDied: 0, failed: 0, skipped: 0, passRate: 0.5 },
+      { level: 7, total: 2, completed: 0, stuck: 1, timedOut: 0, workerDied: 1, failed: 0, skipped: 1, passRate: 0 },
+    ]);
+
+    expect(table.includes('L1')).toEqual(true);
+    expect(table.includes('1/2')).toEqual(true);
+    expect(table.includes('50%')).toEqual(true);
+    expect(table.includes('worker-died')).toEqual(true);
+  });
+});
+
+run();

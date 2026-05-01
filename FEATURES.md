@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 124 node types. ~2500 compiler tests. Zero npm dependencies in the compiler.
+**Headline numbers:** 169 node types. 2635 compiler tests after the Phase 6 compiler tests land. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
@@ -17,6 +17,9 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
 - Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
 - Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
+- App shell compiles to polished real app chrome — sidebar groups, route-aware nav, workbench headers, routed tabs, KPI stat cards, and right-side record panels.
+- **Shell-page router for multi-page apps with a sidebar.** Declare `app_layout` once on the page that owns the chrome (typically `/`). When the user navigates to another route, the compiler-emitted router parks the shell's default content and mounts the new page's content into the shell's outlet — sidebar persists, page mount lifecycle re-runs, tables re-bind to already-loaded data. No double-sidebar, no empty-table-after-click failure mode. (Compiled emit only — no new syntax to learn.)
+- **Approval queues with audit + notifications in one block.** `queue for deal:` + 4 lines generates the audit table, the outbound notification queue, the filtered queue view, and a login-gated URL for every action. ~150 lines of hand-rolled approval pipeline collapse to 5 lines of declaration.
 
 **Talk to Claude inside your code**
 - Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
@@ -34,6 +37,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Same Clear file → Node + Express, or Python + FastAPI, or Cloudflare Workers + D1.
 - Cloudflare target gets cron triggers, Workflows for durable agents, Web Crypto auth automatically.
 - Deploy to Fly with one click from Studio; rollback to any prior version.
+- After the first deploy, every Publish click is an incremental update — new bundle live in ~2s, schema changes ask before reshaping the database, rollback to any of the last 20 versions is one click.
 
 **Edit your live app while users are using it (LAE)**
 - Open your deployed app in the browser → 🔧 widget → "add a region field" → ship in 4 seconds.
@@ -45,7 +49,9 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - Three-panel: editor + preview + Meph chat. Meph writes Clear, compiles, runs, tests, fixes errors.
 - Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
 - 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
-- Ghost Meph: route /api/chat to local Claude Code, Ollama, or OpenRouter for $0 research sweeps.
+- Ghost Meph: route /api/chat to Claude Code, Ollama, Anthropic, or OpenRouter models through the Studio model picker, with tool use preserved.
+- Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
+- Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 
 **Developer tooling (Dave-first wedge)**
 - VSCode + Cursor extension with autocomplete + live diagnostics.
@@ -88,6 +94,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | If / else | `if x is 5:` ... `otherwise:` | Also inline: `if x is 5 then show 'yes'` |
 | Match / when | `match x:` + `when 'a':` + `otherwise:` | Pattern matching |
 | Try / catch | `try:` + `if error:` | Typed handlers: `if error 'not found':` (404) |
+| Live block (effect fence) | `live:` + indented body | Explicit label for code that talks to the world (`ask claude`, `call API`, `subscribe to`, timers). Permissive in Phase B-1 (2026-04-25); Phase B-2 will require effect-shaped calls to sit inside `live:`. See PHILOSOPHY Rule 18. |
 | Break / continue | `stop` / `skip` | |
 | Comments | `# text` | |
 | Modules | `use 'helpers'` | Namespaced, selective, or inline-all |
@@ -95,6 +102,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Transactions | `as one operation:` / `atomically:` / `transaction:` / `begin:` | BEGIN/COMMIT/ROLLBACK |
 | Provable correctness — concrete | `clear prove <file>` | Walks the AST directly (no compiler in the path); proves every `test` block's assertions hold for the inputs given. Pure-subset only — anything impure (DB/net/AI/time/UI) returns UNVERIFIABLE instead of false PROVED. |
 | Provable correctness — symbolic | Free variables in a `test` block | Triggers symbolic mode automatically: variables become forall-quantified placeholders; simplifier rewrites both sides into canonical form; equality decided structurally. Proves theorems like `add(a, b) === add(b, a)` for ANY input. Honest UNKNOWN when the simplifier can't decide. |
+| TBD placeholder | `set greeting = TBD` / a line that's just `TBD` | Lean Lesson 1 — leave one piece unfinished, ship the rest. Compiles green, runtime throws "placeholder hit at line N — fill it in or remove it" when reached. Tests that exercise a stub report SKIPPED, not FAILED. `result.placeholders[]` lists every open hole. |
 
 ## Expressions
 
@@ -125,8 +133,9 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Checkbox | `'Active' is a checkbox input saved as active` | |
 | Textarea | `'Bio' is a textarea input saved as bio` | |
 | File input | `'Upload' is a file input saved as doc` | |
-| Buttons | `button 'Save':` + action block | |
+| Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback. Selected-record updates require a `change ... from ... to ...` line before `update ... at ...`; deletes use `delete selected_record from /api/...` |
 | Sections | `section 'Results':` | With style presets |
+| App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs) |
 | Tabs | `tab 'Settings':` | Auto-grouped |
 | Components | `define component Card receiving content:` | Reusable, parameterized |
 | Conditional UI | `if logged_in:` + content block | |
@@ -134,10 +143,16 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | On scroll (throttled) | `on scroll every 100ms:` / `on scroll every 1 second:` | Leading-edge throttle; load-more-near-bottom pattern |
 | On page load | `on page load get todos from '/api/todos'` | Inline or block form |
 | Navigate | `go to '/dashboard'` | |
+| Sidebar nav section | `nav section 'Approvals':` | Labeled group inside `app_sidebar` |
+| Sidebar nav item | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` | Linked sidebar row; optional count + Lucide icon; active state follows the route |
+| Page header | `page header 'CRO Review':` + `subtitle '5 deals waiting'` + `actions:` | Main content title row with optional subtitle and right-aligned actions |
+| Tab strip | `tab strip:` + `tab 'Pending' to '/cro'` | Routed underline tabs; active state follows the route |
 
 | Display Format | Syntax | Output |
 |----------------|--------|--------|
-| Table | `display X as table showing col1, col2` | HTML table |
+| Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows; **auto-emitted toolbar search input** that filters rows in-place across all visible columns (Codex chunk #5, 2026-04-26 — every `display X as table` gets it for free, no syntax to opt in) |
+| Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
+| Detail panel | `detail panel for selected_deal:` + body + `actions:` | 340px right rail populated from the selected table row, with sticky bottom action buttons. Comment-only and vague update buttons are compile errors |
 | Cards | `display X as cards showing name, description` | Card grid |
 | List | `display X as list` | Bullet list |
 | Currency | `display X as dollars` | `$1,234.56` |
@@ -159,7 +174,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 
 | UI Action | Syntax | Notes |
 |-----------|--------|-------|
-| Toast | `show toast 'Saved!'` | Also `show alert`, `show notification` |
+| Toast | `show toast 'Saved!' as success` | Native DaisyUI-style alert toast; message required and rendered as text; also `show alert`, `show notification` |
 | Show/hide | `hide the sidebar` | Toggle element visibility |
 | Loading | `show loading` / `hide loading` | Overlay spinner |
 | Clipboard | `copy X to clipboard` | |
@@ -310,6 +325,37 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Checkpoint | `save progress to Table` | DB persistence |
 | Run workflow | `result = run workflow 'Name' with data` | |
 
+## Routing
+
+| Feature | Syntax | Notes |
+|---------|--------|-------|
+| Routing block | `route lead by size:` + indented body | Statement-level. Compiles to an if/else chain over `<entity>.<field>`, mutating `<entity>.assigned_to`. Replaces 50+ lines of nested if-chains for assignment. |
+| Fixed-mapping rule | `'SMB' to alice` | Match value MUST be a quoted string (the tokenizer splits hyphenated identifiers like `Mid-market`). Owner is bare identifier or quoted string. |
+| Single-owner default | `default to alice` | Catch-all owner when no fixed rule matches. |
+| Round-robin default | `default round-robin across [alice, bob, diana]` | Rotates through the pool. State persists in the `_clear_route_cursors` SQLite table — cursor key is a content hash of (entity + field + rules + pool), stable across line-number edits. Survives restarts. |
+| Validator (hard error) | `ROUTE_ENTITY_NOT_IN_SCOPE` | Route block references an undefined variable — catches `route foo by size:` where `foo` was never bound. |
+| Validator (hard error) | `ROUTE_AFTER_SAVE` | Route block runs after `save X as new T` — assignment never persists. The most common silent bug. |
+| Validator (warning) | `ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE` | Likely-typo / likely-mistake patterns. Program still compiles. |
+
+## Approval Queues
+
+| Feature | Syntax | Notes |
+|---------|--------|-------|
+| Queue declaration | `queue for deal:` + indented body | Auto-generates audit table, optional notifications queue, filtered GET, per-action login-gated update handlers |
+| Reviewer role | `reviewer is 'CRO'` | Stamped on every audit row's `decided_by` |
+| Action list | `actions: approve, reject, counter, awaiting customer` | Each action becomes `PUT /api/<entity>s/:id/<action>` — multi-word actions slugify to first word |
+| Notify clause | `notify customer on counter, awaiting customer` | Inserts a row in `<entity>_notifications` for matching actions; recipient_email resolves from `<role>_email` field on the entity |
+| Email when (canonical, F3) | `email customer when counter, awaiting customer` | Same as above but the verb names HOW (email vs vague notify); `notify on` kept as legacy alias |
+| Triggered email block (top-level) | `email customer when deal's status changes to 'awaiting': subject is 'Counter for {customer}' body is 'Hi {customer}, we countered your {amount} request.'` | Auto-emits a shared `workflow_email_queue` table; queue-driven status transitions automatically queue email rows. Subject + body interpolate `{field}` references against the entity record at queue-insert time, so each row carries per-customer text. |
+| Email delivery directive | `email delivery using agentmail` | Top-level directive that flips live sending on. When present, the compiler emits a background worker that polls `workflow_email_queue` every 30 seconds and sends pending rows via the provider's HTTP API. Without the directive, no worker emits — queues only. Worker fails loud at runtime if the `AGENTMAIL_API_KEY` (or `SENDGRID_API_KEY`, etc.) env var isn't set. AgentMail has a full adapter today; SendGrid/Resend/Postmark/Mailgun are recognized but mark rows failed with "adapter not implemented yet" until each one is wired. |
+| Auto-emitted audit | `<entity>_decisions` table | `deal_id, decision, decided_by, decided_at, decision_note` |
+| Auto-emitted queue view | `GET /api/<entity>s/queue` | Filtered by `status = 'pending'` |
+| Auto-emitted history view | `GET /api/<entity>-decisions` | Full audit log |
+| Auto-emitted CSV export | `GET /api/<entity>/export.csv` | Plain CSV with RFC 4180 escaping (commas, quotes, newlines wrapped + doubled correctly); sensitive fields (password / token / api_key / secret / hash) auto-omitted. Suppress with `no export` clause. |
+| Suppress CSV | `no export` (inside queue body) | Removes the auto-emitted `/export.csv` URL when the entity should never expose data via CSV (e.g. compliance-restricted tables) |
+
+Also under "Build full apps by writing English" in the exec summary: **Approval queues with audit + notifications in one block.**
+
 ## Scheduling
 
 | Feature | Syntax | Compiles To |
@@ -334,6 +380,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Semantic expects | `expect it succeeds` / `fails` / `requires login` / `is rejected` | Status code assertions |
 | Mock AI | `mock claude responding:` + fields | Override `_askAI` |
 | Unit assertions | `expect x is 5`, `expect x is greater than N`, `expect x is empty` | Value-level assertions — 8 check forms, friendly error messages, no HTTP needed |
+| **Auto-generated browser walker** | `clear build` → emits `browser-uat.mjs` per app | Real Playwright script the compiler derives from the source. Drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown, screenshots each route. Runs against the live app — `node browser-uat.mjs` (TEST_URL points at the running URL). Requires `playwright` dev dep; logs a clear install hint if missing. **No comparable internal-tool platform does this** — Retool / Bubble / Glide / Tooljet / Budibase all make customers write their own tests. |
+| **Marcus-app sweep runner** | `node scripts/run-marcus-uat.mjs` | Builds each of the 5 Marcus apps, spins up its server on a dedicated port, runs the walker, kills the server, reports per-app pass/fail. Single command turns "did all 5 apps work?" into a green-light run. Wipes per-app `clear-data.db` before each run so seeds always re-fire. |
 
 ## Policies (App-Level Guards)
 
@@ -359,11 +407,13 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Light/dark theme | Toggle |
 | Save to Desktop | Download .clear file |
 | Compile + run + test | All from browser |
+| Copy compiler error | Compile errors show a "Copy compiler error" button with source context, diagnostics, and repair instructions |
 | Source maps | Click preview element -> jumps to Clear source line |
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |
 | Builder Mode (v0.3) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. v0.2 added a Marcus-first tile gallery on empty preview (5 featured apps + "See more"). v0.3 added a 3-ship counter (source pane defaults visible for first 3 successful Publishes, hidden after) + click-to-edit (clicking an iframe element prefills the chat input with `Change the "<text>" button/link — `). |
 | First-visit onboarding | localStorage `clear-onboarding-seen` | Studio shows a one-time welcome card prepended to the chat on first load + auto-focuses chat input. Per-mode copy. Dismissed on first keystroke or × click. |
-| Ghost Meph (chat backend dispatch) | `MEPH_BRAIN` env var | Routes /api/chat to local backends instead of Anthropic. Backends: `cc-agent` (spawns local `claude` CLI; text-only MVP, tool support pending), `ollama:<model>` (local Ollama daemon at `OLLAMA_HOST`), `openrouter` / `openrouter:qwen` (OpenRouter API, requires `OPENROUTER_API_KEY`). All return Anthropic-shaped SSE so /api/chat is unchanged. See `playground/ghost-meph/` and `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`. |
+| Ghost Meph (chat backend dispatch + model picker) | `MEPH_BRAIN` env var or Studio picker | Routes /api/chat to Anthropic Haiku, OpenRouter Claude, GLM, DeepSeek, Kimi, local Ollama, or cc-agent. OpenAI-compatible backends now preserve Meph tool use through the shared format bridge. Changing the selected model sends full chat history on the next turn. See `playground/ghost-meph/`. |
+| Shape-search retrieval (Lean Lesson 2) | Every Meph compile retrieves canonical worked examples whose program SHAPE matches the source — archetype, table/endpoint/agent histogram, presence flags (auth, db, charts, agents). Layered next to (not replacing) the existing text-match `querySuggestions` pipeline; combined hint cap stays at 5. CLI driver at `scripts/match-shape.mjs` reads `playground/canonical-examples.md`. Disabled by `CLEAR_HINT_DISABLE=1` for clean A/B. See `playground/supervisor/program-shape.js`. |
 
 ## Live App Editing (LAE — Phase A + B shipped)
 
@@ -375,8 +425,30 @@ Conversational edits to a running, deployed Clear app. Owner authenticates, open
 | Owner-only authorization | `liveEditAuth` middleware checks JWT + owner role before allowing edits. |
 | Change classifier | Every diff classified `additive` / `reversible` / `destructive`. Additive ships instantly; reversible needs one-click confirm; destructive requires typed confirmation + reason string + audit entry (Phase C — not yet built). |
 | Cloud rollback | `/__meph__/api/cloud-rollback` — point cloud-deployed apps back to a prior version. Studio Ship + Undo route to cloud paths when on a deployed app. |
-| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. |
-| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — additive edits ship in seconds. |
+| Versions table | `versions[]` + `secretKeys` per app (`tenants-db`) — Phase B prereq for incremental updates without losing in-flight work. Capped at 20 entries per app in tenants-db (older versions stay queryable on Cloudflare's side via `listVersions`). |
+| Cloudflare incremental update | Deploy mode `update` patches a deployed Worker without rebundling — re-uploads bundle only, skips D1 reprovision + domain reattach + full secrets push. Wall clock ~2s vs ~12s for fresh deploy. |
+| Schema-change confirm gate | `migrationsDiffer()` byte-compares both `migrations/*.sql` and `wrangler.toml` between live + new bundles. Differences pause the update and return `409 MIGRATION_REQUIRED` with a per-file diff. Re-POST with `confirmMigration: true` applies the migration before uploading the new code. |
+| One-click rollback (Studio) | Version history panel inside the Publish window lists the last 20 versions with timestamps; Rollback button calls `/api/rollback`, records a tombstone version with `note: 'rollback-from-vN'`. Currently-live version shows "Current" label, no button. |
+
+## Clear Cloud (buildclear.dev — login + multi-tenant runtime)
+
+The customer-facing surface for buildclear.dev itself. Customers sign up, log in, and land on a dashboard that lists their deployed apps. Separate from the auth Clear apps generate INSIDE deployed apps (which uses the `allow signup and login` syntax against per-tenant SQLite).
+
+| Component | Where | What it does |
+|-----------|-------|--------------|
+| **Cloud-auth helpers** | `playground/cloud-auth/index.js` | bcryptjs hashing, 32-byte hex session tokens hashed with SHA-256 before DB storage, signup/login/validateSession/revokeSession/logoutAllSessions, email verify + password reset with 1-hour expiry. 57 unit tests. |
+| **Auth URL handlers** | `playground/cloud-auth/routes.js` | POST `/api/auth/signup`, POST `/api/auth/login`, GET `/api/auth/me`, POST `/api/auth/logout`. httpOnly + SameSite=Lax + Secure cookies, 30-day Max-Age, inline cookie parser (no cookie-parser dep). Stub mode when pool is null so Studio dev keeps working without DATABASE_URL. 72 routes integration tests against pg-mem. |
+| **Customer apps URL** | `GET /api/apps` in `playground/cloud-auth/routes.js` | Reads the session cookie, looks up the user's tenant, returns that tenant's deployed apps with `appSlug + scriptName + hostname + deployedAt + latestVersionId` per row, newest deploy first. 401 with no session, empty array when no deploys. Cross-tenant isolation locked in by tests (Marcus's list never leaks Dave's apps). |
+| **Auto-tenant on signup** | `playground/cloud-auth/routes.js` | At signup time, the route handler creates a `clear-<6hex>` tenant, writes the slug back onto the user. 1:1 mapping for v1 (teams come later via a tenant_users join). Best-effort: if the tenant store isn't wired, signup still succeeds and tenant_slug stays null. |
+| **Dashboard with app grid** | `playground/dashboard.html` | Auth-gates on `/api/auth/me`, then fetches `/api/apps` and renders one card per deploy with the live URL. Empty state when zero apps. Sign-out button. Lucide icons (no emoji per the rule). |
+| **Login + signup pages** | `playground/{login,signup}.html` | Inter-font, indigo-gradient buttons matching the existing landing system. Lucide icons (no emoji per the rule). Already-signed-in users on /login redirect to /dashboard. |
+| **Dashboard** | `playground/dashboard.html` | Auth-gates on `/api/auth/me`, bounces unauth'd users to /login. Shows greeting + Sign-out button + empty-state until `/api/apps` lands. |
+| **CC-2 schema migration** | `playground/db/migrations/0002_users_sessions.sql` | Runs alongside CC-1's init migration when DATABASE_URL is set. Users + sessions tables with CHECK constraints for status/role; partial unique indexes for verify/reset tokens; pg-mem-portable (no PL/pgSQL trigger). |
+| **Tenant store factory** | `playground/tenant-store-factory.js` | Picks InMemoryTenantStore (DATABASE_URL unset, default), DualWriteTenantStore (cutover wrapper), or PostgresTenantStore (production). Applies all migrations on first boot. 24 tests. |
+| **Multi-tenant routing** | `playground/cloud-routing/` | When `CLEAR_CLOUD_MODE=1`, subdomain `<sub>.buildclear.dev` requests get proxied to the deployed app's container before they hit Studio's static + chat routes. Silent no-op when env var unset. |
+| **Custom domain attach (CC-5 cycle 1)** | `POST/GET/DELETE /api/apps/:appSlug/domains` + per-app dashboard panel | Customer types `deals.acme.com`, sees a "Verifying DNS" pill, gets a copy-pasteable CNAME hint. Per-domain status: pending / verified / failed / removed. Cross-tenant attach returns 404 (locked in by tests). 23 routes integration tests + new `app_domains` table migration. DNS verification poller (CC-5b) + Fly cert provisioner (CC-5c) are follow-up cycles. |
+
+**To run buildclear.dev in production:** set `DATABASE_URL` (Fly Postgres or Neon), set `CLEAR_CLOUD_MODE=1`, set `NODE_ENV=production`. The migrations apply on first boot, the four auth URLs become reachable, and the three pages serve at the named paths.
 
 ## Developer Tooling (Dave-first wedge — shipped 2026-04-24)
 

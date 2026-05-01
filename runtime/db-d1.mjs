@@ -65,9 +65,31 @@ function coerceRecord(record, schema) {
 	return result;
 }
 
+function stripHidden(row, schema) {
+	if (!row || !schema) return row;
+	const out = { ...row };
+	for (const [field, config] of Object.entries(schema)) {
+		if (config && config.hidden) delete out[field];
+	}
+	return out;
+}
+
 function coerceForStorage(value) {
 	if (typeof value === 'boolean') return value ? 1 : 0;
 	return value;
+}
+
+function backfillRenamedFields(DB, tableName, schema, existing) {
+	for (const [fromField, config] of Object.entries(schema || {})) {
+		const toField = config && config.renamedTo;
+		if (!config || !config.hidden || !toField) continue;
+		if (!IDENT_RE.test(fromField) || !IDENT_RE.test(toField)) continue;
+		if (!existing.has(fromField) || !existing.has(toField)) continue;
+		DB.prepare(
+			`UPDATE ${tableName} SET ${toField} = ${fromField} ` +
+			`WHERE ${toField} IS NULL AND ${fromField} IS NOT NULL`
+		).run();
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -88,6 +110,17 @@ export function createD1Shim(DB) {
 			cols.push(`${field} ${toSQLiteType(config)}`);
 		}
 		DB.prepare(`CREATE TABLE IF NOT EXISTS ${tableName} (${cols.join(', ')})`).run();
+
+		const existingRows = DB.prepare(`PRAGMA table_info(${tableName})`).all().results || [];
+		const existing = new Set(existingRows.map((c) => c.name));
+		for (const [field, config] of Object.entries(schema || {})) {
+			assertIdent(field, 'column');
+			if (!existing.has(field)) {
+				DB.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${field} ${toSQLiteType(config)}`).run();
+				existing.add(field);
+			}
+		}
+		backfillRenamedFields(DB, tableName, schema, existing);
 	}
 
 	function buildWhere(filter) {
@@ -139,23 +172,29 @@ export function createD1Shim(DB) {
 		return coerceRecord(row, schema);
 	}
 
-	function findAll(table, filter) {
+	function findAll(table, filter, options) {
 		assertIdent(table, 'table');
 		const tableName = table.toLowerCase();
 		const schema = schemas[tableName] || {};
+		const includeHidden = !!(options && options.includeHidden);
 		const w = buildWhere(filter);
 		const envelope = DB.prepare(`SELECT * FROM ${tableName} ${w.clause}`).bind(...w.binds).all();
-		return (envelope.results || []).map((r) => coerceRecord(r, schema));
+		return (envelope.results || []).map((r) => {
+			const coerced = coerceRecord(r, schema);
+			return includeHidden ? coerced : stripHidden(coerced, schema);
+		});
 	}
 
-	function findOne(table, filter) {
+	function findOne(table, filter, options) {
 		assertIdent(table, 'table');
 		const tableName = table.toLowerCase();
 		const schema = schemas[tableName] || {};
+		const includeHidden = !!(options && options.includeHidden);
 		const w = buildWhere(filter);
 		const row = DB.prepare(`SELECT * FROM ${tableName} ${w.clause} LIMIT 1`).bind(...w.binds).first();
 		if (!row) return null;
-		return coerceRecord(row, schema);
+		const coerced = coerceRecord(row, schema);
+		return includeHidden ? coerced : stripHidden(coerced, schema);
 	}
 
 	function update(table, filterOrRecord, data) {

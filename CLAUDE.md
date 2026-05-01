@@ -82,6 +82,7 @@ Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 
 
 ## Never Test By Hand (MANDATORY)
 **Never manually click buttons in a browser to verify an app works.** If you're tempted to open Chrome and click something, that means the compiler is missing a generated test. Fix the compiler to emit the test, then run `clear test`. The compiler knows every button, link, input, endpoint, and page in the app — it should generate tests for ALL of them:
+- Every interactive control names its data effect in the UAT contract
 - Every button click triggers an action (not a dead button)
 - Every link navigates to its target page
 - Every input accepts and stores a value
@@ -186,7 +187,7 @@ Read the TOC before working in the file so you know where things are.
 - `send email` vs `send email to '/api'` -- parser detects block vs API call
 - `find all`/`find first` vs `find pattern` -- token sequence, not synonym
 - `toggle` (checkbox synonym) vs `toggle the X panel` -- parser guard
-- `delete` (remove synonym) vs `delete the X with this id` -- detected first
+- `delete` is the source word for record deletion; `remove` is only for list items or non-record cleanup
 - `get` (map access) vs `get all X` / `get X from URL` -- detected first
 - `sending` is synonym for `receiving` -- both work
 
@@ -224,6 +225,8 @@ Before building a new feature, grep the parser for similar existing features. We
 
 These automate the rule, they don't replace it. The human-side practice — writing doc updates in the same commit as the feature — is still the actual quality bar. The hook nudges; the detector catches the misses.
 
+**Doc cascade runs at PHASE-END, not commit-end (HARD RULE — added 2026-04-28).** When a session ships multiple commits all in service of the same epic / phase / feature, run the 11-surface cascade ONCE at the end — not after every commit. A "phase" is a coherent unit of shipped work (CC-2 close, deal-desk polish, a single feature). One cascade per phase, not per commit. If a session covers 3 different epics, that's 3 cascades (one per epic) — but if a single epic ships across 5 commits, it's 1 cascade. Saves the energy + churn of writing five overlapping CHANGELOG entries that all describe the same thing.
+
 ## Before Adding New Features or Syntax (MANDATORY)
 1. Use `/write-plan` to create an implementation plan
 2. Use `/red-team-plan` to stress-test the plan before coding
@@ -251,9 +254,11 @@ Run `node playground/server.js` → opens `http://localhost:3456`.
 Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 43 template apps in dropdown. Light/dark theme. Save to Desktop.
 
-The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, and requests.md. Meph can only write .clear files and requests.md.
+The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, and meph-memory.md. Meph can only write .clear files and requests.md.
 
-Meph has tools: edit_code, read_file, run_command, compile, run_app, stop_app, http_request, write_file.
+Meph has tools: edit_code, read_file, edit_file, run_command, compile, run_app, stop_app, http_request, read_terminal, run_tests, eval tools, browser tools, todo, source_map, patch_code, and browse_templates.
+
+Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
 Tests: `node playground/server.test.js` (85 tests).
 
 `playground/index.html` is the old static playground (compiler bundle only).
@@ -304,9 +309,13 @@ Always have an opinionated take on the right way to do things, backed by facts o
 ## Obvious Over Cryptic Rule
 UI controls must say what they do in plain words. Never use a bare arrow, icon, or symbol as the only label for an action — pair it with a word (e.g. "Hide Chat" not "◀", "Delete" not "✕" alone). The label should change to reflect current state ("Hide Chat" → "Show Chat"). A user should never have to guess what a button does.
 
+Interactive Clear syntax must also name the data effect. Buttons, dropdowns, checkboxes, sliders, menus, row actions, table controls, and text inputs must immediately say which state variable, endpoint, record, queue, or audit row they change. Toasts count as notification data only when they have message text. Domain action buttons like Approve, Reject, Assign, Resolve, Save, or Delete must name the business record, endpoint, queue, or audit row too. `that` and `for` are allowed connector words when they keep inline actions readable. After `that`, use third-person verbs because the button is the subject: `gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`.
+
 ## Branching
-Always create a new branch for features and fixes. Never commit directly to main.
-Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
+Always create a new branch before changing files. Never edit, patch, stage, or commit on main.
+Branch naming: `feature/[name]`, `fix/[name]`, or `docs/[name]`.
+Allowed on main: status checks, branch creation/switching, fast-forward-only merge of a finished branch, and pushing main after merge.
+Hook backstop: `.claude/hooks/require-branch-work.mjs` blocks direct edits and common shell-based mutations on main.
 
 ## GAN Frontend Directly (MANDATORY)
 When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.
@@ -331,6 +340,9 @@ Do all testing by running the app in Clear Studio — compile, run, click Run Te
 ## Explain Your Thinking Rule
 When making compiler changes, explain decisions in plain English in the chat as you go. Don't just code silently — the human needs to follow the reasoning, not reverse-engineer it from diffs.
 
+## Executive Narration Gate (MANDATORY)
+Every work update must start with the human meaning: where we are, why it matters, and the next move. Do not lead with tool names, package names, shell mechanics, file trivia, or failed-command details. If a status mentions machinery, translate it into the product goal it protects before naming the machinery. After any failed command, pause and re-brief in plain English before trying the next command. If Russell says the narration is gibberish, stop tool work, apologize, restate the goal, and update the rule before continuing.
+
 ## Science Documentary Rule (MANDATORY)
 Narrate your work as you build — not after. Think David Attenborough watching a compiler evolve in the wild. Before touching a file, say what you're about to do and why it matters in the big picture. Not "I'm editing compiler.js" — that's a changelog. The narration explains *significance*: what problem this solves, why it wasn't solved before, what it unlocks.
 
@@ -352,6 +364,9 @@ Landing pages (`landing/*.html`) must never use emoji characters. Use Lucide ico
 
 ## Rich Chat Output (MANDATORY)
 Studio chat (Meph) should support SVG diagrams and markdown rendering as standard output. When Meph explains architecture, data flow, or relationships, render them as inline SVG diagrams in the chat — not ASCII art. Markdown formatting (headers, bold, code blocks, lists) should render properly in chat bubbles.
+
+## Wide SVG Chat Mocks (MANDATORY)
+When outputting SVG mockups directly in chat, use a wide artboard that fills the chat renderer. Default to at least `1800px` wide for page mocks and avoid centered narrow canvases that leave gray gutters. Never let the product mock overlap hero text unless the text is deliberately layered above a background image and remains fully legible. Keep the hero copy and product mock in separate lanes or stacked rows by default. If the mock contains UI text, size the typography for the rendered chat preview, not the raw SVG coordinate system. The test is simple: Russell should be able to read the mock in the chat screenshot without zooming.
 
 ## Test Before Declaring Done (MANDATORY)
 Test everything you build before declaring it done. "The variable updated" is not verification — verify the user-visible outcome. For UI: check rendered content, not just DOM state. For flows: drive the flow end-to-end and assert the final result. If you can't test it, say so explicitly instead of claiming success. A route selector that updates `iframe.src` is not tested until you've confirmed the rendered page content actually changed.
@@ -488,3 +503,34 @@ The Factor DB already knows which error messages cost Meph the most minutes — 
 - In ROADMAP tables, prefix estimates with "human:" and "agent:" when it matters, OR drop duration columns and use complexity tiers (small / medium / large) instead.
 - Before splitting a multi-feature /pres into "too big for one session," do the 10x division first — a "5-6 week human project" is a "3-5 day agent project," which IS one pres cycle.
 - Never cite unadjusted human estimates from external sources (LinkedIn, job postings, conventional wisdom) without applying the 10x divisor when scoping agent work.
+
+## No Stub Nav (MANDATORY — HARD HOOK)
+
+**Every nav item in a `.clear` app must reach a real page or be an explicit `TBD` stub. No silent stubs ever.** A button that goes to a URL returning nothing is a silent failure: app builds, user clicks, gets a 404, can't tell why. This is the exact failure mode the 14-year-old test is designed to catch.
+
+**The rule, three branches:**
+- **Real page:** `nav item 'Pending' to '/pending'` requires `page 'Pending' at '/pending':` somewhere in the file with real content.
+- **Explicit stub (Lean Lesson 1):** if the page genuinely isn't built yet, declare it with a `TBD` body — `page 'Pending' at '/pending':\n  TBD`. The compiler emits a runtime stub that says "placeholder hit at line N — fill it in or remove it" if a user navigates to it. Tests report SKIPPED, not FAILED. The point: the stub is VISIBLE.
+- **External / API / anchor:** routes like `https://...`, `mailto:`, `/api/...`, `#` are exempt — those aren't pages.
+
+**Why this rule exists:** 2026-04-28, Russell built the deal-desk app, opened Studio, clicked the Rejected nav item, got `Cannot GET /rejected`. Codex had built that page in a previous session; Claude (me) cherry-picked compiler infrastructure but missed the page declarations in `apps/deal-desk/main.clear`. The app shipped looking complete but four sidebar items were dead. This rule + its hook ensure a future Claude can't ship a Clear app with that failure mode.
+
+**Hook backstop.** `.claude/hooks/no-stub-nav.mjs` (PreToolUse on Write + Edit, scoped to `.clear` files) parses the file, lists every `nav item ... to '/X'`, lists every `page ... at '/X':`, and DENIES the write if any nav route has no matching page (and isn't external / API / anchor). Suggests both the build-it and the TBD form. Hook is enforcement; this rule is intent.
+
+**How to apply:**
+- When designing a Clear app, write the page declarations BEFORE or alongside the nav items, not "I'll add the pages later."
+- For pages you genuinely haven't decided on, use the TBD form. The hook accepts that. Then call it out to Russell explicitly: "I marked /reports and /settings as TBD — those need a real design before launch."
+- Surface a design indicator in the page itself if it's TBD-stubbed (e.g. `text 'Coming soon — this page is a placeholder'`). The hook doesn't enforce the indicator (yet); manual discipline.
+
+## Build Python Alongside JS — No Drift Tax (MANDATORY)
+
+**Whenever you add, change, or extend the JS backend output, build the Python equivalent in the SAME change.** Both targets ship from the same Clear source and are first-class compile targets — Python is not a "later" target. Compile-test both targets before declaring a feature done.
+
+**Why this rule exists:** every time we let JS land first and "do Python next session," the gap compounds. Three sessions later, the Python emission has 8 missing features, the runtime helpers don't exist, and the gap looks like a refactor. By the time someone tries to use the Python target in anger, it's broken in ways that should never have existed. PHILOSOPHY.md Rule 17 (cross-target parity) is the design principle; this rule is the enforcement.
+
+**How to apply:**
+- New node type? Implement both `compileToJSBackend` and `compileToPythonBackend` paths in the same commit. New runtime helper? Write `runtime/<name>.js` AND `runtime/<name>.py` together.
+- After every change to a backend emit path, run `node scripts/cross-target-smoke.mjs` to compile every template × every target and syntax-check each emission. Fix any drift before commit.
+- New AI-INSTRUCTIONS.md or SYNTAX.md guidance with a code example? The example must compile clean on BOTH targets.
+- For features that genuinely don't make sense on Python (e.g. browser-only DOM APIs), document the gap explicitly in the node-type's `intent.md` row — "JS-only: <reason>." Silent gaps are the failure mode; documented gaps are fine.
+- **Red flag:** a commit that touches `compileToJSBackend` without also touching `compileToPythonBackend` (or explicitly documenting why Python doesn't apply). Investigate before merging.

@@ -51,6 +51,8 @@ If you want to show a shape with placeholders, either use a schema-style descrip
 ## Diagnosing Errors
 When you hit a compile error or runtime bug you don't understand, use `read_file` to consult the reference docs. Read SYNTAX.md for "what syntax exists", AI-INSTRUCTIONS.md for "how to write it correctly", PHILOSOPHY.md for "why it works this way". This is faster than guessing.
 
+When the compile tool returns `compileTrace`, preserve the packet instead of summarizing it away. It includes source context, normalized diagnostics, repair instructions, and bounded source. Use it to fix the Clear source first unless the packet shows the compiler/parser/validator is wrong; never edit generated output directly.
+
 **Compile tool returns `hints` when errors are present.** If the compile result has a `hints` field, **read `hints.text` first** — a pre-formatted block with 1-3 past fixes ranked by the EBM reranker, highest score first. Each past fix shows: tier label (exact-same-error vs same-archetype), EBM score, what happened, and ~600 chars of the Clear source that worked. Pattern-match the FIX — don't copy-paste. These are from different tasks. Extract the structural pattern that worked (validate-block placement, guard clauses, auth line position, endpoint shape) and adapt to your current error. The `hints.references` array is the same data in structured JSON if you want it programmatically; `hints.text` is what you want most of the time.
 
 **MANDATORY: announce hint usage. This is a REFLEX, not a summary step.** The tag is the tracking signal that trains the ranker — missing tags = silent training data loss. Measured tag rate is ~50%; you need to push it to 100%. Follow these rules verbatim:
@@ -79,6 +81,20 @@ endpoint body. My endpoint had it on line 4. Moving it to line 2 now.
 Note the tag is line 1, before any explanation. The explanation and the tool call follow. That's the pattern. Every time.
 
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
+
+## Open capabilities for the current program (read this first)
+
+Every turn, your system context may include a block titled `## Open capabilities for the current program`. It is a structured list of everything the program needs to be complete but isn't yet, collected from three sources:
+
+- **Compile errors** — block everything. The line number + canonical-fix hint tells you exactly where to edit.
+- **Failing tests** — structure compiles but behavior is wrong. The test name + reason point at the gap.
+- **Stubs (`TBD` placeholders)** — explicit "fill me in" markers you or the user left earlier.
+
+**The summary line picks ONE focus by priority:** errors → failing tests → placeholders. Compile errors block compilation entirely, so close them before anything else; then close failing tests; then fill stubs.
+
+**How to use it:** when you see this block, read the summary line first to pick your focus, then jump to the relevant detail section. Prefer this over re-running the test tool just to see the failures — the block already reflects the most recent state.
+
+**No block means nothing is open** — the program compiles clean, all tests pass, no stubs. Move to the next user request.
 
 ## What You Can Read (via read_file)
 - **SYNTAX.md** — complete syntax reference (what you can write)
@@ -110,6 +126,8 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
 - `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
 - `run_tests` — Run all tests for the current app. Returns `{ passed, failed, results: [...] }`. Each failing result has a plain-English `error` explaining what went wrong AND a `sourceLine` pointing at the exact Clear line that failed. When the user asks you to fix a test: read the source line, understand the hint in the error, make the smallest edit that fixes it, then run_tests again. Don't guess — the error message is already telling you the fix. Example hint: "POST /api/notes returned 404 — you forgot to write `when user calls POST /api/notes:`". That IS the TODO.
+
+**Beyond `run_tests`: every `clear build` also writes a `browser-uat.mjs` next to the compiled `server.js`.** It's an auto-generated Playwright walker that drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown — and screenshots each route. Run it against a live app with `TEST_URL=<url> node apps/<name>/browser-uat.mjs`. Use this when the user asks "does the whole app actually work end-to-end" — it's the deeper smoke test that catches "page renders but the button does nothing" failures the API tests miss. Requires `playwright` dev dep (already in package.json).
 - `todo` — Track your progress. Use action='set' to update your task list. The user sees your tasks in real-time above the chat.
 
 ## Shared Browser Session (you and the user are in the same iframe)
@@ -303,6 +321,56 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - One operation per line — no chaining, no nesting
 - Possessive access: `person's name` (never person.name)
 - Colons signal blocks: anything with `:` at the end has an indented body below
+- `#` comments are navigation only. Use `//` for one-line explanation and `/* */` for longer notes.
+- Every button or row action must state its data effect immediately below it.
+- Toasts count as notification data only when they include a message. Domain actions like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change.
+- Selected-record updates need an explicit field change before the update line: `change selected_deal's status from 'pending' to 'approved'`, then `update selected_deal at /api/deals/:id/approve`.
+- Selected-record deletes use `delete selected_deal from /api/deals/:id`. Do not write `PUT`, `DELETE`, or `call action` in UI action bodies.
+
+## TBD — Use Placeholders When the Spec Is Open (Lean Lesson 1)
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a step belongs
+and you have NOT decided yet. The compiler accepts it, the program still
+compiles green, and only the line that holds the placeholder fails at
+runtime — every other piece keeps working.
+
+```clear
+greeting = TBD                     # value position
+
+to greet with name:                # step position (a line on its own)
+  TBD
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                              # audit log piece is for next session
+  saved = save lead as new Lead
+  send back saved
+```
+
+**Use TBD when:**
+- The spec is ambiguous about ONE piece (auth flow, edge case, error copy,
+  audit shape) and you want compiler feedback on the rest now.
+- Russell says "leave the X part for now, focus on Y." Drop a TBD for X,
+  ship Y, ask later.
+- You are sketching the structure of a program and want validation on what
+  is written without being blocked by what is not.
+
+**Do NOT use TBD to:**
+- Dodge a hard part you don't feel like writing. The placeholder is a
+  bookmark for a decision that is genuinely OPEN, not a hiding spot.
+- Skip a piece a test will exercise. Tests that hit a TBD report as
+  SKIPPED — looks fine in pass count but means the test verified nothing.
+  Skipped tests are not coverage.
+
+**Behavior:**
+- Compiles with zero compile errors. Programs with TBDs ship.
+- Runtime hits the line → throws `placeholder hit at line N — fill it in or remove it`.
+- `clear test` catches that exact error and reports the test SKIPPED, not
+  FAILED. Results line: `X passed, Y failed, Z skipped due to stub`.
+- Skipped tests do NOT trigger non-zero exit — partial programs ship CI.
+
+**Before you finish a feature, grep your `.clear` for `TBD` and refill every one.**
 
 ## Termination Rules (PHILOSOPHY Rule 18 — "Total by Default")
 
@@ -448,6 +516,14 @@ Only equality filters (`is X`, `A is X and B is Y`) work with `from Table` aggre
 - `build for python backend` — FastAPI server
 - `build for web and javascript backend` — full-stack (most common)
 
+## Updating a deployed app
+
+When the user asks you to "update", "redeploy", "push the change", or "ship the new version" of an app that's already live, that's an incremental update — not a fresh deploy. The Publish button (the same one you'd press for a first-time ship) handles it: when Studio sees the app already has a tenant record, it routes through the fast path (`mode: 'update'`) and re-uploads only the new Worker bundle, ~2s wall clock. Don't tell the user to delete the app and re-publish, don't try to manually re-provision the database, don't re-set secrets that already exist. Just compile and have them click Publish — the button text will already say "Update" if the app is deployed.
+
+Two things that need a heads-up:
+- **Schema changes block the update.** If your edits touched a table (added a column, changed a type, dropped one), the Publish call returns a 409 with a migration diff and the modal asks for an explicit "apply migration + update" click. Tell the user that's expected and means SQLite needs a moment to reshape the database before the new code goes live.
+- **Rolling back is one click.** If the user wants to undo the last update, the Version history panel inside the Publish modal lists the last 20 versions with Rollback buttons. Don't try to "fix forward" by editing — just point them at the panel.
+
 ## Inputs
 
 - `'Name' as text input` — text field
@@ -465,7 +541,7 @@ HTTP methods — what each one does:
 - **GET** — fetch data, no body. Use for listing records or getting one by id.
 - **POST** — create a new record. Send the new record in the body (`sending <entity>:` — name the var after the singular entity being sent, e.g. `sending todo:`).
 - **PUT** — update an existing record by id. Send the changed fields in the body (`sending changes:`).
-- **DELETE** — remove a record by id. No body needed.
+- **DELETE** — delete a record by id. No body needed.
 
 ```clear
 # GET fetches data — no body, just returns records
@@ -485,10 +561,10 @@ when user calls PUT /api/items/:id sending changes:
   save entry to Items
   send back 'updated' with success message
 
-# DELETE removes — targets a record by :id, no body
+# Delete records — targets a record by :id, no body
 when user calls DELETE /api/items/:id:
   requires login
-  remove from Items with this id
+  delete the Item with this id
   send back 'deleted'
 ```
 
@@ -681,6 +757,117 @@ workflow 'Pipeline' with state:
   step 'Publish' with 'Publisher Agent'
 ```
 
+## Routing — `route X by FIELD:`
+
+**When an endpoint needs to assign an owner based on a field of the incoming record** — lead routers (size, region, territory), ticket triage (urgency, product), approval triage (amount, requester) — reach for `route X by FIELD:` BEFORE writing if-chains.
+
+Canonical form:
+
+```clear
+when user sends lead to /api/leads:
+  validate lead:
+    name is text, required
+    size is text
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead
+  send back new_lead with success message
+```
+
+Round-robin variant for the default (rotates through the pool on each new record):
+
+```clear
+route lead by region:
+  'West' to alice
+  default round-robin across [bob, charlie, diana]
+```
+
+**TWO STRICT RULES — getting these wrong is a HARD compile error:**
+1. **Match values must be quoted strings on the LHS** (`'SMB' to alice`, NOT `SMB to alice`). Bare hyphenated identifiers (`Mid-market`) tokenize as 3 tokens and parse-fail.
+2. **The route block must come BEFORE `save X as new T`** in the endpoint. Otherwise the assignment lands on the in-memory variable but never persists. Compile-time HARD ERROR (`ROUTE_AFTER_SAVE`).
+
+**DO use `route X by FIELD:`** whenever there are 2+ branches and a fallback. Replaces 50+ lines of nested if-chains with 5 lines.
+
+**DO NOT use `route X by FIELD:`** when:
+- Only one assignment, no fallback (just write `lead's assigned_to is 'alice'` once)
+- The decision needs richer logic than equality on a single field — fall back to `if/then` for those
+
+## Approval Queues — `queue for X:`
+
+**When the user asks for an approval flow** — discount approvals, time-off requests, deal review, onboarding sign-off, anything where a human reviews items piled up in a list and clicks Approve / Reject / Counter — reach for `queue for X:` BEFORE writing hand-rolled CRUD URLs.
+
+Canonical form:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+```
+
+**Canonical clause:** `email <role> when <action>, <action>` — the verb names HOW (email), the connector reads naturally (when). Legacy form `notify <role> on <action>` still works for backwards compatibility, but new code should always use `email when`. Future primitives will follow: `slack <role> when ...`, `text <role> when ...`.
+
+What the compiler emits for free:
+- `<entity>_decisions` audit table — `deal_id, decision, decided_by, decided_at, decision_note`.
+- `<entity>_notifications` outbound queue table (only when `email` or `notify` clauses present) — `recipient_role, recipient_email, notification_type, queue_status, queued_at`.
+- `GET /api/deals/queue` — filtered to `status = 'pending'`.
+- `GET /api/deal-decisions` and `GET /api/deal-notifications` — full history views.
+- `PUT /api/deals/:id/<action>` per action — login-gated, updates status, inserts audit row, queues notifications. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
+
+**Status transitions:** `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names use the action name as the status verbatim.
+
+**Recipient-email convention:** `email customer when …` resolves recipient_email by reading `<entity>.customer_email`. If the field is missing, the validator warns; the row still queues with a blank email.
+
+**Triggered emails (top-level block).** When the user wants emails to fire on state changes (counter offers, status updates, awaiting-reply pings), use:
+
+```clear
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+The compiler emits a shared `workflow_email_queue` table once per app + wires the queue's auto-PUT handlers to inject email rows when their terminal status matches the trigger value. Real provider sends stay deferred behind `enable live email delivery via X` — default builds queue rows only (visible in your tables, but no one gets a real email).
+
+Sub-clauses: `subject is '...'`, `body is '...'`, `provider is '...'` (default `'agentmail'`), `track replies as <text>` (optional). Hard-fails on undeclared entity / missing subject or body / unknown body line.
+
+**Use the email-trigger block when** Marcus's flow needs reply-aware notifications tied to state changes. **Don't use it for** one-off transactional emails — those keep using `send email:` directly.
+
+**DO NOT hand-roll** when the user asks for an approval flow. Don't write per-action `when user updates X at /api/deals/:id/approve:` URLs alongside hand-built `DealDecisions` and `DealNotifications` tables. The primitive replaces all of that.
+
+**DO NOT use `queue for X:`** when:
+- The flow is a single-record toggle with no audit need (just write a PUT URL).
+- The flow is automated routing with no human in the loop (different shape — flag as a feature gap in `requests.md`).
+- The flow needs multi-stage approval (Manager → Director → CRO) — Tier 2 isn't built yet; flag in `requests.md` and use `workflow` for now.
+
+**Wiring action buttons.** The primitive doesn't auto-render detail-panel buttons yet. Hand-add buttons that name the field change, update the selected record through the generated action URL, and reload the affected queue:
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending_deals from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending_deals from /api/deals/pending
+```
+
 ## Policies (Safety Guards)
 
 ```clear
@@ -699,10 +886,58 @@ Use built-in presets: `app_layout`, `app_sidebar`, `app_main`, `app_card`, `app_
 ```clear
 section 'Dashboard' with style app_layout:
   section 'Sidebar' with style app_sidebar:
-    link 'Home' to '/'
-  section 'Main' with style app_main:
     heading 'Dashboard'
+    nav section 'Main':
+      nav item 'Home' to '/' with icon 'layout-dashboard'
+      nav item 'Reports' to '/reports' with count report_count with icon 'bar-chart-3'
+  section 'Main' with style app_main:
+    section 'Body' with style app_content:
+      page header 'Dashboard':
+        subtitle 'Open work and key actions'
+        actions:
+          button 'Refresh':
+            get pending_deals from '/api/deals/pending'
+      tab strip:
+        active tab is 'Home'
+        tab 'Home' to '/'
+        tab 'Reports' to '/reports'
+      stat strip:
+        stat card 'Pending Count':
+          value pending_count
+          delta '+1.8 pts vs last week'
+          sparkline [3, 4, 6, 5, 8]
+          icon 'inbox'
+      detail panel for selected_deal:
+        text selected_deal's customer
+        display selected_deal's amount as dollars called 'Value'
+        text selected_deal's status
+        actions:
+          button 'Reject':
+            change selected_deal's status from 'pending' to 'rejected'
+            update selected_deal at /api/deals/:id/reject
+            get pending_deals from /api/deals/pending
+          button 'Counter':
+            change selected_deal's status from 'pending' to 'awaiting'
+            update selected_deal at /api/deals/:id/counter
+            get pending_deals from /api/deals/pending
+          button 'Approve':
+            change selected_deal's status from 'pending' to 'approved'
+            update selected_deal at /api/deals/:id/approve
+            get pending_deals from /api/deals/pending
 ```
+
+**App shell shape (Phase 1-6 polish, 2026-04-25/26).** Compiled output uses semantic HTML5 tags and a slate-on-ivory chrome:
+- `app_layout` → outer container with full-screen flex
+- `app_sidebar` → 240px-wide vertical rail
+- `app_main` → flexible content column
+- `app_header` → 56px sticky bar with three named regions: `brand` (heading children), `action` (button children, right-aligned), `breadcrumb` (everything else)
+- `nav section` / `nav item` → sidebar groups with real links, optional counts, optional Lucide icons, and route-based active state
+- `page header` → main content title, subtitle, and right-aligned action buttons
+- `tab strip` → routed underline tabs with active state from `location.pathname`
+- `stat strip` / `stat card` → KPI rows with value, optional delta, sparkline, and Lucide icon
+- `detail panel for selected_row` → right-side selected-record rail with normal Clear content and sticky `actions:` buttons
+
+Don't reach for raw HTML / Tailwind to recreate the shell — the presets already do the right thing.
 
 ## Web Tools (when the toggle is on)
 
@@ -1009,6 +1244,9 @@ Safer: always use multi-word variable names. `todo_id` never collides; `id` some
 - DON'T forget `database is local memory` for apps with tables
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)
+- DON'T use `#` for prose. `#` is for navigation; use `//` or `/* */` for explanation.
+- DON'T write a button or row action without the data effect immediately below it.
+- DON'T use a toast as the only effect for a domain action. A toast has notification data, but it does not say which business record changed.
 - DON'T leave a `-` or `+` at the start of a line when editing code. These are diff-markers — not valid syntax. The parser reads `-  send back draft` as `-(send back)` and emits a "stray '-' at the start" error. When adapting code from diffs or chat messages, strip every leading `-` and `+` before saving.
 
 ## Studio Layout Modes

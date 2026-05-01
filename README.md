@@ -169,9 +169,10 @@ agent 'Cleanup' runs every 1 hour:
 
 ### Browser Storage
 ```clear
-restore settings          # load from localStorage on page load
-button 'Save':
-  store settings          # persist to localStorage
+restore settings
+// load from localStorage on page load
+button 'Save' that stores settings
+// persist to localStorage
 ```
 
 ### Multi-File Apps
@@ -199,8 +200,11 @@ show Card('Hello')
 Circular dependencies detected at compile time.
 
 ### Raw JavaScript (Escape Hatch)
+Use raw JavaScript only when Clear has no native syntax yet. The button label
+must still name the visible effect.
+
 ```clear
-button 'Custom':
+button 'Change Browser Title':
   script:
     document.title = 'Changed by raw JS';
 ```
@@ -228,6 +232,11 @@ node cli/clear.js build app.clear --out dist/
 # Build without test gate
 node cli/clear.js build app.clear --out dist/ --no-test
 ```
+
+If a check or build fails, copy the full compiler-error packet instead of a
+summary. Studio exposes **Copy compiler error**. The CLI exposes the same packet
+with `node cli/clear.js check app.clear --trace` or
+`node cli/clear.js build app.clear --trace`.
 
 The auto-generated `test.js` tests every endpoint:
 - GET returns 200

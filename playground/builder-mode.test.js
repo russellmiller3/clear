@@ -60,14 +60,40 @@ try {
     'builder-mode class applied for uppercase value (E-1 case-insensitivity)'
   );
 
-  // Unknown value → classic (E-2). Clear localStorage first to isolate the URL-invalid case;
-  // otherwise stored preference from prior tests leaks through (which is correct behavior but
-  // not what E-2 is exercising).
+  // Unknown value → falls back to default (builder, post-flip). Clear localStorage first to
+  // isolate the URL-invalid case; otherwise stored preference from prior tests leaks through
+  // (which is correct behavior but not what this case is exercising).
   await page.evaluate(() => { try { localStorage.clear(); } catch {} });
   await page.goto(`${BASE}/?studio-mode=xyz`, { waitUntil: 'networkidle' });
   assert(
+    await page.evaluate(() => document.body.classList.contains('builder-mode')),
+    'unknown URL value falls back to builder default when no stored preference (E-2 post-default-flip)'
+  );
+
+  // Default flip — fresh user (no URL param, no localStorage) lands in Builder Mode.
+  // Existing users keep whatever they had; this only changes the new-user default.
+  await page.evaluate(() => { try { localStorage.clear(); } catch {} });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  assert(
+    await page.evaluate(() => document.body.classList.contains('builder-mode')),
+    'fresh user (no URL param, no saved preference) lands in Builder Mode (Default flip)'
+  );
+
+  // Existing classic-preference user is preserved across the flip — they don't get
+  // surprise-flipped to builder just because the default changed.
+  await page.evaluate(() => { try { localStorage.setItem('studio-mode-pref', 'classic'); } catch {} });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  assert(
     await page.evaluate(() => !document.body.classList.contains('builder-mode')),
-    'unknown value defaults to classic when no stored preference (E-2)'
+    'existing user with classic preference is preserved (no surprise flip on Default flip)'
+  );
+
+  // Existing builder-preference user stays in builder.
+  await page.evaluate(() => { try { localStorage.setItem('studio-mode-pref', 'builder'); } catch {} });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  assert(
+    await page.evaluate(() => document.body.classList.contains('builder-mode')),
+    'existing user with builder preference stays in builder (no regression on Default flip)'
   );
 
   // localStorage persistence
@@ -237,6 +263,70 @@ try {
   assert(
     !(await page.locator('#deploy-btn').evaluate(b => b.classList.contains('publish-btn'))),
     '.publish-btn class removed in classic mode'
+  );
+
+  // ==========================================================================
+  // PHASE 4.5 — Builder theme picker
+  // ==========================================================================
+  console.log('\n🎨 Phase 4.5 — Builder theme picker');
+
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  await page.evaluate(() => {
+    const src = `build for web
+
+page 'Theme Test' at '/':
+  show 'Theme Test'
+`;
+    window._editorView.dispatch({
+      changes: { from: 0, to: window._editorView.state.doc.length, insert: src },
+    });
+  });
+
+  assert(
+    await page.locator('#builder-theme-picker').isVisible(),
+    'theme picker visible in builder mode'
+  );
+
+  await page.locator('#builder-theme-picker').selectOption('dusk');
+  await page.waitForFunction(() => document.getElementById('status')?.textContent?.includes('OK'), null, { timeout: 5000 });
+  const duskSource = await page.evaluate(() => window._editorView.state.doc.toString());
+  assert(
+    /^theme 'dusk'$/m.test(duskSource),
+    'selecting dusk inserts the theme line into source'
+  );
+
+  await page.evaluate(() => {
+    const src = `theme 'ivory'
+
+build for web
+
+page 'Theme Test' at '/':
+  show 'Theme Test'
+`;
+    window._editorView.dispatch({
+      changes: { from: 0, to: window._editorView.state.doc.length, insert: src },
+    });
+  });
+  await page.locator('#builder-theme-picker').selectOption('vault');
+  await page.waitForFunction(() => document.getElementById('status')?.textContent?.includes('OK'), null, { timeout: 5000 });
+  await page.waitForSelector('#preview-content iframe', { timeout: 5000 });
+  const vaultSource = await page.evaluate(() => window._editorView.state.doc.toString());
+  assert(
+    /^theme 'vault'$/m.test(vaultSource) && !/^theme 'ivory'$/m.test(vaultSource),
+    'selecting vault replaces the existing theme line'
+  );
+  const previewTheme = await page.evaluate(() => {
+    const iframe = document.querySelector('#preview-content iframe');
+    return iframe?.srcdoc?.match(/data-theme="([^"]+)"/)?.[1]
+      || iframe?.contentDocument?.documentElement?.getAttribute('data-theme')
+      || '';
+  });
+  assert(previewTheme === 'vault', `toolbar theme recompiles preview with vault theme (got "${previewTheme}")`);
+
+  await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
+  assert(
+    !(await page.locator('#builder-theme-picker').isVisible()),
+    'theme picker hidden in classic mode'
   );
 
   // ==========================================================================

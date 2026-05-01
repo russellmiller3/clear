@@ -18,16 +18,19 @@ code to match. If the code disagrees with the diagram, the diagram wins.
 **The check:** before you call `compile`, scroll to the top of your file. If
 you don't see a `/* ... */` block with boxes and arrows, STOP and add one.
 
-**USE `/* */` FOR ANYTHING MULTI-LINE.** Every `#` line becomes a clickable
-pill in Studio's editor TOC. That's useful for section headers; it's
-terrible for narrative prose, diagrams, and multi-line explanations.
+**USE `#` ONLY FOR NAVIGATION, `//` FOR INLINE NOTES, AND `/* */` FOR
+MULTI-LINE NOTES.** Every `#` line becomes a clickable pill in Studio's editor
+TOC. That's useful for section headers; it's terrible for narrative prose,
+diagrams, and multi-line explanations.
 
 Hard rule:
-- `#` — **one-word section headers only** (`# Database`, `# Backend`,
+- `#` — **short section headers only** (`# Database`, `# Backend`,
   `# Specialists`, `# Endpoints`). These appear as TOC pills.
-- `/* ... */` — **everything else**: architecture diagrams, pattern
-  explanations, "why this agent exists" notes, anything that runs
-  more than one line. Hidden from the TOC.
+- `//` — **one-line explanations** attached to the next or previous line.
+  Hidden from the TOC.
+- `/* ... */` — **multi-line explanations**: architecture diagrams, pattern
+  explanations, "why this agent exists" notes, anything longer than one line.
+  Hidden from the TOC.
 
 Anti-pattern — three `#` lines in a row. If you've written more than one
 `#` comment in a block, convert to `/* */`:
@@ -238,6 +241,40 @@ set saved to save scored_lead as new Lead
 reading a line and need to pause to parse it, split it up. The goal:
 a non-programmer should be able to point at any line and say what it does.
 
+**Every interaction names its data effect immediately.** Never leave a visible
+control as a bare label. A `button`, slider, menu, dropdown, checkbox, text
+input, row action, table action shortcut, or auto-wired queue action must name
+the variable, record, endpoint, queue, or audit row it changes.
+
+A toast, alert, or notification counts as a data effect because the message is
+notification data. It must include a quoted message. But a domain action like
+Approve, Reject, Assign, Resolve, Save, or Delete cannot use a toast as its only
+effect. The compiler rejects that. It must also name the record, endpoint, queue,
+or audit row it changes.
+
+```clear
+// BAD: the reader sees a button but not the data effect
+button 'Approve'
+
+// GOOD: the source says what happens to the selected record
+button 'Approve':
+  change selected_deal's status from 'pending' to 'approved'
+  update selected_deal at /api/deals/:id/approve
+  get pending_deals from /api/deals/pending
+```
+
+`that` and `for` are allowed as connector words when they make inline actions
+read better:
+
+```clear
+add button 'Refresh' that gets deals from '/api/deals'
+button 'Reset' for count is 0
+```
+
+After `that`, use the third-person action because the button is the subject:
+`gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`. Use imperative
+verbs only in indented action bodies and lifecycle hooks.
+
 ## Assignment Convention
 
 **Use `=` when the result is a number (calculations, numeric values):**
@@ -366,6 +403,23 @@ Visual hint for the human reader: `=` lines are formulas to check,
 `is` lines are values to note. The compiler doesn't care.
 
 ## Testing (MANDATORY — every app gets tests)
+
+**Two layers of auto-generated tests ship with every `clear build`:**
+
+1. **`test.js`** — the API + smoke tests (every URL, every button, every page, every agent). Run with `node cli/clear.js test <file.clear>`.
+2. **`browser-uat.mjs`** — a real Playwright walker that drives the compiled HTML in a real browser. Visits every page directly via its route, asserts the right page renders + the persistent shell stays mounted + no horizontal overflow. Clicks every nav, every route tab, every button that navigates somewhere. Exercises every table's sort + filter and every row-click drilldown into a detail panel. Screenshots each route to `.clear-uat-screenshots/`.
+
+Run the browser walker against a running app:
+
+```sh
+node cli/clear.js build apps/<name>/main.clear
+node apps/<name>/server.js &
+TEST_URL=http://localhost:3000 node apps/<name>/browser-uat.mjs
+```
+
+For all 5 Marcus apps in one shot: `node scripts/run-marcus-uat.mjs`.
+
+Both layers are derived from the source — no human writes them — so they can't drift from the code. Add custom `test:` blocks ONLY for business logic the auto layers can't infer (specific assertions about what gets stored, what error is returned, etc.).
 
 The compiler auto-generates tests for every endpoint, button, page, agent,
 and CRUD flow. You don't need to write these. But you SHOULD add custom tests
@@ -717,12 +771,58 @@ A few plain English words look like keyword typos to Clear's tokenizer. Using th
 | `login` as a variable | Reserved keyword context | `login_attempt`, `login_event` |
 | `search` as a bare variable | Looks like a forward-reference | define it first OR use `query_text` |
 
+## TBD — Placeholder Marker (use sparingly, on purpose)
+
+`TBD` lets you leave one piece of a program unfinished and keep the rest
+working. The compiler accepts it anywhere a value or a step belongs, the
+program still compiles green, and only the line with the placeholder
+fails at runtime — every other piece runs.
+
+**Use `TBD` when:**
+- The spec is ambiguous about ONE piece (auth flow, edge case, error message
+  copy, audit log shape) and you want compiler feedback on the rest now.
+- You are sketching the structure of a program and want the parser + validator
+  to check what is written without being blocked by what is not.
+- You are working with Russell and he says "leave the X part for now, focus
+  on the Y part." Drop a `TBD` for X, ship Y, ask later.
+
+**Do NOT use `TBD` to:**
+- Dodge a hard part you do not feel like writing. The placeholder is a
+  bookmark for a decision that is genuinely OPEN, not a hiding spot.
+- Skip a piece a test will exercise. Tests that hit a `TBD` report as
+  SKIPPED, which looks fine in the pass count but means the test did
+  not actually verify anything. Coverage you skip is coverage you do not have.
+
+**How it behaves:**
+- Compiles with zero compile errors. Programs with one or more `TBD`s ship.
+- Runtime hits the line → throws `placeholder hit at line N — fill it in or remove it`.
+- `clear test` catches that exact error and reports the test as SKIPPED, not
+  FAILED. Results line: `X passed, Y failed, Z skipped due to stub`.
+- `compileProgram(src).placeholders` returns every `TBD` line — useful for
+  the canonical-examples library and any "open holes" view.
+
+```clear
+# Value position
+greeting = TBD
+
+# Step position (a whole line)
+to greet with name:
+  TBD
+
+# Realistic mid-program use
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                       # audit log piece is for next session
+  send back lead
+```
+
 ## Common Mistakes (read this before writing Clear)
 
 | Wrong | Right | Why |
 |-------|-------|-----|
 | `show heading 'Title'` | `heading 'Title'` | `heading` is the keyword, `show` is for variables |
-| `button 'Save'` (no body) | `button 'Save':` + indented action | Empty buttons are a compile error |
+| `button 'Save'` (no body) | `button 'Save':` + indented action, or `button 'Save' that sends form to '/api/save'` | Empty buttons are a compile error |
 | `→` in diagrams | `>` or `-->` | Unicode arrows break monospace alignment |
 | `does X require login` | `X should require login` | `should` is canonical |
 | `with title is 'X'` | `with title: 'X'` | Colon is cleaner (both work) |
@@ -731,7 +831,7 @@ A few plain English words look like keyword typos to Clear's tokenizer. Using th
 | `get 'q' from request` | `incoming's q` in endpoint | Request params via receiving var |
 | `display X as table` (no columns) | `display X as table showing col1, col2` | Always specify which columns |
 | `can user search todos` | `can user view all search` | Only create/view/delete/update are valid intents |
-| `'Label' is a dropdown ... saved as x` (two lines) | `'Label' is a dropdown ... saved as x` (one line) | The `saved as` must be on the same line as the input |
+| `'Label' is a dropdown ...` (no saved variable) | `'Label' is a dropdown ... saved as x` | Every interactive input must name the state variable it changes |
 | `section 'X' side by side:` | `section 'X' with style row:` | Use preset or style for layout |
 | `user's id` (when unbound) | `caller's id` | `caller` is the authenticated person set by `requires login` — one word, unambiguous with any entity var. Legacy `current user's id` still compiles. |
 | `result = for each X in Y:` | Use `filter` or loop + `add to` | Can't assign a for-each loop to a variable |
@@ -762,6 +862,15 @@ section 'Root'  with style app_layout:   # flex h-screen
   section 'Main' with style app_main:    # flex-1 flex-col
     section 'Top'  with style app_header:  # sticky h-14 border-b
     section 'Body' with style app_content: # scrollable bg-base-200/30 p-6
+      page header 'Queue':
+        subtitle 'Open work and owner actions'
+        actions:
+          button 'Refresh':
+            get open_items from '/api/open'
+      tab strip:
+        active tab is 'Open'
+        tab 'Open' to '/'
+        tab 'Done' to '/done'
       section 'Card' with style app_card:  # bg-base-200 rounded-xl border shadow
 ```
 
@@ -1091,12 +1200,17 @@ style card:
 ```
 'What needs to be done?' is a text input saved as a todo
 'How much?' is a number input saved as a price
-'Color' is a dropdown with ['Red', 'Green', 'Blue']
-'Gift Wrap' is a checkbox
+'Color' is a dropdown with ['Red', 'Green', 'Blue'] saved as a color
+'Gift Wrap' is a checkbox saved as a gift_wrap
 'Notes' is a text area saved as a note
-'Body' is a text editor saved as a body            # rich WYSIWYG (Quill)
+'Body' is a text editor saved as a body
+// rich WYSIWYG (Quill)
 'Resume' is a file input saved as a resume
 ```
+
+Every input-like control must name the state variable it changes on the same
+line. Use `saved as` for dropdowns, checkboxes, menus, sliders, file inputs,
+text areas, and text editors.
 
 **When to use `text editor` vs `text area`:** Plain-text users expect, use
 `text area`. Users writing formatted content (blog posts, docs, rich notes)
@@ -1167,7 +1281,7 @@ The label auto-generates from the variable name: `subtotal` -> "Subtotal",
 ```
 show loading                    # full-page spinner overlay
 hide loading                    # remove spinner
-show toast 'Saved!'             # temporary notification (also: alert, notification)
+show toast 'Saved!'             # native alert toast with message data rendered as text (also: alert, notification)
 hide the sidebar                # set display:none on element
 copy invite_link to clipboard   # navigator.clipboard.writeText
 download report as 'data.csv'  # trigger browser file download
@@ -1241,6 +1355,129 @@ when user deletes user at /api/users/:id:
 **`search Posts for query`** filters records where any field contains the search term (case-insensitive). Caps at 100 results.
 **`broadcast to all message`** inside a WebSocket handler sends the value to all connected clients.
 **`block arguments matching 'pattern'`** in an agent adds a regex guard on tool inputs — rejects matching arguments before execution.
+
+## Routing — `route X by FIELD:`
+
+**Use this when an endpoint needs to assign an owner based on a record's field.** The block reads `<entity>.<field>` and writes `<entity>.assigned_to`, replacing 50+ lines of nested if-chains with 5 lines of declarative routing. Round-robin pools are built in.
+
+Canonical form:
+
+```clear
+when user sends lead to /api/leads:
+  validate lead:
+    name is text, required
+    size is text
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead
+  send back new_lead with success message
+```
+
+Round-robin variant for the default:
+
+```clear
+route lead by region:
+  'West' to alice
+  default round-robin across [bob, charlie, diana]
+```
+
+**Two strict rules to remember:**
+- **Match values must be quoted strings** on the LHS (`'SMB' to alice`, not `SMB to alice`). The tokenizer splits hyphens, so bare `Mid-market` becomes 3 tokens. Quoted strings match the existing if-chain form (`if lead's size is 'Mid-market'`).
+- **The route block must come BEFORE `save lead as new Lead`** in the endpoint. The route mutates the in-memory variable; the save then writes the assigned owner. Violating this order is a HARD compile error (`ROUTE_AFTER_SAVE`), not a warning, because the silent failure is too costly — the assignment lands on the in-memory record but never persists.
+
+**When to use it:** any endpoint that decides who-handles-this based on a record field — lead routers, ticket queues, approval triage, territory assignment. Whenever you'd otherwise write 2+ branches with a fallback, prefer the primitive.
+
+**Round-robin survives restarts.** The cursor lives in a SQLite table (`_clear_route_cursors`); the cursor key is a content hash of (entity + field + rules + pool), so adding comments above a route block doesn't reset the cursor. Changing the rules or pool DOES start a fresh cursor — which is the right invalidation behavior.
+
+## Approval Queues — `queue for X:`
+
+**Use this when an entity needs human approval before its status changes.** One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action. About 150 lines of hand-rolled JavaScript per app collapse to 5 lines of declaration.
+
+Canonical form:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+```
+
+**Canonical clause is `email <role> when <action>, <action>`** — the verb names HOW (email), the connector reads naturally (when, not on). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but write `email when` in new code. Future communication primitives will follow the same pattern (`slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`). Don't reach for `notify` — it doesn't say HOW the recipient gets reached.
+
+**`actions:` synonyms (F4)** — `options:` and `buttons:` are accepted as synonyms for `actions:` inside the queue body. Reach for whichever reads most natural for the manager you're writing for: `actions:` for abstract pipelines, `options:` when it's a menu, `buttons:` when the UI is the framing. All three parse to the same shape.
+
+**`waiting on customer` is the canonical multi-word action (F4)** for the same terminal status as legacy `awaiting customer`. Reads more naturally for the CRO. URL slug is `/api/deals/:id/waiting`. The status field still lands on `'awaiting'`, so an `email customer when deal's status changes to 'awaiting':` trigger fires correctly with either form.
+
+**Plural input is accepted (F2)** — `queue for deals:` produces the same audit table + URLs as `queue for deal:`. The parser singularizes English plurals (`-s`, `-ies`, `-(s|x|z|sh|ch)es`) on the way in. `-ss` endings (`address`, `business`, `status`) stay as-is so they don't get truncated wrong.
+
+What the compiler emits for free:
+- A `deal_decisions` audit table with `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`.
+- A `deal_notifications` outbound queue table — only when `email` or `notify` clauses are present.
+- `GET /api/deals/queue` — filtered by `status = 'pending'`.
+- `GET /api/deal-decisions` and `GET /api/deal-notifications` — full history views.
+- `PUT /api/deals/:id/<action>` per action — login-gated, status update, audit row insert, notification rows for matching `email` / `notify` clauses. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
+
+**When to use it:**
+- Entity has a `pending → approved | rejected | escalated` shape.
+- A specific human role decides; you want an audit trail.
+- You want notifications queued (recipient_email resolves by convention from `<role>_email` fields on the entity).
+
+**Triggered emails on state change — `email <role> when <entity>'s status changes to <value>:`**
+
+Same `email <role> when <trigger>` atom as the queue clause above, at the top level. Declares: when ANY URL handler (typically a queue auto-PUT) sets the entity's status to the trigger value, queue an email row in the shared `workflow_email_queue` table:
+
+```clear
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+The compiler emits a single shared `workflow_email_queue` table per app and wires queue auto-PUT handlers (whose terminalStatus matches the trigger value) to insert email rows alongside the audit + notify inserts. **No real provider sends in default builds** — rows queue only. Live delivery is gated behind an explicit `email delivery using <provider>` directive (not yet shipped). Tests, previews, and dev never accidentally email a customer.
+
+**Per-customer text via `{field}` substitution.** Subject and body interpolate `{field}` references against the entity record at queue-insert time. So `body is 'Hi {customer}, we countered your {amount} request.'` produces a different per-row body for every queued email — the actual customer's name and amount, not the literal `{customer}` placeholder. Missing fields render as empty string. Validator Cycle 5.2 catches typos at compile time (a `{nonexistent_field}` warns before you ever queue a row).
+
+**Sub-clauses inside the body:**
+- `subject is '...'` (required)
+- `body is '...'` (required)
+- `provider is '...'` (optional; default `'agentmail'`; valid: `agentmail`, `sendgrid`, `resend`, `postmark`, `mailgun`)
+- `track replies as <free text>` (optional; e.g. `track replies as deal activity`)
+
+**Hard-fails on:** undeclared entity reference, missing required `subject` or `body`, unknown body line (F1 pattern with did-you-mean hint).
+
+**When to use it:** workflow state changes that should notify a person (customer / rep / manager). Pair with a `queue for X:` block — the queue's auto-PUT handlers automatically trigger matching emails.
+
+**When NOT to use it:** one-off transactional emails not tied to a state change — keep using `send email:` directly.
+
+**When NOT to use it:**
+- Single-record approve/reject without audit needs (just write a PUT handler).
+- Automated routing with no human in the loop (build a `routing rules for X:` primitive — separate shape).
+- Multi-stage workflows with multiple reviewer roles (deferred to Tier 2 — use `workflow` for now).
+
+**Wiring action buttons.** The primitive does not yet auto-render UI — hand-add buttons that call the auto-generated PUT URLs:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+    // Updates the selected deal to approved, records the decision, and refreshes pending deals.
+  'Reject' is danger
+    // Updates the selected deal to rejected, records the decision, and refreshes pending deals.
+```
+
+The button labels are case-insensitive matches against the action list. Bind each button to the matching `/api/deals/:id/<action>` URL.
+
+**CSV export comes free.** Every queue auto-emits `GET /api/<entity>/export.csv` — Marcus's GTM list explicitly calls out "Export if they currently use spreadsheets" as MVP. Don't hand-roll a CSV download endpoint; it's already there. Sensitive fields (password / token / api_key / secret / hash) are automatically omitted. Suppress the CSV entirely with a `no export` clause inside the queue block — but unless there's a real reason to remove it, leave it on by default.
 
 ## Guards (All Five Kinds)
 
@@ -1591,7 +1828,7 @@ show Card:
 ```
 step = 1
 
-button 'Next': increase step by 1
+button 'Next' that increases step by 1
 
 if step is 1:
   show heading 'Enter your name'
@@ -1662,11 +1899,39 @@ section 'Nav' with style app_sidebar:        # dark panel, scrollable
 section 'Main' with style app_content:       # fills space, scrollable
 section 'Top' with style app_header:         # sticky top, shadow
 section 'Widget' with style app_card:        # bordered card
+page header 'Queue':                         # content title + subtitle + actions
+tab strip:                                   # routed underline tabs
 ```
 
 **When writing a landing page:** use `page_hero` and `page_section`/`page_section_dark` for alternating bands. Do NOT define custom styles unless the preset defaults need changing.
 
-**When writing an app:** use `app_sidebar`, `app_content`, `app_header` for layout structure. Use `app_card` for visual grouping of related content.
+**When writing an app:** use `app_sidebar`, `app_content`, `app_header` for layout structure. Put `page header` and `tab strip` at the top of `app_content` for queues, CRMs, approval workbenches, and dashboard subviews. Use `app_card` for visual grouping of related content.
+
+**Multi-page apps with a sidebar — declare `app_layout` ONCE.** When your app has more than one page and you want the sidebar to persist across navigation, put the `app_layout` block on a SINGLE page (the shell page, typically `/`). All other pages contain just their content (no `app_layout`, no `app_sidebar`, no `app_main`). The compiler turns the first page that has `app_layout` into the shell — its sidebar / header stay mounted; other pages get parked / unparked into the shell's `app_content` outlet on route change. Putting `app_layout` on every page produces a duplicate sidebar (the shell's + the page's own). The right pattern:
+
+```clear
+page 'Home' at '/':
+  on page load:
+    get items from '/api/items'
+    get more_items from '/api/more'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'My App'
+      nav item 'Home' to '/'
+      nav item 'Other' to '/other'
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        heading 'Welcome'
+        display items as table
+
+page 'Other' at '/other':
+  page header 'Other things':
+    subtitle 'Just the content; the shell page provides the sidebar.'
+  section 'Other Items' with style app_table:
+    display more_items as table
+```
+
+Hoist all `on page load:` data fetches into the shell page's load block when you want every route to have data without re-fetching on click. The router calls `_recompute()` after every route swap, so visible tables re-bind to whatever's already in state.
 
 **Override a preset** by defining it in the file:
 ```
@@ -1703,22 +1968,111 @@ writing a custom style block.
 | `faq_section` | bg-base-100, py-16/24 | Accordion Q&A |
 | `page_footer` | bg-base-200, border-t, py-12/16 | Links, legal, copyright |
 
-#### App UI Presets (8)
+#### App UI Presets (Phase 1-3 shell upgrade — 04-25-2026)
 
-| Preset | What it does | Use for |
-|--------|-------------|---------|
-| `app_layout` | `flex h-screen overflow-hidden` | Root wrapper for any dashboard |
-| `app_sidebar` | w-56, bg-base-200/60, border-r, flex-col | Navigation sidebar |
-| `app_header` | Sticky, h-16, backdrop blur, border-b, flex between | Top bar with title + actions |
-| `app_main` | flex-1 flex-col, overflow hidden | Right-side container (header + content) |
-| `app_content` | flex-1, overflow-y-auto, p-6, flex-col gap-5 | Scrollable main content area |
-| `app_card` | bg-base-200, rounded-xl, border, shadow-md, p-5 | Any content card in a dashboard |
-| `metric_card` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
-| `app_table` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
-| `app_modal` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
-| `empty_state` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
-| `app_list` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
-| `form` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+The four shell presets emit semantic HTML5 tags + slate-on-ivory chrome
+matching `landing/marcus-app-target.html`. Sizes match the mock — 240px rail,
+56px sticky header — and read `--clear-bg-rail`, `--clear-bg-canvas`,
+`--clear-line` design tokens.
+
+| Preset | HTML tag | What it produces | Use for |
+|--------|----------|------------------|---------|
+| `app_layout` | `<div>` | `flex min-h-screen` (page owns scroll, not viewport-clipped) | Root wrapper for any dashboard |
+| `app_sidebar` | `<aside>` | 240px rail, hairline-r, scroll-y, rail bg | Navigation sidebar |
+| `app_header` | `<header>` | 56px sticky bar, hairline-b, canvas bg, three slots: brand / breadcrumb / actions | Top bar with title + actions |
+| `app_main` | `<main>` | `flex-1 min-w-0 flex flex-col` | Right-side container (header + content) |
+| `app_content` | `<div>` | flex-1, overflow-y-auto, p-6 | Scrollable main content area |
+| `app_card` | `<div>` | bg-base-100, rounded-xl, border, shadow-sm, p-5 | Any content card in a dashboard |
+| `metric_card` | `<div>` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
+| `app_table` | `<div>` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
+| `app_modal` | `<div>` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
+| `empty_state` | `<div>` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
+| `app_list` | `<div>` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
+| `form` | `<div>` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+
+**`app_header` slot rule** (auto-sorted at compile time):
+- `heading` children land in `data-clear-slot="brand"` (left)
+- text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
+- `button` children → `data-clear-slot="actions"` (right, ml-auto)
+
+This means a Clear author writes `heading 'Dashboard'`, `text 'Workspace > X'`,
+and `button 'New'` inside `app_header:` and they appear in the right places —
+no manual slot wiring. The compiler does the layout.
+
+**`app_sidebar` nav rule** (prefer explicit nav rows):
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'Deal Desk'
+
+  nav section 'Main':
+    nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+    nav item 'Approvals' to '/approvals' with count pending_count with icon 'inbox'
+    nav item 'Settings' to '/settings' with icon 'settings'
+```
+
+Use `nav section` for sidebar groups and `nav item` for linked rows. Use
+`with count` only with values already defined on the page. Use quoted Lucide
+icon names when they contain hyphens. Do not use plain text rows for real app
+navigation anymore.
+
+**`app_content` workbench rule** (prefer explicit content chrome):
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh':
+        get pending_deals from /api/deals/pending
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+```
+
+Use `page header` for the main work area title. Use `tab strip` for routed
+queue states, CRM views, helpdesk status buckets, and admin subviews.
+
+**KPI strip rule** (prefer explicit stat cards):
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+Use `stat strip` directly under `app_content`, usually after `page header` and
+tabs. Use one `value` line per card. Add `delta`, `sparkline`, and `icon` only
+when the source data exists.
+
+**Detail panel rule** (prefer first-class selected-row rails):
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending_deals from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending_deals from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending_deals from /api/deals/pending
+```
+
+Use `detail panel for selected_row:` next to a table when a queue needs one
+selected record, facts, and final actions. The body can use normal Clear UI
+primitives. Put approval / reject / counter buttons inside `actions:` so they
+stay pinned at the bottom. Each button must name the field change, endpoint
+update, and queue refresh.
 
 #### Blog Presets (3)
 
@@ -1830,13 +2184,13 @@ page 'Landing' at '/':
     heading 'Acme'
     link 'Features' to '#features'
     link 'Pricing' to '#pricing'
-    button 'Get Started'
+    button 'Get Started' that goes to '/signup'
 
   section 'Hero' with style page_hero:
     show text 'Ship 10x faster with AI'
     show text 'Build production apps in plain English. No frameworks, no config.'
-    button 'Start Free'
-    button 'See Demo'
+    button 'Start Free' that goes to '/signup'
+    button 'See Demo' that goes to '/demo'
 
   section 'Logos' with style logo_bar:
     show text 'Trusted by 500+ teams'
@@ -1870,7 +2224,7 @@ page 'Landing' at '/':
   section 'CTA' with style page_cta:
     show heading 'Ready to ship?'
     show text 'Start building for free. No credit card required.'
-    button 'Get Started Free'
+    button 'Get Started Free' that goes to '/signup'
 
   section 'Footer' with style page_footer:
     show text '(c) 2026 Acme Inc.'
@@ -1887,14 +2241,16 @@ page 'Dashboard' at '/':
   section 'Root' with style app_layout:
     section 'Sidebar' with style app_sidebar:
       show heading 'MyApp'
-      link 'Dashboard' to '/'
-      link 'Projects' to '/projects'
-      link 'Settings' to '/settings'
+      nav section 'Main':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Projects' to '/projects' with count project_count with icon 'folder'
+        nav item 'Settings' to '/settings' with icon 'settings'
 
     section 'Main' with style app_main:
       section 'Header' with style app_header:
         show heading 'Dashboard'
-        button 'New Project'
+        button 'New Project':
+          open the New Project modal
 
       section 'Body' with style app_content:
         section 'Metrics' side by side:
@@ -1924,6 +2280,7 @@ section 'Confirm Delete' with style app_modal:
   show heading 'Delete this contact?'
   show text 'This cannot be undone.'
   button 'Delete':
+    delete selected_contact from /api/contacts/:id
     close modal
   button 'Cancel':
     close modal
@@ -1935,7 +2292,8 @@ if projects list is empty:
   section 'No Projects' with style empty_state:
     show heading 'No projects yet'
     show text 'Create your first project to get started.'
-    button 'New Project'
+    button 'New Project':
+      open the New Project modal
 ```
 
 **List preset:**
@@ -1990,6 +2348,7 @@ button 'Help':
 section 'Confirm' as modal:
   heading 'Are you sure?'
   button 'Yes':
+    delete selected_item from /api/items/:id
     close modal
   button 'Cancel':
     close modal
@@ -2001,8 +2360,7 @@ button 'Delete':
 ## Page Navigation
 
 ```
-button 'Go to Dashboard':
-  go to '/dashboard'
+button 'Go to Dashboard' that goes to '/dashboard'
 ```
 
 ## Full Example
@@ -2677,6 +3035,14 @@ and metadata the agent can act on programmatically.
 **Use `check` before `build`.** `check` is faster — it validates without compiling.
 Use it in the tight edit loop. Use `build` when you need the output files.
 
+**When `check` or `build` fails, copy the compiler-error packet instead of paraphrasing.**
+In Studio, click **Copy compiler error**. In the CLI, run
+`clear check main.clear --trace` or `clear build main.clear --trace`. Tooling
+should pass through `compileTrace.pasteText` when present. The packet includes
+source context, diagnostics, repair instructions, and the bounded source. Use
+it to decide whether to fix the Clear source or file a compiler/parser/validator
+bug with a regression test. Never edit generated output directly.
+
 **Use `lint` before shipping.** It categorizes warnings into security, quality, and
 other. Zero security warnings is the bar for shipping.
 
@@ -2950,7 +3316,6 @@ closes the foot-gun for you. Declare your bounds explicitly when
 you want different defaults; otherwise trust the compiler to pick
 a sensible one.
 
-
 ## General-Purpose Language Features
 
 ### String Interpolation
@@ -3096,3 +3461,4 @@ Apps Meph builds should be deploy-ready out of the box. The Deploy button in Stu
 - **Name apps with lowercase alphanumeric + hyphens.** Studio rejects anything else before talking to the builder. 3–32 chars. No shell metacharacters, no spaces.
 - **Plan for secrets the app will need.** `requires login` auto-gets a `JWT_SECRET`. `use stripe` / `use twilio` / `use sendgrid` prompt the customer for the matching key in the Deploy modal.
 - **Avoid direct `use '@anthropic-ai/sdk'`.** The `ask claude` helper is the canonical way to call Claude — direct SDK use bypasses metering and the customer's own Anthropic key gets billed instead of their plan credit.
+- **Re-deploys are incremental updates.** If Marcus has already deployed an app, editing the source and clicking the Publish button takes the fast update path — Studio re-uploads only the new bundle and stamps a new version against the existing tenant. No new D1 database, no domain reattach, no full secrets push. Wall-clock is ~2s instead of ~12s. The only thing that pauses the update is a schema change (any `migrations/*.sql` or `wrangler.toml` byte differs from the last shipped version) — Studio responds with a 409 `MIGRATION_REQUIRED`, shows the diff, and asks for an explicit "apply migration + update" click before proceeding. So: don't tell Marcus to "redeploy from scratch" or "delete the app and ship again" to push a small change — the Publish button already does the right thing. Use the Version history panel inside Publish to roll back to any of the last 20 versions in one click.

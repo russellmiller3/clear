@@ -1,0 +1,116 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Top-Friction Compile Errors
+  Factor DB: 1771 total rows, 701 passing
+  Window: all history
+  Rows in window: 1771 (212 failing)
+  Unique error groups: 71
+  Min count filter: 2
+  Showing top 20 by friction score
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 1  friction= 300.0  n= 38  7.9min avg (28/38 recovered, 10 gave up)
+     archetype: api_service×31, queue_workflow×4, routing_engine×2
+     "(recovered from JSONL — source_before unrecoverable)"
+     row ids: 289, 296, 331
+
+# 2  friction= 211.4  n= 15  14.1min avg (8/15 recovered, 7 gave up)
+     archetype: api_service×12, general×3
+     "DELETE /api/store/:key needs 'requires login' as the first line of its body — right now anyone can delete data without l"
+     row ids: 209, 639, 641
+
+# 3  friction= 181.3  n=  8  22.7min avg (2/8 recovered, 6 gave up)
+     archetype: api_service×8
+     "You used 'current_user' on line 46 but it hasn't been created yet. Define it on an earlier line. Example: current_user ="
+     row ids: 691, 695, 778
+
+# 4  friction= 180.3  n=  8  22.5min avg (2/8 recovered, 6 gave up)
+     archetype: api_service×8
+     "You used 'body' on line 5 but it hasn't been created yet. Define it on an earlier line. Example: body = 0 or body is 'va"
+     row ids: 619, 620, 621
+
+# 5  friction= 150.7  n= 10  15.1min avg (5/10 recovered, 5 gave up)
+     archetype: api_service×10
+     "DELETE /api/bookmarks/:id needs 'requires login' as the first line of its body — right now anyone can delete data withou"
+     row ids: 244, 740, 783
+
+# 6  friction= 120.3  n=  6  20.0min avg (2/6 recovered, 4 gave up)
+     archetype: api_service×6
+     "You used 'text' on line 4 but it hasn't been created yet. Define it on an earlier line. Example: text = 0 or text is 'va"
+     row ids: 622, 628, 688
+
+# 7  friction= 120.2  n=  6  20.0min avg (2/6 recovered, 4 gave up)
+     archetype: general×6
+     "You used 'number' on line 4 but it hasn't been created yet. Define it on an earlier line. Example: number = 0 or number"
+     row ids: 625, 630, 690
+
+# 8  friction=  91.0  n=  6  15.2min avg (3/6 recovered, 3 gave up)
+     archetype: api_service×6
+     "You used 'the' on line 4 but it hasn't been created yet. Define it on an earlier line. Example: the = 0 or the is 'value"
+     row ids: 626, 631, 692
+
+# 9  friction=  91.0  n=  6  15.2min avg (3/6 recovered, 3 gave up)
+     archetype: api_service×6
+     "You used 'remember' on line 5 but it hasn't been created yet. Define it on an earlier line. Example: remember = 0 or rem"
+     row ids: 624, 629, 689
+
+#10  friction=  90.0  n=  3  30.0min avg (0/3 recovered, 3 gave up)
+     archetype: general×3
+     "You used 'calls' on line 3 but it hasn't been created yet. Define it on an earlier line. Example: calls = 0 or calls is"
+     row ids: 1576, 1592, 1577
+
+#11  friction=  60.4  n=  4  15.1min avg (2/4 recovered, 2 gave up)
+     archetype: api_service×4
+     "PUT /api/contacts/:id needs 'requires login' as the first line of its body — right now anyone can modify data without lo"
+     row ids: 743, 747, 788
+
+#12  friction=  60.1  n=  3  20.0min avg (1/3 recovered, 2 gave up)
+     archetype: api_service×3
+     "PUT /api/todos/:id needs 'requires login' as the first line of its body — right now anyone can modify data without loggi"
+     row ids: 644, 739, 1128
+
+#13  friction=  60.0  n=  2  30.0min avg (0/2 recovered, 2 gave up)
+     archetype: api_service×2
+     "You used 'generate' on line 20 but it hasn't been created yet. Define it on an earlier line. Example: generate = 0 or ge"
+     row ids: 210, 220
+
+#14  friction=  60.0  n=  2  30.0min avg (0/2 recovered, 2 gave up)
+     archetype: api_service×2
+     "You used 'login' on line 28 but it hasn't been created yet. Define it on an earlier line. Example: login = 0 or login is"
+     row ids: 225, 228
+
+#15  friction=  60.0  n=  2  30.0min avg (0/2 recovered, 2 gave up)
+     archetype: api_service×2
+     "You used 'this' on line 27 but it hasn't been created yet. Define it on an earlier line. Example: this = 0 or this is 'v"
+     row ids: 224, 226
+
+#16  friction=  60.0  n=  2  30.0min avg (0/2 recovered, 2 gave up)
+     archetype: api_service×2
+     "You used 'owner_id' on line 51 but it hasn't been created yet. Define it on an earlier line. Example: owner_id = 0 or ow"
+     row ids: 1283, 1284
+
+#17  friction=  32.3  n= 12  2.7min avg (11/12 recovered, 1 gave up)
+     archetype: api_service×7, webhook_handler×2, routing_engine×1
+     "You used 'post to' but it hasn't been created yet. Define it on an earlier line."
+     row ids: 865, 885, 935
+
+#18  friction=  31.2  n=  6  5.2min avg (5/6 recovered, 1 gave up)
+     archetype: routing_engine×2, queue_workflow×2, api_service×2
+     "Did you mean 'page'? 'name' on line 25 looks like a typo. Clear keywords are lowercase -- check the spelling."
+     row ids: 667, 763, 1050
+
+#19  friction=  30.2  n=  3  10.1min avg (2/3 recovered, 1 gave up)
+     archetype: crud_app×2, agent_workflow×1
+     "The section needs a title in quotes. Example: section "User Info""
+     row ids: 616, 617, 1491
+
+#20  friction=  30.1  n=  2  15.0min avg (1/2 recovered, 1 gave up)
+     archetype: api_service×2
+     "You used 'call' on line 71 but it hasn't been created yet. Define it on an earlier line. Example: call = 0 or call is 'v"
+     row ids: 988, 1309
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  How to read: friction = count × mean_recovery_minutes. Higher = more Meph-minutes
+  burned on that error. Rewrite the top errors first for biggest pass-rate lift.
+  Unrecovered occurrences count as 30-min recovery (Meph gave up).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

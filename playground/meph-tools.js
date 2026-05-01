@@ -27,6 +27,11 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync, spawn } from 'child_process';
+// Shape-search retrieval (Lean Lesson 2): finds canonical worked examples
+// whose program shape matches Meph's current source — additive layer next to
+// the existing text-match (querySuggestions) hint pipeline below. Defers the
+// canonical-examples.md read until first use so module load stays cheap.
+import { loadCanonicalExamples, matchShape } from '../scripts/match-shape.mjs';
 
 /**
  * Top-level tool dispatcher. Routes a validated tool_use to the right
@@ -1219,6 +1224,71 @@ export function compileTool(input, ctx, helpers) {
           ctx.hintState.postHintMinErrorCount = null; // reset window
         }
       } catch { /* non-fatal */ }
+    }
+    // ────────────────────────────────────────────────────────────
+
+    // ── Shape-search retrieval (Lean Lesson 2 — additive layer) ──
+    // Find canonical worked examples whose program shape matches Meph's
+    // current source. Layered ON TOP of the text-match hints above — does
+    // not replace them. Fires on EVERY compile (success or failure) because
+    // Meph's program shape changes as he writes; the shape-matched examples
+    // teach him pre-emptively, before he hits the wall.
+    //
+    // Cap: top 2 examples (text-match already returned up to 3, so combined
+    // ceiling stays at 5 — well under the prompt-cost gate the plan flags).
+    // Gracefully no-op if canonical-examples.md isn't present.
+    //
+    // CLEAR_HINT_DISABLE=1 ALSO disables this block, so the hint A/B keeps
+    // its clean off-arm (no hint compute, no extra tokens).
+    if (source && !hintsDisabled) {
+      try {
+        // Cache the parsed examples on ctx so subsequent compiles in the same
+        // session reuse the parsed feature vectors. First call is ~2-5ms;
+        // every other call is microseconds.
+        if (!ctx._canonicalExamplesLoaded) {
+          try {
+            ctx._canonicalExamples = loadCanonicalExamples();
+          } catch {
+            // File missing or unreadable — don't block compile. The shape-
+            // match path silently turns off until the file lands.
+            ctx._canonicalExamples = [];
+          }
+          ctx._canonicalExamplesLoaded = true;
+        }
+        const examples = ctx._canonicalExamples;
+        if (examples && examples.length > 0) {
+          const shapeMatches = matchShape(source, { top: 2, examples });
+          if (shapeMatches.length > 0) {
+            const shapeBlocks = shapeMatches.map(m => {
+              const ex = m.example;
+              const arch = m.signature.archetype;
+              const trimmed = (ex.source || '').slice(0, 600);
+              const code = trimmed
+                ? `\n\`\`\`clear\n${trimmed}\n\`\`\``
+                : '';
+              const header = `── Canonical Example #${ex.number} [${arch}, shape_score=${m.score.toFixed(3)}] — ${ex.title} ──`;
+              return `${header}${code}`;
+            }).join('\n\n');
+            const shapeNote = `Shape-matched canonical examples (your program looks like these — reference for idiomatic Clear):`;
+            const shapeText = `${shapeNote}\n\n${shapeBlocks}`;
+
+            // Layer onto whatever the text-match path produced. If text-match
+            // already filled result.hints, append; otherwise create the hints
+            // record fresh. Either way `result.hints.shape_text` and
+            // `result.hints.shape_count` are populated so Meph and the
+            // observability log can both see the shape signal independently.
+            if (!result.hints) {
+              result.hints = { note: shapeNote, reranked_by: 'shape', text: shapeText };
+            } else {
+              result.hints.text = (result.hints.text || '') + '\n\n' + shapeText;
+            }
+            result.hints.shape_text = shapeText;
+            result.hints.shape_count = shapeMatches.length;
+            result.hints.shape_top_archetype = shapeMatches[0].signature.archetype;
+            console.log(`[hints] shape_match retrieved=${shapeMatches.length} top_archetype=${shapeMatches[0].signature.archetype} top_score=${shapeMatches[0].score.toFixed(3)}`);
+          }
+        }
+      } catch { /* non-fatal — shape-search is additive, never blocks compile */ }
     }
     // ────────────────────────────────────────────────────────────
 

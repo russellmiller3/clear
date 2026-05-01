@@ -318,7 +318,7 @@ function parseSSE(text) {
   assert(oai3.messages[0].content === 'block1\n\nblock2',
     'anthropicToOpenAI flattens system array form (cache_control style) to joined text');
 
-  // anthropicToOpenAI: drops tool_use blocks (text-only MVP)
+  // anthropicToOpenAI: maps Anthropic tool_use blocks to OpenAI tool_calls
   const oai4 = anthropicToOpenAI({
     model: 'm',
     messages: [{
@@ -330,7 +330,9 @@ function parseSSE(text) {
     }],
   });
   assert(oai4.messages[0].content === 'thinking',
-    'anthropicToOpenAI drops tool_use blocks for text-only MVP (tool support is GM-2 follow-up)');
+    'anthropicToOpenAI preserves assistant text when tool_use is present');
+  assert(oai4.messages[0].tool_calls?.[0]?.function?.name === 'edit_code',
+    'anthropicToOpenAI maps tool_use to OpenAI tool_calls');
 
   // accumulateOpenAIText: drains a real ReadableStream of OpenAI SSE chunks
   const enc = new TextEncoder();
@@ -412,6 +414,28 @@ function parseSSE(text) {
   const text9 = parseSSE(await streamToString(r9.body)).find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
   assert(text9.includes('openrouter') || text9.includes('OPENROUTER'),
     'bare openrouter brain hits the openrouter backend (not the unknown-brain stub)');
+
+  // Per-request picker override: lets Studio select Claude/GLM/DeepSeek/Kimi
+  // without mutating OPENROUTER_MODEL for the whole process.
+  process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+  const { chatViaOpenRouter } = await import('./ghost-meph/openrouter.js');
+  const origFetch = globalThis.fetch;
+  let capturedOpenRouterBody = null;
+  globalThis.fetch = async (_url, init) => {
+    capturedOpenRouterBody = JSON.parse(init.body);
+    return new Response(
+      'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    );
+  };
+  const r10 = await chatViaOpenRouter(
+    { messages: [{ role: 'user', content: 'hi' }] },
+    { model: 'z-ai/glm-4.5' },
+  );
+  await streamToString(r10.body);
+  globalThis.fetch = origFetch;
+  assert(capturedOpenRouterBody?.model === 'z-ai/glm-4.5',
+    `openrouter per-request model override reaches the API body (got ${capturedOpenRouterBody?.model})`);
 
   // Restore key env
   if (origKey === undefined) delete process.env.OPENROUTER_API_KEY;

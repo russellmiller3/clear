@@ -64,7 +64,7 @@ when user calls PUT /api/posts/:id receiving article:
 when user calls DELETE /api/posts/:id:
   this endpoint requires login
   this endpoint requires role 'admin'
-  remove from Posts where id is incoming's id
+  delete from Posts where id is incoming's id
   send back 'deleted'
 
 # --- User Management (admin only) ---

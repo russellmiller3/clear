@@ -80,6 +80,50 @@ CREATE TABLE IF NOT EXISTS ga_candidates (
 CREATE INDEX IF NOT EXISTS idx_ga_run_id ON ga_candidates(run_id, generation);
 CREATE INDEX IF NOT EXISTS idx_ga_pareto ON ga_candidates(run_id, pareto_rank, test_score DESC);
 CREATE INDEX IF NOT EXISTS idx_ga_status ON ga_runs(status, created_at);
+
+-- Runtime beacons from compiled Clear apps. Receiver:
+-- POST /api/flywheel/beacon → both appends a JSONL line (legacy backup)
+-- AND inserts here. Lets the friction script join compile-time code_actions
+-- rows with the runtime errors / latencies they produced in production.
+CREATE TABLE IF NOT EXISTS code_actions_runtime (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  compile_row_id  INTEGER,                 -- nullable: links to code_actions.id when known
+  event_type      TEXT NOT NULL,           -- 'endpoint_latency' | 'endpoint_error' | …
+  route           TEXT,                    -- e.g. '/api/deals/pending'
+  method          TEXT,                    -- HTTP method when event has one
+  status_code     INTEGER,                 -- HTTP status when event has one
+  latency_ms      REAL,                    -- request latency in ms (nullable)
+  error_text      TEXT,                    -- error message snippet when event_type is an error
+  source_hash     TEXT,                    -- hash of the .clear source the running app was compiled from
+  raw             TEXT,                    -- full JSON of the original beacon payload for debugging
+  received_at     INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_compile_row ON code_actions_runtime(compile_row_id, received_at);
+CREATE INDEX IF NOT EXISTS idx_runtime_event_type  ON code_actions_runtime(event_type, received_at);
+CREATE INDEX IF NOT EXISTS idx_runtime_route       ON code_actions_runtime(route, status_code);
+
+-- Compiler-edit ledger. Every time a compile error message in compiler.js
+-- or validator.js gets rewritten, a row lands here with before/after text.
+-- The friction script can then JOIN: did rewriting this error message reduce
+-- the friction count in subsequent sweeps? Lets us measure the OUTER
+-- improvement loop (compiler-quality edits) the same way we measure the
+-- INNER loop (Meph hint retrieval).
+CREATE TABLE IF NOT EXISTS compiler_edits (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  commit_sha    TEXT NOT NULL,
+  file_path     TEXT NOT NULL,
+  edit_kind     TEXT NOT NULL,             -- 'error_message' | 'hint' | 'syntax' | other
+  before_text   TEXT,
+  after_text    TEXT,
+  context       TEXT,                       -- function name or surrounding block, optional
+  authored_at   INTEGER NOT NULL,
+  recorded_at   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_compiler_edits_sha   ON compiler_edits(commit_sha);
+CREATE INDEX IF NOT EXISTS idx_compiler_edits_kind  ON compiler_edits(edit_kind, authored_at);
+CREATE INDEX IF NOT EXISTS idx_compiler_edits_file  ON compiler_edits(file_path, authored_at);
 `;
 
 export class FactorDB {
@@ -323,6 +367,73 @@ export class FactorDB {
       INSERT INTO reranker_feedback (action_id, was_used, outcome_score, ts)
       VALUES (?, ?, ?, ?)
     `).run(action_id, was_used ? 1 : 0, outcome_score, Date.now());
+  }
+
+  // Runtime beacon ingest. Called from /api/flywheel/beacon AFTER the JSONL
+  // append, so the JSONL stays the durable backup and the DB row is the
+  // queryable copy. `compile_row_id` is the code_actions.id of the compile
+  // that produced the running app — links runtime errors back to source.
+  logRuntimeBeacon(ev = {}) {
+    const compileRowId = Number.isFinite(ev.compile_row_id) ? ev.compile_row_id : null;
+    const eventType = String(ev.event_type || '').slice(0, 64);
+    if (!eventType) return null;
+    const route = ev.route ? String(ev.route).slice(0, 256) : null;
+    const method = ev.method ? String(ev.method).slice(0, 16) : null;
+    const statusCode = Number.isFinite(ev.status_code) ? ev.status_code : null;
+    const latencyMs = Number.isFinite(ev.latency_ms) ? Number(ev.latency_ms) : null;
+    const errorText = ev.error_text ? String(ev.error_text).slice(0, 2000) : null;
+    const sourceHash = ev.source_hash ? String(ev.source_hash).slice(0, 128) : null;
+    let raw = null;
+    try { raw = JSON.stringify(ev); } catch { raw = null; }
+    const result = this._db.prepare(`
+      INSERT INTO code_actions_runtime
+        (compile_row_id, event_type, route, method, status_code,
+         latency_ms, error_text, source_hash, raw, received_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(compileRowId, eventType, route, method, statusCode,
+      latencyMs, errorText, sourceHash, raw, Date.now());
+    return result.lastInsertRowid;
+  }
+
+  // Compiler-edit ledger. Called from scripts/log-compiler-edits.mjs (the
+  // post-commit hook). One row per error message rewritten in compiler.js
+  // or validator.js. Lets the friction script later answer:
+  // "did rewriting this message reduce its friction count in subsequent sweeps?"
+  logCompilerEdit({ commit_sha, file_path, edit_kind = 'error_message',
+    before_text = null, after_text = null, context = null, authored_at = null }) {
+    if (!commit_sha || !file_path) return null;
+    const ts = authored_at || Date.now();
+    const result = this._db.prepare(`
+      INSERT INTO compiler_edits
+        (commit_sha, file_path, edit_kind, before_text, after_text, context,
+         authored_at, recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(String(commit_sha), String(file_path), String(edit_kind),
+      before_text, after_text, context, ts, Date.now());
+    return result.lastInsertRowid;
+  }
+
+  // Read helper for the friction script: list compiler edits since a date.
+  // Order: most recent authored_at first, breaking ties by insertion order
+  // (id DESC) so two edits in the same millisecond return the later-inserted
+  // one first — matches user expectation of "show me what just changed."
+  recentCompilerEdits({ sinceMs = null, kind = null } = {}) {
+    let sql = 'SELECT * FROM compiler_edits WHERE 1=1';
+    const params = [];
+    if (sinceMs) { sql += ' AND authored_at >= ?'; params.push(sinceMs); }
+    if (kind)    { sql += ' AND edit_kind = ?';    params.push(kind); }
+    sql += ' ORDER BY authored_at DESC, id DESC LIMIT 500';
+    return this._db.prepare(sql).all(...params);
+  }
+
+  // Read helper for runtime beacons keyed by compile row.
+  runtimeBeaconsForCompile(compileRowId, { limit = 100 } = {}) {
+    return this._db.prepare(`
+      SELECT * FROM code_actions_runtime
+      WHERE compile_row_id = ?
+      ORDER BY received_at DESC
+      LIMIT ?
+    `).all(compileRowId, limit);
   }
 
   close() {

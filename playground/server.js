@@ -3,7 +3,7 @@ import { compileProgram } from '../index.js';
 import { parse } from '../parser.js';
 import { patch } from '../patch.js';
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, openSync, closeSync, appendFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, relative, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
@@ -13,6 +13,7 @@ import { wireDeploy, getDeployDeps } from './deploy.js';
 import { deploySource as deploySourceCloudflare } from './deploy-cloudflare.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
+import { getOpenCapabilities, formatReportForMeph } from './supervisor/open-capabilities.js';
 import {
   loadBundle as _loadEBM,
   rank as _rankEBM,
@@ -30,6 +31,14 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
+import {
+  publicMephModelChoices,
+  resolveDefaultMephModelChoice,
+  resolveMephModelChoice,
+  selectedModelNeedsOpenRouterKey,
+  selectChatMessagesForModel,
+} from './ghost-meph/model-picker.js';
+import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
 // UI button) bypasses dispatchTool — it doesn't want the Meph-facing tab-
@@ -99,10 +108,28 @@ app.use(express.json({ limit: '1mb' }));
 // and Studio operates exactly as before. Wiring contract is in
 // playground/cloud-routing/index.test.js.
 import { mountCloudRouting } from './cloud-routing/index.js';
-import { InMemoryTenantStore } from './tenants.js';
-const _cloudTenantStore = new InMemoryTenantStore();
+import { makeTenantStore } from './tenant-store-factory.js';
+import { mountCloudAuthRoutes } from './cloud-auth/routes.js';
+// CC-1 cycle 9 — pick the right tenant store from env. DATABASE_URL unset
+// → InMemoryTenantStore (default, dev/test). DATABASE_URL set → migrations
+// run + PostgresTenantStore. TENANT_STORE_PRIMARY=dual-write → wrapper
+// that writes to both during cutover. Single source of truth for every
+// store consumer in the cloud layer.
+const _cloudTenantHandle = await makeTenantStore(process.env);
+const _cloudTenantStore = _cloudTenantHandle.store;
+console.log(`[cloud] tenant store mode: ${_cloudTenantHandle.mode}`);
 const _cloudRouted = mountCloudRouting(app, { store: _cloudTenantStore });
 if (_cloudRouted) console.log('[cloud] CC-1 multi-tenant routing active (CLEAR_CLOUD_MODE=1)');
+// CC-2 — Clear Cloud auth URLs. Wires /api/auth/{signup,login,me,logout}
+// plus GET /api/apps for the dashboard's app grid. The tenant store is
+// passed in so signup can auto-create a tenant per account, and so the
+// apps list URL can read the customer's deployed apps.
+// Without DATABASE_URL the routes return 503; Studio dev loops keep working.
+const _cloudAuth = mountCloudAuthRoutes(app, {
+  pool: _cloudTenantHandle.pool,
+  tenantStore: _cloudTenantStore,
+});
+console.log(`[cloud] auth routes ${_cloudAuth.mounted ? 'mounted' : 'stubbed (no DATABASE_URL)'}`);
 
 // =============================================================================
 // STATIC FILES
@@ -122,6 +149,43 @@ app.use(express.static(__dirname, { etag: false, lastModified: false, dotfiles: 
 // already mounted above. Uses an in-memory tenant store by default — swap to
 // Postgres-backed store in production via wireDeploy({ store }).
 wireDeploy(app);
+
+function _allowTestCloudHooks() {
+  return process.env.NODE_ENV === 'test' || process.env.CLEAR_ALLOW_SEED;
+}
+
+app.post('/api/_test/live-edit-cloud-uat-setup', async (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  const { tenantSlug, appSlug } = req.body || {};
+  if (!tenantSlug || !appSlug) {
+    return res.status(400).json({ ok: false, error: 'tenantSlug and appSlug are required' });
+  }
+  const deps = getDeployDeps();
+  if (!deps || !deps.store || !deps.store.cfDeploys) {
+    return res.status(503).json({ ok: false, error: 'in-memory deploy store unavailable' });
+  }
+  const record = deps.store.cfDeploys.get(`${tenantSlug}/${appSlug}`);
+  if (!record) return res.status(404).json({ ok: false, error: 'app record not found' });
+  const ownerToken = mintLegacyEvalAuthToken({
+    id: 'uat-owner',
+    email: 'uat-owner@test.local',
+    role: 'owner',
+  });
+  return res.json({ ok: true, ownerToken });
+});
+
+app.get('/api/_test/live-edit-cloud-uat-state/:tenantSlug/:appSlug', async (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  const deps = getDeployDeps();
+  if (!deps || !deps.store) {
+    return res.status(503).json({ ok: false, error: 'deploy deps unavailable' });
+  }
+  let api = null;
+  try { api = deps.api; } catch {}
+  const record = await deps.store.getAppRecord(req.params.tenantSlug, req.params.appSlug);
+  const calls = api && Array.isArray(api.calls) ? api.calls : [];
+  return res.json({ ok: true, record, calls });
+});
 
 // =============================================================================
 // LIVE APP EDITING — PHASE A (Studio integration)
@@ -194,6 +258,7 @@ createEditApi(app, {
               mode: 'update',
               lastRecord,
               via: 'widget',
+              confirmMigration: true,
               secrets: {},
               api: deps.api,
               store: deps.store,
@@ -246,6 +311,15 @@ createEditApi(app, {
   },
   widgetScript: _liveEditWidgetSource,
   listSnapshots: async () => _listSnapshots(),
+  listDeployHistory: async ({ tenantSlug, appSlug }) => {
+    const deps = getDeployDeps();
+    if (!deps || !deps.store) {
+      throw new Error('deploy store not wired on this server');
+    }
+    const record = await deps.store.getAppRecord(tenantSlug, appSlug);
+    if (!record) return { ok: true, versions: [] };
+    return { ok: true, versions: Array.isArray(record.versions) ? record.versions : [] };
+  },
   // LAE Phase B Phase 4 — cloud rollback. Widget sends {tenantSlug, appSlug,
   // targetVersionId}; we call rollbackToVersion on Cloudflare and record
   // a new 'widget-undo-v<N>' version row so history stays linear. Returns
@@ -333,8 +407,8 @@ app.post('/api/compile', (req, res) => {
   try {
     const { source } = req.body;
     if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
-    if (!source.trim()) return res.json({ errors: [], warnings: [], html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
-    const result = compileProgram(source, { sourceMap: true });
+    if (!source.trim()) return res.json({ errors: [], warnings: [], compileTrace: null, html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
+    const result = compileProgram(source, { sourceMap: true, sourceName: 'Studio editor' });
     _builderState.compiles_today++;
     _builderState.last_compile_at = Date.now();
     _builderState.last_compile_ok = (result.errors || []).length === 0;
@@ -343,6 +417,7 @@ app.post('/api/compile', (req, res) => {
     res.json({
       errors: result.errors || [],
       warnings: result.warnings || [],
+      compileTrace: result.compileTrace || null,
       html: result.html || null,
       javascript: result.javascript || null,
       serverJS: result.serverJS || null,
@@ -453,6 +528,31 @@ app.get('/api/docs/:name', (req, res) => {
 // =============================================================================
 const ALLOWED_PREFIXES = ['node ', 'curl ', 'ls ', 'cat '];
 
+function runListCommand(command) {
+  const rawPath = command.slice(3).trim() || '.';
+  const target = resolve(ROOT_DIR, rawPath);
+  const rel = relative(ROOT_DIR, target);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    const err = new Error('Path not allowed');
+    err.statusCode = 403;
+    throw err;
+  }
+  const targetStat = statSync(target);
+  if (!targetStat.isDirectory()) {
+    return rawPath + '\n';
+  }
+  return readdirSync(target)
+    .sort()
+    .map((name) => {
+      try {
+        return statSync(join(target, name)).isDirectory() ? name + '/' : name;
+      } catch {
+        return name;
+      }
+    })
+    .join('\n') + '\n';
+}
+
 app.post('/api/exec', (req, res) => {
   const { command } = req.body;
   if (!command) return res.status(400).json({ error: 'Missing command' });
@@ -467,6 +567,11 @@ app.post('/api/exec', (req, res) => {
   }
 
   try {
+    if (command.startsWith('ls ')) {
+      const stdout = runListCommand(command);
+      res.json({ stdout, stderr: '', exitCode: 0 });
+      return;
+    }
     const stdout = execSync(command, {
       cwd: ROOT_DIR,
       encoding: 'utf8',
@@ -475,6 +580,9 @@ app.post('/api/exec', (req, res) => {
     });
     res.json({ stdout, stderr: '', exitCode: 0 });
   } catch (err) {
+    if (err.statusCode === 403) {
+      return res.status(403).json({ error: err.message });
+    }
     res.json({
       stdout: err.stdout || '',
       stderr: err.stderr || err.message,
@@ -2056,9 +2164,11 @@ app.post('/api/fetch', async (req, res) => {
 
 // =============================================================================
 // CF-1 — Compiler Flywheel beacon receiver. Compiled apps POST runtime events
-// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server. We
-// drop them into a JSONL file at playground/flywheel-beacons.jsonl. A future
-// session migrates this into the Factor DB (see plans/plan-compiler-flywheel-tier1).
+// (latency, errors) here when CLEAR_FLYWHEEL_URL points at this server.
+// Dual-write: append to JSONL (durable backup, easy to grep) AND insert a row
+// into the Factor DB's code_actions_runtime table so the friction script,
+// trainer, and ranker can all query runtime data the same way they query
+// compile-time rows. JSONL is preserved as belt-and-suspenders backup.
 // Per-compile_row_id rate-limit: 100 events/s, drop-and-count overflow.
 // =============================================================================
 const _beaconLog = join(__dirname, 'flywheel-beacons.jsonl');
@@ -2075,9 +2185,15 @@ app.post('/api/flywheel/beacon', (req, res) => {
   } else {
     _beaconRate.set(id, { sec, count: 1 });
   }
+  // 1) JSONL append — legacy, preserved as durable backup
   try {
     appendFileSync(_beaconLog, JSON.stringify({ ...ev, received_at: Date.now() }) + '\n');
   } catch {}
+  // 2) Factor DB insert — queryable copy. Fail-open: if the DB is offline
+  //    or unavailable, the JSONL still has the data and we keep serving.
+  if (_factorDB) {
+    try { _factorDB.logRuntimeBeacon(ev); } catch (e) { /* swallow — backup file has it */ }
+  }
   res.json({ ok: true });
 });
 
@@ -2422,7 +2538,12 @@ const WEB_TOOLS = [
 ];
 
 app.get('/api/config', (req, res) => {
-  res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
+  res.json({
+    hasServerKey: !!process.env.ANTHROPIC_API_KEY,
+    hasOpenRouterKey: !!process.env.OPENROUTER_API_KEY,
+    defaultMephModel: resolveDefaultMephModelChoice(process.env),
+    mephModels: publicMephModelChoices(),
+  });
 });
 
 // Lightweight cache for API health — checked at most once per 5 min.
@@ -2700,7 +2821,7 @@ app.post('/api/write-file', (req, res) => {
 // (it's a user preference, not per-request data). If it actually changes
 // per request, each unique personality becomes its own cache entry —
 // acceptable overhead.
-function buildSystemWithContext(baseSystem, personality, testSnapshot) {
+function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSource, lastCompileResult) {
   const head = personality
     ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n'
     : '';
@@ -2727,21 +2848,44 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot) {
     blocks.push({ type: 'text', text: '\n\n---\n\n' + parts.join('') });
   }
 
+  // Lean Lesson 3 — open-capability visibility. Surface placeholders, failing
+  // tests, and unresolved compile errors to Meph as ONE structured list before
+  // he writes code, instead of forcing him to re-derive "what's still missing"
+  // from raw test output every cycle. Mirrors Lean's goal display. Cheap surface
+  // change — under 200 chars when nothing is open, under 1KB even when fully
+  // populated. Lives in a separate volatile block so it doesn't invalidate the
+  // stable cache.
+  try {
+    const report = getOpenCapabilities(editorSource || '', testSnapshot, lastCompileResult);
+    const formatted = formatReportForMeph(report);
+    if (formatted) {
+      blocks.push({ type: 'text', text: '\n\n---\n\n' + formatted });
+    }
+  } catch (err) {
+    // Belt and suspenders — never let the open-capabilities surface block a
+    // chat turn. Log and continue if the report builder hits something weird.
+    console.warn('[open-capabilities] report build failed:', err && err.message);
+  }
+
   return blocks;
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged } = req.body;
   // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
   // A step "passes" if ALL its sourceMatches regexes appear in the current source.
   // currentStep = the highest-index step whose regexes all match. This lets us
   // label every compile row with "which milestone of the task Meph has hit so far."
   // Hidden from Meph by design — we measure natural trajectory, not guided behavior.
   const sessionSteps = Array.isArray(taskSteps) && taskSteps.length > 0 ? taskSteps : null;
+  const selectedModel = resolveMephModelChoice(mephModel);
+  const ghostActive = isGhostMephActive();
+  const useOpenRouterPicker = selectedModelNeedsOpenRouterKey(selectedModel, { ghostActive });
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   // GM-1: when MEPH_BRAIN is set, route via local backend instead of Anthropic.
   // Skip the API-key gate in that case — local backends don't need one.
-  if (!resolvedKey && !isGhostMephActive()) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
+  if (!resolvedKey && !ghostActive && !useOpenRouterPicker) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
+  if (useOpenRouterPicker && !process.env.OPENROUTER_API_KEY) return res.status(400).json({ error: 'Set OPENROUTER_API_KEY to use this Meph model' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
 
   // SSE streaming
@@ -2961,11 +3105,11 @@ app.post('/api/chat', async (req, res) => {
   // Multi-turn tool-use loop with streaming.
   // Meph runs on Haiku 4.5 by default — ~3x cheaper than Sonnet on this workload.
   // Override with MEPH_MODEL=claude-sonnet-4-6 to A/B against baseline.
-  const MEPH_MODEL = process.env.MEPH_MODEL || 'claude-haiku-4-5-20251001';
+  const MEPH_MODEL = process.env.MEPH_MODEL || selectedModel.anthropicModel || selectedModel.openRouterModel || 'claude-haiku-4-5-20251001';
   // 200k is Haiku 4.5's hard cap and Sonnet 4.6's default (1M needs a beta header
   // we don't send). Either way, the effective cap here is 200k.
   const MEPH_CTX_MAX = 200000;
-  let currentMessages = messages.slice(-50);
+  let currentMessages = selectChatMessagesForModel(messages, { modelChanged: !!modelChanged, limit: 50 });
   let toolResults = [];
 
   // Estimate context usage (rough: ~4 chars per token)
@@ -2983,6 +3127,14 @@ app.post('/api/chat', async (req, res) => {
     // out of iterations before finishing register/login/full-CRUD flows. 25
     // gives him enough room without risking runaway sessions.
     const MEPH_MAX_ITER = Number(process.env.MEPH_MAX_ITER) || 25;
+
+    // Snap layer config — when Meph "thinks he's done" but compile errors
+    // remain, inject a synthetic user follow-up asking him to fix them and
+    // re-roll. Up to N retries. The user only ever sees converged output.
+    // Disable with SNAP_LAYER_OFF=1; override cap with SNAP_MAX_RETRIES.
+    const snapConfig = readSnapConfig(process.env);
+    let snapRetryCount = 0;
+
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
       // Prompt-caching strategy (added Session 38):
       //   1. System array has cache_control on the stable block → caches tools
@@ -3025,7 +3177,7 @@ app.post('/api/chat', async (req, res) => {
         model: MEPH_MODEL,
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
-        system: buildSystemWithContext(systemPrompt, personality, testSnapshot),
+        system: buildSystemWithContext(systemPrompt, personality, testSnapshot, currentSource, lastCompileResult),
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: cachedMessages,
@@ -3058,6 +3210,10 @@ app.post('/api/chat', async (req, res) => {
           if (isGhostMephActive()) {
             console.log(`[chat] routing via Ghost Meph (MEPH_BRAIN=${getBackendId()})`);
             r = await fetchViaBackend(payload, headers);
+          } else if (useOpenRouterPicker) {
+            console.log(`[chat] routing via OpenRouter picker (${selectedModel.id}/${selectedModel.openRouterModel})`);
+            const { chatViaOpenRouter } = await import('./ghost-meph/openrouter.js');
+            r = await chatViaOpenRouter(payload, { model: selectedModel.openRouterModel });
           } else {
             r = await fetch(endpoint, {
               method: 'POST', headers, body: JSON.stringify(payload),
@@ -3191,6 +3347,39 @@ app.post('/api/chat', async (req, res) => {
       if (accText) assistantContent.push({ type: 'text', text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
+        // Snap layer: if Meph stopped with compile errors still on screen,
+        // re-prompt him with the errors and continue the loop. Caps at
+        // snapConfig.maxRetries to avoid infinite re-rolls. Hidden from the
+        // user — they only see the final converged output.
+        if (shouldSnapRetry({
+          currentErrors,
+          snapRetryCount,
+          maxRetries: snapConfig.maxRetries,
+          layerOff: snapConfig.layerOff,
+        })) {
+          snapRetryCount++;
+          messages.push({ role: 'assistant', content: assistantContent });
+          messages.push({
+            role: 'user',
+            content: formatSnapMessage({
+              errors: currentErrors,
+              retryIndex: snapRetryCount,
+              maxRetries: snapConfig.maxRetries,
+            }),
+          });
+          if (_factorDB) {
+            try {
+              _factorDB.logEvent?.({
+                kind: 'snap_retry',
+                session_id: sessionId,
+                payload: { retry_index: snapRetryCount, error_count: currentErrors.length, max_retries: snapConfig.maxRetries },
+              });
+            } catch { /* telemetry best-effort */ }
+          }
+          console.log(`[snap-layer] retry ${snapRetryCount}/${snapConfig.maxRetries} — ${currentErrors.length} compile error${currentErrors.length === 1 ? '' : 's'} remained at end_turn`);
+          continue; // re-enter the iteration loop with the augmented messages
+        }
+
         _captureHintUsage('end_turn');
         writeSessionQuality();
         send({ type: 'done', toolResults, source: currentSource });

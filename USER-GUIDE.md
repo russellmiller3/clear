@@ -1134,7 +1134,7 @@ image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 'Bio' is a text area saved as a bio
 'Body' is a text editor saved as a body        # rich WYSIWYG with toolbar
 'Country' is a dropdown with ['US', 'UK', 'Canada'] saved as a country
-'Newsletter' is a checkbox
+'Newsletter' is a checkbox saved as newsletter
 'Resume' is a file input saved as a resume
 ```
 
@@ -1172,10 +1172,14 @@ show loading
 response = ask claude 'Analyze this' with data
 hide loading
 
-# Flash a temporary message
-show toast 'Settings saved!'
-show alert 'Something went wrong'
+// Show a native toast with message data rendered as text
+show toast 'Settings saved!' as success
+show alert 'Something went wrong' as error
 ```
+
+Toast can be the whole action for a notification button. It cannot be the whole
+action for a business button like Approve, Save, Reject, Resolve, Assign, or
+Delete. Those buttons must also change/update/delete/send/save the actual data.
 
 ---
 
@@ -1645,6 +1649,39 @@ with timeout 5 seconds:
   result = call api 'https://slow-api.com/data'
 ```
 
+### Live Blocks (Effect Fences)
+
+Some lines in your program talk to the outside world: asking Claude, calling
+an API, opening a websocket, running a timer. The rest is pure — math, string
+work, table reads. A `live:` block is the visible label for the part that
+talks to the world:
+
+```clear
+when user sends note to /api/chat:
+  live:
+    reply is ask claude 'hi'
+  send back reply
+```
+
+Why label them? Two reasons. First, it's easier to read — you can see at a
+glance which lines could be slow or could fail because the network is flaky.
+Second, the compiler can use that label to prove the rest of your program
+can't hang. Pure code (no `live:` block) is provably terminating.
+
+Today `live:` is permissive — anything is allowed inside, and code outside
+isn't restricted yet. In a future Clear release the compiler will start
+*requiring* effect-shaped calls (`ask claude`, `call api`, `subscribe to`,
+timers) to sit inside a `live:` fence. Writing it that way now means your
+apps will keep compiling cleanly when the rule tightens.
+
+```clear
+# Good — the fence makes the boundary obvious
+agent 'Replier' receiving message:
+  live:
+    answer is ask claude message
+  send back answer
+```
+
 ---
 
 ## Chapter 15: Modules (When One File Isn't Enough)
@@ -1720,6 +1757,15 @@ clear check main.clear
 
 Great for quick feedback while editing. Catches undefined variables,
 missing fields, security issues, and typos.
+
+If validation fails and you want the compiler error fixed, print the trace packet:
+
+```bash
+clear check main.clear --trace
+```
+
+Paste the whole `CLEAR COMPILE TRACE v1` packet into the debugging session. In Studio, use the
+**Copy compiler error** button that appears above compile errors.
 
 ### Run
 
@@ -1814,6 +1860,7 @@ clear build main.clear --json      # Machine-readable JSON output
 clear build main.clear --quiet     # Suppress non-essential output
 clear build main.clear --no-test   # Skip test gate
 clear build main.clear --auto-fix  # Auto-patch errors during build
+clear check main.clear --trace     # Print copy-pasteable compile trace
 ```
 
 ### Exit Codes
@@ -2023,6 +2070,71 @@ For more thorough agent testing, use evals:
 clear eval main.clear              # Schema checks (fast, no API calls)
 clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
 ```
+
+### Leaving a piece for later: `TBD`
+
+Sometimes you know the shape of the program but you have not decided one
+piece yet. Maybe the spec is ambiguous, maybe Russell told you to "leave
+the auth for later, focus on the queue," maybe you are sketching a structure
+and want compiler feedback on the parts that ARE written.
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs. The compiler accepts it. The program still compiles green. Only
+the line that holds the placeholder fails at runtime — every other piece
+keeps working.
+
+```clear
+build for javascript backend
+
+create a Leads table:
+  name, required
+  email, required
+
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+    email, required
+  TBD                       # the audit log piece is for next session
+  saved_lead = save lead as new Lead
+  send back saved_lead with success message
+
+test 'creating a lead works':
+  set new_lead = TBD        # exact payload not decided yet
+  send new_lead to /api/leads
+  expect response status is 200
+```
+
+Compile and run the tests:
+
+```bash
+clear test main.clear
+```
+
+You will see something like:
+
+```
+PASS: Creating a new lead succeeds
+SKIP: creating a lead works - placeholder hit at line 17 — fill it in or remove it (this test exercises a stub)
+
+Results: 1 passed, 0 failed, 1 skipped due to stub
+```
+
+The skipped test does not fail the build — `clear test` exits 0 because no
+real assertion failed. The skip count tells you "structure right, piece not
+filled in yet" so you know exactly which holes are still open.
+
+Three rules of thumb:
+1. **Use `TBD` for genuinely open decisions.** Ambiguous spec, deferred piece,
+   sketching a structure. Not for things you do not feel like writing — that
+   is just hiding the hard part.
+2. **Do not ship `TBD`s in production code.** The placeholder is a bookmark,
+   not a finished piece. If your final commit still has open `TBD`s, you have
+   not finished the feature.
+3. **Skipped tests are not coverage.** A test that hits a `TBD` did not
+   actually verify anything. Refill the placeholder before you trust the test.
 
 ---
 
@@ -2372,6 +2484,119 @@ workflow 'Support' with state:
 
 The result includes `_history` — an array of state snapshots at each step,
 with timestamps. Great for debugging and audit trails.
+
+---
+
+## Chapter 19b: Approval Queues (The Deal Desk in 10 Lines)
+
+Workflows orchestrate AI agents. **Approval queues** orchestrate humans — they're for the moment a person has to look at something and say "yes, no, or come back to me later." Discount approvals. Time-off requests. New-vendor onboarding. Any time work piles up in a list waiting for a real human to decide.
+
+Clear has a one-block primitive for this. Watch what nine lines buys you:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+```
+
+That's the whole deal desk. Drop it in a `.clear` file and the compiler hands you back:
+
+- **An audit table** — every decision gets a row stamped with who decided, what they decided, when, and an optional note.
+- **A notification queue** — every time the CRO clicks Approve, a row gets added to an outbound list saying "tell the rep this was approved." Same for Reject, Counter, and Awaiting customer. The actual email-sending is a separate piece (covered next in Chapter 19c), but the queue is ready and waiting.
+- **A queue page URL** at `/api/deals/queue` — returns every deal that's still pending review.
+- **A history URL** at `/api/deal-decisions` — returns the full audit log.
+- **A login-gated URL for every action** — `/api/deals/:id/approve`, `/reject`, `/counter`, `/awaiting`. Each one updates the deal's status, logs the decision, queues the right notifications, and returns the updated deal.
+
+If the CRO clicks Approve, the deal flips to `'approved'`. Reject flips it to `'rejected'`. Counter and Awaiting customer flip it to `'awaiting'`. (The action name picks the new status — you can use other words too, and the new status will match.) Multi-word actions like `awaiting customer` shorten to a single URL token (`/awaiting`).
+
+### How notifications resolve recipient emails
+
+`email customer when counter` doesn't need you to specify how to reach the customer. It looks for a field called `customer_email` on the deal. `email rep when approve` looks for `rep_email`. The rule is `<role>_email` — match the role name in the email clause to a field name on the entity. If the field doesn't exist, the compiler will warn you (the row still gets queued, just with a blank recipient — so the CRO's flow doesn't break, but the email obviously can't go out until you add the field).
+
+The legacy form `notify customer on counter` still parses if you have older code, but `email <role> when <action>` is the canonical form for new code — the verb names HOW (email, vs the vague "notify"), and the connector reads naturally (when, vs the slightly-off "on").
+
+### Wiring action buttons in the UI
+
+The primitive does the backend, the audit, and the notifications. UI buttons are still hand-added — paste a few lines in your queue page:
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+```
+
+The `change` line says which field moves from which value to which value. The `update` line saves that selected record through the generated login-gated action URL. The final `get` line reloads the queue the user sees.
+
+### When NOT to reach for `queue for X:`
+
+- A simple "yes/no" with no audit need — just write a normal update endpoint.
+- Automated routing where no human decides — that's a different shape, and a future `routing rules for X:` primitive will handle it cleanly.
+- Multi-stage approval where a deal needs Manager → Director → CRO — coming in Tier 2 once a second multi-stage app exists.
+
+### Why this primitive earns its keep
+
+A real Deal Desk used to need ~150 lines of hand-rolled JavaScript per app: the audit table, the URLs, the status transitions, the auth checks, the notification rows. Each one easy to get wrong, each one duplicated across every approval app. The queue primitive collapses that to **5 lines of declaration**, with auth, audit, and notifications all wired correctly by construction. Four of Clear's five Marcus-targeted apps now use it. Same visible behavior. A fraction of the surface for bugs to hide in.
+
+---
+
+## Chapter 19c: Triggered Emails (Send the Customer a Real Reply)
+
+The queue primitive in Chapter 19b records that an email *should* be sent — every time the CRO counters a deal, a row lands in `deal_notifications` saying "tell the customer." But Marcus's Deal Desk doesn't just need a queue of pending emails — he wants to write the actual subject and body once, in the same Clear file, and trust that every counter triggers the right reply. That's what the **triggered email primitive** does.
+
+It's a top-level block, written next to the queue:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer. Reply when you can.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+Drop that block in and the compiler hands you back:
+
+- **A shared outbound table** called `workflow_email_queue` — one table per app, no matter how many `email <role> when ...` blocks you write. Every triggered email lands here as a row with subject, body, provider, recipient, and `queue_status='pending'`.
+- **An auto-injected insert** in every URL handler that lands the deal's status on `'awaiting'`. The queue's `counter` action transitions to `'awaiting'`, so the auto-generated `PUT /api/deals/:id/counter` handler queues the email *and* records the audit row *and* drops a notification row — all in one click. If you also write a hand-rolled `when user updates deal at /api/deals/:id/something:` endpoint that sets `deal's status is 'awaiting'`, the same queue insert lands there too. The trigger fires from every handler that hits the value.
+- **Compile-time silent-bug guards.** If the entity table forgets the `customer_email` field, the compiler warns: "Queue rows will land with empty recipient_email." If you write `body is 'Hello {customer_naem}'` (typo), the compiler warns the literal `{customer_naem}` would ship in the customer's inbox. If you misspell the provider as `'agentmial'`, the compiler hard-errors with "did you mean agentmail?"
+
+### What about real sending?
+
+By default, every triggered email sits in the queue with `queue_status='pending'`. Nothing goes to a real provider. That's deliberate — your tests, your dev environment, and your first preview build never accidentally email a real customer. To enable live sending, you'll add a directive like `enable live email delivery via agentmail` and provision an env-var-backed API key — both deferred until you've watched the queue fill up correctly and you're ready to flip the switch.
+
+This separation keeps the failure mode safe. Bad subjects and broken bodies and missing recipient fields ALL show up in the queue rows, where you can inspect them like any other database table — `GET /api/workflow-email-queue` returns them. By the time live delivery turns on, the data has already been correct for days.
+
+### Why this primitive earns its keep
+
+Marcus used to hand-write a `Notifications` table, a SendGrid client wrapper, a per-action "if approved, send X" branch, and a retry queue — for every app. The triggered email primitive collapses all of that to a single block of declarative English at the top of the file. The compiler reads that block and emits the table, the queue insert, the recipient resolution, the status-tracking, and the safety guards. Same workflow. Far less surface for the wrong email to escape.
 
 ---
 
@@ -2746,27 +2971,30 @@ The `app_sidebar` preset is smart about its children. It splits them
 automatically:
 
 - The first `heading` becomes the brand/logo area at the top
-- `text` and `link` items become nav menu items (using DaisyUI's menu component)
-- Nested `section` blocks become labeled nav groups (the section title becomes
-  a group header)
+- `nav section` blocks become labeled nav groups
+- `nav item` rows become real sidebar links
+- `with count` adds a small badge on the right
+- `with icon` adds a Lucide icon on the left
+- The current route automatically marks the matching row active
 
 ```clear
 section 'Sidebar' with style app_sidebar:
   heading 'ProjectHub'
 
-  section 'Main':
-    text 'Dashboard'
-    text 'Projects'
-    text 'Team'
+  nav section 'Main':
+    nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+    nav item 'Projects' to '/projects' with count project_count with icon 'folder'
+    nav item 'Team' to '/team' with icon 'users'
 
-  section 'Settings':
-    text 'Account'
-    text 'Billing'
-    text 'Integrations'
+  nav section 'Settings':
+    nav item 'Account' to '/account' with icon 'user'
+    nav item 'Billing' to '/billing' with icon 'credit-card'
+    nav item 'Integrations' to '/integrations' with icon 'plug'
 ```
 
 That produces a sidebar with "ProjectHub" as the brand, then two labeled nav
-groups ("Main" and "Settings") with items under each.
+groups ("Main" and "Settings") with linked rows under each. Legacy `text` and
+`link` children still render, but new dashboards should use explicit nav rows.
 
 #### The Header
 
@@ -2780,24 +3008,76 @@ section 'Header' with style app_header:
     open the New Project modal
 ```
 
-#### Metric Cards
+#### The Page Header And Tabs
 
-For KPI rows at the top of dashboards, use `metric_card` inside a column grid:
+`app_header` is the sticky chrome bar. Inside the scrollable content area, use
+`page header` for the actual workbench title, subtitle, and actions.
 
 ```clear
-section 'Stats' as 4 columns:
-  section 'Revenue' with style metric_card:
-    display revenue as dollars called 'Revenue'
-  section 'Users' with style metric_card:
-    display active_users as number called 'Active Users'
-  section 'Orders' with style metric_card:
-    display order_count as number called 'Orders'
-  section 'Growth' with style metric_card:
-    display growth_rate as percent called 'Growth'
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh':
+        get pending from /api/deals/pending
+      button 'Export':
+        get export_rows from /api/deals/export
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+    tab 'Escalated' to '/escalated'
 ```
 
-The `as 4 columns` modifier on the parent creates a CSS grid. Each `metric_card`
-gets a compact card treatment with the number prominently displayed.
+Use this for approval queues, CRMs, helpdesks, and dashboard subviews. The tabs
+are real links, and the current route automatically gets the underline state.
+
+#### Stat Cards
+
+For KPI rows at the top of dashboards, use `stat strip` with `stat card`:
+
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+#### Detail Panels
+
+When a table is the queue and one row is the work, use a right detail panel.
+It keeps the user in context instead of sending them to a separate page.
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+```
+
+The panel reads from the selected row. The normal content lines become the
+scrolling body. The `actions:` block becomes the sticky decision bar at the
+bottom. Update buttons need a `change` line before the `update` line, so the
+source names the exact data effect.
+
+Each `stat card` needs one `value` line. Use `delta` for trend copy,
+`sparkline` for a tiny trend line, and `icon` for a Lucide symbol.
 
 #### Tables
 
@@ -2871,13 +3151,13 @@ page 'ProjectHub' at '/':
 
     section 'Sidebar' with style app_sidebar:
       heading 'ProjectHub'
-      section 'Main':
-        text 'Dashboard'
-        text 'Projects'
-        text 'Team'
-      section 'Settings':
-        text 'Account'
-        text 'Billing'
+      nav section 'Main':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Projects' to '/projects' with count open_issues with icon 'folder'
+        nav item 'Team' to '/team' with icon 'users'
+      nav section 'Settings':
+        nav item 'Account' to '/account' with icon 'user'
+        nav item 'Billing' to '/billing' with icon 'credit-card'
 
     section 'Main' with style app_main:
 
@@ -2975,6 +3255,32 @@ If you typed a domain in the Deploy modal, Clear calls `flyctl certs create` for
 ### Rollback
 
 Every deploy produces a new release. Open the **Deploy History** drawer, pick any prior release, click Rollback. The live URL flips back to that version in seconds. Your data stays put — rollback only swaps the code.
+
+### One-click updates (after the first deploy)
+
+Most "deploys" after the first one aren't really deploys — they're updates. You changed three lines in the deal-desk app, you don't need a new database, a new domain, or new secrets. You just need the new code to be live.
+
+Clear handles this for you. The Publish button watches your tenant record, and the moment it sees that the app you're shipping is one you've already deployed, the button text changes from **Deploy** to **Update** and the modal swaps to a much shorter conversation:
+
+1. **Edit your code.** Change the heading, fix a typo, add a new endpoint, whatever.
+2. **Click Publish.** The modal opens with a green "Update *deal-desk.buildclear.dev*" header and the relative time of your last ship ("Last deployed 14 minutes ago"). If your edits didn't change anything compared to what's live, the button is disabled and tells you "No changes since last deploy" — Clear refuses to burn a version slot for a no-op.
+3. **Click Update.** The new bundle uploads, a fresh version id gets recorded against your tenant, and the modal flips to "Updated to version v-abc-123". Wall clock: about two seconds, versus twelve for the original deploy. Your URL doesn't change, your database doesn't change, your secrets don't change — only the code does.
+
+Behind the scenes Clear is doing the obvious-once-you-think-about-it thing: re-uploading just the Worker bundle and skipping every step that's already done. Your D1 database is already provisioned. Your domain is already attached. Your `JWT_SECRET` is already set. None of that needs to happen again.
+
+### When schema changes pause the update
+
+There's exactly one thing that puts the brakes on. If the edit you just made changed a table — added a column, dropped one, renamed it — Clear has to reshape the live database before the new code can run, and SQLite doesn't have an atomic way to do that. So instead of silently applying the change and risking that an in-flight request hits the new schema with the old code, Clear stops and asks.
+
+You'll see a yellow "Schema change detected" view in the modal with a list of what's different ("`migrations/001-init.sql` — changed"), and a button labeled **Apply migration + update**. Click it, the migration applies first, the new bundle uploads second, and a typical case is back online in under three seconds. If you're not ready to commit to the schema change yet, close the modal — nothing is live, your old version is still serving.
+
+### One-click rollback
+
+Inside the same Update modal there's a **Version history** link. Click it and the panel expands to show the last twenty versions of your app, newest first, each with the time it was uploaded and a Rollback button. The currently-live version doesn't have a button — it has a "Current" label so you can't roll back to where you already are.
+
+Click Rollback on, say, v-abc-118, and Clear flips the live URL back to that version in about a second. The previous live version is recorded as a new entry in your history with a `rollback-from-v-abc-122` note, so the timeline reads chronologically — no branching, no surprise. Your data is untouched, just like with the older Deploy History rollback above; this is the same primitive, surfaced in the same place where you actually live (the Publish modal) instead of buried in a separate drawer.
+
+If you click Rollback on a version that no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal tells you "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel so you're looking at reality.
 
 ### Plans
 

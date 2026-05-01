@@ -1,4 +1,12 @@
 #!/bin/sh
-# Pre-commit: fast compiler tests (1725 tests, ~10s)
-echo "🔍 Running compiler tests..."
+# Pre-commit: branch discipline plus fast compiler tests.
+
+branch="$(git branch --show-current)"
+if [ "$branch" = "main" ]; then
+  echo "ERROR: Branch discipline guard refused a direct commit on main."
+  echo "Create a focused branch first: git switch -c feature/<name>"
+  exit 1
+fi
+
+echo "Running compiler tests..."
 node clear.test.js

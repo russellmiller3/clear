@@ -568,6 +568,62 @@ function assert(cond, msg) {
   assert(httpAfterParsed.error && httpAfterParsed.error.includes('No app running'),
     `Phase 8: after stop_app, http_request returns "No app running" (got ${JSON.stringify(httpAfterParsed)})`);
 
+  // 8b. Factor DB write-through on the cc-agent/local-AI path. This pins
+  // the exact handoff bottleneck: Meph can write code, run it, and verify a
+  // 2xx endpoint without calling meph_compile explicitly because edit_code
+  // already auto-compiles for run_app. The endpoint win still must land as a
+  // test_pass=1 row, or the sweep win never compounds into the flywheel.
+  const origFactorDbPath8 = process.env.FACTOR_DB_PATH;
+  const tmpWinDbDir = mkdtempSync(join(tmpdir(), 'mcp-http-win-factor-db-test-'));
+  const tmpWinDbPath = join(tmpWinDbDir, 'test.sqlite');
+  const initWinDb = new FactorDB(tmpWinDbPath);
+  initWinDb.close?.();
+  process.env.FACTOR_DB_PATH = tmpWinDbPath;
+  _resetMcpState();
+  _resetFactorDbCache();
+
+  await dispatch({
+    jsonrpc: '2.0', id: 806, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write', code: simpleSource } },
+  }, registry);
+
+  const runApp8b = await dispatch({
+    jsonrpc: '2.0', id: 807, method: 'tools/call',
+    params: { name: 'meph_run_app', arguments: {} },
+  }, registry);
+  const runApp8bParsed = JSON.parse(runApp8b.result.content[0].text);
+  assert(runApp8bParsed.started === true,
+    `Phase 8b: run_app starts from edit_code's auto-compile without explicit meph_compile (got ${JSON.stringify(runApp8bParsed)})`);
+
+  const http8b = await dispatch({
+    jsonrpc: '2.0', id: 808, method: 'tools/call',
+    params: { name: 'meph_http_request', arguments: { method: 'GET', path: '/api/hello' } },
+  }, registry);
+  const http8bParsed = JSON.parse(http8b.result.content[0].text);
+  assert(http8bParsed.status >= 200 && http8bParsed.status < 300,
+    `Phase 8b: http_request reaches the endpoint and returns 2xx (got ${JSON.stringify(http8bParsed)})`);
+
+  const ctxAfterHttpWin = await _testBuildMephContext();
+  const winRows = ctxAfterHttpWin.factorDB?._db.prepare(`
+    SELECT id, compile_ok, test_pass, test_score, patch_summary
+    FROM code_actions
+    ORDER BY id
+  `).all() || [];
+  const passRows = winRows.filter(r => r.test_pass === 1);
+  assert(passRows.length === 1,
+    `Phase 8b: successful meph_http_request writes or updates one test_pass=1 Factor DB row (rows=${JSON.stringify(winRows)})`);
+  assert(passRows[0]?.compile_ok === 1 && passRows[0]?.test_score >= 0.9,
+    `Phase 8b: passing row is a clean compile with high test score (row=${JSON.stringify(passRows[0] || null)})`);
+
+  await dispatch({
+    jsonrpc: '2.0', id: 809, method: 'tools/call',
+    params: { name: 'meph_stop_app', arguments: {} },
+  }, registry);
+  _resetFactorDbCache();
+  if (origFactorDbPath8 === undefined) delete process.env.FACTOR_DB_PATH;
+  else process.env.FACTOR_DB_PATH = origFactorDbPath8;
+  try { rmSync(tmpWinDbDir, { recursive: true, force: true }); } catch {}
+
   // =========================================================================
   // PHASE 9 — session_id stability across tool calls
   //

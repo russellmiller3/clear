@@ -68,13 +68,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .tests-stats-badge { color: var(--green); background: color-mix(in oklch, var(--green) 12%, transparent); border-color: color-mix(in oklch, var(--green) 25%, transparent); cursor: pointer; }
 .tests-stats-badge.has-failures { color: var(--red); background: color-mix(in oklch, var(--red) 12%, transparent); border-color: color-mix(in oklch, var(--red) 25%, transparent); }
 @keyframes stats-pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-#chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; margin-left: auto; }
+#chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; order: -10; margin-right: 8px; }
 #chat-toggle-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
+/* Show Source toggle gets the far-right slot — sits next to where the source pane appears in builder mode. */
+#source-toggle-btn { order: 100; margin-left: auto; }
 @media (max-width: 1100px) { #chat-pane { width: 0 !important; } }
 
 /* Toolbar */
 #toolbar select { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: var(--font); cursor: pointer; transition: border-color .15s; }
 #toolbar select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#builder-theme-picker { min-width: 92px; }
 .toolbar-sep { width: 1px; height: 22px; background: var(--bd2); }
 .toolbar-btn { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all .15s; }
 .toolbar-btn:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); transform: translateY(-1px); }
@@ -118,8 +121,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .warning-line::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--amber); flex-shrink: 0; margin-top: 5px; }
 
 /* Preview */
-#preview-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--bd); }
-.prev-tab { padding: 10px 16px; font-size: 12px; font-weight: 500; color: var(--tx3); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .15s; position: relative; }
+#preview-tabs { display: flex; flex-wrap: wrap; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--bd); row-gap: 0; }
+.prev-tab { padding: 7px 11px; font-size: 11.5px; font-weight: 500; color: var(--tx3); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .15s; position: relative; white-space: nowrap; }
 .prev-tab:hover { color: var(--tx2); }
 .prev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .prev-tab.active::after { display: none; }
@@ -494,46 +497,87 @@ body.builder-mode:not(.has-compiled) #tile-gallery { display: block; }
 }
 
 /* ==========================================================================
-   BUILDER MODE v0.1 (Marcus-first layout — opt-in via ?studio-mode=builder)
-   Feature-flagged. Classic 3-panel remains the default.
+   BUILDER MODE v0.2 (Marcus-first layout — opt-in via ?studio-mode=builder)
+   Layout: Meph on LEFT rail, preview center, source toggleable right pane.
+   Updated 2026-04-28 per Russell's review (chat below app was wrong).
    ========================================================================== */
-body.builder-mode #main-area { flex-direction: column; position: relative; }
+body.builder-mode #main-area { flex-direction: row; position: relative; }
 
-/* BM-2: Preview as hero — full-width, ~60vh. DOM order is chat → editor → preview,
-   so we need `order` to put preview on top in column layout. */
-body.builder-mode #preview-pane {
-  order: 0;
-  flex: 1 1 auto;
-  min-height: 60vh;
-  width: 100%;
-  border-left: 0;
-  border-bottom: 1px solid var(--bd);
-}
-
-/* BM-1: Chat as bottom driver — full-width, ~40vh */
+/* BM-1 (v0.2): Chat as left rail — same width as classic, full height.
+   DOM order is chat → chat-resizer → editor → ep-resizer → preview, which
+   maps to a row layout naturally. */
 body.builder-mode #chat-pane {
-  order: 1;
-  flex: 0 0 40vh;
-  width: 100% !important;   /* overrides mobile breakpoint at line 73 */
+  order: 0;
+  flex: 0 0 360px;   /* JS resizer overrides this when user drags */
+  width: auto !important;
   min-width: 0;
-  border-top: 1px solid var(--bd);
+  height: 100%;
+  border-top: 0;
+  border-right: 1px solid var(--bd);
   border-bottom: 0;
 }
-/* Defense-in-depth for E-4: .collapsed class gets removed on mode enter,
-   but if something else toggles it after, keep the 40vh layout. */
-body.builder-mode #chat-pane.collapsed { flex-basis: 40vh !important; }
+body.builder-mode #chat-pane.collapsed { flex-basis: 0 !important; }
 
-/* Hide classic-mode horizontal resizers in builder mode */
+/* Chat resizer between Meph and preview — re-enabled in builder mode.
+   Slightly wider in builder mode so it's easier to grab. */
+body.builder-mode #chat-resizer { display: block; order: 1; width: 8px; }
+body.builder-mode #chat-resizer::after {
+  content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 32px; background: var(--bd2); border-radius: 2px;
+  pointer-events: none; transition: background .15s;
+}
+body.builder-mode #chat-resizer:hover::after { background: var(--accent); }
+
+/* BM-2 (v0.2): Preview takes remaining space. */
+body.builder-mode #preview-pane {
+  order: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: auto;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+/* Source pane on right when toggled — inline (not overlay), so the
+   resizer can adjust width and the layout stays predictable.
+   The resizer is HIDDEN when source is hidden — otherwise it floats in
+   the wrong slot due to CSS order interaction with default order:0. */
 body.builder-mode #ep-resizer { display: none; }
-body.builder-mode #chat-resizer { display: none; }
+body.builder-mode.show-source #ep-resizer {
+  display: block; order: 3; width: 8px;
+}
+body.builder-mode.show-source #ep-resizer::after {
+  content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 32px; background: var(--bd2); border-radius: 2px;
+  pointer-events: none; transition: background .15s;
+}
+body.builder-mode.show-source #ep-resizer:hover::after { background: var(--accent); }
+body.builder-mode #editor-pane { display: none; }
+body.builder-mode.show-source #editor-pane {
+  display: flex;
+  order: 4;
+  position: static;        /* clear v0.1's absolute overlay */
+  flex: 0 0 480px;         /* slightly wider than v0.1's 400px; JS resizer overrides */
+  width: auto;
+  min-width: 280px;
+  max-width: 80vw;
+  height: 100%;
+  background: var(--bg);
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
+  border-left: 1px solid var(--bd);
+  border-right: 0;
+  z-index: auto;
+}
 
 /* Override mobile breakpoint specifically for builder mode (E-6) */
 @media (max-width: 1100px) {
-  body.builder-mode #chat-pane { width: 100% !important; }
+  body.builder-mode #chat-pane { width: auto !important; flex: 0 0 280px; }
 }
 
-/* BM-6: Chat can't collapse below 40vh in builder mode — hide the toggle */
-body.builder-mode #chat-toggle-btn { display: none; }
+/* Chat toggle stays usable in builder mode now that chat has a real width.
+   Source toggle gets pushed to the right side of the toolbar (near source). */
+body.builder-mode #source-toggle-btn { margin-left: auto; }
 
 /* BM-5: Publish button — builder-mode restyle of #deploy-btn. Applied via
    detectStudioMode() adding .publish-btn class. */
@@ -591,6 +635,7 @@ body.builder-mode.show-source #editor-pane {
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
     <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show/hide .clear source" style="display:none">Show Source ◀</button>
+    <select id="builder-theme-picker" title="Preview theme" style="display:none"></select>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
@@ -644,6 +689,10 @@ body.builder-mode.show-source #editor-pane {
       <label id="web-toggle-label" title="Enable web search + fetch — Meph can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
         <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
         🌐 Web search + fetch
+      </label>
+      <label id="model-picker-label" title="Choose which model Meph uses. Switching models sends the full chat history on the next turn." style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);user-select:none;">
+        Model
+        <select id="meph-model-picker" onchange="updateMephModel()" style="background:var(--bg3);color:var(--tx2);border:1px solid var(--bd2);border-radius:6px;padding:3px 7px;font-size:11px;font-family:var(--font);"></select>
       </label>
       <div id="voice-mode-group" title="Voice: Off = text only. Speak = Meph talks but mic is off. Converse = Meph talks and listens.">
         <button class="voice-seg active" data-mode="off" onclick="setVoiceMode('off')">Off</button>
@@ -879,6 +928,7 @@ show 'Hello, Clear!'
       }
       if (update.docChanged) {
         updateEditorTOC(update.state.doc.toString());
+        syncBuilderThemePicker(update.state.doc.toString());
         // Persist editor content to survive crashes
         try { localStorage.setItem('clear_editor_content', update.state.doc.toString()); } catch (_) {}
       }
@@ -1333,7 +1383,7 @@ async function autoCompile() {
     else if (lastCompiled.python) { sourceMapData = buildSourceMap(lastCompiled.python); sourceMapTab = 'python'; }
     else { sourceMapData = null; sourceMapTab = null; }
     // Show clickable errors below editor (compact) — full detail in Code pane
-    showErrors(lastCompiled.errors, lastCompiled.warnings);
+    showErrors(lastCompiled.errors, lastCompiled.warnings, lastCompiled.compileTrace);
     // Update compile dot
     const dot = document.getElementById('compile-dot');
     if (lastCompiled.errors.length === 0) {
@@ -1414,9 +1464,14 @@ async function autoCompile() {
       // Show errors in the Code pane so they're impossible to miss
       showTab('compiled');
       const el = document.getElementById('preview-content');
+      const traceButton = lastCompiled.compileTrace?.pasteText
+        ? '<button class="toolbar-btn" onclick="copyCompileTrace()" style="margin-left:auto;padding:4px 10px;font-size:12px;">Copy compiler error</button>'
+        : '';
       el.innerHTML = '<div style="padding:24px;font-family:var(--mono);font-size:13px;line-height:1.8;">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--red);margin-bottom:16px;">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--red);">' +
         lastCompiled.errors.length + ' error' + (lastCompiled.errors.length > 1 ? 's' : '') + '</div>' +
+        traceButton + '</div>' +
         lastCompiled.errors.map(e =>
           '<div style="cursor:pointer;padding:8px 12px;margin:4px 0;border-radius:8px;background:color-mix(in oklch,var(--red) 8%,transparent);border:1px solid color-mix(in oklch,var(--red) 20%,transparent);" onclick="jumpToLine(' + (e.line || 1) + ')">' +
           '<span style="color:var(--red);font-weight:600;">Line ' + (e.line || '?') + ':</span> ' +
@@ -3174,9 +3229,70 @@ function _applyTheme(src, themeName) {
   return `theme '${themeName}'\n\n${src}`;
 }
 
+function initBuilderThemePicker() {
+  const picker = document.getElementById('builder-theme-picker');
+  if (!picker || picker.dataset.ready === 'true') return;
+  picker.innerHTML = window.__CLEAR_CURATED_THEMES
+    .map(t => `<option value="${escHtmlLocal(t.name)}">${escHtmlLocal(t.label)}</option>`)
+    .join('');
+  picker.addEventListener('change', () => applyBuilderTheme(picker.value));
+  picker.dataset.ready = 'true';
+  syncBuilderThemePicker();
+}
+
+function syncBuilderThemePicker(src = null) {
+  const picker = document.getElementById('builder-theme-picker');
+  if (!picker || picker.dataset.ready !== 'true') return;
+  const source = src ?? editor.state.doc.toString();
+  const current = _detectTheme(source) || 'ivory';
+  if ([...picker.options].some(opt => opt.value === current)) picker.value = current;
+}
+
+window.applyBuilderTheme = async function(themeName) {
+  if (!themeName) return;
+  const source = editor.state.doc.toString();
+  const next = _applyTheme(source, themeName);
+  syncBuilderThemePicker(next);
+  if (next === source) return;
+  suppressAutoCompile = true;
+  editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: next } });
+  suppressAutoCompile = false;
+  await autoCompile();
+  compileAnimCancel = true;
+  compileAnimRunning = false;
+  showTab('output');
+};
+
+// One-click updates Phase 5 — fetch the deployed-state for an app slug so the
+// Publish window can swap to "Update <hostname>" / show "Last published N min
+// ago" / change button text. Returns null on any failure (network, 404, etc.)
+// so the modal falls back to the fresh-deploy UX cleanly.
+async function _fetchAppInfo(slug) {
+  if (!slug || !slug.trim()) return null;
+  try {
+    const r = await fetch('/api/app-info/' + encodeURIComponent(slug.trim()));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+// Plain-English relative time. "5 min ago", "2 hr ago", "3 days ago".
+function _formatTimeAgo(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return '';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + ' hr ago';
+  const days = Math.floor(hr / 24);
+  return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+}
+
 window.doDeploy = async function() {
-  const source = (typeof getSource === 'function') ? getSource() : (window.editor ? window.editor.state.doc.toString() : '');
-  if (!source) { alert('Nothing to deploy — compile first.'); return; }
+  const source = (typeof getSource === 'function') ? getSource() : (window._editor ? window._editor.state.doc.toString() : '');
+  if (!source) { alert('Nothing to publish — compile first.'); return; }
 
   const appSlugDefault = 'app-' + Math.random().toString(36).slice(2, 6);
   const detected = _detectTheme(source);
@@ -3200,18 +3316,23 @@ window.doDeploy = async function() {
   modal.style.display = 'flex';
   modal.innerHTML = `
     <div class="deploy-box">
-      <div class="deploy-title">Deploy to a live URL</div>
+      <div class="deploy-title" id="deploy-modal-title">Publish to Clear Cloud</div>
+      <div id="deploy-modal-subtitle" style="font-size:12px;color:var(--tx2);margin:-8px 0 12px;min-height:14px"></div>
       <label>App name</label>
       <input id="deploy-app-slug" type="text" value="${appSlugDefault}">
       <label style="margin-top:12px">Theme</label>
       <div class="theme-grid">${themeCardsHtml}</div>
       <label style="margin-top:12px">Custom domain (optional)</label>
-      <input id="deploy-domain" type="text" placeholder="deals.acme.com">
+      <input id="deploy-domain" type="text" placeholder="deals.acme.com (defaults to ${appSlugDefault}.buildclear.dev)">
       <div id="deploy-secret-fields"></div>
       <div class="deploy-actions">
         <button id="deploy-cancel-btn">Cancel</button>
         <button id="deploy-submit-btn" class="primary">Ship it</button>
       </div>
+      <div id="deploy-history-toggle" style="display:none;font-size:12px;margin-top:10px;text-align:right">
+        <a href="#" id="deploy-history-link" style="color:var(--ac1);cursor:pointer;text-decoration:underline">View version history</a>
+      </div>
+      <div id="deploy-history-panel" style="display:none;margin-top:8px;border:1px solid var(--bd);border-radius:6px;max-height:220px;overflow-y:auto"></div>
       <div id="deploy-progress"></div>
     </div>`;
   // Pre-select the detected / default theme.
@@ -3220,8 +3341,162 @@ window.doDeploy = async function() {
   if (initialCard) initialCard.classList.add('active');
   document.getElementById('deploy-cancel-btn').onclick = () => { modal.style.display = 'none'; };
 
-  document.getElementById('deploy-submit-btn').onclick = async () => {
-    const appSlug = document.getElementById('deploy-app-slug').value.trim();
+  // One-click updates Phase 5 — when the entered app slug matches an already-
+  // deployed app, swap the window's title + button text + subtitle so the
+  // owner knows they're updating, not creating fresh. Falls back to the
+  // Publish UX cleanly if the lookup fails or the slug is unknown.
+  const titleEl = document.getElementById('deploy-modal-title');
+  const subtitleEl = document.getElementById('deploy-modal-subtitle');
+  const slugInput = document.getElementById('deploy-app-slug');
+  const submitBtn = document.getElementById('deploy-submit-btn');
+  let currentInfo = null;
+
+  // One-click updates Phase 6 — version history + rollback. The "View
+  // version history" link only shows when the slug points to a deployed
+  // app. Clicking expands a panel with the last 20 versions; each non-
+  // current version has a Rollback button that promotes it back to live.
+  const historyToggle = document.getElementById('deploy-history-toggle');
+  const historyLink = document.getElementById('deploy-history-link');
+  const historyPanel = document.getElementById('deploy-history-panel');
+
+  const renderHistory = (versions) => {
+    if (!Array.isArray(versions) || versions.length === 0) {
+      historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">No version history yet.</div>';
+      return;
+    }
+    // Normalize across the two response shapes: Cloudflare returns
+    // {id, created_on, ...}; the in-store fallback returns {versionId,
+    // uploadedAt, sourceHash, note}. Both flow into one list.
+    const norm = versions.map(v => ({
+      versionId: v.versionId || v.id || '',
+      uploadedAt: v.uploadedAt || v.created_on || '',
+      note: v.note || '',
+    })).filter(v => v.versionId).slice(0, 20);
+    norm.sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || ''));
+    historyPanel.innerHTML = norm.map((v, i) => {
+      const idShort = v.versionId.slice(0, 10);
+      const when = v.uploadedAt ? _formatTimeAgo(v.uploadedAt) : '';
+      const isCurrent = i === 0;
+      const rightSide = isCurrent
+        ? '<span style="color:var(--ac1);font-weight:600;font-size:11px">Current</span>'
+        : `<button class="deploy-rollback-btn" data-version="${escHtmlLocal(v.versionId)}" style="font-size:11px;padding:3px 10px;cursor:pointer">Rollback</button>`;
+      const noteHtml = v.note ? `<div style="font-size:10px;color:var(--tx2);margin-top:2px;font-style:italic">${escHtmlLocal(v.note)}</div>` : '';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--bd)">
+          <div style="min-width:0;flex:1">
+            <div style="font-family:ui-monospace,monospace;font-size:11px;color:var(--tx1)">${escHtmlLocal(idShort)}</div>
+            <div style="font-size:11px;color:var(--tx2)">${when}</div>
+            ${noteHtml}
+          </div>
+          ${rightSide}
+        </div>`;
+    }).join('');
+
+    // Wire up rollback buttons. Each one POSTs /api/rollback then refreshes
+    // both the deployed-state header and the history panel itself.
+    historyPanel.querySelectorAll('.deploy-rollback-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const versionId = btn.dataset.version;
+        const slug = slugInput.value.trim();
+        btn.textContent = '…';
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/rollback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appName: slug, version: versionId }),
+          });
+          let body = {};
+          try { body = await r.json(); } catch { /* empty body — fine */ }
+          if (r.ok && body.ok) {
+            await refreshFromInfo();
+            await openHistory();
+            return;
+          }
+          if (r.status === 404 || body.code === 'VERSION_GONE') {
+            historyPanel.innerHTML = '<div style="color:#664d03;background:#fff3cd;padding:10px;border-radius:4px;font-size:12px;margin:8px">This version no longer exists on Cloudflare. Refreshing the list…</div>';
+            setTimeout(() => openHistory(), 1500);
+            return;
+          }
+          btn.textContent = 'Rollback';
+          btn.disabled = false;
+          const errMsg = body.error || ('rollback failed (status ' + r.status + ')');
+          alert(errMsg + ' — try again or pick a different version');
+        } catch (e) {
+          btn.textContent = 'Rollback';
+          btn.disabled = false;
+          alert('Network error: ' + (e.message || 'unknown'));
+        }
+      };
+    });
+  };
+
+  const openHistory = async () => {
+    const slug = slugInput.value.trim();
+    if (!slug) return;
+    historyPanel.style.display = '';
+    historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">Loading…</div>';
+    try {
+      const r = await fetch('/api/deploy-history/' + encodeURIComponent(slug));
+      if (!r.ok) {
+        historyPanel.innerHTML = '<div style="color:var(--tx2);font-size:12px;padding:10px">No history available.</div>';
+        return;
+      }
+      const body = await r.json();
+      renderHistory(Array.isArray(body.versions) ? body.versions : []);
+    } catch (e) {
+      historyPanel.innerHTML = `<div style="color:#e74c3c;font-size:12px;padding:10px">Failed to load history: ${escHtmlLocal(e.message || '')}</div>`;
+    }
+  };
+
+  historyLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (historyPanel.style.display === 'none' || !historyPanel.style.display) {
+      openHistory();
+      historyLink.textContent = 'Hide version history';
+    } else {
+      historyPanel.style.display = 'none';
+      historyPanel.innerHTML = '';
+      historyLink.textContent = 'View version history';
+    }
+  });
+
+  const refreshFromInfo = async () => {
+    const slug = slugInput.value.trim();
+    const info = slug ? await _fetchAppInfo(slug) : null;
+    currentInfo = info;
+    if (info && info.deployed) {
+      const host = info.hostname || (slug + '.buildclear.dev');
+      titleEl.textContent = 'Update ' + host;
+      const when = info.lastVersion && info.lastVersion.uploadedAt ? _formatTimeAgo(info.lastVersion.uploadedAt) : '';
+      subtitleEl.textContent = when ? 'Last published ' + when : 'Already published';
+      submitBtn.textContent = 'Update';
+      historyToggle.style.display = '';
+    } else {
+      titleEl.textContent = 'Publish to Clear Cloud';
+      subtitleEl.textContent = '';
+      submitBtn.textContent = 'Ship it';
+      historyToggle.style.display = 'none';
+      historyPanel.style.display = 'none';
+      historyPanel.innerHTML = '';
+      historyLink.textContent = 'View version history';
+    }
+  };
+
+  let __infoDebounce = null;
+  slugInput.addEventListener('input', () => {
+    clearTimeout(__infoDebounce);
+    __infoDebounce = setTimeout(refreshFromInfo, 300);
+  });
+  // Initial fetch with the default slug — usually returns deployed:false
+  // (random slug) but if the user kept the same name across publishes it
+  // surfaces the Update state immediately.
+  refreshFromInfo();
+
+  // Re-callable submit so the "Apply migration + update" button can resubmit
+  // with the same form state plus a confirmMigration flag.
+  const submitDeploy = async (extraOpts = {}) => {
+    const appSlug = slugInput.value.trim();
     const domain = document.getElementById('deploy-domain').value.trim();
     const progress = document.getElementById('deploy-progress');
     progress.textContent = 'packaging…';
@@ -3242,7 +3517,15 @@ window.doDeploy = async function() {
       r = await fetch('/api/deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: sourceWithTheme, appSlug, secrets, domain: domain || undefined }),
+        body: JSON.stringify({
+          source: sourceWithTheme,
+          appSlug,
+          secrets,
+          domain: domain || undefined,
+          // Studio is Clear Cloud only — every Publish ships to Cloudflare.
+          target: 'cloudflare',
+          ...extraOpts,
+        }),
       }).then(x => x.json().then(j => ({ status: x.status, body: j })));
     } catch (e) {
       progress.innerHTML = `<span style="color:#e74c3c">Network error: ${escHtmlLocal(e.message)}</span>`;
@@ -3259,17 +3542,43 @@ window.doDeploy = async function() {
     }
     if (r.status === 402) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'quota exceeded')}</span>`; return; }
     if (r.status === 503) { progress.innerHTML = `<span style="color:#e74c3c">Deploy service down — try again in a minute.</span>`; return; }
+
+    // One-click updates Phase 5 — schema-change confirmation gate. The server
+    // returns 409 MIGRATION_REQUIRED when the new source's database structure
+    // would change. Owner must explicitly accept the brief in-flight failure
+    // window before the migration applies.
+    if (r.status === 409 && r.body.code === 'MIGRATION_REQUIRED') {
+      const diff = Array.isArray(r.body.migrationDiff) ? r.body.migrationDiff : [];
+      const list = diff.map(d => `<li>${escHtmlLocal(d.file || '')}: ${escHtmlLocal(d.kind || '')}</li>`).join('');
+      progress.innerHTML = `
+        <div style="background:#fff3cd;border:1px solid #ffeaa7;color:#664d03;padding:12px;border-radius:6px;margin-top:12px">
+          <strong>Schema change detected.</strong>
+          <p style="margin:6px 0 8px">This update changes the app's database structure. In-flight requests may briefly fail (~2 sec) during the change.</p>
+          <ul style="margin:0 0 10px 20px">${list}</ul>
+          <button id="deploy-confirm-migration" class="primary">Apply migration + update</button>
+        </div>`;
+      document.getElementById('deploy-confirm-migration').onclick = () => submitDeploy({ confirmMigration: true });
+      return;
+    }
+
     if (!r.body.ok) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'deploy failed')}</span>`; return; }
 
     const jobId = r.body.jobId;
     progress.textContent = 'deploying…';
+    const wasUpdate = !!(currentInfo && currentInfo.deployed);
+
     const poll = async () => {
       const s = await fetch(`/api/deploy-status/${encodeURIComponent(jobId)}`).then(x => x.ok ? x.json() : null).catch(() => null);
       if (!s) { setTimeout(poll, 2000); return; }
       progress.textContent = deployStageLabel(s);
       if (s.status === 'ok') {
         const url = s.result?.url || `https://${s.result?.appName || 'app'}.fly.dev`;
-        progress.innerHTML = `<div style="margin-top:12px">Live: <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
+        const versionId = s.result?.versionId;
+        // Phase 5 — different copy when this was an update vs a fresh publish.
+        const headerLine = wasUpdate
+          ? `Updated to version ${versionId ? versionId.slice(0, 10) : '(new)'}.`
+          : 'Live:';
+        progress.innerHTML = `<div style="margin-top:12px">${headerLine} <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
           <button onclick="navigator.clipboard.writeText('${url}')">Copy</button></div>`;
         // BM-3 full: count successful Publishes. After 3 ships, the next page load
         // in builder mode auto-hides the source editor.
@@ -3277,15 +3586,15 @@ window.doDeploy = async function() {
           const cur = parseInt(localStorage.getItem('clear-bm-ships-counter') || '0', 10) || 0;
           localStorage.setItem('clear-bm-ships-counter', String(cur + 1));
         } catch (e) { /* private browsing — counter resets each session, harmless */ }
-        if (domain) {
-          fetch('/api/custom-domain', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appName: s.result?.appName, domain }),
-          }).then(x => x.json()).then(c => {
-            if (c.ok) progress.innerHTML += `<div style="margin-top:8px">DNS records: <pre>${escHtmlLocal(c.stdout || '')}</pre></div>`;
-          });
-        }
+        // Custom domain is attached during the publish itself by Cloudflare
+        // (see deploy-cloudflare.js attachDomain step). The old post-publish
+        // /api/custom-domain call was a Fly-era leftover — Studio is Clear
+        // Cloud only now, so the domain is already wired up by the time the
+        // user sees the live URL. If the orchestrator returned degraded:true,
+        // the URL above shows the default <slug>.buildclear.dev fallback.
+        // Re-fetch app-info so reopening this window after the publish sees
+        // the new deployed state.
+        refreshFromInfo();
         return;
       }
       if (s.status === 'failed') {
@@ -3299,15 +3608,23 @@ window.doDeploy = async function() {
     };
     poll();
   };
+
+  submitBtn.onclick = () => submitDeploy();
 };
 
 // ==========================================================================
 // ERRORS
 // ==========================================================================
-function showErrors(errors, warnings) {
+function showErrors(errors, warnings, compileTrace) {
   const el = document.getElementById('errors');
   if (!errors.length && (!warnings || !warnings.length)) { el.innerHTML = ''; return; }
   let html = '';
+  if (errors.length && compileTrace?.pasteText) {
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+      '<button class="toolbar-btn" onclick="copyCompileTrace()" style="padding:3px 9px;font-size:11px;">Copy compiler error</button>' +
+      '<span style="font-size:11px;color:var(--tx3);">Copies source context, diagnostics, and repair instructions.</span>' +
+      '</div>';
+  }
   errors.forEach(e => {
     html += `<div class="error-line" onclick="jumpToLine(${e.line || 1})">Line ${e.line || '?'}: ${escHtml(e.message)}</div>`;
   });
@@ -3318,6 +3635,17 @@ function showErrors(errors, warnings) {
   });
   el.innerHTML = html;
 }
+
+window.copyCompileTrace = async function() {
+  const text = lastCompiled?.compileTrace?.pasteText;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    appendTerminalText('Copied compiler error.');
+  } catch (err) {
+    appendTerminalText('Could not copy compiler error: ' + (err.message || String(err)));
+  }
+};
 
 // "Fix with Meph" button — hand the failure context to Meph and let him propose an edit.
 // Meph already has read_file/edit_code tools, so we just give him the exact what/where/why.
@@ -3396,6 +3724,11 @@ let chatMessages = [];
 let apiKey = localStorage.getItem('clear_api_key') || '';
 let personality = localStorage.getItem('clear_personality') || '';
 let serverHasKey = false;
+let serverHasOpenRouterKey = false;
+let mephModelChoices = [];
+let selectedMephModel = localStorage.getItem('clear_meph_model') || '';
+let lastSentMephModel = selectedMephModel;
+let mephModelChangedSinceLastSend = false;
 
 let showingKeySetup = false;
 
@@ -3484,7 +3817,10 @@ window.closeMemory = function() {
 window.showKeySetup = function() {
   showingKeySetup = true;
   const el = document.getElementById('chat-messages');
-  const hint = serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Meph.';
+  const choice = selectedMephModelChoice();
+  const hint = choice?.backend === 'openrouter'
+    ? 'Set OPENROUTER_API_KEY on the server to use this Meph model.'
+    : (serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Meph.');
   el.innerHTML = `<div id="api-key-setup">
     <div style="font-size:16px;margin-bottom:8px;">Set up Meph</div>
     <div style="margin-bottom:12px;">${hint}</div>
@@ -3505,7 +3841,12 @@ window.saveKey = function() {
 // Check if server has a key configured; if not, fall back to localStorage flow
 fetch('/api/config').then(r => r.json()).then(cfg => {
   serverHasKey = cfg.hasServerKey;
-  if (serverHasKey || apiKey) {
+  serverHasOpenRouterKey = cfg.hasOpenRouterKey;
+  mephModelChoices = Array.isArray(cfg.mephModels) ? cfg.mephModels : [];
+  if (!selectedMephModel) selectedMephModel = cfg.defaultMephModel || 'anthropic-haiku';
+  lastSentMephModel = selectedMephModel;
+  renderMephModelPicker();
+  if (serverHasKey || serverHasOpenRouterKey || apiKey) {
     restoreChatOrWelcome();
   } else {
     showKeySetup();
@@ -3514,6 +3855,41 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
   if (apiKey) restoreChatOrWelcome();
   else showKeySetup();
 });
+
+function selectedMephModelChoice() {
+  return mephModelChoices.find(choice => choice.id === selectedMephModel) || null;
+}
+
+function selectedMephModelHasKey() {
+  const choice = selectedMephModelChoice();
+  if (choice?.backend === 'openrouter') return serverHasOpenRouterKey;
+  return !!apiKey || serverHasKey;
+}
+
+function renderMephModelPicker() {
+  const picker = document.getElementById('meph-model-picker');
+  if (!picker) return;
+  const choices = mephModelChoices.length ? mephModelChoices : [
+    { id: 'anthropic-haiku', label: 'Claude Haiku', backend: 'anthropic', needs: 'ANTHROPIC_API_KEY' },
+  ];
+  picker.innerHTML = choices.map(choice => {
+    const needsKey = choice.backend === 'openrouter' && !serverHasOpenRouterKey;
+    const suffix = needsKey ? ' (needs key)' : '';
+    return `<option value="${choice.id}">${choice.label}${suffix}</option>`;
+  }).join('');
+  picker.value = selectedMephModel || choices[0].id;
+}
+
+window.updateMephModel = function() {
+  const picker = document.getElementById('meph-model-picker');
+  if (!picker) return;
+  const next = picker.value;
+  if (!next || next === selectedMephModel) return;
+  selectedMephModel = next;
+  localStorage.setItem('clear_meph_model', selectedMephModel);
+  mephModelChangedSinceLastSend = selectedMephModel !== lastSentMephModel;
+  showToast('Meph model changed. Next turn will include full chat history.');
+};
 
 window.updateWebToggle = function() {
   const on = document.getElementById('web-tools-toggle')?.checked;
@@ -4327,7 +4703,7 @@ window.sendChat = async function() {
   if (!msg && !pendingImages.length) return;
   input.value = '';
 
-  if (!apiKey && !serverHasKey) { showKeySetup(); return; }
+  if (!selectedMephModelHasKey()) { showKeySetup(); return; }
 
   // Build user message content (text + images)
   let userContent;
@@ -4385,6 +4761,8 @@ window.sendChat = async function() {
       messages: apiMessages,
       apiKey,
       personality,
+      mephModel: selectedMephModel,
+      modelChanged: mephModelChangedSinceLastSend,
       editorContent: editor.state.doc.toString(),
       errors: lastCompiled?.errors || [],
       testResults: testSnapshot,
@@ -4434,6 +4812,8 @@ window.sendChat = async function() {
       }
     }
     const reader = r.body.getReader();
+    lastSentMephModel = selectedMephModel;
+    mephModelChangedSinceLastSend = false;
     const decoder = new TextDecoder();
     let buf = '';
 
@@ -4940,13 +5320,23 @@ window.toggleSource = function() {
 };
 
 // ==========================================================================
-// EDITOR / PREVIEW DRAG RESIZER
+// EDITOR / PREVIEW DRAG RESIZER (with localStorage persistence)
 // ==========================================================================
 (function() {
   const resizer = document.getElementById('ep-resizer');
   const editorPane = document.getElementById('editor-pane');
   const previewPane = document.getElementById('preview-pane');
   let dragging = false, startX = 0, startEditorW = 0, startPreviewW = 0;
+
+  // Restore saved width on boot (sticky slider — Russell's review 2026-04-28)
+  try {
+    const saved = localStorage.getItem('clear_editor_width_px');
+    if (saved && Number(saved) >= 200) {
+      // Use absolute width so builder-mode (right-side source pane) and
+      // classic-mode (middle source pane) both honor the user's preference.
+      editorPane.style.flex = `0 0 ${Number(saved)}px`;
+    }
+  } catch {}
 
   resizer.addEventListener('mousedown', e => {
     dragging = true;
@@ -4960,13 +5350,20 @@ window.toggleSource = function() {
 
   document.addEventListener('mousemove', e => {
     if (!dragging) return;
+    const isBuilder = document.body.classList.contains('builder-mode');
     const dx = e.clientX - startX;
-    const newEditorW = Math.max(200, startEditorW + dx);
-    const newPreviewW = Math.max(200, startPreviewW - dx);
-    // Use flex-grow ratios so window resize stays proportional
-    const total = newEditorW + newPreviewW;
-    editorPane.style.flex = `${newEditorW / total} 1 0`;
-    previewPane.style.flex = `${newPreviewW / total} 1 0`;
+    if (isBuilder) {
+      // Builder-mode: editor is the RIGHT pane, so dragging left widens it.
+      const newEditorW = Math.max(280, Math.min(window.innerWidth * 0.8, startEditorW - dx));
+      editorPane.style.flex = `0 0 ${newEditorW}px`;
+    } else {
+      // Classic mode: editor is left of preview; dragging right widens editor.
+      const newEditorW = Math.max(200, startEditorW + dx);
+      const newPreviewW = Math.max(200, startPreviewW - dx);
+      const total = newEditorW + newPreviewW;
+      editorPane.style.flex = `${newEditorW / total} 1 0`;
+      previewPane.style.flex = `${newPreviewW / total} 1 0`;
+    }
   });
 
   document.addEventListener('mouseup', () => {
@@ -4975,16 +5372,29 @@ window.toggleSource = function() {
     resizer.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    // Persist width so it sticks across reloads
+    try {
+      const w = Math.round(editorPane.getBoundingClientRect().width);
+      if (w >= 200) localStorage.setItem('clear_editor_width_px', String(w));
+    } catch {}
   });
 })();
 
 // ==========================================================================
-// CHAT PANEL DRAG RESIZER
+// CHAT PANEL DRAG RESIZER (with localStorage persistence)
 // ==========================================================================
 (function() {
   const resizer = document.getElementById('chat-resizer');
   const chatPane = document.getElementById('chat-pane');
   let dragging = false, startX = 0, startW = 0;
+
+  // Restore saved width on boot
+  try {
+    const saved = localStorage.getItem('clear_chat_width_px');
+    if (saved && Number(saved) >= 280) {
+      chatPane.style.flex = `0 0 ${Number(saved)}px`;
+    }
+  } catch {}
 
   resizer.addEventListener('mousedown', e => {
     dragging = true;
@@ -5009,6 +5419,10 @@ window.toggleSource = function() {
     resizer.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    try {
+      const w = Math.round(chatPane.getBoundingClientRect().width);
+      if (w >= 280) localStorage.setItem('clear_chat_width_px', String(w));
+    } catch {}
   });
 })();
 
@@ -5025,12 +5439,15 @@ loadTemplates();
 })();
 
 // ==========================================================================
-// STUDIO MODE (builder / classic) — Builder Mode v0.1
-// ?studio-mode=builder flips Studio to Marcus-first layout (preview hero +
-// chat driver). Opt-in via URL param; preference persists in localStorage.
+// STUDIO MODE (builder / classic) — Builder Mode v0.3 default
+// Builder Mode is the default for new users (Marcus-first layout: preview
+// hero + chat driver). Existing users with a saved preference keep their
+// preference. ?studio-mode=classic opts back into the 3-panel editor view.
+// `cmd+.` reveals the 3-panel layout from inside Builder Mode.
 // Full spec: plans/plan-builder-mode-v0.1-04-21-2026.md
 // ==========================================================================
 const STUDIO_MODES = ['builder', 'classic'];
+const STUDIO_MODE_DEFAULT = 'builder';
 function detectStudioMode() {
   const body = document.body;
 
@@ -5041,11 +5458,13 @@ function detectStudioMode() {
     if (p !== null) {
       const norm = String(p).trim().toLowerCase();
       if (STUDIO_MODES.includes(norm)) urlMode = norm;
-      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to classic`);
+      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to ${STUDIO_MODE_DEFAULT}`);
     }
   } catch (e) { /* URLSearchParams always works in a browser, defensive only */ }
 
-  // 2. Read localStorage (best-effort — private browsing throws)
+  // 2. Read localStorage (best-effort — private browsing throws). Existing
+  // users with a saved preference (either 'builder' or 'classic') keep what
+  // they had. Only fresh users (no saved value) get the new default.
   let storedMode = null;
   try {
     const s = localStorage.getItem('studio-mode-pref');
@@ -5054,8 +5473,8 @@ function detectStudioMode() {
     console.warn('[studio-mode] localStorage unavailable; mode will not persist across sessions');
   }
 
-  // 3. Resolve: URL param wins, else stored, else classic
-  const mode = urlMode || storedMode || 'classic';
+  // 3. Resolve: URL param wins, else stored, else default (builder).
+  const mode = urlMode || storedMode || STUDIO_MODE_DEFAULT;
 
   // 4. Persist URL-param choice (best-effort)
   if (urlMode) {
@@ -5087,6 +5506,12 @@ function detectStudioMode() {
   if (srcBtn) {
     srcBtn.style.display = (mode === 'builder') ? '' : 'none';
     if (mode !== 'builder') body.classList.remove('show-source');
+  }
+  const themePicker = document.getElementById('builder-theme-picker');
+  if (themePicker) {
+    initBuilderThemePicker();
+    themePicker.style.display = (mode === 'builder') ? '' : 'none';
+    syncBuilderThemePicker();
   }
   if (mode === 'builder') {
     let shipCount = 0;

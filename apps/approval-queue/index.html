@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Approval Queue</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+
+
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <link rel="preconnect" href="https://rsms.me/" crossorigin>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v3 — Inter base + slate chrome + tabular nums */
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  /* Slate chrome layered on top of DaisyUI base/primary tokens. Modeled on
+     the 2026 RevOps mock — see landing/marcus-app-target.html. Compiled apps
+     read these for hairlines, status pills, stat cards, sidebar nav. */
+  --clear-bg-app:        oklch(98% 0.005 240);
+  --clear-bg-canvas:     oklch(100% 0 0);
+  --clear-bg-rail:       oklch(99% 0.005 240);
+  --clear-bg-row-hover:  oklch(96% 0.008 240);
+  --clear-bg-active:     oklch(96% 0.025 258);
+  --clear-bg-chip:       oklch(95% 0.01 240);
+  --clear-line:          oklch(91% 0.012 240);
+  --clear-line-strong:   oklch(83% 0.015 240);
+  --clear-ink:           oklch(15% 0.025 255);
+  --clear-ink-soft:      oklch(35% 0.02 255);
+  --clear-ink-muted:     oklch(54% 0.018 255);
+  --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-good:          oklch(50% 0.16 152);
+  --clear-good-soft:     oklch(96% 0.05 152);
+  --clear-warn:          oklch(58% 0.14 65);
+  --clear-warn-soft:     oklch(96% 0.05 80);
+  --clear-bad:           oklch(54% 0.21 25);
+  --clear-bad-soft:      oklch(96% 0.04 25);
+}
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: "cv11","ss01","ss03";
+  -webkit-font-smoothing: antialiased;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+  margin: 0;
+}
+@supports (font-variation-settings: normal) {
+  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+}
+.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+/* Hairline borders — drop-in alternative to combo border+shadow */
+.hairline   { border: 1px solid var(--clear-line); }
+.hairline-b { border-bottom: 1px solid var(--clear-line); }
+.hairline-r { border-right: 1px solid var(--clear-line); }
+.hairline-t { border-top: 1px solid var(--clear-line); }
+/* Status pills — uppercase semibold colored on tinted bg */
+.clear-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+}
+.clear-pill-pending  { background: var(--clear-warn-soft); color: var(--clear-warn); }
+.clear-pill-approved { background: var(--clear-good-soft); color: var(--clear-good); }
+.clear-pill-rejected { background: var(--clear-bad-soft);  color: var(--clear-bad); }
+.clear-pill-neutral  { background: var(--clear-bg-chip);    color: var(--clear-ink-soft); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-nav-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clear-ink-subtle);
+  padding: 0 13px;
+  margin: 18px 0 6px;
+}
+.clear-nav-item {
+  position: relative;
+  min-height: 34px;
+  padding: 7px 10px 7px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--clear-ink-soft);
+  font-weight: 500;
+  transition: background-color 100ms ease, color 100ms ease;
+  cursor: pointer;
+}
+.clear-nav-item:hover {
+  background: var(--clear-bg-row-hover);
+  color: var(--clear-ink);
+}
+.clear-nav-item svg,
+.clear-nav-item i {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.clear-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clear-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--clear-ink-muted);
+  background: var(--clear-bg-chip);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-variant-numeric: tabular-nums;
+}
+.clear-nav-item.is-active,
+.clear-nav-item.active {
+  background: var(--clear-bg-active);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active .clear-nav-count,
+.clear-nav-item.active .clear-nav-count {
+  background: rgba(79,70,229,.10);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active::before,
+.clear-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--clear-accent);
+}
+
+.clear-page-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-page-title {
+  color: var(--clear-ink);
+  line-height: 1.2;
+}
+.clear-page-subtitle {
+  line-height: 1.45;
+}
+.clear-page-actions .btn {
+  min-height: 34px;
+  height: 34px;
+}
+
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: var(--clear-bg-panel);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+}
+.clear-stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.clear-stat-label {
+  color: var(--clear-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.clear-stat-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--clear-ink-muted);
+  flex: 0 0 auto;
+}
+.clear-stat-value {
+  margin-top: 10px;
+  color: var(--clear-ink);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.clear-stat-delta {
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.clear-stat-delta-positive {
+  color: #15803d;
+}
+.clear-stat-delta-negative {
+  color: #b42318;
+}
+.clear-stat-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 10px;
+  overflow: visible;
+}
+.clear-stat-sparkline polyline {
+  fill: none;
+  stroke: var(--clear-accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.clear-detail-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}
+.clear-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+.clear-detail-empty {
+  display: none;
+  padding: 18px;
+  color: var(--clear-ink-muted);
+  font-size: 13px;
+}
+.clear-detail-panel.is-empty .clear-detail-empty {
+  display: block;
+}
+.clear-detail-panel.is-empty .clear-detail-body,
+.clear-detail-panel.is-empty .clear-detail-actions {
+  opacity: .42;
+}
+.clear-detail-title {
+  margin-bottom: 6px;
+}
+.clear-detail-subtitle {
+  margin-bottom: 14px;
+}
+.clear-detail-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+<div id="page_Approval_Queue" data-clear-page-id="Approval_Queue" data-clear-page-route="/" data-clear-page-title="Approval Queue">
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="125">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="127">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="128"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">A</div><span class="text-base font-bold text-base-content tracking-tight">Approvals</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_131_Pending" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="131"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Pending</span><span class="clear-nav-count num" data-clear-tpl="{pending_count}">{pending_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_132_All_requests" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="132"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span><span class="clear-nav-count num" data-clear-tpl="{all_count}">{all_count}</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="134">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="136">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="137">Approval Queue</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="138">Operations / Request approvals</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+    <button class="btn btn-primary btn-sm" id="btn_Refresh" data-clear-uat-id="button_139_Refresh" data-clear-control-kind="button" data-clear-line="139">Refresh</button>
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="143">
+      <div data-clear-routed-content="Approval_Queue" data-clear-routed-route="/">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="145">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Pending Approvals</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{pending_count} requests need a decision">{pending_count} requests need a decision</p>
+      </div>
+      <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_148_Refresh" data-clear-control-kind="button" data-clear-line="148">Refresh</button>
+      </div>
+    </div>
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="152">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="153">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Pending</div>
+          <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{pending_count}">{pending_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Awaiting approver</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,14.0 48.0,4.0 71.0,14.0 94.0,24.0"></polyline></svg>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="158">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Requested Amount</div>
+          <i class="clear-stat-icon" data-lucide="dollar-sign" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{pending_amount}">{pending_amount}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Open request value</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,17.3 48.0,10.7 71.0,24.0 94.0,4.0"></polyline></svg>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="163">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">All Requests</div>
+          <i class="clear-stat-icon" data-lucide="list-checks" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{all_count}">{all_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Across every status</div>
+        <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,17.3 48.0,10.7 71.0,4.0 94.0,4.0"></polyline></svg>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-5" data-clear-line="169">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="170">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="171">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Pending</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Pending_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Pending_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_request" data-clear-line="173">
+      <div class="clear-detail-empty">Select a row to inspect it.</div>
+      <div class="clear-detail-body">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="174">Select a request to inspect it.</span>
+    <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Amount_value"></p>
+    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Amount</p>
+    <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+    <p id="show_3" class="text-sm font-medium text-base-content/90 leading-snug"></p>
+      </div>
+      <div class="clear-detail-actions" data-detail-actions="true">
+    <button class="btn btn-primary" id="btn_Approve" data-clear-uat-id="button_181_Approve" data-clear-control-kind="button" data-action="approve" data-clear-line="181">Approve</button>
+    <button class="btn btn-primary" id="btn_Reject" data-clear-uat-id="button_186_Reject" data-clear-control-kind="button" data-action="reject" data-clear-line="186">Reject</button>
+      </div>
+    </aside>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="192">
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="193">Submit Request</p>
+    <fieldset class="fieldset mb-4" data-clear-line="194">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Title</legend>
+      <input id="input_title" class="input input-bordered w-full" type="text" placeholder="Title">
+    </fieldset>
+    <fieldset class="fieldset mb-4" data-clear-line="195">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Description</legend>
+      <input id="input_description" class="input input-bordered w-full" type="text" placeholder="Description">
+    </fieldset>
+    <fieldset class="fieldset mb-4" data-clear-line="196">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Amount ($)</legend>
+      <input id="input_amount" class="input input-bordered w-full" type="number" step="any" placeholder="Amount ($)">
+    </fieldset>
+    <fieldset class="fieldset mb-4" data-clear-line="197">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Requester</legend>
+      <input id="input_requester" class="input input-bordered w-full" type="text" placeholder="Requester">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Submit" data-clear-uat-id="button_198_Submit" data-clear-control-kind="button" data-clear-line="198">Submit</button>
+    </div>
+      </div>
+    </div>
+    </main>
+    </div>
+</div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Requests: title*, description, amount, status, notes, requester, created_at_date (line 25)
+
+ ENDPOINTS:
+   GET /api/requests (line 52)
+   GET /api/requests/pending (line 55)
+   POST /api/requests (line 58)
+   PUT /api/requests/:id [auth] (line 65)
+   POST /api/seed (line 72)
+
+ PAGES:
+   'Approval Queue' at / (line 112)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _clear_sum_field(arr, f) { if (!Array.isArray(arr)) return 0; return arr.reduce(function(a, item) { return a + Number(item[f] || 0); }, 0); }
+function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
+function _toast(msg, type) {
+  const variant = String(type || 'success').replace(/^alert-/, '');
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = '_toast_container';
+    c.className = 'toast toast-end toast-bottom';
+    c.setAttribute('aria-live', 'polite');
+    c.style.cssText = 'z-index:9999;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const variants = { error: 'alert-error', success: 'alert-success', warning: 'alert-warning', info: 'alert-info' };
+  const cls = variants[variant] || variants.success;
+  const icon = icons[variant] || icons.info;
+  const el = document.createElement('div');
+  el.setAttribute('role', 'alert');
+  el.setAttribute('data-clear-toast', variant);
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:min(400px, calc(100vw - 2rem));border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  const iconSlot = document.createElement('span');
+  iconSlot.innerHTML = icon;
+  el.appendChild(iconSlot.firstElementChild || iconSlot);
+  const message = document.createElement('span');
+  message.style.flex = '1';
+  message.textContent = String(msg);
+  el.appendChild(message);
+  const timer = document.createElement('div');
+  timer.style.cssText = 'position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%';
+  el.appendChild(timer);
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function _clear_render_table(tableEl, data, renderHead, renderRow) {
+  if (!tableEl) return;
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
+  var thead = tableEl.querySelector('thead tr');
+  var tbody = tableEl.querySelector('tbody');
+  if (rows.length === 0) {
+    if (thead) thead.innerHTML = '';
+    if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
+    return;
+  }
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}
+function _clear_table_rows_for_view(rows, sortCol, sortDir, filterText) {
+  var out = Array.isArray(rows) ? rows.slice() : [];
+  var query = String(filterText || '').trim().toLowerCase();
+  if (query) {
+    out = out.filter(function(row) {
+      return Object.keys(row || {}).some(function(key) {
+        var value = row[key];
+        if (value == null) return false;
+        var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        return text.toLowerCase().indexOf(query) !== -1;
+      });
+    });
+  }
+  if (sortCol) {
+    var dir = sortDir === 'desc' ? -1 : 1;
+    function normalized(value) {
+      if (value == null || value === '') return { empty: true, value: '' };
+      var raw = String(value).trim();
+      var numeric = raw.replace(/[$,%]/g, '').replace(/,/g, '');
+      if (numeric !== '' && /^-?\d+(\.\d+)?$/.test(numeric)) {
+        return { empty: false, kind: 'number', value: Number(numeric) };
+      }
+      return { empty: false, kind: 'text', value: raw.toLowerCase() };
+    }
+    out.sort(function(a, b) {
+      var av = normalized(a && a[sortCol]);
+      var bv = normalized(b && b[sortCol]);
+      if (av.empty && bv.empty) return 0;
+      if (av.empty) return 1;
+      if (bv.empty) return -1;
+      if (av.kind === 'number' && bv.kind === 'number') return (av.value - bv.value) * dir;
+      return String(av.value).localeCompare(String(bv.value), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }
+  return out;
+}
+function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
+  var VIRT_THRESHOLD = 100;
+  var ROW_HEIGHT = 40;
+  var BUFFER = 5;
+  var scroller = tableEl.parentElement;
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
+  scroller.style.maxHeight = '560px';
+  scroller.style.overflowY = 'auto';
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
+    var top = scroller.scrollTop;
+    var h = scroller.clientHeight || 560;
+    var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var topPad = first * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
+    var html = '';
+    if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
+    if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
+    tbody.innerHTML = html;
+  };
+  if (!scroller._clear_virt_bound) {
+    scroller._clear_virt_bound = true;
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
+  }
+  tableEl._clear_paint_table();
+}
+function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
+}
+function _clear_cell(key, val, selectable) {
+  var k = String(key).toLowerCase();
+  var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
+  if (k === 'status' || k === 'state' || k === 'stage') {
+    var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+  }
+  if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\$/.test(v)) {
+    var formatted = v;
+    if (typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(v)) {
+      var n = Number(val);
+      formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+    }
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
+  }
+  if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
+    var parts = v.trim().split(/[\s@.]+/).filter(Boolean);
+    var initials = parts.length >= 2
+      ? (parts[0][0] || '') + (parts[1][0] || '')
+      : v.slice(0, 2);
+    initials = initials.toUpperCase();
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+  }
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
+}
+function _clear_table_init(tableEl, selectedVar) {
+  if (!tableEl) return;
+  if (selectedVar) tableEl._clear_selected_var = selectedVar;
+  if (tableEl._clear_init) return;
+  tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
+  tableEl.addEventListener('click', function(e) {
+    var th = e.target.closest('th[data-sortable]');
+    if (th) {
+      var col = th.getAttribute('data-sortable');
+      var prev = tableEl.getAttribute('data-sort-col');
+      var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
+      tableEl.setAttribute('data-sort-col', col);
+      tableEl.setAttribute('data-sort-dir', dir);
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
+      th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
+      return;
+    }
+    var tr = e.target.closest('tbody tr');
+    if (tr && !e.target.closest('button') && !e.target.closest('a')) {
+      tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
+      tr.classList.toggle('is-selected');
+      var rowIndex = Number(tr.getAttribute('data-row-index'));
+      var row = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows[rowIndex] : null;
+      var selectedName = tableEl._clear_selected_var;
+      if (selectedName && typeof _state === 'object') {
+        _state[selectedName] = tr.classList.contains('is-selected') ? row : null;
+        if (typeof _recompute === 'function') _recompute();
+      }
+    }
+  });
+}
+document.title = "Approval Queue";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  title: "",
+  description: "",
+  amount: 0,
+  requester: "",
+  pending: null,
+  all_requests: null,
+  selected_request: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:21
+  // Database: local memory (JSON file backup)
+  // clear:16
+  // Auto-generated audit table for queue 'request'
+  const RequestDecisionsSchema = {
+    request_id: { type: "text", required: true },
+    decision: { type: "text", required: true },
+    decided_by: { type: "text" },
+    decision_note: { type: "text" },
+    next_status: { type: "text" },
+    decided_at: { type: "timestamp", auto: true }
+  };
+
+  // clear:121
+  let pending_count = _clear_len(_state.pending);
+  // clear:122
+  let all_count = _clear_len(_state.all_requests);
+  // clear:123
+  let pending_amount = _clear_sum_field(_state.pending, "amount");
+  // clear:175
+  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_request?.title; }
+  // clear:176
+  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_request?.description; }
+  // clear:178
+  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_request?.requester; }
+  // clear:179
+  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_request?.status; }
+  _clear_render_table(
+    document.getElementById('output_Pending_table'),
+    _state.pending,
+    function(d) { var _keys = ["title","requester","amount","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["title","requester","amount","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Pending_table'), 'selected_request');
+  document.getElementById('output_Amount_value').textContent = ((_state.selected_request?.amount) == null ? '' : Number(_state.selected_request?.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' }));
+  document.getElementById('input_title').value = _state.title;
+  document.getElementById('input_description').value = _state.description;
+  document.getElementById('input_amount').value = _state.amount;
+  document.getElementById('input_requester').value = _state.requester;
+  { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="selected_request"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.selected_request); }
+}
+
+// --- Input listeners ---
+document.getElementById('input_title').addEventListener('input', function(e) {
+  _state.title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_description').addEventListener('input', function(e) {
+  _state.description = e.target.value;
+  _recompute();
+});
+document.getElementById('input_amount').addEventListener('input', function(e) {
+  _state.amount = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_requester').addEventListener('input', function(e) {
+  _state.requester = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Refresh').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Refresh');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:140]', e.message); return _state.pending; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:141]', e.message); return _state.all_requests; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Refresh').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Refresh');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:149]', e.message); return _state.pending; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:150]', e.message); return _state.all_requests; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Approve').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Approve');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_request;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["status"];
+      if (_current !== "pending") throw new Error('Expected status to be pending before changing it to approved');
+      _record["status"] = "approved";
+    }
+    { const _record = _state.selected_request;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/requests/" + _id + "/approve", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/requests/:id/approve]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:184]', e.message); return _state.pending; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:185]', e.message); return _state.all_requests; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Reject').addEventListener('click', async function() {
+  const _btn = document.getElementById('btn_Reject');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _record = _state.selected_request;
+      if (!_record) throw new Error('Select a record first');
+      const _current = _record["status"];
+      if (_current !== "pending") throw new Error('Expected status to be pending before changing it to rejected');
+      _record["status"] = "rejected";
+    }
+    { const _record = _state.selected_request;
+      const _id = _record && _record.id;
+      if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }
+      const _r = await fetch("/api/requests/" + _id + "/reject", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/requests/:id/reject]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
+    }
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:189]', e.message); return _state.pending; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:190]', e.message); return _state.all_requests; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Submit').addEventListener('click', async function() {
+    if (_state.title === '' || _state.title == null) { _toast('title is required', 'error'); return; }
+    if (_state.description === '' || _state.description == null) { _toast('description is required', 'error'); return; }
+    if (_state.amount === '' || _state.amount == null) { _toast('amount is required', 'error'); return; }
+    if (_state.requester === '' || _state.requester == null) { _toast('requester is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Submit');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/requests", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title, description: _state.description, amount: _state.amount, requester: _state.requester }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/requests] [clear:199]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:200]', e.message); return _state.pending; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:201]', e.message); return _state.all_requests; });
+    _state.title = "";
+    _state.description = "";
+    _state.amount = 0;
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- On Page Load ---
+_recompute(); // initial render with default state
+(async () => {
+  try {
+    { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:117]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/requests/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/pending] [clear:118]', e.message); return _state.pending; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:119]', e.message); return _state.all_requests; });
+  _recompute();
+  } catch(e) { console.error("Page load error:", e); }
+})();
+
+if (window.lucide && lucide.createIcons) lucide.createIcons();
+
+
+  </script>
+  <script>
+  (function _initClearNav() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\/$/, '');
+      return raw || '/';
+    }
+    function currentPath() {
+      return normalize(location.pathname || '/');
+    }
+    function syncActiveNav() {
+      var current = currentPath();
+      document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+        var target = normalize(el.getAttribute('data-nav-path') || el.getAttribute('href') || '');
+        var active = target === current;
+        el.classList.toggle('is-active', active);
+        el.classList.toggle('active', active);
+      });
+    }
+    document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        setTimeout(syncActiveNav, 0);
+      });
+    });
+    window.addEventListener('popstate', syncActiveNav);
+    window.addEventListener('hashchange', syncActiveNav);
+    syncActiveNav();
+  })();
+  </script>
+
+  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
+  <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
+  <script src="/__meph__/widget.js" defer onerror="this.remove()"></script>
+  <!-- ============================================================== -->
+  <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
+  <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
+  <!-- ============================================================== -->
+  <script>
+  (function() {
+    if (window === window.parent) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
+    var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    function __selectorFor(el) {
+      if (!el || el === document) return null;
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/s+/).join('.') : '';
+      var txt = (el.textContent || '').trim().slice(0, 30);
+      if (tag === 'button' && txt) return tag + ':has-text("' + txt + '")';
+      return tag + cls;
+    }
+    function __post(msg) {
+      try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
+    }
+    // Capture user actions and forward to Studio
+    document.addEventListener('click', function(e) {
+      __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
+    }, true);
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') {
+        __post({ type: 'user-action', action: 'input', selector: __selectorFor(t), value: String(t.value || '').slice(0, 200), ts: Date.now() });
+      }
+    }, true);
+    document.addEventListener('submit', function(e) {
+      __post({ type: 'user-action', action: 'submit', selector: __selectorFor(e.target), ts: Date.now() });
+    }, true);
+    // Listen for commands from Meph
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.target !== 'clear-bridge') return;
+      var reply = { source: 'clear-bridge', replyTo: msg.id };
+      try {
+        if (msg.cmd === 'click') {
+          var el = document.querySelector(msg.selector);
+          if (!el) { reply.error = 'Element not found: ' + msg.selector; }
+          else { el.click(); reply.ok = true; reply.html = document.body.innerHTML.slice(0, 4000); }
+        } else if (msg.cmd === 'fill') {
+          var input = document.querySelector(msg.selector);
+          if (!input) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter) nativeSetter.set.call(input, msg.value);
+            else input.value = msg.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            reply.ok = true; reply.value = input.value;
+          }
+        } else if (msg.cmd === 'inspect') {
+          var target = document.querySelector(msg.selector);
+          if (!target) { reply.error = 'Element not found: ' + msg.selector; }
+          else {
+            var cs = window.getComputedStyle(target);
+            var rect = target.getBoundingClientRect();
+            reply.ok = true;
+            reply.tag = target.tagName.toLowerCase();
+            reply.text = (target.textContent || '').slice(0, 200);
+            reply.styles = { color: cs.color, backgroundColor: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, padding: cs.padding, border: cs.border };
+            reply.box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        } else if (msg.cmd === 'read-dom') {
+          reply.ok = true;
+          reply.html = document.body.innerHTML.slice(0, 8000);
+          reply.state = window._state ? JSON.parse(JSON.stringify(window._state)) : null;
+          reply.url = location.href;
+        } else if (msg.cmd === 'read-storage') {
+          var ls = {}, ss = {};
+          for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+          for (var j = 0; j < sessionStorage.length; j++) { var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2); }
+          reply.ok = true; reply.localStorage = ls; reply.sessionStorage = ss;
+        }
+      } catch (err) {
+        reply.error = err.message;
+      }
+      __post(reply);
+    });
+    __post({ type: 'bridge-ready', url: location.href });
+  })();
+  </script>
+</body>
+</html>

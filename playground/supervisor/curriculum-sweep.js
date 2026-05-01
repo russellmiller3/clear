@@ -13,14 +13,15 @@
 //   node playground/supervisor/curriculum-sweep.js --dry-run        (no API calls — prints plan)
 //   node playground/supervisor/curriculum-sweep.js --timeout=300    (seconds per task)
 //   node playground/supervisor/curriculum-sweep.js --strict         (require test_pass=1, reject "said TC" alone)
+//   node playground/supervisor/curriculum-sweep.js --per-level-stats
 //
-// Requires ANTHROPIC_API_KEY in env (unless --dry-run).
-// Rough cost: $0.01–0.05 per task, $0.20–1.00 per full sweep.
+// Default local-AI mode uses cc-agent with no direct Anthropic API spend.
+// Pass --real to use Anthropic API; estimate cost before real sweeps.
 
 import { SessionRegistry } from './registry.js';
 import { WorkerSpawner } from './spawner.js';
 import { FactorDB } from './factor-db.js';
-import { tasks as allTasks } from '../../curriculum/index.js';
+import { tasks as allTasks, isHeldOut } from '../../curriculum/index.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync, unlinkSync, realpathSync, existsSync } from 'fs';
@@ -215,6 +216,16 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
       // is a pass even if the stream got yanked mid-sentence.
       return { stuck: false, ...gradeAbortedRun(factorDB, start) };
     }
+    if (isWorkerDeathError(err)) {
+      return {
+        ok: false,
+        stuck: false,
+        timedOut: false,
+        workerDied: true,
+        status: 'worker-died',
+        error: workerDeathReason(err),
+      };
+    }
     return { ok: false, stuck: false, timedOut: false, error: err.message };
   }
 }
@@ -279,6 +290,110 @@ export function computeTaskOutcome({ dbPassed, saidTaskComplete, strict = false 
   return { ok: false };
 }
 
+function collectErrorStrings(err) {
+  const parts = [];
+  let current = err;
+  let depth = 0;
+  while (current && depth < 4) {
+    if (typeof current === 'string') {
+      parts.push(current);
+      break;
+    }
+    if (current.code) parts.push(String(current.code));
+    if (current.name) parts.push(String(current.name));
+    if (current.message) parts.push(String(current.message));
+    current = current.cause;
+    depth += 1;
+  }
+  if (parts.length === 0 && err != null) parts.push(String(err));
+  return parts;
+}
+
+export function isWorkerDeathError(err) {
+  const text = collectErrorStrings(err).join(' ');
+  return /\b(ECONNRESET|ECONNREFUSED|EPIPE|UND_ERR_SOCKET|ERR_STREAM_PREMATURE_CLOSE)\b/i.test(text)
+    || /socket hang up/i.test(text)
+    || /other side closed/i.test(text);
+}
+
+function workerDeathReason(err) {
+  const parts = collectErrorStrings(err);
+  const reset = parts.find(p => /ECONNRESET|ECONNREFUSED|EPIPE|UND_ERR_SOCKET|ERR_STREAM_PREMATURE_CLOSE|socket hang up/i.test(p));
+  return reset || parts.find(Boolean) || 'worker process died';
+}
+
+function workerDiedResult(task, reason, { skipped = false, elapsedMs = 0 } = {}) {
+  return {
+    task: task.id,
+    level: task.level,
+    ok: false,
+    stuck: false,
+    timedOut: false,
+    workerDied: true,
+    skipped,
+    status: 'worker-died',
+    error: reason,
+    elapsedMs,
+  };
+}
+
+export function buildPerLevelStats(results = []) {
+  const byLevel = new Map();
+  for (const result of results) {
+    const level = Number(result.level);
+    if (!byLevel.has(level)) {
+      byLevel.set(level, {
+        level,
+        total: 0,
+        completed: 0,
+        stuck: 0,
+        timedOut: 0,
+        workerDied: 0,
+        failed: 0,
+        skipped: 0,
+        passRate: 0,
+      });
+    }
+    const row = byLevel.get(level);
+    row.total += 1;
+    if (result.ok) row.completed += 1;
+    else if (result.stuck) row.stuck += 1;
+    else if (result.timedOut) row.timedOut += 1;
+    else if (result.workerDied) row.workerDied += 1;
+    else row.failed += 1;
+    if (result.skipped) row.skipped += 1;
+  }
+
+  return Array.from(byLevel.values())
+    .sort((a, b) => a.level - b.level)
+    .map(row => ({
+      ...row,
+      passRate: row.total > 0 ? row.completed / row.total : 0,
+    }));
+}
+
+export function formatPerLevelStats(stats = []) {
+  const lines = [
+    'level  pass   pass%  timeout  stuck  worker-died  failed  skipped',
+    '-----  -----  -----  -------  -----  -----------  ------  -------',
+  ];
+  for (const row of stats) {
+    const pass = `${row.completed}/${row.total}`;
+    const pct = `${Math.round(row.passRate * 100)}%`;
+    lines.push([
+      `L${row.level}`.padEnd(5),
+      pass.padStart(5),
+      pct.padStart(5),
+      String(row.timedOut).padStart(7),
+      String(row.stuck).padStart(5),
+      String(row.workerDied).padStart(11),
+      String(row.failed).padStart(6),
+      String(row.skipped).padStart(7),
+    ].join('  '));
+  }
+  return lines.join('\n');
+}
+
 // Pre-flight: send a 1-token probe to Anthropic's API. If it fails with 400
 // (usage limit / invalid request) or 401 (bad key), bail before spending an
 // hour spawning workers that will all fail instantly. Returns null on OK,
@@ -308,15 +423,30 @@ async function preflightApiCheck(apiKey) {
   }
 }
 
-async function processBucket(port, bucketTasks, timeoutMs, onTaskDone, factorDB = null, options = {}) {
+export async function processBucket(port, bucketTasks, timeoutMs, onTaskDone, factorDB = null, options = {}) {
   const results = [];
-  for (const task of bucketTasks) {
+  const { driveTask = driveTaskOnWorker, ...driveOptions } = options;
+  for (let i = 0; i < bucketTasks.length; i++) {
+    const task = bucketTasks[i];
     const prompt = buildPrompt(task);
     const t0 = Date.now();
-    const result = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps, factorDB, t0, options);
+    const result = await driveTask(port, prompt, timeoutMs, task.steps, factorDB, t0, driveOptions);
     const elapsed = Date.now() - t0;
-    results.push({ task: task.id, level: task.level, ...result, elapsedMs: elapsed });
-    if (onTaskDone) onTaskDone(task, result, elapsed);
+    const recorded = { task: task.id, level: task.level, ...result, elapsedMs: elapsed };
+    if (recorded.workerDied && !recorded.status) recorded.status = 'worker-died';
+    if (recorded.workerDied && recorded.skipped === undefined) recorded.skipped = false;
+    results.push(recorded);
+    if (onTaskDone) onTaskDone(task, recorded, elapsed);
+
+    if (recorded.workerDied) {
+      const reason = recorded.error || recorded.reason || 'worker process died';
+      for (const skippedTask of bucketTasks.slice(i + 1)) {
+        const skipped = workerDiedResult(skippedTask, reason, { skipped: true });
+        results.push(skipped);
+        if (onTaskDone) onTaskDone(skippedTask, skipped, 0);
+      }
+      break;
+    }
   }
   return results;
 }
@@ -327,10 +457,22 @@ export async function runSweep({
   timeoutPerTaskMs = 180_000,
   dryRun = false,
   strict = false,
+  real = false,
+  excludeHeldOut = false,
+  perLevelStats = false,
 } = {}) {
-  const filtered = taskFilter
+  // Held-out tasks (Phase 5 of plans/plan-winner-harvest-04-26-2026.md) are
+  // STILL graded by sweeps — that's the whole point of the held-out split,
+  // it gives us an uncontaminated measurement signal. They are SKIPPED only
+  // by the seeding step (cold-start.js Pass 2) and any future promotion
+  // pipeline (Phase 4). Pass `excludeHeldOut: true` if you specifically
+  // want a training-only sweep (rare; mostly useful for debugging seeding).
+  let filtered = taskFilter
     ? allTasks.filter(t => taskFilter.includes(t.id))
     : allTasks;
+  if (excludeHeldOut) {
+    filtered = filtered.filter(t => !isHeldOut(t));
+  }
 
   if (filtered.length === 0) {
     console.log('No tasks match the filter.');
@@ -339,22 +481,27 @@ export async function runSweep({
 
   const buckets = partitionTasks(filtered, workers);
 
+  const heldOutCount = filtered.filter(isHeldOut).length;
   console.log(`\n=== Curriculum Sweep ===`);
-  console.log(`  Tasks: ${filtered.length}`);
+  console.log(`  Tasks: ${filtered.length}${heldOutCount ? ` (${heldOutCount} held-out — graded but not seeded)` : ''}`);
   console.log(`  Workers: ${workers}`);
   console.log(`  Timeout per task: ${timeoutPerTaskMs / 1000}s`);
   console.log(`  Dry run: ${dryRun}`);
   console.log();
   buckets.forEach((bucket, i) => {
-    console.log(`  worker-${i + 1} (port ${WORKER_BASE_PORT + i}): ${bucket.map(t => t.id).join(', ') || '—'}`);
+    const labelled = bucket.map(t => isHeldOut(t) ? `${t.id}*` : t.id);
+    console.log(`  worker-${i + 1} (port ${WORKER_BASE_PORT + i}): ${labelled.join(', ') || '—'}`);
   });
+  if (heldOutCount > 0) {
+    console.log(`  (* = held-out; never feeds the hint retriever or canonical-examples library)`);
+  }
 
   if (dryRun) {
     console.log('\n[DRY RUN] Would process above. Exiting.');
     return { tasksRun: 0, rowsAdded: 0, dryRun: true };
   }
 
-  const pre = validateSweepPreconditions(process.env, { real: !!opts.real });
+  const pre = validateSweepPreconditions(process.env, { real: !!real });
   if (!pre.ok) {
     throw new Error(pre.reason);
   }
@@ -393,6 +540,16 @@ export async function runSweep({
   const registry = new SessionRegistry(SWEEP_REGISTRY_PATH);
   const spawner = new WorkerSpawner(registry);
 
+  // Belt-and-suspenders: even though we just unlinked the registry file,
+  // a sibling sweep using a non-default CLEAR_SWEEP_REGISTRY path could
+  // share this DB. Drop any leftover idle/done rows + anything older than
+  // 1h before we INSERT new worker rows — otherwise abnormal exits leave
+  // stale rows that trip `UNIQUE constraint failed: sessions.id`.
+  const staleRemoved = registry.cleanupStale();
+  if (staleRemoved > 0) {
+    console.log(`Cleared ${staleRemoved} stale session row(s) from previous run.`);
+  }
+
   try {
     console.log(`Spawning ${workers} workers...`);
     await spawner.spawnAll(workers, WORKER_BASE_PORT);
@@ -416,7 +573,8 @@ export async function runSweep({
         const status = result.ok ? '✅'
           : result.stuck ? '🔶 STUCK'
             : result.timedOut ? '⏱️  TIMEOUT'
-              : '❌';
+              : result.workerDied ? (result.skipped ? 'WORKER-DIED SKIP' : 'WORKER-DIED')
+                : '❌';
         // Show WHY the ✅ — explicit "TASK COMPLETE" or DB-inferred test pass
         let whyOk = '';
         if (result.ok) {
@@ -439,8 +597,25 @@ export async function runSweep({
     console.log(`  Completed: ${flatResults.filter(r => r.ok).length}`);
     console.log(`  Stuck: ${flatResults.filter(r => r.stuck).length}`);
     console.log(`  Timed out: ${flatResults.filter(r => r.timedOut).length}`);
+    const workerDied = flatResults.filter(r => r.workerDied);
+    if (workerDied.length > 0) {
+      const skipped = workerDied.filter(r => r.skipped).length;
+      console.log(`  Worker died/skipped: ${workerDied.length} (${skipped} skipped after death)`);
+    }
+    const failed = flatResults.filter(r => !r.ok && !r.stuck && !r.timedOut && !r.workerDied);
+    console.log(`  Failed: ${failed.length}`);
+    if (failed.length > 0) {
+      const errSample = failed.filter(r => r.error).slice(0, 3).map(r => `${r.task}: ${r.error}`);
+      if (errSample.length > 0) console.log(`    sample errors: ${errSample.join(' | ')}`);
+    }
     console.log(`  Factor DB: ${startStats.total} → ${endStats.total} rows (+${endStats.total - startStats.total})`);
     console.log(`  Passing rows: ${startStats.passing} → ${endStats.passing} (+${endStats.passing - startStats.passing})`);
+
+    const levelStats = buildPerLevelStats(flatResults);
+    if (perLevelStats && levelStats.length > 0) {
+      console.log(`\n=== Per-Level Stats ===`);
+      console.log(formatPerLevelStats(levelStats));
+    }
 
     // Per-step rollup — only print when step rows exist. Tasks without steps[]
     // fall into step_index = NULL and get collapsed into a single "unlabeled" line.
@@ -467,6 +642,7 @@ export async function runSweep({
       rowsAdded: endStats.total - startStats.total,
       passingAdded: endStats.passing - startStats.passing,
       results: flatResults,
+      perLevelStats: levelStats,
       elapsedMs: elapsedTotal,
     };
   } finally {
@@ -499,6 +675,11 @@ if (_thisFile === _entryFile) {
   // rest of the pipeline sees the same backend it would on an explicit
   // export.
   const real = argv.includes('--real');
+  // --exclude-held-out: skip the 5 held-out test-set tasks for this sweep.
+  // Default: held-out tasks ARE included (they get GRADED — that's their
+  // purpose). Pass this flag if you specifically want a training-only sweep.
+  const excludeHeldOut = argv.includes('--exclude-held-out');
+  const perLevelStats = argv.includes('--per-level-stats');
   if (!real && !process.env.MEPH_BRAIN) {
     process.env.MEPH_BRAIN = 'cc-agent';
     console.log('GM-6: defaulted MEPH_BRAIN=cc-agent (no API spend). Pass --real to opt into the production Anthropic API.');
@@ -511,6 +692,8 @@ if (_thisFile === _entryFile) {
     dryRun,
     strict,
     real,
+    excludeHeldOut,
+    perLevelStats,
   };
 
   runSweep(opts)

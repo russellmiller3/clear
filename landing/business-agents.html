@@ -638,6 +638,16 @@ $ clear test agent.clear
         <p class="text-zinc-500 text-sm">One command. Postgres auto-provisioned. Live URL in 60 seconds.</p>
       </div>
     </div>
+    <div class="mt-12 grid md:grid-cols-2 gap-6">
+      <div class="card p-6">
+        <div class="font-semibold mb-2 text-amber-400">Updates in ~2 seconds</div>
+        <p class="text-zinc-500 text-sm">After the first deploy, every Publish click is an incremental update. New bundle live in about two seconds &mdash; no fresh database, no re-attached domain, no re-set secrets. Schema changes pause and ask for an explicit confirm so in-flight requests don&rsquo;t break.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2 text-amber-400">Rollback is one click</div>
+        <p class="text-zinc-500 text-sm">The Publish window keeps the last 20 versions of every app. Click Rollback on any of them and the live URL flips back in a second. Your data stays put &mdash; rollback only swaps the code.</p>
+      </div>
+    </div>
   </div>
 </section>
 

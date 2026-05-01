@@ -238,6 +238,20 @@ describe('Phase 2 cycle 2.7 — createD1Shim(env.DB) matches runtime/db.js inter
 		expect(typeof d1.load).toBe('function');
 	});
 
+	it('createTable carries old data into renamed fields and hides the old field', () => {
+		const env = { DB: d1Mock() };
+		const d1 = createD1Shim(env.DB);
+		d1.createTable('deals', { notes: { type: 'text' } });
+		d1.insert('deals', { notes: 'legacy discount reason' });
+		d1.createTable('deals', {
+			notes: { type: 'text', hidden: true, renamedTo: 'reason' },
+			reason: { type: 'text' },
+		});
+		const rows = d1.findAll('deals');
+		expect(rows[0].reason).toBe('legacy discount reason');
+		expect(rows[0].notes).toBeUndefined();
+	});
+
 	it('reset() clears every registered table', () => {
 		const env = { DB: d1Mock() };
 		const d1 = createD1Shim(env.DB);

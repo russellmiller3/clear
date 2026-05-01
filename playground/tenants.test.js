@@ -112,6 +112,66 @@ await runAsync(async () => {
   assert(rec.versions[2].versionId === 'v-oldest', 'versions[2] is oldest');
 });
 
+// ── CYCLE 10 — listAppsByTenant returns the tenant's deployed apps ─────────
+console.log('\n🧩 Cycle 10 — listAppsByTenant');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  // Empty tenant returns []
+  const empty = await s.listAppsByTenant('clear-empty');
+  assert(Array.isArray(empty) && empty.length === 0, 'empty tenant returns []');
+  // Missing/unknown slug returns []
+  const missing = await s.listAppsByTenant(null);
+  assert(Array.isArray(missing) && missing.length === 0, 'null slug returns []');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  // Two apps for one tenant
+  await s.markAppDeployed({
+    tenantSlug: 'clear-marcus', appSlug: 'deal-desk',
+    scriptName: 'clear-marcus-deal-desk', d1_database_id: 'd1-a',
+    hostname: 'deals.buildclear.dev',
+    versionId: 'v-001', sourceHash: 'sh1',
+  });
+  // Tiny pause so deployedAt timestamps differ
+  await new Promise(r => setTimeout(r, 5));
+  await s.markAppDeployed({
+    tenantSlug: 'clear-marcus', appSlug: 'lead-router',
+    scriptName: 'clear-marcus-lead-router', d1_database_id: 'd1-b',
+    hostname: 'leads.buildclear.dev',
+    versionId: 'v-002', sourceHash: 'sh2',
+  });
+  // One app for a different tenant
+  await s.markAppDeployed({
+    tenantSlug: 'clear-other', appSlug: 'todo',
+    scriptName: 'clear-other-todo', d1_database_id: 'd1-c',
+    hostname: 'todo.buildclear.dev',
+  });
+  const list = await s.listAppsByTenant('clear-marcus');
+  assert(list.length === 2, `marcus has 2 apps (got ${list.length})`);
+  assert(list.every(a => a.appSlug && a.scriptName && a.hostname && a.deployedAt),
+    'each row has appSlug, scriptName, hostname, deployedAt');
+  assert(list.some(a => a.appSlug === 'deal-desk'), 'list includes deal-desk');
+  assert(list.some(a => a.appSlug === 'lead-router'), 'list includes lead-router');
+  assert(!list.some(a => a.appSlug === 'todo'), 'other tenant\'s app is not in marcus list');
+  // Newest first by deployedAt
+  const ts0 = Date.parse(list[0].deployedAt);
+  const ts1 = Date.parse(list[1].deployedAt);
+  assert(ts0 >= ts1, 'newest deployedAt comes first');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 't', appSlug: 'a',
+    scriptName: 't-a', d1_database_id: 'd', hostname: 'a.x',
+    versionId: 'v-001', sourceHash: 'sh1',
+  });
+  const list = await s.listAppsByTenant('t');
+  assert(list[0].latestVersionId === 'v-001',
+    `latestVersionId surfaced in row (got ${list[0].latestVersionId})`);
+});
+
 // ── CYCLE 1.3 — versions[] caps at 20 ──────────────────────────────────────
 console.log('\n🧩 Cycle 1.3 — versions[] caps at 20 entries');
 await runAsync(async () => {
@@ -152,6 +212,7 @@ await runAsync(async () => {
     sourceHash: 'sh-seed',
     migrationsHash: 'mh-seed',
     secretKeys: ['API_KEY', 'DB_URL'],
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE a(id INTEGER);' },
   });
   const rec = await s.getAppRecord('t4', 'a4');
   assert(Array.isArray(rec.versions) && rec.versions.length === 1,
@@ -163,6 +224,26 @@ await runAsync(async () => {
     'secretKeys stored as array');
   assert(rec.secretKeys.includes('API_KEY') && rec.secretKeys.includes('DB_URL'),
     'both secretKeys present');
+  assert(rec.lastBundle && rec.lastBundle['migrations/001-init.sql'].includes('CREATE TABLE'),
+    'lastBundle stored on initial deploy record');
+});
+
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.markAppDeployed({
+    tenantSlug: 't4d', appSlug: 'a4d',
+    scriptName: 't4d-a4d', d1_database_id: 'd', hostname: 'h',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE old_items(id INTEGER);' },
+  });
+  await s.recordVersion({
+    tenantSlug: 't4d', appSlug: 'a4d',
+    versionId: 'v-new', uploadedAt: '2026-04-23T20:00:00Z',
+    sourceHash: 'sh-new',
+    lastBundle: { 'migrations/001-init.sql': 'CREATE TABLE new_items(id INTEGER);' },
+  });
+  const rec = await s.getAppRecord('t4d', 'a4d');
+  assert(rec.lastBundle && rec.lastBundle['migrations/001-init.sql'].includes('new_items'),
+    'recordVersion refreshes lastBundle for the next migration check');
 });
 
 // Backward compat: markAppDeployed without versionId should still work
@@ -602,15 +683,10 @@ console.log('\n🐘 CC-1 — PostgresTenantStore interface contract');
     assert(pgMethods.has(m), `PostgresTenantStore implements ${m} (matches InMemoryTenantStore)`);
   }
 }
-await runAsync(async () => {
-  const pg = new PostgresTenantStore();
-  let caught = null;
-  try { await pg.lookupAppBySubdomain('acme'); } catch (err) { caught = err; }
-  assert(caught && caught.code === 'NOT_IMPLEMENTED',
-    'PostgresTenantStore stub throws NOT_IMPLEMENTED');
-  assert(caught && /SQL:/.test(caught.message),
-    'NOT_IMPLEMENTED error includes the future SQL for grep-ability');
-});
+// CC-1 cycles 6/7/8 wired up the last stubs (updateSecretKeys,
+// lookupAppBySubdomain, loadKnownApps, getAuditLog, appendAuditEntry,
+// markAuditEntry). The "still throws NOT_IMPLEMENTED" guard is obsolete.
+// Real Postgres behavior is tested in tenants-postgres.test.js against pg-mem.
 
 // ── Regression floor: existing Phase 7.7 behavior preserved ─────────────────
 console.log('\n🧩 Regression — loadKnownApps still works across the new fields');

@@ -28,7 +28,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DATA_FILE = path.join(process.cwd(), 'clear-data.db');
+const DATA_FILE = process.env.CLEAR_DB_PATH || path.join(process.cwd(), 'clear-data.db');
 const _db = new Database(DATA_FILE);
 
 // WAL mode: better concurrent read performance, safe across crashes
@@ -37,6 +37,7 @@ _db.pragma('synchronous = NORMAL');
 
 // In-memory schema registry for validation + boolean coercion on read
 const _schemas = {};
+const IDENT_RE = /^[a-z_][a-z0-9_]*$/i;
 
 // =============================================================================
 // TYPE HELPERS
@@ -69,6 +70,25 @@ function coerceRecord(record, schema) {
 function coerceForStorage(value) {
   if (typeof value === 'boolean') return value ? 1 : 0;
   return value;
+}
+
+function isSafeIdentifier(name) {
+  return typeof name === 'string' && IDENT_RE.test(name);
+}
+
+function backfillRenamedFields(tableName, schema, existing) {
+  if (!isSafeIdentifier(tableName) || !schema) return;
+  for (const [fromField, config] of Object.entries(schema)) {
+    const toField = config && config.renamedTo;
+    if (!config || !config.hidden || !toField) continue;
+    if (!isSafeIdentifier(fromField) || !isSafeIdentifier(toField)) continue;
+    if (!existing.has(fromField) || !existing.has(toField)) continue;
+    _db.prepare(
+      'UPDATE ' + tableName +
+      ' SET ' + toField + ' = ' + fromField +
+      ' WHERE ' + toField + ' IS NULL AND ' + fromField + ' IS NOT NULL'
+    ).run();
+  }
 }
 
 // =============================================================================
@@ -191,8 +211,10 @@ function createTable(name, schema) {
   for (const [field, config] of Object.entries(schema || {})) {
     if (!existing.has(field)) {
       _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN ' + field + ' ' + toSQLiteType(config)).run();
+      existing.add(field);
     }
   }
+  backfillRenamedFields(tableName, schema, existing);
 }
 
 // =============================================================================
@@ -426,6 +448,10 @@ function reset() {
   }
 }
 
+function close() {
+  _db.close();
+}
+
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -443,4 +469,5 @@ module.exports = {
   save,
   load,
   reset,
+  close,
 };

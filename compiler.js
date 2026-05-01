@@ -46,6 +46,7 @@
 //   │         insideAgent, _astBody }                       │
 //   │                                                       │
 //   │  Dispatches to _compileNodeInner → switch(node.type): │
+//   │    FIELD_CHANGE → selected record field mutation       │
 //   │    ASSIGN ────→ const x = expr;                       │
 //   │    ENDPOINT ──→ compileEndpoint() → app.get(...)      │
 //   │    CRUD ──────→ compileCrud() → db.insert/update/etc  │
@@ -54,7 +55,7 @@
 //   │    VALIDATE ──→ compileValidate() → _validate(...)    │
 //   │    DATA_SHAPE → compileDataShape() → schema + table   │
 //   │    IF_THEN ───→ if (...) { ... }                      │
-//   │    (96 node types total — see _compileNodeInner)       │
+//   │    (many node types total — see _compileNodeInner)     │
 //   │                                                       │
 //   │  Expressions: exprToCode(expr, ctx) → string          │
 //   │    Handles: literals, variables, binary ops,           │
@@ -130,6 +131,7 @@ import {
   loadAuthWebcryptoSource,
   extractKnowledgeTextSync,
 } from './lib/packaging-cloudflare.js';
+import { stableUatId } from './lib/uat-contract.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -182,23 +184,40 @@ export const UTILITY_FUNCTIONS = [
   { name: '_clear_fetch', code: "async function _clear_fetch(url) {\n  const r = await fetch(url);\n  if (!r.ok) throw new Error('Could not load data from ' + url + ' (status ' + r.status + ')');\n  return await r.json();\n}", deps: [] },
   { name: '_clear_env', code: "function _clear_env(name) {\n  if (typeof process !== 'undefined' && process.env) return process.env[name] || '';\n  return '';\n}", deps: [] },
   { name: '_toast', code: `function _toast(msg, type) {
+  const variant = String(type || 'success').replace(/^alert-/, '');
   let c = document.getElementById('_toast_container');
   if (!c) {
-    c = document.createElement('div'); c.id = '_toast_container';
-    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    c = document.createElement('div');
+    c.id = '_toast_container';
+    c.className = 'toast toast-end toast-bottom';
+    c.setAttribute('aria-live', 'polite');
+    c.style.cssText = 'z-index:9999;pointer-events:none;';
     document.body.appendChild(c);
   }
   const icons = {
     error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
     success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
     info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
   };
-  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
-  const icon = icons[type] || icons.info;
+  const variants = { error: 'alert-error', success: 'alert-success', warning: 'alert-warning', info: 'alert-info' };
+  const cls = variants[variant] || variants.success;
+  const icon = icons[variant] || icons.info;
   const el = document.createElement('div');
+  el.setAttribute('role', 'alert');
+  el.setAttribute('data-clear-toast', variant);
   el.className = 'alert ' + cls + ' shadow-lg text-sm';
-  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
-  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:min(400px, calc(100vw - 2rem));border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  const iconSlot = document.createElement('span');
+  iconSlot.innerHTML = icon;
+  el.appendChild(iconSlot.firstElementChild || iconSlot);
+  const message = document.createElement('span');
+  message.style.flex = '1';
+  message.textContent = String(msg);
+  el.appendChild(message);
+  const timer = document.createElement('div');
+  timer.style.cssText = 'position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%';
+  el.appendChild(timer);
   if (!document.getElementById('_toast_style')) {
     const s = document.createElement('style'); s.id = '_toast_style';
     s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
@@ -216,45 +235,210 @@ export const UTILITY_FUNCTIONS = [
   // reactive re-renders, only the visible slice is repainted.
   { name: '_clear_render_table', code: `function _clear_render_table(tableEl, data, renderHead, renderRow) {
   if (!tableEl) return;
+  var rows = Array.isArray(data) ? data : [];
+  tableEl._clear_raw_rows = rows;
+  tableEl._clear_render_row = renderRow;
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
-  if (!Array.isArray(data) || data.length === 0) {
+  if (rows.length === 0) {
     if (thead) thead.innerHTML = '';
     if (tbody) tbody.innerHTML = '';
+    tableEl._clear_rows = [];
     return;
   }
-  if (thead) thead.innerHTML = renderHead(data);
+  if (thead) thead.innerHTML = renderHead(rows);
+  _clear_apply_table_view(tableEl);
+}`, deps: ['_clear_apply_table_view'] },
+  // SHELL-5 (Codex chunk #5): rows-for-view applies user sort + filter on top
+  // of raw rows. Sort handles numeric, currency-prefixed, percent-suffixed, and
+  // text columns; empty values sort to the end regardless of direction.
+  { name: '_clear_table_rows_for_view', code: `function _clear_table_rows_for_view(rows, sortCol, sortDir, filterText) {
+  var out = Array.isArray(rows) ? rows.slice() : [];
+  var query = String(filterText || '').trim().toLowerCase();
+  if (query) {
+    out = out.filter(function(row) {
+      return Object.keys(row || {}).some(function(key) {
+        var value = row[key];
+        if (value == null) return false;
+        var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        return text.toLowerCase().indexOf(query) !== -1;
+      });
+    });
+  }
+  if (sortCol) {
+    var dir = sortDir === 'desc' ? -1 : 1;
+    function normalized(value) {
+      if (value == null || value === '') return { empty: true, value: '' };
+      var raw = String(value).trim();
+      var numeric = raw.replace(/[$,%]/g, '').replace(/,/g, '');
+      if (numeric !== '' && /^-?\\d+(\\.\\d+)?$/.test(numeric)) {
+        return { empty: false, kind: 'number', value: Number(numeric) };
+      }
+      return { empty: false, kind: 'text', value: raw.toLowerCase() };
+    }
+    out.sort(function(a, b) {
+      var av = normalized(a && a[sortCol]);
+      var bv = normalized(b && b[sortCol]);
+      if (av.empty && bv.empty) return 0;
+      if (av.empty) return 1;
+      if (bv.empty) return -1;
+      if (av.kind === 'number' && bv.kind === 'number') return (av.value - bv.value) * dir;
+      return String(av.value).localeCompare(String(bv.value), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }
+  return out;
+}`, deps: [] },
+  // SHELL-5 (Codex chunk #5): apply-table-view re-paints the body using the
+  // current sort + filter attrs on the table element. Called by the sort/filter
+  // event handlers AND on initial render. Preserves the virtualized-scroll path
+  // for tables over 100 rows.
+  { name: '_clear_apply_table_view', code: `function _clear_apply_table_view(tableEl) {
+  if (!tableEl || !tableEl._clear_render_row) return;
+  var tbody = tableEl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = _clear_table_rows_for_view(
+    tableEl._clear_raw_rows || [],
+    tableEl.getAttribute('data-sort-col') || '',
+    tableEl.getAttribute('data-sort-dir') || 'asc',
+    tableEl.getAttribute('data-filter') || ''
+  );
+  tableEl._clear_rows = rows;
+  var renderRow = tableEl._clear_render_row;
   var VIRT_THRESHOLD = 100;
-  if (data.length <= VIRT_THRESHOLD) {
-    tbody.innerHTML = data.map(renderRow).join('');
-    return;
-  }
   var ROW_HEIGHT = 40;
   var BUFFER = 5;
   var scroller = tableEl.parentElement;
-  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  if (!scroller || rows.length <= VIRT_THRESHOLD) {
+    if (scroller) {
+      scroller.style.maxHeight = '';
+      scroller.style.overflowY = '';
+    }
+    tbody.innerHTML = rows.map(function(row, idx) { return renderRow(row, idx); }).join('');
+    return;
+  }
   scroller.style.maxHeight = '560px';
   scroller.style.overflowY = 'auto';
-  function paint() {
+  tableEl._clear_paint_table = function() {
+    var viewRows = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows : [];
     var top = scroller.scrollTop;
     var h = scroller.clientHeight || 560;
     var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
-    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var last = Math.min(viewRows.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
     var topPad = first * ROW_HEIGHT;
-    var botPad = (data.length - last) * ROW_HEIGHT;
+    var botPad = (viewRows.length - last) * ROW_HEIGHT;
     var html = '';
     if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
-    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    for (var i = first; i < last; i++) html += tableEl._clear_render_row(viewRows[i], i);
     if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
     tbody.innerHTML = html;
-  }
+  };
   if (!scroller._clear_virt_bound) {
     scroller._clear_virt_bound = true;
-    scroller.addEventListener('scroll', paint, { passive: true });
+    scroller.addEventListener('scroll', function() {
+      if (tableEl._clear_paint_table) tableEl._clear_paint_table();
+    }, { passive: true });
   }
-  paint();
+  tableEl._clear_paint_table();
+}`, deps: ['_clear_table_rows_for_view'] },
+  // SHELL-5 (Codex chunk #5): column-key → header-text formatter.
+  // 'rep_name' → 'Rep name', 'list_price' → 'List price'. Same logic as the
+  // existing inline header emit but reusable from the sort/filter path.
+  { name: '_clear_table_header', code: `function _clear_table_header(key) {
+  var s = String(key || '');
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
 }`, deps: [] },
+  // SHELL-5: per-cell type detection. Each table cell goes through this so
+  // the same compiled code yields a status pill, an avatar circle, or a
+  // right-aligned money column purely based on the column key. No CSS in
+  // .clear required — the column NAME drives the styling.
+  { name: '_clear_cell', code: `function _clear_cell(key, val, selectable) {
+  var k = String(key).toLowerCase();
+  var v = val == null ? '' : String(val);
+  var selectableAttr = selectable ? ' data-selectable="true"' : '';
+  if (k === 'status' || k === 'state' || k === 'stage') {
+    var slug = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return '<td class="text-sm"' + selectableAttr + '><span class="clear-pill clear-pill-' + slug + '">' + _esc(v) + '</span></td>';
+  }
+  if (/^(price|amount|total|cost|fee|revenue|salary|balance|subtotal|tax|discount)$/i.test(k) || /^\\$/.test(v)) {
+    var formatted = v;
+    if (typeof val === 'number' || /^-?\\d+(\\.\\d+)?$/.test(v)) {
+      var n = Number(val);
+      formatted = '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+    }
+    return '<td class="text-sm text-right tabular-nums"' + selectableAttr + '>' + _esc(formatted) + '</td>';
+  }
+  if (/^(name|customer|email|user|owner|author|client|contact|rep|assignee)$/i.test(k)) {
+    var parts = v.trim().split(/[\\s@.]+/).filter(Boolean);
+    var initials = parts.length >= 2
+      ? (parts[0][0] || '') + (parts[1][0] || '')
+      : v.slice(0, 2);
+    initials = initials.toUpperCase();
+    return '<td class="text-sm"' + selectableAttr + '><div class="flex items-center gap-3"><span class="clear-avatar">' + _esc(initials) + '</span><span>' + _esc(v) + '</span></div></td>';
+  }
+  return '<td class="text-sm text-base-content"' + selectableAttr + '>' + _esc(v) + '</td>';
+}`, deps: ['_esc'] },
+  // SHELL-5: one-time wiring per table — click-to-select on rows, sort
+  // toggling on header clicks. Idempotent (guarded via _clear_init flag) so
+  // reactive re-renders don't double-bind.
+  { name: '_clear_table_init', code: `function _clear_table_init(tableEl, selectedVar) {
+  if (!tableEl) return;
+  if (selectedVar) tableEl._clear_selected_var = selectedVar;
+  if (tableEl._clear_init) return;
+  tableEl._clear_init = true;
+  // Codex chunk #5: wire the search-box filter input that lives in the same
+  // toolbar wrapper as this table. Filter typing pushes data-filter onto the
+  // table element + re-applies the view.
+  var filterInput = document.querySelector('input.clear-table-filter[data-clear-table-filter-for="' + tableEl.id + '"]');
+  if (filterInput) {
+    filterInput.addEventListener('input', function() {
+      tableEl.setAttribute('data-filter', filterInput.value || '');
+      _clear_apply_table_view(tableEl);
+    });
+  }
+  tableEl.addEventListener('click', function(e) {
+    var th = e.target.closest('th[data-sortable]');
+    if (th) {
+      var col = th.getAttribute('data-sortable');
+      var prev = tableEl.getAttribute('data-sort-col');
+      var dir = (prev === col && tableEl.getAttribute('data-sort-dir') === 'asc') ? 'desc' : 'asc';
+      tableEl.setAttribute('data-sort-col', col);
+      tableEl.setAttribute('data-sort-dir', dir);
+      tableEl.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('is-sorted'); h.removeAttribute('data-sort-dir'); });
+      th.classList.add('is-sorted');
+      th.setAttribute('data-sort-dir', dir);
+      _clear_apply_table_view(tableEl);
+      return;
+    }
+    var tr = e.target.closest('tbody tr');
+    if (tr && !e.target.closest('button') && !e.target.closest('a')) {
+      tableEl.querySelectorAll('tbody tr.is-selected').forEach(function(r) { if (r !== tr) r.classList.remove('is-selected'); });
+      tr.classList.toggle('is-selected');
+      var rowIndex = Number(tr.getAttribute('data-row-index'));
+      var row = Array.isArray(tableEl._clear_rows) ? tableEl._clear_rows[rowIndex] : null;
+      var selectedName = tableEl._clear_selected_var;
+      if (selectedName && typeof _state === 'object') {
+        _state[selectedName] = tr.classList.contains('is-selected') ? row : null;
+        if (typeof _recompute === 'function') _recompute();
+      }
+    }
+  });
+}`, deps: ['_clear_apply_table_view'] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
+  // Triggered email primitive (Phase B-1) — at queue-insert time, the email
+  // subject + body templates pass through this helper so {customer}, {amount},
+  // {customer_email} etc. resolve against the actual entity record. Without
+  // this, every queued email gets the same literal text — no name, no deal,
+  // no number — which would be useless once live sending lands. Missing
+  // fields render as empty string, never the literal "undefined".
+  { name: '_clear_interpolate', code: `function _clear_interpolate(template, record) {
+  if (typeof template !== 'string') return template;
+  if (!record || typeof record !== 'object') return template;
+  return template.replace(/\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}/g, function(_, key) {
+    var v = record[key];
+    if (v == null) return '';
+    return String(v);
+  });
+}`, deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
   if (body == null || typeof body !== 'object') return [{ field: '_body', message: 'Request body is required' }];
@@ -1039,8 +1223,23 @@ function _getUsedUtilities(compiledCode) {
     // like _revive(...) or as a callback reference like .map(_revive)
     if (compiledCode.includes(util.name + '(') || compiledCode.includes(util.name + ')') || compiledCode.includes(util.name + ',') || compiledCode.includes(util.name + ';')) {
       needed.add(util.name);
-      // Also include dependencies
-      for (const dep of util.deps) needed.add(dep);
+    }
+  }
+  // Transitive dep closure — keep walking until no new helper is added.
+  // The single-pass `for (const dep of util.deps) needed.add(dep)` only catches
+  // direct deps; chains like bind_table → apply_table_view → table_rows_for_view
+  // were silently truncated, leaving the leaf helper undefined at runtime
+  // (caught by the browser UAT walker session 04-28-2026).
+  const byName = new Map(UTILITY_FUNCTIONS.map(u => [u.name, u]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const name of Array.from(needed)) {
+      const util = byName.get(name);
+      if (!util) continue;
+      for (const dep of util.deps) {
+        if (!needed.has(dep)) { needed.add(dep); changed = true; }
+      }
     }
   }
   // Return definitions in dependency order
@@ -2826,7 +3025,11 @@ function generateE2ETests(body) {
   lines.push('// Requires: server running on localhost:3000');
   lines.push('');
   lines.push('const BASE = process.env.TEST_URL || "http://localhost:3000";');
-  lines.push('let passed = 0, failed = 0;');
+  // Lean Lesson 1 — placeholder skip support. A test that runs into a TBD
+  // marker (compiled to a "placeholder hit at line N" throw) reports as
+  // SKIPPED, not FAILED. Lets a partial program show "structure right,
+  // piece not filled in" instead of a noisy false failure.
+  lines.push('let passed = 0, failed = 0, skipped = 0;');
   lines.push('let _emailCounter = 0;');
   lines.push('let _uniqueCounter = 0;');
   // Module-level so both user tests and the _expectStatus helper can see them
@@ -2865,8 +3068,20 @@ function generateE2ETests(body) {
   lines.push('    passed++;');
   lines.push('    console.log("PASS:", name);');
   lines.push('  } catch (err) {');
-  lines.push('    failed++;');
-  lines.push('    console.log("FAIL:", name, "-", err.message);');
+  // Lean Lesson 1 — placeholder skip path. The compiler emits "placeholder
+  // hit at line N" exactly when execution reaches a TBD marker, so a test
+  // that wandered into a stub gets reported as SKIPPED with the same line
+  // info instead of being counted as a real failure. The marker string
+  // must match the compiler's exact emission so non-stub failures do not
+  // accidentally classify as skips.
+  lines.push('    const _msg = err && err.message ? String(err.message) : "";');
+  lines.push('    if (_msg.indexOf("placeholder hit at line") === 0) {');
+  lines.push('      skipped++;');
+  lines.push('      console.log("SKIP:", name, "-", _msg, "(this test exercises a stub)");');
+  lines.push('    } else {');
+  lines.push('      failed++;');
+  lines.push('      console.log("FAIL:", name, "-", _msg);');
+  lines.push('    }');
   lines.push('  }');
   lines.push('}');
   lines.push('');
@@ -3486,7 +3701,11 @@ function generateE2ETests(body) {
   }
 
   lines.push('  console.log("");');
-  lines.push('  console.log("Results:", passed, "passed,", failed, "failed");');
+  // Lean Lesson 1 — Results line distinguishes failed (real bugs) from
+  // skipped due to stub (structure right, piece not filled in). Skips do
+  // NOT trigger a non-zero exit code so a partial program can still be
+  // shipped through CI without blocking on its own placeholders.
+  lines.push('  console.log("Results:", passed, "passed,", failed, "failed,", skipped, "skipped due to stub");');
   lines.push('  process.exit(failed > 0 ? 1 : 0);');
   lines.push('}');
   lines.push('');
@@ -4142,7 +4361,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.AUTH_SCAFFOLD, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK,
   NodeType.CHECKOUT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
-  NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
+  NodeType.STREAM, NodeType.STREAM_AI, NodeType.GIVE_CLAUDE, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
   NodeType.AGENT, NodeType.WORKFLOW, NodeType.SKILL, NodeType.PIPELINE, NodeType.PARALLEL_AGENTS,
@@ -4200,7 +4419,7 @@ function compileEndpoint(node, ctx, pad) {
   if (endpointBodyUsesIncoming(node.body)) epDeclared.add('incoming');
   const hasIdParam = node.path.includes(':id');
   const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
+  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
   let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
   // Auto-wire multer middleware on POST endpoints that are the target of a
   // client-side `upload X to '<path>'`. Without this, the multipart body
@@ -4248,6 +4467,79 @@ function compileEndpoint(node, ctx, pad) {
       const hasUrlParam = /\/:/.test(node.path || '');
       const source = isGet && !hasUrlParam ? 'req.query' : 'req.params';
       epCode += `${pad}    const ${sanitizeName(dataVar)} = ${source};\n`;
+    }
+  }
+  // Triggered email primitive (Phase 4.1-extension) — when this user-written
+  // endpoint body contains an assignment of <entity>.status to a literal value
+  // that matches a top-level email_trigger, queue an email row in
+  // workflow_email_queue. Mirrors the queue auto-PUT injection at compileQueueDef
+  // so apps that don't use the queue primitive still get triggered emails when
+  // their handler sets the entity's status to a trigger value.
+  //
+  // The insert MUST land BEFORE the response statement, otherwise it sits
+  // after a `return res.json(...)` and never executes (silent dead code).
+  // We splice the insert into the compiled bodyCode just before the LAST
+  // response prefix (`<indent>return res.` / `<indent>res.send` / etc.).
+  let triggerInjection = '';
+  const triggerAssigns = (node.body || []).filter(stmt =>
+    stmt && stmt.type === NodeType.ASSIGN &&
+    typeof stmt.name === 'string' &&
+    stmt.name.includes('.') &&
+    stmt.name.toLowerCase().endsWith('.status') &&
+    stmt.expression && stmt.expression.type === NodeType.LITERAL_STRING
+  );
+  if (triggerAssigns.length > 0 && Array.isArray(ctx._astBody)) {
+    for (const assign of triggerAssigns) {
+      const dotIdx = assign.name.lastIndexOf('.');
+      const entityVarRaw = assign.name.slice(0, dotIdx);
+      const entityVar = entityVarRaw.toLowerCase();
+      const triggerValue = assign.expression.value;
+      const matchingTriggers = ctx._astBody.filter(n =>
+        n && n.type === NodeType.EMAIL_TRIGGER &&
+        n.entityName === entityVar &&
+        n.triggerValue === triggerValue
+      );
+      for (const trig of matchingTriggers) {
+        const safeVar = sanitizeName(entityVarRaw);
+        const emailField = `${trig.recipientRole}_email`;
+        const subjectStr = JSON.stringify(trig.subject || '');
+        const bodyStr = JSON.stringify(trig.body || '');
+        const providerStr = JSON.stringify(trig.provider || 'agentmail');
+        const replyStr = JSON.stringify(trig.replyTracking || '');
+        const recipientRoleStr = JSON.stringify(trig.recipientRole);
+        triggerInjection += `${pad}    db.insert('workflow_email_queue', {\n`;
+        triggerInjection += `${pad}      entity_type: ${JSON.stringify(entityVar)},\n`;
+        triggerInjection += `${pad}      entity_id: (${safeVar} && ${safeVar}.id) || null,\n`;
+        triggerInjection += `${pad}      recipient_role: ${recipientRoleStr},\n`;
+        triggerInjection += `${pad}      recipient_email: (${safeVar} && ${safeVar}[${JSON.stringify(emailField)}]) || '',\n`;
+        // Phase B-1 — subject + body interpolate {field} refs against the
+        // entity in scope so per-customer text resolves at queue-insert time.
+        triggerInjection += `${pad}      subject: _clear_interpolate(${subjectStr}, ${safeVar}),\n`;
+        triggerInjection += `${pad}      body: _clear_interpolate(${bodyStr}, ${safeVar}),\n`;
+        triggerInjection += `${pad}      provider: ${providerStr},\n`;
+        triggerInjection += `${pad}      reply_tracking: ${replyStr},\n`;
+        triggerInjection += `${pad}      queue_status: 'pending',\n`;
+        triggerInjection += `${pad}      attempts: 0,\n`;
+        triggerInjection += `${pad}      queued_at: new Date().toISOString()\n`;
+        triggerInjection += `${pad}    });\n`;
+      }
+    }
+  }
+  if (triggerInjection) {
+    // Splice the insert in before the LAST response prefix in bodyCode. The
+    // RESPOND compiler emits `<indent>return res.<...>` (sometimes plain
+    // `<indent>res.send/json` for older paths). Match the last such line.
+    const respondPrefix = /(^|\n)([ \t]+)(return\s+res\.|res\.send|res\.json|res\.status)/g;
+    let lastMatch = null;
+    let m;
+    while ((m = respondPrefix.exec(bodyCode)) !== null) {
+      lastMatch = m;
+    }
+    if (lastMatch) {
+      const insertAt = lastMatch.index + lastMatch[1].length;
+      bodyCode = bodyCode.slice(0, insertAt) + triggerInjection + bodyCode.slice(insertAt);
+    } else {
+      bodyCode = bodyCode + (bodyCode.endsWith('\n') ? '' : '\n') + triggerInjection;
     }
   }
   epCode += bodyCode + '\n';
@@ -4527,7 +4819,13 @@ function compileCrud(node, ctx, pad) {
       insertArg = `{ ...${picked}, ${spreads} }`;
     }
     if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
-    if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
+    // `save X as new T` (no result variable). Write the inserted row back into
+    // X so the freshly-assigned id is available to anything downstream
+    // (e.g. seeds that say `customer_id is c1's id` after `save c1 as new
+    // Customer`). Before this rewrite, X stayed as the literal pre-insert
+    // shape and `c1.id` was undefined — every dependent FK insert failed.
+    // Caught by the browser UAT walker session 04-29-2026.
+    if (node.isInsert) return `${pad}${varCode} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
     const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
     if (ctx.endpointHasId) {
@@ -5950,6 +6248,535 @@ function compileValidate(node, ctx, pad) {
   return `${pad}const _vErrs = _validate(req.body, [${rules.join(', ')}]);\n${pad}if (_vErrs) return res.status(400).json({ errors: _vErrs });`;
 }
 
+// =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` declares a human-approval queue. Compiler auto-emits:
+//   - `<entity>_decisions` audit table (always)
+//   - `<entity>_notifications` outbound queue table (when notify clauses present)
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+// Triggered email primitive (Phase 3) — emits the shared workflow_email_queue
+// table once per app + a comment marking where the trigger lives so Phase 4
+// (URL-handler queue-insert injection) has a hook to find. Real provider sends
+// stay deferred behind `enable live email delivery via X` (Phase B-1, not
+// shipped); default builds queue rows only.
+function compileEmailTrigger(node, ctx, pad) {
+  if (ctx.lang === 'python') {
+    return `${pad}# email trigger for ${node.entityName}: backend Phase 3 (Python target TBD)`;
+  }
+  let result = '';
+  // Dedupe: a single workflow_email_queue table covers every trigger in the app.
+  // First trigger emits the CREATE; later triggers skip it.
+  if (!ctx._workflowEmailQueueEmitted) {
+    ctx._workflowEmailQueueEmitted = true;
+    const schemaName = 'WorkflowEmailQueueSchema';
+    result += `${pad}// Auto-generated outbound email queue (every email trigger in this app shares this table)\n`;
+    result += `${pad}const ${schemaName} = {\n`;
+    result += `${pad}  entity_type: { type: "text", required: true },\n`;
+    result += `${pad}  entity_id: { type: "text", required: true },\n`;
+    result += `${pad}  recipient_role: { type: "text" },\n`;
+    result += `${pad}  recipient_email: { type: "text" },\n`;
+    result += `${pad}  subject: { type: "text", required: true },\n`;
+    result += `${pad}  body: { type: "text", required: true },\n`;
+    result += `${pad}  provider: { type: "text", default: "agentmail" },\n`;
+    result += `${pad}  reply_tracking: { type: "text" },\n`;
+    result += `${pad}  queue_status: { type: "text", default: "pending" },\n`;
+    result += `${pad}  attempts: { type: "number", default: 0 },\n`;
+    result += `${pad}  last_error: { type: "text" },\n`;
+    result += `${pad}  queued_at: { type: "timestamp", auto: true },\n`;
+    result += `${pad}  sent_at: { type: "timestamp" },\n`;
+    result += `${pad}  replied_at: { type: "timestamp" }\n`;
+    result += `${pad}};\n`;
+    if (ctx.mode === 'backend') {
+      result += `${pad}db.createTable('workflow_email_queue', ${schemaName});\n`;
+    }
+  }
+  // Mark where this specific trigger lives (Phase 4 will replace this comment
+  // with actual queue-insert injections in matching URL handlers).
+  result += `${pad}// Email trigger: ${node.recipientRole} when ${node.entityName}.status === ${JSON.stringify(node.triggerValue)} (subject="${node.subject}", provider=${JSON.stringify(node.provider || 'agentmail')})`;
+  return result;
+}
+
+// Email delivery worker (Phase B-1 part 2). Emits a small background poll
+// loop that drains workflow_email_queue via the named provider's HTTP API.
+// Without this directive in the source, no worker emits — default builds
+// stay inert (Phase 3.2 regression guard). The worker fails loud at runtime
+// if the provider's API key env var isn't set, so a misconfigured deploy
+// can't silently no-op.
+function compileEmailDeliveryDirective(node, ctx, pad) {
+  if (ctx.lang === 'python') {
+    return `${pad}# email delivery worker (using ${node.provider}): backend Phase B-1 (Python target TBD)`;
+  }
+  if (ctx.mode !== 'backend') return '';
+  // Dedupe: if multiple directives present, emit one worker only. (Validator
+  // could enforce single-directive in future; for now, last-write-wins.)
+  if (ctx._emailDeliveryWorkerEmitted) return `${pad}// email delivery worker already emitted (using ${ctx._emailDeliveryProvider})`;
+  ctx._emailDeliveryWorkerEmitted = true;
+  ctx._emailDeliveryProvider = node.provider;
+
+  const provider = node.provider;
+  const envKey = provider.toUpperCase() + '_API_KEY';
+  // Map each provider to its send URL. Only AgentMail has a real implementation
+  // today; the others return a runtime error pointing at the next thing to wire.
+  const PROVIDER_ENDPOINTS = {
+    agentmail: 'https://api.agentmail.to/v1/send',
+    sendgrid: 'https://api.sendgrid.com/v3/mail/send',
+    resend: 'https://api.resend.com/emails',
+    postmark: 'https://api.postmarkapp.com/email',
+    mailgun: 'https://api.mailgun.net/v3/messages',
+  };
+  const sendUrl = PROVIDER_ENDPOINTS[provider] || '';
+
+  let result = `${pad}// Auto-emitted: email delivery worker (provider: ${provider})\n`;
+  result += `${pad}// Polls workflow_email_queue every 30 seconds, sends pending rows via\n`;
+  result += `${pad}// ${provider}, marks them sent or failed. Fails loud at runtime if the\n`;
+  result += `${pad}// API key env var (${envKey}) isn't set — never silently no-ops.\n`;
+  result += `${pad}(function _startEmailDeliveryWorker() {\n`;
+  result += `${pad}  const _provider = ${JSON.stringify(provider)};\n`;
+  result += `${pad}  const _sendUrl = ${JSON.stringify(sendUrl)};\n`;
+  result += `${pad}  const _envKey = ${JSON.stringify(envKey)};\n`;
+  result += `${pad}  let _warnedNoKey = false;\n`;
+  result += `${pad}  setInterval(async () => {\n`;
+  result += `${pad}    const _apiKey = process.env[_envKey];\n`;
+  result += `${pad}    if (!_apiKey) {\n`;
+  result += `${pad}      if (!_warnedNoKey) { console.error('[email delivery worker] ' + _envKey + ' not set — cannot send. Set the env var to enable live delivery.'); _warnedNoKey = true; }\n`;
+  result += `${pad}      return;\n`;
+  result += `${pad}    }\n`;
+  result += `${pad}    let _pending;\n`;
+  result += `${pad}    try { _pending = (db.findAll('workflow_email_queue') || []).filter(r => r && r.queue_status === 'pending'); }\n`;
+  result += `${pad}    catch (_err) { console.error('[email delivery worker] could not read queue:', _err.message || _err); return; }\n`;
+  result += `${pad}    for (const _row of _pending) {\n`;
+  result += `${pad}      try {\n`;
+  if (provider === 'agentmail') {
+    result += `${pad}        const _resp = await fetch(_sendUrl, {\n`;
+    result += `${pad}          method: 'POST',\n`;
+    result += `${pad}          headers: { 'Authorization': 'Bearer ' + _apiKey, 'Content-Type': 'application/json' },\n`;
+    result += `${pad}          body: JSON.stringify({ to: _row.recipient_email, subject: _row.subject, body: _row.body }),\n`;
+    result += `${pad}        });\n`;
+    result += `${pad}        if (_resp.ok) {\n`;
+    result += `${pad}          const _result = await _resp.json().catch(() => ({}));\n`;
+    result += `${pad}          db.update('workflow_email_queue', _row.id, { queue_status: 'sent', sent_at: new Date().toISOString(), provider_event_id: (_result && _result.id) || null });\n`;
+    result += `${pad}        } else {\n`;
+    result += `${pad}          const _errText = await _resp.text().catch(() => 'unknown');\n`;
+    result += `${pad}          db.update('workflow_email_queue', _row.id, { queue_status: 'failed', attempts: (_row.attempts || 0) + 1, last_error: 'HTTP ' + _resp.status + ': ' + _errText });\n`;
+    result += `${pad}        }\n`;
+  } else {
+    result += `${pad}        // Provider '${provider}' adapter not yet implemented — fail this row\n`;
+    result += `${pad}        db.update('workflow_email_queue', _row.id, { queue_status: 'failed', attempts: (_row.attempts || 0) + 1, last_error: '${provider} adapter not implemented yet — only agentmail supported in this build' });\n`;
+  }
+  result += `${pad}      } catch (_err) {\n`;
+  result += `${pad}        try { db.update('workflow_email_queue', _row.id, { queue_status: 'failed', attempts: (_row.attempts || 0) + 1, last_error: String(_err && _err.message || _err) }); } catch (_e) {}\n`;
+  result += `${pad}      }\n`;
+  result += `${pad}    }\n`;
+  result += `${pad}  }, 30000);\n`;
+  result += `${pad}})();\n`;
+  return result;
+}
+
+function compileQueueDef(node, ctx, pad) {
+  // Phase 2 scope: emit the auto-generated tables (decisions + optional notifications).
+  // Phase 3 will add URL handlers; Phase 4 will add UI elements.
+
+  // Local-memory backend is the default for Marcus apps. We emit `db.createTable(...)`
+  // calls matching the pattern used by compileDataShape's JS branch.
+  // Python and other backends to follow if Marcus uses them.
+  if (ctx.lang === 'python') {
+    // Python parity (F5, 2026-04-28). Mechanical port of the JS branch
+    // below. Same tables, same URLs, same audit + notification inserts —
+    // emitted as FastAPI/Python via the existing _DB stub adapter
+    // (db.create_table, db.save for insert, db.update, db.query for find).
+    // Email-queue inserts (workflow_email_queue) stay JS-only for now —
+    // the email delivery worker hasn't been ported to Python yet.
+    if (ctx.mode !== 'backend') return '';
+    const entityNameLower = node.entityName.toLowerCase();
+    const entityCapital = node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1);
+    const decisionsTableName = `${entityNameLower}_decisions`;
+    const reviewerStr = JSON.stringify(node.reviewer || 'reviewer');
+    const pluralEntity = pluralizeName(node.entityName).toLowerCase();
+
+    let pyResult = `${pad}# Auto-generated audit table for queue '${node.entityName}'\n`;
+    pyResult += `${pad}db.create_table('${decisionsTableName}', {\n`;
+    pyResult += `${pad}    '${entityNameLower}_id': {'type': 'text', 'required': True},\n`;
+    pyResult += `${pad}    'decision': {'type': 'text', 'required': True},\n`;
+    pyResult += `${pad}    'decided_by': {'type': 'text'},\n`;
+    pyResult += `${pad}    'decision_note': {'type': 'text'},\n`;
+    pyResult += `${pad}    'next_status': {'type': 'text'},\n`;
+    pyResult += `${pad}    'decided_at': {'type': 'timestamp', 'auto': True}\n`;
+    pyResult += `${pad}})\n`;
+
+    if (node.notifications && node.notifications.length > 0) {
+      const notifTableName = `${entityNameLower}_notifications`;
+      pyResult += `\n${pad}# Auto-generated notifications outbound queue for '${node.entityName}'\n`;
+      pyResult += `${pad}db.create_table('${notifTableName}', {\n`;
+      pyResult += `${pad}    '${entityNameLower}_id': {'type': 'text', 'required': True},\n`;
+      pyResult += `${pad}    'recipient_role': {'type': 'text'},\n`;
+      pyResult += `${pad}    'recipient_email': {'type': 'text'},\n`;
+      pyResult += `${pad}    'notification_type': {'type': 'text'},\n`;
+      pyResult += `${pad}    'queue_status': {'type': 'text', 'default': 'pending'},\n`;
+      pyResult += `${pad}    'queued_at': {'type': 'timestamp', 'auto': True}\n`;
+      pyResult += `${pad}})\n`;
+    }
+
+    // GET /api/<plural>/queue — filtered by 'pending' status
+    pyResult += `\n${pad}# Auto-generated: GET filtered queue for '${node.entityName}'\n`;
+    pyResult += `${pad}@app.get("/api/${pluralEntity}/queue")\n`;
+    pyResult += `${pad}async def get_${pluralEntity}_queue(request: Request):\n`;
+    pyResult += `${pad}    _all = db.query('${pluralEntity}') or []\n`;
+    pyResult += `${pad}    _pending = [_r for _r in _all if (_r or {}).get('status') == 'pending']\n`;
+    pyResult += `${pad}    return JSONResponse(content=_pending)\n`;
+
+    // GET /api/<entity>-decisions — audit history view
+    pyResult += `\n${pad}# Auto-generated: GET decision history for '${node.entityName}'\n`;
+    pyResult += `${pad}@app.get("/api/${entityNameLower}-decisions")\n`;
+    pyResult += `${pad}async def get_${entityNameLower}_decisions(request: Request):\n`;
+    pyResult += `${pad}    return JSONResponse(content=db.query('${decisionsTableName}') or [])\n`;
+
+    if (node.notifications && node.notifications.length > 0) {
+      pyResult += `\n${pad}# Auto-generated: GET notification log for '${node.entityName}'\n`;
+      pyResult += `${pad}@app.get("/api/${entityNameLower}-notifications")\n`;
+      pyResult += `${pad}async def get_${entityNameLower}_notifications(request: Request):\n`;
+      pyResult += `${pad}    return JSONResponse(content=db.query('${entityNameLower}_notifications') or [])\n`;
+    }
+
+    // PUT handlers per action
+    for (const action of (node.actions || [])) {
+      const slug = action.split(/\s+/)[0].toLowerCase();
+      const terminalStatus = actionToTerminalStatus(action);
+      const handlerName = `put_${pluralEntity}_${slug}`;
+
+      pyResult += `\n${pad}# Auto-generated: ${action} action for '${node.entityName}'\n`;
+      pyResult += `${pad}@app.put("/api/${pluralEntity}/{id}/${slug}")\n`;
+      pyResult += `${pad}async def ${handlerName}(id: str, request: Request):\n`;
+      pyResult += `${pad}    if not getattr(request.state, 'user', None):\n`;
+      pyResult += `${pad}        raise HTTPException(status_code=401, detail='Authentication required')\n`;
+      pyResult += `${pad}    _record = db.query_one('${pluralEntity}', {'id': int(id) if id.isdigit() else id})\n`;
+      pyResult += `${pad}    if not _record:\n`;
+      pyResult += `${pad}        raise HTTPException(status_code=404, detail='not found')\n`;
+      pyResult += `${pad}    _record['status'] = '${terminalStatus}'\n`;
+      pyResult += `${pad}    db.update('${pluralEntity}', _record)\n`;
+      pyResult += `${pad}    db.insert('${decisionsTableName}', {\n`;
+      pyResult += `${pad}        '${entityNameLower}_id': str(id),\n`;
+      pyResult += `${pad}        'decision': ${JSON.stringify(action)},\n`;
+      pyResult += `${pad}        'decided_by': ${reviewerStr},\n`;
+      pyResult += `${pad}        'next_status': '${terminalStatus}',\n`;
+      pyResult += `${pad}        'decided_at': datetime.datetime.now().isoformat()\n`;
+      pyResult += `${pad}    })\n`;
+
+      // Notifications for this action
+      if (node.notifications && node.notifications.length > 0) {
+        for (const n of node.notifications) {
+          if (!n.onActions || !n.onActions.includes(action)) continue;
+          const roleStr = JSON.stringify(n.role);
+          const emailField = `${n.role}_email`;
+          pyResult += `${pad}    db.insert('${entityNameLower}_notifications', {\n`;
+          pyResult += `${pad}        '${entityNameLower}_id': str(id),\n`;
+          pyResult += `${pad}        'recipient_role': ${roleStr},\n`;
+          pyResult += `${pad}        'recipient_email': (_record.get('${emailField}') or '') if _record else '',\n`;
+          pyResult += `${pad}        'notification_type': ${JSON.stringify(action)},\n`;
+          pyResult += `${pad}        'queue_status': 'pending',\n`;
+          pyResult += `${pad}        'queued_at': datetime.datetime.now().isoformat()\n`;
+          pyResult += `${pad}    })\n`;
+        }
+      }
+
+      pyResult += `${pad}    return JSONResponse(content=_record)\n`;
+    }
+
+    return pyResult;
+  }
+
+  const entityNameLower = node.entityName.toLowerCase();
+  const decisionsTableName = `${entityNameLower}_decisions`;
+  const decisionsSchemaName = `${node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1)}DecisionsSchema`;
+
+  let result = `${pad}// Auto-generated audit table for queue '${node.entityName}'\n`;
+  result += `${pad}const ${decisionsSchemaName} = {\n`;
+  result += `${pad}  ${entityNameLower}_id: { type: "text", required: true },\n`;
+  result += `${pad}  decision: { type: "text", required: true },\n`;
+  result += `${pad}  decided_by: { type: "text" },\n`;
+  result += `${pad}  decision_note: { type: "text" },\n`;
+  result += `${pad}  next_status: { type: "text" },\n`;
+  result += `${pad}  decided_at: { type: "timestamp", auto: true }\n`;
+  result += `${pad}};\n`;
+  if (ctx.mode === 'backend') {
+    result += `${pad}db.createTable('${decisionsTableName}', ${decisionsSchemaName});`;
+  }
+
+  // Notifications table: only when notify clauses present.
+  if (node.notifications && node.notifications.length > 0) {
+    const notifTableName = `${entityNameLower}_notifications`;
+    const notifSchemaName = `${node.entityName.charAt(0).toUpperCase() + node.entityName.slice(1)}NotificationsSchema`;
+    result += `\n${pad}// Auto-generated notifications outbound queue for '${node.entityName}'\n`;
+    result += `${pad}const ${notifSchemaName} = {\n`;
+    result += `${pad}  ${entityNameLower}_id: { type: "text", required: true },\n`;
+    result += `${pad}  recipient_role: { type: "text" },\n`;
+    result += `${pad}  recipient_email: { type: "text" },\n`;
+    result += `${pad}  notification_type: { type: "text" },\n`;
+    result += `${pad}  queue_status: { type: "text", default: "pending" },\n`;
+    result += `${pad}  queued_at: { type: "timestamp", auto: true }\n`;
+    result += `${pad}};\n`;
+    if (ctx.mode === 'backend') {
+      result += `${pad}db.createTable('${notifTableName}', ${notifSchemaName});`;
+    }
+  }
+
+  // Phase 3: URL handlers (only emit in backend mode).
+  if (ctx.mode === 'backend') {
+    const pluralEntity = pluralizeName(node.entityName).toLowerCase();
+    const reviewerStr = JSON.stringify(node.reviewer || 'reviewer');
+
+    // GET /api/<plural>/queue — filtered by 'pending' status (default open status)
+    result += `\n${pad}// Auto-generated: GET filtered queue for '${node.entityName}'\n`;
+    result += `${pad}app.get('/api/${pluralEntity}/queue', (req, res) => {\n`;
+    result += `${pad}  const _all = db.findAll('${pluralEntity}') || [];\n`;
+    result += `${pad}  const _pending = _all.filter(_r => (_r && _r.status) === 'pending');\n`;
+    result += `${pad}  res.json(_pending);\n`;
+    result += `${pad}});\n`;
+
+    // GET /api/<entity>-decisions — audit history view
+    result += `${pad}// Auto-generated: GET decision history for '${node.entityName}'\n`;
+    result += `${pad}app.get('/api/${entityNameLower}-decisions', (req, res) => {\n`;
+    result += `${pad}  res.json(db.findAll('${entityNameLower}_decisions') || []);\n`;
+    result += `${pad}});\n`;
+
+    // GET /api/<entity>-notifications — notification log view (only if notify clauses present)
+    if (node.notifications && node.notifications.length > 0) {
+      result += `${pad}// Auto-generated: GET notification log for '${node.entityName}'\n`;
+      result += `${pad}app.get('/api/${entityNameLower}-notifications', (req, res) => {\n`;
+      result += `${pad}  res.json(db.findAll('${entityNameLower}_notifications') || []);\n`;
+      result += `${pad}});\n`;
+    }
+
+    // PUT /api/<plural>/:id/<action-slug> for each action
+    for (const action of (node.actions || [])) {
+      const slug = action.split(/\s+/)[0].toLowerCase();
+      const terminalStatus = actionToTerminalStatus(action);
+      const decisionLabel = action;
+
+      result += `${pad}// Auto-generated: ${decisionLabel} action for '${node.entityName}'\n`;
+      result += `${pad}app.put('/api/${pluralEntity}/:id/${slug}', (req, res) => {\n`;
+      result += `${pad}  if (!req.user) return res.status(401).json({ error: 'Authentication required' });\n`;
+      result += `${pad}  const _id = req.params.id;\n`;
+      result += `${pad}  const _record = db.findById('${pluralEntity}', _id);\n`;
+      result += `${pad}  if (!_record) return res.status(404).json({ error: 'not found' });\n`;
+      result += `${pad}  _record.status = ${JSON.stringify(terminalStatus)};\n`;
+      result += `${pad}  db.update('${pluralEntity}', _id, _record);\n`;
+      result += `${pad}  // Insert audit row\n`;
+      result += `${pad}  db.insert('${entityNameLower}_decisions', {\n`;
+      result += `${pad}    ${entityNameLower}_id: _id,\n`;
+      result += `${pad}    decision: ${JSON.stringify(action)},\n`;
+      result += `${pad}    decided_by: ${reviewerStr},\n`;
+      result += `${pad}    next_status: ${JSON.stringify(terminalStatus)},\n`;
+      result += `${pad}    decided_at: new Date().toISOString()\n`;
+      result += `${pad}  });\n`;
+
+      // Insert notification rows for any notify clauses matching this action
+      if (node.notifications && node.notifications.length > 0) {
+        for (const n of node.notifications) {
+          if (!n.onActions || !n.onActions.includes(action)) continue;
+          const roleStr = JSON.stringify(n.role);
+          // Try to resolve recipient_email from the record (e.g., customer_email field)
+          const emailField = `${n.role}_email`;
+          result += `${pad}  db.insert('${entityNameLower}_notifications', {\n`;
+          result += `${pad}    ${entityNameLower}_id: _id,\n`;
+          result += `${pad}    recipient_role: ${roleStr},\n`;
+          result += `${pad}    recipient_email: (_record && _record[${JSON.stringify(emailField)}]) || '',\n`;
+          result += `${pad}    notification_type: ${JSON.stringify(action)},\n`;
+          result += `${pad}    queue_status: 'pending',\n`;
+          result += `${pad}    queued_at: new Date().toISOString()\n`;
+          result += `${pad}  });\n`;
+        }
+      }
+
+      // Triggered email primitive (Phase 4) — when this action's terminalStatus
+      // matches a top-level email_trigger for this entity, inject a row into the
+      // shared workflow_email_queue. Recipient email is resolved by the same
+      // `<role>_email` convention as the queue's notify clauses. Real sends
+      // remain deferred behind `enable live email delivery via X` (B-1).
+      const allBody = (ctx && ctx._astBody) || [];
+      const matchingTriggers = allBody.filter(n =>
+        n && n.type === NodeType.EMAIL_TRIGGER &&
+        n.entityName === entityNameLower &&
+        n.triggerValue === terminalStatus
+      );
+      for (const trig of matchingTriggers) {
+        const roleStr = JSON.stringify(trig.recipientRole);
+        const emailField = `${trig.recipientRole}_email`;
+        const subjectStr = JSON.stringify(trig.subject || '');
+        const bodyStr = JSON.stringify(trig.body || '');
+        const providerStr = JSON.stringify(trig.provider || 'agentmail');
+        const replyStr = JSON.stringify(trig.replyTracking || '');
+        result += `${pad}  db.insert('workflow_email_queue', {\n`;
+        result += `${pad}    entity_type: ${JSON.stringify(entityNameLower)},\n`;
+        result += `${pad}    entity_id: _id,\n`;
+        result += `${pad}    recipient_role: ${roleStr},\n`;
+        result += `${pad}    recipient_email: (_record && _record[${JSON.stringify(emailField)}]) || '',\n`;
+        // Phase B-1 — subject + body interpolate {field} references against
+        // the deal record at queue-insert time, so each customer gets the
+        // right name + amount + email instead of identical literal text.
+        result += `${pad}    subject: _clear_interpolate(${subjectStr}, _record),\n`;
+        result += `${pad}    body: _clear_interpolate(${bodyStr}, _record),\n`;
+        result += `${pad}    provider: ${providerStr},\n`;
+        result += `${pad}    reply_tracking: ${replyStr},\n`;
+        result += `${pad}    queue_status: 'pending',\n`;
+        result += `${pad}    attempts: 0,\n`;
+        result += `${pad}    queued_at: new Date().toISOString()\n`;
+        result += `${pad}  });\n`;
+      }
+
+      result += `${pad}  res.json(_record);\n`;
+      result += `${pad}});\n`;
+    }
+
+    // CSV export — auto-emitted unless `no export` opt-out present.
+    // Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow
+    // for reporting + handoffs. Default-on by GTM doc.
+    if (!node.noExport) {
+      result += `${pad}// Auto-generated: CSV export for '${node.entityName}'\n`;
+      result += `${pad}const _csvSensitive_${entityNameLower} = /^(password|password_hash|bcrypt|hash|token|api_token|api_key|secret|salt)$/i;\n`;
+      result += `${pad}function _clearCsvEscape_${entityNameLower}(cell) {\n`;
+      result += `${pad}  if (cell == null) return '';\n`;
+      result += `${pad}  let s = typeof cell === 'object' ? JSON.stringify(cell) : String(cell);\n`;
+      result += `${pad}  if (/[",\\n\\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';\n`;
+      result += `${pad}  return s;\n`;
+      result += `${pad}}\n`;
+      result += `${pad}app.get('/api/${pluralEntity}/export.csv', (req, res) => {\n`;
+      result += `${pad}  const _rows = db.findAll('${pluralEntity}') || [];\n`;
+      result += `${pad}  const _allKeys = new Set();\n`;
+      result += `${pad}  for (const _r of _rows) { if (_r && typeof _r === 'object') Object.keys(_r).forEach(k => _allKeys.add(k)); }\n`;
+      result += `${pad}  const _cols = Array.from(_allKeys).filter(k => !_csvSensitive_${entityNameLower}.test(k));\n`;
+      result += `${pad}  const _header = _cols.map(c => _clearCsvEscape_${entityNameLower}(c)).join(',');\n`;
+      result += `${pad}  const _body = _rows.map(_r => _cols.map(c => _clearCsvEscape_${entityNameLower}(_r ? _r[c] : '')).join(',')).join('\\n');\n`;
+      result += `${pad}  const _date = new Date().toISOString().slice(0, 10);\n`;
+      result += `${pad}  res.setHeader('Content-Type', 'text/csv; charset=utf-8');\n`;
+      result += `${pad}  res.setHeader('Content-Disposition', 'attachment; filename="${pluralEntity}-export-' + _date + '.csv"');\n`;
+      result += `${pad}  res.send(_header + '\\n' + _body);\n`;
+      result += `${pad}});\n`;
+    }
+  }
+
+  return result;
+}
+
+// Routing primitive (2026-04-29). Plan: plans/plan-routing-primitive-2026-04-29.md
+//
+// `route X by FIELD:` compiles to a statement-level if/else chain inside an
+// endpoint body, mutating X.assigned_to. Round-robin defaults call out to a
+// runtime helper that picks the next owner from a SQLite-backed cursor.
+//
+// Cursor table emit: when ANY route_def in the program has a round-robin
+// default, the program's prelude pass adds a `_clear_route_cursors` table.
+// Dedupe via ctx._clearRouteCursorsEmitted so multiple route blocks share one
+// table.
+
+// Portable djb2 hash → first 4 hex chars. Used for stable route ids across
+// edits. Must work in both Node and the browser bundle, so no crypto module.
+function _routeShortHash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  }
+  return ((h >>> 0).toString(16) + '0000').slice(0, 4);
+}
+
+function compileRouteDef(node, ctx, pad) {
+  if (ctx.lang === 'python') {
+    return compileRouteDefPython(node, ctx, pad);
+  }
+
+  const entityName = node.entityName || 'lead';
+  const field = node.field || 'unknown';
+  const rules = Array.isArray(node.rules) ? node.rules : [];
+
+  // Separate fixed rules from the (at most one) default rule.
+  const fixedRules = rules.filter(r => r && r.type === 'fixed');
+  const defaultRule = rules.find(r => r && r.type === 'default');
+
+  let result = `${pad}// clear:${node.line} — route ${entityName} by ${field}\n`;
+  result += `${pad}{\n`;
+  result += `${pad}  const _v = ${entityName}.${field};\n`;
+  for (let i = 0; i < fixedRules.length; i++) {
+    const r = fixedRules[i];
+    const prefix = i === 0 ? 'if' : 'else if';
+    result += `${pad}  ${prefix} (_v === ${JSON.stringify(r.match)}) ${entityName}.assigned_to = ${JSON.stringify(r.owner)};\n`;
+  }
+  if (defaultRule) {
+    const elseKw = fixedRules.length > 0 ? 'else ' : '';
+    if (defaultRule.strategy === 'round_robin') {
+      const pool = Array.isArray(defaultRule.pool) ? defaultRule.pool : [];
+      const routeId = 'route_' + entityName + '_' + field + '_' + _routeShortHash(JSON.stringify({ entityName, field, rules }));
+      const poolJs = JSON.stringify(pool);
+      result += `${pad}  ${elseKw}${entityName}.assigned_to = await _clear_route_pick({\n`;
+      result += `${pad}    routeId: ${JSON.stringify(routeId)},\n`;
+      result += `${pad}    pool: ${poolJs},\n`;
+      result += `${pad}  });\n`;
+    } else {
+      result += `${pad}  ${elseKw}${entityName}.assigned_to = ${JSON.stringify(defaultRule.owner)};\n`;
+    }
+  }
+  result += `${pad}}`;
+  return result;
+}
+
+function compileRouteDefPython(node, ctx, pad) {
+  const entityName = node.entityName || 'lead';
+  const field = node.field || 'unknown';
+  const rules = Array.isArray(node.rules) ? node.rules : [];
+  const fixedRules = rules.filter(r => r && r.type === 'fixed');
+  const defaultRule = rules.find(r => r && r.type === 'default');
+
+  let result = `${pad}# clear:${node.line} — route ${entityName} by ${field}\n`;
+  result += `${pad}_v = ${entityName}.get('${field}') if isinstance(${entityName}, dict) else getattr(${entityName}, '${field}', None)\n`;
+  for (let i = 0; i < fixedRules.length; i++) {
+    const r = fixedRules[i];
+    const prefix = i === 0 ? 'if' : 'elif';
+    const matchPy = JSON.stringify(r.match);
+    const ownerPy = JSON.stringify(r.owner);
+    result += `${pad}${prefix} _v == ${matchPy}: ${entityName}['assigned_to'] = ${ownerPy}\n`;
+  }
+  if (defaultRule) {
+    if (defaultRule.strategy === 'round_robin') {
+      const pool = Array.isArray(defaultRule.pool) ? defaultRule.pool : [];
+      const routeId = 'route_' + entityName + '_' + field + '_' + _routeShortHash(JSON.stringify({ entityName, field, rules }));
+      const poolPy = '[' + pool.map(p => JSON.stringify(p)).join(', ') + ']';
+      const elseKw = fixedRules.length > 0 ? 'else:\n' : '';
+      const indent = fixedRules.length > 0 ? `${pad}    ` : pad;
+      result += `${pad}${elseKw}`;
+      result += `${indent}${entityName}['assigned_to'] = _clear_route_pick(\n`;
+      result += `${indent}    route_id=${JSON.stringify(routeId)},\n`;
+      result += `${indent}    pool=${poolPy},\n`;
+      result += `${indent})\n`;
+    } else {
+      const ownerPy = JSON.stringify(defaultRule.owner);
+      const elseKw = fixedRules.length > 0 ? 'else:' : '';
+      const indent = fixedRules.length > 0 ? `${pad}    ` : pad;
+      if (elseKw) {
+        result += `${pad}${elseKw}\n${indent}${entityName}['assigned_to'] = ${ownerPy}\n`;
+      } else {
+        result += `${indent}${entityName}['assigned_to'] = ${ownerPy}\n`;
+      }
+    }
+  }
+  return result;
+}
+
+// Map a queue action name to its terminal status value.
+// Convention from the queue plan: approve→approved, reject→rejected,
+// counter→awaiting (because "counter" means "now waiting on customer"),
+// "awaiting <thing>"→awaiting, anything else→ first-word lowercased.
+function actionToTerminalStatus(action) {
+  const first = action.split(/\s+/)[0].toLowerCase();
+  if (first === 'approve') return 'approved';
+  if (first === 'reject') return 'rejected';
+  if (first === 'counter') return 'awaiting';
+  if (first === 'awaiting') return 'awaiting';
+  // F4 — `waiting on customer` is the canonical action for the same terminal
+  // status as legacy `awaiting customer`. Reads more naturally for the CRO.
+  if (first === 'waiting') return 'awaiting';
+  return first;
+}
+
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
     // Supabase: tables managed in dashboard, emit comment only
@@ -5989,6 +6816,7 @@ function compileDataShape(node, ctx, pad) {
     if (f.auto) props.push('auto: true');
     if (f.fk) props.push(`ref: "${f.fk}"`);
     if (f.hidden) props.push('hidden: true');
+    if (f.renamedTo) props.push(`renamedTo: ${JSON.stringify(f.renamedTo)}`);
     return `  ${sanitizeName(f.name)}: { ${props.join(', ')} }`;
   }).join(',\n');
   const tableName = pluralizeName(node.name);
@@ -6157,15 +6985,28 @@ function _compileNodeInner(node, ctx) {
   switch (node.type) {
     case NodeType.COMMENT: {
       const prefix = ctx.lang === 'python' ? '#' : '//';
+      const formatLine = (line) => line ? `${pad}${prefix} ${line}` : `${pad}${prefix}`;
       if (node.text.includes('\n')) {
-        return node.text.split('\n').map(line => `${pad}${prefix} ${line}`).join('\n');
+        return node.text.split('\n').map(formatLine).join('\n');
       }
-      return `${pad}${prefix} ${node.text}`;
+      return formatLine(node.text);
     }
 
     case NodeType.TARGET:
     case NodeType.THEME:
       return null;
+
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` as a standalone statement. Emit a runtime
+      // throw with the source line baked in. Compile stays clean; only the
+      // running code fails the moment execution reaches the line. Python
+      // and JS branches both produce the same human-readable message so
+      // Meph (or Russell) can grep "fill it in or remove it" across logs.
+      const msg = `placeholder hit at line ${node.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') return `${pad}raise Exception(${safeMsg})`;
+      return `${pad}throw new Error(${safeMsg});`;
+    }
 
     case NodeType.SCRIPT:
       // Raw JavaScript/Python escape hatch — emit code as-is
@@ -6202,6 +7043,29 @@ function _compileNodeInner(node, ctx) {
       const key = JSON.stringify(node.key);
       if (ctx.lang === 'python') return `${pad}# restore not supported in Python backend`;
       return `${pad}try { const _v = localStorage.getItem(${key}); if (_v !== null) ${stateRef} = JSON.parse(_v); } catch(_) {}`;
+    }
+
+    case NodeType.FIELD_CHANGE: {
+      if (ctx.lang === 'python') return `${pad}# change ${node.recordVar}'s ${node.field}`;
+      const recordVar = sanitizeName(node.recordVar);
+      const recordRef = ctx.stateVars && ctx.stateVars.has(recordVar) ? `_state.${recordVar}` : recordVar;
+      const fieldKey = JSON.stringify(node.field);
+      const fromCode = exprToCode(node.fromValue, ctx);
+      const toCode = exprToCode(node.toValue, ctx);
+      const fromLabel = node.fromEmpty ? 'empty' : String(node.fromValue?.value ?? node.field);
+      const toLabel = node.toEmpty ? 'empty' : String(node.toValue?.value ?? node.field);
+      const lines = [];
+      lines.push(`${pad}{ const _record = ${recordRef};`);
+      lines.push(`${pad}  if (!_record) throw new Error('Select a record first');`);
+      lines.push(`${pad}  const _current = _record[${fieldKey}];`);
+      if (node.fromEmpty) {
+        lines.push(`${pad}  if (_current != null && _current !== '') throw new Error('Expected ${node.field} to be empty before changing it to ${toLabel}');`);
+      } else {
+        lines.push(`${pad}  if (_current !== ${fromCode}) throw new Error('Expected ${node.field} to be ${fromLabel} before changing it to ${toLabel}');`);
+      }
+      lines.push(`${pad}  _record[${fieldKey}] = ${toCode};`);
+      lines.push(`${pad}}`);
+      return lines.join('\n');
     }
 
     case NodeType.ASSIGN: {
@@ -6280,6 +7144,32 @@ function _compileNodeInner(node, ctx) {
       return `${pad}${name} = ${expr}`;
     }
 
+    case NodeType.GIVE_CLAUDE: {
+      // Plan 2026-04-26 — canonical AI call. Maps to the same `_askAI`
+      // runtime helper that powers the assignment-form `ask claude`.
+      // Shape: give claude <data> [with prompt[:] '<X>'] [as <name>]
+      // Compiles to:  let <resultName> = await _askAI(<prompt>, <data>);
+      // Default <resultName> is `claude_reply`. The expression
+      // `claude's reply` is rewritten by exprToCode (MEMBER_ACCESS case)
+      // to read the same variable.
+      const data = exprToCode(node.data, ctx);
+      const prompt = node.prompt ? exprToCode(node.prompt, ctx) : null;
+      const resultName = sanitizeName(node.resultName || 'claude_reply');
+      const declared = ctx.declared && ctx.declared.has(resultName);
+      if (ctx.declared) ctx.declared.add(resultName);
+      // _askAI signature: (prompt/system, context/userMessage, schema, model)
+      // Map: prompt → system instructions, data → user-message payload.
+      // Always non-streaming at the GIVE_CLAUDE statement level — wrap in
+      // `stream:` if you want SSE streaming back to the client.
+      if (ctx.lang === 'python') {
+        const args = prompt ? `${prompt}, ${data}` : `'', ${data}`;
+        return `${pad}${resultName} = await _ask_ai(${args})`;
+      }
+      const args = prompt ? `${prompt}, ${data}` : `'', ${data}`;
+      const keyword = declared ? '' : 'let ';
+      return `${pad}${keyword}${resultName} = await _askAI(${args});`;
+    }
+
     case NodeType.SHOW:
       if (ctx.lang === 'python') return `${pad}print(${exprToCode(node.expression, ctx)})`;
       // Web mode inside a page: render to DOM element (matches show_N placeholder from HTML scaffold)
@@ -6289,7 +7179,13 @@ function _compileNodeInner(node, ctx) {
           return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
         }
         if (ctx._showCounter == null) ctx._showCounter = 0;
-        const showId = `show_${ctx._showCounter++}`;
+        let showId = node._showId;
+        if (showId) {
+          const match = /^show_(\d+)$/.exec(showId);
+          if (match) ctx._showCounter = Math.max(ctx._showCounter, Number(match[1]) + 1);
+        } else {
+          showId = `show_${ctx._showCounter++}`;
+        }
         return `${pad}{ const _el = document.getElementById('${showId}'); if (_el) _el.textContent = ${exprToCode(node.expression, ctx)}; }`;
       }
       return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
@@ -6723,6 +7619,16 @@ ${pad}}`;
       return `${pad}// Section: ${node.title}\n${bodyCode}`;
     }
 
+    case NodeType.NAV_SECTION:
+    case NodeType.NAV_ITEM:
+    case NodeType.PAGE_HEADER:
+    case NodeType.TAB_STRIP:
+    case NodeType.ROUTE_TAB:
+    case NodeType.STAT_STRIP:
+    case NodeType.STAT_CARD:
+    case NodeType.DETAIL_PANEL:
+      return null;
+
     case NodeType.ASK_FOR: {
       if (ctx.mode === 'backend') return null; // frontend-only
       if (ctx.lang === 'python') return `${pad}# Input: ${node.label} (${node.inputType})`;
@@ -6768,6 +7674,18 @@ ${pad}}`;
 
     case NodeType.ENDPOINT:
       return compileEndpoint(node, ctx, pad);
+
+    case NodeType.QUEUE_DEF:
+      return compileQueueDef(node, ctx, pad);
+
+    case NodeType.ROUTE_DEF:
+      return compileRouteDef(node, ctx, pad);
+
+    case NodeType.EMAIL_TRIGGER:
+      return compileEmailTrigger(node, ctx, pad);
+
+    case NodeType.EMAIL_DELIVERY_DIRECTIVE:
+      return compileEmailDeliveryDirective(node, ctx, pad);
 
     case NodeType.RESPOND:
       return compileRespond(node, ctx, pad);
@@ -7285,6 +8203,68 @@ ${pad}}`;
         });
       }
 
+      function singularizeResourceName(value) {
+        const lower = String(value || '').toLowerCase().replace(/^:/, '');
+        if (lower.endsWith('ies')) return lower.slice(0, -3) + 'y';
+        if (lower.endsWith('s') && !lower.endsWith('ss')) return lower.slice(0, -1);
+        return lower;
+      }
+
+      function resourceNameMatches(candidate) {
+        const lower = String(candidate || '').toLowerCase().replace(/^:/, '');
+        return lower === res ||
+          lower === res + 's' ||
+          lower === pluralizeName(res) ||
+          singularizeResourceName(lower) === singularizeResourceName(res);
+      }
+
+      function endpointResourcePart(ep) {
+        const pathParts = String(ep.path || '').split('/').filter(Boolean);
+        if (pathParts[0] === 'api' && pathParts[1]) return pathParts[1];
+        return pathParts.find(part => part !== 'api' && !part.startsWith(':')) || '';
+      }
+
+      function endpointMatchesResource(ep) {
+        return resourceNameMatches(endpointResourcePart(ep));
+      }
+
+      function bodyHasAuth(nodes) {
+        return (nodes || []).some(n =>
+          n.type === NodeType.REQUIRES_AUTH ||
+          n.type === NodeType.REQUIRES_ROLE ||
+          (n.body && bodyHasAuth(n.body))
+        );
+      }
+
+      function endpointRequiresAuth(ep) {
+        return !!(ep && (ep.hasAuth || bodyHasAuth(ep.body)));
+      }
+
+      function actionName(value) {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+
+      function findRowActionEndpoint(action) {
+        const wanted = actionName(action);
+        return endpoints.find(ep => {
+          if (!['PUT', 'PATCH', 'POST'].includes(ep.method)) return false;
+          if (!endpointMatchesResource(ep)) return false;
+          const pathParts = String(ep.path || '').split('/').filter(Boolean);
+          const idIndex = pathParts.findIndex(part => part.startsWith(':'));
+          if (idIndex < 0) return false;
+          return actionName(pathParts[pathParts.length - 1]) === wanted;
+        });
+      }
+
+      function findCollectionEndpoint(matchPath) {
+        return endpoints.find(ep =>
+          ep.method === 'GET' &&
+          endpointMatchesResource(ep) &&
+          !String(ep.path || '').includes(':') &&
+          (!matchPath || matchPath(ep.path.toLowerCase()))
+        );
+      }
+
       // --- Python target branches (TEST_INTENT) ---
       if (ctx.lang === 'python') {
         const commentPrefix = (msg) => `${pad}# ${msg}`;
@@ -7467,6 +8447,47 @@ ${pad}}`;
         const opts = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { method: "DELETE", headers: AUTH_HEADERS }' : ', { method: "DELETE" }';
         let code = `${pad}_response = await fetch(_baseUrl + "${path}"${opts});\n`;
         code += `${pad}_responseBody = await _response.json().catch(() => null);`;
+        return code;
+      }
+
+      if (node.intent === 'approve') {
+        const actionEp = findRowActionEndpoint('approve');
+        if (!actionEp) return `${pad}// Could not find approve endpoint for ${node.resource}`;
+        const pendingEp = findCollectionEndpoint(path => path.includes('/pending')) || findCollectionEndpoint();
+        if (!pendingEp) return `${pad}// Could not find pending GET endpoint for ${node.resource}`;
+        const seedEp = endpoints.find(ep => ep.method === 'POST' && /\/seed(?:\/|$)/.test(String(ep.path || '').toLowerCase()));
+        const pendingOpts = endpointRequiresAuth(pendingEp) ? ', { headers: AUTH_HEADERS }' : '';
+        const actionHeaders = endpointRequiresAuth(actionEp) ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+        const actionPath = actionEp.path.replace(/:id/g, '" + target.id + "');
+        let code = `${pad}// Approving a ${node.resource} removes it from the pending queue\n`;
+        if (seedEp) {
+          const seedHeaders = endpointRequiresAuth(seedEp) ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+          code += `${pad}_lastCall = { method: "POST", path: ${JSON.stringify(seedEp.path)}, line: ${node.line || 0} };\n`;
+          code += `${pad}_response = await fetch(_baseUrl + ${JSON.stringify(seedEp.path)}, { method: "POST", headers: ${seedHeaders}, body: JSON.stringify({}) });\n`;
+          code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+          code += `${pad}_expectSuccess(_response);\n`;
+        }
+        code += `${pad}_lastCall = { method: "GET", path: ${JSON.stringify(pendingEp.path)}, line: ${node.line || 0} };\n`;
+        code += `${pad}_response = await fetch(_baseUrl + ${JSON.stringify(pendingEp.path)}${pendingOpts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}_expectSuccess(_response);\n`;
+        code += `${pad}const before = Array.isArray(_responseBody) ? _responseBody : [];\n`;
+        code += `${pad}const target = before[0];\n`;
+        code += `${pad}assert(target && target.id, "Expected a pending ${node.resource} to approve");\n`;
+        code += `${pad}_lastCall = { method: ${JSON.stringify(actionEp.method)}, path: ${JSON.stringify(actionEp.path)}, line: ${node.line || 0} };\n`;
+        code += `${pad}_response = await fetch(_baseUrl + "${actionPath}", {\n`;
+        code += `${pad}  method: ${JSON.stringify(actionEp.method)}, headers: ${actionHeaders},\n`;
+        code += `${pad}  body: JSON.stringify(target)\n`;
+        code += `${pad}});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}_expectSuccess(_response);\n`;
+        code += `${pad}_lastCall = { method: "GET", path: ${JSON.stringify(pendingEp.path)}, line: ${node.line || 0} };\n`;
+        code += `${pad}_response = await fetch(_baseUrl + ${JSON.stringify(pendingEp.path)}${pendingOpts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}_expectSuccess(_response);\n`;
+        code += `${pad}const after = Array.isArray(_responseBody) ? _responseBody : [];\n`;
+        code += `${pad}assert(after.length === before.length - 1, "Pending queue should shrink by 1 after approval");\n`;
+        code += `${pad}assert(!after.some(item => String(item.id) === String(target.id)), "Approved ${node.resource} should leave the pending queue");`;
         return code;
       }
 
@@ -8041,6 +9062,43 @@ ${pad}}`;
     case NodeType.API_CALL: {
       const url = JSON.stringify(node.url);
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
+      const jsonHeaders = "{ 'Content-Type': 'application/json' }";
+      const authHeaders = "{ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }";
+      const browserHeadersFor = (method, path = node.url) => {
+        const key = `${String(method || 'GET').toUpperCase()} ${path}`;
+        return ctx.authEndpoints && ctx.authEndpoints.has(key) ? authHeaders : jsonHeaders;
+      };
+      const browserGetOptionsFor = (method, path = node.url) => {
+        const key = `${String(method || 'GET').toUpperCase()} ${path}`;
+        return ctx.authEndpoints && ctx.authEndpoints.has(key)
+          ? `, { headers: ${authHeaders} }`
+          : '';
+      };
+
+      if (node.recordVar && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(node.method || '').toUpperCase())) {
+        const method = String(node.method || 'POST').toUpperCase();
+        const recordVar = sanitizeName(node.recordVar);
+        const recordRef = ctx.stateVars && ctx.stateVars.has(recordVar) ? `_state.${recordVar}` : recordVar;
+        const parts = String(node.url || '').split(':id');
+        const fetchUrl = parts.length > 1
+          ? `${JSON.stringify(parts[0])} + _id + ${JSON.stringify(parts.slice(1).join(':id'))}`
+          : JSON.stringify(node.url || '');
+        const lines = [];
+        lines.push(`${pad}{ const _record = ${recordRef};`);
+        if (parts.length > 1) {
+          lines.push(`${pad}  const _id = _record && _record.id;`);
+          lines.push(`${pad}  if (!_id) { if (typeof _toast === 'function') _toast('Select a record first', 'warning'); return; }`);
+        }
+        const failureLabel = method === 'DELETE' ? 'delete failed' : method === 'PUT' || method === 'PATCH' ? 'update failed' : 'save failed';
+        if (method === 'DELETE') {
+          lines.push(`${pad}  const _r = await fetch(${fetchUrl}, { method: '${method}', headers: ${browserHeadersFor(method, node.url)} });`);
+        } else {
+          lines.push(`${pad}  const _r = await fetch(${fetchUrl}, { method: '${method}', headers: ${browserHeadersFor(method, node.url)}, body: JSON.stringify(_record || {}) });`);
+        }
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[${method} ${node.url}]', _e.error || '${failureLabel}'); throw new Error(_e.error || _e.message || '${failureLabel}'); }`);
+        lines.push(`${pad}}`);
+        return lines.join('\n');
+      }
 
       // Auto-upgrade: if the endpoint streams, use the streaming reader
       // regardless of whether the user wrote `stream ...` or `get ... from`.
@@ -8056,7 +9114,7 @@ ${pad}}`;
       if (node.method === 'GET' && !streamsFromAst && !isSendAndReceive) {
         const target = node.targetVar ? sanitizeName(node.targetVar) : 'response';
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
-        return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
+        return `${pad}_state.${target} = await fetch(${url}${browserGetOptionsFor('GET')}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
       if (isSendAndReceive) {
         // POST with fields, parse JSON response into _state[targetVar]
@@ -8064,7 +9122,7 @@ ${pad}}`;
         const fieldObj = '{ ' + node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ') + ' }';
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         const lines = [];
-        lines.push(`${pad}{ const _r = await fetch(${url}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${fieldObj}) });`);
+        lines.push(`${pad}{ const _r = await fetch(${url}, { method: 'POST', headers: ${browserHeadersFor('POST')}, body: JSON.stringify(${fieldObj}) });`);
         lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST ${node.url}]${srcInfo}', _e.error || 'request failed'); throw new Error(_e.error || 'request failed'); }`);
         lines.push(`${pad}  const _d = await _r.json();`);
         lines.push(`${pad}  _state.${target} = (_d && typeof _d === 'object' && 'text' in _d) ? _d.text : _d;`);
@@ -8086,7 +9144,7 @@ ${pad}}`;
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         const lines = [];
         lines.push(`${pad}{ _state.${target} = ''; _recompute();`);
-        lines.push(`${pad}  const _r = await fetch(${url}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${fieldObj}) });`);
+        lines.push(`${pad}  const _r = await fetch(${url}, { method: 'POST', headers: ${browserHeadersFor('POST')}, body: JSON.stringify(${fieldObj}) });`);
         lines.push(`${pad}  if (!_r.ok) { const _e = await _r.text().catch(() => ''); console.error('[STREAM ${node.url}]${srcInfo}', _e); throw new Error('Stream request failed: ' + _r.status); }`);
         lines.push(`${pad}  const _reader = _r.body.getReader();`);
         lines.push(`${pad}  const _dec = new TextDecoder();`);
@@ -8132,9 +9190,9 @@ ${pad}}`;
       }
       // Helper: compile a fetch call with error checking
       const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
-      const fetchWithErrorCheck = (fetchUrl, method, body) => {
+      const fetchWithErrorCheck = (fetchUrl, method, body, endpointPath = node.url) => {
         const lines = [];
-        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${body}) });`);
+        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: ${browserHeadersFor(method, endpointPath)}, body: JSON.stringify(${body}) });`);
         lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[${method} ${node.url}]${srcInfo}', _e.error || '${method} failed'); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
         return lines.join('\n');
       };
@@ -8148,7 +9206,7 @@ ${pad}}`;
           if (upInfo) {
             const lines = [];
             lines.push(`${pad}if (_state._editing_id) {`);
-            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr));
+            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr, upInfo.path || node.url));
             lines.push(`${pad}  _state._editing_id = null;`);
             lines.push(`${pad}} else {`);
             lines.push(fetchWithErrorCheck(url, node.method, bodyExpr));
@@ -8167,7 +9225,21 @@ ${pad}}`;
         const bodyCode = compileBody(node.body, ctx);
         return `${pad}def ${sanitizeName(node.name)}(${params}):\n${bodyCode}`;
       }
-      // JS: compile component as a function that returns HTML string
+      // JS: compile component as a function that returns HTML string.
+      //
+      // Children are compiled via the same buildHTML walker that pages use —
+      // so any UI primitive that works in a page (nav-section, nav-item,
+      // page-header, stat-strip, stat-card, tab-strip, sections with style,
+      // tables, charts, detail panels) works inside a component too. CONTENT
+      // and SHOW nodes still use the existing inline path so dynamic values
+      // (`show user_var`) interpolate correctly.
+      //
+      // Russell, 2026-04-28: previous behavior silently dropped any child
+      // type compileNode returned null for (NAV_SECTION etc.) — so the
+      // compiled DealDeskSidebar() returned only its heading, not its nav.
+      // Caught visually via preview_snapshot. Fix: call buildHTML on a
+      // single-node fragment to get the static HTML, embed it as a string
+      // literal in the compiled function.
       const compDeclared = new Set(node.props.map(sanitizeName));
       const compCtx = { ...ctx, indent: ctx.indent + 1, declared: compDeclared, componentMode: true };
       const bodyParts = [];
@@ -8182,7 +9254,24 @@ ${pad}}`;
           bodyParts.push(`${padFor(compCtx)}_html += ${val};`);
         } else {
           const compiled = compileNode(child, compCtx);
-          if (compiled) bodyParts.push(compiled);
+          if (compiled) {
+            bodyParts.push(compiled);
+            continue;
+          }
+          // compileNode returned null — the child is an HTML-only node
+          // (the walker emits its HTML during page build). Use buildHTML on
+          // a single-node fragment to produce static HTML, then embed.
+          try {
+            const fragmentResult = buildHTML([child]);
+            const html = (fragmentResult && fragmentResult.htmlBody) || '';
+            if (html) {
+              bodyParts.push(`${padFor(compCtx)}_html += ${JSON.stringify(html)};`);
+            }
+          } catch (_err) {
+            // If buildHTML chokes on this fragment, leave it out (silent
+            // drop matches old behavior on unhandled cases — better than
+            // throwing during compile).
+          }
         }
       }
       bodyParts.push(`${padFor(compCtx)}return _html;`);
@@ -8208,9 +9297,9 @@ ${pad}}`;
 
     case NodeType.TOAST: {
       const msg = JSON.stringify(node.message);
-      const variantMap = { success: 'alert-success', warning: 'alert-warning', error: 'alert-error', info: 'alert-info' };
-      const alertClass = variantMap[node.variant] || 'alert-success';
-      return `${pad}_toast(${msg}, "${alertClass}");`;
+      const variantMap = { success: 'success', warning: 'warning', error: 'error', info: 'info' };
+      const variant = variantMap[node.variant] || 'success';
+      return `${pad}_toast(${msg}, "${variant}");`;
     }
 
     case NodeType.PANEL_ACTION: {
@@ -8456,6 +9545,22 @@ export function exprToCode(expr, ctx) {
       if (ctx.lang === 'python') return expr.value ? 'True' : 'False';
       return expr.value ? 'true' : 'false';
 
+    case NodeType.PLACEHOLDER: {
+      // Lean Lesson 1 — `TBD` in expression position. The expression node
+      // produces an inline self-throwing helper so the moment any code
+      // tries to READ the value (assign it, return it, log it, pass it
+      // anywhere), it explodes with a clean message naming the line.
+      // Statement-position `TBD` is handled in _compileNodeInner above.
+      const msg = `placeholder hit at line ${expr.line} — fill it in or remove it`;
+      const safeMsg = JSON.stringify(msg);
+      if (ctx.lang === 'python') {
+        // Python: a thunk that always raises when invoked. Wrap in `(lambda: ...)()`
+        // so it evaluates at use-site, not at definition.
+        return `(_ for _ in ()).throw(Exception(${safeMsg}))`;
+      }
+      return `(()=>{throw new Error(${safeMsg});})()`;
+    }
+
     case NodeType.LITERAL_NOTHING:
       return ctx.lang === 'python' ? 'None' : 'null';
 
@@ -8511,6 +9616,16 @@ export function exprToCode(expr, ctx) {
         const key = exprToCode(expr.dynamicKey, ctx);
         if (ctx.lang === 'python') return `${obj}[${key}]`;
         return `${obj}[${key}]`;
+      }
+      // `claude's reply` — pseudo-actor possessive access. The
+      // GIVE_CLAUDE statement compiled the result to a local variable
+      // (default name `claude_reply`). Rewrite the member access to
+      // read that variable directly so users write the natural
+      // English form. Same pattern as `caller's id` reading req.user.id.
+      // Plan 2026-04-26.
+      if (expr.object && expr.object.type === NodeType.VARIABLE_REF &&
+          expr.object.name === 'claude' && expr.member === 'reply') {
+        return 'claude_reply';
       }
       if (ctx.lang === 'python') {
         const objCode = exprToCode(expr.object, ctx);
@@ -9075,7 +10190,7 @@ function compileToJS(body, errors, sourceMap = false, streamingAgentNames = new 
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE || node.type === NodeType.DETAIL_PANEL) return true;
       // Conditional blocks with UI content need reactive path for show/hide toggling
       if (node.type === NodeType.IF_THEN && node.isBlock) return true;
       // Inline component call: show Card(name) OR show ui's Card(name) — needs reactive path for DOM injection
@@ -9126,6 +10241,15 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         flatten(node.body, node.route || '/');
       } else if (node.type === NodeType.SECTION) {
         flatten(node.body, pageRoute);
+      } else if (node.type === NodeType.DETAIL_PANEL) {
+        if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
+        flatNodes.push(node);
+        flatten(node.body || [], pageRoute);
+        flatten(node.actions || [], pageRoute);
+      } else if (node.type === NodeType.PAGE_HEADER) {
+        if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
+        flatNodes.push(node);
+        flatten(node.actions || [], pageRoute);
       } else {
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
@@ -9133,6 +10257,29 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
   }
   flatten(body);
+
+  function assignShowIds(nodes) {
+    let counter = 0;
+    function walk(nodes) {
+      for (const node of nodes || []) {
+        if (!node) continue;
+        if (node.type === NodeType.SHOW && node.expression && !getComponentCall(node.expression)) {
+          if (!node._showId) node._showId = `show_${counter}`;
+          const match = /^show_(\d+)$/.exec(node._showId);
+          counter = match ? Math.max(counter, Number(match[1]) + 1) : counter + 1;
+        }
+        if (node.type === NodeType.PAGE || node.type === NodeType.SECTION || node.type === NodeType.DETAIL_PANEL) {
+          walk(node.body || []);
+        }
+        if (node.type === NodeType.IF_THEN) {
+          walk(node.thenBranch || []);
+          walk(node.otherwiseBranch || []);
+        }
+      }
+    }
+    walk(nodes);
+  }
+  assignShowIds(body);
 
   // --- Chat input absorption pre-scan ---
   // When `display X as chat` is immediately followed by a text input + Send button
@@ -9174,11 +10321,13 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const buttonNodes = [];    // button nodes
   const computeNodes = [];   // assignments, functions, etc.
   const setupNodes = [];     // comments, targets, modules
+  const detailPanels = [];    // right rail nodes
 
   for (const node of flatNodes) {
     switch (node.type) {
       case NodeType.ASK_FOR: if (!node._chatAbsorbed) inputNodes.push(node); break;
       case NodeType.DISPLAY: displayNodes.push(node); break;
+      case NodeType.DETAIL_PANEL: detailPanels.push(node); break;
       case NodeType.CHART: break; // Chart nodes handled separately below
       case NodeType.BUTTON: if (!node._chatAbsorbed) buttonNodes.push(node); break;
       case NodeType.COMMENT:
@@ -9221,7 +10370,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const stateDefaults = {};
   for (const inp of inputNodes) {
     const name = sanitizeName(inp.variable);
-    stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : '""';
+    stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : inp.inputType === 'yes/no' ? 'false' : '""';
   }
   // Scan for API calls -- register their target variables as state
   function findApiTargets(nodes) {
@@ -9259,10 +10408,12 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     !(n.type === NodeType.ASSIGN && n.expression && literalTypes.has(n.expression.type))
   );
 
-  // Detect DELETE, PUT, and GET endpoints for auto-generating per-row action buttons
+  // Detect DELETE, PUT, row-action, and GET endpoints for auto-generating per-row action buttons
   const deleteEndpoints = {};
   const updateEndpoints = {};
+  const rowActionEndpoints = {};
   const getRefreshUrls = {};
+  const authEndpoints = new Set();
   // Endpoints whose response is an SSE stream. Any `ask claude`/`ask ai` or
   // `stream ask claude` inside a POST endpoint emits text/event-stream, so the
   // frontend should use a streaming reader (not a plain JSON fetch) when
@@ -9281,15 +10432,37 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
     return false;
   }
+  function hasAuthBody(nodes) {
+    return (nodes || []).some(n =>
+      n.type === NodeType.REQUIRES_AUTH ||
+      n.type === NodeType.REQUIRES_ROLE ||
+      (n.body && hasAuthBody(n.body))
+    );
+  }
   function scanForEndpoints(nodes) {
     for (const n of nodes) {
       if (n.type === NodeType.ENDPOINT && n.path) {
-        const match = n.path.match(/\/api\/(\w+)\/:id/);
+        const requiresAuth = hasAuthBody(n.body);
+        const rowActionMatch = n.path.match(/^\/api\/([^/]+)\/:id\/([^/]+)$/);
+        if (rowActionMatch && (n.method === 'PUT' || n.method === 'PATCH' || n.method === 'POST')) {
+          const resource = rowActionMatch[1].toLowerCase();
+          const action = actionSlug(rowActionMatch[2]);
+          if (!rowActionEndpoints[resource]) rowActionEndpoints[resource] = {};
+          rowActionEndpoints[resource][action] = {
+            method: n.method,
+            path: n.path,
+            urlPrefix: `/api/${rowActionMatch[1]}/`,
+            suffix: `/${rowActionMatch[2]}`,
+            requiresAuth,
+          };
+        }
+        const match = n.path.match(/^\/api\/([^/]+)\/:id$/);
         if (match) {
           const resource = match[1].toLowerCase();
           if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
-          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method };
+          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method, path: n.path };
         }
+        if (requiresAuth) authEndpoints.add(`${String(n.method || 'GET').toUpperCase()} ${n.path}`);
         if (hasStreamBody(n.body)) streamingEndpoints.add(n.path);
       }
       if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
@@ -9305,6 +10478,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const hasEditAction = displayNodes.some(d => d.actions && d.actions.includes('edit'));
   if (hasEditAction) {
     stateDefaults['_editing_id'] = 'null';
+  }
+  for (const panel of detailPanels) {
+    stateDefaults[sanitizeName(panel.variable)] = 'null';
   }
 
   const stateEntries = Object.entries(stateDefaults).map(([k, v]) => `  ${k}: ${v}`).join(',\n');
@@ -9495,6 +10671,24 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const _dispUsedIds = new Set();
   const _chatDisplays = []; // Track chat displays for event listener wiring
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
+  function endpointResourceKeyForDisplay(varName) {
+    const key = String(varName || '').toLowerCase();
+    const refresh = getRefreshUrls[key];
+    const match = refresh && refresh.url && String(refresh.url).match(/^\/api\/([^/]+)/);
+    return match ? match[1].toLowerCase() : key;
+  }
+  function detailTargetForDisplay(displayNode) {
+    const start = flatNodes.indexOf(displayNode);
+    if (start < 0) return null;
+    for (let idx = start + 1; idx < flatNodes.length; idx++) {
+      const next = flatNodes[idx];
+      if (next.type === NodeType.DISPLAY && next.format === 'table' && next._pageRoute === displayNode._pageRoute) return null;
+      if (next.type === NodeType.DETAIL_PANEL && next._pageRoute === displayNode._pageRoute) {
+        return sanitizeName(next.variable);
+      }
+    }
+    return null;
+  }
   for (const disp of displayNodes) {
     let outputId = disp.ui._resolvedId || disp.ui.id;
     if (_dispUsedIds.has(outputId)) {
@@ -9505,48 +10699,60 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     _dispUsedIds.add(outputId);
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if user explicitly requested action buttons via "with delete" / "with edit"
+      // SHELL-5: polished table emit. Each cell goes through _clear_cell()
+      // which detects the column type from the key name and produces the
+      // right HTML — status pill, avatar circle, money cell, or plain text.
+      // Headers carry data-sortable so the helper wires sort on click.
+      // Row click toggles is-selected. Actions either come from the legacy
+      // `with delete/edit` shorthand or the new `with actions:` block.
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
       const resourceKey = varName.toLowerCase();
       const actions = disp.actions || [];
       const hasDelete = actions.includes('delete');
       const hasUpdate = actions.includes('edit');
-      const hasActions = hasDelete || hasUpdate;
+      const hasShorthandActions = hasDelete || hasUpdate;
+      const actionButtons = Array.isArray(disp.actionButtons) ? disp.actionButtons : [];
+      const hasBlockActions = actionButtons.length > 0;
+      const hasActions = hasShorthandActions || hasBlockActions;
+      const detailTarget = detailTargetForDisplay(disp);
 
-      // Reactive table: delegate to _clear_render_table which handles virtual
-      // scrolling for large datasets (100+ rows). Head renderer produces the
-      // <th> row, row renderer produces one <tr> per item.
-      // Column keys: either explicit list or Object.keys of first row.
-      // The row renderer needs to derive keys from its OWN row (since data
-      // may be empty in the helper's no-op path). Two separate expressions.
       const headKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(d[0])';
       const rowKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(row)';
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
-      const tdClass = 'text-sm text-base-content';
-      const trClass = 'border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5';
-      const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
-      const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      const headCols = `_keys.map(function(k) { return '<th class="${thClass}" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join('')`;
+      const selectableCellExpr = detailTarget ? 'idx === 0' : 'false';
+      const dataCols = `_keys.map(function(k, idx) { return _clear_cell(k, row[k], ${selectableCellExpr}); }).join('')`;
       let rowHtmlExpr;
       if (hasActions) {
-        let actionBtns = '';
+        const buttonExprs = [];
         if (hasUpdate) {
-          actionBtns += `'<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`;
+          buttonExprs.push(`'<button class="btn-tiny" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`);
         }
         if (hasDelete) {
-          if (actionBtns) actionBtns += ` + ' ' + `;
-          actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
+          buttonExprs.push(`'<button class="btn-tiny is-danger" data-delete-id="' + _esc(row.id) + '">Delete</button>'`);
         }
-        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>'`;
+        for (const btn of actionButtons) {
+          const styleClass = btn.style === 'primary' ? 'btn-tiny is-primary'
+            : btn.style === 'danger' ? 'btn-tiny is-danger'
+            : btn.style === 'secondary' ? 'btn-tiny is-secondary'
+            : 'btn-tiny';
+          const labelEsc = btn.label.replace(/'/g, "\\'");
+          const slugAttr = actionSlug(btn.label);
+          buttonExprs.push(`'<button class="${styleClass}" data-action="${slugAttr}" data-row-id="' + _esc(row.id) + '">${labelEsc}</button>'`);
+        }
+        const buttonsExpr = buttonExprs.length > 0 ? buttonExprs.join(` + ' ' + `) : `''`;
+        rowHtmlExpr = `'<tr data-row-index="' + _esc(rowIndex) + '">' + ${dataCols} + '<td><div class="clear-row-actions">' + ${buttonsExpr} + '</div></td>' + '</tr>'`;
       } else {
-        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '</tr>'`;
+        rowHtmlExpr = `'<tr data-row-index="' + _esc(rowIndex) + '">' + ${dataCols} + '</tr>'`;
       }
-      const extraHead = hasActions ? ` + '<th class="${thClass}"></th>'` : '';
+      const extraHead = hasActions ? ` + '<th class="${thClass}" style="width:1%"></th>'` : '';
       lines.push(`  _clear_render_table(`);
       lines.push(`    document.getElementById('${outputId}_table'),`);
       lines.push(`    ${val},`);
       lines.push(`    function(d) { var _keys = ${headKeysExpr}; return ${headCols}${extraHead}; },`);
-      lines.push(`    function(row) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
+      lines.push(`    function(row, rowIndex) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
       lines.push(`  );`);
+      lines.push(`  _clear_table_init(document.getElementById('${outputId}_table')${detailTarget ? `, '${detailTarget}'` : ''});`);
     } else if (disp.format === 'cards') {
       // Reactive card grid: render array of objects as styled cards
       lines.push(`  {`);
@@ -9710,12 +10916,18 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`    }`);
       lines.push(`  }`);
     } else {
-      const formatExpr = disp.format === 'dollars' || disp.format === 'currency' ? `Number(${val}).toLocaleString('en-US', { style: 'currency', currency: 'USD' })`
-        : disp.format === 'percent' || disp.format === 'percentage' ? `(Number(${val}) * 100).toFixed(1) + '%'`
-        : disp.format === 'date' ? `new Date(${val}).toLocaleDateString()`
-        : disp.format === 'json' ? `JSON.stringify(${val}, null, 2)`
-        : disp.format === 'count' ? `String(Array.isArray(${val}) ? ${val}.length : ${val})`
-        : `String(${val})`;
+      // Null/undefined guard — when the source value isn't loaded yet
+      // (page just opened, no row selected, fetch hasn't returned), every
+      // format below would produce ugly defaults: $NaN, NaN%, "Invalid Date",
+      // "null", "undefined". Render an empty string instead so the layout
+      // shape stays right but no broken numbers leak to the user. Caught
+      // session 04-28-2026 in deal-desk's empty detail panel.
+      const formatExpr = disp.format === 'dollars' || disp.format === 'currency' ? `((${val}) == null ? '' : Number(${val}).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))`
+        : disp.format === 'percent' || disp.format === 'percentage' ? `((${val}) == null ? '' : (Number(${val}) * 100).toFixed(1) + '%')`
+        : disp.format === 'date' ? `((${val}) == null ? '' : new Date(${val}).toLocaleDateString())`
+        : disp.format === 'json' ? `((${val}) == null ? '' : JSON.stringify(${val}, null, 2))`
+        : disp.format === 'count' ? `((${val}) == null ? '0' : String(Array.isArray(${val}) ? ${val}.length : ${val}))`
+        : `((${val}) == null ? '' : String(${val}))`;
       const dispProp = disp.format === 'json' ? 'innerText' : 'textContent';
       lines.push(`  document.getElementById('${outputId}_value').${dispProp} = ${formatExpr};`);
     }
@@ -9733,8 +10945,14 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push(`  {`);
     lines.push(`    const _chartEl = document.getElementById('${chartId}_canvas');`);
     lines.push(`    const _data = ${dataExpr};`);
-    lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
+    // offsetParent check: skip init when the chart is inside a hidden page
+    // (display:none). Without this, ECharts initialises with a 0-width canvas
+    // and the chart never recovers when the page becomes visible. resize()
+    // after init also handles the post-route-swap case where the chart was
+    // built while hidden then revealed by the shell router.
+    lines.push(`    if (_chartEl && _chartEl.offsetParent !== null && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
     lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
+    lines.push(`      _chart.resize();`);
 
     // TailAdmin-quality color palette
     lines.push(`      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];`);
@@ -9750,7 +10968,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
         lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
       }
-      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, series: [{ type: 'pie', radius: ['40%', '70%'], itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, label: { color: '#6b7280' }, data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);`);
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: { orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#4b5563', fontSize: 12 } }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, minShowLabelAngle: 1, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: true, formatter: '{b}: {c}', color: '#374151', fontSize: 12, fontWeight: 600, lineHeight: 16 }, labelLine: { show: true, length: 16, length2: 18, lineStyle: { width: 1.5 } }, data: _pieData, emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);`);
     } else {
       // line, bar, area
       const seriesType = chartType === 'area' ? 'line' : chartType;
@@ -9791,7 +11009,46 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     if (inp.inputType === 'file') continue;
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
-    lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
+    if (inp.inputType === 'yes/no') {
+      lines.push(`  document.getElementById('${inputId}').checked = Boolean(_state.${name});`);
+    } else {
+      lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
+    }
+  }
+
+  // Render text templates: replace {varname} with current values from
+  // _recompute()'s closure scope (locals like `pending_count = count of pending`)
+  // or from _state. Walk the AST to discover which variable names are referenced
+  // in any text/heading content node so we can list them at compile time —
+  // arrow-function callbacks can't reach closure vars dynamically by string.
+  const _tplVars = new Set();
+  const _tplVarRe = /\{([a-zA-Z_]\w*)\}/g;
+  for (const _node of flatNodes) {
+    if (_node.type === NodeType.CONTENT && typeof _node.text === 'string') {
+      let _m;
+      _tplVarRe.lastIndex = 0;
+      while ((_m = _tplVarRe.exec(_node.text)) !== null) _tplVars.add(_m[1]);
+    }
+  }
+  if (_tplVars.size > 0) {
+    lines.push(`  // Substitute {varname} in text templates`);
+    lines.push(`  const _tplCtx = Object.assign({}, _state || {});`);
+    for (const _v of _tplVars) {
+      const _sv = sanitizeName(_v);
+      lines.push(`  if (typeof ${_sv} !== 'undefined') _tplCtx[${JSON.stringify(_v)}] = ${_sv};`);
+    }
+    lines.push(`  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {`);
+    lines.push(`    const _tpl = _el.getAttribute('data-clear-tpl');`);
+    lines.push(`    _el.textContent = _tpl.replace(/\\{(\\w+)\\}/g, (_m, _v) => {`);
+    lines.push(`      const _val = _tplCtx[_v];`);
+    lines.push(`      return (_val == null) ? '' : String(_val);`);
+    lines.push(`    });`);
+    lines.push(`  });`);
+  }
+
+  for (const panel of detailPanels) {
+    const selectedName = sanitizeName(panel.variable);
+    lines.push(`  { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="${selectedName}"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.${selectedName}); }`);
   }
 
   lines.push('}');
@@ -9885,9 +11142,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     const isNum = inp.inputType === 'number' || inp.inputType === 'percent';
+    const isCheckbox = inp.inputType === 'yes/no';
     const isFile = inp.inputType === 'file';
-    const eventType = isFile ? 'change' : 'input';
-    const valueExpr = isFile ? 'e.target.files[0] || null' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
+    const eventType = isFile || isCheckbox ? 'change' : 'input';
+    const valueExpr = isFile ? 'e.target.files[0] || null' : isCheckbox ? 'e.target.checked' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
     lines.push(`document.getElementById('${inputId}').addEventListener('${eventType}', function(e) {`);
     lines.push(`  _state.${name} = ${valueExpr};`);
     lines.push(`  _recompute();`);
@@ -9901,7 +11159,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined, streamingEndpoints };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined, streamingEndpoints, authEndpoints };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL || (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.API_CALL));
       const asyncKw = hasApiCall ? 'async ' : '';
@@ -9950,17 +11208,51 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   for (const disp of displayNodes) {
     if (disp.format !== 'table') continue;
     const actions = disp.actions || [];
-    if (actions.length === 0) continue;
+    const actionButtons = Array.isArray(disp.actionButtons) ? disp.actionButtons : [];
+    if (actions.length === 0 && actionButtons.length === 0) continue;
     const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
-    const resourceKey = varName.toLowerCase();
-    const deleteUrl = actions.includes('delete') ? deleteEndpoints[resourceKey] : null;
-    const updateInfo = actions.includes('edit') ? updateEndpoints[resourceKey] : null;
-    const refreshInfo = getRefreshUrls[resourceKey];
+    const stateKey = varName.toLowerCase();
+    const resourceKey = endpointResourceKeyForDisplay(varName);
+    const deleteUrl = actions.includes('delete') ? (deleteEndpoints[resourceKey] || deleteEndpoints[stateKey]) : null;
+    const updateInfo = actions.includes('edit') ? (updateEndpoints[resourceKey] || updateEndpoints[stateKey]) : null;
+    const refreshInfo = getRefreshUrls[stateKey] || getRefreshUrls[resourceKey];
+    const rowActions = [];
+    const rowActionMap = rowActionEndpoints[resourceKey] || rowActionEndpoints[stateKey] || {};
+    for (const btn of actionButtons) {
+      const slug = actionSlug(btn.label);
+      if (rowActionMap[slug]) rowActions.push({ slug, label: btn.label, info: rowActionMap[slug] });
+    }
+    const hasRowActions = rowActions.length > 0;
+    const detailTarget = detailTargetForDisplay(disp);
     const outputId = disp.ui._resolvedId || disp.ui.id;
-    if (!deleteUrl && !updateInfo) continue;
+    if (!deleteUrl && !updateInfo && !hasRowActions) continue;
 
     lines.push('');
     lines.push(`// --- Table action handlers for ${varName} ---`);
+
+    for (const action of rowActions) {
+      const fnName = `_clear_action_${sanitizeName(outputId)}_${sanitizeName(action.slug.replace(/-/g, '_'))}`;
+      const headers = action.info.requiresAuth
+        ? "{ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }"
+        : "{ 'Content-Type': 'application/json' }";
+      const refreshNeedsAuth = refreshInfo && authEndpoints.has(`GET ${refreshInfo.url}`);
+      const refreshOptions = refreshNeedsAuth
+        ? ", { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') } }"
+        : "";
+      lines.push(`async function ${fnName}(id, row) {`);
+      lines.push(`  if (!id) return;`);
+      lines.push(`  try {`);
+      lines.push(`    const _payload = (row && typeof row === 'object') ? row : {};`);
+      lines.push(`    const _r = await fetch('${action.info.urlPrefix}' + id + '${action.info.suffix}', { method: '${action.info.method}', headers: ${headers}, body: JSON.stringify(_payload) });`);
+      lines.push(`    if (!_r.ok) { const _e = await _r.json().catch(function() { return {}; }); throw new Error(_e.error || 'Action failed'); }`);
+      if (refreshInfo) {
+        lines.push(`    _state.${refreshInfo.varName} = await fetch('${refreshInfo.url}'${refreshOptions}).then(function(r) { if (!r.ok) throw new Error('Failed to refresh data'); return r.json(); });`);
+      }
+      lines.push(`  } catch(e) { console.error(e); if (typeof _toast === 'function') _toast(e.message || 'Action failed', 'error'); }`);
+      lines.push(`  _recompute();`);
+      lines.push(`}`);
+    }
+
     lines.push(`document.getElementById('${outputId}_table').addEventListener('click', async function(e) {`);
 
     if (deleteUrl) {
@@ -9995,6 +11287,21 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`  }`);
     }
 
+    for (const action of rowActions) {
+      const fnName = `_clear_action_${sanitizeName(outputId)}_${sanitizeName(action.slug.replace(/-/g, '_'))}`;
+      lines.push(`  const actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))} = e.target.closest('[data-action="${action.slug}"]');`);
+      lines.push(`  if (actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))}) {`);
+      lines.push(`    e.preventDefault();`);
+      lines.push(`    e.stopPropagation();`);
+      lines.push(`    const id = actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))}.dataset.rowId;`);
+      lines.push(`    const tr = actionBtn_${sanitizeName(action.slug.replace(/-/g, '_'))}.closest('tr[data-row-index]');`);
+      lines.push(`    const rowIndex = tr ? Number(tr.getAttribute('data-row-index')) : -1;`);
+      lines.push(`    const row = Array.isArray(this._clear_rows) ? this._clear_rows[rowIndex] : null;`);
+      lines.push(`    await ${fnName}(id, row);`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
     lines.push(`});`);
   }
 
@@ -10007,7 +11314,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push('(async () => {');
     lines.push('  try {');
     for (const loadNode of loadNodes) {
-      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web', streamingEndpoints };
+      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web', streamingEndpoints, authEndpoints };
       for (const child of loadNode.body) {
         const compiled = compileNode(child, loadCtx);
         if (compiled) lines.push(compiled);
@@ -10166,12 +11473,131 @@ const INLINE_LAYOUT_MODIFIERS = {
   'rounded':             { prop: 'border-radius', val: '12px' },
 };
 
+// Default signup+login form auto-injected on /login pages when
+// `allow signup and login` is in source and the user didn't write their own
+// form. POSTs to /auth/login or /auth/signup, stores the JWT, redirects to
+// `?next=` (or '/'). Self-contained — no dependency on _state or _recompute().
+const AUTH_LOGIN_FORM_HTML = `    <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-base-content tracking-tight mb-2">Welcome back</h1>
+        <p class="text-sm text-base-content/60">Sign in or create an account to continue</p>
+      </div>
+      <div class="bg-base-100 border border-base-300/50 shadow-sm rounded-box p-8 flex flex-col gap-6">
+        <div class="flex p-1 bg-base-200 rounded-lg" role="tablist">
+          <button type="button" data-auth-tab="login" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors bg-base-100 text-base-content shadow-sm">Sign in</button>
+          <button type="button" data-auth-tab="signup" class="flex-1 py-2 px-4 text-sm font-semibold rounded-md transition-colors text-base-content/60 hover:text-base-content">Sign up</button>
+        </div>
+        <div data-auth-panel="login" class="flex flex-col gap-4">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_login_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_login_password" type="password" autocomplete="current-password" class="input input-bordered w-full" placeholder="••••••••" />
+          </fieldset>
+          <button id="auth_login_submit" type="button" class="btn btn-primary w-full">Sign in</button>
+          <p id="auth_login_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+        <div data-auth-panel="signup" class="flex flex-col gap-4" style="display:none">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+            <input id="auth_signup_email" type="email" autocomplete="email" class="input input-bordered w-full" placeholder="you@company.com" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+            <input id="auth_signup_password" type="password" autocomplete="new-password" class="input input-bordered w-full" placeholder="At least 8 characters" />
+          </fieldset>
+          <button id="auth_signup_submit" type="button" class="btn btn-primary w-full">Create account</button>
+          <p id="auth_signup_error" class="text-sm text-error" style="display:none"></p>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var tabs = document.querySelectorAll('[data-auth-tab]');
+      var panels = document.querySelectorAll('[data-auth-panel]');
+      function setActive(which) {
+        tabs.forEach(function (t) {
+          var on = t.getAttribute('data-auth-tab') === which;
+          t.classList.toggle('bg-base-100', on);
+          t.classList.toggle('text-base-content', on);
+          t.classList.toggle('shadow-sm', on);
+          t.classList.toggle('text-base-content/60', !on);
+        });
+        panels.forEach(function (p) {
+          p.style.display = p.getAttribute('data-auth-panel') === which ? 'flex' : 'none';
+        });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { setActive(t.getAttribute('data-auth-tab')); }); });
+      function nextDest() {
+        try {
+          var n = new URL(window.location.href).searchParams.get('next');
+          return (n && n.charAt(0) === '/') ? n : '/';
+        } catch (e) { return '/'; }
+      }
+      async function submit(path, emailEl, passwordEl, errEl, btn) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        var email = (emailEl.value || '').trim();
+        var password = passwordEl.value || '';
+        if (!email || !password) {
+          errEl.textContent = 'Email and password are required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        btn.disabled = true;
+        try {
+          var res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, password: password })
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) {}
+          if (!res.ok) {
+            errEl.textContent = (data && data.error) ? data.error : 'Sign in failed. Please try again.';
+            errEl.style.display = 'block';
+            return;
+          }
+          if (data && data.token) localStorage.setItem('token', data.token);
+          window.location.href = nextDest();
+        } catch (e) {
+          errEl.textContent = 'Network error. Please try again.';
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      var loginBtn = document.getElementById('auth_login_submit');
+      if (loginBtn) loginBtn.addEventListener('click', function () {
+        submit('/auth/login',
+          document.getElementById('auth_login_email'),
+          document.getElementById('auth_login_password'),
+          document.getElementById('auth_login_error'),
+          loginBtn);
+      });
+      var signupBtn = document.getElementById('auth_signup_submit');
+      if (signupBtn) signupBtn.addEventListener('click', function () {
+        submit('/auth/signup',
+          document.getElementById('auth_signup_email'),
+          document.getElementById('auth_signup_password'),
+          document.getElementById('auth_signup_error'),
+          signupBtn);
+      });
+    })();
+    </script>`;
+
 function buildHTML(body) {
   const parts = [];
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   // Source map: emit data-clear-line="N" on every HTML element for click-to-highlight
   const clAttr = (node) => node.line ? ` data-clear-line="${node.line}"` : '';
+  const attrEsc = (value) => String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
   let pageTitle = 'Clear App';
   let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   let hasMap = false;   // Track if any map display nodes exist (for Leaflet CDN)
@@ -10179,21 +11605,227 @@ function buildHTML(body) {
   let hasRichText = false; // Track if any rich text editors exist (for Quill CDN)
   let hasChat = false;  // Track if any chat display nodes exist (for chat CSS)
   const pages = [];
+  // Track which page the walker is currently inside so shell-attr emission
+  // (data-clear-shell-root / data-clear-shell-outlet) can attach to the right
+  // page. The first page that wraps its body in `app_layout` becomes THE shell —
+  // its `app_content` is the outlet other routes get parked into.
+  let currentPage = null;
+  let shellPage = null;
   const sectionStack = []; // Track parent section presets for context-aware rendering
+  // True when `allow signup and login` is in source — the compiler can then
+  // auto-inject a default signup+login form on `/login` pages so the user
+  // doesn't end up with a "use the form above" dead-end.
+  const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+
+  function navCountHTML(count) {
+    if (count === undefined || count === null || count === '') return '';
+    const raw = String(count);
+    const safe = attrEsc(raw);
+    if (/^[a-zA-Z_]\w*$/.test(raw)) {
+      return `<span class="clear-nav-count num" data-clear-tpl="{${safe}}">{${safe}}</span>`;
+    }
+    return `<span class="clear-nav-count num">${safe}</span>`;
+  }
+
+  function navItemHTML(node) {
+    const title = formatInlineText(node.title || '');
+    const href = attrEsc(node.path || '#');
+    const uatId = attrEsc(stableUatId('nav_item', node.line, node.title));
+    const icon = node.icon
+      ? `<i data-lucide="${attrEsc(node.icon)}" aria-hidden="true"></i>`
+      : '';
+    const count = navCountHTML(node.count);
+    return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="${uatId}" data-clear-control-kind="nav-item" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
+  }
+
+  function pageHeaderHTML(node) {
+    const title = formatInlineText(node.title || '');
+    // Subtitle supports {varname} interpolation against the page's reactive
+    // state — same path that text/small-text use elsewhere. When the subtitle
+    // contains {var} placeholders we emit data-clear-tpl="{original}" and the
+    // runtime's _recompute() resubstitutes on every state change. Without this
+    // attribute the literal "{var}" text shows on the page (caught session
+    // 04-28-2026 in the deal-desk demo).
+    let subtitle = '';
+    if (node.subtitle) {
+      const subText = formatInlineText(node.subtitle);
+      const hasTpl = typeof subText === 'string' && /\{[a-zA-Z_]\w*\}/.test(subText);
+      const tplAttr = hasTpl
+        ? ` data-clear-tpl="${subText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"`
+        : '';
+      subtitle = `<p class="clear-page-subtitle text-sm text-base-content/55 mt-1"${tplAttr}>${subText}</p>`;
+    }
+    const before = parts.length;
+    if (node.actions && node.actions.length > 0) {
+      walk(node.actions);
+    }
+    const actionHTML = parts.splice(before).join('\n');
+    const actions = actionHTML
+      ? `\n      <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">\n${actionHTML}\n      </div>`
+      : '';
+    return `    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true"${clAttr(node)}>
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">${title}</h1>
+        ${subtitle}
+      </div>${actions}
+    </div>`;
+  }
+
+  function routeTabStripHTML(node) {
+    const tabs = node.tabs || [];
+    const activeKey = String(node.activeTab || '').toLowerCase();
+    const hasActiveHint = !!activeKey;
+    const rows = tabs.map((tab, idx) => {
+      const title = formatInlineText(tab.title || '');
+      const href = attrEsc(tab.path || '#');
+      const uatId = attrEsc(stableUatId('route_tab', tab.line || node.line, tab.title));
+      const matchTitle = String(tab.title || '').toLowerCase() === activeKey;
+      const matchPath = String(tab.path || '').toLowerCase() === activeKey;
+      const isActive = hasActiveHint ? (matchTitle || matchPath) : idx === 0;
+      return `      <a href="${href}" class="clear-route-tab${isActive ? ' is-active' : ''}" data-route-tab="true" data-clear-uat-id="${uatId}" data-clear-control-kind="route-tab" data-tab-path="${href}">${title}</a>`;
+    }).join('\n');
+    return `    <nav class="clear-tab-strip" data-tab-strip="true"${clAttr(node)}>\n${rows}\n    </nav>`;
+  }
+
+  function statValueHTML(expr) {
+    if (!expr) return '';
+    if (expr.type === NodeType.LITERAL_NUMBER || expr.type === NodeType.LITERAL_BOOLEAN) {
+      return formatInlineText(String(expr.value));
+    }
+    if (expr.type === NodeType.LITERAL_STRING) {
+      return formatInlineText(expr.value || '');
+    }
+    if (expr.type === NodeType.VARIABLE_REF) {
+      const name = attrEsc(expr.name || '');
+      return `<span data-clear-tpl="{${name}}">{${name}}</span>`;
+    }
+    return formatInlineText(exprToCode(expr, { lang: 'javascript' }));
+  }
+
+  function statDeltaHTML(delta) {
+    if (!delta) return '';
+    const raw = String(delta);
+    const tone = raw.trim().startsWith('-') ? 'negative' : 'positive';
+    return `<div class="clear-stat-delta clear-stat-delta-${tone}">${formatInlineText(raw)}</div>`;
+  }
+
+  function statSparklineHTML(expr) {
+    if (!expr) return '';
+    if (expr.type !== NodeType.LITERAL_LIST) {
+      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
+    }
+    const nums = (expr.elements || [])
+      .filter(item => item && item.type === NodeType.LITERAL_NUMBER)
+      .map(item => Number(item.value));
+    if (nums.length === 0) {
+      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
+    }
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    const span = max - min || 1;
+    const step = nums.length === 1 ? 0 : 92 / (nums.length - 1);
+    const points = nums.map((num, idx) => {
+      const x = 2 + idx * step;
+      const y = 24 - ((num - min) / span) * 20;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="${attrEsc(points)}"></polyline></svg>`;
+  }
+
+  function statCardHTML(card) {
+    const label = formatInlineText(card.label || '');
+    const icon = card.icon
+      ? `          <i class="clear-stat-icon" data-lucide="${attrEsc(card.icon)}" aria-hidden="true"></i>`
+      : null;
+    const delta = statDeltaHTML(card.delta);
+    const sparkline = statSparklineHTML(card.sparkline);
+    const lines = [
+      `      <div class="clear-stat-card" data-stat-card="true"${clAttr(card)}>`,
+      '        <div class="clear-stat-card-top">',
+      `          <div class="clear-stat-label">${label}</div>`,
+    ];
+    if (icon) lines.push(icon);
+    lines.push(
+      '        </div>',
+      `        <div class="clear-stat-value tabular-nums">${statValueHTML(card.value)}</div>`
+    );
+    if (delta) lines.push(`        ${delta}`);
+    if (sparkline) lines.push(`        ${sparkline}`);
+    lines.push('      </div>');
+    return lines.join('\n');
+  }
+
+  function statStripHTML(node) {
+    const cards = (node.cards || []).map(statCardHTML).join('\n');
+    return `    <div class="clear-stat-strip" data-stat-strip="true"${clAttr(node)}>\n${cards}\n    </div>`;
+  }
+
+  function detailPanelHTML(node) {
+    const variable = sanitizeName(node.variable || 'selected_row');
+    const beforeBody = parts.length;
+    sectionStack.push('detail_panel');
+    walk(node.body || []);
+    sectionStack.pop();
+    const bodyHTML = parts.splice(beforeBody).join('\n');
+
+    const beforeActions = parts.length;
+    if (node.actions && node.actions.length > 0) {
+      sectionStack.push('detail_panel');
+      walk(node.actions);
+      sectionStack.pop();
+    }
+    const actionHTML = parts.splice(beforeActions).join('\n');
+    const actions = actionHTML
+      ? `\n      <div class="clear-detail-actions" data-detail-actions="true">\n${actionHTML}\n      </div>`
+      : '';
+
+    return `    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="${attrEsc(variable)}"${clAttr(node)}>
+      <div class="clear-detail-empty">Select a row to inspect it.</div>
+      <div class="clear-detail-body">
+${bodyHTML}
+      </div>${actions}
+    </aside>`;
+  }
 
   function walk(nodes) {
     for (const node of nodes) {
       switch (node.type) {
-        case NodeType.PAGE:
+        case NodeType.PAGE: {
           pageTitle = node.title;
+          const previousPage = currentPage;
+          let pageMeta = null;
           if (node.route) {
-            pages.push({ title: node.title, route: node.route, startIdx: parts.length });
+            pageMeta = { title: node.title, route: node.route, startIdx: parts.length, hasShell: false };
+            pages.push(pageMeta);
+            currentPage = pageMeta;
+          }
+          // Auto-inject a default signup+login form when the page is at /login,
+          // `allow signup and login` is in source, and the user didn't already
+          // write their own input form. Avoids the "use the form above"
+          // dead-end where a sign-in page renders just a heading and copy.
+          if (hasAuthScaffold && node.route && /^\/+login\/?$/i.test(String(node.route))) {
+            const _bodyAll = (function _coll(ns) {
+              const out = [];
+              for (const _n of (ns || [])) {
+                out.push(_n);
+                if (_n && Array.isArray(_n.body)) out.push(..._coll(_n.body));
+              }
+              return out;
+            })(node.body || []);
+            const _hasOwnForm = _bodyAll.some(n =>
+              n && (n.type === NodeType.ASK_FOR || n.type === NodeType.LOGIN_ACTION)
+            );
+            if (!_hasOwnForm) {
+              parts.push(AUTH_LOGIN_FORM_HTML);
+            }
           }
           walk(node.body);
-          if (node.route) {
-            pages[pages.length - 1].endIdx = parts.length;
+          if (node.route && pageMeta) {
+            pageMeta.endIdx = parts.length;
           }
+          currentPage = previousPage;
           break;
+        }
 
         case NodeType.SECTION: {
           const hasUserStyle = node.styleName;
@@ -10418,7 +12050,40 @@ function buildHTML(body) {
             ];
             const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
             const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
-            parts.push(`    <div class="${cls}"${heroInlineStyle}${clAttr(node)}>`);
+            // Phase 1 shell upgrade: app_* presets emit semantic HTML5 tags
+            // (aside / main / header) instead of generic <div>. The mock at
+            // landing/marcus-app-target.html is the visual target. We also
+            // attach inline styles for tokens utilities can't express.
+            const APP_SHELL_TAGS = {
+              app_sidebar: 'aside',
+              app_main:    'main',
+              app_header:  'header',
+            };
+            const APP_SHELL_INLINE_STYLES = {
+              // 240px rail bg from --clear-bg-rail (matches mock)
+              app_sidebar: 'width:240px;background:var(--clear-bg-rail);',
+              // 56px sticky bar with canvas bg
+              app_header:  'height:56px;background:var(--clear-bg-canvas);',
+            };
+            const shellTag = APP_SHELL_TAGS[node.styleName] || 'div';
+            const shellInline = APP_SHELL_INLINE_STYLES[node.styleName] || '';
+            const inlineStyleAttr = shellInline
+              ? ` style="${shellInline}"`
+              : heroInlineStyle;
+            // Mark the first page with `app_layout` as THE shell page; its `app_content`
+            // becomes the outlet other routes get parked into. The router uses these
+            // attributes to swap page content WITHOUT re-mounting the shell — meaning
+            // the sidebar persists and `_recompute()` re-binds visible tables to
+            // already-fetched data.
+            let shellAttr = '';
+            if (node.styleName === 'app_layout' && currentPage && !shellPage) {
+              shellPage = currentPage;
+              shellPage.hasShell = true;
+              shellAttr = ' data-clear-shell-root="true"';
+            } else if (node.styleName === 'app_content' && currentPage && shellPage === currentPage) {
+              shellAttr = ' data-clear-shell-outlet="true"';
+            }
+            parts.push(`    <${shellTag} class="${cls}"${inlineStyleAttr}${shellAttr}${clAttr(node)}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -10440,6 +12105,10 @@ function buildHTML(body) {
                   // Skip dividers — brand border-b replaces them
                 } else if (isNavContent(child)) {
                   navNodes.push({ group: null, items: [child] });
+                } else if (child.type === NodeType.NAV_ITEM) {
+                  navNodes.push({ group: null, items: [child] });
+                } else if (child.type === NodeType.NAV_SECTION) {
+                  navNodes.push({ group: child.title, items: child.body || [] });
                 } else if (child.type === NodeType.FOR_EACH) {
                   navNodes.push({ group: null, items: [child] });
                 } else if (child.type === NodeType.SECTION && child.body && child.body.every(isNavContent)) {
@@ -10458,7 +12127,7 @@ function buildHTML(body) {
                 parts.push(`      <ul class="menu menu-md gap-0.5 p-0">`);
                 for (const entry of navNodes) {
                   if (entry.group) {
-                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-5 mb-1 px-3">${entry.group}</li>`);
+                    parts.push(`        <li class="clear-nav-section-label">${formatInlineText(entry.group || '')}</li>`);
                   }
                   walk(entry.items);
                 }
@@ -10699,6 +12368,37 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
                 parts.push(`    </div>`);
               }
+            } else if (node.styleName === 'app_header') {
+              // Phase 1 shell upgrade: app_header is a 56px sticky bar with three
+              // semantic slots — brand (heading), breadcrumb (text), actions
+              // (buttons). Children get sorted into the right slot. This lets
+              // page header / breadcrumb / action primitives in later phases
+              // target a stable scaffold instead of a flat row.
+              const headerBody = node.body || [];
+              const isHeading = c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading');
+              const isButton  = c => c.type === NodeType.BUTTON;
+              const isLink    = c => c.type === NodeType.CONTENT && (c.contentType === 'link' || c.ui?.contentType === 'link');
+              const brandKids      = headerBody.filter(isHeading);
+              const actionKids     = headerBody.filter(isButton);
+              const breadcrumbKids = headerBody.filter(c => !isHeading(c) && !isButton(c) && !isLink(c) && c.type === NodeType.CONTENT);
+              const otherKids      = headerBody.filter(c => !isHeading(c) && !isButton(c) && !breadcrumbKids.includes(c));
+              parts.push(`      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">`);
+              if (brandKids.length > 0) walk(brandKids);
+              parts.push(`      </div>`);
+              parts.push(`      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">`);
+              if (breadcrumbKids.length > 0) walk(breadcrumbKids);
+              parts.push(`      </nav>`);
+              parts.push(`      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">`);
+              if (actionKids.length > 0) walk(actionKids);
+              if (otherKids.length > 0) walk(otherKids);
+              parts.push(`      </div>`);
+            } else if (node.styleName === 'app_content' && currentPage && shellPage === currentPage) {
+              // Shell page's app_content: wrap the body in a marker so the router
+              // can show/hide it as "the shell's default content" on route change.
+              const routedId = sanitizeName(currentPage.title || 'Page');
+              parts.push(`      <div data-clear-routed-content="${attrEsc(routedId)}" data-clear-routed-route="${attrEsc(currentPage.route || '/')}">`);
+              walk(node.body);
+              parts.push(`      </div>`);
             } else if (node.styleName === 'app_list') {
               // app_list: header content above, each child wrapped as a list item row
               const listHeader = node.body.filter(c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading'));
@@ -10731,7 +12431,8 @@ function buildHTML(body) {
             }
             sectionStack.pop();
             if (needsWrapper) parts.push(`      </div>`);
-            parts.push(`    </div>`);
+            // Close the matching shell tag (aside / main / header / div)
+            parts.push(`    </${shellTag}>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style: resolve semantic tokens to Tailwind, rest to CSS class
             const styleDef = node.styleName
@@ -10842,8 +12543,9 @@ ${options}
           const _cl = clAttr(node);
           if (ui.tag === 'table') {
             parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}"${_cl}>
-      <div class="px-6 py-4 border-b border-base-300/40">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="${displayId}_table">
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="${displayId}_table">
@@ -10917,9 +12619,9 @@ ${options}
           const subtitleHtml = node.subtitle
             ? `\n      <p class="text-sm text-base-content/50 -mt-2 mb-3">${node.subtitle}</p>`
             : '';
-          parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="${chartId}">
+          parts.push(`    <div class="clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4" id="${chartId}">
       <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>${subtitleHtml}
-      <div id="${chartId}_canvas" style="width:100%;height:350px;"></div>
+      <div id="${chartId}_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
     </div>`);
           hasChart = true;
           break;
@@ -10959,7 +12661,11 @@ ${options}
             // Default: primary CTA
             btnCls = btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
           }
-          parts.push(`    <button class="${btnCls}" id="${node.ui.id}"${clAttr(node)}>${node.ui.label}</button>`);
+          const detailActionAttr = sectionStack.includes('detail_panel')
+            ? ` data-action="${attrEsc(actionSlug(node.ui.label || ''))}"`
+            : '';
+          const btnUatId = attrEsc(stableUatId('button', node.line, node.label || node.ui.label));
+          parts.push(`    <button class="${btnCls}" id="${node.ui.id}" data-clear-uat-id="${btnUatId}" data-clear-control-kind="button"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
           break;
         }
 
@@ -11023,8 +12729,20 @@ ${options}
           ];
           const inDarkCard = COLORED_CARD_PRESETS.includes(parentPreset);
           const _clContent = clAttr(node);
-          // Inject data-clear-line into the first tag of whatever content is pushed
-          const _pushContent = (html) => { parts.push(_clContent ? html.replace(/>/, _clContent + '>') : html); };
+          // Detect {varname} templates in the formatted content. When present,
+          // emit a data-clear-tpl attribute holding the original template so
+          // _recompute() can re-substitute the variables on every render.
+          const _hasTpl = typeof formatted === 'string' && /\{[a-zA-Z_]\w*\}/.test(formatted);
+          const _clTpl = _hasTpl
+            ? ` data-clear-tpl="${formatted.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"`
+            : '';
+          // Inject data-clear-line + data-clear-tpl into the first tag of whatever content is pushed
+          const _pushContent = (html) => {
+            let _out = html;
+            if (_clTpl) _out = _out.replace(/>/, _clTpl + '>');
+            if (_clContent) _out = _out.replace(/>/, _clContent + '>');
+            parts.push(_out);
+          };
           const _pc = _pushContent; // short alias
           switch (ui.contentType) {
             case 'heading':
@@ -11232,6 +12950,31 @@ ${options}
           break;
         }
 
+        case NodeType.NAV_SECTION:
+          parts.push(`    <li class="clear-nav-section-label">${formatInlineText(node.title || '')}</li>`);
+          walk(node.body || []);
+          break;
+
+        case NodeType.NAV_ITEM:
+          parts.push(navItemHTML(node));
+          break;
+
+        case NodeType.PAGE_HEADER:
+          parts.push(pageHeaderHTML(node));
+          break;
+
+        case NodeType.TAB_STRIP:
+          parts.push(routeTabStripHTML(node));
+          break;
+
+        case NodeType.STAT_STRIP:
+          parts.push(statStripHTML(node));
+          break;
+
+        case NodeType.DETAIL_PANEL:
+          parts.push(detailPanelHTML(node));
+          break;
+
         case NodeType.SHOW: {
           // Component call: show Card(name) OR show ui's Card(name) -> container div for reactive rendering
           // Only uppercase component names match (bare or as the namespace's member).
@@ -11240,9 +12983,21 @@ ${options}
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           } else if (node.expression) {
             // Dynamic expression: show total, text 'Price: ' + price → placeholder <p> for JS to fill
-            const showId = `show_${showCounter++}`;
-            node._showId = showId;
-            parts.push(`    <p id="${showId}" class="text-sm font-medium text-base-content/90 leading-snug"></p>`);
+            let showId = node._showId;
+            if (showId) {
+              const match = /^show_(\d+)$/.exec(showId);
+              if (match) showCounter = Math.max(showCounter, Number(match[1]) + 1);
+            } else {
+              showId = `show_${showCounter++}`;
+              node._showId = showId;
+            }
+            if (node.displayAs === 'heading') {
+              parts.push(`    <h2 id="${showId}" class="clear-detail-title text-lg font-semibold text-base-content"></h2>`);
+            } else if (node.displayAs === 'subheading') {
+              parts.push(`    <p id="${showId}" class="clear-detail-subtitle text-sm text-base-content/60"></p>`);
+            } else {
+              parts.push(`    <p id="${showId}" class="text-sm font-medium text-base-content/90 leading-snug"></p>`);
+            }
           }
           break;
         }
@@ -11282,14 +13037,21 @@ ${options}
   let showCounter = 0;
   walk(body);
 
-  // Wrap multi-page content in routable divs (process in reverse to keep indices valid)
-  if (pages.length > 1) {
+  // Wrap each page's content in a routable div (process in reverse to keep indices valid).
+  // Single-page apps get the marker too so generated browser tests can prove
+  // the compiled UI actually rendered, not just that HTML fetched. Non-shell pages
+  // also carry `data-clear-routed-content` so the shell router can park/unpark
+  // them into the shared outlet on route change.
+  if (pages.length > 0) {
     for (let i = pages.length - 1; i >= 0; i--) {
       const p = pages[i];
       const pageId = sanitizeName(p.title);
-      const hidden = i > 0 ? ' style="display:none"' : '';
+      const hidden = pages.length > 1 && i > 0 ? ' style="display:none"' : '';
+      const routedContentAttr = shellPage && shellPage !== p
+        ? ` data-clear-routed-content="${attrEsc(pageId)}"`
+        : '';
       parts.splice(p.endIdx, 0, `</div>`);
-      parts.splice(p.startIdx, 0, `<div id="page_${pageId}"${hidden}>`);
+      parts.splice(p.startIdx, 0, `<div id="page_${pageId}" data-clear-page-id="${attrEsc(pageId)}" data-clear-page-route="${attrEsc(p.route)}" data-clear-page-title="${attrEsc(p.title)}"${routedContentAttr}${hidden}>`);
     }
   }
 
@@ -11313,6 +13075,7 @@ function formatInlineText(text) {
  */
 function compileToHTML(body, compiledJS) {
   const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR, hasRichText } = buildHTML(body);
+  const hasLucide = htmlBody.includes('data-lucide');
   // Live App Editing: whenever the app has login, emit the Meph edit widget
   // script. The widget self-gates on role === 'owner' in the JWT, so
   // including it for every auth-enabled app is safe — non-owners never see
@@ -11342,6 +13105,62 @@ function compileToHTML(body, compiledJS) {
   let routerJS = '';
   if (hasRouting) {
     const routeMap = pages.map(p => `  '${p.route}': '${sanitizeName(p.title)}'`).join(',\n');
+    // Shell-page routing: when one of the pages declared an `app_layout`, the
+    // router can swap the active page's content into the shell's outlet
+    // WITHOUT re-mounting the whole app. The sidebar / header persist; only
+    // the content area changes. After every swap we kick `_recompute()` via
+    // requestAnimationFrame so visible tables re-bind to data already
+    // fetched by the global `on page load:` block.
+    const shellHostPage = pages.find(p => p.hasShell);
+    const shellRoute = shellHostPage ? shellHostPage.route : '';
+    const shellPageId = shellHostPage ? sanitizeName(shellHostPage.title) : '';
+    const hasShellRouting = !!shellRoute && !!shellPageId;
+    const shellRouterJS = hasShellRouting ? `
+const _shellRoute = '${shellRoute}';
+const _shellPageId = '${shellPageId}';
+const _standaloneRoutes = { '/login': true, '/signup': true };
+function _clearTemplateHost() {
+  let host = document.getElementById('clear-route-templates');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'clear-route-templates';
+    host.hidden = true;
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function _clearParkMountedRoutes(outlet) {
+  const host = _clearTemplateHost();
+  Array.from(outlet.children).forEach(function(child) {
+    if (!child || !child.getAttribute) return;
+    if (!child.hasAttribute('data-clear-page-route')) return;
+    if (child.id === 'page_' + _shellPageId) return;
+    if (child.getAttribute('data-clear-routed-content') === _shellPageId) return;
+    child.style.display = 'none';
+    host.appendChild(child);
+  });
+}
+function _clearRenderRouteIntoShell(current) {
+  if (_standaloneRoutes[current]) return false;
+  const shellPage = document.getElementById('page_' + _shellPageId);
+  const outlet = document.querySelector('[data-clear-shell-outlet="true"]');
+  if (!shellPage || !outlet) return false;
+  const shellDefault = outlet.querySelector('[data-clear-routed-content="' + _shellPageId + '"]');
+  shellPage.style.display = 'block';
+  _clearParkMountedRoutes(outlet);
+  if (current === _shellRoute) {
+    if (shellDefault) shellDefault.style.display = '';
+    return true;
+  }
+  if (shellDefault) shellDefault.style.display = 'none';
+  const pageId = _routes[current];
+  const target = pageId ? document.getElementById('page_' + pageId) : null;
+  if (!target) return true;
+  target.style.display = 'block';
+  outlet.appendChild(target);
+  return true;
+}
+` : '';
     routerJS = `
 // --- Router ---
 // Reads both location.pathname (server-side navigation, direct URLs, route
@@ -11352,6 +13171,7 @@ function compileToHTML(body, compiledJS) {
 const _routes = {
 ${routeMap}
 };
+${shellRouterJS}
 function _currentRoute() {
   const p = (location.pathname || '/').replace(/\\/$/, '') || '/';
   if (_routes.hasOwnProperty(p)) return p;
@@ -11361,11 +13181,18 @@ function _currentRoute() {
 }
 function _router() {
   const current = _currentRoute();
+  ${hasShellRouting ? `const _shellRendered = _clearRenderRouteIntoShell(current);
+  if (_shellRendered) {
+    document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+    if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+    return;
+  }` : ''}
   for (const [route, pageId] of Object.entries(_routes)) {
     const el = document.getElementById('page_' + pageId);
     if (el) el.style.display = (route === current) ? 'block' : 'none';
   }
   document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+  if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
 }
 window.addEventListener('popstate', _router);
 window.addEventListener('hashchange', _router);
@@ -11404,7 +13231,11 @@ _router();`;
     css.includes('full_height') || css.includes('column_layout') || css.includes('grid') ||
     css.includes('flex-direction: row') || css.includes('side_by_side');
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
-  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8 flex flex-col gap-6';
+  // The default page wrapper used to be `max-w-2xl mx-auto p-8` — a 600px column
+  // that made every Marcus app look like a 2018 single-column-form site. Widen
+  // to a 5xl container with breathing room. Apps that opt into landing/app
+  // presets bypass this. See landing/marcus-app-target.html for the visual bar.
+  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-5xl mx-auto px-6 py-10 flex flex-col gap-6';
 
   // Use module script if compiled code uses dynamic import (await import)
   const scriptType = compiledJS.includes('await import(') ? ' type="module"' : '';
@@ -11420,10 +13251,13 @@ _router();`;
 ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>' : ''}
 ${hasMap ? '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />\n  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"><\/script>' : ''}
 ${hasQR ? '  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"><\/script>' : ''}
+${hasLucide ? '  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"><\/script>' : ''}
 ${hasRichText ? '  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />\n  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.min.js"><\/script>\n  <style>.rich-text-editor{min-height:180px;border:none!important}.ql-toolbar{border:none!important;border-bottom:1px solid var(--color-base-300)!important;border-radius:0.375rem 0.375rem 0 0}.ql-container{border:none!important;font-family:inherit;font-size:15px}.rich-text-wrap .ql-editor{min-height:150px}</style>' : ''}
+  <link rel="preconnect" href="https://rsms.me/" crossorigin>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <style>${css}</style>
 </head>
 <body class="min-h-screen bg-base-100">
@@ -11435,6 +13269,8 @@ ${htmlBody}
   <script${scriptType}>
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
+${hasLucide ? `if (window.lucide && lucide.createIcons) lucide.createIcons();
+` : ''}
 ${hasRichText ? `
 // --- Rich text editors (Quill) ---
 // Auto-wire every [data-clear-rich-text] element: mount a Quill instance and
@@ -11472,15 +13308,61 @@ ${hasRichText ? `
 ` : ''}
   <\/script>
 ${htmlBody.includes('data-nav-item') ? `  <script>
-  document.querySelectorAll('[data-nav-item]').forEach(function(el) {
-    el.addEventListener('click', function() {
-      document.querySelectorAll('[data-nav-item]').forEach(function(e) { e.classList.remove('active'); });
-      el.classList.add('active');
+  (function _initClearNav() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\\/$/, '');
+      return raw || '/';
+    }
+    function currentPath() {
+      return normalize(location.pathname || '/');
+    }
+    function syncActiveNav() {
+      var current = currentPath();
+      document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+        var target = normalize(el.getAttribute('data-nav-path') || el.getAttribute('href') || '');
+        var active = target === current;
+        el.classList.toggle('is-active', active);
+        el.classList.toggle('active', active);
+      });
+    }
+    document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        setTimeout(syncActiveNav, 0);
+      });
     });
-  });
+    window.addEventListener('popstate', syncActiveNav);
+    window.addEventListener('hashchange', syncActiveNav);
+    syncActiveNav();
+  })();
+  <\/script>` : ''}
+${htmlBody.includes('data-tab-strip') ? `  <script>
+  (function _initClearRouteTabs() {
+    function normalize(path) {
+      var raw = String(path || '/').split('?')[0].replace(/\\/$/, '');
+      return raw || '/';
+    }
+    function syncActiveTabs() {
+      var current = normalize(location.pathname || '/');
+      document.querySelectorAll('[data-tab-strip]').forEach(function(strip) {
+        var tabs = Array.prototype.slice.call(strip.querySelectorAll('[data-route-tab]'));
+        var matched = false;
+        tabs.forEach(function(tab) {
+          var target = normalize(tab.getAttribute('data-tab-path') || tab.getAttribute('href') || '');
+          var active = target === current;
+          if (active) matched = true;
+          tab.classList.toggle('is-active', active);
+        });
+        if (!matched && tabs[0]) tabs[0].classList.add('is-active');
+      });
+    }
+    window.addEventListener('popstate', syncActiveTabs);
+    window.addEventListener('hashchange', syncActiveTabs);
+    syncActiveTabs();
+  })();
   <\/script>` : ''}
 ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
-  <script src="/__meph__/widget.js" defer><\/script>` : ''}
+  <!-- onerror silently drops the tag when the widget bundle isn't deployed (standalone apps without Studio) -->
+  <script src="/__meph__/widget.js" defer onerror="this.remove()"><\/script>` : ''}
   <!-- ============================================================== -->
   <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
   <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
@@ -11814,7 +13696,7 @@ function _findUserFunctions(body) {
 
 function _findAsyncFunctions(body) {
   const ASYNC_NODE_TYPES = new Set([
-    NodeType.CRUD, NodeType.ASK_AI, NodeType.EXTERNAL_FETCH,
+    NodeType.CRUD, NodeType.ASK_AI, NodeType.GIVE_CLAUDE, NodeType.EXTERNAL_FETCH,
     NodeType.HTTP_REQUEST, NodeType.RUN_AGENT, NodeType.RUN_PIPELINE,
     NodeType.TRANSACTION
   ]);
@@ -12024,6 +13906,41 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("const _COOKIE_SECRET = process.env.COOKIE_SECRET;");
     lines.push("if (!_COOKIE_SECRET) console.warn('[cookies] COOKIE_SECRET env var is unset — signed cookies will use an ephemeral fallback secret. Set COOKIE_SECRET in production.');");
     lines.push("const _cookieSecretResolved = _COOKIE_SECRET || ('clear-dev-' + Math.random().toString(36).slice(2));");
+  }
+  // Routing primitive (2026-04-29) — detect any `route X by FIELD:` block
+  // with a round-robin default. If present, emit the shared cursor table +
+  // helper at module top so every route block can call `_clear_route_pick`.
+  function walkForRoutingRR(nodes, acc) {
+    if (!Array.isArray(nodes)) return acc;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.ROUTE_DEF) {
+        const rules = Array.isArray(n.rules) ? n.rules : [];
+        if (rules.some(r => r && r.type === 'default' && r.strategy === 'round_robin')) {
+          acc.found = true;
+        }
+      }
+      if (Array.isArray(n.body)) walkForRoutingRR(n.body, acc);
+      if (Array.isArray(n.thenBody)) walkForRoutingRR(n.thenBody, acc);
+      if (Array.isArray(n.elseBody)) walkForRoutingRR(n.elseBody, acc);
+    }
+    return acc;
+  }
+  const _routingScan = walkForRoutingRR(body, { found: false });
+  if (_routingScan.found) {
+    lines.push('// Routing primitive — round-robin cursor state lives in a shared SQLite table.');
+    lines.push("db.createTable('_clear_route_cursors', { route_id: { type: 'text', required: true }, last_index: { type: 'number', default: -1 }, updated_at_date: { type: 'timestamp', auto: true } });");
+    lines.push('async function _clear_route_pick({ routeId, pool }) {');
+    lines.push('  if (!Array.isArray(pool) || pool.length === 0) return null;');
+    lines.push("  const _row = db.lookupOne('_clear_route_cursors', { route_id: routeId });");
+    lines.push('  const _next = (((_row && typeof _row.last_index === "number" ? _row.last_index : -1) + 1) + pool.length) % pool.length;');
+    lines.push('  if (_row) {');
+    lines.push("    db.update('_clear_route_cursors', { ..._row, last_index: _next, updated_at_date: new Date().toISOString() });");
+    lines.push('  } else {');
+    lines.push("    db.save('_clear_route_cursors', { route_id: routeId, last_index: _next, updated_at_date: new Date().toISOString() });");
+    lines.push('  }');
+    lines.push('  return pool[_next];');
+    lines.push('}');
   }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
@@ -13441,12 +15358,17 @@ const BUILTIN_PRESET_CLASSES = {
   faq_section:            'bg-base-100 py-16 lg:py-24 px-6',
   page_footer:            'bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6',
 
-  // --- App/dashboard presets ---
-  app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-100 border-r border-base-300/50 overflow-hidden',
-  app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
+  // --- App/dashboard presets (Phase 1 shell upgrade — 04-25-2026) ---
+  // Modeled on landing/marcus-app-target.html. Each preset emits a semantic
+  // HTML5 tag (see APP_SHELL_TAGS below) and reads --clear-* design tokens
+  // for hairline borders + rail/canvas backgrounds. Class strings here cover
+  // layout/sizing; inline style attribute carries the token references the
+  // utility-only setup can't express (custom-property reads need style="").
+  app_layout:        'flex min-h-screen',
+  app_sidebar:       'hairline-r flex-shrink-0 flex flex-col scroll-y',
+  app_main:          'flex-1 min-w-0 flex flex-col',
   app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
+  app_header:        'hairline-b sticky top-0 z-30 flex items-center gap-4 px-5',
   app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
   app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
 
@@ -13583,13 +15505,62 @@ function stylesToCSS(styles, vars = {}) {
 // Inspired by Linear/Vercel/Raycast aesthetic: clean, muted, professional
 // =============================================================================
 
-const CSS_RESET = `/* Clear design system v2 */
+const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tabular nums */
 *, *::before, *::after { box-sizing: border-box; }
-body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
-.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
-.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+:root {
+  /* Slate chrome layered on top of DaisyUI base/primary tokens. Modeled on
+     the 2026 RevOps mock — see landing/marcus-app-target.html. Compiled apps
+     read these for hairlines, status pills, stat cards, sidebar nav. */
+  --clear-bg-app:        oklch(98% 0.005 240);
+  --clear-bg-canvas:     oklch(100% 0 0);
+  --clear-bg-rail:       oklch(99% 0.005 240);
+  --clear-bg-row-hover:  oklch(96% 0.008 240);
+  --clear-bg-active:     oklch(96% 0.025 258);
+  --clear-bg-chip:       oklch(95% 0.01 240);
+  --clear-line:          oklch(91% 0.012 240);
+  --clear-line-strong:   oklch(83% 0.015 240);
+  --clear-ink:           oklch(15% 0.025 255);
+  --clear-ink-soft:      oklch(35% 0.02 255);
+  --clear-ink-muted:     oklch(54% 0.018 255);
+  --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-good:          oklch(50% 0.16 152);
+  --clear-good-soft:     oklch(96% 0.05 152);
+  --clear-warn:          oklch(58% 0.14 65);
+  --clear-warn-soft:     oklch(96% 0.05 80);
+  --clear-bad:           oklch(54% 0.21 25);
+  --clear-bad-soft:      oklch(96% 0.04 25);
+}
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: "cv11","ss01","ss03";
+  -webkit-font-smoothing: antialiased;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+  margin: 0;
+}
+@supports (font-variation-settings: normal) {
+  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+}
+.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
 #app { margin: 0 auto; }
-::selection { background: oklch(var(--color-primary) / 0.15); }`;
+::selection { background: oklch(var(--color-primary) / 0.15); }
+/* Hairline borders — drop-in alternative to combo border+shadow */
+.hairline   { border: 1px solid var(--clear-line); }
+.hairline-b { border-bottom: 1px solid var(--clear-line); }
+.hairline-r { border-right: 1px solid var(--clear-line); }
+.hairline-t { border-top: 1px solid var(--clear-line); }
+/* Status pills — uppercase semibold colored on tinted bg */
+.clear-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+}
+.clear-pill-pending  { background: var(--clear-warn-soft); color: var(--clear-warn); }
+.clear-pill-approved { background: var(--clear-good-soft); color: var(--clear-good); }
+.clear-pill-rejected { background: var(--clear-bad-soft);  color: var(--clear-bad); }
+.clear-pill-neutral  { background: var(--clear-bg-chip);    color: var(--clear-ink-soft); }`;
 
 const THEME_CSS = {
   midnight: `[data-theme="midnight"] {
@@ -13900,7 +15871,231 @@ const CSS_COMPONENTS = [
 }` },
   { class: 'clear-conditional', css: '.clear-conditional { }' },
   { class: 'clear-component', css: '.clear-component { }' },
-  { class: 'clear-nav-item', css: `.clear-nav-item.active { background: oklch(var(--color-base-content) / 0.1); color: oklch(var(--color-base-content)); font-weight: 500; }` },
+  { class: 'clear-nav-item', css: `.clear-nav-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clear-ink-subtle);
+  padding: 0 13px;
+  margin: 18px 0 6px;
+}
+.clear-nav-item {
+  position: relative;
+  min-height: 34px;
+  padding: 7px 10px 7px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--clear-ink-soft);
+  font-weight: 500;
+  transition: background-color 100ms ease, color 100ms ease;
+  cursor: pointer;
+}
+.clear-nav-item:hover {
+  background: var(--clear-bg-row-hover);
+  color: var(--clear-ink);
+}
+.clear-nav-item svg,
+.clear-nav-item i {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.clear-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clear-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--clear-ink-muted);
+  background: var(--clear-bg-chip);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-variant-numeric: tabular-nums;
+}
+.clear-nav-item.is-active,
+.clear-nav-item.active {
+  background: var(--clear-bg-active);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active .clear-nav-count,
+.clear-nav-item.active .clear-nav-count {
+  background: rgba(79,70,229,.10);
+  color: var(--clear-accent);
+}
+.clear-nav-item.is-active::before,
+.clear-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--clear-accent);
+}` },
+  { class: 'clear-page-header', css: `.clear-page-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-page-title {
+  color: var(--clear-ink);
+  line-height: 1.2;
+}
+.clear-page-subtitle {
+  line-height: 1.45;
+}
+.clear-page-actions .btn {
+  min-height: 34px;
+  height: 34px;
+}` },
+  { class: 'clear-tab-strip', css: `.clear-tab-strip {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-route-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  color: var(--clear-ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.clear-route-tab:hover {
+  color: var(--clear-ink);
+}
+.clear-route-tab.is-active {
+  color: var(--clear-ink);
+}
+.clear-route-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 9999px;
+  background: var(--clear-accent);
+}` },
+  { class: 'clear-stat-strip', css: `.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: var(--clear-bg-panel);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+}
+.clear-stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.clear-stat-label {
+  color: var(--clear-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.clear-stat-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--clear-ink-muted);
+  flex: 0 0 auto;
+}
+.clear-stat-value {
+  margin-top: 10px;
+  color: var(--clear-ink);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.clear-stat-delta {
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.clear-stat-delta-positive {
+  color: #15803d;
+}
+.clear-stat-delta-negative {
+  color: #b42318;
+}
+.clear-stat-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 10px;
+  overflow: visible;
+}
+.clear-stat-sparkline polyline {
+  fill: none;
+  stroke: var(--clear-accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}` },
+  { class: 'clear-detail-panel', css: `.clear-detail-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}
+.clear-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+.clear-detail-empty {
+  display: none;
+  padding: 18px;
+  color: var(--clear-ink-muted);
+  font-size: 13px;
+}
+.clear-detail-panel.is-empty .clear-detail-empty {
+  display: block;
+}
+.clear-detail-panel.is-empty .clear-detail-body,
+.clear-detail-panel.is-empty .clear-detail-actions {
+  opacity: .42;
+}
+.clear-detail-title {
+  margin-bottom: 6px;
+}
+.clear-detail-subtitle {
+  margin-bottom: 14px;
+}
+.clear-detail-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--clear-line);
+  background: var(--clear-bg-panel);
+}` },
   { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }
 .clear-chat-head { padding: 12px 16px; border-bottom: 1px solid oklch(var(--color-base-content) / 0.1); display: flex; align-items: center; justify-content: space-between; }
 .clear-chat-title { font-size: 13px; font-weight: 600; color: oklch(var(--color-base-content) / 0.6); }
@@ -14138,6 +16333,13 @@ function sanitizeName(name) {
     return name.split('.').map(part => part.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1')).join('.');
   }
   return name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1');
+}
+
+function actionSlug(label) {
+  return String(label == null ? '' : label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 // Python needs bracket access for dotted assignment targets

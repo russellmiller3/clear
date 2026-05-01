@@ -27,7 +27,7 @@
 import { randomUUID, createHash } from 'crypto';
 
 import { compileProgram } from '../index.js';
-import { packageCloudflareBundle } from '../lib/packaging-cloudflare.js';
+import { prepareCloudflareWorkerBundle } from '../lib/packaging-cloudflare.js';
 
 // ──────────────────────────────────────────────────────────────────────
 // LAE Phase B / one-click-updates — helpers for the incremental-update path
@@ -82,6 +82,103 @@ function _hashMigrations(bundle) {
 		h.update('\x00');
 	}
 	return h.digest('hex');
+}
+
+function _resolveLiveEditBaseUrl(explicitUrl, env = process.env) {
+	return explicitUrl
+		|| env.CLEAR_LIVE_EDIT_BASE_URL
+		|| env.CLEAR_STUDIO_BASE_URL
+		|| env.STUDIO_BASE_URL
+		|| '';
+}
+
+function _withLiveEditBaseUrlSecret(secrets, liveEditBaseUrl, env = process.env) {
+	const merged = { ...(secrets || {}) };
+	if (!Object.prototype.hasOwnProperty.call(merged, 'CLEAR_LIVE_EDIT_BASE_URL')) {
+		const resolved = _resolveLiveEditBaseUrl(liveEditBaseUrl, env);
+		if (resolved) merged.CLEAR_LIVE_EDIT_BASE_URL = resolved;
+	}
+	return merged;
+}
+
+/**
+ * migrationsDiffer — byte-precise schema-change detector.
+ *
+ * Compares the "schema-shaped" files in two compiled worker bundles. The
+ * scope is broader than just SQL migrations — Cloudflare's wrangler.toml
+ * declares Durable Object namespaces, [[workflows]] entries, KV bindings,
+ * and other resource declarations. Re-binding a DO namespace mid-update
+ * is the toml equivalent of dropping a SQL table — same blast radius. So
+ * we treat both file kinds the same way.
+ *
+ * The set of "schema-ish" files this scans:
+ *   - any file whose path starts with `migrations/` (D1 SQL)
+ *   - `wrangler.toml` (DO bindings, workflows, KV, queues, etc.)
+ *
+ * Returns true when:
+ *   - the SET of schema-ish filenames differs (added, removed, renamed), OR
+ *   - any same-named schema-ish file's content differs by even one byte.
+ *
+ * The compare is intentionally dumb (string equality, not SQL/TOML semantics).
+ * A false positive costs Marcus one extra confirm click. A false negative
+ * could wedge a live D1 against a half-applied schema OR rebind a Durable
+ * Object namespace mid-flight. Strict default; both kinds are gated.
+ *
+ * Exported for unit tests + reuse by the /api/deploy handler in Phase 4.
+ */
+export function migrationsDiffer(oldBundle, newBundle) {
+	const oldKeys = _schemaishFileKeys(oldBundle);
+	const newKeys = _schemaishFileKeys(newBundle);
+	if (oldKeys.length !== newKeys.length) return true;
+	for (let i = 0; i < oldKeys.length; i++) {
+		if (oldKeys[i] !== newKeys[i]) return true;
+	}
+	for (const k of oldKeys) {
+		if (String(oldBundle[k] || '') !== String(newBundle[k] || '')) return true;
+	}
+	return false;
+}
+
+// Schema-ish files = anything whose presence or content shape impacts a
+// running deploy's bound resources. SQL migrations + wrangler.toml today;
+// we'll add more here if Cloudflare exposes new binding-declaration files.
+function _schemaishFileKeys(bundle) {
+	if (!bundle || typeof bundle !== 'object') return [];
+	return Object.keys(bundle)
+		.filter((k) => k.startsWith('migrations/') || k === 'wrangler.toml')
+		.sort();
+}
+
+/**
+ * _describeMigrationDiff — structured diff for the UI gate.
+ *
+ * Returns an array of { file, kind } where kind is 'added' | 'removed' | 'changed'.
+ * Mirrors migrationsDiffer's "schema-ish" scope (migrations/* AND wrangler.toml).
+ * Used by _deployUpdate to populate the migration-confirm-required response so
+ * the Studio modal can show Marcus what's changing before he confirms.
+ *
+ * Empty array on no diff. Exported for unit tests + reuse by handlers.
+ */
+export function _describeMigrationDiff(oldBundle, newBundle) {
+	const oldKeys = new Set(_schemaishFileKeys(oldBundle));
+	const newKeys = new Set(_schemaishFileKeys(newBundle));
+	const out = [];
+	// Added: in new but not in old.
+	for (const k of newKeys) {
+		if (!oldKeys.has(k)) out.push({ file: k, kind: 'added' });
+	}
+	// Removed: in old but not in new.
+	for (const k of oldKeys) {
+		if (!newKeys.has(k)) out.push({ file: k, kind: 'removed' });
+	}
+	// Changed: in both, content differs.
+	for (const k of oldKeys) {
+		if (!newKeys.has(k)) continue;
+		if (String(oldBundle[k] || '') !== String(newBundle[k] || '')) {
+			out.push({ file: k, kind: 'changed' });
+		}
+	}
+	return out;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -217,6 +314,9 @@ export async function deploySource({
 	mode = 'deploy',
 	lastRecord = null,
 	via,
+	confirmMigration,
+	liveEditBaseUrl,
+	liveEditEnv,
 }) {
 	// 0. Idempotency lock — covers both deploy and update modes.
 	const lockKey = `${tenantSlug}:${appSlug}`;
@@ -246,6 +346,9 @@ export async function deploySource({
 				api, store, rootDomain,
 				lastRecord, via, jobId,
 				knowledgeBase, knowledgeCache,
+				confirmMigration,
+				liveEditBaseUrl,
+				liveEditEnv,
 			});
 		} finally {
 			_lockManager.release(lockKey);
@@ -267,6 +370,7 @@ export async function deploySource({
 			return { ok: false, stage: 'compile', jobId, errors: compiled.errors };
 		}
 		const astBody = compiled.ast?.body || [];
+		const deploySecrets = _withLiveEditBaseUrlSecret(secrets, liveEditBaseUrl, liveEditEnv);
 
 		// 2. Provision D1 (only if the app has tables — otherwise no DB needed).
 		let d1_database_id = null;
@@ -278,6 +382,7 @@ export async function deploySource({
 		}
 
 		// 3. Apply migrations.
+		const workerBundle = prepareCloudflareWorkerBundle(compiled, { appName: appSlug, tenantSlug, appSlug });
 		const migrations = compiled.workerBundle?.['migrations/001-init.sql'] || '';
 		if (d1_database_id && migrations) {
 			try {
@@ -290,7 +395,7 @@ export async function deploySource({
 
 		// 4. Upload script.
 		const bindings = _deriveBindings(astBody, d1_database_id);
-		const bundle = { ...(compiled.workerBundle || {}) };
+		const bundle = { ...workerBundle };
 		// The migrations file is for step 3 — never upload it as a module.
 		delete bundle['migrations/001-init.sql'];
 		// wrangler.toml is not a module either — CF reads metadata from the
@@ -312,8 +417,8 @@ export async function deploySource({
 		}
 
 		// 5. Set secrets.
-		if (secrets && Object.keys(secrets).length > 0) {
-			const setR = await api.setSecrets({ scriptName, secrets });
+		if (deploySecrets && Object.keys(deploySecrets).length > 0) {
+			const setR = await api.setSecrets({ scriptName, secrets: deploySecrets });
 			if (!setR.ok) {
 				await _rollback(state, { api, deleteD1, scriptName });
 				return {
@@ -347,7 +452,8 @@ export async function deploySource({
 				versionId: null,
 				sourceHash: null,
 				migrationsHash: null,
-				secretKeys: Object.keys(secrets || {}),
+				secretKeys: Object.keys(deploySecrets || {}),
+				lastBundle: compiled.workerBundle || {},
 			});
 		} catch (e) {
 			// No rollback — the app IS live. Reconcile picks up the orphan.
@@ -396,6 +502,9 @@ async function _deployUpdate({
 	api, store, rootDomain,
 	lastRecord, via, jobId,
 	knowledgeBase, knowledgeCache,
+	confirmMigration,
+	liveEditBaseUrl,
+	liveEditEnv,
 }) {
 	// 1. Compile.
 	const compileOpts = { target: 'cloudflare' };
@@ -405,10 +514,55 @@ async function _deployUpdate({
 	if (compiled.errors && compiled.errors.length) {
 		return { ok: false, stage: 'compile', jobId, errors: compiled.errors, mode: 'update' };
 	}
+	const deploySecrets = _withLiveEditBaseUrlSecret(secrets, liveEditBaseUrl, liveEditEnv);
+
+	// 1b. Migration safety gate (Phase 3 Cycle 3.2). If the new compile changed
+	// any migrations/* file vs the bundle stored on lastRecord, refuse to upload
+	// until the caller passes confirmMigration:true. This blocks silent
+	// destructive schema changes — SQLite has no atomic schema swap, so a
+	// half-applied migration mid-update can wedge a live D1.
+	const oldBundleForGate = (lastRecord && lastRecord.lastBundle) || null;
+	const newBundleForGate = compiled.workerBundle || {};
+	const workerBundle = prepareCloudflareWorkerBundle(compiled, { appName: appSlug, tenantSlug, appSlug });
+	const schemaChanged = oldBundleForGate && migrationsDiffer(oldBundleForGate, newBundleForGate);
+	if (schemaChanged && confirmMigration !== true) {
+		return {
+			ok: false,
+			stage: 'migration-confirm-required',
+			jobId,
+			mode: 'update',
+			migrationDiff: _describeMigrationDiff(oldBundleForGate, newBundleForGate),
+		};
+	}
+
+	// 1c. Apply migrations (Phase 3 Cycle 3.3). Only fires when schema actually
+	// changed AND the caller explicitly confirmed. Run BEFORE upload so a
+	// migration error keeps the live script untouched — old code stays bound to
+	// the old schema, no half-applied state. If applyMigrations succeeds but
+	// upload later fails, the schema IS half-applied; auto-rollback of schema
+	// changes is a known followup (out of scope per the plan).
+	if (schemaChanged && confirmMigration === true) {
+		const newMigrationSql = newBundleForGate['migrations/001-init.sql'] || '';
+		const d1Id = lastRecord && lastRecord.d1_database_id;
+		if (d1Id && newMigrationSql) {
+			try {
+				await api.applyMigrations({ d1_database_id: d1Id, sql: newMigrationSql });
+			} catch (e) {
+				return {
+					ok: false,
+					stage: 'migrations',
+					jobId,
+					mode: 'update',
+					status: e.status || 500,
+					error: e.message,
+				};
+			}
+		}
+	}
 
 	// 2. Filter secrets — only set keys that aren't already on the record.
 	const existingKeys = new Set((lastRecord && Array.isArray(lastRecord.secretKeys)) ? lastRecord.secretKeys : []);
-	const newSecretEntries = Object.entries(secrets || {}).filter(([k]) => !existingKeys.has(k));
+	const newSecretEntries = Object.entries(deploySecrets || {}).filter(([k]) => !existingKeys.has(k));
 	const newSecrets = Object.fromEntries(newSecretEntries);
 	const newKeys = Object.keys(newSecrets);
 
@@ -426,7 +580,7 @@ async function _deployUpdate({
 	}
 
 	// 4. Upload script — upsert. CF creates a new version automatically.
-	const bundle = { ...(compiled.workerBundle || {}) };
+	const bundle = { ...workerBundle };
 	delete bundle['migrations/001-init.sql'];
 	delete bundle['wrangler.toml'];
 	const astBody = compiled.ast?.body || [];
@@ -459,7 +613,8 @@ async function _deployUpdate({
 			tenantSlug, appSlug, versionId,
 			uploadedAt,
 			sourceHash: _hashSource(source),
-			migrationsHash: _hashMigrations(bundle),
+			migrationsHash: _hashMigrations(newBundleForGate),
+			lastBundle: newBundleForGate,
 			...(via ? { via } : {}),
 		});
 	} catch (e) {

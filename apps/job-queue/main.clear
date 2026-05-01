@@ -40,7 +40,7 @@ when user calls GET /api/jobs/:id:
 when user calls DELETE /api/jobs/:id:
   this endpoint requires login
   this endpoint requires role 'admin'
-  remove from Jobs where id is incoming's id
+  delete from Jobs where id is incoming's id
   send back 'deleted'
 
 # --- Workers ---

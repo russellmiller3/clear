@@ -1,5 +1,26 @@
 # Clear Language — Roadmap
 
+## Table of Contents (jump to)
+
+- [How to use this file (READ BEFORE EDITING)](#how-to-use-this-file-read-before-editing) — the rules, where each kind of content lives, end-of-session checklist
+- [Critical path to first paying customer](#critical-path-to-first-paying-customer-2026-04-26--read-this-first) — the linear sequence of unlocks toward Marcus paying
+- [Strategic pivot under review (Dave-first)](#strategic-pivot-under-review-2026-04-24--dave-first-wedge) — open decision points
+- [Vision](#vision) — north star reminder
+- [Immediate Priorities — Critical Path](#immediate-priorities--critical-path-to-first-paying-customer) — the Marcus-launch shopping list
+- [P0 — Ship Marcus on Clear Cloud (Q2 2026)](#p0--ship-marcus-on-clear-cloud-q2-2026) — cloud platform must-haves
+- [P0 — Marcus GTM (Q2 2026)](#p0--marcus-gtm-q2-2026) — pitch + sales motion
+- [P1 — Live App Editing](#p1--live-app-editing-flagship-completion) — flagship completion
+- [P2 — Compiler Flywheel](#p2--compiler-flywheel-second-order-moat) — second-order moat
+- [P2 — Ghost Meph last mile](#p2--ghost-meph-last-mile)
+- [P2 — Refactoring backlog](#p2--refactoring-backlog)
+- [P2 — Session 46 follow-up](#p2--session-46-follow-up)
+- [P3 — Research portfolio (laptop-feasible)](#p3--research-portfolio-laptop-feasible)
+- [P4 — Private moonshots](#p4--private-moonshots-if-the-goal-is-delight)
+
+**Before adding anything here:** is the work already shipped? Check `FEATURES.md` first (capability surface) and `intent.md` (node-type spec). Shipped work does NOT belong in ROADMAP — it goes in CHANGELOG (history) and FEATURES (current capability).
+
+---
+
 ## How to use this file (READ BEFORE EDITING)
 
 **The bright line: ROADMAP is forward-looking ONLY.** If a row describes something already shipped, it does NOT belong here. If you're tempted to add a "DONE (Session N)" tag inline — stop, that's the regression that turned this file into 846 lines of accumulated rubble. Done work belongs in `CHANGELOG.md` (history) and `FEATURES.md` (capability surface).
@@ -46,6 +67,39 @@ If you see any of these in ROADMAP, the file is starting to rot. Move the conten
 ### When the file gets long
 
 If ROADMAP creeps past ~400 lines, stop and audit. Ask of every section: "is this future work, or is it describing reality?" If reality, move it out. The file is a punch list, not a wiki — short and scannable beats comprehensive every time.
+
+---
+
+## Critical path to first paying customer (2026-04-26 — read this FIRST)
+
+The product is meaningfully ready. The gating items are mostly setup work Russell owns. Each item explains what it does and why it's needed for the first paying customer.
+
+**1. Push `feature/overnight-04-25-2026` to remote.** 78+ commits ahead. Until we push, the new work only lives on this laptop — anyone visiting the live site sees yesterday's code. Push unblocks everything else. *~30 seconds.*
+
+**2. ✅ Register `buildclear.dev` domain — DONE 2026-04-26.** Means every customer app can have a real-looking URL like `their-deal-desk.buildclear.dev` instead of `random-id.fly.dev`. Looks like a product, not a demo. Stripe also verifies the domain matches the business when issuing live keys, so this had to land before #4.
+
+**3. Fly.io Trust Verified app.** Fly.io is the cloud where customer apps actually run. "Trust Verified" is a status Fly grants once they've reviewed Clear as a company — it stops payment processors and abuse-detection systems from flagging traffic through our customer apps as suspicious. Without it, real card payments through any customer app could get auto-declined. *Russell submits the form, Fly's review takes a day or two.*
+
+**4. Stripe live keys.** Test keys (which we have) accept fake credit card numbers for development. Live keys accept real cards. Gated on #2 (Stripe checks the domain) and #3 (so payments aren't flagged as suspicious). Without these, no actual money can change hands — the customer can sign up but not pay. *~30 min once #2 + #3 are done.*
+
+**5. Anthropic org key for paid Meph sessions.** When a customer's app calls Claude (the deal-desk asking Claude to summarize a contract, the helpdesk-agent answering a ticket), each call costs money. Today's keys are tied to Russell's personal billing — running customer usage on those would charge Russell for every customer's AI calls. An organization key with the customer usage billed back to Clear is needed before any customer can use the AI features. *~15 min in the Anthropic console.*
+
+**6. Postgres provision (managed Fly Postgres or Neon).** Every customer app needs its own real database for their data. The demo path uses SQLite, which lives inside the app's container and gets wiped on every restart. Real customer data needs a managed Postgres — automatic backups, doesn't lose anything on restart, scales as the app grows. Either Fly Postgres or Neon works. *~30 min to provision + 1-line config change in the tenants store.*
+
+**7. First Marcus conversation.** Someone with a real backlog of internal tools — deal desk, helpdesk, expense tracker, whatever real-business stuff — who'll let us put Clear on one. Without a real customer trying to do real work, there's no first paying customer. *Conversation move, not a code move.*
+
+**8. Watch them build their first one — fix what bites.** When the customer hits a compile error or a confusing bit of syntax, that's the highest-leverage signal Clear will get all year. Every fix compounds across every future customer because the compiler accumulates quality. *After #7, Russell + Claude pair.*
+
+**Not on the critical path** (depth/polish, valuable but not gating):
+
+- `give claude X with prompt: 'Y'` canonical syntax — Phase 1 done, Phases 2–7 pending. See `plans/plan-give-claude-canonical-form-04-26-2026.md`.
+- `live:` keyword revert + Path A defaults (while-cap, recursion-cap, email/DB timeouts) from `plans/plan-decidable-core-04-24-2026.md`.
+- Full shell upgrade remaining phases — Phase 6 right detail panel is the active shell primitive; Phase 7 Marcus app port is next after the Phase 6 compiler/doc/curriculum/eval merge.
+- Apply the sweep-diagnosis patch (`snapshots/sweep-diagnosis-04-26-2026.md`) — surfaces silent fast-fails in future sweeps.
+- Curate `playground/canonical-examples.md` (initial draft from winner-harvest waiting for human pass).
+- Lean Lesson 1 Phase 1.5 — the $10 measurement A/B sweep.
+
+**Honest call:** items #2–#6 are about $30–50 + 2–3 hours of Russell's time. Item #7 is a conversation, not a code move. Item #1 is 30 seconds. Everything else compounds quality but does not unblock the first customer.
 
 ---
 
@@ -110,8 +164,7 @@ Definition of launch: **first paying customer.** Not "we shipped a thing." Not "
 
 | # | Task | Owner | Days | Why it's next |
 |---|------|-------|------|---|
-| 1 | **CC-4 — Publish button → Clear Cloud.** Studio gets a "Publish" button that POSTs source to the existing `deploySourceCloudflare` flow, returns a live URL. Ships against `InMemoryTenantStore` first (durable Postgres backing comes after first customer per item 6). | agent | 1-2 | Without this, demos are local-only and there's nothing to sell. **First domino.** |
-| 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at item 1's Publish URL. | agent (parallel with #1) | 1 | Pitch surface. Lands when item 1 ships so the demo CTA isn't dead. |
+| 2 | **GTM-2 — `landing/marcus.html` polish + deal-desk demo embed.** Page exists (46KB). Tighten headline ("ship the first one this Friday"), embed deal-desk live preview, add "see it live" CTA pointing at the Publish URL. | agent | 1 | Pitch surface. |
 | 3 | **Demo recording.** Walkthrough of building deal-desk in 30 minutes from scratch on a hosted URL. Russell records voice-over; agent prepares the script + reference app + recording outline. | agent + Russell | 0.5 | What you DM with. Lossless evidence the workflow works. |
 | 4 | **Russell sells.** Cold pitch 5-10 sales-ops people on LinkedIn with the recording from #3. Goal: 1 paying customer at $200-500/mo. | Russell | 0.5 | The actual launch event. Everything above is setup. |
 | 5 | **Phase 85a — provision the real cloud stack** (parallel async track). Register `buildclear.dev`, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB. | Russell (external paperwork) | external | Async — runs in background. Items 1-4 ship against the existing test infra; item 6 needs this. |
@@ -143,15 +196,13 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 
 The product Marcus presses "Publish" in. Building on top of already-shipped Phase-85 Fly infrastructure (shared builder, AI proxy, tenant layer, 72 passing tests) and the CC-2/3/5 scaffolding shipped Sessions 41-43.
 
-**The five missing pieces (only CC-1 and CC-4 are still genuinely open — CC-2/3/5 internals shipped):**
+**Remaining pieces (CC-1 fully closed 2026-04-28, CC-2 fully closed 2026-04-28 night):**
 
 | # | Piece | Status | Scope |
 |---|---|---|---|
-| **CC-1** | Multi-tenant routing — subdomain → Worker + D1 DB binding | **Open — biggest blocker** | 2-3 weeks |
-| CC-2 | Auth for `buildclear.dev` (accounts, sessions, teams) | Scaffolding shipped (CC-2b/c/d). Open: stitching into a logged-in dashboard UI. | ~1 week to wire up |
-| CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 week to wire up |
-| **CC-4** | "Publish" button wired to Clear Cloud (not test builder) | **Open — depends on CC-1** | 3 days |
-| CC-5 | Custom domain flow — DNS routing + SSL + verify UX | Scaffolding shipped (CC-5/5a/5b). Open: end-to-end UX polish. | ~1 week to wire up |
+| CC-3 | Stripe billing — subscriptions + usage metering + quota | Scaffolding shipped (CC-3b/c/d). Open: live Stripe keys + webhook receiver in production. | ~1 hr code, gated on Russell providing live Stripe keys |
+| CC-5b | DNS verification poller for custom domains | Cycle 1 attach UX shipped 2026-04-29. Cycle 2 open: small worker that wakes every minute, calls `node:dns resolveCname` on pending rows, flips status to verified or failed. | ~30 lines + a cron handle |
+| CC-5c | Fly cert provisioner for custom domains | Cycle 2 prereq. Open: when a domain flips to verified, request a Fly cert + write the cert id back. | small — gated on CC-5b |
 
 **Phase 85a — external prerequisites (single biggest unblocker):** register buildclear.dev, Fly Trust Verified application (10k machines), Stripe live keys, Anthropic org key, Postgres provision for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once.
 
@@ -165,7 +216,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 | # | Item | Status | Scope |
 |---|---|---|---|
-| ~~GTM-1~~ | ~~`apps/deal-desk/main.clear`~~ | **DONE 2026-04-25** — 170 lines, 13/13 tests pass, login-gated `/cro` queue, AI draft endpoint wired (CRO button is the obvious next move) |
 | GTM-2 | `landing/marcus.html` — GAN against ASCII mock, "ship the first one this Friday" headline | Open | 1 session |
 | GTM-3 | `landing/pricing.html` — Free / Team $99 / Business $499 / Enterprise | Open | 1 session |
 | GTM-4 | Find 5 real Marcuses on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
@@ -176,17 +226,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 ---
 
-## P0 — Critical bugs blocking real Clear apps
-
-| # | Bug | Symptom | Status |
-|---|---|---|---|
-| ~~R7~~ | ~~`needs login` on a page → blank white page~~ | ~~JWT check hides everything but doesn't show login form or redirect~~ | **DONE 2026-04-25** — page-level guard now route-gated; emits `if (location.pathname === '/cro' && !token) location.href='/login'`. No more top-level `return;` SyntaxError. 4 TDD tests in clear.test.js → "R7: needs login". |
-| ~~R8~~ | ~~`for each` in HTML doesn't expand child template~~ | ~~Emits whole object as string (`+ msg +`) instead of rendering loop body~~ | **DONE 2026-04-25** — reactive renderer now recurses into `section`/`page` containers; empty fallback is a clean `''` instead of stringifying the row. 2 TDD tests in clear.test.js → "R8: for-each body expands". |
-
-Both shipped overnight 2026-04-25 along with the deal-desk app (GTM-1) that exercises both fixes end-to-end.
-
----
-
 ## P1 — Live App Editing (flagship completion)
 
 Phase A (additive edits) + Phase B (reversible: hide/rename/relabel/reorder) shipped — see `FEATURES.md` → "Live App Editing". What remains:
@@ -194,7 +233,7 @@ Phase A (additive edits) + Phase B (reversible: hide/rename/relabel/reorder) shi
 | Phase | Items | Status | Effort |
 |-------|-------|--------|--------|
 | **Phase C** | LAE-5 schema migration planner; LAE-3 destructive changes (explicit permanent-delete + unavoidable type coercion). **No data snapshot on destructive delete** — audit trail replaces it as the accountability surface (GDPR/CCPA/HIPAA erasure compliance). | Not started | ~1.5 weeks |
-| **Phase D** | ~~LAE-8 audit log per app~~ **DONE 2026-04-25** (write path on `InMemoryTenantStore`: `appendAuditEntry` + `getAuditLog`, append-only, schema `{ts, actor, action, verdict, sourceHashBefore, sourceHashAfter, note}`; Phase C extends with status + markAuditEntry); LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | LAE-8 done; LAE-9/10 not started | ~3 days remaining |
+| **Phase D** | LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | Not started | ~3 days remaining |
 
 **Still needed before any multi-user demo:**
 - Browser Playwright e2e covering owner→widget→ship/hide/undo on the three templates
@@ -206,24 +245,12 @@ Competitive snapshot in `FAQ.md` → "Why does Clear Cloud beat Retool and Lovab
 
 ---
 
-## P1 — Builder Mode polish
-
-Builder Mode v0.3 shipped (BM-1/2/3/4/5/6 — see `FEATURES.md` → Studio IDE row). What remains:
-
-| Item | What | Status |
-|------|------|--------|
-| ~~Status bar~~ | ~~Users / agent spend / last ship chip — always visible at bottom~~ | **DONE 2026-04-25** — three live chips polled every 5s: compiles ok/total, app ▶/idle, last ship Xm ago. Backed by `_builderState` + `GET /api/builder-status`. |
-| Default flip | Builder Mode becomes default for new users; `cmd+.` reveals 3-panel | Open, 1 day |
-
----
-
 ## P2 — Compiler Flywheel (second-order moat)
 
 Tracks whether the JS/Python/HTML the compiler emits is actually optimal. Today's Meph-flywheel makes Meph write better Clear; this layer makes the *output of compilation* improve from production data.
 
 | # | Tier | Status | Scope | Unlock |
 |---|------|--------|-------|--------|
-| ~~CF-1~~ | ~~**Runtime instrumentation** — compiled apps emit latency / error / memory beacons to a shared endpoint~~ | **DONE 2026-04-25** — `_clearBeacon` helper + endpoint_latency + endpoint_error events emitted in every compileToJSBackend. Receiver at `POST /api/flywheel/beacon` writes to `playground/flywheel-beacons.jsonl`. Silent no-op unless `CLEAR_FLYWHEEL_URL` + `CLEAR_COMPILE_ROW_ID` set. **Flywheel begins collecting the moment the env points anywhere.** Next: migrate JSONL into Factor DB `code_actions_runtime` table (plan in `plans/plan-compiler-flywheel-tier1-04-19-2026.md`). | 1 day | Data-driven compiler bug-reports |
 | CF-2 | **Candidate emitters + deterministic A/B** — top 10 emit patterns get 2-3 variants, deterministic at compile time, production picks winner | Open | 1 week | Quantitative answer to "best JS pattern for X" |
 | CF-3 | **Compiler-strategy reranker** — EBM trained on (archetype, app shape, runtime outcome) → emit variant | Open (after Meph reranker trained) | 2 weeks | Per-pattern emit auto-selects |
 | CF-4 | **GA-evolved compiler** (research) — mutate emit functions, fitness = curriculum pass rate + runtime perf | Open | 2+ months | The compiler becomes a learned artifact |
@@ -236,12 +263,11 @@ CF-1 is the cheap optionality bet: 20 lines of instrumentation that starts colle
 
 ## P2 — Ghost Meph last mile
 
-cc-agent / ollama / openrouter backends shipped (see `FEATURES.md`). What remains for full $0-research-velocity unlock:
+cc-agent / ollama / openrouter backends and the Studio model picker shipped (see `FEATURES.md`). OpenRouter GLM has been live-smoked through tools, memory, requests, personality, and full-history model switching. What remains for full research-velocity unlock:
 
 | # | Item | Scope |
 |---|---|---|
 | GM-5 | Calibration harness — `curriculum-sweep.js --calibrate` runs N tasks on Ghost + same N on real Haiku, compares Factor DB row distributions, flags drift | 2 days |
-| ~~GM-6~~ | ~~Default research sweeps to Ghost~~ **DONE 2026-04-25** — `validateSweepPreconditions(env, opts)` defaults to cc-agent; `--real` opts back into production Anthropic. Banner announces the default at sweep start. The "forgot --ghost and burned $50" failure mode is gone. | DONE |
 
 Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real customer apps.
 
@@ -254,7 +280,6 @@ Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real custom
 | R1 | Decompose `compileAgent()` — 300-line monolith mutating strings via regex. Extract `applyToolUse()`, `applyMemory()`, `applyRAG()`. | Before adding more agent features |
 | R2 | Deduplicate JS/Python CRUD — parallel logic, bugs in one missed in other. Shared IR. | When Python target becomes priority |
 | R4 | Skill instruction raw text — tokenizer destroys parentheses in skill `instructions:` blocks. Parser should store `.raw` line text. Partially fixed; tokenizer still eats some formatting. | Before shipping store-ops demo |
-| ~~R5~~ | ~~`clear test` runner doesn't pick up user-written `test` blocks~~ — **DONE** (verified 2026-04-25). User blocks land in result.tests alongside auto-generated CRUD tests. Regression coverage in clear.test.js → "R5: user-written test: blocks land in result.tests". | — |
 | R6 | Fragile `[^)]*` regex patterns in `compileAgent()` break on literal parentheses. Real fix is R1. | Part of R1 |
 | R9 | Stale SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js` — pending migration unstaged since Session 32. Decide: ship, stash, or revert. | Whenever todo-fullstack is touched next |
 | R10 | **Retire 1:1-mapping violations.** `CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT` generate routes, functions, and imports the user never wrote — the compiler is doing magic the user can't trace. Move toward explicit source forms or demote until they comply. Protects PHILOSOPHY rule #1 (the most important moat). | Before adding more SERVICE_CALL-style sugar |
@@ -332,6 +357,19 @@ Features that make Clear feel like a private cathedral project. None on the Marc
 | PM-6 | Multi-agent build theater — several Meph variants build/critique the same app from different perspectives, supervisor merges |
 | PM-7 | Generated tests for everything visible — every button, state transition, empty state, chart, permission boundary, recovery path |
 | PM-8 | Living architecture reports — gorgeous browsable dossier per app: entity graph + endpoint graph + page graph + permission graph + agent graph + failure hotspots |
+
+---
+
+## P4 — Deferred primitives (gated on customer evidence)
+
+Tier-1 queue primitive shipped 2026-04-27 (`queue for X:` — single-stage approval). What's deferred until evidence demands:
+
+| # | Item | Why deferred |
+|---|---|---|
+| QP-T2 | **Multi-stage queues** — `queue for X:` with `stage 'Manager' with reviewer 'X':` sub-blocks for sequential approval ladders | Gated on a second multi-stage workflow app being built (likely expense tracker). Single-stage covers Marcus's actual deal-desk + onboarding + internal-request flows. |
+| QP-UI | **Queue UI auto-render** — auto-emit action buttons + history table block on pages that host the queue | App authors hand-add buttons that call the auto-generated URLs. Defer until a customer complains about boilerplate. |
+| QP-COL | **Queue/audit-table collision detection** — validator-level guard for user-defined `<Entity>Decisions` tables overlapping the auto-generated one | Add when first customer trips it. |
+| ~~RR-1~~ | ~~**`routing rules for X:` primitive**~~ | **SHIPPED 2026-04-29** as `route X by FIELD:` — see CHANGELOG. Replaced if-chains in lead-router. |
 
 ---
 

@@ -179,4 +179,100 @@ describe('FactorDB', () => {
     db.close();
     cleanup();
   });
+
+  it('logs a runtime beacon and reads it back by compile row', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const compileId = db.logAction({
+      session_id: 's1', task_type: 'add_endpoint',
+      file_state_hash: 'h1', source_before: '',
+      patch_ops: [], patch_summary: 'compile',
+      compile_ok: 1, test_pass: 0, test_score: 0.0,
+    });
+    expect(compileId).toBeTruthy();
+
+    const beaconId = db.logRuntimeBeacon({
+      compile_row_id: compileId,
+      event_type: 'endpoint_latency',
+      route: '/api/deals/pending',
+      method: 'GET',
+      status_code: 200,
+      latency_ms: 42.5,
+      source_hash: 'abc123',
+    });
+    expect(beaconId).toBeTruthy();
+
+    const errorBeaconId = db.logRuntimeBeacon({
+      compile_row_id: compileId,
+      event_type: 'endpoint_error',
+      route: '/api/deals/draft',
+      method: 'POST',
+      status_code: 500,
+      error_text: 'TypeError: Cannot read property of undefined',
+    });
+    expect(errorBeaconId).toBeTruthy();
+
+    const beacons = db.runtimeBeaconsForCompile(compileId);
+    expect(beacons.length).toEqual(2);
+    const errorRow = beacons.find(b => b.event_type === 'endpoint_error');
+    expect(errorRow.status_code).toEqual(500);
+    expect(errorRow.error_text).toContain('TypeError');
+    const latencyRow = beacons.find(b => b.event_type === 'endpoint_latency');
+    expect(latencyRow.latency_ms).toEqual(42.5);
+
+    db.close();
+    cleanup();
+  });
+
+  it('rejects a beacon without event_type', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const result = db.logRuntimeBeacon({ compile_row_id: 1, route: '/api/x' });
+    expect(result).toEqual(null);
+    db.close();
+    cleanup();
+  });
+
+  it('logs a compiler edit and lists recent ones', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const editId = db.logCompilerEdit({
+      commit_sha: 'abc123def',
+      file_path: 'compiler.js',
+      edit_kind: 'error_message',
+      before_text: "'x' is not defined",
+      after_text: "Clear doesn't know what 'x' is — define it first with `define x as ...`",
+      context: 'validateForwardReferences',
+    });
+    expect(editId).toBeTruthy();
+
+    db.logCompilerEdit({
+      commit_sha: 'def456abc',
+      file_path: 'validator.js',
+      edit_kind: 'error_message',
+      before_text: 'Missing "to" after "send"',
+      after_text: "Clear expected `to '/path'` after `send` — see Syntax Reference > Endpoints",
+    });
+
+    const recent = db.recentCompilerEdits();
+    expect(recent.length).toEqual(2);
+    // Most recent first
+    expect(recent[0].file_path).toEqual('validator.js');
+    expect(recent[1].file_path).toEqual('compiler.js');
+    expect(recent[1].context).toEqual('validateForwardReferences');
+
+    const onlyMessages = db.recentCompilerEdits({ kind: 'error_message' });
+    expect(onlyMessages.length).toEqual(2);
+    db.close();
+    cleanup();
+  });
+
+  it('rejects a compiler edit without commit_sha or file_path', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    expect(db.logCompilerEdit({ file_path: 'compiler.js', before_text: 'x', after_text: 'y' })).toEqual(null);
+    expect(db.logCompilerEdit({ commit_sha: 'abc', before_text: 'x', after_text: 'y' })).toEqual(null);
+    db.close();
+    cleanup();
+  });
 });

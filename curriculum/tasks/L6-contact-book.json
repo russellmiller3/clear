@@ -1,5 +1,6 @@
 {
   "id": "contact-book",
+  "held_out": true,
   "level": 6,
   "title": "Contact Book",
   "description": "Build a contacts API. Contacts table with name (required), email (must be valid email, unique), phone, notes. Full CRUD. POST /api/contacts validates email format and uniqueness. GET /api/contacts lists all.",

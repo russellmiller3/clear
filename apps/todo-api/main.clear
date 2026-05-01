@@ -41,5 +41,5 @@ when user calls PUT /api/todos/:id receiving todo:
 
 when user calls DELETE /api/todos/:id:
   this endpoint requires login
-  remove from Todos where id is incoming's id
+  delete from Todos where id is incoming's id
   send back 'deleted'

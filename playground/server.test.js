@@ -7,9 +7,12 @@
 
 import { spawn } from 'child_process';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = join(__dirname, '..');
 let passed = 0, failed = 0, total = 0;
 const BASE = 'http://localhost:3457'; // Different port so it doesn't collide
 
@@ -17,6 +20,104 @@ function assert(condition, msg) {
   total++;
   if (condition) { passed++; console.log(`  ✅ ${msg}`); }
   else { failed++; console.log(`  ❌ ${msg}`); }
+}
+
+function templateHygieneFindings(source) {
+  const findings = [];
+  const lines = source.split(/\r?\n/);
+
+  function nextMeaningfulLine(index) {
+    let j = index + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+    const nextLine = lines[j] || '';
+    const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
+    return { line: nextLine, indent: nextIndent, trimmed: nextLine.trim() };
+  }
+
+  function isFeedbackEffect(text) {
+    return /^(?:show|shows|display|displays)\b.*\b(?:toast|alert|notification)\b/i.test(text.trim());
+  }
+
+  function namesDataEffect(text) {
+    const effectText = text.trim().replace(/^\/\/\s*/, '');
+    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|records?|queues?|filters?|sorts?|selects?|copies?|downloads?|uploads?|exports?|stores?|toggles?|clears?|resets?|go(?:es)?\s+to|navigates?(?:\s+to)?)\b/i.test(effectText) ||
+      isFeedbackEffect(effectText) ||
+      /\bto\s+['"][^'"]+['"]/i.test(effectText) ||
+      /^[a-zA-Z_]\w*(?:'s\s+\w+)?\s*(?:=|\bis\b)\s+/.test(effectText);
+  }
+
+  function namesNonFeedbackDataEffect(text) {
+    const effectText = text.trim().replace(/^\/\/\s*/, '');
+    return namesDataEffect(effectText) && !isFeedbackEffect(effectText);
+  }
+
+  function isDomainActionLabel(label) {
+    return /\b(approve|reject|assign|resolve|close|escalate|submit|save|delete|remove|archive|restore|publish|unpublish|send|route|mark|counter)\b/i.test(label);
+  }
+
+  function nextIndentedLineNamesDataEffect(index, baseIndent) {
+    const next = nextMeaningfulLine(index);
+    return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
+      namesDataEffect(next.trimmed);
+  }
+
+  function nextIndentedLineNamesNonFeedbackDataEffect(index, baseIndent) {
+    const next = nextMeaningfulLine(index);
+    return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
+      namesNonFeedbackDataEffect(next.trimmed);
+  }
+
+  function isInputLikeLine(trimmed) {
+    return /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:text|number|file)\s+input\b/i.test(trimmed) ||
+      /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor|slider|range\s+slider|menu|dropdown\s+menu|select\s+menu|toggle|switch|segmented\s+control|tabs?)\b/i.test(trimmed) ||
+      /^(?:(?:text|number|file)\s+input|dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor|slider|range\s+slider|menu|dropdown\s+menu|select\s+menu|toggle|switch|segmented\s+control|tabs?)\s+['"][^'"]+['"]/i.test(trimmed);
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const navComment = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (navComment) {
+      const text = navComment[1].trim();
+      const looksLikeNarrative = text.length > 36 || /[.,;:]|\s--\s|\s—\s/.test(text) || /^[a-z]/.test(text);
+      if (looksLikeNarrative) findings.push(`${i + 1}: use // or /* */ for non-nav comment: ${trimmed}`);
+    }
+
+    const button = line.match(/^(\s*)(?:add\s+)?button\s+(['"])([^'"]+)\2(?:\s*(:)\s*|\s+(that|for)\s+(.+))?$/i);
+    if (button) {
+      const baseIndent = button[1].length;
+      const label = button[3];
+      const connector = (button[5] || '').toLowerCase();
+      const inlineAction = button[6] || '';
+      if (connector === 'that') {
+        const agreement = checkInlineInteractionVerbAgreement(inlineAction, 'button');
+        if (agreement) findings.push(`${i + 1}: ${agreement.message}`);
+      }
+      if (!namesDataEffect(inlineAction) && (button[4] !== ':' || !nextIndentedLineNamesDataEffect(i, baseIndent))) {
+        findings.push(`${i + 1}: button must immediately declare what it does with data`);
+      }
+      if (isDomainActionLabel(label) && !namesNonFeedbackDataEffect(inlineAction) && (button[4] !== ':' || !nextIndentedLineNamesNonFeedbackDataEffect(i, baseIndent))) {
+        findings.push(`${i + 1}: domain action button must name the record, endpoint, queue, or audit row it changes`);
+      }
+    }
+
+    if (isInputLikeLine(trimmed) && !namesDataEffect(trimmed)) {
+      const baseIndent = (line.match(/^\s*/) || [''])[0].length;
+      if (!nextIndentedLineNamesDataEffect(i, baseIndent)) {
+        findings.push(`${i + 1}: interactive control must immediately name its data effect`);
+      }
+    }
+
+    const actionShortcut = line.match(/^(\s*)['"][^'"]+['"]\s+is\s+(primary|secondary|danger|ghost)\s*$/);
+    if (actionShortcut) {
+      const baseIndent = actionShortcut[1].length;
+      const next = nextMeaningfulLine(i);
+      if (!(next.indent > baseIndent && next.trimmed.startsWith('//'))) {
+        findings.push(`${i + 1}: row action shortcut needs an immediate // data-action note`);
+      }
+    }
+  }
+  return findings;
 }
 
 async function post(path, body) {
@@ -52,9 +153,14 @@ async function getJson(path) {
 // START SERVER
 // =============================================================================
 console.log('Starting playground server on port 3457...');
-const server = spawn('node', ['playground/server.js'], {
+const server = spawn(process.execPath, ['playground/server.js'], {
   cwd: join(__dirname, '..'),
-  env: { ...process.env, PORT: '3457' },
+  // CC-4 cycle 5 — CLEAR_ALLOW_SEED unlocks the test-only seed/inject/lookup
+  // endpoints (gated behind NODE_ENV !== 'test' && !CLEAR_ALLOW_SEED). The
+  // smoke test below seeds a tenant, injects a fake CF api wrapper, ships the
+  // deal-desk source, and verifies the multi-tenant subdomain binding landed.
+  // CLEAR_CLOUD_ROOT_DOMAIN pins the deploy URL so we can assert it exactly.
+  env: { ...process.env, PORT: '3457', CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
   stdio: 'pipe',
 });
 
@@ -64,13 +170,24 @@ server.stdout.on('data', (d) => {
 });
 server.stderr.on('data', (d) => process.stderr.write(d));
 
+async function waitForHttpReady(timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (!serverReady) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      continue;
+    }
+    try {
+      const r = await fetch(BASE + '/api/templates');
+      if (r.status > 0) return true;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
 // Wait for server
-await new Promise((resolve) => {
-  const check = setInterval(() => {
-    if (serverReady) { clearInterval(check); resolve(); }
-  }, 100);
-  setTimeout(() => { clearInterval(check); resolve(); }, 5000);
-});
+await waitForHttpReady();
 
 console.log('Server ready. Running tests...\n');
 
@@ -118,6 +235,16 @@ try {
   }
 
   {
+    const { status, data } = await post('/api/compile', { source: "target: foobar\nshow 42" });
+    assert(status === 200, 'returns compile response for invalid target');
+    assert(data.compileTrace && data.compileTrace.ok === false, 'returns compile trace on failed compile');
+    assert(data.compileTrace.pasteText.includes('CLEAR COMPILE TRACE v1'), 'compile trace has pasteable header');
+    assert(data.compileTrace.pasteText.includes('target: foobar'), 'compile trace includes source context');
+    assert(data.compileTrace.pasteText.includes('Repair instructions:'), 'compile trace includes repair instructions');
+    assert(data.compileTrace.pasteText.includes('Full Clear source:'), 'compile trace includes full source');
+  }
+
+  {
     const { status, data } = await post('/api/compile', { source: "show '<script>alert(1)</script>'" });
     assert(data.errors.length === 0, 'compiles XSS attempt without error');
   }
@@ -144,6 +271,74 @@ try {
     // the list; the test tolerates a window that tracks the FEATURED list.
     assert(data.length >= 8, `has ${data.length} templates (expected 8+ for the Core showcase)`);
     assert(data[0].name !== undefined, 'templates have name');
+
+    const findings = [];
+    for (const { name } of data) {
+      const source = readFileSync(join(ROOT_DIR, 'apps', name, 'main.clear'), 'utf8');
+      for (const finding of templateHygieneFindings(source)) findings.push(`${name}:${finding}`);
+    }
+    assert(findings.length === 0, `featured templates use nav-only # comments and explicit interaction bodies (${findings.slice(0, 5).join('; ')})`);
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  'Stage' as dropdown with ['Open', 'Won']
+  checkbox 'Only mine'
+  slider 'Budget'
+  menu 'Sort by'
+  button 'Refresh'`);
+    assert(findings.some(f => f.includes('interactive control must immediately name its data effect')), 'template hygiene catches input-like controls without data effects');
+    assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene still catches empty buttons');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  'Stage' as dropdown with ['Open', 'Won'] saves to stage_filter
+  checkbox 'Only mine' saves to only_mine
+  slider 'Budget' saves to budget
+  menu 'Sort by' saves to sort_order
+  button 'Open Details' that goes to '/details'
+  button 'Refresh':
+    get deals from '/api/deals'`);
+    assert(findings.length === 0, 'template hygiene accepts interactive controls that name their data effects');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  button 'Refresh' that get deals from '/api/deals'
+  button 'Save' that send form to '/api/save'
+  button 'Next' that increase step by 1`);
+    assert(findings.some(f => f.includes('Use "gets deals"')), 'template hygiene catches get/gets agreement');
+    assert(findings.some(f => f.includes('Use "sends form"')), 'template hygiene catches send/sends agreement');
+    assert(findings.some(f => f.includes('Use "increases step"')), 'template hygiene catches increase/increases agreement');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Mystery' at '/':
+  button 'Do it' that make magic happen`);
+    assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene rejects vague button actions a 14-year-old could not trace to data');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Approvals' at '/':
+  button 'Approve':
+    show toast 'Sign in to approve this request'`);
+    assert(!findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene counts toast as notification data');
+    assert(findings.some(f => f.includes('domain action button must name')), 'template hygiene rejects domain-action buttons that only name notification data');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Approvals' at '/':
+  button 'Approve':
+    // Shows a notification after login.`);
+    assert(findings.some(f => f.includes('domain action button must name')), 'template hygiene rejects vague domain-action comments that only describe feedback');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Notice' at '/':
+  button 'Notify':
+    show toast 'Saved'`);
+    assert(findings.length === 0, 'template hygiene accepts toast-only buttons when the button is only a notification control');
   }
 
   // =========================================================================
@@ -355,7 +550,7 @@ try {
   }
 
   {
-    const { data } = await post('/api/compile', { source: "build for javascript backend\nwhen user calls DELETE /api/items/:id:\n  remove from Items with this id\n  send back 'deleted'" });
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nallow signup and login\nwhen user calls DELETE /api/items/:id:\n  delete the Item with this id\n  send back 'deleted'" });
     assert(data.errors.length > 0, 'catches DELETE without auth');
     // Compiler's actual error string says "requires login" (clearer than
     // "auth" — Meph sees the exact keyword he needs to add). Match on
@@ -422,6 +617,8 @@ try {
     assert(status === 200, 'serves ide.html at /');
     assert(text.includes('Clear'), 'ide.html contains Clear');
     assert(text.includes('CodeMirror') || text.includes('codemirror'), 'ide.html references CodeMirror');
+    assert(text.includes('Copy compiler error'), 'ide.html labels trace button as Copy compiler error');
+    assert(!text.includes('Copy trace for Codex'), 'ide.html does not use Codex-specific trace label');
   }
 
   {
@@ -854,6 +1051,222 @@ try {
     assert(typeof s.weak_assertion_count === 'number', 'session has weak_assertion_count');
     assert(typeof s.red_step_observed === 'boolean', 'session has red_step_observed');
   }
+}
+
+// =============================================================================
+// CC-4 cycle 5 — end-to-end smoke: deal-desk → /api/deploy → CF binding
+// =============================================================================
+// This is the load-bearing test for CC-4. Earlier cycles tested pieces in
+// isolation (orchestrator, modal, store). Cycle 5 wires it all up against
+// the real spawned server: seed a tenant, inject a fake CF api wrapper into
+// the running server's WfpApi singleton, POST the deal-desk source to the
+// real /api/deploy, then prove the multi-tenant subdomain binding landed by
+// looking up the deal-desk subdomain through a test-only admin endpoint.
+//
+// Two new test-only endpoints (gated like /api/_test/seed-tenant):
+//   POST /api/_test/inject-wfp-api  — installs the built-in fake into
+//     the server's _wfpApi singleton; body {reset:true} clears it back to
+//     the real lazy getter.
+//   GET  /api/_test/lookup-subdomain/:sub — returns store.lookupAppBySubdomain
+//     as JSON so the test can verify the binding without reaching into module
+//     state.
+{
+  console.log('\n☁️  CC-4 cycle 5 — Publish deal-desk via /api/deploy');
+
+  const fs = await import('fs');
+  const dealDeskSrc = fs.readFileSync(join(__dirname, '..', 'apps', 'deal-desk', 'main.clear'), 'utf8');
+
+  // 1. Seed a tenant. Server returns a Set-Cookie we have to carry on every
+  //    follow-up call (requireTenant reads clear_tenant from the cookie).
+  const seedRes = await fetch(BASE + '/api/_test/seed-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: 'clear-acme', plan: 'pro' }),
+  });
+  assert(seedRes.status === 200, 'seed-tenant returns 200');
+  const setCookie = seedRes.headers.get('set-cookie') || '';
+  const cookieMatch = setCookie.match(/clear_tenant=[^;]+/);
+  assert(!!cookieMatch, 'seed-tenant sets clear_tenant cookie');
+  const cookie = cookieMatch ? cookieMatch[0] : '';
+
+  // 2. Install the built-in fake WfpApi inside the running server. Without
+  //    this the deploy would try to hit real CF and fail (no API token).
+  const injectRes = await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(injectRes.status === 200, 'inject-wfp-api returns 200');
+  const injectBody = await injectRes.json();
+  assert(injectBody.ok === true, 'inject-wfp-api returns ok:true');
+
+  // 3. Ship deal-desk through /api/deploy with target=cloudflare. The fake
+  //    walks the orchestrator pipeline (provisionD1 → applyMigrations →
+  //    uploadScript → setSecrets → attachDomain → markAppDeployed) and
+  //    returns the same shape the real CF orchestrator does.
+  const deployRes = await fetch(BASE + '/api/deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ source: dealDeskSrc, appSlug: 'deal-desk', target: 'cloudflare' }),
+  });
+  const deployBody = await deployRes.json();
+  assert(deployRes.status === 200, `deploy returns 200 (got ${deployRes.status}: ${JSON.stringify(deployBody).slice(0, 200)})`);
+  assert(deployBody.ok === true, 'deploy returns ok:true');
+  assert(deployBody.url === 'https://deal-desk.buildclear.dev', `url is https://deal-desk.buildclear.dev (got ${deployBody.url})`);
+  assert(typeof deployBody.jobId === 'string' && deployBody.jobId.length > 0, 'deploy returns jobId');
+
+  // 4. Status polling — /api/deploy-status/:jobId?target=cloudflare reads
+  //    the same target from the query string the modal stamped on the URL.
+  const statusRes = await fetch(BASE + `/api/deploy-status/${encodeURIComponent(deployBody.jobId)}?target=cloudflare`, {
+    headers: { Cookie: cookie },
+  });
+  const statusBody = await statusRes.json();
+  assert(statusRes.status === 200, 'deploy-status returns 200');
+  assert(statusBody.ok === true, 'deploy-status returns ok:true');
+  assert(statusBody.status === 'ok', `deploy-status status is ok (got ${statusBody.status})`);
+  assert(statusBody.url === 'https://deal-desk.buildclear.dev', 'deploy-status url matches');
+
+  // 5. Multi-tenant subdomain binding — the load-bearing assertion. Without
+  //    this row, the dev-mode subdomain router can't resolve deal-desk to
+  //    the right tenant + script. CC-4's whole "click Publish, get a live
+  //    *.buildclear.dev URL" claim hinges on this lookup returning the row.
+  const lookupRes = await fetch(BASE + '/api/_test/lookup-subdomain/deal-desk');
+  const lookupBody = await lookupRes.json();
+  assert(lookupRes.status === 200, 'lookup-subdomain returns 200');
+  assert(lookupBody !== null, 'lookup-subdomain returns a row (not null)');
+  assert(lookupBody.tenantSlug === 'clear-acme', `binding has tenantSlug clear-acme (got ${lookupBody.tenantSlug})`);
+  assert(lookupBody.appSlug === 'deal-desk', `binding has appSlug deal-desk (got ${lookupBody.appSlug})`);
+  assert(lookupBody.scriptName === 'deal-desk', `binding has scriptName deal-desk (got ${lookupBody.scriptName})`);
+  assert(lookupBody.hostname === 'deal-desk.buildclear.dev', `binding hostname matches deploy URL (got ${lookupBody.hostname})`);
+
+  // 6. Sanity check — looking up a subdomain that was never deployed
+  //    returns null, not a stale or shared row from another tenant.
+  const missRes = await fetch(BASE + '/api/_test/lookup-subdomain/never-deployed-app');
+  const missBody = await missRes.json();
+  assert(missRes.status === 200, 'lookup-subdomain on missing slug returns 200');
+  assert(missBody === null, 'lookup-subdomain on missing slug returns null');
+}
+
+// =============================================================================
+// Live App Editing UAT - widget add-field ships through cloud bridge
+// =============================================================================
+{
+  console.log('\nLive App Editing UAT - widget add-field cloud update');
+
+  const WIDGET_SCHEMA_V1 = `build for javascript backend
+
+create a Items table:
+  name, required
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+  const WIDGET_SCHEMA_V2 = `build for javascript backend
+
+create a Items table:
+  name, required
+  price, number
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+  const tenantSlug = 'clear-widget-uat';
+  const appSlug = 'widget-items';
+
+  const seedRes = await fetch(BASE + '/api/_test/seed-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: tenantSlug, plan: 'pro' }),
+  });
+  assert(seedRes.status === 200, 'widget UAT seed-tenant returns 200');
+  const setCookie = seedRes.headers.get('set-cookie') || '';
+  const cookieMatch = setCookie.match(/clear_tenant=[^;]+/);
+  assert(!!cookieMatch, 'widget UAT seed-tenant sets clear_tenant cookie');
+  const cookie = cookieMatch ? cookieMatch[0] : '';
+
+  await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset: true }),
+  });
+  const injectRes = await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(injectRes.status === 200, 'widget UAT inject-wfp-api returns 200');
+
+  const deployRes = await fetch(BASE + '/api/deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ source: WIDGET_SCHEMA_V1, appSlug, target: 'cloudflare' }),
+  });
+  const deployBody = await deployRes.json();
+  assert(deployRes.status === 200, `widget UAT v1 deploy returns 200 (got ${deployRes.status}: ${JSON.stringify(deployBody).slice(0, 200)})`);
+  assert(deployBody.ok === true, 'widget UAT v1 deploy returns ok:true');
+
+  const setupRes = await fetch(BASE + '/api/_test/live-edit-cloud-uat-setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenantSlug, appSlug }),
+  });
+  const setupBody = await setupRes.json();
+  assert(setupRes.status === 200, `widget UAT setup returns 200 (got ${setupRes.status}: ${JSON.stringify(setupBody).slice(0, 200)})`);
+  assert(setupBody.ok === true, 'widget UAT setup returns ok:true');
+  assert(typeof setupBody.ownerToken === 'string' && setupBody.ownerToken.length > 10, 'widget UAT setup returns owner token');
+
+  const beforeStateRes = await fetch(BASE + `/api/_test/live-edit-cloud-uat-state/${tenantSlug}/${appSlug}`);
+  const beforeState = await beforeStateRes.json();
+  const beforeCallCount = Array.isArray(beforeState.calls) ? beforeState.calls.length : 0;
+  assert(beforeState.record && beforeState.record.lastBundle && beforeState.record.lastBundle['migrations/001-init.sql'],
+    'widget UAT initial deploy stores lastBundle before setup hook runs');
+
+  const shipRes = await fetch(BASE + '/__meph__/api/ship', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${setupBody.ownerToken}`,
+    },
+    body: JSON.stringify({
+      newSource: WIDGET_SCHEMA_V2,
+      tenantSlug,
+      appSlug,
+      classification: {
+        type: 'additive',
+        changes: [{ kind: 'add_field', table: 'Items', field: 'price', fieldType: 'number' }],
+      },
+    }),
+  });
+  const shipBody = await shipRes.json();
+  assert(shipRes.status === 200, `widget UAT ship returns 200 (got ${shipRes.status}: ${JSON.stringify(shipBody).slice(0, 200)})`);
+  assert(shipBody.ok === true, 'widget UAT ship returns ok:true');
+  assert(shipBody.mode === 'update', `widget UAT ship uses update mode (got ${shipBody.mode})`);
+  assert(shipBody.versionId === 'script-id', `widget UAT ship returns uploaded version id (got ${shipBody.versionId})`);
+  assert(shipBody.url === 'https://widget-items.buildclear.dev', `widget UAT ship keeps cloud URL (got ${shipBody.url})`);
+
+  const stateRes = await fetch(BASE + `/api/_test/live-edit-cloud-uat-state/${tenantSlug}/${appSlug}`);
+  const stateBody = await stateRes.json();
+  assert(stateRes.status === 200, 'widget UAT state returns 200');
+  const updateCalls = Array.isArray(stateBody.calls) ? stateBody.calls.slice(beforeCallCount) : [];
+  const updateOps = updateCalls.map((c) => c.op);
+  assert(updateOps[0] === 'applyMigrations', `widget UAT applies migration before upload (ops: ${updateOps.join(',')})`);
+  assert(updateOps[1] === 'uploadScript', `widget UAT uploads script after migration (ops: ${updateOps.join(',')})`);
+  assert(stateBody.record && Array.isArray(stateBody.record.versions), 'widget UAT deployed record has versions array');
+  const lastVersion = stateBody.record && stateBody.record.versions && stateBody.record.versions[0];
+  assert(lastVersion && lastVersion.versionId === 'script-id', `widget UAT records uploaded version (got ${lastVersion && lastVersion.versionId})`);
+  assert(lastVersion && lastVersion.via === 'widget', `widget UAT records version via widget (got ${lastVersion && lastVersion.via})`);
+
+  const historyRes = await fetch(BASE + `/__meph__/api/deploy-history?tenantSlug=${encodeURIComponent(tenantSlug)}&appSlug=${encodeURIComponent(appSlug)}`, {
+    headers: { Authorization: `Bearer ${setupBody.ownerToken}` },
+  });
+  const historyBody = await historyRes.json();
+  assert(historyRes.status === 200, `widget UAT deploy-history returns 200 (got ${historyRes.status}: ${JSON.stringify(historyBody).slice(0, 200)})`);
+  assert(Array.isArray(historyBody.versions), 'widget UAT deploy-history returns versions array');
+  assert(historyBody.versions[0] && historyBody.versions[0].versionId === 'script-id', `widget UAT deploy-history exposes newest version (got ${historyBody.versions[0] && historyBody.versions[0].versionId})`);
 }
 
 } catch (err) {

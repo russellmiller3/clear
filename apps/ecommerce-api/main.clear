@@ -83,7 +83,7 @@ when user calls POST /api/products receiving product:
 when user calls DELETE /api/products/:id:
   requires login
   requires role 'admin'
-  remove from Products where id is incoming's id
+  delete from Products where id is incoming's id
   send back 'deleted'
 
 # --- Webhook ---

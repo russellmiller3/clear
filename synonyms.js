@@ -190,7 +190,7 @@ const SYNONYM_TABLE = Object.freeze({
   // NOTE: "display" is shared between show (synonym) and Phase 4 display.
   // The parser checks context: "display X as Y called Z" → Phase 4 DISPLAY node.
   // "display X" → show (same as "show X").
-  button: Object.freeze(['button']),
+  button: Object.freeze(['button', 'add button']),
   as_format: Object.freeze(['as']),
 
   // ---------------------------------------------------------------------------
@@ -212,6 +212,7 @@ const SYNONYM_TABLE = Object.freeze({
   save_to: Object.freeze(['save']),
   look_up: Object.freeze(['look up']),
   records_in: Object.freeze(['records in', 'record in']),
+  // Legacy trap only: parser rejects this for database deletion and suggests `delete from`.
   remove_from: Object.freeze(['remove from']),
   where: Object.freeze(['where']),
 
@@ -405,6 +406,7 @@ const SYNONYM_TABLE = Object.freeze({
   // 'database' has no .canonical and would need a separate RAW_DISPATCH map.
   database: Object.freeze(['database']),
   chart: Object.freeze(['chart']),
+  nav: Object.freeze(['nav', 'navigation']),
   bar: Object.freeze(['bar']),
   line: Object.freeze(['line']),
   pie: Object.freeze(['pie']),
@@ -412,6 +414,8 @@ const SYNONYM_TABLE = Object.freeze({
   agent: Object.freeze(['agent']),
   script: Object.freeze(['script']),
   tab: Object.freeze(['tab']),
+  stat: Object.freeze(['stat']),
+  detail: Object.freeze(['detail']),
   retry: Object.freeze(['retry']),
   first: Object.freeze(['first']),
   background: Object.freeze(['background']),
@@ -429,9 +433,29 @@ const SYNONYM_TABLE = Object.freeze({
   refresh: Object.freeze(['refresh', 'reload']),
   ask: Object.freeze(['ask']),
   call: Object.freeze(['call']),
+  // give claude — canonical AI call form (replaces ask claude '...' with X).
+  // Multi-word synonym so the tokenizer matches "give claude" as one token,
+  // avoiding ambiguity with `give` used in other contexts. The verb is what
+  // WE (the program) do to Claude. `ask` stays reserved for what the USER
+  // does to the app (when user sends X to /api/...).
+  give_claude: Object.freeze(['give claude']),
+  // prompt — noun phrase introducing the instruction string in `give claude X
+  // with prompt: 'Y'`. Canonical with trailing colon, parser also accepts bare
+  // `with prompt 'X'`. The 14-year-old reads "with prompt 'foo'" as plain
+  // English; the colon just signals "block-like content follows" consistent
+  // with try:, validate:, etc.
+  prompt: Object.freeze(['prompt']),
   should: Object.freeze(['should', 'does']),
   search: Object.freeze(['search']),
   block_arguments: Object.freeze(['block arguments matching', 'block arguments that match']),
+
+  // TBD placeholder (Lean Lesson 1) — drop this anywhere a value or a block can
+  // go. The compiler accepts it, records the line on the result, and emits a
+  // tagged stub at runtime. Lets Meph leave one piece unfinished and keep
+  // iterating on the rest of the program. Canonical is lowercase `tbd` because
+  // tokenizer compares case-insensitively; Clear convention is "TBD" all-caps
+  // in source so it stands out visually.
+  tbd: Object.freeze(['tbd']),
 });
 
 // Build the reverse lookup: synonym string → canonical token
@@ -455,6 +479,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.32.0';
+const SYNONYM_VERSION = '0.35.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

@@ -21,5 +21,5 @@ when user calls POST /api/contacts sending contact:
 
 when user calls DELETE /api/contacts/:id:
   requires auth
-  remove from Contacts with this id
+  delete the Contact with this id
   send back 'deleted'

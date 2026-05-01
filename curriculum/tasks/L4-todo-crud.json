@@ -1,5 +1,6 @@
 {
   "id": "todo-crud",
+  "held_out": true,
   "level": 4,
   "title": "Todo CRUD API",
   "description": "Build a full CRUD API for a Todos table with fields: title (required, text), done (boolean, defaults to false). POST /api/todos creates, GET /api/todos lists all, GET /api/todos/:id gets one, PUT /api/todos/:id updates, DELETE /api/todos/:id removes.",

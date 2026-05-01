@@ -35,6 +35,719 @@ Built the first slice of provable correctness in one overnight session. Two mile
 **Branch:** `feature/decidable-core-prover` — 16 commits + the docs commits. Ready to merge to main when Russell pulls and reviews.
 
 **What's still not in this branch (next session):** Phase B-2 effect quarantine in the validator (PC-3 — needs `live:` parser shipped first); inequality reasoning in symbolic mode (PC-6); auto-prove integration with `clear test` (PC-8); counterexample generation when proofs fail (PC-9); USER-GUIDE.md / intent.md / landing-page polish.
+## 2026-04-30 - Meph-facing docs stop teaching bare controls
+
+The piece between "the compiler enforces the rule" and "Meph copies the right
+examples." The Meph-facing authoring docs no longer show interactive controls
+whose data effect is missing or hidden in a comment.
+
+**What shipped:**
+- AI instructions now show header buttons, CTAs, empty-state buttons, detail-panel actions, and modal actions with explicit data effects.
+- Syntax docs now show toast-only notification buttons as a real indented button body, not invalid one-line syntax.
+- User Guide workbench examples now give Refresh and Export buttons concrete data actions.
+- User Guide input examples now name the checkbox variable they save.
+- README raw-JavaScript escape-hatch guidance now says the button label must name the visible effect.
+- A pre-push gate now fails when Meph-facing docs teach bare buttons, inputs without saved variables, row actions without data-effect notes, or toast-only domain actions.
+
+**Why for launch:** Meph learns by copying examples. Dirty examples create dirty apps even when the compiler rule exists.
+
+**Tests:** `node scripts/interaction-doc-hygiene.test.mjs`, `node scripts/interaction-doc-hygiene.mjs`, and `node playground/server.test.js` passed.
+
+---
+
+## 2026-04-30 - Toasts are native UI, not HTML strings
+
+The piece between "show a success message" and "ship a real component." Toasts
+now render as a native DaisyUI-style alert stack instead of concatenated HTML.
+
+**What shipped:**
+- Toast calls now pass semantic variants like `success`, `warning`, `error`, and `info` into the runtime helper.
+- The runtime maps those variants to DaisyUI alert classes and uses a `toast toast-end toast-bottom` container.
+- Each toast has `role="alert"` and `data-clear-toast`, so browser tests can inspect the actual UI.
+- Toast message data now renders through `textContent`, which blocks HTML/script injection in notifications.
+- Syntax, features, intent, and AI docs now describe the native component contract.
+
+**Why for launch:** Notifications are part of every useful workflow. They need to be accessible, testable, and safe by default.
+
+**Tests:** `node clear.test.js` passed 2,785 checks.
+
+---
+
+## 2026-04-30 - Inline button actions read like English
+
+The piece between "the button has a data effect" and "a person can read the
+line out loud." Inline `button ... that ...` actions now prefer third-person
+verbs like `gets`, `sends`, `increases`, `goes to`, and `stores`.
+
+**What shipped:**
+- Detail-panel action buttons now reject comment-only bodies and vague selected-record updates.
+- Selected-record updates use `change selected_record's field from old to new`, then `update selected_record at /api/...`.
+- Selected-record deletes use `delete selected_record from /api/...`; the compiler emits the internal delete request without a request body.
+- Inline button actions normalize third-person verbs before parsing, so `that gets deals` runs the same action as the imperative `get deals`.
+- The validator warns on base-form inline actions like `button 'Load' that get deals`.
+- Featured-template hygiene catches the same grammar issue using the shared helper.
+- Approval Queue and Internal Request Queue no longer hide domain actions behind notification-only bodies; they name the queue URL, selected record, status update, audit row, and refresh effect.
+- The hygiene gate counts toast as notification data, but domain-action buttons must also name the business data they change.
+- The compiler now rejects domain-action buttons like `Approve` or `Save` when their only effect is a toast.
+- `show toast`, `show alert`, and `show notification` now compile-error when the message data is missing.
+- Syntax docs, AI instructions, Meph prompt, repo prompt, philosophy, README, features, and intent docs now teach the rule.
+
+**Why for launch:** Clear source is part of the product. Generated apps should read like a competent human wrote them, not like a stitched-together command list.
+
+**Tests:** `node clear.test.js` passed 2,783 checks. `node playground/server.test.js` passed 257 checks.
+
+---
+
+## 2026-04-30 - Meph model picker keeps tools across providers
+
+The piece between "Anthropic is capped" and "Meph still works like Meph." Studio chat now has a model picker for Anthropic Haiku plus OpenRouter Claude, GLM, DeepSeek, and Kimi. Switching models sends the full chat history on the next turn so the new model is not dropped into the middle of a conversation blind.
+
+**What shipped:**
+- `/api/config` exposes available Meph model choices and whether the server has Anthropic/OpenRouter keys.
+- `/api/chat` resolves the selected model, routes OpenRouter choices without requiring an Anthropic key, and preserves `MEPH_BRAIN` as the env-forced override.
+- OpenAI-compatible backends now translate Meph tool definitions, assistant tool calls, tool results, and streamed tool-call deltas back into Anthropic-shaped SSE.
+- Studio stores the selected model, shows key setup for the selected provider, and sends full history after a model change.
+
+**Verification:** unit tests cover model resolution, full-history selection, OpenRouter model overrides, and tool-call translation. Browser smoke verified picker rendering and the outgoing `modelChanged` request. Real OpenRouter GLM smoke verified `meph-memory.md`, `requests.md`, editor read, compile, todo, terminal, personality override, and prior-chat marker.
+
+**Why for launch:** provider failure or spend caps should not stop the builder. This makes Meph a portable tool-using loop instead of a single-vendor chat box.
+
+---
+
+## 2026-04-30 - Template interactions must state data effects
+
+The piece between "this app has a button" and "the reader knows what the button
+does to data." Featured templates now reserve `#` comments for navigation and
+use `//` or `/* */` for explanatory notes. Auto-wired buttons and row actions
+now name the generated endpoint or record update immediately under the control.
+
+**What shipped:**
+- Deal Desk, approval queue, onboarding tracker, support triage, internal request queue, and ecommerce templates now avoid narrative `#` comments.
+- Deal Desk and onboarding action buttons now state the queue-generated data effect under the visible control.
+- Featured-template hygiene test catches narrative `#` comments, bare buttons, row action shortcuts without data notes, and domain-action buttons that only name notification feedback.
+- AI instructions, Meph's prompt, and philosophy now record the rule.
+
+**Why for launch:** Marcus can inspect a generated app and see what each action
+does without guessing. That matters for trust. A button that only says
+"Approve" is theater; a button that names the record update is software.
+
+**Tests:** `node playground/server.test.js` now includes 257 passing checks,
+including the featured-template hygiene gate.
+
+---
+
+## 2026-04-30 - Compiler-error packets make failures handoff-ready
+
+The piece between "Clear failed to compile" and "the debugging session has enough context to fix the right layer." Compile failures now produce a copy-pasteable compiler-error packet with source context, normalized diagnostics, and explicit instructions for deciding whether the fix belongs in the Clear program or the compiler.
+
+**What shipped:**
+- `compileProgram()` now attaches `compileTrace` on failed compiles and leaves it `null` on clean compiles.
+- Studio's compile-error panel now shows **Copy compiler error** so Russell can paste the packet directly into a debugging session.
+- `/api/compile`, CLI `--json`, and CLI `--trace` all expose the same packet.
+- CLI parse/check errors also get trace packets, not just full build errors.
+
+**Why for launch:** this turns every compiler failure into a clean handoff. Marcus can send the packet instead of narrating what happened, and Russell can fix the Clear source or compiler bug without reconstructing context from screenshots.
+
+**Tests:** core trace construction has red-first coverage, clean compiles assert no trace, and `/api/compile` verifies the packet reaches Studio callers.
+
+---
+
+## 2026-04-29 (afternoon) — Routing primitive: `route X by FIELD:` replaces if-chains
+
+The piece between "Marcus customer wants a custom routing variant" and "Russell rewrites 50 lines of nested if-chains by hand for every variant." The new primitive lifts the assignment pattern into a first-class language construct. Every Marcus app that decides who-gets-the-lead based on size / region / territory / round-robin now collapses from 50+ lines to 5.
+
+**What shipped (Phases 1-6 of the plan, end-to-end):**
+- New `ROUTE_DEF` node type and `parseRouteDef` parser path. Recognizes `route <entity> by <field>:` followed by indented body of `'value' to <owner>` rules and at most one `default to <owner>` or `default round-robin across [<pool>]` rule. Match values must be quoted strings (the tokenizer splits hyphens like `Mid-market` into 3 tokens).
+- Five validator rules: two HARD ERRORS (`ROUTE_ENTITY_NOT_IN_SCOPE` and `ROUTE_AFTER_SAVE` — the second catches the silent-bug class where the route block runs after the save and the assignment never persists); three WARNINGS (`ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE`).
+- JS compiler emit: fixed-mapping rules become a clean if/else chain over `<entity>.<field>`, mutating `<entity>.assigned_to`. Round-robin defaults call `await _clear_route_pick({routeId, pool})` against a shared `_clear_route_cursors` SQLite table emitted once per app.
+- Python compiler emit: same shape, FastAPI/dict-style (`if _v == 'SMB': lead['assigned_to'] = 'alice'`).
+- Cursor runtime helper inlined at module top — reads the cursor row, increments `(last_index + 1) % pool.length`, writes back, returns `pool[next]`. Empty pool returns null. Survives restarts via SQLite WAL persistence.
+- **Stable route id is a content hash, not a line number.** `route_<entity>_<field>_<4-hex-djb2>` of the canonicalized rules + pool. Adding a comment above a route block doesn't reset the cursor — only changing the rules or pool does (which is the correct invalidation).
+- `apps/lead-router/main.clear` rewritten — 5 lines of if-chain → 5 lines of `route lead by size:`. All 13 embedded tests still pass.
+
+**Why for launch:** Russell's first paying Marcus customer will want a custom variant of one of the 5 Marcus apps. Lead routing is where customer requirements diverge most. Without this primitive, every variant means rewriting 50+ lines of nested if-chains AND maintaining round-robin cursor state by hand. With it, the variant is a 5-line declarative block — the kind of change Russell can ship in 30 minutes during a customer call.
+
+**Tests:** 2773 passing, 0 failing. 17 new tests across parser, validator, and JS compiler emit cycles. 8 core templates + lead-router all compile clean.
+
+**Open work for follow-up cycles (NOT in this commit):**
+- 5 Marcus apps UAT regression smoke (browser walker)
+- Doc cascade across remaining surfaces (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, FEATURES.md, ROADMAP.md, FAQ.md, playground/system-prompt.md)
+- Phase B research-tier variants (territory-with-Owners-table, workload-balanced, skill-based) — gated on a real customer asking
+
+## 2026-04-29 (morning) — CC-5 cycle 1: custom domain attach + dashboard panel
+
+The piece between Marcus deploying an app and Marcus pointing `deals.acme.com` at it. The customer types a domain in the dashboard's per-app panel, sees a "Verifying DNS" pill, gets a copy-pasteable CNAME hint. Soft-delete via the same panel. Cross-tenant attack returns 404 (locked in by tests).
+
+**What shipped:**
+- New `app_domains` table keyed by `(tenant_slug, app_slug, domain)` with a `pending / verified / failed / removed` state machine. Migration applies cleanly under pg-mem (no PL/pgSQL trigger).
+- Three URL handlers on `playground/cloud-auth/routes.js`: POST (attach), GET (list), DELETE (soft-delete). All gate on session cookie + verify the app belongs to the authed user's tenant before any DB op.
+- Per-app card on the dashboard now has a Custom domains section: status pill (Verifying DNS / Live / DNS error), CNAME hint for pending, last-error message for failed, Remove button per row. HTML escaping on every customer-controlled string.
+- 23 new routes integration tests including the cross-tenant-attack-returns-404 isolation test. Total in `routes.test.js` now 95/95 passing.
+
+**Why for launch:** Marcus's company wants `deals.acme.com`, not `acme.buildclear.dev`. Custom domains are table stakes at SaaS pricing — the moment Marcus's CFO sees the marketing brand on the URL, the platform reads as a product instead of a demo.
+
+**Open work for cycles 2+ (NOT in this commit):**
+- DNS verification poller (CC-5b) — wakes every minute, finds pending rows, calls `node:dns resolveCname`, flips to verified or failed.
+- Fly cert provisioner (CC-5c) — issues SSL once a domain verifies.
+
+## 2026-04-29 (later) — Marcus apps list: dashboard shows the customer's deployed apps
+
+The piece between Marcus signing up and Marcus actually seeing his deployments. Picked the simplest of the three user→tenant mapping options sketched earlier — each customer = one tenant, auto-created at signup.
+
+**The chain that lights up:**
+- Sign up at buildclear.dev → user row created → a tenant row gets auto-created with a `clear-<6hex>` slug → the slug gets written back onto the user.
+- Log in → cookie set as before.
+- Hit the dashboard → it asks "what apps belong to my tenant?" → the new URL returns the list → the page renders one card per app with a link to the live URL.
+
+**Cross-tenant isolation is load-bearing.** Two customers sign up, one deploys an app, the other's app list returns `[]`. That's the property that makes this safe to ship and the test that locks it in.
+
+**What the dashboard renders:** for each deployed app it shows the app slug, the hostname, the latest version label, the deploy date, and an "Open" link. Empty state still shows when the tenant has zero deploys (no apps yet — go build one).
+
+**Degraded modes covered:** signup without a tenant store still succeeds (tenant_slug stays null); the apps URL returns 503 when DATABASE_URL isn't set; the dashboard's auth gate bounces unauth'd users to the login page. None of these surface broken text to a customer.
+
+121/121 tenant store tests + 72/72 routes tests + 57/57 auth helpers + 24/24 factory tests, all green. 9 new tests for listAppsByTenant + 22 new tests for the apps URL and tenant auto-create.
+
+The "first paying Marcus customer" path is now: register account → log in → land on dashboard → see deployed apps → click into one → continue. Every step works.
+
+## 2026-04-29 — Browser UAT runner: every Marcus app passes a real Playwright walk-through
+
+**The 5 Marcus-targeted apps each ship with an auto-generated Playwright test that actually runs.** Wired the existing browser-UAT generator (cherry-picked from a Codex stash earlier this week) into `clear build` so every app gets a `browser-uat.mjs` file alongside its server.js. New runner script `scripts/run-marcus-uat.mjs` builds each Marcus app, spins up its server on a dedicated port, runs the walker, kills the server, and reports per-app pass/fail.
+
+**Result:** 52 of 52 walker assertions pass across all 5 Marcus apps (Deal Desk 24/24, Approval Queue 5/5, Lead Router 6/6, Onboarding Tracker 8/8, Internal Request Queue 9/9). The walker drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown — and screenshots each route to `.clear-uat-screenshots/`.
+
+**Compiler bugs the walker surfaced (and fixed in the same phase):**
+
+3. **Tree-shake walked dependencies one level deep instead of transitively.** The deal-desk app threw `_clear_table_rows_for_view is not defined` on every page load because `_clear_bind_table` pulled in `_clear_apply_table_view` (its direct dep) but stopped there — `_clear_apply_table_view`'s own dep on `_clear_table_rows_for_view` was silently dropped. Now the resolver loops until no new helper is added.
+
+4. **`save X as new T` discarded the inserted row.** Onboarding-tracker's seed had `customer_id is c1's id` after `save c1 as new Customer` — but the compiler emitted `await db.insert(...)` without capturing the return into `c1`, so `c1.id` stayed undefined and every subsequent FK insert failed with "customer_id is required". Now the variable is reassigned to whatever the insert returns.
+
+**UAT-contract fixes (also surfaced by the walker):**
+
+- The contract collected raw `{var}` placeholders in expected page text. The walker asserted "{pending_count} deals waiting on you." appeared on screen, but the runtime substitutes `{pending_count}` to a real number — the assertion always failed. Now placeholders get stripped at contract-build time, so the walker only checks the stable surrounding text.
+- The contract used the page-title declaration as the page's required body text. But onboarding-tracker's title is "Onboarding Tracker" while the body reads "Customer Success" / "Customer Onboarding" — title is `<title>` metadata, not body. Now the contract prefers the first body-visible heading and falls back to title only when the body has nothing.
+
+**Runner ergonomics:**
+
+- Wipes per-app `clear-data.db` before each run so the seed always re-fires (idempotent seeds skip inserts when a row already exists, silently masking newly-added seed entries).
+- Outputs `snapshots/marcus-uat-failures-<date>.md` with the full stdout/stderr of any failing app — debug without retracing.
+
+This closes the loop on "make sure all 5 Marcus apps work." Russell can now build custom variants for paying customers and have a runnable acceptance test suite the moment compile succeeds.
+
+## 2026-04-28 (late night) — Two compiler fixes + Marcus apps validation + primitive audit
+
+**Compiler fixes that ship across every Clear app:**
+
+1. **Page header subtitle now does `{var}` interpolation.** Previously the subtitle baked literal `{pending_count}` into the page because its compile path only handled bold/italic. Now subtitles use the same data-clear-tpl pattern that text/small-text already use, so the runtime resubstitutes on every state change. "0 deals waiting on you." now shows the real count instead of `{pending_count}`.
+
+2. **Format helpers (`as dollars`, `as percent`, `as date`, `as json`, `as count`) guard for null/undefined.** Previously an unset value rendered as "$NaN", "NaN%", "Invalid Date", "null", or "undefined". Now each emits an empty string when the source is null/undefined — the layout shape stays right but no broken text leaks to the user. Caught when the deal-desk's empty detail panel showed `$NaN` and `NaN%` before a row was selected.
+
+Both bugs visible in the deal-desk demo snapshot. Both fixes tracked the same pattern: a runtime helper had the right guard, but the inline-emitted code path didn't. Now they match.
+
+**Marcus apps validation (background research):** The 5 apps Clear has today — Deal Desk, Approval Queue, Internal Request Queue, Onboarding Tracker, Lead Router — match the market evidence on what RevOps customers actually build. Strong agreement on Approval Queue + Internal Request Queue + Onboarding Tracker (covered by 4-of-4 competing platforms). Deal Desk is thesis-grade (Russell's domain expertise replaces the missing market signal). Lead Router is the weakest by market signal but cheap to keep. After Marcus #1 conversation, consider rebranding Approval Queue → "Invoice Approval Queue" if his pain is finance — same primitive, much stronger evidence (Qonto, Fintecture, Plaid).
+
+**Primitive audit (background research):** All 6 Marcus apps compile clean today (0 errors). Russell can build custom variants now. The biggest gap is **lead routing** — today the lead-router app uses raw `if X is Y` chains. Works for fixed mapping but breaks for round-robin, territory, workload-balance, skill-based routing. Top 3 primitives to add next:
+1. `route X by field` with rules + round-robin fallback (the explicit ask)
+2. `search input filters table` UI primitive (every queue app needs filter-by-text)
+3. Activity log / comments-on-record primitive (every approval app variant wants a timeline)
+
+**Rule update:** CLAUDE.md gets a new sub-rule under Documentation Rule — the 11-surface doc cascade runs at PHASE-end, not commit-end. A phase ships as one cascade even if it lands across several commits. Saves the energy of writing five overlapping CHANGELOG entries that all describe the same thing.
+
+## 2026-04-28 (night) — Deal Desk demo polish: kill 5 fake pages + Draft AI summary button + live stat counts
+
+The deal-desk Marcus would see at a demo had 5 pages backed by hand-coded seed data — Reps, Accounts, Approval Rules, Integrations, Settings. Each one looked real. None of them worked. The Integrations page was the most dangerous — it claimed "Salesforce / Slack / DocuSign — Connected" with zero of those actually connected. Marcus would lose trust the moment he poked at any of them.
+
+**What got pulled out (per `snapshots/deal-desk-product-review-04-28-2026.md`):**
+- 5 page declarations (`/reps`, `/accounts`, `/rules`, `/integrations`, `/settings`)
+- 4 backing tables (Reps, Accounts, ApprovalRules, Integrations)
+- 4 endpoints feeding them
+- Their seed-data sections (4 reps + 4 accounts + 3 rules + 3 integrations)
+- 5 nav items in the inline sidebar pointing at the killed routes
+- The dead `DealDeskSidebar` component (never referenced)
+
+**What got polished:**
+- Dead Refresh + Export header buttons gone (no body, did nothing)
+- Stat strip wired to live counts: pending, approved today, awaiting customer, total deals — sourced from the 4 filter URLs the page already fetches
+- Sidebar nav counts (Pending / Approved / Rejected / Awaiting / All) now use those same live counts instead of hardcoded numbers
+- Draft AI summary button added to the detail panel as the FIRST action, wired to the existing `/api/deals/draft` URL
+
+**Why for launch:** when Marcus opens this app, every visible affordance now does something real. The 12 features that remain tell a complete story; the 5 that were placeholders are gone. "This app does ONE thing and does it well" is a better pitch than "this app does 17 things and 5 of them are placeholders."
+
+25/25 deal-desk app tests green; 2749/2749 main compiler tests green; 0 errors across 8 templates + deal-desk.
+
+**Two pre-existing issues NOT addressed** (queued for follow-up): (1) page subtitle shows literal `{pending_count}` instead of the number — template substitution doesn't fire in subtitle text yet; (2) empty detail panel renders `$NaN` / `undefined` for unselected rows — format helpers need a guard for missing values.
+
+## 2026-04-28 (night) — CC-2 closed: cloud-auth URLs + login/signup/dashboard pages
+
+Customers can now log into buildclear.dev. The auth helpers from CC-1 cycle 9 (signupUser, loginUser, validateSession, revokeSession) finally have the four URL handlers they need, plus three customer-facing HTML pages that drive the full flow end-to-end.
+
+**Why for launch:** Marcus opens buildclear.dev → /signup.html → creates an account → lands on /dashboard.html. Without this, the auth was plumbed but unreachable — code without a door. Now the door exists, and the moment Russell sets DATABASE_URL the whole flow works in production.
+
+**What shipped:**
+- `playground/db/migrations/0002_users_sessions.sql` — applies alongside CC-1's init migration when DATABASE_URL is set. Stripped the PL/pgSQL trigger vs the cloud-auth/migrations master because pg-mem doesn't speak plpgsql.
+- `playground/cloud-auth/routes.js` — the four URL handlers (signup/login/me/logout). httpOnly + SameSite=Lax + Secure cookies, 30-day Max-Age, inline cookie parser (no cookie-parser dep). Stub mode when pool is null so Studio dev keeps working without DATABASE_URL.
+- `playground/{login,signup,dashboard}.html` — clean Inter-font, indigo-gradient buttons matching the existing design system. Lucide icons (no emoji per the no-emoji-on-landing rule). Dashboard auth-gates on /api/auth/me and bounces unauth'd users to /login.
+- IPv4-mapped IPv6 prefix gets stripped on the client-IP capture (pg-mem rejects `::ffff:127.0.0.1`).
+
+50 new routes integration tests + 5 new factory tests prove the cloud-auth schema applies under pg-mem and the full signup → cookie-set → me-returns-user → logout-revokes-session loop works. 2749 main tests still green.
+
+## 2026-04-28 (late evening) — Triggered email Phase B-1 part 2: `email delivery using <provider>` directive + worker scaffold
+
+New top-level directive flips real email sending on without changing any other line of source:
+
+```clear
+email delivery using agentmail
+```
+
+When present, the compiler emits a small background worker that polls `workflow_email_queue` every 30 seconds, sends pending rows via the named provider's HTTP API, and marks each row sent or failed. Without the directive, no worker emits — default builds stay inert (the Phase 3.2 regression guard still holds, asserting no real-provider URL leaks into the compiled output).
+
+**Why for launch:** the moment Russell sets the `AGENTMAIL_API_KEY` env var on the production server, real customer emails start flowing. No compiler change, no app change. Until then, the worker logs a clear "API key not set — cannot send" once and silently waits for it. Misconfigured deploys never silently succeed (the worker fails loud).
+
+**Provider support:**
+- `agentmail` — full HTTP POST adapter (default).
+- `sendgrid`, `resend`, `postmark`, `mailgun` — recognized by the parser + validator but the worker marks rows `failed` with a clear "adapter not implemented yet" message. Picking a non-AgentMail provider today documents intent without sending.
+
+5 new tests under `Triggered email — delivery directive (Phase B-1 part 2)`. 2740 → 2745 passing, 0 failing.
+
+## 2026-04-28 (late evening) — Triggered email Phase B-1 part 1: template substitution at queue-insert
+
+Every queued email used to get the same literal subject + body. Now `{customer}`, `{amount}`, `{customer_email}` and any other `{field}` reference in the Clear source resolves at queue-insert time against the entity record. Each row in `workflow_email_queue` carries the per-customer text that's actually intended.
+
+**Why this matters:** without per-record substitution, live sending (Phase B-1 part 2) would be useless — every customer gets "Sarah from our team has prepared a counter offer for you" with no name, no deal, no amount. Validator Cycle 5.2 already catches `{ident}` references that don't match an entity field at compile time (so typos surface early). Now the runtime resolves the legitimate ones.
+
+**How it lands:** new utility helper `_clear_interpolate(template, record)` ships with any compiled output that needs it (auto-included via the existing tree-shake pass). Both queue-insert injection sites — the queue's auto-PUT handlers in `compileQueueDef` and the user-defined endpoint inject in `compileEndpoint` — now wrap subject + body with the helper. Missing fields render as empty string, never the literal "undefined".
+
+3 new tests under `Triggered email — template substitution (Phase B-1)` (2737 → 2740 passing, 0 failing).
+
+Phase B-1 part 2 (the `email delivery using <provider>` directive, real sending worker, provider adapters, reply webhook) is gated on Russell providing AgentMail/SendGrid keys + explicit go to send real customer email.
+
+## 2026-04-28 (evening) — Queue primitive F2 + F4 — plural input + action keyword synonyms + waiting on customer canonical
+
+Two follow-ups from Russell's 2026-04-28 red-team review of the queue primitive plan, both backwards-compatible.
+
+**F2 — plural entity input singularizes (commit 38781e5).** Authors who type `queue for deals:` used to get a different audit table + URL than authors who typed `queue for deal:` (deals_decisions vs deal_decisions, /api/deals-decisions vs /api/deal-decisions). The parser now singularizes the entityName in both `parseQueueDef` and `parseEmailTrigger` so plural input produces canonical singular output. Handles the cases Marcus's 5 apps need: regular `-s` plural (deals → deal), `-ies` plural (activities → activity), `-(s|x|z|sh|ch)es` plural (boxes → box, churches → church). Preserves `-ss` endings (address, business, status stay as-is) so they don't get truncated wrong. Five new tests in `Queue primitive — F2 plural input singularizes`.
+
+**F4 — `options:` / `buttons:` synonyms + `waiting on customer` canonical (commit 5d72d94).** Managers don't always type `actions:` — they often type `options:` (matches the menu metaphor) or `buttons:` (matches the UI). All three keywords now resolve to the same parsed shape. Same goes for the action label `waiting on customer`, which reads more naturally than legacy `awaiting customer` and maps to the same terminal status `'awaiting'`. URL slug: `/api/deals/:id/waiting`. The compiler's `actionToTerminalStatus` and the validator's `validateEmailTriggers` reachability map both add a `waiting → awaiting` mapping next to the existing `awaiting → awaiting` and `counter → awaiting` rules. Five new tests in `Queue primitive — F4 action keyword synonyms + waiting on customer canonical`.
+
+Tests: 2727 → 2737 passing (+10), 0 failing. Smoke-checks all 14 apps (8 core + 6 Marcus) compile clean.
+
+**Still pending — F5 (Python parity).** The Python branch of `compileQueueDef` still returns a `# queue for X: tables emitted by Phase 2 (Python target TBD)` stub. None of the 14 apps target Python, so this isn't blocking, but it violates the new "Build Python Alongside JS" rule and should land before any Python-targeted Marcus app gets written. ~150 lines of mechanical port from the JS branch.
+
+---
+
+## 2026-04-28 (evening) — Codex stash cleanup — chunks #1, #2, #4, #5 cherry-picked + stash dropped
+
+Russell's question at the end of the email-epic session: "did we cherry-pick everything useful out of Codex stash?" Audit said no — chunk #10 (shell router) + parts of #7 (chart polish) + the JSON UAT contract had landed earlier, but six other useful chunks were still sitting in `stash@{0}`. This session pulled four of them into focused commits, preserved the patch + a follow-up plan for the remaining two, then dropped the stash.
+
+What landed:
+
+- **Chunk #1 (validator false-positive fixes)** — `validateFieldNames` now treats fields the user already assigned to the variable before saving as already-validated (no more spurious "missing validate rule" warnings on common patterns like `record.status is 'pending'` then `save record to Things`). `validateExprComplexity` skips the noise check on CRUD lookup conditions — filter expressions like `where status is 'pending' and demo_key is X` are declarative not logic and were tripping the threshold.
+- **Chunk #2 (Cloudflare packaging sandbox tolerance)** — all three CF packaging test files (`packaging-cloudflare-cron`, `packaging-cloudflare-workflows`, `packaging-cloudflare`) now skip the `node --check` smoke when the sandbox blocks Node child processes (EPERM). The skip logs visibly. Test stability fix only; no production code change.
+- **Chunk #4 (UAT id markers on buttons + nav + route tabs)** — every compiled button, nav item, and route tab now carries `data-clear-uat-id` (stable line-based identifier like `button_550_Counter`) and `data-clear-control-kind` (`button` / `nav-item` / `route-tab`). Pairs with the JSON UAT contract that already shipped — chunk #8's browser-test generator (deferred, plan committed) will use these markers to find every clickable thing reliably without depending on text content or fragile CSS selectors. Verified end-to-end on deal-desk: 11 nav-item markers, 8 button markers, 3 route-tab markers.
+- **Chunk #5 (sortable + filterable tables)** — every table now gets a search box in its toolbar plus working sort on every column header. Before this, the click handler set sort attributes but never re-rendered (sort was a noop) and filter didn't exist. Three new runtime helpers (`_clear_table_rows_for_view`, `_clear_apply_table_view`, `_clear_table_header`) + updates to `_clear_render_table`, `_clear_cell`, `_clear_table_init`, the table HTML emit, and the reactive table emit. Sort handles numeric, currency-prefixed, percent-suffixed, and text columns; filter is case-insensitive substring across all fields.
+
+What's deferred (preserved for next session):
+
+- **Chunks #8 + #9 (UAT browser-test generator + CLI plumbing)** — ~700 lines of Playwright test generator + CLI artifact-writing. Too risky to land cleanly at the tail of a marathon session. Saved the full Codex stash patch to `plans/codex-stash-2026-04-27.patch` + wrote a focused execution plan at `plans/plan-codex-uat-chunks-8-9.md` so the work survives the stash drop. Russell's call when to execute.
+
+What's skipped on purpose:
+
+- **Chunk #6 (approval-rules dedicated render path)** — anti-pattern (app-specific render branch in the compiler for one particular table label). Better to make existing styling work generically than add a one-off path.
+- **Chunk #11 (plan-lint enforcement + skill machine-gates)** — references a `scripts/plan-lint.mjs` that doesn't ship in the patch.
+
+`stash@{0}` was dropped after this commit. The full patch + per-chunk audit + the follow-up plan for #8/#9 live in `plans/`.
+
+Test count: 2737 passing, 0 failing. All 14 templates / Marcus apps compile clean.
+
+---
+
+## 2026-04-28 (follow-up) — Triggered email primitive Cycles 4.1-extension, 4.2, 4.3, 5.2 close the silent-failure surface
+
+Earlier in the day Phase 1 + 3 + 4.1 (queue auto-PUT only) + 5.1 + 5.3 shipped. The triggered email primitive worked when an app used the queue primitive — but if an app hand-wrote its endpoints, or skipped the queue entirely, the trigger sat dead. Same problem for the validator: it warned "never fires" on apps whose only status-changing handler was hand-written.
+
+This session closes those gaps and adds two compile-time silent-bug guards.
+
+- **Cycle 4.1-extension + 4.2 (compiler + validator) — `feat(email-trigger): user-defined endpoints also queue emails`** — `compileEndpoint` now scans the endpoint body for `<entity>.status = <literal>` assignments. If a top-level `email_trigger` matches the entity + value, splice a `db.insert('workflow_email_queue', {...})` into the compiled bodyCode BEFORE the response statement (after-response would be unreachable dead code). Validator's never-fires reachability map now includes user-written endpoint bodies, not just queue actions. Two regression tests: single user-defined endpoint produces exactly one insert; two user-defined endpoints both assigning the same trigger value produce exactly two inserts (catches "scan once and stop" mistakes).
+
+- **Cycle 4.3 (validator) — `feat(email-trigger): warn when entity has no recipient_email field`** — every `email_trigger` resolves the recipient at runtime via the `<role>_email` field-on-entity convention. If the entity table never declares that field, the queue row lands with empty recipient_email and the email never sends. Validator now scans email_triggers + entity table fields, warns at compile time naming the table + missing field. Compile still succeeds (warn, not error); the queue insert still emits — failure is observable in the queue, not silent at send time.
+
+- **Cycle 5.2 (validator) — `feat(email-trigger): warn on {ident} body interpolation refs`** — body and subject often want to interpolate entity fields (`{customer}`, `{amount}`). Until interpolation lands as a runtime feature, any `{ident}` ships as literal text in the customer's inbox. Validator now scans `node.body` + `node.subject` for `{ident}` patterns and warns when the ident doesn't match an entity field. Once interpolation lands, the same warning shape catches typos.
+
+Tests: 2720 → 2727 passing (+7), 0 failing. Three commits (193f829, 2cfb6a4, b4835b3) + one demo commit (1b02e55) on the deal-desk app exercising the new top-level `email customer when deal's status changes to 'awaiting':` block alongside the queue's `counter` action. Merged to main as 9e5e4bc.
+
+---
+
+## 2026-04-28 — Triggered email primitive — top-level `email <role> when <entity>'s status changes to <value>:` block + queue-action integration
+
+The second of three primitives unlocking Marcus's 5 workflow apps. F3 (above) made `email <role> when <action>` canonical INSIDE queue blocks; this section puts the same atom at the TOP LEVEL so any URL handler that lands the entity's status on a trigger value queues an email automatically.
+
+Concretely, for Marcus's deal desk, this single Clear block:
+
+    queue for deal:
+      reviewer is 'CRO'
+      actions: approve, reject, counter
+
+    email customer when deal's status changes to 'awaiting':
+      subject is 'We countered your offer'
+      body is 'Sarah from our team has prepared a counter offer for you.'
+      provider is 'agentmail'
+      track replies as deal activity
+
+…now compiles to: a queue's PUT /api/deals/:id/counter handler that records the decision audit row AND inserts a customer-bound row in workflow_email_queue (subject, body, provider, queue_status='pending', recipient resolved via the entity's `customer_email` field).
+
+What landed across 4 commits on `feature/triggered-email-primitive`:
+- **F3 (494fa1f)** — `email <role> when <action>` canonical inside queue blocks; `notify <role> on <action>` kept as legacy alias. Both forms push `{role, onActions, mechanism}` to the notifications array so future passes can route email rows to the workflow email queue while leaving notify rows generic. Apps migrated: deal-desk + onboarding-tracker. Doc cascade: SYNTAX, AI-INSTRUCTIONS, system-prompt.
+- **Phase 1 parser (dfc9da7)** — new `EMAIL_TRIGGER` NodeType + `parseEmailTrigger` mirroring parseQueueDef shape. Recognizes `email <role> when <entity>'s status changes to <value>:` + body fields (`subject is`, `body is`, `provider is`, `track replies as`). Validates entity references a declared table (singular/plural match). Hard-fails on unknown body lines (F1 pattern). 5 TDD tests cover happy path, sub-clauses, undeclared entity, missing subject, unknown body line.
+- **Phase 3 compiler table emit (8a6b8a6)** — `compileEmailTrigger` emits the shared `workflow_email_queue` table once per app (deduped via `ctx._workflowEmailQueueEmitted` flag — multiple triggers share the table). 3 TDD tests including a regression guard that asserts NO real provider URLs (api.agentmail.to, api.sendgrid.com, etc.) appear in compiled output. Live email delivery stays deferred behind an explicit `enable live email delivery via X` directive (Phase B-1, not started).
+- **Phase 4.1 queue-action integration (fe80249)** — compileQueueDef's per-action PUT handler reads `ctx._astBody`, finds matching `EMAIL_TRIGGER` nodes (entityName + triggerValue match the action's terminalStatus), and emits a `db.insert('workflow_email_queue', {...})` after the audit + notify inserts. Recipient resolution uses the `<role>_email` field-on-entity convention. 2 TDD tests cover the positive case (counter → awaiting injects) and the negative case (approve → approved does not inject).
+
+Test count: 2716 passing (up 14 from start of email epic), 0 failing. All 14 templates / Marcus apps compile clean.
+
+What's deferred (not in this commit):
+- Phase 4.2-4.3 — user-written endpoint handlers like `when user updates deal at /api/deals/:id/counter:` with a manual `deal's status is 'awaiting'` line. Different injection path (scanning ENDPOINT body for POSSESSIVE_ASSIGN). Adds when first customer evidence demands.
+- Phase 5 — validator (never-firing trigger warning, undefined body var warning, bad provider name hard-error).
+- Phase B-1 — live email delivery worker via real provider APIs. Gated behind explicit `enable live email delivery via X` directive AND env-var-backed API keys.
+
+---
+
+## 2026-04-28 — `email <role> when <action>` is the canonical queue notification clause (F3)
+
+The queue primitive's notification clause now reads `email customer when counter, awaiting customer` instead of `notify customer on counter, awaiting customer`. The verb names HOW the recipient gets reached (email, vs vague "notify"); the connector reads naturally (when, vs the slightly-off "on"). This is Russell's design feedback from the 2026-04-28 red-team — verbs that name HOW > vague verbs.
+
+The legacy `notify <role> on <action>` form still parses for backwards compatibility — a deliberate alias, not a deprecation. Both forms now push to the same `notifications` array; each row carries a new `mechanism` field (`'email'` vs `'notify'`) so future compiler passes can route email rows to the workflow email queue while leaving notify rows generic.
+
+Future communication primitives will follow the same pattern — `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...` — each verb naming the channel.
+
+Updated together: parser (`parseQueueDef` in `parser.js`), 4 new TDD tests in clear.test.js's `Queue primitive — email canonical (F3)` block, the existing `notify clauses` test now asserts the `mechanism: 'notify'` field, the F1 hard-fail test swaps its old "unknown clause" example from `email rep when approve` (now valid) to `slack rep when approve` (still unknown). Docs cascade across SYNTAX.md, AI-INSTRUCTIONS.md, playground/system-prompt.md. Two app sources migrated to the canonical form: `apps/deal-desk/main.clear` and `apps/onboarding-tracker/main.clear`. Test count: 2706 passing, 0 failing. All 14 templates / Marcus apps compile clean.
+
+This unblocks the larger triggered-email primitive (next epic) — both surfaces share the canonical `email <role> when <trigger>` shape, so the new top-level `email <role> when <entity> status changes to <value>:` block will parse using the same atom.
+
+---
+
+## 2026-04-28 — Shell-page router (chunk #10) + chart polish (chunk #7) cherry-picked
+
+The compiler now emits a smarter router for multi-page apps that have an `app_layout`. The first page that wraps its body in `app_layout` becomes THE **shell page** — its sidebar, header, and chrome stay mounted across every route. When the user clicks `/approved`, the router parks the shell's default content and unparks `page_Approved_today` into the shell's content slot, then kicks `_recompute()` so the newly-visible table re-binds to data already fetched on initial page load. Sidebar persists, tables hydrate, page mount lifecycle is implicit.
+
+What this fixes in plain English: before today, a multi-page app like Deal Desk would lose its sidebar (or duplicate it) when you clicked from `/` to `/approved`, and the approved-deals table would render empty even though the data had loaded — because the table was built while its page was hidden and never re-bound when it became visible. Now the sidebar stays, the table fills in, you don't think about routing at all.
+
+What you write to opt in: declare `app_layout` once on your shell page (typically `/`); other pages contain just their content. The compiler does the rest. Apps without `app_layout` get the original simple show/hide router (no behavior change there).
+
+New compiled-output attributes (Meph + downstream tools should know about these):
+- `data-clear-shell-root="true"` on the shell page's `app_layout` div
+- `data-clear-shell-outlet="true"` on the shell page's `app_content` div
+- `data-clear-routed-content="<pageId>"` on the shell's default content wrapper AND on every non-shell page's outer div
+- `data-clear-page-id`, `data-clear-page-route`, `data-clear-page-title` on every page wrapper (single-page apps now get the marker too, so generated browser tests can prove the page rendered)
+
+Plus chart polish from the same stash (chunk #7):
+- Charts in routed pages now check `_chartEl.offsetParent !== null` before initializing — so ECharts doesn't try to render into a 0-width canvas while the page is hidden, then never recover
+- `_chart.resize()` after init fixes the post-route-swap case where the chart was built hidden then revealed
+- New `clear-chart-card` + `clear-chart-canvas` classes; pie config gets a legend, formatter, and scale-on-hover animation
+
+5 new TDD tests cover shell-outlet emit, routed-content markers, page wrapper attributes, helper functions, and the `_recompute()` after route swap. 2 prior tests updated for the new emit format (single-page apps now get the marker; page wrappers carry data-attrs between id and style). 2702 passing, 0 failing. All 8 core templates + 6 Marcus apps compile clean.
+
+Deal Desk's `apps/deal-desk/main.clear` was simplified in the same commit — non-shell pages dropped their inline `app_layout > sidebar > main > content` shells (left over from a workaround for the components-drop-children bug fixed earlier today). With chunk #10 landed, those shells were duplicating the sidebar. Now non-shell pages contain just their page header + content sections.
+
+**Carve-out for the next session.** Deal Desk's local SQLite (`apps/deal-desk/clear-data.db`) is still seeded with rows from the old schema (`status='pending_cro'` instead of `'pending'`/`'approved'`/etc.), and a Windows file lock blocked deleting it from this session. After the lock clears (or the file is renamed manually), reset the DB and re-seed via the on-page-load — every page should then show real rows, not just `/all` and `/reports`.
+
+---
+
+## 2026-04-28 — Queue parser hard-fails on unknown body lines (F1)
+
+The queue primitive's parser used to silently skip body lines it didn't recognize. Type `email rep when approve` instead of `notify rep on approve` and the parser shrugged — app builds, app is wrong, no error. That's the failure mode of the 14-year-old test in production.
+
+Fixed: every unrecognized clause inside a `queue for X:` block now emits an explicit error with a "did you mean..." hint computed by edit-distance:
+
+```
+queue 'deal': don't know what to do with 'email rep when approve' on line 5.
+Did you mean 'notify'? Valid clauses inside a queue block: `reviewer is 'X'`,
+`actions: a, b, c`, `notify <role> on <action>, <action>`, `no export`.
+```
+
+The 4 migrated Marcus apps (Deal Desk, Approval Queue, Onboarding Tracker, Internal Request Queue) all still compile clean — they only use known clauses, so the stricter parser doesn't bite them.
+
+Plan: `plans/plan-queue-primitive-followup-04-28-2026.md` Phase F1.
+
+---
+
+## 2026-04-27 (overnight, 3rd ship) — CSV export auto-included on every queue
+
+Every `queue for X:` block now auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row in the entity's table, with proper RFC 4180 escaping (commas, quotes, and newlines wrapped + doubled correctly) and sensitive fields (password / token / api_key / secret / hash) automatically omitted. Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow for reporting and handoffs — explicit MVP item from the GTM list.
+
+Suppress with `no export` inside the queue body when an entity should never expose data via CSV (e.g. compliance-restricted user tables).
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export                    # turns off the auto-emitted CSV URL
+```
+
+**What landed:**
+- Parser: `no export` clause on QUEUE_DEF nodes (sets `node.noExport = true`).
+- Compiler: extends `compileQueueDef` with a CSV URL emit step. Per-entity helpers `_clearCsvEscape_<entity>` and `_csvSensitive_<entity>` handle RFC 4180 escaping + sensitive-field filtering.
+- 6 new TDD tests (URL emit, no-emit when no queue, RFC 4180 helper presence, sensitive field omission, no-export parser, no-export compiler suppression).
+- All 8 core templates compile clean; 2690 of 2690 compiler tests passing.
+
+**Deferred (Phase 2 of the plan, follow-up):**
+- Auto-rendered "Download CSV" button in the queue page header. App authors can hand-add a button that calls the URL for now.
+- Status filter query string (`?status=pending`).
+
+Plan: `plans/plan-csv-export-primitive-04-27-2026.md`.
+
+---
+
+## 2026-04-27 (overnight) — Snap layer + UAT contract foundation
+
+Two infrastructure landings that compound across every Marcus session.
+
+**Snap layer.** When the AI assistant indicates it's done with a chat turn but the source still has compile errors, a synthetic "fix these N errors" follow-up gets injected automatically and the assistant re-rolls. Up to 3 retries (override `SNAP_MAX_RETRIES`; disable with `SNAP_LAYER_OFF=1`). The user only sees converged output — no half-broken intermediate state. This is the cheap version of grammar-constrained generation: same UX outcome (the assistant appears to never ship broken Clear), 5% of the implementation cost, no model swap. Lives in `playground/snap-layer.js` (pure decision + message-format functions, 18 unit tests) wired into `/api/chat` at the end-of-turn detection point. Telemetry hook is optional-chained — when Factor-DB `logEvent` lands, snap-retry data flows automatically.
+
+**UAT contract.** `compileProgram(source).uatContract` now returns a JSON description of every page, route, button, and API call in the program — the discriminator that test generators walk to know what to assert. Cherry-picked from a 2026-04-27 Codex stash (lives in `lib/uat-contract.js`, 21 unit tests, 8 of 8 core templates produce populated contracts). The deeper browser-test generator that consumes this contract (Playwright runner, screenshot diffing, route assertions) is a follow-up — this commit lands the JSON layer first so future generators have a stable contract to ride on. Known limitation: the queue primitive synthesizes URL handlers at compile time without putting `ENDPOINT` nodes in the AST body, so `hasBackendTarget` reads false on queue-only apps; the contract walker will learn `QUEUE_DEF` in a follow-up.
+
+**New project rule.** "Build Python Alongside JS — No Drift Tax" — any change to the JS backend output requires the Python equivalent in the same commit, plus a cross-target smoke run before merge. Documented in CLAUDE.md as MANDATORY. PHILOSOPHY.md Rule 17 (cross-target parity) is the design principle; this rule is the workflow enforcement.
+
+**Verification:** all 2684 compiler tests still green. 18 new snap-layer unit tests + 21 new UAT-contract unit tests in playground/lib. All 8 core templates compile clean (0 errors) and produce populated contracts.
+
+---
+
+## 2026-04-27 — Queue Primitive (Tier 1): approval flows in one block
+
+`queue for deal:` is now a first-class language primitive. One declaration replaces ~150 lines of hand-rolled JavaScript per Marcus app: audit table, outbound notification queue, filtered queue view, and login-gated URLs for every action — all generated by the compiler.
+
+**What you write:**
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+**What you get:**
+
+- A `deal_decisions` audit table — `deal_id, decision, decided_by, decided_at, decision_note`.
+- A `deal_notifications` outbound queue table — `recipient_role, recipient_email, notification_type, queue_status, queued_at`.
+- `GET /api/deals/queue` — filtered by `status = 'pending'`.
+- `GET /api/deal-decisions`, `GET /api/deal-notifications` — full history views.
+- `PUT /api/deals/:id/<action>` per action — requires login, updates the deal's status to the action's terminal value (`approve` → `approved`, `reject` → `rejected`, `counter` → `awaiting`), inserts an audit row, queues notifications for matching `notify` roles, returns the updated record. Multi-word actions slugify (`awaiting customer` → `/awaiting`).
+
+**What landed:**
+
+- Parser: new `QUEUE_DEF` AST node with reviewer, actions, and notify clauses; helpful errors for `queue for:` (missing entity name) and `queue for deal:` with no `actions:` (suggests the fix).
+- Compiler: auto-emitted decisions table, optional notifications table, filtered GET, per-action PUT handlers, auth-gated.
+- Validator: warns when a `notify <role>` clause references a role with no `<role>_email` field on the entity (degraded behavior — row is queued with blank email).
+- 4 of 5 Marcus apps migrated: Deal Desk, Approval Queue, Onboarding Tracker, Internal Request Queue. Deal Desk shrinks from 172 lines to 121 — same visible behavior plus auth, audit, notifications it didn't have before.
+- Lead Router stays hand-rolled — automated routing is a different shape; will get its own primitive (`routing rules for X:`) when a second routing app exists to validate against.
+
+**Test count:** 2671 → 2684 (+13 from the queue primitive cycles). All 8 core templates compile clean.
+
+**Deferred (deliberate, follow-up evidence required):**
+
+- Phase 4 — UI auto-render of action buttons + history table block. App authors hand-add buttons that call the auto-generated PUT URLs.
+- Cycle 2.3 — collision detection between user-defined `<Entity>Decisions` table and the auto-generated one. Validator-level safety; will land before the first customer trips it.
+- Tier 2 — multi-stage queues (`stage 'X' with reviewer 'Y'` sub-blocks). Gated on a second workflow app being built (likely expense tracker).
+
+Plan: `plans/plan-queue-primitive-tier1-04-27-2026.md`.
+
+---
+
+## 2026-04-26 - Sweep integrity: local wins now feed the flywheel
+
+Local-AI sweeps now separate harness failure from Meph failure. Endpoint wins on the cc-agent/MCP path write through to Factor DB, dead workers are marked as `worker-died`, and `--per-level-stats` exposes which curriculum levels are timing out.
+
+**What shipped:**
+
+- MCP `http_request` verification creates the missing compile row when Meph relies on `edit_code` auto-compile, then marks the successful endpoint check as `test_pass=1`.
+- Curriculum sweeps stop sending tasks to a worker after ECONNRESET-style death and mark remaining assigned tasks as skipped `worker-died`.
+- Sweep summaries can print level-by-level pass, timeout, stuck, worker-death, failed, and skipped counts.
+- Regression tests cover the local-AI Factor DB write-through and dead-worker bucket behavior.
+
+---
+
+## 2026-04-26 - Shell Upgrade Phase 6 docs/curriculum prep: right detail panel
+
+Phase 6 now has its teaching surface before the compiler merge finishes. The canonical form is `detail panel for selected_deal:` with normal content lines and a sticky `actions:` bar for Reject / Counter / Approve.
+
+**What changed:**
+
+- Doc cascade entries added for intent, syntax, AI instructions, user guide, FAQ, features, roadmap, research, and Meph prompt.
+- New `deal-with-detail-panel` curriculum task teaches selected-row right rails.
+- Roadmap wording stays honest: Phase 6 is the active shell primitive; Phase 7 follows after the Phase 6 compiler/doc/curriculum/eval merge.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 6.
+
+---
+
+## 2026-04-26 - Shell Upgrade Phase 4: stat cards and sparklines
+
+Dashboard KPI rows can now use first-class stat cards instead of hand-built card grids. `stat strip:` wraps the row. `stat card 'Pending Count':` accepts `value`, optional `delta`, optional `sparkline`, and optional `icon`.
+
+**What shipped:**
+
+- New stat-card doc cascade across intent, syntax, AI instructions, user guide, FAQ, features, roadmap, research, and Meph prompt.
+- New `kpi-dashboard` curriculum task teaches the exact shell primitive.
+- Phase 4 is marked landed; Phase 6 detail panel is the next shell primitive.
+- Accounting updated to 168 node types and 2629 compiler tests.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 4.
+
+---
+
+## 2026-04-26 - Shell Upgrade Phase 3: page headers and routed tabs
+
+Main content areas can now use a first-class workbench header and routed tabs. `page header 'CRO Review':` creates the title row with optional `subtitle` and `actions:`. `tab strip:` creates underline-style route tabs with active state from the current path.
+
+**What shipped:**
+
+- New parser support for `page header`, `subtitle`, `actions:`, `tab strip`, `active tab is`, and routed tab rows.
+- HTML output now emits stable `data-page-header`, `data-page-header-actions`, `data-tab-strip`, and `data-route-tab` markers.
+- Runtime active-state sync follows `location.pathname`, hash changes, and browser history changes.
+- Meph/docs/curriculum surfaces now teach the page header + tab strip shape for queue/workbench pages.
+- 5 new compiler tests and 1 new chrome smoke check. 2616 -> 2621 passing.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 3.
+
+---
+
+## 2026-04-26 — Shell Upgrade Phase 2: sidebar nav becomes real navigation
+
+The left rail can now be authored directly in Clear instead of faking navigation with styled text. `nav section 'Approvals':` creates a labeled sidebar group. `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` creates a linked row with an optional badge, optional Lucide icon, and route-based active state.
+
+**What shipped:**
+
+- New parser support for `nav section` and `nav item`.
+- Sidebar output now emits real link rows with `data-nav-item`, `data-nav-path`, counts, icons, and active classes.
+- Runtime active-state sync follows `location.pathname`, click changes, hash changes, and browser history changes.
+- Meph/docs/curriculum surfaces now teach the explicit nav syntax instead of plain text/link sidebar rows.
+- 2 new compiler tests. 2614 → 2616 passing.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 2.
+
+---
+
+## 2026-04-26 — Shell Phase 5: data tables get the polished slate-on-ivory shape
+
+`display X as table` now compiles to a hand-designed-looking table from the same one-line Clear input. Status fields render as `clear-pill-{value}` colored badges. Name / customer / email columns prepend an avatar circle with initials. Numeric money columns are right-aligned with `tabular-nums`. Headers carry `data-sortable` and click-to-toggle `is-sorted`. Rows toggle `is-selected` on click. New `with actions:` block lists labeled action buttons (`'Approve' is primary` / `'Reject' is danger`) rendered as hover-revealed icons in a new rightmost column. Backwards compat: legacy `with delete and edit` shorthand still works. Cell type detection lives in a single runtime helper so future column types are one helper-edit. Click + sort wiring is idempotent. 10 new tests; +10 to `clear.test.js` total. All 8 core templates compile clean.
+
+---
+
+## 2026-04-26 — Lean Lesson 2: shape-search retrieval for canonical examples
+
+Russell asleep. Lean Lesson 2 from `plans/plan-lean-lessons-04-26-2026.md` shipped behind the existing text-match hint pipeline as an additive layer.
+
+**What changed.** Every Meph compile now retrieves canonical worked examples by program SHAPE — archetype + node-type histogram (endpoints, tables, agents, pages, cron, charts, validate, guard, service calls, api calls, websockets) + presence flags (auth, db, charts, agents, realtime, cron, external services) + leading-feature path. Jaccard similarity over a sparse-binary token set; same-archetype gets a +1.0 gate bonus so a real api_service match always out-ranks a cross-archetype match that happens to share keywords.
+
+**Why an additive layer.** Text-match (`querySuggestions`) only fires on compile errors. Half the bad code never errors — it compiles and runs but doesn't match the spec. Shape-search reaches Meph BEFORE the wall, on every compile, by showing him canonical examples that look structurally like what he's writing. Both layers run; combined hint cap stays at 5; the off-arm via `CLEAR_HINT_DISABLE=1` skips both for clean A/B.
+
+**New surfaces.**
+- `playground/supervisor/program-shape.js` — `computeShape()`, `shapeTokens()`, `jaccard()`, `shapeSimilarity()` over a parsed Clear program.
+- `scripts/match-shape.mjs` — CLI driver and importable `loadCanonicalExamples()` + `matchShape()`. Reads `playground/canonical-examples.md` once per process, caches signatures on the example record so subsequent compiles are microseconds.
+- `scripts/match-shape.test.mjs` — 17 tests: feature-vector correctness, Jaccard math, archetype gate, identity match, archetype-match-beats-keyword-match.
+- Wired into `playground/meph-tools.js` `compileTool` right after the text-match block. Fires on every compile (success or failure). Output goes into `result.hints.shape_text` + `result.hints.shape_count` + `result.hints.shape_top_archetype` so the observability log can see shape signal independently from text-match.
+
+**Test bump.** `scripts/match-shape.test.mjs` 17/17 new. All 8 core templates compile clean.
+
+---
+
+## 2026-04-26 — Lean Lesson 3: open-capability visibility for Meph
+
+Overnight worker session (Russell asleep). Single focused commit, no API spend, no push.
+
+**Lean Lesson 3 shipped — open-capability surface.** Lean's prover always shows the writer "what's left to prove." Clear today made Meph re-derive that himself from raw test output every cycle. New module `playground/supervisor/open-capabilities.js` collects three sources of "still open" work — TBD placeholders (from Lesson 1's `result.placeholders`), failing tests (from the most recent `clear test` snapshot), and unresolved compile errors (text-matched against the curated INTENT_HINTS canonical-fix table) — into one structured report that gets injected into Meph's per-turn system context BEFORE he writes code. Stays under 200 chars when nothing is open, under 1KB when fully populated. Lives in a separate volatile prompt block so it doesn't invalidate the stable-prefix cache.
+
+**Tests:** 18 unit tests in `playground/supervisor/open-capabilities.test.js` covering the empty case, each of the three sources in isolation, the summary heuristic (errors > failing tests > placeholders priority), and the all-three-at-once integration. All 8 core templates compile clean. Server boots clean.
+
+**Wired into:** `playground/server.js` `buildSystemWithContext` — new optional params `editorSource` and `lastCompileResult`, with belt-and-suspenders try/catch so a malformed compile result never blocks a chat turn.
+
+**Doc cascade:** FEATURES.md (one row), RESEARCH.md (paragraph under flywheel), `playground/system-prompt.md` (tells Meph what the new block means).
+
+---
+
+## 2026-04-26 — Lean Lesson 1: TBD placeholders ship (compiler + test runner + Meph guidance)
+
+Russell asleep, autonomous overnight worker. Lean Lesson 1 phases 1.1–1.4 landed in a single sequence of TDD commits. Phase 1.5 (the $10 measurement A/B sweep) is queued for Russell when he wakes — pure compiler + docs work today, no API spend.
+
+**The pitch.** Lean's `sorry` is the "to be determined" mark in proof assistants — drop it anywhere a proof step belongs and the rest of the file still type-checks. Clear gets the same primitive in plain English: `TBD`. Drop it anywhere a value or a step belongs, the program compiles green, runtime throws "placeholder hit at line N" if execution reaches it, and `clear test` catches that exact error and reports SKIPPED instead of FAILED. Lets Meph (or Russell) leave one piece unfinished and keep iterating on the rest instead of rewriting the whole program.
+
+**Phase 1.1 — grammar.** `tbd` registered in `synonyms.js` (canonical lowercase, source-form `TBD` flows through case-insensitive lookup), `SYNONYM_VERSION` 0.32.0 → 0.33.0. New `PLACEHOLDER` node type in `parser.js`. Statement dispatch entry in `CANONICAL_DISPATCH` so a bare `TBD` line parses cleanly. Expression-position handling in `parsePrimary` so any expression can be a placeholder. Three TDD tests: TBD in expression position, TBD as a standalone statement, TBD inside a function body.
+
+**Phase 1.2 — compiler stub.** `_compileNodeInner` PLACEHOLDER case (statement form) emits `throw new Error("placeholder hit at line N — fill it in or remove it")`. `exprToCode` PLACEHOLDER case (expression form) emits a self-throwing IIFE so any READ of the placeholder explodes with the same message. Both JS and Python backends covered. `compileProgram` walks the AST and exposes `result.placeholders` as `[{ line: N }]` sorted by line. Three TDD tests.
+
+**Phase 1.3 — test runner skip path.** Generated test harness now declares `let passed = 0, failed = 0, skipped = 0`. The `test()` helper's catch block inspects the thrown error: if `err.message` starts with the exact `"placeholder hit at line"` prefix the compiler emits, count as SKIPPED + log "SKIP:". Otherwise count as FAILED + log "FAIL:". Results line reads `X passed, Y failed, Z skipped due to stub`. Skipped tests do NOT trigger a non-zero exit code — partial programs can still ship CI without their own placeholders blocking. Three TDD tests.
+
+**Phase 1.4 — doc cascade + Meph guidance.** Updated `intent.md` (PLACEHOLDER row in expression nodes table), `SYNTAX.md` (canonical TBD section), `AI-INSTRUCTIONS.md` (TBD conventions section), `USER-GUIDE.md` (worked example in Chapter 17 Testing showing skip output), `FEATURES.md` (one row in Core Language table), and `playground/system-prompt.md` (Meph guidance). All documents emphasize: use TBD when the spec is genuinely open, do NOT use it to dodge hard parts, do NOT ship placeholders into production code, skipped tests are not coverage.
+
+**Test bump:** `clear.test.js` +9 from this work (TBD coverage). All 8 core templates compile clean throughout, `placeholders=0` on every template (no false positives on real apps).
+
+**What ships next:** Phase 1.5 measurement when Russell wakes. A/B sweep, 5 curriculum tasks × 5 trials × 2 conditions. ~$10 budget. Decision rules in `plans/plan-lean-lessons-04-26-2026.md`.
+
+---
+
+## 2026-04-25 — Shell Upgrade Phase 1: `app_*` presets get the slate-on-ivory polish
+
+The shell that wraps every app — sidebar + header + main — got the visual overhaul the Marcus-target mock has been calling for. Same Clear source (`section 'Sidebar' with style app_sidebar:` etc.), upgraded compiled output: semantic HTML5 tags, 240px rail, 56px sticky header with brand/breadcrumb/action data slots, slate-on-ivory token palette aligned with `landing/marcus-app-target.html`.
+
+**What shipped:**
+
+- `app_layout` now emits `<div class="flex min-h-screen">` (page owns the scroll, not the layout — was `h-screen overflow-hidden`).
+- `app_sidebar` now emits `<aside>` with 240px width, hairline-r border, vertical scroll, slate background tokens.
+- `app_main` now emits `<main class="flex-1 min-w-0 flex flex-col">`.
+- `app_header` now emits `<header>` at 56px sticky with `data-brand-slot` / `data-breadcrumb-slot` / `data-action-slot` attributes that later phases will use to wire selection state.
+- 5 new tests in `clear.test.js`. 2589 → 2594 passing. All 8 core templates compile clean (0 errors).
+
+**Doc cascade:** `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md` updated with the new emit shapes; `FEATURES.md` and `playground/system-prompt.md` updated this commit. The rest of the cascade (USER-GUIDE.md tutorial, FAQ "where the shell lives", landing page parity) pending since the chunk is small and the visual story is what users care about — chrome stops looking generic and starts looking like a product.
+
+Plan: `plans/plan-full-shell-upgrade-04-25-2026.md` Phase 1.
+
+---
+
+## 2026-04-25 — Decidable Core Path B Phase 1: `live:` keyword lands
+
+Decidable Core started in late April with the minimalist Path A — surgical validator rules + runtime caps that already rejected naked `while` and uncapped recursion (Phase 7 closed 2026-04-24, $0 spent). Path B is the bigger move: a real keyword that names the effect boundary explicitly, so the compiler can prove the rest of the program is total.
+
+Phase B-1 is the foundation: the `live:` keyword exists, parses, and emits. Body holds calls that talk to the world (`ask claude`, `call API`, `subscribe to`, timers). Today it's permissive — anything is allowed inside, code outside isn't restricted — but the fence is now visible to readers and to the compiler. Phase B-2 (separate chunk) adds the validator rule that *requires* effect-shaped calls to sit inside a `live:` fence; once that lands, pure blocks become provably total.
+
+**What shipped:**
+
+- New `LIVE_BLOCK` node type in `parser.js` with a parse function that mirrors `parseTryHandle` (block opener + indented body, empty-body parse error with a fix-it hint).
+- `live` keyword registered in `synonyms.js` (single-word, no synonyms — canonical form is `live:`). `SYNONYM_VERSION` bumped to `0.33.0`.
+- Compiler case in `compiler.js` emits the body inline with a `// live: block — explicit effect fence` comment marker so the fence is visible in the JS/Python output too.
+- Validator handles `LIVE_BLOCK` as a fence, not a scope: variables defined inside leak out to the enclosing scope (consistent with how `try:` treats forward-referenced bindings inside its body).
+- 11 new tests in `clear.test.js` under `describe('decidable core — live: block (Path B Phase 1)')`. Cover: parse at top-level / inside endpoint / inside agent, body content propagation, no-op compile, comment marker emit, empty-body parse error, JS-validity check, Python parity, and a "no `live:` block in source = zero regression" guard.
+- 2586 → 2597 tests passing (no regressions). All 8 core templates compile clean (0 errors).
+
+**Doc cascade:** `intent.md` (new node-type row), `SYNTAX.md` (new "Live Blocks" section under Error Handling), `AI-INSTRUCTIONS.md` (new subsection under Termination Rules — Meph reads this), `USER-GUIDE.md` (Chapter 14 Effect Fence subsection), `FEATURES.md` (new row in Core Language), `playground/system-prompt.md` (Meph guidance).
+
+**Why this chunk shape.** The `live:` keyword had to land before any validator rule could require effect calls to sit inside one. Splitting Phase B-1 (keyword + parse + emit, permissive) from Phase B-2 (validator rejection of effects outside `live:`) means: zero template migration this commit, zero risk of breaking apps Meph just learned, and the keyword is ready to be tightened in a separate small chunk.
+
+Plan: `plans/plan-decidable-core-04-24-2026.md` Phase B-1.
+
+---
+
+## 2026-04-25 — One-click updates land + Cloudflare Publish wedge complete
+
+The Publish window in Studio is now a real product. Marcus opens the deal-desk app, clicks Publish, and sees a live `*.buildclear.dev` URL. Two minutes later he edits a heading, clicks Publish again, and the new bundle is live in about two seconds — no new database, no domain reattach, no full secret push. That's the wedge: the demo path that turns "I built it locally" into "it's on the internet" with no Docker, no Fly, no terminal.
+
+Two epics finished today, plus a destructive-edit safety story for LAE, plus the app-shell preset upgrade kicked off overnight.
+
+**App shell preset upgrade (overnight phase 1, this commit).** `app_header` now auto-splits children into brand / breadcrumb / action slots, each wrapped in its own div with `data-slot="..."` attributes — heading nodes go to brand, button nodes get right-aligned in action via `ml-auto`, everything else lands in breadcrumb. Combined with the polished slate-on-ivory PRESET_STYLES table (h-screen flex container, w-64 shrink-0 sidebar, sticky-top z-20 header, scrollable main), every dashboard built with `app_*` presets now ships a real product shell instead of stacked divs. 5 regression tests lock the shape in. All 8 core templates: 0 errors. Total tests: 2587.
+
+**One-click updates — Phases 1-6 (this session, this commit cascades the docs).** Plan: `plans/plan-one-click-updates-04-23-2026.md`. Six phases, ~22 TDD cycles, every one green:
+
+- **Phase 1 — tenants schema for version history.** `getAppRecord`, `recordVersion`, `updateSecretKeys`, `markAppDeployed` extended with `versionId`/`sourceHash`/`migrationsHash`/`secretKeys`. Per-app `versions[]` capped at 20 entries (older versions stay queryable on Cloudflare's side via `listVersions`). Lands on both `playground/tenants.js` (in-memory) and the `playground/tenants-postgres.js` mirror (CC-1 cycle 5).
+- **Phase 2 — `_deployUpdate` incremental path.** `deploySource` now routes on `mode: 'deploy' | 'update'`. The update path skips `provisionD1`, `attachDomain`, and the full `setSecrets` push (only NEW keys not in `lastRecord.secretKeys` get sent), captures the fresh `versionId` via `_captureVersionId` round-trip to `listVersions`, and calls `recordVersion` instead of `markAppDeployed`. Wall clock ~2s vs ~12s.
+- **Phase 3 — schema-change confirm gate.** `migrationsDiffer(oldBundle, newBundle)` byte-compares every `migrations/*.sql` plus `wrangler.toml`. Differences return `{ ok: false, stage: 'migration-confirm-required', migrationDiff: [...] }` from the orchestrator. Re-call with `confirmMigration: true` applies the migration first, then uploads. SQLite has no atomic schema swap, so silently auto-applying mid-update would break in-flight requests; the explicit confirm is the safe default.
+- **Phase 4 — `/api/deploy` handler routing + new endpoints.** Handler reads `store.getAppRecord` before dispatching, sets `mode: 'update'` if a record exists, propagates `confirmMigration` flag, surfaces `migration-confirm-required` as `409 MIGRATION_REQUIRED`. New `GET /api/app-info/:appSlug` returns `{ deployed, lastVersion, versions, hostname, scriptName }` so the UI knows which mode to render before the user clicks. New `GET /api/deploy-history/:app` Cloudflare path uses `listVersions` with a tenants-db fallback if Cloudflare is briefly unreachable.
+- **Phase 5 — Studio Publish window swaps to "Update" mode.** Modal calls `/api/app-info` on open; if deployed, swaps the heading to "Update *deal-desk.buildclear.dev*", shows last-deployed-at, disables the button when source hash matches the live version ("No changes since last deploy"), shows the schema-change diff + "Apply migration + update" button on `409 MIGRATION_REQUIRED`, and renders a version-aware success message ("Updated to version v-abc-123").
+- **Phase 6 — Version history panel + one-click rollback.** `View version history` link inside the Update modal expands a panel listing the last 20 versions. Currently-live version has a "Current" label, all others have a Rollback button. Clicking Rollback calls `POST /api/rollback`, which uses Cloudflare's `/deployments` endpoint via `wfp-api.rollbackToVersion` to flip the live URL (~1-2s wall clock), then writes a tombstone `recordVersion` entry with `note: 'rollback-from-vN'` so the timeline reads chronologically. `VERSION_GONE` errors trigger an automatic refetch + re-render so out-of-band Cloudflare-dashboard deletes don't strand the UI.
+
+**CC-4 wedge complete.** With Phases 1-6 of one-click updates landing on top of the earlier CC-4 cycles 1-7, the Publish path is end-to-end: first deploy provisions everything, every subsequent deploy is the fast update path, and rollback to any of the last 20 versions is one click. ROADMAP item #1 (CC-4) struck through. Demo path is unblocked.
+
+**LAE Phase C — destructive ship safety.** Cycles 4-5 landed today: the destructive ship endpoint requires a typed-confirmation phrase ("I understand — ship and destroy") and audit-first ordering (audit row written `pending` BEFORE the ship attempt; marked `shipped` or `ship-failed` AFTER; ship is REFUSED if the audit append fails). The destructive-edit widget UX wraps the same gate. Compounds the "edit live app" pitch with the GDPR/CCPA/HIPAA accountability surface destructive deletes need.
+
+**Phase 85a operator checklist.** New `LAUNCH.md` at repo root — Russell's five gating items to first paying Marcus customer: register `buildclear.dev`, Fly Trust Verified app, Stripe live keys, Anthropic org key, Postgres provision. Items 1 and 2 unblock items 3-5. Cost ~$15/yr for the .dev TLD plus ~2 hrs of Russell's time.
+
+**Test bump:** No new compiler tests (Phases 1-6 are runtime + Studio + tests in their own suites). `playground/tenants.test.js`, `playground/deploy-cloudflare.test.js`, `playground/deploy.test.js`, `playground/ide.test.js` all green throughout. Eight core templates compile clean. No production-Anthropic API spend on this thread.
 
 ---
 

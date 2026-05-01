@@ -96,6 +96,9 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
+- [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
+- [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
 - [Where does Ghost Meph live?](#where-does-ghost-meph-live)
 - [How does Ghost Meph route requests?](#how-does-ghost-meph-route-requests)
 - [Where does the Studio server run?](#where-does-the-studio-server-run)
@@ -119,9 +122,16 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where does the playground bundle come from?](#where-does-the-playground-bundle-come-from)
 - [Where does the supervisor plan live?](#where-does-the-supervisor-plan-live)
 - [Where does the archetype classifier live?](#where-does-the-archetype-classifier-live)
+- [Where does the queue primitive live?](#where-does-the-queue-primitive-live)
 
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
+- [How do I share a compile failure trace?](#how-do-i-share-a-compile-failure-trace)
+- [How do I add a new approval action?](#how-do-i-add-a-new-approval-action)
+- [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
+- [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
+- [How do I add KPI stat cards?](#how-do-i-add-kpi-stat-cards)
+- [How do I add a right detail panel?](#how-do-i-add-a-right-detail-panel)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
@@ -133,6 +143,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How does the eval system work?](#how-does-the-eval-system-work)
 
 **Why did we do X?**
+- [Why is `queue` separate from `workflow`?](#why-is-queue-separate-from-workflow)
 - [Why does send back compile to return inside define function?](#why-does-send-back-compile-to-return-inside-define-function)
 - [Why do user-defined functions shadow built-in aliases?](#why-do-user-defined-functions-shadow-built-in-aliases)
 - [Why write the test before the function?](#why-write-the-test-before-the-function)
@@ -150,6 +161,20 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 ---
 
 ## Where is X?
+
+### Where does the routing primitive live?
+
+Parser: `parseRouteDef` in `parser.js` (after `parseQueueDef`). Dispatch: `CANONICAL_DISPATCH.set('route', ...)` next to the queue dispatch. Validator (5 rules): `case NodeType.ROUTE_DEF` in `validator.js`'s `checkNode` (hard errors for `ROUTE_ENTITY_NOT_IN_SCOPE` and `ROUTE_AFTER_SAVE`) plus `validateRouteBlocks` for the warning-tier rules. JS + Python compiler emit: `compileRouteDef` and `compileRouteDefPython` in `compiler.js` (after `compileQueueDef`). Dispatch case: `case NodeType.ROUTE_DEF` next to `QUEUE_DEF` and `EMAIL_TRIGGER`. Cursor table + helper emit: prelude pass walks the AST for any round-robin default and emits the `_clear_route_cursors` table + `_clear_route_pick` async function once at module top. Plan: `plans/plan-routing-primitive-2026-04-29.md`.
+
+### How does round-robin survive a restart?
+
+The cursor row persists in the `_clear_route_cursors` SQLite table — primary key is the route id (a content hash of entity + field + rules + pool, NOT a line number). On every pick, the helper reads `last_index`, increments `(last_index + 1) % pool.length`, writes back, returns `pool[next]`. After a process restart, the next pick reads the saved `last_index` from disk and continues from where it left off. SQLite WAL mode serializes writes across processes for multi-instance deploys.
+
+### Why must the route match value be a quoted string?
+
+Clear's tokenizer treats `-` as a minus operator. So `Mid-market to bob` would tokenize as `Mid`, `-`, `market`, `to`, `bob` — five tokens — not one identifier. The parser would reject it. Forcing the LHS to be a quoted string (`'Mid-market' to bob`) means hyphenated values like `Mid-market`, `Asia-Pacific`, `2024-Q1` all work without parser hacks. It also matches the existing if-chain form (`if lead's size is 'Mid-market'`), so authors don't switch mental models.
+
+---
 
 ### Where is the feature list / what can Clear do today?
 
@@ -181,6 +206,125 @@ Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as 
 
 ---
 
+### Where is the incremental update logic for Cloudflare deploys?
+
+**`playground/deploy-cloudflare.js` → `_deployUpdate(opts)`** is the fast-path branch. The orchestrator `deploySource()` reads `opts.mode` — `'update'` routes to `_deployUpdate`, anything else falls through to the original `_deployInitial()` full-provision path. The dispatcher that decides which mode to pass lives one layer up in **`playground/deploy.js` → `/api/deploy` handler**, which calls `store.getAppRecord(tenantSlug, appSlug)` before invoking the orchestrator and sets `mode: 'update'` if a record comes back.
+
+**What `_deployUpdate` skips:** `provisionD1` (binding is permanent), `applyMigrations` (unless schema diff requires it — see below), `attachDomain` (already bound), and the full `setSecrets` push (only NEW keys not in `lastRecord.secretKeys` get sent).
+
+**What it adds:** `_captureVersionId` round-trip to `api.listVersions` after `uploadScript`, then `store.recordVersion` to append the new entry to the per-app `versions[]` array.
+
+**Schema-change gate:** `migrationsDiffer(oldBundle, newBundle)` byte-compares every `migrations/*.sql` file plus `wrangler.toml`. Any difference returns `{ ok: false, stage: 'migration-confirm-required', migrationDiff: [...] }` from the orchestrator, which the handler surfaces as `409 MIGRATION_REQUIRED`. Re-POST with `confirmMigration: true` unblocks: `applyMigrations` runs first, then `uploadScript`, then `recordVersion`.
+
+Tests: `playground/deploy-cloudflare.test.js` covers all of the above; `playground/deploy.test.js` covers the handler-level routing.
+
+---
+
+### How do I rollback a Cloudflare app?
+
+In Studio, open the **Publish** window on the app you want to roll back. The window has a **Version history** link — click it to expand the panel showing the last 20 versions with timestamps. Each non-current version has a **Rollback** button; the currently-live version has a "Current" label instead.
+
+Clicking Rollback calls `POST /api/rollback { appName, version }`, which uses Cloudflare's `/deployments` endpoint via `wfp-api.js:rollbackToVersion` to flip the live URL to the chosen version (~1-2s wall clock). The handler then writes a new `recordVersion` entry to tenants-db with `note: 'rollback-from-vN'` so the version timeline reads chronologically (no branching). Your data isn't touched — rollback only swaps the Worker bundle.
+
+If the version no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal shows "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel from `/api/app-info`.
+
+For older versions beyond the in-Studio cap of 20, call `wfp-api.listVersions({ scriptName })` directly — Cloudflare keeps versions until explicitly deleted.
+
+---
+
+### Why do schema changes require explicit confirmation during an update?
+
+**Because SQLite has no atomic schema swap.** D1 is SQLite under the hood. If Clear silently applied the new schema mid-update, there's a brief window where the schema has changed but the new code isn't serving yet — any in-flight request hits the OLD code against the NEW schema and errors. Worse, if the migration is destructive (drops a column, renames a table) and the upload-script step fails after the migration applies, the old code can't go back to reading the old schema because the column is gone.
+
+So Clear treats any change to `migrations/*.sql` or `wrangler.toml` as schema-class and pauses the update for explicit user confirmation. The Studio modal shows the diff and a button labelled "Apply migration + update" that re-POSTs with `confirmMigration: true`. Auto-rollback of failed schema changes is intentionally out of scope today — if the migration applies but upload-script fails, the user has to manually re-apply the old migration SQL via the D1 console. That tradeoff lives in `plans/plan-one-click-updates-04-23-2026.md` § Section 3 (D4) and § Section 9 (known follow-ups).
+
+---
+
+### Where does the browser UAT runner live? How do I run it?
+
+The auto-generated Playwright walker shipped 2026-04-29. Every Clear app the compiler builds gets a `browser-uat.mjs` next to its `server.js` — a real Playwright script that drives every page, every nav click, every route tab, every table sort+filter, every detail-panel drilldown, and screenshots each route.
+
+End-to-end:
+
+- **Contract generator** — `lib/uat-contract.js`: `generateUATContract(body)` walks the AST and produces a JSON description of every interactive surface (pages, controls, tables, drilldowns, expected text). `generateBrowserUAT(contract)` turns that contract into a runnable Playwright script.
+- **CLI hook** — `cli/clear.js`: `clear build` writes `result.browserUAT` to `apps/<name>/browser-uat.mjs` whenever the compiler returns it. Uses `.mjs` so top-level `await import('playwright')` parses correctly without touching the app's `package.json`.
+- **Multi-app runner** — `scripts/run-marcus-uat.mjs`: runs all 5 Marcus apps in sequence — builds each, spins up its server on a dedicated port (4400+i), runs the walker, kills the server, reports per-app pass/fail. Wipes per-app `clear-data.db` first so seeds always re-fire. Writes `snapshots/marcus-uat-failures-<date>.md` with stdout/stderr of any failing app for offline debug. Per-route screenshots land in `.clear-uat-screenshots/` (gitignored).
+- **Tests + parity guards** — `lib/uat-contract.test.js`: covers contract shape + generator smoke. The 5 Marcus apps' walkers are the integration test — 52/52 walker assertions green is the regression net for any compiler emit change.
+- **Requires** — the `playwright` dev dep (already in package.json). The script logs a clear "run npm install --save-dev playwright" hint if it's missing.
+
+Run a single app's walker:
+
+```sh
+node cli/clear.js build apps/deal-desk/main.clear
+node apps/deal-desk/server.js &   # listens on :3000 by default
+TEST_URL=http://localhost:3000 node apps/deal-desk/browser-uat.mjs
+```
+
+Or run all 5 Marcus apps end-to-end:
+
+```sh
+node scripts/run-marcus-uat.mjs
+```
+
+Why this matters strategically: every app's compile produces a verification oracle for free. AI-generated apps especially benefit — the LLM doesn't have to also write the tests, and the walker catches "the code compiles but the page is broken" failures the LLM would never notice.
+
+### Where do the Clear Cloud customer's deployed apps live? (the dashboard's app grid)
+
+`GET /api/apps` returns the authed user's tenant's apps, shipped 2026-04-29. End-to-end:
+
+- **Schema** — `playground/db/migrations/0002_users_sessions.sql`: `users.tenant_slug VARCHAR(64)` + a partial index on it. Not a FK because `clear_cloud.tenants` lives in a different schema and pg-mem chokes on cross-schema FKs; uniqueness on the tenants slug is the integrity guarantee.
+- **Tenant store method** — `playground/tenants.js`: `listAppsByTenant(slug)` on InMemory + Postgres + DualWrite. Returns `{appSlug, scriptName, hostname, deployedAt, latestVersionId}` per row, newest deploy first.
+- **Auto-tenant on signup** — `playground/cloud-auth/routes.js` POST `/api/auth/signup`: after `signupUser`, creates a `clear-<6hex>` tenant via the store + writes the slug back to `users.tenant_slug`. Best-effort: signup still succeeds even if the tenant store isn't wired (degraded mode).
+- **URL handler** — `playground/cloud-auth/routes.js` GET `/api/apps`: reads session cookie, calls `validateSession` (now returns `tenant_slug`), calls `tenantStore.listAppsByTenant(user.tenant_slug)`. 401 with no session, empty array when no deploys yet.
+- **Dashboard** — `playground/dashboard.html`: after auth, fetches `/api/apps` and renders one card per deploy with the live URL.
+- **Cross-tenant isolation** — load-bearing test in `playground/cloud-auth/routes.test.js`: two customers sign up, one deploys, the other's `/api/apps` returns `[]`. That's the safety property.
+
+72 routes integration tests + 121 tenant store tests cover the surface.
+
+### Where does the queue primitive live?
+
+The `queue for X:` primitive is a brand-new Clear node type added 2026-04-27. End-to-end:
+
+- **Parser** — `parser.js`: `parseQueueDef` lives next to `parseWorkflow` (search for `CANONICAL_DISPATCH.set('queue'`). Produces a `QUEUE_DEF` AST node with `entityName`, `reviewer`, `actions`, and `notifications`.
+- **Compiler** — `compiler.js`: `case NodeType.QUEUE_DEF:` near the `ENDPOINT` dispatch site. Calls `compileQueueDef`, which emits the `<entity>_decisions` audit table, the optional `<entity>_notifications` outbound queue, the filtered `GET /api/<entity>s/queue` handler, and a login-gated `PUT /api/<entity>s/:id/<action>` for each action.
+- **Validator** — `validator.js`: warns when `notify <role> on …` references a role with no `<role>_email` field on the entity.
+- **Tests** — `clear.test.js`: search for `Queue primitive — parser`, `Queue primitive — compiler tables`, `Queue primitive — compiler URLs`. The Phase 8 migration tests live alongside the Deal Desk UAT block.
+- **Real app using it** — `apps/deal-desk/main.clear` is the proof of value. Approval Queue, Onboarding Tracker, and Internal Request Queue also migrated.
+
+Plan: `plans/plan-queue-primitive-tier1-04-27-2026.md`. Changelog entry at top of `CHANGELOG.md`.
+
+### Where does the triggered email primitive live? (top-level `email <role> when <entity>'s status changes to <value>:`)
+
+The second of three primitives unlocking Marcus's workflow apps, added 2026-04-28. End-to-end:
+
+- **Parser** — `parser.js`: `parseEmailTrigger` lives next to `parseQueueDef` (search for `CANONICAL_DISPATCH.set('email'`). Produces an `EMAIL_TRIGGER` AST node with `recipientRole`, `entityName`, `triggerField` (always `'status'` for now), `triggerValue`, `subject`, `body`, `provider`, `replyTracking`. Dispatch fires only when the third token is the literal `when` (other top-level uses of `email` fall through). Validates the entity references a declared table; hard-fails on missing required body fields and on unknown body lines (F1 pattern).
+- **Compiler — table emit** — `compiler.js`: `case NodeType.EMAIL_TRIGGER:` near the `QUEUE_DEF` dispatch. Calls `compileEmailTrigger`, which emits the shared `workflow_email_queue` table once per app (deduped via `ctx._workflowEmailQueueEmitted`) plus a comment marking each trigger's location.
+- **Compiler — queue-action injection** — `compileQueueDef`'s per-action PUT loop now reads `ctx._astBody`, finds matching `EMAIL_TRIGGER` nodes (entityName + triggerValue match the action's `actionToTerminalStatus(action)`), and emits a `db.insert('workflow_email_queue', {...})` after the audit + notify inserts. Recipient resolution uses the `<role>_email` field-on-entity convention (same as the queue's notify clauses).
+- **Compiler — user-defined endpoint injection (Phase 4.1-extension)** — `compileEndpoint` scans every endpoint body for `<entity>.status = <literal>` assignments. When the assignment matches an `EMAIL_TRIGGER`, splice the same `db.insert('workflow_email_queue', {...})` into the compiled body BEFORE the response statement. Without this, hand-written handlers (or apps that skip the queue primitive entirely) silently dropped triggers — the insert lived only in the queue auto-PUT path.
+- **Validator — silent-bug guards (Phases 4.3 + 5.2)** — `validateEmailTriggers` walks every email_trigger and checks: (a) at least one URL handler (queue action OR user-defined endpoint) sets the entity's status to the trigger value, otherwise warn "never fires"; (b) the entity table declares `<role>_email`, otherwise warn "queue rows land with empty recipient_email"; (c) `body` and `subject` `{ident}` references match an entity field, otherwise warn "the customer will see literal '{ident}' text" (interpolation is not yet a runtime feature).
+- **Tests** — `clear.test.js`: search for `Triggered email — parser (Phase 1)`, `Triggered email — compiler tables (Phase 3)`, `Triggered email — queue-action integration (Phase 4)`. Phase 3 includes a regression guard that asserts NO real provider URLs (api.agentmail.to, api.sendgrid.com, etc.) appear in default-build compiled output. Phase 4 covers BOTH queue auto-PUT and user-defined endpoint paths plus the validator silent-bug guards.
+- **Real app using it** — `apps/deal-desk/main.clear` exercises the new top-level block alongside the queue's `counter` action: status transitions to `'awaiting'` queue an email to the customer.
+
+Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live email delivery worker — real sends through agentmail / sendgrid / etc.) is the only deferred chunk; everything else has shipped. Changelog entry at top of `CHANGELOG.md`.
+
+### Where do the Clear Cloud auth URLs live? (signup, login, me, logout)
+
+**The URL handlers:** `playground/cloud-auth/routes.js` — `mountCloudAuthRoutes(app, { pool })` wires four routes on Studio's Express app:
+- POST `/api/auth/signup` → creates a user + auto-logs in + sets cookie
+- POST `/api/auth/login` → verifies bcrypt + sets cookie
+- GET  `/api/auth/me` → reads cookie, returns the authed user (or 401)
+- POST `/api/auth/logout` → revokes session + clears cookie
+
+**The auth helpers** (the SQL these routes hit): `playground/cloud-auth/index.js` — `signupUser`, `loginUser`, `validateSession`, `revokeSession`, `logoutAllSessions`, `issueEmailVerifyToken`, `verifyEmailToken`, `issuePasswordResetToken`, `resetPassword`. bcryptjs hashing, 32-byte hex tokens hashed with SHA-256 before storage, 30-day hard TTL + 7-day idle timeout (configurable via env).
+
+**The schema:** `playground/db/migrations/0002_users_sessions.sql` — runs through the regular migrations runner alongside CC-1's init. Two tables (`users`, `sessions`) at the public schema, separate from `clear_cloud.*` which holds tenant-deploy state. Same logical Postgres DB, two concern-scoped namespaces.
+
+**The pages that call these URLs:** `playground/{login,signup,dashboard}.html`. Login + signup auto-redirect signed-in users to /dashboard; dashboard auth-gates and bounces unauth'd users to /login.
+
+**The Studio wiring:** `playground/server.js` calls `mountCloudAuthRoutes(app, { pool: _cloudTenantHandle.pool })` after the tenant-store factory. When DATABASE_URL is unset (Studio dev mode), the pool is null and every auth URL returns 503 `auth_not_configured` — Studio dev keeps working without auth.
+
+**Why two auth systems?** Clear apps generated via `allow signup and login` have their own auth layer that lives INSIDE each customer's app (per-tenant SQLite, JWT cookies). Clear Cloud's auth is for buildclear.dev itself — accounts, sessions, and the dashboard that lists a customer's apps. Same bcryptjs dep, same cost factor, separate schemas.
+
 ### Where does the Live App Editing widget live?
 
 **The widget source:** `runtime/meph-widget.js` (pure browser JS, no imports). Gets copied into `clear-runtime/meph-widget.js` inside each compiled app's build directory on every Studio `/api/run`. Served at `/__meph__/widget.js` from the compiled app.
@@ -193,33 +337,32 @@ Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as 
 
 ### Where does Ghost Meph live?
 
-`playground/ghost-meph/` — env-gated chat-backend dispatch. When `MEPH_BRAIN` is set, `/api/chat` routes through a local backend instead of paying Anthropic per call.
+`playground/ghost-meph/` - chat-backend dispatch plus the Studio model picker. `MEPH_BRAIN` still forces an env-selected backend; otherwise the browser can pick Anthropic Haiku or an OpenRouter model per chat turn.
 
 | File | What |
 |---|---|
 | `router.js` | `isGhostMephActive()` + `fetchViaBackend(payload, headers)` dispatch. Returns Anthropic-shaped Response-like object so `/api/chat`'s reader loop is unchanged. |
-| `cc-agent.js` | `MEPH_BRAIN=cc-agent` — spawns `claude --print` subprocess. Text-only MVP; tool support pending (`plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`). |
-| `ollama.js` | `MEPH_BRAIN=ollama:<model>` — POSTs to local Ollama daemon at `OLLAMA_HOST`. Default model from `OLLAMA_MODEL` env or the brain string suffix. |
-| `openrouter.js` | `MEPH_BRAIN=openrouter` (or `openrouter:qwen`) — POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model `qwen/qwen3.6-plus-preview:free`. |
-| `format-bridge.js` | Anthropic ↔ OpenAI translation. Used by both Ollama and OpenRouter (any backend speaking OpenAI's chat-completions shape). |
+| `model-picker.js` | Declares the Studio picker choices, default selection, selected-model resolution, and "send full chat history when the model changes" rule. |
+| `cc-agent.js` | `MEPH_BRAIN=cc-agent` - spawns Claude Code. Tool mode is available through the MCP bridge when enabled. |
+| `ollama.js` | `MEPH_BRAIN=ollama:<model>` - POSTs to local Ollama daemon at `OLLAMA_HOST`. OpenAI-compatible tool calls flow through the shared bridge when the model supports them. |
+| `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is OpenRouter Claude; picker options also include GLM, DeepSeek, and Kimi. |
+| `format-bridge.js` | Anthropic <-> OpenAI translation, including tool definitions, assistant tool calls, tool results, text deltas, and tool-call SSE back into Anthropic shape. |
 
-Tests: `playground/ghost-meph.test.js` (~60 assertions across 9 phases). Run: `node playground/ghost-meph.test.js`. No real network or subprocess required — tests exercise deterministic failure paths (missing key, refused connection, missing CLI) so they pass without daemons or API keys.
+Tests: `node playground/ghost-meph.test.js`, `node playground/ghost-meph/model-picker.test.js`, and `node playground/ghost-meph/format-bridge.test.js`. The live smoke test for this feature used `openrouter-glm` and verified tool calls, `meph-memory.md`, `requests.md`, editor read, compile, todos, terminal access, personality override, and the full-history marker on model switch.
 
 ### How does Ghost Meph route requests?
 
-`/api/chat` checks `isGhostMephActive()` (true iff `MEPH_BRAIN` is set + non-empty). When active:
-1. The API-key 400 gate is skipped (local backends don't need a key).
-2. The fetch site (line ~3740 of `playground/server.js`) calls `fetchViaBackend(payload, headers)` instead of `fetch('https://api.anthropic.com/v1/messages', ...)`.
-3. The router dispatches based on `MEPH_BRAIN`:
-   - `cc-agent` → spawns Claude Code subprocess (text-only today)
-   - `ollama:<model>` → HTTP POST to Ollama daemon
-   - `openrouter` / `openrouter:qwen` → HTTP POST to OpenRouter
-   - `haiku-dev` → still stub (calibration backend, future)
-   - any other value → stub with "unknown backend" warning, doesn't crash
+`/api/chat` resolves the backend in this order:
+1. If `MEPH_BRAIN` is set, route through `fetchViaBackend(payload, headers)`.
+2. Otherwise, resolve the browser-selected `mephModel`.
+3. If the selected model is OpenRouter, route through `chatViaOpenRouter(payload, { model })`.
+4. Otherwise, call Anthropic directly.
 
-Each backend returns a Response-like object whose body streams Anthropic-shaped SSE events. The `/api/chat` reader loop consumes that unchanged — it doesn't know whether the response came from real Claude or a local backend.
+The API-key gate now accepts either `ANTHROPIC_API_KEY` for Anthropic choices or `OPENROUTER_API_KEY` for OpenRouter choices. When the user changes models, Studio sends the full chat history instead of the usual recent-message slice.
 
-**The point:** during long Meph sessions or sweeps, the dollar cost is in real Anthropic API calls. Routing through Russell's `claude` CLI subscription (cc-agent), a local Ollama model, or OpenRouter's free tier moves that cost off the production key. Once cc-agent gains tool-use support, curriculum sweeps run for free.
+Every backend returns a Response-like object whose body streams Anthropic-shaped SSE events. The `/api/chat` reader loop consumes that unchanged, so the tool loop does not care whether the model is Anthropic, OpenRouter, Ollama, or Ghost Meph.
+
+**The point:** long Meph sessions can keep working when one provider is capped or too expensive, without giving up tools, memory, requests access, or the existing chat UI.
 
 ### Where does the Studio server run?
 
@@ -517,7 +660,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 | `playground/supervisor/factor-db.js` | Factor DB — code_actions, ga_runs, ga_candidates, reranker_feedback |
 | `playground/supervisor/archetype.js` | Shape-of-work classifier (15 categories) |
 | `playground/supervisor/cold-start.js` | Seeds Factor DB with 13 gold templates + 25 curriculum skeletons |
-| `playground/supervisor/curriculum-sweep.js` | Drives all 25 curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150`. Has pre-flight API check. |
+| `playground/supervisor/curriculum-sweep.js` | Drives curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150 --per-level-stats`. Has pre-flight API check, worker-death classification, and per-level sweep rollups. |
 | `playground/supervisor/export-training-data.js` | Exports Factor DB to JSONL for XGBoost training. `--stats` for summary. |
 | `playground/supervisor/train_reranker.py` | Python XGBoost trainer. Refuses below 200 passing rows with clear message. |
 | `playground/supervisor/db-stats.js` | Standalone DB stats reporter (CLI, prints archetype breakdown) |
@@ -532,7 +675,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 - `GET /api/supervisor/sessions` — aggregated session list
 - `GET /api/supervisor/session/:id` — full trajectory for one session
 - `POST /api/supervisor/start-sweep` / `GET /sweep-progress` / `POST /clear-sweep` — Studio-triggered sweeps
-- Factor DB write hook in `/api/chat`: every `compile` tool call → row; every `run_tests` OR `http_request` 2xx → row marked passing
+- Factor DB write hook in `/api/chat` and cc-agent/MCP: every `compile` tool call → row; every `run_tests` OR `http_request` 2xx → row marked passing. MCP endpoint verification creates the missing row first when Meph used `edit_code` auto-compile.
 - Factor DB hint injection: compile errors pull 3 tier-ranked past examples into the compile tool result's `hints` field
 
 **Phase status (see PROGRESS.md for full HITL fix table):**
@@ -595,6 +738,147 @@ Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:
 **Full spec:** `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
 
 ---
+
+### How do I share a compile failure trace?
+
+When Clear refuses to compile, copy the compiler-error packet instead of describing the error by hand.
+
+- **Studio:** click **Copy compiler error** above the compile errors.
+- **CLI:** run `clear check main.clear --trace` or `clear build main.clear --trace`.
+- **JSON callers:** read `compileTrace.pasteText` from `/api/compile` or `--json` output.
+
+Paste the full `CLEAR COMPILE TRACE v1` packet. It includes the source context, normalized errors, full source when bounded, and repair instructions for deciding whether the fix belongs in the Clear source or the compiler.
+
+---
+
+### How do I add a new approval action?
+
+Add it to the `actions:` list in the queue block. The compiler does the rest — new login-gated URL, status transition, audit row, notification fan-out if a `notify` clause matches.
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer, escalate
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject, escalate
+```
+
+Recompile. You now have `PUT /api/deals/:id/escalate` — login-gated, sets the deal's status to `'escalate'`, inserts an audit row, and (because of the `notify rep on … escalate` clause) inserts a notification row for the rep.
+
+If the action name has multiple words, the URL uses the first word (`awaiting customer` → `/awaiting`). The status transitions follow these defaults: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Anything else uses the action name as the status verbatim.
+
+To wire a button for the new action, add it to your queue page's `with actions:` block:
+
+```clear
+display pending as table showing customer, status with actions:
+  'Approve' is primary
+  'Reject' is danger
+  'Escalate' is secondary
+```
+
+Clear matches the button label (case-insensitive) to the action and binds it to the right login-gated URL.
+
+### How do I add sidebar navigation to an app shell?
+
+Use explicit `nav section` and `nav item` rows inside `app_sidebar`.
+
+For multi-page apps, declare `app_layout` once on the shell page (`/`); other pages contain just content. The compiler emits a shell-page router that parks/unparks page content into the shell's outlet on route change — sidebar persists, no double-sidebar. See "Where does the shell-page router live?" below for internals.
+
+### Where does the shell-page router live? (multi-page apps with a persistent sidebar)
+
+**`compiler.js`** emits the router into the compiled HTML. Two pieces:
+
+1. **`buildHTML` walker** (around the `case NodeType.SECTION` for `app_layout` / `app_content`): the first page that wraps its body in `app_layout` becomes THE shell — its `app_layout` div gets `data-clear-shell-root="true"`, its `app_content` div gets `data-clear-shell-outlet="true"`, and the shell's content body is wrapped in `<div data-clear-routed-content="<shellPageId>">...`. Non-shell pages get `data-clear-routed-content="<pageId>"` on their outer page div.
+2. **`compileToHTML` router emit** (around the `_routes` map): when at least one page has `hasShell=true`, the compiler emits three runtime helpers — `_clearTemplateHost`, `_clearParkMountedRoutes`, `_clearRenderRouteIntoShell` — and `_router()` calls them before falling back to the simple show/hide path. After every route swap the router calls `_recompute()` via `requestAnimationFrame` so visible tables re-bind to already-fetched data.
+
+Apps without `app_layout` use the original simple show/hide router (no shell, no outlet, no behavior change).
+
+The 5 regression tests live in `clear.test.js` under `describe('Shell-page router (chunk #10) — fixes empty-tables-after-route-change', ...)`.
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'Deal Desk'
+
+  nav section 'Approvals':
+    nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+    nav item 'Approved' to '/approved' with count approved_count with icon 'check-circle-2'
+
+  nav section 'System':
+    nav item 'Settings' to '/settings' with icon 'settings'
+```
+
+`with count` can be a page variable or literal. `with icon` uses Lucide icon names;
+quote hyphenated names. The compiled sidebar marks the matching route active.
+Legacy `text` and `link` children still render, but do not use them for real
+dashboard navigation.
+
+### How do I add a page header and routed tabs?
+
+Put `page header` and `tab strip` at the top of `app_content`.
+
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh'
+      button 'Export'
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+    tab 'Escalated' to '/escalated'
+```
+
+`page header` renders the workbench title row. `tab strip` renders real route
+links and marks the current path active. Use this for queues, CRMs, and admin
+views with multiple states.
+
+### How do I add KPI stat cards?
+
+Use `stat strip` under `app_content`, usually after the page header and tabs.
+
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+Each `stat card` needs one `value` line. `delta`, `sparkline`, and `icon` are
+optional. Use quoted Lucide icon names.
+
+### How do I add a right detail panel?
+
+Use `detail panel for selected_row:` next to the selectable table it explains.
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+```
+
+The body can use normal Clear UI primitives. Put final decisions inside
+`actions:` so they render as the sticky bottom action bar. An update action
+must name the changed field before the `update` line. A delete action uses
+`delete selected_record from /api/...`.
 
 ### How do I add a new node type?
 
@@ -729,6 +1013,18 @@ The eval child is killed between template runs (`killEvalChildAndWait()`). Idle 
 ---
 
 ## Why did we do X?
+
+### Why is `queue` separate from `workflow`?
+
+They look related — both are multi-step, both have state — but the shape is fundamentally different.
+
+A `workflow` is for chaining AI agents in sequence with state passed through. The "actor" at each step is an agent. Branches and retries are computed; humans don't intervene mid-flow.
+
+A `queue` is for a **single human reviewer** to decide on items piling up in a list. The "actor" is a person (the reviewer). The audit log is load-bearing — you need to know who clicked what, when, with what note. The decision URL has to be auth-gated. Notifications need to fan out to humans (the rep, the customer) — not other agents.
+
+Folding both into one primitive would compromise both. The workflow primitive gives up state-passing semantics it needs. The queue primitive picks up agent-orchestration knobs it doesn't want.
+
+There's also a Tier 2 future for queues: multi-stage (Manager → Director → CRO). That's still a different shape from workflow — it's a sequence of human gates, not a sequence of agent calls. Tier 2 lands when a second multi-stage app surfaces; until then, the single-stage primitive covers Marcus's actual flows.
 
 ### Why does send back compile to return inside define function?
 

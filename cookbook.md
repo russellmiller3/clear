@@ -124,7 +124,7 @@ Seven hooks in this repo as of 2026-04-25. Each fires automatically on a specifi
 
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
-_Last refresh: 2026-04-24_
+_Last refresh: 2026-04-28_
 
 ### CLAUDE.md rules (project-level, this repo)
 
@@ -151,12 +151,19 @@ _Last refresh: 2026-04-24_
 
 ### `.claude/hooks/` — event-driven enforcement
 
+- **clear-cheatsheet-on-write.mjs** — .claude/hooks/clear-cheatsheet-on-write.mjs
 - **cookbook-updater.mjs** — .claude/hooks/cookbook-updater.mjs
 - **doc-cascade.mjs** — .claude/hooks/doc-cascade.mjs
+- **landing-design-on-write.mjs** — .claude/hooks/landing-design-on-write.mjs
 - **learnings-miner.mjs** — .claude/hooks/learnings-miner.mjs
+- **no-stub-nav.mjs** — Compute the post-edit content
 - **parallel-thinking.mjs** — .claude/hooks/parallel-thinking.mjs
+- **periodic-introspect.mjs** — UserPromptSubmit hook — nudges Claude to invoke /introspect every 20 user
 - **propose-new-hooks.mjs** — .claude/hooks/propose-new-hooks.mjs
 - **propose-new-tools.mjs** — .claude/hooks/propose-new-tools.mjs
+- **require-branch-work.mjs** — Block edit tools on main.
+- **require-plan-read.mjs** — .claude/hooks/require-plan-read.mjs
+- **screenshot-ui-work.mjs** — Match UI surfaces.
 - **validator-friction.mjs** — .claude/hooks/validator-friction.mjs
 
 ### `.claude/skills/` — user-invocable slash commands
@@ -167,7 +174,8 @@ _Last refresh: 2026-04-24_
 - **/eval-meph** — Run the Meph tool eval as a regression net. Trigger when changes touch playground/server.js (especially TOOLS array, executeTool, validat…
 - **/execute-plan** — Use when executing a multi-phase implementation plan. Trigger when user says "execute this plan", "implement this plan", "start building"…
 - **/handoff** — Create or update HANDOFF.md to pass context between sessions. Use when ending a session, switching tasks, or when the user says "handoff"…
-- **/pres** — "PRES = Plan → Red-team → Execute → Ship. Full build cycle with no manual handoffs. Use when the user says '/pres [feature]', 'pres this'…
+- **/introspect** — Step back, re-read the load-bearing docs, and decide if current work is still on the critical path. Trigger when Russell says "/introspec…
+- **/pres** — (no description)
 - **/red-team-code** — Use when stress-testing code AFTER it has been written and compiles. Trigger when user says "/rt", "/red-team-code", "red team this code"…
 - **/red-team-plan** — Use when stress-testing any implementation plan before coding begins. Trigger when user says "red team this", "bulletproof this plan", "r…
 - **/rule** — Add a rule to the project-level CLAUDE.md. Use when the user says "/rule [text]" or "add a project rule" or "make this a rule". Appends a…
@@ -182,8 +190,16 @@ _Last refresh: 2026-04-24_
 - **check-doc-drift.cjs** — Files we care about — the canonical docs that must agree with each other.
 - **cross-target-smoke.mjs** — scripts/cross-target-smoke.mjs
 - **decidable-core-replay.mjs** — scripts/decidable-core-replay.mjs
+- **doc-drift.mjs** — scripts/doc-drift.mjs
+- **doc-drift.test.mjs** — scripts/doc-drift.test.mjs
 - **factor-db-summary.mjs** — Quick read-only summary of the Factor DB.
+- **log-compiler-edits.mjs** — Post-commit hook: scan the last commit's diff for error-message-shaped
+- **log-compiler-edits.test.mjs** — Unit tests for the compiler-edit diff parser.
+- **match-shape.mjs** — Shape-search retrieval over canonical-examples.md.
+- **match-shape.test.mjs** — Tests for shape-search retrieval (Lean Lesson 2).
 - **reconcile-wfp.js** — Weekly reconcile job.
+- **score-winning-runs.mjs** — score-winning-runs — rank every test_pass=1 row in the Factor DB by an
+- **score-winning-runs.test.mjs** — Tests for scripts/score-winning-runs.mjs — the winner-harvest scorer.
 - **smoke-cf-target.mjs** — Spot-check the --target cloudflare emission end-to-end for a representative
 - **top-friction-errors.mjs** — top-friction-errors — mine Factor DB for compile errors that cost the most
 

@@ -86,7 +86,7 @@ Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 [pattern] POST endpoint calls agent: store return value, assign fields from agent result to request data, save combined to table, return with status 201.
 
 [done] Built AI Summary Agent (Level 9) — Summarizer agent with structured JSON output (summary + key_points). POST /api/summarize endpoint calls agent with data's text. Returns 200 with structured response. All required HTTP tests pass.
-[done] Built Todo CRUD API (Level 4) — 5 endpoints (POST/GET/GET:id/PUT/DELETE). All 4 required HTTP tests pass. POST creates todos, GET lists all, GET:id fetches one, PUT updates (requires auth), DELETE removes (requires auth). Database is local memory. Table: Todos with title (required) and done (default false).
+[done] Built Todo CRUD API (Level 4) — 5 endpoints (POST/GET/GET:id/PUT/DELETE). All 4 required HTTP tests pass. POST creates todos, GET lists all, GET:id fetches one, PUT updates (requires auth), DELETE deletes (requires auth). Database is local memory. Table: Todos with title (required) and done (default false).
 
 [done] Built Blog with Search API (Level 6) — 3 endpoints (POST/GET/GET:id). All 5 required HTTP tests pass. Database: local memory. Validation: title required, max 200 chars; body required. All validation errors return 400 with structured error array.
 

@@ -210,7 +210,7 @@ export async function validateSession(db, rawToken) {
   const tokenHash = hashSessionToken(rawToken);
   const { rows } = await db.query(
     `SELECT s.id AS session_id, s.last_seen_at, s.expires_at, s.revoked_at,
-            u.id, u.email, u.name, u.status, u.role, u.email_verified_at
+            u.id, u.email, u.name, u.status, u.role, u.email_verified_at, u.tenant_slug
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = $1
@@ -236,6 +236,7 @@ export async function validateSession(db, rawToken) {
     status: row.status,
     role: row.role,
     email_verified_at: row.email_verified_at,
+    tenant_slug: row.tenant_slug || null,
   };
 }
 

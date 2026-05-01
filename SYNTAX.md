@@ -22,6 +22,54 @@ define total as: price + tax
 items is an empty list
 ```
 
+## TBD Placeholders (Lean Lesson 1)
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs and you have not decided yet. The compiler accepts it, the program
+still compiles green, and only the line that holds the placeholder fails
+at runtime — every other piece keeps working.
+
+```clear
+# As a value
+greeting = TBD
+plan_for_thursday = TBD
+
+# As a whole step (a line on its own)
+to greet with name:
+  TBD
+
+# Mixed in a real workflow
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+  TBD                       # the auth + audit log piece is for later
+  send back lead
+```
+
+What runs:
+- A program with one or more `TBD` markers compiles with **zero compile errors**.
+- The compiler emits a clean line-tagged stub at every `TBD`. If running code
+  reaches a placeholder it throws `placeholder hit at line N — fill it in or remove it`.
+- The compiled test harness catches that exact error and reports the test as
+  **SKIPPED** (not FAILED), with the line number. Skips do not fail the build.
+- The Results line reads: `X passed, Y failed, Z skipped due to stub`.
+- `compileProgram(source).placeholders` returns `[{ line: N }, ...]` — every
+  line that still holds a stub.
+
+When to use it:
+- The spec is ambiguous about one piece (auth flow, edge case, error message).
+  Drop a `TBD`, ship the rest, ask Russell, fill it in next session.
+- You are sketching the structure of a program and want compiler feedback on
+  the parts that ARE written without being blocked by the parts that are not.
+
+When NOT to use it:
+- Do not use `TBD` to dodge a hard part. The placeholder is a bookmark for a
+  decision that is genuinely open, not a way to hide a piece you do not want
+  to write. Programs with leftover `TBD`s in shipped code are a smell.
+
 ## Math
 
 ```clear
@@ -291,6 +339,49 @@ fail with 'Database connection failed'
 raise error 'Unauthorized access'
 ```
 
+## Live Blocks (Explicit Effect Fence)
+
+A `live:` block is the visible label for code that talks to the outside world —
+asking Claude, calling an API, opening a websocket, running a timer. Pure code
+(arithmetic, string handling, table reads, validation) doesn't need a fence;
+it lives wherever you write it. Effects belong inside `live:` so the reader
+(and the compiler) can see exactly where the program meets the world.
+
+```clear
+# Inside an endpoint — canonical form: instructions string + with data
+when user sends note to /api/chat:
+  live:
+    reply = ask claude 'You are a helpful assistant' with note
+  send back reply
+
+# Inside an agent — same shape, different home
+agent 'Replier' receiving message:
+  live:
+    answer = ask claude 'Reply to the user politely' with message
+  send back answer
+
+# Live can sit anywhere a statement can — top level, inside endpoints,
+# inside agents, inside functions. The `'instructions' with <data>`
+# pattern is canonical for every effect call inside the fence.
+```
+
+**What `live:` does today (Phase B-1, 2026-04-25):**
+
+- Marks the boundary between pure code and effect code.
+- Compiles permissively — any statement is allowed inside, body emits inline
+  with a `// live: block — explicit effect fence` comment in the output.
+- Is a *fence*, not a scope: variables created inside `live:` are still
+  visible to code that follows the block.
+
+**What `live:` will do next (Phase B-2):**
+
+- The compiler will start *requiring* effect-shaped calls (`ask claude`,
+  `call API`, `subscribe to`, `every N seconds`) to sit inside a `live:`
+  fence. Pure blocks become provably total — they cannot hang.
+
+See `PHILOSOPHY.md` Rule 18 (Total by Default, Effects by Label) for the
+design intent.
+
 ## Transactions
 
 ```clear
@@ -348,9 +439,10 @@ page 'My App':
 'What needs to be done?' is a text input saved as a todo
 'How much?' is a number input saved as a price
 'Notes' is a text area saved as a note
-'Gift Wrap' is a checkbox
-'Color' is a dropdown with ['Red', 'Green', 'Blue']
-'Body' is a text editor saved as body          # rich WYSIWYG (Quill)
+'Gift Wrap' is a checkbox saved as a gift_wrap
+'Color' is a dropdown with ['Red', 'Green', 'Blue'] saved as a color
+'Body' is a text editor saved as body
+// rich WYSIWYG (Quill)
 'Resume' is a file input saved as a resume
 
 # Articles (a, an, the) are optional but encouraged
@@ -360,6 +452,10 @@ page 'My App':
 # Legacy form still works
 'Name' is a text input that saves to name
 ```
+
+Every interactive input must name the state variable it changes on the same
+line. This applies to text inputs, dropdowns, checkboxes, menus, sliders, file
+inputs, text areas, and text editors.
 
 `text editor` (alias: `rich text editor`, `rich text`) mounts a Quill editor
 via CDN with toolbar (headers, bold/italic/underline/strike, lists, links,
@@ -378,13 +474,48 @@ button 'Submit':
   send name and email to '/api/signup'
 
 button 'Add':
-  send todo as a new todo to '/api/todos'   # 'as a new todo' is for the reader
-  get todos from '/api/todos'               # named fetch -- result stored in 'todos'
-  todo is ''                                # clear the input
+  send todo as a new todo to '/api/todos'
+  // 'as a new todo' is for the reader.
+  get todos from '/api/todos'
+  // named fetch; result is stored in todos.
+  todo is ''
+  // clear the input.
 
 button 'Refresh':
   get todos from '/api/todos'
+
+button 'Approve':
+  change selected_request's status from 'pending' to 'approved'
+  update selected_request at /api/requests/:id/approve
+  get pending_requests from /api/requests/pending
+
+button 'Delete':
+  delete selected_request from /api/requests/:id
+  get pending_requests from /api/requests/pending
+
+add button 'Reload' that gets todos from '/api/todos'
+button 'Reset' for todo is ''
 ```
+
+After `that`, write the action as a phrase about the button: `gets`, `sends`,
+`increases`, `decreases`, `goes to`, `stores`, etc. Indented button bodies stay
+imperative: `get todos from '/api/todos'`.
+
+Toast-only buttons are valid when the button only creates notification data:
+
+```clear
+button 'Notify':
+  show toast 'Saved'
+```
+
+The compiler rejects domain-action labels like Approve, Reject, Assign, Resolve,
+Save, or Delete when the button only shows a toast. Those buttons must also name
+the record, endpoint, queue, or audit row they change.
+
+Selected-record updates need two lines: first `change <record>'s <field> from
+<old> to <new>`, then `update <record> at <url>`. A bare `update selected_deal
+at /api/deals/:id/approve` is rejected because it does not say what data
+changed. Selected-record deletes use `delete <record> from <url>`.
 
 ## Display
 
@@ -399,8 +530,8 @@ display response as table called 'Results'            # all columns (no 'showing
 display contacts as table showing name, email with delete
 display contacts as table showing name, email with edit
 display contacts as table showing name, email with delete and edit
-# "with delete" adds a Delete button per row (needs DELETE /api/contacts/:id)
-# "with edit" adds an Edit button that populates the form (needs PUT /api/contacts/:id)
+// "with delete" adds a Delete button per row.
+// "with edit" adds an Edit button that populates the form.
 ```
 
 ## Charts (ECharts)
@@ -519,8 +650,8 @@ when search changes after 250ms:
 ```clear
 step = 1
 
-button 'Next': increase step by 1
-button 'Back': decrease step by 1
+button 'Next' that increases step by 1
+button 'Back' that decreases step by 1
 
 if step is 1:
   heading 'Step 1: Enter your name'
@@ -852,8 +983,7 @@ section 'Nav' with style page_navbar:
   heading 'Acme'
   link 'Features' to '#features'
   link 'Pricing' to '#pricing'
-  button 'Get Started':
-    go to '/signup'
+  button 'Get Started' that goes to '/signup'
 
 # Centered hero
 section 'Hero' with style page_hero:
@@ -908,20 +1038,110 @@ section 'Footer' with style page_footer:
 
 ### App UI Presets
 
-| Preset | Description | Typical children |
-|--------|-------------|-----------------|
-| `app_layout` | Outermost wrapper. `flex h-screen overflow-hidden`. | Two children: `app_sidebar` + a main column |
-| `app_sidebar` | Fixed-width sidebar with nav menu. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
-| `app_main` | Right-side flex column that fills remaining space. | `app_header` + `app_content` |
-| `app_header` | Sticky top bar with split layout (title left, actions right). | `heading`, `button` |
-| `app_content` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
-| `app_card` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
+> **Phase 1-4 shell upgrade (04-25/26-2026):** the four shell presets `app_layout`,
+> `app_sidebar`, `app_main`, `app_header` now emit polished slate-on-ivory chrome
+> matching `landing/marcus-app-target.html`. Sidebar is a 240px `<aside>`, header
+> is a 56px sticky `<header>` with brand/breadcrumb/actions slots. Sidebar nav
+> now has explicit `nav section` / `nav item` syntax with counts, icons, and
+> route-based active state. Main content now has `page header` and `tab strip`
+> primitives for queue/workbench pages, plus `stat strip` / `stat card` for KPI rows.
+
+| Preset | HTML tag | Description | Typical children |
+|--------|----------|-------------|-----------------|
+| `app_layout` | `<div>` | Outermost shell. `flex min-h-screen` — page owns the scroll. | Two children: `app_sidebar` + a main column |
+| `app_sidebar` | `<aside>` | 240px rail. Hairline-right border, scroll-y, rail bg from `--clear-bg-rail`. First heading = brand; `nav section` groups `nav item` rows. Legacy `text`/`link` children still render as simple nav rows. | `heading` (brand), `nav section`, `nav item` |
+| `app_main` | `<main>` | Right-side flex column that fills remaining space. `flex-1 min-w-0 flex flex-col`. | `app_header` + `app_content` |
+| `app_header` | `<header>` | 56px sticky top bar. Hairline-bottom, canvas bg. Auto-sorts children into three slots: `heading` → brand-slot, text → breadcrumb-slot, `button` → actions-slot (right-aligned). | `heading`, `text`, `button` |
+| `app_content` | `<div>` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
+| `app_card` | `<div>` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
 | `metric_card` | Compact stat card for KPI rows. | `display X as number called 'Label'` or `heading` + `text` |
 | `app_table` | Table container with rounded corners and border. Overflow hidden. | `display X as table showing ...` |
 | `app_modal` | Centered modal dialog card with ring shadow. | `heading`, inputs, `button` |
 | `empty_state` | Dashed-border placeholder for empty content areas. | `heading`, `text`, `button` |
 | `app_list` | Divided list with hover rows. First heading = list title, remaining children = row items. | `heading` (title), `text`/`link` items (one per row) |
 | `form` | Centered form card with max-width constraint. | inputs, `button` |
+
+#### Sidebar navigation
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'Deal Desk'
+
+  nav section 'Approvals':
+    nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+    nav item 'Approved' to '/approved' with count approved_count with icon 'check-circle-2'
+
+  nav section 'System':
+    nav item 'Settings' to '/settings' with icon 'settings'
+```
+
+Counts can be literal values or variables already available on the page.
+Quoted icon names map to Lucide icons; quote names with hyphens. The compiled
+sidebar marks the matching `data-nav-path` row active from the current route.
+
+#### Page header and tab strip
+
+```clear
+section 'Content' with style app_content:
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh':
+        get pending from /api/deals/pending
+      button 'Export':
+        get export_rows from /api/deals/export
+
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'
+    tab 'Escalated' to '/escalated'
+```
+
+`page header` emits the main title row, optional subtitle, and right-aligned
+actions. `tab strip` emits routed underline tabs and marks the matching path
+active from `location.pathname`.
+
+#### Stat strip and stat card
+
+```clear
+stat strip:
+  stat card 'Pending Count':
+    value pending_count
+    delta '+1.8 pts vs last week'
+    sparkline [3, 4, 6, 5, 8]
+    icon 'inbox'
+```
+
+`stat strip` wraps a responsive row of KPI cards. Each `stat card` needs one
+`value` line. `delta`, `sparkline`, and `icon` are optional.
+
+#### Right detail panel
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  display selected_deal's amount as dollars called 'Value'
+  text selected_deal's status
+  actions:
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+    button 'Counter':
+      change selected_deal's status from 'pending' to 'awaiting'
+      update selected_deal at /api/deals/:id/counter
+      get pending from /api/deals/pending
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+```
+
+Use `detail panel for selected_row:` next to a selectable table when the user
+needs to inspect and act on one record without leaving the queue. The panel body
+accepts normal Clear UI primitives. Put final decisions inside `actions:` so
+they render as the sticky bottom action bar.
 
 #### App UI preset examples
 
@@ -931,10 +1151,10 @@ section 'App' with style app_layout:
 
   section 'Sidebar' with style app_sidebar:
     heading 'MyApp'
-    section 'Main':
-      text 'Dashboard'
-      text 'Projects'
-      text 'Settings'
+    nav section 'Main':
+      nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+      nav item 'Projects' to '/projects' with count project_count with icon 'folder'
+      nav item 'Settings' to '/settings' with icon 'settings'
 
   section 'Main' with style app_main:
 
@@ -2805,6 +3025,188 @@ when user sends ticket to /api/support:
 
 ---
 
+## Routing (`route X by FIELD:`)
+
+Inside an endpoint, `route X by FIELD:` decides who-owns-this-record from a quoted-string match value, optionally with a round-robin pool for the default. Replaces nested if-chains for assignment.
+
+### Fixed mapping
+```clear
+when user sends lead to /api/leads:
+  validate lead:
+    name is text, required
+    size is text
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead
+  send back new_lead with success message
+```
+
+### Round-robin default
+```clear
+route lead by region:
+  'West' to alice
+  default round-robin across [bob, charlie, diana]
+```
+
+**Strict rules:**
+- Match values on the LHS must be **quoted strings** (`'SMB' to alice`). Bare identifiers with hyphens (e.g. `Mid-market`) tokenize as 3 tokens and parse-fail.
+- The route block must come BEFORE `save X as new T` in the endpoint, otherwise the assignment never persists. Compile-time HARD ERROR (`ROUTE_AFTER_SAVE`).
+- Plural entity name singularizes — `route leads by size:` produces the same AST as `route lead by size:`.
+
+**Round-robin state.** The cursor lives in `_clear_route_cursors` (auto-emitted SQLite table). Cursor key is a content hash of (entity + field + rules + pool), so adding comments above doesn't reset the cursor. Survives restarts via SQLite WAL.
+
+## Approval Queues (Single-Stage Reviewer)
+
+When an entity needs human approval before its status changes, declare a queue. One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action.
+
+### Basic Queue
+```clear
+create a Deals table:
+  customer
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+```
+
+This emits:
+- A `deal_decisions` audit table (`deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`).
+- `GET /api/deals/queue` — filtered by `status = 'pending'`.
+- `GET /api/deal-decisions` — full audit history.
+- `PUT /api/deals/:id/approve`, `/reject`, `/counter` — each requires login, updates the deal's status, and inserts an audit row.
+
+### Queue with Notifications
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+```
+
+Adds a `deal_notifications` outbound queue table and inserts a row whenever a matching action fires. Recipient email is resolved by convention — `email customer when ...` reads `deal.customer_email`. If the field is missing, the validator warns; the notification row is still queued with a blank email.
+
+### Action keyword variants (F4)
+
+`options:` and `buttons:` are accepted as synonyms for `actions:`. The clauses below all parse identically:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+
+queue for deal:
+  reviewer is 'CRO'
+  options: approve, reject, counter
+
+queue for deal:
+  reviewer is 'CRO'
+  buttons: approve, reject, counter
+```
+
+### `waiting on customer` canonical action (F4)
+
+`waiting on customer` reads more naturally than legacy `awaiting customer`. Both forms produce the same terminal status (`'awaiting'`) so an email-trigger watching `'awaiting'` fires either way. URL slug for `waiting on customer` is `/api/deals/:id/waiting`:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, waiting on customer
+```
+
+### Plural input is accepted (F2)
+
+`queue for deals:` produces the same audit table + URLs as `queue for deal:`. The parser singularizes English plurals (`-s`, `-ies`, `-(s|x|z|sh|ch)es`) on the way in. `-ss` endings (`address`, `business`, `status`) stay as-is so they don't get truncated wrong.
+
+**Canonical form is `email <role> when <action>, <action>`** (the verb names HOW the recipient gets reached). The legacy form `notify <role> on <action>` still parses for backwards compatibility, but new code should prefer `email`. Future communication primitives will follow the same pattern: `slack <role> when ...`, `text <role> when ...`, `webhook <role> when ...`.
+
+### Action naming
+- Multi-word actions slugify to a single URL token: `awaiting customer` → `PUT /api/deals/:id/awaiting`.
+- Status transitions: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Other action names become the status verbatim.
+
+### Triggered emails — `email <role> when <entity>'s status changes to <value>:`
+
+Same `email <role> when <trigger>` atom as the queue clause above, but at the top level. Declares: when ANY URL handler sets the entity's status to the trigger value, queue an email row. Today the queue primitive's auto-generated PUT handlers wire this up automatically — when the action's terminal status matches the trigger value, the handler queues an email after the audit row.
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you. Please review and respond.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+The compiler emits a single shared `workflow_email_queue` table per app (used by every email trigger). Each queued row has: `entity_type`, `entity_id`, `recipient_role`, `recipient_email` (resolved via the `<role>_email` field on the entity — same convention as the queue's `email when` clause), `subject`, `body`, `provider` (default `'agentmail'`), `reply_tracking`, `queue_status` (`'pending'` until a delivery worker flips it), `attempts`, `last_error`, `queued_at`/`sent_at`/`replied_at`.
+
+**Real provider sends are deferred behind an explicit `enable live email delivery via X` directive** (not yet shipped). Default builds queue rows only — tests, previews, and dev never accidentally email a customer. The queued rows show up in your app's tables, so you can verify the right messages would have gone out before flipping the live switch.
+
+**Sub-clauses inside the body:**
+- `subject is '...'` (required)
+- `body is '...'` (required)
+- `provider is '...'` (optional; default `'agentmail'`; valid values: `agentmail`, `sendgrid`, `resend`, `postmark`, `mailgun`)
+- `track replies as <free text>` (optional; e.g. `track replies as deal activity`)
+
+**Hard-fails on:**
+- Entity that isn't a declared table (`email customer when fakeentity's status changes to ...`)
+- Missing required `subject` or `body`
+- Unknown body line (same F1 pattern as queue clauses — typos get a did-you-mean hint)
+
+### CSV export (auto-included; opt out with `no export`)
+
+Every queue auto-emits `GET /api/<entity>/export.csv` — a plain CSV download of every row in the entity's table, with proper RFC 4180 escaping (commas, quotes, and newlines wrapped + doubled correctly) and sensitive fields (password, token, api_key, secret, hash) automatically omitted. Marcus moves FROM spreadsheets, but spreadsheets stay in his workflow for reporting and handoffs — default-on by GTM list.
+
+Suppress with `no export`:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export
+```
+
+When suppressed, the CSV URL is not emitted and the auto-rendered Download button (when Phase 2 lands) is hidden.
+
+### Wiring action buttons
+The queue primitive does not yet auto-render detail-panel buttons. Hand-add
+buttons that name the exact record change, update the selected record through
+the generated action URL, and reload the affected queue:
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+```
+
+---
+
 ## Scheduled Tasks (Cron)
 
 Run code on a schedule — intervals or specific times:
@@ -2983,7 +3385,20 @@ show alert 'Something went wrong'
 show notification 'New message received'
 ```
 
-All three are synonyms — they display a temporary notification message. Compiles to a DaisyUI toast that auto-dismisses after 3 seconds.
+All three are synonyms. The quoted message is required because it is the
+notification data. They display a temporary notification message and compile to
+a native DaisyUI-style toast component that auto-dismisses after 4 seconds.
+The container uses `toast toast-end toast-bottom`; each message is an `alert`
+with `role="alert"`. Message data is written as text, never injected as HTML.
+
+Variants:
+
+```clear
+show toast 'Saved' as success
+show toast 'Check the form' as warning
+show toast 'Save failed' as error
+show toast 'New message' as info
+```
 
 ## Hide Element
 
@@ -3071,5 +3486,7 @@ Deployment is a Studio feature, not a language primitive — you don't write dep
 **Custom domain.** Type your domain in the Deploy modal — Studio calls `flyctl certs create` and returns the DNS records to point at Fly. Certs auto-renew.
 
 **Rollback.** The Deploy History drawer lists the last 10 releases. Click Rollback on any of them.
+
+**Re-deploys are automatic incremental updates (Cloudflare target).** When you click Publish on an app that's already live, Studio takes the fast path: it re-uploads only the new Worker bundle and records a new version against the existing tenant — no fresh D1 database, no domain reattach, no full secret reset. Wall clock drops from ~12s (fresh deploy) to ~2s (update). Schema changes — anything that changes a `migrations/*.sql` file or `wrangler.toml` — pause the update and ask for an explicit "apply migration + update" click, because SQLite has no atomic schema swap and in-flight requests would briefly see the new schema against old code. The Publish window also exposes a one-click rollback to any of the last 20 versions.
 
 **Limits.** Pro plan: 25 apps, $10/mo of AI credits included, $99/mo. See `plans.js` for the source of truth.

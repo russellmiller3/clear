@@ -22,6 +22,47 @@ export const MAX_VERSIONS_PER_APP = 20;
 // outcome is recorded. (Locked-in decision #2 in plans/plan-lae-phase-c.)
 export const MAX_AUDIT_PER_APP = 200;
 
+function _bundleParam(lastBundle) {
+	if (lastBundle === undefined || lastBundle === null) return null;
+	return JSON.stringify(lastBundle);
+}
+
+function _bundleValue(value) {
+	if (value === undefined || value === null) return null;
+	if (typeof value === 'string') {
+		try { return JSON.parse(value); }
+		catch { return null; }
+	}
+	return value;
+}
+
+// CC-1 cycle 8 — map DB row → in-memory audit shape. The in-memory store
+// stores camelCase keys (auditId, sourceHashBefore, etc.) and only emits
+// optional fields when they were provided (so tests can use deep-equal on
+// minimal inputs). Mirror that shape exactly.
+function _mapAuditRow(row) {
+	const out = {
+		auditId: String(row.id),
+		ts: row.ts instanceof Date ? row.ts.toISOString() : row.ts,
+		actor: row.actor,
+		action: row.action,
+		verdict: row.verdict,
+		sourceHashBefore: row.source_hash_before,
+		sourceHashAfter: row.source_hash_after,
+		status: row.status,
+	};
+	if (row.note !== null && row.note !== undefined) out.note = row.note;
+	if (row.kind !== null && row.kind !== undefined) out.kind = row.kind;
+	if (row.before !== null && row.before !== undefined) out.before = row.before;
+	if (row.after !== null && row.after !== undefined) out.after = row.after;
+	if (row.reason !== null && row.reason !== undefined) out.reason = row.reason;
+	if (row.ip !== null && row.ip !== undefined) out.ip = row.ip;
+	if (row.user_agent !== null && row.user_agent !== undefined) out.userAgent = row.user_agent;
+	if (row.version_id !== null && row.version_id !== undefined) out.versionId = row.version_id;
+	if (row.error !== null && row.error !== undefined) out.error = row.error;
+	return out;
+}
+
 export class InMemoryTenantStore {
 	constructor() {
 		this.tenants = new Map();
@@ -98,6 +139,7 @@ export class InMemoryTenantStore {
 	async markAppDeployed({
 		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
 		versionId = null, sourceHash = null, migrationsHash = null, secretKeys = null,
+		lastBundle = null,
 	}) {
 		if (!this.cfDeploys) this.cfDeploys = new Map();
 		const key = this._appKey(tenantSlug, appSlug);
@@ -106,6 +148,7 @@ export class InMemoryTenantStore {
 			deployedAt: new Date().toISOString(),
 			versions: [],
 			secretKeys: Array.isArray(secretKeys) ? [...secretKeys] : [],
+			lastBundle: lastBundle || null,
 		};
 		if (versionId) {
 			row.versions.push({
@@ -148,7 +191,7 @@ export class InMemoryTenantStore {
 	// oldest entries once the array exceeds MAX_VERSIONS_PER_APP. Rejects
 	// with APP_NOT_FOUND if markAppDeployed was never called for this
 	// (tenantSlug, appSlug) — forces the happy-path sequencing.
-	async recordVersion({ tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via }) {
+	async recordVersion({ tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via, lastBundle }) {
 		if (!this.cfDeploys) return { ok: false, code: 'APP_NOT_FOUND' };
 		const key = this._appKey(tenantSlug, appSlug);
 		const row = this.cfDeploys.get(key);
@@ -162,6 +205,7 @@ export class InMemoryTenantStore {
 			...(note ? { note } : {}),
 			...(via ? { via } : {}),
 		});
+		if (lastBundle !== undefined) row.lastBundle = lastBundle || null;
 		if (row.versions.length > MAX_VERSIONS_PER_APP) {
 			// Sort by uploadedAt ascending, keep the newest MAX_VERSIONS_PER_APP.
 			row.versions.sort((a, b) => {
@@ -228,6 +272,36 @@ export class InMemoryTenantStore {
 			}
 		}
 		return { scripts, databases };
+	}
+
+	// CC-2 cycle 10 — list every deployed app for one tenant, newest first.
+	// Backs GET /api/apps (the dashboard's app grid). Returns a flat array
+	// of app records with the fields the UI needs:
+	//   {appSlug, scriptName, hostname, deployedAt, latestVersionId}
+	// Empty array if the tenant has no deploys (or doesn't exist — no auth
+	// happens here; the URL handler is responsible for filtering by the
+	// authed user's tenant_slug).
+	async listAppsByTenant(tenantSlug) {
+		if (!this.cfDeploys || !tenantSlug) return [];
+		const rows = [];
+		for (const row of this.cfDeploys.values()) {
+			if (row.tenantSlug !== tenantSlug) continue;
+			const versions = Array.isArray(row.versions) ? row.versions : [];
+			rows.push({
+				appSlug: row.appSlug,
+				scriptName: row.scriptName,
+				hostname: row.hostname,
+				deployedAt: row.deployedAt,
+				latestVersionId: versions[0]?.versionId || null,
+			});
+		}
+		// Newest-first by deployedAt — empty/missing deployedAt sinks to bottom.
+		rows.sort((a, b) => {
+			const ta = a.deployedAt ? Date.parse(a.deployedAt) : 0;
+			const tb = b.deployedAt ? Date.parse(b.deployedAt) : 0;
+			return tb - ta;
+		});
+		return rows;
 	}
 	async seenStripeEvent(eventId) {
 		return this.stripeEvents.has(eventId);
@@ -644,8 +718,9 @@ export class PostgresTenantStore {
 	// new deploy timestamp, even if the script is unchanged).
 	async markAppDeployed({
 		tenantSlug, appSlug, scriptName, d1_database_id, hostname,
-		// versionId, sourceHash, migrationsHash, secretKeys — accepted but
-		// ignored in cycle 4 (cycles 5-6 will wire them into the transaction).
+		versionId = null, sourceHash = null, migrationsHash = null,
+		lastBundle = null,
+		// secretKeys — accepted but ignored in cycle 5 (cycle 6 wires the seed).
 	}) {
 		const client = await this._pool.connect();
 		try {
@@ -655,14 +730,15 @@ export class PostgresTenantStore {
 			// IS a new deploy event).
 			await client.query(
 				`INSERT INTO clear_cloud.cf_deploys
-				   (tenant_slug, app_slug, script_name, d1_database_id, hostname, deployed_at)
-				 VALUES ($1, $2, $3, $4, $5, now())
+				   (tenant_slug, app_slug, script_name, d1_database_id, hostname, last_bundle, deployed_at)
+				 VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
 				 ON CONFLICT (tenant_slug, app_slug) DO UPDATE
 				   SET script_name = EXCLUDED.script_name,
 				       d1_database_id = EXCLUDED.d1_database_id,
 				       hostname = EXCLUDED.hostname,
+				       last_bundle = EXCLUDED.last_bundle,
 				       deployed_at = now()`,
-				[tenantSlug, appSlug, scriptName, d1_database_id ?? null, hostname ?? null]
+				[tenantSlug, appSlug, scriptName, d1_database_id ?? null, hostname ?? null, _bundleParam(lastBundle)]
 			);
 			// apps — mirror the scriptName into the apps table so appNameFor
 			// returns it. Same UPSERT key as recordApp (tenant_slug, app_slug).
@@ -673,6 +749,23 @@ export class PostgresTenantStore {
 				   DO UPDATE SET app_name = EXCLUDED.app_name`,
 				[tenantSlug, appSlug, scriptName]
 			);
+			// CC-1 cycle 5 — seed an initial app_versions row when versionId
+			// is non-null. Mirrors InMemoryTenantStore.markAppDeployed line 110:
+			// only seed when the caller passed a versionId. Existing rows are
+			// untouched by this UPSERT (the FK on (tenant_slug, app_slug)
+			// points at cf_deploys, not at cf_deploys.id, so re-deploys keep
+			// the version history intact). Plain INSERT — never an UPSERT —
+			// because every recordVersion call is also a plain INSERT, and
+			// duplicate version rows are allowed in the in-memory store too
+			// (the cap is the only de-dupe).
+			if (versionId) {
+				await client.query(
+					`INSERT INTO clear_cloud.app_versions
+					   (tenant_slug, app_slug, version_id, uploaded_at, source_hash, migrations_hash)
+					 VALUES ($1, $2, $3, now(), $4, $5)`,
+					[tenantSlug, appSlug, versionId, sourceHash ?? null, migrationsHash ?? null]
+				);
+			}
 			await client.query('COMMIT');
 			return { ok: true };
 		} catch (err) {
@@ -683,11 +776,308 @@ export class PostgresTenantStore {
 		}
 	}
 
-	async getAppRecord() { return this._notImpl('getAppRecord', 'SELECT * FROM cf_deploys WHERE tenant_slug = $1 AND app_slug = $2'); }
-	async recordVersion() { return this._notImpl('recordVersion', 'UPDATE cf_deploys SET versions = versions || $1::jsonb WHERE tenant_slug = $2 AND app_slug = $3'); }
-	async updateSecretKeys() { return this._notImpl('updateSecretKeys', 'UPDATE cf_deploys SET secret_keys = ... WHERE tenant_slug = $1 AND app_slug = $2'); }
-	async lookupAppBySubdomain() { return this._notImpl('lookupAppBySubdomain', "SELECT * FROM cf_deploys WHERE split_part(hostname, '.', 1) = lower($1)"); }
-	async loadKnownApps() { return this._notImpl('loadKnownApps', 'SELECT script_name, d1_database_id FROM cf_deploys'); }
+	// CC-1 cycle 5 — read the full per-app record. Mirrors
+	// InMemoryTenantStore.getAppRecord (line 129): returns the cf_deploys row
+	// merged with versions[] (newest-first by uploaded_at) and secretKeys[]
+	// (cycle 5 leaves this empty; cycle 6 wires the seed + dedupe append).
+	//
+	// SQL shape: three plain SELECTs assembled in JS, NOT a single mega-JOIN
+	// with json_agg. pg-mem ignores ORDER BY inside aggregate functions
+	// (json_agg / array_agg) — it returns insertion order regardless of the
+	// ORDER BY clause. Three SELECTs with plain top-level ORDER BY work
+	// identically in pg-mem and real Postgres, and the per-app row counts are
+	// tiny (max 20 versions, ~5-10 keys), so the extra round-trips are noise.
+	//
+	// Returns null when (tenant_slug, app_slug) doesn't exist in cf_deploys.
+	// Returned shape uses camelCase for fields the in-memory store camelCases
+	// (scriptName, deployedAt, secretKeys) and snake_case where it does
+	// (d1_database_id) — strict shape parity with the in-memory store.
+	async getAppRecord(tenantSlug, appSlug) {
+		const client = await this._pool.connect();
+		try {
+			const cf = await client.query(
+				`SELECT script_name, d1_database_id, hostname, last_bundle, deployed_at
+				 FROM clear_cloud.cf_deploys
+				 WHERE tenant_slug = $1 AND app_slug = $2`,
+				[tenantSlug, appSlug]
+			);
+			if (cf.rows.length === 0) return null;
+			const row = cf.rows[0];
+
+			const versions = await client.query(
+				`SELECT version_id, uploaded_at, source_hash, migrations_hash, note, via
+				 FROM clear_cloud.app_versions
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY uploaded_at DESC`,
+				[tenantSlug, appSlug]
+			);
+
+			const secrets = await client.query(
+				`SELECT key_name FROM clear_cloud.app_secret_keys
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY set_at`,
+				[tenantSlug, appSlug]
+			);
+
+			// Map snake_case columns to the camelCase fields the in-memory
+			// shape uses. note/via are conditionally included — the in-memory
+			// store uses spread-with-conditionals for these so they're absent
+			// (not null) when the caller didn't pass them.
+			const versionsCamel = versions.rows.map(v => {
+				const out = {
+					versionId: v.version_id,
+					uploadedAt: v.uploaded_at instanceof Date
+						? v.uploaded_at.toISOString()
+						: v.uploaded_at,
+					sourceHash: v.source_hash,
+					migrationsHash: v.migrations_hash,
+				};
+				if (v.note !== null && v.note !== undefined) out.note = v.note;
+				if (v.via !== null && v.via !== undefined) out.via = v.via;
+				return out;
+			});
+
+			return {
+				tenantSlug,
+				appSlug,
+				scriptName: row.script_name,
+				d1_database_id: row.d1_database_id,
+				hostname: row.hostname,
+				lastBundle: _bundleValue(row.last_bundle),
+				deployedAt: row.deployed_at instanceof Date
+					? row.deployed_at.toISOString()
+					: row.deployed_at,
+				versions: versionsCamel,
+				secretKeys: secrets.rows.map(r => r.key_name),
+			};
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 5 — append a new version row, then trim if over the cap.
+	// Mirrors InMemoryTenantStore.recordVersion (line 151): returns
+	// {ok:true} on success or {ok:false, code:'APP_NOT_FOUND'} when the
+	// (tenant_slug, app_slug) doesn't exist in cf_deploys. Both the existence
+	// check, the INSERT, and the cap trim run inside one transaction so the
+	// row never lives in an over-capped state and a concurrent reader never
+	// sees the un-trimmed window.
+	//
+	// Trim shape: DELETE every row whose id falls beyond the newest
+	// MAX_VERSIONS_PER_APP, ordered by uploaded_at ASC then OFFSET 20. The
+	// OFFSET-in-subquery pattern is portable to pg-mem AND real Postgres;
+	// window functions (ROW_NUMBER OVER) would be cleaner but pg-mem coverage
+	// of window functions is patchy and the OFFSET subquery is just as fast
+	// at our row counts (max 25 in-flight, almost always under 20).
+	async recordVersion({
+		tenantSlug, appSlug, versionId, uploadedAt, sourceHash, migrationsHash, note, via, lastBundle,
+	}) {
+		const client = await this._pool.connect();
+		try {
+			await client.query('BEGIN');
+			// APP_NOT_FOUND check — mirrors the in-memory store's
+			// `if (!cfDeploys.has(key)) return APP_NOT_FOUND`. SELECT 1 keeps
+			// the round trip cheap; the row itself isn't read.
+			const exists = await client.query(
+				`SELECT 1 FROM clear_cloud.cf_deploys
+				 WHERE tenant_slug = $1 AND app_slug = $2`,
+				[tenantSlug, appSlug]
+			);
+			if (exists.rowCount === 0) {
+				await client.query('ROLLBACK');
+				return { ok: false, code: 'APP_NOT_FOUND' };
+			}
+
+			await client.query(
+				`INSERT INTO clear_cloud.app_versions
+				   (tenant_slug, app_slug, version_id, uploaded_at, source_hash, migrations_hash, note, via)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				[
+					tenantSlug, appSlug, versionId,
+					uploadedAt || new Date().toISOString(),
+					sourceHash ?? null,
+					migrationsHash ?? null,
+					note ?? null,
+					via ?? null,
+				]
+			);
+
+			// Trim oldest beyond MAX_VERSIONS_PER_APP. ORDER BY uploaded_at
+			// DESC + OFFSET 20 selects everything PAST the newest 20 — i.e.
+			// the oldest rows that need deleting. (ASC + OFFSET 20 would
+			// select the NEWEST past 20, which is the inverse of what we
+			// want.) The MAX_VERSIONS_PER_APP interpolation is safe — it's a
+			// module constant (number literal in source), never user input.
+			await client.query(
+				`DELETE FROM clear_cloud.app_versions
+				 WHERE id IN (
+				   SELECT id FROM clear_cloud.app_versions
+				   WHERE tenant_slug = $1 AND app_slug = $2
+				   ORDER BY uploaded_at DESC
+				   OFFSET ${MAX_VERSIONS_PER_APP}
+				 )`,
+				[tenantSlug, appSlug]
+			);
+
+			if (lastBundle !== undefined) {
+				await client.query(
+					`UPDATE clear_cloud.cf_deploys
+					 SET last_bundle = $3::jsonb
+					 WHERE tenant_slug = $1 AND app_slug = $2`,
+					[tenantSlug, appSlug, _bundleParam(lastBundle)]
+				);
+			}
+
+			await client.query('COMMIT');
+			return { ok: true };
+		} catch (err) {
+			try { await client.query('ROLLBACK'); } catch { /* swallow secondary error */ }
+			throw err;
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 6 — dedupe-append secret-key NAMES (never values). Mirrors
+	// InMemoryTenantStore.updateSecretKeys. Confirms the app exists via the
+	// cf_deploys table, then runs one INSERT per key with ON CONFLICT DO
+	// NOTHING so re-setting the same key name is a silent no-op. Whole thing
+	// runs in one transaction so two concurrent calls can't half-write.
+	async updateSecretKeys({ tenantSlug, appSlug, newKeys }) {
+		const client = await this._pool.connect();
+		try {
+			const exists = await client.query(
+				`SELECT 1 FROM clear_cloud.cf_deploys WHERE tenant_slug = $1 AND app_slug = $2`,
+				[tenantSlug, appSlug]
+			);
+			if (exists.rowCount === 0) return { ok: false, code: 'APP_NOT_FOUND' };
+			if (!Array.isArray(newKeys) || newKeys.length === 0) return { ok: true };
+			await client.query('BEGIN');
+			try {
+				for (const k of newKeys) {
+					if (typeof k !== 'string' || !k) continue;
+					await client.query(
+						`INSERT INTO clear_cloud.app_secret_keys (tenant_slug, app_slug, key_name)
+						 VALUES ($1, $2, $3)
+						 ON CONFLICT (tenant_slug, app_slug, key_name) DO NOTHING`,
+						[tenantSlug, appSlug, k]
+					);
+				}
+				await client.query('COMMIT');
+			} catch (err) {
+				await client.query('ROLLBACK');
+				throw err;
+			}
+			return { ok: true };
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 7 — subdomain routing. Given the leading hostname label
+	// (e.g. `acme-deals` from `acme-deals.buildclear.dev`), return the full
+	// deployed-app row that owns it (with versions[] + secretKeys[]) or null.
+	// Uses the cf_deploys_subdomain_idx functional index for sub-millisecond
+	// lookup at low row counts.
+	async lookupAppBySubdomain(subdomain) {
+		if (!subdomain || typeof subdomain !== 'string') return null;
+		const target = subdomain.toLowerCase();
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT cd.tenant_slug, cd.app_slug, cd.script_name, cd.d1_database_id,
+				        cd.hostname, cd.last_bundle, cd.deployed_at
+				 FROM clear_cloud.cf_deploys cd
+				 WHERE lower(cd.hostname) LIKE $1
+				 LIMIT 1`,
+				[target + '.%']
+			);
+			if (r.rowCount === 0) return null;
+			const row = r.rows[0];
+			// Hydrate versions[] + secretKeys[] using the cycle 5 join shape
+			const versionsR = await client.query(
+				`SELECT version_id AS "versionId", uploaded_at AS "uploadedAt",
+				        source_hash AS "sourceHash", migrations_hash AS "migrationsHash",
+				        note, via
+				 FROM clear_cloud.app_versions
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY uploaded_at DESC`,
+				[row.tenant_slug, row.app_slug]
+			);
+			const secretsR = await client.query(
+				`SELECT key_name FROM clear_cloud.app_secret_keys
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY set_at`,
+				[row.tenant_slug, row.app_slug]
+			);
+			return {
+				tenantSlug: row.tenant_slug,
+				appSlug: row.app_slug,
+				scriptName: row.script_name,
+				d1_database_id: row.d1_database_id,
+				hostname: row.hostname,
+				lastBundle: _bundleValue(row.last_bundle),
+				deployedAt: row.deployed_at instanceof Date ? row.deployed_at.toISOString() : row.deployed_at,
+				versions: versionsR.rows,
+				secretKeys: secretsR.rows.map(r => r.key_name),
+			};
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 7 — reconcile job. Returns the two known-set views the
+	// reconcile job diffs against the live Cloudflare listing. Cross-tenant
+	// scan is by design here; this is the only method on the surface that
+	// queries every tenant's apps.
+	async loadKnownApps() {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT script_name, d1_database_id FROM clear_cloud.cf_deploys`
+			);
+			const scripts = new Set();
+			const databases = new Set();
+			for (const row of r.rows) {
+				if (row.script_name) scripts.add(row.script_name);
+				if (row.d1_database_id) databases.add(row.d1_database_id);
+			}
+			return { scripts, databases };
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-2 cycle 10 — Postgres mirror of InMemoryTenantStore.listAppsByTenant.
+	// Backs GET /api/apps. Joins cf_deploys with the latest app_versions row
+	// (uploaded_at DESC) so the dashboard can show the current version id
+	// per app. Empty array if the tenant has no deploys.
+	async listAppsByTenant(tenantSlug) {
+		if (!tenantSlug) return [];
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT cd.app_slug, cd.script_name, cd.hostname, cd.deployed_at,
+				        (SELECT av.version_id
+				         FROM clear_cloud.app_versions av
+				         WHERE av.tenant_slug = cd.tenant_slug AND av.app_slug = cd.app_slug
+				         ORDER BY av.uploaded_at DESC LIMIT 1) AS latest_version_id
+				 FROM clear_cloud.cf_deploys cd
+				 WHERE cd.tenant_slug = $1
+				 ORDER BY cd.deployed_at DESC`,
+				[tenantSlug]
+			);
+			return r.rows.map((row) => ({
+				appSlug: row.app_slug,
+				scriptName: row.script_name,
+				hostname: row.hostname,
+				deployedAt: row.deployed_at instanceof Date ? row.deployed_at.toISOString() : row.deployed_at,
+				latestVersionId: row.latest_version_id || null,
+			}));
+		} finally {
+			client.release();
+		}
+	}
 
 	// CC-1 cycle 3 — Stripe webhook deduplication. seenStripeEvent is the
 	// gate the billing handler runs BEFORE processing each webhook event;
@@ -725,17 +1115,271 @@ export class PostgresTenantStore {
 			client.release();
 		}
 	}
-	async getAuditLog() { return this._notImpl('getAuditLog', 'SELECT * FROM app_audit_log WHERE tenant_slug = $1 AND app_slug = $2 ORDER BY ts DESC'); }
-	async appendAuditEntry() { return this._notImpl('appendAuditEntry', 'INSERT INTO app_audit_log (tenant_slug, app_slug, ts, actor, action, verdict, source_hash_before, source_hash_after, note, kind, before_snippet, after_snippet, reason, ip, user_agent, status) VALUES ($1..$16) RETURNING audit_id'); }
+	// CC-1 cycle 8 — audit log read. Returns rows newest-first to match the
+	// in-memory shape. Maps DB columns to camelCase JS shape (auditId,
+	// sourceHashBefore, etc.) — the audit log is one of the few places we
+	// camelize on the way out, mirroring the in-memory store's existing
+	// shape that callers already depend on.
+	async getAuditLog(tenantSlug, appSlug) {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT id, tenant_slug, app_slug, ts, actor, action, verdict,
+				        source_hash_before, source_hash_after, note,
+				        kind, "before", "after", reason, ip, user_agent,
+				        status, version_id, error
+				 FROM clear_cloud.app_audit_log
+				 WHERE tenant_slug = $1 AND app_slug = $2
+				 ORDER BY ts DESC, id DESC`,
+				[tenantSlug, appSlug]
+			);
+			return r.rows.map(_mapAuditRow);
+		} finally {
+			client.release();
+		}
+	}
+
+	// CC-1 cycle 8 — audit log append. Mirrors InMemoryTenantStore.appendAuditEntry.
+	// Uses INSERT … SELECT … WHERE EXISTS so an unknown app returns
+	// APP_NOT_FOUND without leaking an FK error. Trims oldest rows past
+	// MAX_AUDIT_PER_APP=200 in the same transaction so the cap can't drift
+	// under concurrent appends. Returns the row's id (stringified) as auditId.
+	async appendAuditEntry({
+		tenantSlug, appSlug,
+		actor, action, verdict,
+		sourceHashBefore, sourceHashAfter, note,
+		kind, before, after, reason, ip, userAgent, status,
+	}) {
+		const client = await this._pool.connect();
+		try {
+			await client.query('BEGIN');
+			try {
+				const ins = await client.query(
+					`INSERT INTO clear_cloud.app_audit_log
+					   (tenant_slug, app_slug, actor, action, verdict,
+					    source_hash_before, source_hash_after, note,
+					    kind, "before", "after", reason, ip, user_agent, status)
+					 SELECT $1, $2, COALESCE($3, 'unknown'), COALESCE($4, 'unknown'), $5,
+					        $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, 'shipped')
+					 WHERE EXISTS (
+					   SELECT 1 FROM clear_cloud.cf_deploys
+					   WHERE tenant_slug = $1 AND app_slug = $2
+					 )
+					 RETURNING id`,
+					[
+						tenantSlug, appSlug,
+						actor || null, action || null, verdict || null,
+						sourceHashBefore || null, sourceHashAfter || null, note || null,
+						kind || null, before || null, after || null,
+						reason || null, ip || null, userAgent || null, status || null,
+					]
+				);
+				if (ins.rowCount === 0) {
+					await client.query('ROLLBACK');
+					return { ok: false, code: 'APP_NOT_FOUND' };
+				}
+				const auditId = String(ins.rows[0].id);
+				// Trim past cap. Oldest first by ts then id; never lose pending rows
+				// is not enforced here because trim is FIFO across all statuses —
+				// the cap is 20× realistic so a pending row mid-flight is safe.
+				await client.query(
+					`DELETE FROM clear_cloud.app_audit_log
+					 WHERE id IN (
+					   SELECT id FROM clear_cloud.app_audit_log
+					   WHERE tenant_slug = $1 AND app_slug = $2
+					   ORDER BY ts ASC, id ASC
+					   OFFSET $3
+					 )`,
+					[tenantSlug, appSlug, MAX_AUDIT_PER_APP]
+				);
+				await client.query('COMMIT');
+				return { ok: true, auditId };
+			} catch (err) {
+				await client.query('ROLLBACK');
+				throw err;
+			}
+		} finally {
+			client.release();
+		}
+	}
 	// LAE Phase C cycle 3 — destructive ship audit-row update. Postgres
 	// version will look up by audit_id (UUID PK) and update status/version_id/
 	// error in a single statement. The in-memory equivalent is in
 	// InMemoryTenantStore.markAuditEntry — same surface, same semantics.
-	async markAuditEntry() { return this._notImpl('markAuditEntry', 'UPDATE app_audit_log SET status = $2, version_id = $3, error = $4 WHERE audit_id = $1'); }
+	// CC-1 cycle 8 — flip a pending audit row to shipped/ship-failed and
+	// optionally record the versionId or error. COALESCE keeps unchanged
+	// fields untouched. Returns AUDIT_NOT_FOUND when the id doesn't exist.
+	async markAuditEntry({ auditId, status, versionId, error }) {
+		const idNum = Number(auditId);
+		if (!Number.isFinite(idNum)) return { ok: false, code: 'AUDIT_NOT_FOUND' };
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`UPDATE clear_cloud.app_audit_log
+				 SET status = COALESCE($2, status),
+				     version_id = COALESCE($3, version_id),
+				     error = COALESCE($4, error)
+				 WHERE id = $1
+				 RETURNING id`,
+				[idNum, status || null, versionId || null, error || null]
+			);
+			if (r.rowCount === 0) return { ok: false, code: 'AUDIT_NOT_FOUND' };
+			return { ok: true };
+		} finally {
+			client.release();
+		}
+	}
 }
 
 export function newTenantSlug() {
 	return `clear-${randomBytes(3).toString('hex')}`;
+}
+
+/**
+ * CC-1 cycle 9 — DualWriteTenantStore. Wraps two stores (primary + mirror).
+ * Every write goes to BOTH. Reads come from primary first; if primary returns
+ * null/empty AND mirror has data, mirror's data is returned (read-through
+ * fallback). Mirror failures are logged via console.error but never raise
+ * to the caller — the primary's result is what callers see.
+ *
+ * Used during the in-memory → Postgres cutover. Once Postgres is fully
+ * populated and stable for 24h+, drop this wrapper entirely.
+ */
+export class DualWriteTenantStore {
+	constructor({ primary, mirror }) {
+		if (!primary) throw new Error('DualWriteTenantStore: primary is required');
+		if (!mirror) throw new Error('DualWriteTenantStore: mirror is required');
+		this._primary = primary;
+		this._mirror = mirror;
+	}
+
+	async _mirrorCall(method, args) {
+		try {
+			return await this._mirror[method](...args);
+		} catch (err) {
+			console.error(`[DualWriteTenantStore] mirror.${method} failed (non-fatal):`, err.message || err);
+			return undefined;
+		}
+	}
+
+	// Mutating methods — primary first (must succeed), then mirror best-effort.
+	async create(input) {
+		const result = await this._primary.create(input);
+		await this._mirrorCall('create', [input]);
+		return result;
+	}
+	async upsert(slug, patch) {
+		const result = await this._primary.upsert(slug, patch);
+		await this._mirrorCall('upsert', [slug, patch]);
+		return result;
+	}
+	async incrementAppsDeployed(slug) {
+		const result = await this._primary.incrementAppsDeployed(slug);
+		await this._mirrorCall('incrementAppsDeployed', [slug]);
+		return result;
+	}
+	async setPlan(slug, plan, graceExpiresAt) {
+		const result = await this._primary.setPlan(slug, plan, graceExpiresAt);
+		await this._mirrorCall('setPlan', [slug, plan, graceExpiresAt]);
+		return result;
+	}
+	async recordApp(slug, appSlug, appName) {
+		const result = await this._primary.recordApp(slug, appSlug, appName);
+		await this._mirrorCall('recordApp', [slug, appSlug, appName]);
+		return result;
+	}
+	async markAppDeployed(input) {
+		const result = await this._primary.markAppDeployed(input);
+		await this._mirrorCall('markAppDeployed', [input]);
+		return result;
+	}
+	async recordVersion(input) {
+		const result = await this._primary.recordVersion(input);
+		await this._mirrorCall('recordVersion', [input]);
+		return result;
+	}
+	async updateSecretKeys(input) {
+		const result = await this._primary.updateSecretKeys(input);
+		await this._mirrorCall('updateSecretKeys', [input]);
+		return result;
+	}
+	async recordStripeEvent(eventId) {
+		const result = await this._primary.recordStripeEvent(eventId);
+		await this._mirrorCall('recordStripeEvent', [eventId]);
+		return result;
+	}
+	async appendAuditEntry(input) {
+		const result = await this._primary.appendAuditEntry(input);
+		await this._mirrorCall('appendAuditEntry', [input]);
+		return result;
+	}
+	async markAuditEntry(input) {
+		const result = await this._primary.markAuditEntry(input);
+		await this._mirrorCall('markAuditEntry', [input]);
+		return result;
+	}
+
+	// Read methods — primary first; fall back to mirror if primary returns
+	// null/empty and mirror has data. This makes the read path tolerant of
+	// the cutover gap where Postgres is still being populated.
+	async get(slug) {
+		const r = await this._primary.get(slug);
+		if (r) return r;
+		return await this._mirrorCall('get', [slug]) || null;
+	}
+	async getByStripeCustomer(id) {
+		const r = await this._primary.getByStripeCustomer(id);
+		if (r) return r;
+		return await this._mirrorCall('getByStripeCustomer', [id]) || null;
+	}
+	async appNameFor(slug, appSlug) {
+		const r = await this._primary.appNameFor(slug, appSlug);
+		if (r) return r;
+		return await this._mirrorCall('appNameFor', [slug, appSlug]) || null;
+	}
+	async getAppRecord(tenantSlug, appSlug) {
+		const r = await this._primary.getAppRecord(tenantSlug, appSlug);
+		if (r) return r;
+		return await this._mirrorCall('getAppRecord', [tenantSlug, appSlug]) || null;
+	}
+	async lookupAppBySubdomain(subdomain) {
+		const r = await this._primary.lookupAppBySubdomain(subdomain);
+		if (r) return r;
+		return await this._mirrorCall('lookupAppBySubdomain', [subdomain]) || null;
+	}
+	async loadKnownApps() {
+		// Union of both — reconcile job needs the full picture during cutover.
+		const p = await this._primary.loadKnownApps();
+		const m = (await this._mirrorCall('loadKnownApps', [])) || { scripts: new Set(), databases: new Set() };
+		const scripts = new Set([...(p?.scripts || []), ...(m.scripts || [])]);
+		const databases = new Set([...(p?.databases || []), ...(m.databases || [])]);
+		return { scripts, databases };
+	}
+
+	// CC-2 cycle 10 — primary's view of the tenant's apps wins. During cutover
+	// the mirror is the older in-memory store; if primary returns rows we
+	// trust those (fresher Postgres state). Mirror falls through only on
+	// primary-empty so a recently-cut-over tenant still sees their apps.
+	async listAppsByTenant(tenantSlug) {
+		const p = await this._primary.listAppsByTenant(tenantSlug);
+		if (Array.isArray(p) && p.length > 0) return p;
+		const m = await this._mirrorCall('listAppsByTenant', [tenantSlug]);
+		return Array.isArray(m) ? m : (Array.isArray(p) ? p : []);
+	}
+	async seenStripeEvent(eventId) {
+		// True if EITHER store has seen it — safer for idempotency.
+		const p = await this._primary.seenStripeEvent(eventId);
+		if (p) return true;
+		return Boolean(await this._mirrorCall('seenStripeEvent', [eventId]));
+	}
+	async getAuditLog(tenantSlug, appSlug) {
+		// Primary's log wins — audit is append-only and primary is the source
+		// of truth post-cutover. Empty primary falls through to mirror.
+		const p = await this._primary.getAuditLog(tenantSlug, appSlug);
+		if (Array.isArray(p) && p.length > 0) return p;
+		const m = await this._mirrorCall('getAuditLog', [tenantSlug, appSlug]);
+		return Array.isArray(m) ? m : (Array.isArray(p) ? p : []);
+	}
 }
 
 export function overQuota(tenant) {

@@ -41,6 +41,7 @@
 //   │    ├─ validateCallTargets ...... undefined agents etc  │
 //   │    ├─ validateMemberAccessTypes  field on primitive    │
 //   │    ├─ validateTypedCallArgs .... literal vs annotation │
+//   │    ├─ validateInteractionVerbAgreement inline buttons  │
 //   │    └─ validateInferredTypes ... (error) text in arith  │
 //   │                                                       │
 //   │  Errors block compilation. Warnings are advisory.     │
@@ -55,6 +56,10 @@
 //   2. Add call to validate() function (line ~48)
 //   3. Update this diagram
 //   4. Add test to clear.test.js
+//   5. If the pass protects generated app readability, update AI-INSTRUCTIONS.md
+//
+// Current error pass addendum: validateToastPayload rejects toast / alert /
+// notification nodes that do not include message data.
 //
 // DEPENDENCIES: parser.js (NodeType enum)
 // DEPENDENTS:   index.js (called in compileProgram pipeline)
@@ -62,6 +67,7 @@
 // =============================================================================
 
 import { NodeType } from './parser.js';
+import { checkInlineInteractionVerbAgreement } from './lib/verb-agreement.js';
 
 // Built-in names that don't need to be declared
 const BUILTINS = new Set([
@@ -80,6 +86,10 @@ const BUILTINS = new Set([
   // to the same `_current_user` canonical token). `user` is legacy shorthand
   // that still resolves to req.user UNLESS a local `user` binding shadows it.
   '_current_user', 'user', 'caller',
+  // AI pseudo-actor — `claude's reply` reads the result of the most-recent
+  // `give claude X with prompt: 'Y'` statement (compiled to `claude_reply`).
+  // Same shape as `caller's id` reading req.user.id. Plan 2026-04-26.
+  'claude',
 ]);
 
 /**
@@ -97,6 +107,7 @@ export function validate(ast) {
   validateFieldNames(ast.body, warnings);
   validateEndpointURLs(ast.body, errors, warnings);
   validateSecurity(ast.body, errors, warnings);
+  validateToastPayload(ast.body, errors);
   validateDuplicateEndpoints(ast.body, warnings);
   validateDisplayActions(ast.body, warnings);
   validateEndpointResponses(ast.body, warnings);
@@ -119,7 +130,260 @@ export function validate(ast) {
   validateReservedEndpointPrefixes(ast.body, errors);
   validateTermination(ast.body, warnings);
   validateDeprecatedKeywords(ast.body, warnings);
+  validateInteractionVerbAgreement(ast.body, warnings);
+  validateEmailTriggers(ast.body, warnings);
+  validateRouteBlocks(ast.body, warnings);
   return { errors, warnings };
+}
+
+function validateToastPayload(body, errors) {
+  walkAll(body, (node) => {
+    if (!node || node.type !== NodeType.TOAST) return;
+    if (typeof node.message === 'string' && node.message.trim().length > 0) return;
+    errors.push({
+      line: node.line || 0,
+      message: "Toast needs a message. Use: show toast 'Saved' or show alert 'Something went wrong'.",
+    });
+  });
+}
+
+function validateInteractionVerbAgreement(body, warnings) {
+  walkAll(body, (node) => {
+    if (!node || node.type !== NodeType.BUTTON || node.inlineAction?.connector !== 'that') return;
+    const issue = checkInlineInteractionVerbAgreement(node.inlineAction.text, 'button');
+    if (!issue) return;
+    warnings.push({
+      line: node.inlineAction.line || node.line || 0,
+      severity: 'style',
+      code: 'interaction_verb_agreement',
+      message: issue.message,
+    });
+  });
+}
+
+// Phase 5.1 — every `email <role> when <entity>'s status changes to <value>:`
+// trigger needs at least one URL handler in the same app that actually sets
+// the entity's status to that value. Otherwise the trigger sits dead in the
+// compiled output: workflow_email_queue table emits but no row ever lands.
+// Two reachability paths:
+//   (a) queue actions whose terminal status matches the trigger value, or
+//   (b) user-written endpoint bodies containing `<entity>'s status is <value>`
+//       (parser shape: assign{name='entity.status', expression=literal_string}).
+// Either path is enough — apps that don't use the queue primitive still trigger
+// emails when their hand-written handler assigns the trigger value.
+function validateEmailTriggers(body, warnings) {
+  const reachable = new Map(); // entity (lowercase) -> Set<status value>
+  const addReachable = (entity, value) => {
+    const key = String(entity || '').toLowerCase();
+    if (!key) return;
+    if (!reachable.has(key)) reachable.set(key, new Set());
+    reachable.get(key).add(value);
+  };
+  // Path (a): queue actions
+  for (const node of body) {
+    if (!node || node.type !== 'queue_def') continue;
+    const entity = String(node.entityName || '').toLowerCase();
+    for (const action of (node.actions || [])) {
+      const first = String(action).split(/\s+/)[0].toLowerCase();
+      let terminal;
+      if (first === 'approve') terminal = 'approved';
+      else if (first === 'reject') terminal = 'rejected';
+      else if (first === 'counter') terminal = 'awaiting';
+      else if (first === 'awaiting') terminal = 'awaiting';
+      // F4 — `waiting on customer` is the canonical action; same terminal
+      // status as legacy `awaiting customer`.
+      else if (first === 'waiting') terminal = 'awaiting';
+      else terminal = first;
+      addReachable(entity, terminal);
+    }
+  }
+  // Path (b): user-written endpoint bodies. Walk every endpoint / update_endpoint
+  // recursively to find `<varName>.status = <literal>` assignments. Treat
+  // `<varName>` as the entity name — same convention the parser uses for
+  // possessive assignments to a receiving variable.
+  const collectStatusAssigns = (stmts) => {
+    if (!Array.isArray(stmts)) return;
+    for (const stmt of stmts) {
+      if (!stmt || typeof stmt !== 'object') continue;
+      if (
+        stmt.type === 'assign' &&
+        typeof stmt.name === 'string' &&
+        stmt.name.includes('.') &&
+        stmt.name.toLowerCase().endsWith('.status') &&
+        stmt.expression &&
+        stmt.expression.type === 'literal_string'
+      ) {
+        const dotIdx = stmt.name.lastIndexOf('.');
+        const entityVar = stmt.name.slice(0, dotIdx);
+        addReachable(entityVar, stmt.expression.value);
+      }
+      if (Array.isArray(stmt.body)) collectStatusAssigns(stmt.body);
+    }
+  };
+  for (const node of body) {
+    if (!node) continue;
+    if (node.type === 'endpoint' || node.type === 'update_endpoint') {
+      collectStatusAssigns(node.body);
+    }
+  }
+  // Phase 4.3 — recipient field reachability. Each email_trigger picks its
+  // recipient by the `<role>_email` convention (e.g. `email customer ...`
+  // resolves to the entity's `customer_email` field at runtime). Build a
+  // map of {entity (lowercase, singular) -> Set<field name>} from the table
+  // declarations so we can warn when the trigger references a field the
+  // table never declares. The compiled queue insert still emits — it just
+  // lands with empty recipient_email so the failure is observable in the
+  // queue, not silent at send time.
+  const tableFields = new Map();
+  for (const node of body) {
+    if (!node || node.type !== 'data_shape') continue;
+    const tableName = String(node.name || '').toLowerCase();
+    if (!tableName) continue;
+    const fieldSet = new Set();
+    for (const field of (node.fields || [])) {
+      if (field && field.name) fieldSet.add(String(field.name).toLowerCase());
+    }
+    // Map both `Deals` (table name as written) and `deal` (the singular
+    // entity name used in `email customer when deal's ...`). The convention
+    // strips a trailing s; tables already singular ('Foo') stay as-is.
+    tableFields.set(tableName, fieldSet);
+    if (tableName.endsWith('s')) tableFields.set(tableName.slice(0, -1), fieldSet);
+  }
+  for (const node of body) {
+    if (!node || node.type !== 'email_trigger') continue;
+    const entity = String(node.entityName || '').toLowerCase();
+    const value = node.triggerValue;
+    const set = reachable.get(entity);
+    if (!set || !set.has(value)) {
+      warnings.push({
+        line: node.line,
+        message:
+          `email trigger for ${entity}'s status changing to '${value}' never fires — ` +
+          `no URL handler in this app sets ${entity}.status to '${value}'. ` +
+          `Add a queue action whose terminal status is '${value}' (e.g. 'counter' for awaiting), ` +
+          `or a user-written endpoint that assigns '${value}' to ${entity}.status.`
+      });
+    }
+    const role = String(node.recipientRole || '').toLowerCase();
+    if (role) {
+      const expectedField = `${role}_email`;
+      const fields = tableFields.get(entity);
+      // Find the table's display name (e.g. `Deals`) for a friendlier message.
+      let tableDisplay = '';
+      for (const n of body) {
+        if (!n || n.type !== 'data_shape') continue;
+        const lower = String(n.name || '').toLowerCase();
+        if (lower === entity || (lower.endsWith('s') && lower.slice(0, -1) === entity)) {
+          tableDisplay = n.name;
+          break;
+        }
+      }
+      if (fields && !fields.has(expectedField)) {
+        warnings.push({
+          line: node.line,
+          message:
+            `email trigger sends to '${role}' but the ${tableDisplay || entity} table has no '${expectedField}' field. ` +
+            `Queue rows will land with an empty recipient_email — add '${expectedField}' to the ${tableDisplay || entity} table ` +
+            `so the email worker has somewhere to send.`
+        });
+      }
+    }
+    // Phase 5.2 — body/subject interpolation refs. Any `{ident}` in body or
+    // subject is a likely typo: author meant the entity field, but the email
+    // worker doesn't interpolate templates yet. Warn at compile time so the
+    // typo doesn't ship as literal `{customer}` text in the customer's inbox.
+    // When the ref matches a real entity field, the warning still fires (as a
+    // heads-up that interpolation isn't supported) but is phrased differently.
+    const fields = tableFields.get(entity) || new Set();
+    const interpRefs = (text) => {
+      const out = [];
+      if (typeof text !== 'string') return out;
+      // Match {ident} / {ident_with_underscores} — single braces only. Skip
+      // any opening that's part of `${...}` (already-interpolated JS in
+      // case the body was hand-rolled).
+      const re = /(?<!\$)\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+      let m;
+      while ((m = re.exec(text)) !== null) out.push(m[1]);
+      return out;
+    };
+    const refs = [...interpRefs(node.body || ''), ...interpRefs(node.subject || '')];
+    for (const ref of refs) {
+      if (!fields.has(ref.toLowerCase())) {
+        warnings.push({
+          line: node.line,
+          message:
+            `email body / subject references '{${ref}}' but no field by that name exists on ${entity}. ` +
+            `The email worker doesn't interpolate templates — the customer will see literal '{${ref}}' text. ` +
+            `Spell out the value in plain prose, or fix the field name.`
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Routing primitive (2026-04-29). Three warnings on `route X by FIELD:` blocks:
+ *   - ROUTE_FIELD_NOT_ON_ENTITY: field isn't declared on the entity's table
+ *   - ROUTE_NO_DEFAULT: block has no default rule (unmatched values silently
+ *     leave assigned_to unset)
+ *   - ROUTE_UNREACHABLE_RULE: a fixed rule appears after the default (the
+ *     default catches everything; the rule never fires)
+ * Walks the AST recursively because route_def nodes live inside endpoint bodies.
+ */
+function validateRouteBlocks(body, warnings) {
+  // Build entity → field set map from data_shape declarations. Match the
+  // pattern used by validateEmailTriggers: store under both the table name
+  // and the singularized form so `route lead by size:` resolves to a `Leads`
+  // table.
+  const tableFields = new Map();
+  for (const node of body) {
+    if (!node || node.type !== 'data_shape') continue;
+    const tableName = String(node.name || '').toLowerCase();
+    if (!tableName) continue;
+    const fieldSet = new Set();
+    for (const field of (node.fields || [])) {
+      if (field && field.name) fieldSet.add(String(field.name).toLowerCase());
+    }
+    tableFields.set(tableName, fieldSet);
+    if (tableName.endsWith('s')) tableFields.set(tableName.slice(0, -1), fieldSet);
+  }
+
+  walkAll(body, (node) => {
+    if (!node || node.type !== 'route_def') return;
+    const rules = Array.isArray(node.rules) ? node.rules : [];
+
+    // ROUTE_FIELD_NOT_ON_ENTITY — field isn't on the entity's table
+    const entity = String(node.entityName || '').toLowerCase();
+    const fields = tableFields.get(entity);
+    if (fields && node.field && !fields.has(String(node.field).toLowerCase())) {
+      const fieldList = [...fields].slice(0, 6).join(', ');
+      warnings.push({
+        line: node.line,
+        message: `Route field '${node.field}' isn't on the ${entity} table. Add it to the table or use one of: ${fieldList}.`,
+      });
+    }
+
+    // ROUTE_NO_DEFAULT — block has no default rule
+    const defaultIdx = rules.findIndex(r => r && r.type === 'default');
+    if (defaultIdx === -1) {
+      warnings.push({
+        line: node.line,
+        message: `Route block has no default. If ${entity || node.entityName}'s ${node.field} doesn't match any rule, no owner gets assigned. Add \`default round-robin across [...]\` or \`default to <owner>\`.`,
+      });
+    }
+
+    // ROUTE_UNREACHABLE_RULE — fixed rule appears after the default
+    if (defaultIdx !== -1) {
+      for (let i = defaultIdx + 1; i < rules.length; i++) {
+        const r = rules[i];
+        if (!r || r.type !== 'fixed') continue;
+        warnings.push({
+          line: node.line,
+          message: `Rule '${r.match}' to ${r.owner} appears after default. The default catches everything; this rule never fires.`,
+        });
+      }
+    }
+  });
 }
 
 /**
@@ -433,6 +697,11 @@ function validateForwardReferences(body, errors) {
     // newScope=true creates an isolated scope (functions, endpoints)
     // newScope=false (default) shares the parent's mutable set
     const localDefined = newScope ? new Set(scopeVars || defined) : (scopeVars || defined);
+    // Track entities that have been saved-as-new within this scope. Reset
+    // per scope boundary. Used by ROUTE_DEF to catch the "route block runs
+    // after save" silent bug — assignment lands on the in-memory variable
+    // but never reaches the database.
+    const savedInThisScope = new Set();
 
     for (const node of nodes) {
       switch (node.type) {
@@ -513,6 +782,28 @@ function validateForwardReferences(body, errors) {
           checkNode(node.body, epScope, true);
           break;
         }
+        case NodeType.ROUTE_DEF: {
+          // Routing primitive (2026-04-29). The block reads from
+          // <entityName>.<field> and writes to <entityName>.assigned_to.
+          // Hard error if the entity isn't in scope — otherwise the compiled
+          // JS hits ReferenceError at request time.
+          if (node.entityName && !localDefined.has(node.entityName)) {
+            errors.push({
+              line: node.line,
+              message: `Route block references '${node.entityName}' but no variable named '${node.entityName}' is in scope here. Did you mean to put this inside \`when user sends ${node.entityName} to /api/${node.entityName}s:\`?`,
+            });
+          }
+          // Hard error if the entity has already been saved-as-new in this
+          // scope. The route block mutates the in-memory variable, but if the
+          // save already happened the assignment never persists — silent bug.
+          if (node.entityName && savedInThisScope.has(node.entityName)) {
+            errors.push({
+              line: node.line,
+              message: `Route block runs after \`save ${node.entityName} as new ...\` — the assignment never reaches the database. Move the route block ABOVE the save line.`,
+            });
+          }
+          break;
+        }
         case NodeType.TEST_DEF:
           checkNode(node.body, new Set(localDefined), true);
           break;
@@ -536,6 +827,11 @@ function validateForwardReferences(body, errors) {
             // save with resultVar defines the result
             if (node.resultVar) localDefined.add(node.resultVar);
             if (node.condition) checkExpr(node.condition, localDefined, node.line);
+            // Track saved-as-new entities so a later ROUTE_DEF can warn that
+            // its assignment never reaches the database.
+            if (node.variable && node.isInsert) {
+              savedInThisScope.add(node.variable);
+            }
           } else if (node.operation === 'remove') {
             // where conditions reference column names -- don't validate as variables
           }
@@ -999,6 +1295,22 @@ function validateFieldNames(body, warnings) {
             // (skip auto fields like created_at, id)
             const validatedFields = new Set(validate.rules.map(r => r.name));
             const autoFields = new Set();
+            // Codex chunk #1: also accept fields the user already assigned
+            // before the save (e.g. `record.status is 'pending'` followed by
+            // `save record to Things`). Without this, every assigned field
+            // looked like a missing-validate warning.
+            const assignedFields = new Set();
+            const savedVariable = crud.variable;
+            if (savedVariable) {
+              const prefix = `${savedVariable}.`;
+              for (const step of node.body) {
+                if (step === crud) break;
+                if (step.type === NodeType.ASSIGN && typeof step.name === 'string' && step.name.startsWith(prefix)) {
+                  const fieldName = step.name.slice(prefix.length).split('.')[0];
+                  if (fieldName) assignedFields.add(fieldName);
+                }
+              }
+            }
             // Collect auto and default fields from the actual data shape
             function findShape(nodes) {
               for (const n of nodes) {
@@ -1013,7 +1325,7 @@ function validateFieldNames(body, warnings) {
             findShape(body);
 
             for (const field of schema) {
-              if (!validatedFields.has(field) && !autoFields.has(field) && !['id'].includes(field)) {
+              if (!validatedFields.has(field) && !assignedFields.has(field) && !autoFields.has(field) && !['id'].includes(field)) {
                 // Check if the field is required in the schema
                 // We need to check the actual DATA_SHAPE node
                 let isRequired = false;
@@ -2268,7 +2580,11 @@ function validateExprComplexity(body, warnings) {
     for (const node of nodes) {
       const line = node.line;
       if (node.expression) checkExpr(node.expression, line);
-      if (node.condition) checkExpr(node.condition, line);
+      // Codex chunk #1: skip the condition-complexity check on DB lookups —
+      // filter expressions like `where status is 'pending' and demo_key is X`
+      // tripped the noise threshold even though they're declarative not logic.
+      const isDatabaseLookup = node.type === NodeType.CRUD && node.operation === 'lookup';
+      if (node.condition && !isDatabaseLookup) checkExpr(node.condition, line);
       if (Array.isArray(node.body)) walk(node.body);
       if (Array.isArray(node.thenBranch)) walk(node.thenBranch);
       if (Array.isArray(node.otherwiseBranch)) walk(node.otherwiseBranch);

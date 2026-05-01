@@ -129,3 +129,19 @@ internal-request-queue, support-triage) so sweeps produce realistic training dat
 - [ ] Friction ranker post-intervention
 - [ ] Results → `plans/plan-decidable-core-results.md`
 - [ ] Go/no-go for Path B
+
+## Phase B-1 — `live:` keyword foundation (2026-04-25, overnight worker)
+- [x] `LIVE_BLOCK` node type registered in `parser.js`
+- [x] `live` synonym entry in `synonyms.js`; `SYNONYM_VERSION` bumped to 0.33.0
+- [x] `parseLiveBlock` mirrors `parseTryHandle` shape; empty block = parse error with fix-it hint
+- [x] Dispatch wired in `CANONICAL_DISPATCH` so `live:` parses at any block position
+- [x] Compiler emits body inline with `// live: block — explicit effect fence` comment marker (JS + Python)
+- [x] Validator treats `LIVE_BLOCK` as a fence (not a scope) — variables defined inside are visible outside
+- [x] 11 tests in `clear.test.js` under `describe('decidable core — live: block (Path B Phase 1)')`. All green.
+- [x] Test count: 2586 → 2597 (+11, no regressions)
+- [x] All 8 core templates compile clean (0 errors) — same warning count as baseline
+- [x] Doc cascade: intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, FEATURES.md, CHANGELOG.md, playground/system-prompt.md
+- [x] `playground/clear-compiler.min.js` rebuilt (44ms, 676KB)
+- [ ] **Phase B-2 (next chunk):** validator rule that REJECTS effect-shaped calls (`ask claude`, `call API`, `subscribe to`, `every N seconds`) outside `live:` blocks. Today permissive; this is the chunk that delivers the totality guarantee.
+
+**Branch:** `worktree-agent-adda3f14a9c26700c` (overnight worker, off `feature/overnight-04-25-2026`).

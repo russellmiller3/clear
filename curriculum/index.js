@@ -30,6 +30,9 @@ const taskFiles = [
   'L7-validated-forms.json',
   // Marcus app shapes — business ops, the real target market
   'L7-approval-queue.json',
+  'L7-dashboard-with-nav.json',
+  'L7-multi-tab-queue.json',
+  'L7-deal-detail-panel.json',
   'L7-lead-router.json',
   'L8-internal-request-queue.json',
   'L8-onboarding-tracker.json',
@@ -45,6 +48,7 @@ const taskFiles = [
   'L5-realtime-broadcast.json',
   'L6-booking-calendar.json',
   'L7-kpi-sales.json',
+  'L7-kpi-dashboard.json',
   'L8-routing-engine.json',
   'L8-etl-api-ingest.json',
   // Session-41 round 2: remaining archetype gaps. Takes coverage from 12/16
@@ -76,4 +80,22 @@ export function getLevel(level) {
 
 export function listTasks() {
   return tasks.map(t => ({ id: t.id, level: t.level, title: t.title, tests: t.tests.length }));
+}
+
+// Held-out test set support — Phase 5 of plans/plan-winner-harvest-04-26-2026.md.
+// Held-out tasks are still graded by sweeps (so we can measure pass-rate lift)
+// but are EXCLUDED from anything that feeds the hint retriever or the future
+// canonical-examples library. That keeps the A/B measurement honest — without
+// the held-out split, "did intervention X improve Meph?" collapses into "did
+// Meph memorize the curriculum?"
+export function isHeldOut(task) {
+  return !!(task && task.held_out === true);
+}
+
+export function trainingTasks() {
+  return tasks.filter(t => !isHeldOut(t));
+}
+
+export function heldOutTasks() {
+  return tasks.filter(t => isHeldOut(t));
 }

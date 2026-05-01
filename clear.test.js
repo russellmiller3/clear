@@ -5,11 +5,17 @@
 // =============================================================================
 
 import { describe, it, expect, run } from './lib/testUtils.js';
+import { mkdtempSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname as pathDirname, join as pathJoin } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tokenizeLine, TokenType } from './tokenizer.js';
 import { parse, NodeType } from './parser.js';
 import { compile, compileNode, exprToCode, UTILITY_FUNCTIONS } from './compiler.js';
 import { validate } from './validator.js';
 import { compileProgram, SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './index.js';
+
+const REPO_ROOT = pathDirname(fileURLToPath(import.meta.url));
 
 // =============================================================================
 // SYNONYM TABLE
@@ -371,6 +377,52 @@ describe('Parser - Error Reporting', () => {
   });
 });
 
+describe('Compile Trace', () => {
+  it('creates a pasteable trace when compilation fails', () => {
+    const source = [
+      'target: foobar',
+      'show 42',
+    ].join('\n');
+    const result = compileProgram(source, { target: 'web' });
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.compileTrace).toBeDefined();
+    expect(result.compileTrace.ok).toBe(false);
+    expect(result.compileTrace.errorCount).toBe(result.errors.length);
+    expect(result.compileTrace.errors[0].line).toBe(1);
+    expect(result.compileTrace.errors[0].sourceLine).toBe('target: foobar');
+    expect(result.compileTrace.errors[0].context.map(l => l.text)).toContain('target: foobar');
+    expect(result.compileTrace.pasteText).toContain('CLEAR COMPILE TRACE v1');
+    expect(result.compileTrace.pasteText).toContain('target: foobar');
+    expect(result.compileTrace.pasteText).toContain('Please fix this Clear compilation failure');
+    expect(result.compileTrace.pasteText).toContain('Repair instructions:');
+    expect(result.compileTrace.pasteText).toContain('If the Clear source is wrong, return corrected Clear source.');
+    expect(result.compileTrace.pasteText).toContain('If the compiler/parser/validator is wrong, fix that layer and add a regression test.');
+    expect(result.compileTrace.pasteText).toContain('Full Clear source:');
+  });
+
+  it('does not create a trace for a clean compile', () => {
+    const result = compileProgram('show 42');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.compileTrace).toBeNull();
+  });
+
+  it('keeps the packet bounded for very large broken programs', () => {
+    const source = [
+      'target: foobar',
+      ...Array.from({ length: 350 }, (_, index) => `line_${index} = ${index}`),
+    ].join('\n');
+    const result = compileProgram(source, { target: 'web', sourceName: 'large.clear' });
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.compileTrace.fullSourceIncluded).toBe(false);
+    expect(result.compileTrace.pasteText).toContain('Full source omitted');
+    expect(result.compileTrace.pasteText).toContain('target: foobar');
+    expect(result.compileTrace.pasteText.length).toBeLessThan(12000);
+  });
+});
+
 // =============================================================================
 // PARSER - MULTI-LINE PROGRAMS
 // =============================================================================
@@ -442,6 +494,12 @@ describe('Compiler - JavaScript', () => {
   it('compiles comments as JS comments', () => {
     const result = compileProgram('# hello', { target: 'web' });
     expect(result.javascript).toContain('// hello');
+  });
+
+  it('emits blank comment lines without trailing spaces', () => {
+    const result = compileProgram('/*\nhello\n\nworld\n*/', { target: 'web' });
+    expect(result.javascript).toContain('//\n// world');
+    expect(result.javascript).not.toContain('// \n');
   });
 
   it('compiles a list literal', () => {
@@ -1477,17 +1535,20 @@ describe('theme directive', () => {
 // =============================================================================
 
 describe('app layout presets', () => {
-  it('app_layout preset produces h-screen flex container', () => {
+  it('app_layout preset produces a full-screen flex container', () => {
+    // Phase 1 shell upgrade: outer shell is flex.min-h-screen so the page
+    // owns the scroll, not the layout. (Was h-screen overflow-hidden.)
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
     text 'Hello'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex h-screen overflow-hidden');
+    expect(result.html).toContain('flex min-h-screen');
   });
 
-  it('app_sidebar preset produces menu with fixed width', () => {
+  it('app_sidebar preset produces a 240px <aside> rail', () => {
+    // Phase 1 shell upgrade: 240px rail, hairline-r, scroll-y.
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1495,10 +1556,11 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-64 shrink-0');
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bhairline-r\b/);
   });
 
-  it('app_main preset produces flex column', () => {
+  it('app_main preset produces a flex column <main>', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1506,10 +1568,10 @@ page 'App' at '/':
       text 'Content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex-1 flex flex-col overflow-hidden min-w-0');
+    expect(result.html).toMatch(/<main\b[^>]*class="[^"]*\bflex-1\b[^"]*\bmin-w-0\b/);
   });
 
-  it('app_header preset produces sticky navbar', () => {
+  it('app_header preset produces a 56px sticky <header>', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -1518,7 +1580,8 @@ page 'App' at '/':
         heading 'Dashboard'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('sticky top-0 z-20');
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bsticky\b[^"]*\btop-0\b/);
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
   });
 
   it('app_content preset produces scrollable area', () => {
@@ -1549,9 +1612,9 @@ page 'App' at '/':
   section 'Nav' with style app_sidebar:
     text 'Menu'`;
     const result = compileProgram(source);
-    // app_sidebar should NOT have max-w-5xl wrapper
-    const sidebarIdx = result.html.indexOf('w-64 shrink-0');
-    const nearbyHtml = result.html.slice(sidebarIdx - 100, sidebarIdx + 200);
+    // app_sidebar should NOT have a max-w-5xl content wrapper inside it
+    const sidebarIdx = result.html.indexOf('<aside');
+    const nearbyHtml = result.html.slice(sidebarIdx, sidebarIdx + 400);
     expect(nearbyHtml).not.toContain('max-w-5xl');
   });
 
@@ -1582,11 +1645,164 @@ page 'Dashboard' at '/':
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
-    expect(result.html).toContain('flex h-screen');
-    expect(result.html).toContain('w-64');
-    expect(result.html).toContain('sticky top-0');
+    // Phase 1 shell upgrade: full-screen flex shell, 240px aside, 56px header
+    expect(result.html).toContain('flex min-h-screen');
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    expect(result.html).toMatch(/<main[^>]*flex-1 min-w-0 flex flex-col/);
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
     expect(result.html).toContain('overflow-y-auto');
     expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
+  });
+});
+
+// =============================================================================
+// APP SHELL UPGRADE (Phase 1 — 04-25-2026)
+// Section presets app_layout / app_sidebar / app_main / app_header now emit
+// the polished slate-on-ivory chrome that matches landing/marcus-app-target.html.
+// Each preset uses a semantic HTML5 tag and the project's --clear-* design
+// tokens for hairline borders + rail/canvas backgrounds.
+// =============================================================================
+
+describe('app shell upgrade — Phase 1', () => {
+  it('app_layout emits a flex min-h-screen wrapper div (full-screen shell)', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    text 'hi'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    // Container is a div.flex.min-h-screen — the OUTER body shell
+    expect(result.html).toMatch(/<div[^>]*class="[^"]*\bflex\b[^"]*\bmin-h-screen\b/);
+    // Old emit ('h-screen overflow-hidden') is gone — full window scroll, not viewport-clipped
+    expect(result.html).not.toContain('h-screen overflow-hidden');
+  });
+
+  it('app_sidebar emits an <aside> with 240px width and rail-bg + hairline-r tokens', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Menu'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<aside\b[^>]*>/);
+    // 240px rail (was 256px / w-64) — matches mock
+    expect(result.html).toMatch(/<aside[^>]*width:\s*240px/);
+    // Reads --clear-bg-rail and --clear-line tokens
+    expect(result.html).toContain('var(--clear-bg-rail)');
+    expect(result.html).toContain('var(--clear-line)');
+    // Hairline-right border + flex-shrink-0 + scroll-y for nav overflow
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bhairline-r\b/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bflex-shrink-0\b/);
+    expect(result.html).toMatch(/<aside[^>]*class="[^"]*\bscroll-y\b/);
+  });
+
+  it('app_main emits a <main> with flex-1 min-w-0 flex flex-col', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      text 'Panel'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<main\b[^>]*class="[^"]*\bflex-1\b[^"]*\bmin-w-0\b[^"]*\bflex\b[^"]*\bflex-col\b/);
+    // Closing tag matches
+    expect(result.html).toContain('</main>');
+  });
+
+  it('app_header emits a sticky <header> with 56px height + canvas bg + hairline-b', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/<header\b[^>]*>/);
+    // 56px height (was 64px / h-16)
+    expect(result.html).toMatch(/<header[^>]*height:\s*56px/);
+    // sticky top-0, hairline-b, canvas bg from token
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bsticky\b[^"]*\btop-0\b/);
+    expect(result.html).toMatch(/<header[^>]*class="[^"]*\bhairline-b\b/);
+    expect(result.html).toContain('var(--clear-bg-canvas)');
+  });
+
+  it('app_header carries brand / breadcrumb / action slot data attributes', () => {
+    // The header must advertise its three slots so children + Phase 3 page-header
+    // primitive can target them. Uses data-clear-slot for forward-compatible CSS.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/data-clear-slot="brand"/);
+    expect(result.html).toMatch(/data-clear-slot="breadcrumb"/);
+    expect(result.html).toMatch(/data-clear-slot="actions"/);
+  });
+
+  it('app shell tags nest correctly: aside + main both inside the layout div', () => {
+    // Critical regression check — child sections must close with the right tag,
+    // and the layout's </div> must come after both children.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Menu'
+    section 'Right' with style app_main:
+      text 'Body'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const html = result.html;
+    const layoutOpen = html.indexOf('flex min-h-screen');
+    const asideOpen  = html.indexOf('<aside');
+    const asideClose = html.indexOf('</aside>');
+    const mainOpen   = html.indexOf('<main', html.indexOf('id="app"') + 1); // skip the body-level <main id="app">
+    const mainClose  = html.indexOf('</main>', mainOpen);
+    expect(layoutOpen).toBeGreaterThan(-1);
+    expect(asideOpen).toBeGreaterThan(layoutOpen);
+    expect(asideClose).toBeGreaterThan(asideOpen);
+    expect(mainOpen).toBeGreaterThan(asideClose);
+    expect(mainClose).toBeGreaterThan(mainOpen);
+  });
+
+  it('sidebar with no nav children still renders a usable rail (no empty <ul> orphan)', () => {
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'MyApp'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    // Brand still emits — heading lives inside the aside
+    expect(result.html).toMatch(/<aside[^>]*>[\s\S]*MyApp[\s\S]*<\/aside>/);
+  });
+
+  it('app_layout + app_main + app_header produce the canonical 3-tag nesting', () => {
+    // div.layout > main > header — closing order matters for browser parsing.
+    const source = `build for web
+page 'App' at '/':
+  section 'Shell' with style app_layout:
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      text 'body content'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const html = result.html;
+    // The body-level <main id="app"> wrapper exists; we want our nested <main> to live inside it
+    const appMainOpen = html.indexOf('id="app"');
+    const ourMainOpen = html.indexOf('<main', appMainOpen + 1);
+    const headerOpen  = html.indexOf('<header', ourMainOpen);
+    const headerClose = html.indexOf('</header>', headerOpen);
+    const ourMainClose = html.indexOf('</main>', headerClose);
+    expect(ourMainOpen).toBeGreaterThan(appMainOpen);
+    expect(headerOpen).toBeGreaterThan(ourMainOpen);
+    expect(headerClose).toBeGreaterThan(headerOpen);
+    expect(ourMainClose).toBeGreaterThan(headerClose);
   });
 });
 
@@ -2119,6 +2335,95 @@ describe('button', () => {
     expect(ast.body[0].type).toBe(NodeType.BUTTON);
     expect(ast.body[0].label).toBe('Add One');
     expect(ast.body[0].body).toHaveLength(1);
+  });
+
+  it('parses add button that <action> as an inline action body', () => {
+    const source = `add button "Load" that gets deals from '/api/deals'`;
+    const ast = parse(source);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.BUTTON);
+    expect(ast.body[0].label).toBe('Load');
+    expect(ast.body[0].body).toHaveLength(1);
+    expect(ast.body[0].body[0].type).toBe(NodeType.API_CALL);
+  });
+
+  it('warns when inline button actions use base-form verbs after "that"', () => {
+    const result = compileProgram(`button "Load" that get deals from '/api/deals'`, { target: 'web' });
+    const warning = result.warnings.find(w => String(w.message || w).includes('Use "gets deals"'));
+    expect(result.errors).toHaveLength(0);
+    expect(warning).toBeTruthy();
+  });
+
+  it('accepts third-person inline button actions after "that"', () => {
+    const examples = [
+      `button "Load" that gets deals from '/api/deals'`,
+      `form is {}\nbutton "Save" that sends form to '/api/save'`,
+      `step = 1\nbutton "Next" that increases step by 1`,
+      `button "Details" that goes to '/details'`,
+      `invite_link is 'https://example.com'\nbutton "Copy" that copies invite_link to clipboard`,
+      `settings is 'dark'\nbutton "Save Settings" that stores settings`,
+    ];
+
+    for (const source of examples) {
+      const result = compileProgram(source, { target: 'web' });
+      const warnings = result.warnings.filter(w => /Use ".+" so the button reads/i.test(String(w.message || w)));
+      expect(result.errors).toHaveLength(0);
+      expect(warnings).toHaveLength(0);
+    }
+  });
+
+  it('keeps imperative button bodies and for-actions out of verb agreement warnings', () => {
+    const sources = [
+      `button "Reload":\n  get deals from '/api/deals'`,
+      `button "Reset" for count is 0`,
+    ];
+
+    for (const source of sources) {
+      const result = compileProgram(source, { target: 'web' });
+      const warnings = result.warnings.filter(w => /Use ".+" so the button reads/i.test(String(w.message || w)));
+      expect(warnings).toHaveLength(0);
+    }
+  });
+
+  it('rejects domain-action buttons that only show toast feedback', () => {
+    const result = compileProgram(`button "Approve":\n  show toast 'Deal approved' as success`, { target: 'web' });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('cannot only show a toast');
+    expect(result.errors[0].message).toContain('change the record');
+  });
+
+  it('rejects inline domain-action buttons that only show toast feedback', () => {
+    const result = compileProgram(`button "Approve" that shows toast 'Deal approved' as success`, { target: 'web' });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('cannot only show a toast');
+    expect(result.errors[0].message).toContain('change the record');
+  });
+
+  it('rejects toast-only feedback for all domain-action button labels', () => {
+    for (const label of ['Approve', 'Reject', 'Assign', 'Resolve', 'Save', 'Delete']) {
+      const result = compileProgram(`button "${label}":\n  show toast 'Done' as success`, { target: 'web' });
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('cannot only show a toast');
+    }
+  });
+
+  it('allows domain-action buttons when toast follows a real data mutation', () => {
+    const result = compileProgram(`button "Approve":\n  change selected_deal's status from 'pending' to 'approved'\n  update selected_deal at /api/deals/:id/approve\n  show toast 'Deal approved' as success`, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('allows notification buttons whose business action is the notification itself', () => {
+    const result = compileProgram(`button "Notify":\n  show toast 'Saved' as success`, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('parses button for <action> as an inline action body', () => {
+    const source = `button "Reset" for count is 0`;
+    const ast = parse(source);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.BUTTON);
+    expect(ast.body[0].body).toHaveLength(1);
+    expect(ast.body[0].body[0].type).toBe(NodeType.ASSIGN);
   });
 
   it('compiles to JS click handler', () => {
@@ -2727,6 +3032,30 @@ page 'Test' at '/':
     expect(js).toContain('JSON.stringify');
     // Field sent from state
     expect(js).toContain('question: _state.question');
+  });
+
+  it('send-to button includes auth header when target endpoint requires login', () => {
+    const source = `build for web and javascript backend
+allow signup and login
+
+create a Deals table:
+  customer, required
+
+when user sends deal to /api/deals:
+  requires login
+  validate deal:
+    customer is text, required
+  save deal as new Deal
+  send back deal with success message
+
+page 'New deal' at '/new':
+  'Customer' as text input saves to customer
+  button 'Submit':
+    send customer to '/api/deals'`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('fetch("/api/deals"');
+    expect(result.javascript).toContain("'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')");
   });
 });
 
@@ -3422,6 +3751,15 @@ describe('Input Syntax (label-first canonical)', () => {
     expect(node.choices).toHaveLength(3);
   });
 
+  it('parses label-is dropdown with options saved as a named variable', () => {
+    const ast = parse(`'Size' is a dropdown with ['SMB', 'Mid-market', 'Enterprise'] saved as a size`);
+    expect(ast.errors).toHaveLength(0);
+    const node = ast.body.find(n => n.type === 'ask_for');
+    expect(node.inputType).toBe('choice');
+    expect(node.variable).toBe('size');
+    expect(node.choices).toEqual(['SMB', 'Mid-market', 'Enterprise']);
+  });
+
   it('parses label-first checkbox', () => {
     const ast = parse(`'Gift Wrap' as checkbox`);
     expect(ast.errors).toHaveLength(0);
@@ -3452,6 +3790,14 @@ describe('Input Syntax (label-first canonical)', () => {
     const node = ast.body.find(n => n.type === 'ask_for');
     expect(node.inputType).toBe('yes/no');
     expect(node.variable).toBe('gift_wrap');
+  });
+
+  it('compiles checkbox inputs to store checked state, not the browser value string', () => {
+    const result = compileProgram(`build for web
+page 'Prefs':
+  'Gift Wrap' as checkbox saves to gift_wrap`);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_state.gift_wrap = e.target.checked;');
   });
 });
 
@@ -3817,6 +4163,92 @@ page 'HN Daily Digest':
   });
 });
 
+// Cherry-picked from Codex stash (chunk #10, 2026-04-28). Fixes the bug where
+// data tables are empty after a route change: the on-page-load fetches all
+// fire on initial load, but tables built inside hidden page divs never re-bind.
+// The shell-page router parks/unparks page content into a single shared outlet
+// and re-runs _recompute after the swap so newly-visible tables show their data.
+describe('Shell-page router (chunk #10) — fixes empty-tables-after-route-change', () => {
+  const SHELL_APP = `
+build for web
+
+page 'Home' at '/':
+  on page load:
+    get items from '/api/items'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Nav'
+      nav item 'Home' to '/'
+      nav item 'Other' to '/other'
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        heading 'Home'
+        display items as table
+
+page 'Other' at '/other':
+  on page load:
+    get more_items from '/api/more'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Nav'
+      nav item 'Home' to '/'
+      nav item 'Other' to '/other'
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        heading 'Other'
+        display more_items as table
+  `;
+
+  it('emits data-clear-shell-outlet on the shell page app_content', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('data-clear-shell-outlet="true"');
+  });
+
+  it('marks non-shell pages with data-clear-routed-content', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toMatch(/data-clear-routed-content="Other"/);
+  });
+
+  it('every page div carries id, route, and title attributes', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.html).toContain('data-clear-page-id="Home"');
+    expect(result.html).toContain('data-clear-page-route="/"');
+    expect(result.html).toContain('data-clear-page-title="Home"');
+    expect(result.html).toContain('data-clear-page-id="Other"');
+    expect(result.html).toContain('data-clear-page-route="/other"');
+  });
+
+  it('emits the shell-render helper functions when an app_layout exists', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.html).toContain('_clearRenderRouteIntoShell');
+    expect(result.html).toContain('_clearParkMountedRoutes');
+    expect(result.html).toContain('_clearTemplateHost');
+  });
+
+  it('the router calls _recompute after route swap so tables re-bind', () => {
+    const result = compileProgram(SHELL_APP);
+    expect(result.html).toContain('_clearRenderRouteIntoShell(current)');
+    expect(result.html).toMatch(/requestAnimationFrame\(function\(\)\s*\{\s*_recompute\(\);\s*\}\)/);
+  });
+
+  it('apps without an app_layout do not emit the shell router', () => {
+    const result = compileProgram(`
+build for web
+
+page 'Home' at '/':
+  heading 'Home'
+
+page 'About' at '/about':
+  heading 'About'
+    `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).not.toContain('_clearRenderRouteIntoShell');
+    expect(result.html).not.toContain('data-clear-shell-outlet');
+  });
+});
+
 // =============================================================================
 // PHASE 8C: DATA FETCHING
 // =============================================================================
@@ -3915,11 +4347,16 @@ describe('CRUD operations', () => {
     expect(node.condition).toBeDefined();
   });
 
-  it('parses remove from', () => {
-    const ast = parse(`remove from Users where age is less than 18`);
+  it('parses delete from', () => {
+    const ast = parse(`delete from Users where age is less than 18`);
     expect(ast.errors).toHaveLength(0);
     const node = ast.body.find(n => n.type === 'crud');
     expect(node.operation).toBe('remove');
+  });
+
+  it('rejects remove from for database deletion with delete wording', () => {
+    const ast = parse(`remove from Users where age is less than 18`);
+    expect(ast.errors.some(e => e.message.includes('Use delete from Users'))).toBe(true);
   });
 });
 
@@ -4463,6 +4900,13 @@ describe('Compiler - data shape with constraints (JS)', () => {
     const result = compileProgram("target: backend\ncreate data shape User:\n  name is text, required");
     expect(result.javascript).toContain('required: true');
     expect(result.javascript).toContain('name');
+  });
+
+  it('preserves renamed field metadata in generated schemas', () => {
+    const result = compileProgram("target: backend\ncreate data shape User:\n  notes, hidden, renamed to reason\n  reason");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('hidden: true');
+    expect(result.javascript).toContain('renamedTo: "reason"');
   });
 });
 
@@ -5555,11 +5999,11 @@ when user calls GET /api/items/:id:
     expect(result.javascript).toContain('{ id: incoming?.id }');
   });
 
-  it('compiles remove where to filter object', () => {
+  it('compiles delete where to filter object', () => {
     const result = compileProgram(`
 build for javascript backend
 when user calls DELETE /api/items/:id:
-  remove from Items where id is incoming's id
+  delete from Items where id is incoming's id
   send back 'deleted'
     `);
     expect(result.javascript).toContain("db.remove('items', { id: incoming?.id })");
@@ -6421,7 +6865,7 @@ describe('Compiler - auth middleware injection', () => {
 build for javascript backend
 when user calls DELETE /api/items/:id:
   requires auth
-  remove from Items where id is incoming's id
+  delete from Items where id is incoming's id
   send back 'deleted'
     `);
     expect(result.javascript).toContain("require('./clear-runtime/auth')");
@@ -6978,6 +7422,73 @@ when user calls POST /api/chat receiving chat_data:
 // =============================================================================
 // COMPONENT HTML RENDERING
 // =============================================================================
+
+describe('Component - nav-section / nav-item children render (2026-04-28 fix)', () => {
+  it('compiled component preserves nav-section + nav-item children', () => {
+    const result = compileProgram(`build for web
+define component Sidebar:
+  heading 'My App'
+  nav section 'Group':
+    nav item 'Home' to '/' with icon 'home'
+    nav item 'Settings' to '/settings' with icon 'settings'
+
+page 'Home' at '/':
+  show Sidebar()
+
+page 'Settings' at '/settings':
+  show Sidebar()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function Sidebar');
+    expect(fnIdx).toBeGreaterThan(-1);
+    // Slice the body of the Sidebar function for inspection
+    const fnBody = js.slice(fnIdx, fnIdx + 1500);
+    // Heading should still be there (existing behavior)
+    expect(fnBody).toContain('My App');
+    // The nav-section label should now be in the compiled HTML
+    expect(fnBody).toContain('clear-nav-section-label');
+    expect(fnBody).toContain('Group');
+    // Each nav item should be in the compiled HTML
+    expect(fnBody).toContain('Home');
+    expect(fnBody).toContain('Settings');
+    // The icon attribute should be present
+    expect(fnBody).toContain('data-lucide');
+  });
+
+  it('compiled component preserves page-header inside body', () => {
+    const result = compileProgram(`build for web
+define component MyHeader:
+  page header 'Welcome':
+    subtitle 'A friendly greeting'
+
+page 'Home' at '/':
+  show MyHeader()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function MyHeader');
+    const fnBody = js.slice(fnIdx, fnIdx + 1000);
+    expect(fnBody).toContain('Welcome');
+    // page-header generates a clear-page-title or clear-page-header marker
+    expect(fnBody).toMatch(/clear-page-(title|header)/);
+  });
+
+  it('SHOW node still interpolates dynamic values inside components', () => {
+    const result = compileProgram(`build for web
+define component Greeting:
+  heading 'Welcome'
+  show user_name
+
+page 'Home' at '/':
+  user_name is 'Alice'
+  show Greeting()`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const fnIdx = js.indexOf('function Greeting');
+    const fnBody = js.slice(fnIdx, fnIdx + 600);
+    // SHOW should still interpolate (not embed as static)
+    expect(fnBody).toMatch(/_html\s*\+=\s*user_name/);
+  });
+});
 
 describe('Component - HTML rendering', () => {
   it('compiles component to return HTML string in web mode', () => {
@@ -10928,19 +11439,40 @@ describe('Toast', () => {
     expect(ast.body[0].body[0].body[0].variant).toBe('warning');
   });
 
+  it('errors when toast has no message data', () => {
+    const result = compileProgram("build for web\npage 'App':\n  button 'Notify':\n    show toast");
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Toast needs a message');
+  });
+
   it('compiles to _toast call with DaisyUI class', () => {
     const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast 'Done'");
     expect(result.errors).toHaveLength(0);
-    const js = result.javascript || result.html;
-    expect(js).toContain('_toast(');
-    expect(js).toContain('alert-success');
+    expect(result.javascript).toContain('_toast("Done", "success");');
+    expect(result.html).toContain('alert-success');
+  });
+
+  it('emits a native DaisyUI toast container with alert semantics', () => {
+    const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast 'Done' as success");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain("c.className = 'toast toast-end toast-bottom'");
+    expect(result.html).toContain("el.setAttribute('role', 'alert')");
+    expect(result.html).toContain("el.className = 'alert ' + cls");
+    expect(result.javascript).toContain('_toast("Done", "success");');
+  });
+
+  it('writes toast message data as text, never injected HTML', () => {
+    const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast '<img src=x onerror=alert(1)>' as error");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('message.textContent = String(msg)');
+    expect(result.html).not.toContain("'<span style=\"flex:1\">' + msg");
   });
 
   it('compiles error variant', () => {
     const result = compileProgram("build for web\npage 'App':\n  button 'Go':\n    show toast 'Failed' as error");
     expect(result.errors).toHaveLength(0);
-    const js = result.javascript || result.html;
-    expect(js).toContain('alert-error');
+    expect(result.javascript).toContain('_toast("Failed", "error");');
+    expect(result.html).toContain('alert-error');
   });
 });
 
@@ -16088,18 +16620,28 @@ page 'Settings' at '/settings':
   heading 'Settings'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
+    // The page wrapper now also carries data-clear-page-id/route/title attrs
+    // (chunk #10), so the assertion checks the route attr + style:none combo
+    // rather than the old id-then-style adjacency.
     expect(r.html).toContain('id="page_Home"');
-    expect(r.html).not.toContain('id="page_Home" style="display:none"');
-    expect(r.html).toContain('id="page_Settings" style="display:none"');
+    expect(r.html).toContain('data-clear-page-route="/settings"');
+    expect(r.html).toMatch(/data-clear-page-route="\/settings"[^>]*style="display:none"/);
+    expect(r.html).not.toMatch(/data-clear-page-route="\/"[^>]*style="display:none"/);
   });
 
-  it('single-page app does NOT add page wrapper divs', () => {
+  it('single-page app gets a page wrapper too (chunk #10 — for browser-test markers)', () => {
     const src = `build for web
 page 'App' at '/':
   heading 'Hello'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).not.toContain('id="page_');
+    // Chunk #10 changed `if (pages.length > 1)` to `if (pages.length > 0)` so
+    // single-page apps emit the marker div too. Generated browser tests can
+    // assert the page actually rendered, not just that HTML fetched.
+    expect(r.html).toContain('id="page_App"');
+    expect(r.html).toContain('data-clear-page-id="App"');
+    expect(r.html).toContain('data-clear-page-route="/"');
+    expect(r.html).not.toContain('style="display:none"');
   });
 
   it('hash router references correct page IDs', () => {
@@ -16131,17 +16673,20 @@ page 'App' at '/':
     expect(r.html).toContain('h-screen');
   });
 
-  it('app with no layout modifiers gets max-w-2xl', () => {
+  it('app with no layout modifiers gets the wide app-shell wrapper', () => {
     const src = `build for web
 page 'Simple' at '/':
   heading 'Hello'
   text 'World'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).toContain('max-w-2xl');
+    // Default page wrapper: 5xl container with breathing room (was max-w-2xl
+    // but the 600px column made every Marcus app look 2018-bootstrap).
+    expect(r.html).toContain('max-w-5xl');
+    expect(r.html).toContain('mx-auto');
   });
 
-  it('app_layout preset gets empty class (no max-w-2xl)', () => {
+  it('app_layout preset gets empty class (no default wrapper)', () => {
     const src = `build for web
 page 'App' at '/':
   section 'Layout' with style app_layout:
@@ -16151,7 +16696,491 @@ page 'App' at '/':
       text 'Content'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).not.toContain('max-w-5xl');
+  });
+
+  it('parses sidebar nav sections and nav items', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Deal Desk'
+      nav section 'Approvals':
+        nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_count with icon 'check-circle-2'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const layout = page.body.find(n => n.type === NodeType.SECTION && n.styleName === 'app_layout');
+    const sidebar = layout.body.find(n => n.type === NodeType.SECTION && n.styleName === 'app_sidebar');
+    const navSection = sidebar.body.find(n => n.type === 'nav_section');
+    expect(navSection.title).toBe('Approvals');
+    expect(navSection.body).toHaveLength(2);
+    expect(navSection.body[0].type).toBe('nav_item');
+    expect(navSection.body[0].title).toBe('Pending');
+    expect(navSection.body[0].path).toBe('/cro');
+    expect(navSection.body[0].count).toBe('pending_count');
+    expect(navSection.body[0].icon).toBe('inbox');
+  });
+
+  it('emits sidebar nav links with counts, icons, and route-based active state', () => {
+    const src = `build for web
+pending_count = 5
+approved_count = 12
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Deal Desk'
+      nav section 'Approvals':
+        nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_count with icon 'check-circle-2'
+    section 'Main' with style app_main:
+      text 'Queue'
+page 'Approved' at '/approved':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Deal Desk'
+      nav section 'Approvals':
+        nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+        nav item 'Approved today' to '/approved' with count approved_count with icon 'check-circle-2'
+    section 'Main' with style app_main:
+      text 'Approved'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('class="clear-nav-section-label"');
+    expect(r.html).toContain('data-nav-item="true"');
+    expect(r.html).toContain('href="/cro"');
+    expect(r.html).toContain('data-nav-path="/cro"');
+    expect(r.html).toContain('data-lucide="inbox"');
+    expect(r.html).toContain('class="clear-nav-count num" data-clear-tpl="{pending_count}"');
+    expect(r.html).toContain('location.pathname');
+    expect(r.html).toContain("classList.toggle('is-active'");
+    expect(r.html).toContain('lucide.createIcons');
+  });
+
+  it('parses page headers with subtitle and actions', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh':
+        get deals from /api/deals
+      button 'Export':
+        get exported_deals from /api/deals/export`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const header = page.body.find(n => n.type === 'page_header');
+    expect(header.title).toBe('CRO Review');
+    expect(header.subtitle).toBe('5 deals waiting');
+    expect(header.actions).toHaveLength(2);
+    expect(header.actions[0].ui.text).toBe('Refresh');
+  });
+
+  it('emits page headers with title, subtitle, and right-aligned actions', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  page header 'CRO Review':
+    subtitle '5 deals waiting'
+    actions:
+      button 'Refresh':
+        get deals from /api/deals
+      button 'Export':
+        get exported_deals from /api/deals/export`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-page-header="true"');
+    expect(r.html).toContain('class="clear-page-title text-2xl"');
+    expect(r.html).toContain('CRO Review');
+    expect(r.html).toContain('5 deals waiting');
+    expect(r.html).toContain('data-page-header-actions="true"');
+    expect(r.html).toContain('Refresh');
+  });
+
+  it('wires page header action buttons with bodies', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  page header 'CRO Review':
+    actions:
+      button 'Refresh':
+        get deals from '/api/deals'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="btn_Refresh"');
+    const listenerIndex = r.javascript.indexOf("document.getElementById('btn_Refresh').addEventListener('click'");
+    expect(listenerIndex >= 0).toBe(true);
+    const refreshFetchIndex = r.javascript.indexOf('fetch("/api/deals")', listenerIndex);
+    expect(refreshFetchIndex > listenerIndex).toBe(true);
+  });
+
+  it('parses tab strips with routed tabs and an active tab hint', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const strip = page.body.find(n => n.type === 'tab_strip');
+    expect(strip.activeTab).toBe('Pending');
+    expect(strip.tabs).toHaveLength(2);
+    expect(strip.tabs[0].title).toBe('Pending');
+    expect(strip.tabs[0].path).toBe('/cro');
+  });
+
+  it('emits routed tab strips with active state wiring', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  tab strip:
+    active tab is 'Pending'
+    tab 'Pending' to '/cro'
+    tab 'Approved' to '/approved'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-tab-strip="true"');
+    expect(r.html).toContain('data-tab-path="/cro"');
+    expect(r.html).toContain('class="clear-route-tab is-active"');
+    expect(r.html).toContain('location.pathname');
+    expect(r.html).toContain("classList.toggle('is-active'");
+  });
+
+  it('emits page header and tab strip together for app content chrome', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        page header 'CRO Review':
+          subtitle '5 deals waiting'
+          actions:
+            button 'Refresh':
+              get deals from /api/deals/pending
+        tab strip:
+          tab 'Pending' to '/cro'
+          tab 'Approved' to '/approved'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-page-header="true"');
+    expect(r.html).toContain('data-tab-strip="true"');
+  });
+
+  it('parses stat strips with multiple stat cards', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value pending_count
+    stat card 'Avg Discount':
+      value discount_rate`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const strip = page.body.find(n => n.type === 'stat_strip');
+    expect(strip.cards).toHaveLength(2);
+    expect(strip.cards[0].label).toBe('Pending Count');
+  });
+
+  it('parses stat cards with value, delta, sparkline, and icon', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value pending_count
+      delta '+1.8 pts vs last week'
+      sparkline [3, 4, 6, 5, 8]
+      icon 'inbox'`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const card = page.body.find(n => n.type === 'stat_strip').cards[0];
+    expect(card.value.name).toBe('pending_count');
+    expect(card.delta).toBe('+1.8 pts vs last week');
+    expect(card.sparkline.type).toBe(NodeType.LITERAL_LIST);
+    expect(card.icon).toBe('inbox');
+  });
+
+  it('rejects stat strips without stat cards', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    text 'Empty'`);
+    expect(ast.errors.length > 0).toBe(true);
+    expect(ast.errors[0].message).toContain('stat card');
+  });
+
+  it('rejects stat cards without values', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      delta '+1.8 pts vs last week'`);
+    expect(ast.errors.length > 0).toBe(true);
+    expect(ast.errors[0].message).toContain('value');
+  });
+
+  it('emits stat strips with stat card chrome markers', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value 5
+    stat card 'Avg Discount':
+      value 12`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-stat-strip="true"');
+    expect(r.html).toContain('data-stat-card="true"');
+    expect(r.html).toContain('Pending Count');
+    expect(r.html).toContain('clear-stat-value');
+  });
+
+  it('emits stat cards without whitespace-only lines when optional slots are empty', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value 5`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html.split('\n').filter(line => /^\s+$/.test(line))).toHaveLength(0);
+  });
+
+  it('emits stat card deltas with positive and negative classes', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Approval Rate':
+      value 72
+      delta '+4 pts'
+    stat card 'Risk':
+      value 3
+      delta '-2 pts'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('clear-stat-delta-positive');
+    expect(r.html).toContain('clear-stat-delta-negative');
+  });
+
+  it('emits stat cards with icons and sparkline svgs', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  stat strip:
+    stat card 'Pending Count':
+      value 5
+      sparkline [3, 4, 6, 5, 8]
+      icon 'inbox'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-lucide="inbox"');
+    expect(r.html).toContain('class="clear-stat-sparkline"');
+    expect(r.html).toContain('<polyline');
+  });
+
+  it('emits stat strips inside app content chrome', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  section 'Layout' with style app_layout:
+    section 'Main' with style app_main:
+      section 'Content' with style app_content:
+        stat strip:
+          stat card 'Pending Count':
+            value 5`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-stat-strip="true"');
+    expect(r.html).toContain('data-stat-card="true"');
+  });
+
+  it('parses detail panels with selected row variables, content, and actions', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    display selected_deal's amount as dollars called 'Value'
+    actions:
+      button 'Reject':
+        change selected_deal's status from 'pending' to 'rejected'
+        update selected_deal at /api/deals/:id/reject
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const panel = page.body.find(n => n.type === 'detail_panel');
+    expect(panel.variable).toBe('selected_deal');
+    expect(panel.body.length).toBe(2);
+    expect(panel.actions.length).toBe(2);
+  });
+
+  it('rejects detail panels without a selected row variable', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel:
+    text 'Pick a row'`);
+    expect(ast.errors.length > 0).toBe(true);
+    expect(ast.errors[0].message).toContain('selected row');
+  });
+
+  it('emits a right detail rail with body and sticky actions', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    display selected_deal's amount as dollars called 'Value'
+    actions:
+      button 'Reject':
+        change selected_deal's status from 'pending' to 'rejected'
+        update selected_deal at /api/deals/:id/reject
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('data-detail-panel="true"');
+    expect(r.html).toContain('data-detail-for="selected_deal"');
+    expect(r.html).toContain('clear-detail-actions');
+    expect(r.html).toContain('Reject');
+    expect(r.html).toContain('Approve');
+  });
+
+  it('rejects detail action buttons that explain behavior only in comments', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        // Approves the selected deal`);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('has no executable action');
+  });
+
+  it('parses 14-year-old detail action syntax as a record update plus data load', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve
+        get pending_deals from /api/deals/pending`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const panel = page.body.find(n => n.type === 'detail_panel');
+    const approve = panel.actions[0];
+    expect(approve.body[0].type).toBe(NodeType.FIELD_CHANGE);
+    expect(approve.body[0].recordVar).toBe('selected_deal');
+    expect(approve.body[0].field).toBe('status');
+    expect(approve.body[0].fromValue.value).toBe('pending');
+    expect(approve.body[0].toValue.value).toBe('approved');
+    expect(approve.body[1].type).toBe(NodeType.API_CALL);
+    expect(approve.body[1].method).toBe('PUT');
+    expect(approve.body[1].recordVar).toBe('selected_deal');
+    expect(approve.body[2].method).toBe('GET');
+    expect(approve.body[2].targetVar).toBe('pending_deals');
+  });
+
+  it('parses 14-year-old detail delete syntax as selected-record deletion plus data load', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Delete':
+        delete selected_deal from /api/deals/:id
+        get pending_deals from /api/deals/pending`);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === NodeType.PAGE);
+    const panel = page.body.find(n => n.type === 'detail_panel');
+    const deleteButton = panel.actions[0];
+    expect(deleteButton.body[0].type).toBe(NodeType.API_CALL);
+    expect(deleteButton.body[0].method).toBe('DELETE');
+    expect(deleteButton.body[0].recordVar).toBe('selected_deal');
+    expect(deleteButton.body[0].url).toBe('/api/deals/:id');
+    expect(deleteButton.body[1].method).toBe('GET');
+    expect(deleteButton.body[1].targetVar).toBe('pending_deals');
+  });
+
+  it('rejects selected-record updates that do not name the changed field', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        update selected_deal at /api/deals/:id/approve`);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('needs a change line before it');
+  });
+
+  it('rejects old save-updated wording for selected-record UI actions', () => {
+    const ast = parse(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        save updated selected_deal to /api/deals/:id/approve`);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('Use update selected_deal at /api/deals/:id/approve');
+  });
+
+  it('compiles selected-record deletes without sending a request body', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Delete':
+        delete selected_deal from /api/deals/:id
+        get pending_deals from /api/deals/pending`);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || '';
+    const deleteFetchIndex = js.indexOf("fetch(\"/api/deals/\" + _id");
+    expect(deleteFetchIndex >= 0).toBe(true);
+    const deleteFetchEnd = js.indexOf(');', deleteFetchIndex);
+    const deleteFetch = js.slice(deleteFetchIndex, deleteFetchEnd);
+    expect(deleteFetch).toContain("method: 'DELETE'");
+    expect(deleteFetch).not.toContain('body:');
+  });
+
+  it('initializes selected row state for detail panels', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text 'Pick a deal'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('selected_deal: null');
+  });
+
+  it('wires table row clicks to the nearest detail panel variable', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, amount
+  detail panel for selected_deal:
+    text selected_deal's customer`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_clear_table_init(document.getElementById('output_Deals_table'), 'selected_deal')");
+    expect(r.html).toContain("_state[selectedName] = tr.classList.contains('is-selected') ? row : null");
+    expect(r.javascript).toContain('data-row-index');
+  });
+
+  it('renders detail panel content from selected row state', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, amount
+  detail panel for selected_deal:
+    display selected_deal's amount as dollars called 'Value'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_state.selected_deal');
+    expect(r.html).toContain('output_Value_value');
+  });
+
+  it('updates each dynamic detail text field through its own DOM slot', () => {
+    const r = compileProgram(`build for web
+page 'Deals' at '/cro':
+  detail panel for selected_deal:
+    text selected_deal's customer
+    text selected_deal's summary`);
+    expect(r.errors).toHaveLength(0);
+    const out = `${r.html || ''}\n${r.javascript || ''}`;
+    expect(out).toContain('id="show_0"');
+    expect(out).toContain('id="show_1"');
+    expect(out).toContain("getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer");
+    expect(out).toContain("getElementById('show_1'); if (_el) _el.textContent = _state.selected_deal?.summary");
   });
 });
 
@@ -19734,7 +20763,7 @@ describe('Guardrails - validator', () => {
 create a Products table:
   name, required
 define function clear_products():
-  remove from Products where name is 'test'
+  delete from Products where name is 'test'
   return 'done'
 agent 'Bot' receiving msg:
   can use: clear_products
@@ -19787,7 +20816,7 @@ agent 'PublicBot' receiving msg:
 create a Products table:
   name, required
 define function nuke_products():
-  remove from Products where name is 'all'
+  delete from Products where name is 'all'
   return 'done'
 agent 'SafeBot' receiving msg:
   can use: nuke_products
@@ -21554,6 +22583,1334 @@ when user calls POST /api/support sending data:
 });
 
 // =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` — human-approval queue with reviewer + actions + notifications.
+// Distinct from `workflow` which orchestrates AI agents over shared state.
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+describe('Queue primitive — parser', () => {
+  it('parses queue for deal: with reviewer + actions', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q).toBeTruthy();
+    expect(q.entityName).toBe('deal');
+    expect(q.reviewer).toBe('CRO');
+    expect(q.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+
+  it('parses notify clauses', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q.notifications).toEqual([
+      { role: 'customer', onActions: ['counter', 'awaiting customer'], mechanism: 'notify' },
+      { role: 'rep', onActions: ['approve', 'reject'], mechanism: 'notify' },
+    ]);
+  });
+
+  it('rejects queue with no entity name', () => {
+    const src = `queue for:
+  reviewer is 'CRO'
+  actions: approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain("entity name");
+  });
+
+  it('rejects queue with no actions', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors.some(e => e.message.includes('actions'))).toBe(true);
+  });
+});
+
+// =============================================================================
+// F1 — hard-fail on unknown queue body lines (no silent skip)
+// Plan: plans/plan-queue-primitive-followup-04-28-2026.md Phase F1
+// =============================================================================
+
+describe('Queue primitive — parser hard-fail (F1)', () => {
+  it('errors on unknown clause inside queue block', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  slack rep when approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('slack rep when approve');
+  });
+
+  it('errors on a typo of a known clause with did-you-mean hint', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  notif rep on approve`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('did you mean');
+    expect(ast.errors[0].message).toContain('notify');
+  });
+
+  it('keeps every recognized clause parsing cleanly (no false positives)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  rep_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  notify customer on counter
+  notify rep on approve, reject
+  no export`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+  });
+});
+
+// F3 — `email <role> when <action>` is the canonical way to declare notifications
+// in a queue block. Russell's design feedback 2026-04-28: verbs that name HOW
+// (email, slack, text, webhook) beat vague verbs ("notify"). The old `notify
+// <role> on <action>` form keeps working as a legacy alias so existing apps
+// don't break, but new docs and Meph guidance should teach the email form.
+// F2 — `queue for deals:` should produce the same output as `queue for deal:`.
+// Without singularization, the audit table becomes `deals_decisions` and the
+// audit URL becomes `/api/deals-decisions` — both inconsistent with the
+// canonical singular convention. Russell's design feedback 2026-04-28: the
+// parser should normalize plural entity names on the way in so authors who
+// type the plural form get the same generated artifacts.
+describe('Queue primitive — F2 plural input singularizes', () => {
+  it("queue for deals: produces deal_decisions table (not deals_decisions)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("createTable('deal_decisions'");
+    expect(result.javascript).not.toContain("createTable('deals_decisions'");
+  });
+
+  it("queue for deals: produces /api/deal-decisions audit URL (not /api/deals-decisions)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.javascript).toContain("app.get('/api/deal-decisions'");
+    expect(result.javascript).not.toContain("app.get('/api/deals-decisions'");
+  });
+
+  it("queue for activities: singularizes to activity (handles -ies plural)", () => {
+    const src = `build for javascript backend
+database is local memory
+create an Activities table:
+  description
+queue for activities:
+  reviewer is 'manager'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("createTable('activity_decisions'");
+  });
+
+  it("queue for status: leaves -ss endings alone (status, address)", () => {
+    const src = `build for javascript backend
+database is local memory
+create an Address table:
+  street
+queue for address:
+  reviewer is 'admin'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // address has -ss ending, not a plural; should stay as-is
+    expect(result.javascript).toContain("createTable('address_decisions'");
+  });
+
+  it("email customer when deals's status changes to 'awaiting': also singularizes", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deals:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deals's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Both the queue path and the email trigger should reference `deal` (singular)
+    expect(result.javascript).toContain("createTable('deal_decisions'");
+    // workflow_email_queue insert should reference entity_type 'deal', not 'deals'
+    expect(result.javascript).toMatch(/entity_type:\s*"deal"/);
+    expect(result.javascript).not.toMatch(/entity_type:\s*"deals"/);
+  });
+});
+
+// F4 — alternate keywords + the `waiting on customer` canonical action.
+// Russell's design feedback 2026-04-28: managers don't always type `actions:`
+// — they often type `options:` (matches the menu metaphor) or `buttons:`
+// (matches the UI). All three should parse identically. Same goes for the
+// "waiting on customer" status — reads more naturally than "awaiting
+// customer" but should map to the same terminal status so the email-trigger
+// `'awaiting'` value still matches.
+describe('Queue primitive — F4 action keyword synonyms + waiting on customer canonical', () => {
+  it("`options:` parses identically to `actions:`", () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  options: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue).toBeTruthy();
+    expect(queue.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+
+  it("`buttons:` parses identically to `actions:`", () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  buttons: approve, reject, counter`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.actions).toEqual(['approve', 'reject', 'counter']);
+  });
+
+  it("`waiting on customer` action emits PUT /api/deals/:id/waiting URL", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, waiting on customer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.put('/api/deals/:id/waiting'");
+  });
+
+  it("`waiting on customer` action lands deal.status on 'awaiting' (same terminal as legacy `awaiting customer`)", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, waiting on customer
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting reply'
+  body is 'We are waiting on you.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The waiting-on-customer handler must inject a workflow_email_queue row
+    // because its terminal status maps to 'awaiting' — same as legacy
+    // 'awaiting customer'. Verifies the F4 canonical doesn't break F3+email
+    // primitive integration.
+    expect(result.javascript).toContain("app.put('/api/deals/:id/waiting'");
+    const handlerStart = result.javascript.indexOf("app.put('/api/deals/:id/waiting'");
+    expect(handlerStart).toBeGreaterThan(-1);
+    // Find the next app. boundary or end of file
+    const next = result.javascript.indexOf('\napp.', handlerStart + 5);
+    const end = next > 0 ? next : result.javascript.length;
+    const handler = result.javascript.slice(handlerStart, end);
+    expect(handler).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+  });
+
+  it("`buttons:` works inside an actions list with multi-word names", () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  buttons: approve, reject, counter, waiting on customer`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.actions).toEqual(['approve', 'reject', 'counter', 'waiting on customer']);
+  });
+});
+
+describe('Queue primitive — email canonical (F3)', () => {
+  it('parses `email <role> when <action>, <action>` as the canonical form', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  email rep when approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue).toBeTruthy();
+    expect(queue.notifications).toHaveLength(2);
+    expect(queue.notifications[0]).toEqual({ role: 'customer', onActions: ['counter'], mechanism: 'email' });
+    expect(queue.notifications[1]).toEqual({ role: 'rep', onActions: ['approve', 'reject'], mechanism: 'email' });
+  });
+
+  it('still accepts `notify <role> on <action>` as a legacy alias', () => {
+    const src = `create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  notify rep on approve`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications).toHaveLength(1);
+    expect(queue.notifications[0].role).toBe('rep');
+    expect(queue.notifications[0].onActions).toEqual(['approve']);
+    expect(queue.notifications[0].mechanism).toBe('notify');
+  });
+
+  it('mixes `email` and `notify` clauses in the same block (both push to notifications)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  rep_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  notify rep on approve, reject`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications).toHaveLength(2);
+    expect(queue.notifications[0].mechanism).toBe('email');
+    expect(queue.notifications[1].mechanism).toBe('notify');
+  });
+
+  it('parses multi-word actions in the email-when list (e.g. `waiting on customer`)', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const queue = ast.body.find(n => n.type === 'queue_def');
+    expect(queue.notifications[0].onActions).toEqual(['counter', 'awaiting customer']);
+  });
+});
+
+// Triggered email primitive — top-level `email <role> when <entity>'s status
+// changes to <value>:` block. Parallels the F3 queue clause shape (same
+// `email <role> when <trigger>` atom) but lives at the top level so any URL
+// handler that sets the entity's status to the trigger value queues an email,
+// not just the queue's per-action handlers. Default build queues only — real
+// sends are gated behind an explicit `enable live email delivery via X`
+// directive (deferred per the plan's Phase B-1).
+describe('Triggered email — parser (Phase 1)', () => {
+  it("parses email <role> when <entity>'s status changes to <value> block with subject + body", () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer for you.'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const trigger = ast.body.find(n => n.type === 'email_trigger');
+    expect(trigger).toBeTruthy();
+    expect(trigger.recipientRole).toBe('customer');
+    expect(trigger.entityName).toBe('deal');
+    expect(trigger.triggerField).toBe('status');
+    expect(trigger.triggerValue).toBe('awaiting');
+    expect(trigger.subject).toBe('We countered your offer');
+    expect(trigger.body).toBe('Sarah from our team has prepared a counter offer for you.');
+  });
+
+  it('parses provider + track replies as sub-clauses', () => {
+    const src = `create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Counter offer details.'
+  provider is 'agentmail'
+  track replies as deal activity`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const trigger = ast.body.find(n => n.type === 'email_trigger');
+    expect(trigger.provider).toBe('agentmail');
+    expect(trigger.replyTracking).toBe('deal activity');
+  });
+
+  it('rejects email-trigger that references an undeclared entity', () => {
+    const src = `email customer when fakeentity's status changes to 'X':
+  subject is 'test'
+  body is 'test'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('fakeentity');
+  });
+
+  it('rejects email-trigger missing required subject', () => {
+    const src = `create a Deals table:
+  customer_email
+  status
+email customer when deal's status changes to 'awaiting':
+  body is 'no subject!'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('subject');
+  });
+
+  it('rejects email-trigger with unknown body line (hard-fail with did-you-mean, same pattern as F1)', () => {
+    const src = `create a Deals table:
+  customer_email
+  status
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  sndr is 'wrong typo'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message.toLowerCase()).toContain('sndr');
+  });
+});
+
+describe('Triggered email — compiler tables (Phase 3)', () => {
+  it('emits workflow_email_queue table when an email-trigger exists', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('workflow_email_queue');
+    expect(result.javascript).toContain('entity_type');
+    expect(result.javascript).toContain('entity_id');
+    expect(result.javascript).toContain('recipient_email');
+    expect(result.javascript).toContain('subject');
+    expect(result.javascript).toContain('queue_status');
+  });
+
+  it('does NOT emit workflow_email_queue when no email-trigger exists', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.javascript).not.toContain('workflow_email_queue');
+  });
+
+  it('does NOT contain real provider API URLs in default builds', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is 'agentmail'
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Regression guard: live email delivery is gated behind an explicit
+    // `enable live email delivery via X` directive (deferred); default builds
+    // queue rows only, never reach a real provider.
+    expect(result.javascript).not.toContain('api.agentmail.to');
+    expect(result.javascript).not.toContain('api.sendgrid.com');
+    expect(result.javascript).not.toContain('api.resend.com');
+    expect(result.javascript).not.toContain('api.postmarkapp.com');
+    expect(result.javascript).not.toContain('AGENTMAIL_API_KEY');
+    expect(result.javascript).not.toContain('SENDGRID_KEY');
+  });
+});
+
+describe('Triggered email — template substitution (Phase B-1)', () => {
+  // Today every queued email gets the SAME literal subject + body. With this
+  // change, {field} references in the Clear source resolve at queue-insert
+  // time against the entity record — so each email mentions THIS customer's
+  // name, THIS deal's amount, etc. Without this, live sending would be
+  // useless ("Sarah from our team has prepared a counter offer for you" with
+  // no name, no deal, no number).
+  it('queue auto-PUT handler interpolates {field} references in subject + body', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  amount
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer for {customer}'
+  body is 'Hi {customer}, we countered your {amount} request.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The compiled queue-insert must wrap subject + body with the runtime
+    // helper, NOT pass through literal strings unchanged.
+    expect(result.javascript).toContain('_clear_interpolate');
+    expect(result.javascript).toContain('function _clear_interpolate');
+    // The literal templates must be present (as the first arg to the helper).
+    expect(result.javascript).toContain('"Counter offer for {customer}"');
+    expect(result.javascript).toContain('"Hi {customer}, we countered your {amount} request."');
+  });
+
+  it('user-defined endpoint email injection also wraps subject + body with the helper', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  amount
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter for {customer}'
+  body is 'Counter on amount {amount}'
+when user calls PUT /api/deals/:id/awaiting sending deal:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_clear_interpolate');
+  });
+
+  it('helper handles missing fields safely — empty string, never undefined', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'no fields'
+  body is 'still no fields'`;
+    const result = compileProgram(src);
+    // Helper is included whenever the queue insert references it.
+    expect(result.javascript).toContain('function _clear_interpolate');
+    // The helper body must guard against missing fields — `record[key] == null`
+    // returns empty string, not the literal "undefined".
+    const helperMatch = result.javascript.match(/function _clear_interpolate[\s\S]*?\n\}/);
+    expect(helperMatch).toBeTruthy();
+    expect(helperMatch[0]).toMatch(/== ?null|=== ?undefined|null \?|null \&\&/);
+  });
+});
+
+describe('Queue primitive — Python parity (F5)', () => {
+  // The JS branch of compileQueueDef has been carrying the queue primitive
+  // alone since launch. Python target returned a TBD stub. The "Build
+  // Python Alongside JS" rule (added 2026-04-28) demands parity. This
+  // suite locks in the mechanical port: same tables, same URLs, same
+  // audit + notification inserts, just emitted as FastAPI/Python.
+  it('emits a Python decisions table when queue is declared', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toBeTruthy();
+    expect(result.python).toContain('deal_decisions');
+    expect(result.python).toContain('create_table');
+  });
+
+  it('emits FastAPI PUT handlers for each queue action', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('@app.put("/api/deals/{id}/approve")');
+    expect(result.python).toContain('@app.put("/api/deals/{id}/reject")');
+    expect(result.python).toContain('@app.put("/api/deals/{id}/counter")');
+  });
+
+  it('emits a queue filter URL for pending entities in Python', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('@app.get("/api/deals/queue")');
+  });
+
+  it('emits an audit insert in each Python PUT handler', () => {
+    const src = `build for python backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each handler inserts a row into deal_decisions with the action
+    expect(result.python).toMatch(/db\.insert\(['"]deal_decisions['"]/);
+  });
+});
+
+describe('Triggered email — delivery directive (Phase B-1 part 2)', () => {
+  // Russell's canonical syntax for flipping live sending on:
+  //   email delivery using agentmail
+  // No "live", no "via" — short and direct. The directive at the top level
+  // tells the compiler to emit a small background worker that polls
+  // workflow_email_queue and sends pending rows via the named provider.
+  // Without the directive, no worker emits — default builds queue rows only.
+  // The worker fails loud at runtime if the provider's API key env var isn't
+  // set, so a misconfigured deploy doesn't silently succeed.
+  it('parses `email delivery using agentmail` as a top-level directive', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email delivery using agentmail
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('parser hard-errors on unknown provider name in delivery directive', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email delivery using badprovider`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const providerErr = result.errors.find(e => /badprovider/.test(String(e.message || e)));
+    expect(providerErr).toBeTruthy();
+  });
+
+  it('emits a delivery worker when the directive is present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  amount
+  status, default 'pending'
+email delivery using agentmail
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter for {customer}'
+  body is 'Counter on {amount}'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Worker poll loop must be present
+    expect(result.javascript).toContain('setInterval');
+    expect(result.javascript).toContain('email delivery worker');
+    // AgentMail HTTP endpoint must be present (this is the provider URL)
+    expect(result.javascript).toContain('api.agentmail.to');
+    // Worker must read the API key from env (fails loud if missing)
+    expect(result.javascript).toContain('AGENTMAIL_API_KEY');
+    // Worker reads pending rows from the queue
+    expect(result.javascript).toContain('workflow_email_queue');
+  });
+
+  it('does NOT emit a delivery worker when the directive is absent (default build stays inert)', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Phase 3.2 regression guard — without the directive, NO real provider URL
+    // appears in the compiled output, NO env var is referenced, NO worker runs.
+    expect(result.javascript).not.toContain('api.agentmail.to');
+    expect(result.javascript).not.toContain('api.sendgrid.com');
+    expect(result.javascript).not.toContain('AGENTMAIL_API_KEY');
+    expect(result.javascript).not.toContain('email delivery worker');
+  });
+
+  it('worker fails loud at runtime if API key env var is missing', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email delivery using agentmail
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The worker must guard on the env var and log a clear error if missing —
+    // not silently no-op, which would let a deploy "succeed" without sending.
+    expect(result.javascript).toMatch(/AGENTMAIL_API_KEY[\s\S]*not set/);
+  });
+});
+
+describe('Triggered email — validator (Phase 5)', () => {
+  it("hard-errors on an unknown provider name with did-you-mean suggestion", () => {
+    const src = `create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is 'agentmial'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const providerErr = result.errors.find(e => /agentmial/.test(String(e.message || e)));
+    expect(providerErr).toBeTruthy();
+    expect(String(providerErr.message || providerErr).toLowerCase()).toContain('agentmail');
+  });
+
+  it("accepts every recognized provider name without error", () => {
+    for (const provider of ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun']) {
+      const src = `create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'
+  provider is '${provider}'`;
+      const result = compileProgram(src);
+      const providerErr = result.errors.find(e => /provider/.test(String(e.message || e)));
+      expect(providerErr).toBeUndefined();
+    }
+  });
+
+  it("warns when an email-trigger has no URL handler that sets the trigger value", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeTruthy();
+    expect(String(neverFires.message || neverFires)).toContain('awaiting');
+    expect(String(neverFires.message || neverFires)).toContain('deal');
+  });
+
+  // Cycle 5.2 — body and subject often want to interpolate entity fields
+  // (`{customer}`, `{amount}`). Until interpolation lands as a runtime
+  // feature, ANY `{ident}` in the email body or subject is a likely typo
+  // — author thought it would render but it'll be sent as literal text.
+  // Validator warns so the typo is caught at compile time.
+  it("warns when email body uses {ident} that doesn't match an entity field", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Hello {nonexistent_var}'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const interpWarn = result.warnings.find(w =>
+      /nonexistent_var/.test(String(w.message || w))
+    );
+    expect(interpWarn).toBeTruthy();
+  });
+
+  it("does NOT warn when {ident} matches a field on the entity table", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Update on your deal'
+  body is 'Hello {customer}, your deal is awaiting reply.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const interpWarn = result.warnings.find(w =>
+      /customer/.test(String(w.message || w)) && /interpol/i.test(String(w.message || w))
+    );
+    expect(interpWarn).toBeUndefined();
+  });
+
+  it("does NOT warn when a queue action provides the matching status transition", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    // counter -> awaiting via actionToTerminalStatus, so the trigger CAN fire
+    const result = compileProgram(src);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeUndefined();
+  });
+});
+
+describe('Triggered email — queue-action integration (Phase 4)', () => {
+  it("queue auto-PUT handler that lands on the trigger value also inserts into workflow_email_queue", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The 'counter' action transitions status to 'awaiting' (actionToTerminalStatus
+    // in compiler.js), so the queue's auto-generated PUT /api/deals/:id/counter
+    // handler must also queue an email row in workflow_email_queue.
+    expect(result.javascript).toContain("/api/deals/:id/counter");
+    expect(result.javascript).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+    // The queued row should carry the trigger's subject + the resolved recipient
+    // (customer's email field). The compiler JSON-stringifies the subject so it
+    // ends up double-quoted in the output regardless of how the source quoted it.
+    expect(result.javascript).toContain('"We countered"');
+    expect(result.javascript).toContain('customer_email');
+  });
+
+  it("queue auto-PUT handler that DOES NOT land on a trigger value does not insert into workflow_email_queue", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting'
+  body is 'Awaiting'`;
+    // The 'approve' action transitions status to 'approved' (NOT 'awaiting'),
+    // so its handler should NOT inject a workflow_email_queue insert.
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Find the approve handler's body and assert no queue-insert appears in it.
+    const approveStart = result.javascript.indexOf("/api/deals/:id/approve");
+    const approveEnd = result.javascript.indexOf("});", approveStart);
+    const approveHandler = result.javascript.slice(approveStart, approveEnd);
+    expect(approveHandler).not.toMatch(/workflow_email_queue/);
+  });
+
+  // Cycle 4.1-extension — user-defined endpoints that set entity.status to
+  // the trigger value must also queue an email. Without this, an app that
+  // doesn't use the queue primitive (or whose user-written endpoint bypasses
+  // the queue) silently drops the trigger. The plan's Cycle 4.1 explicitly
+  // tests user-written handlers, not just queue auto-PUTs.
+  it("user-defined endpoint that assigns entity.status to trigger value also queues an email", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter offer'
+  body is 'Counter offer details.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Confirm the handler exists in the output.
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    // No queue is declared — the ONLY source of a workflow_email_queue insert
+    // is the user-defined counter handler. Exactly one insert should appear.
+    const inserts = (result.javascript.match(/db\.insert\(['"]workflow_email_queue['"]/g) || []).length;
+    expect(inserts).toBe(1);
+    // Insert carries the subject + resolved recipient field.
+    expect(result.javascript).toContain('"Counter offer"'); // subject
+    expect(result.javascript).toMatch(/recipient_email:[^\n]*customer_email/);
+    // The insert must land BEFORE the response — otherwise it's unreachable
+    // dead code. Splice point is captured by the relative ordering of the
+    // insert vs `return res.` inside the same handler region.
+    const insertPos = result.javascript.indexOf("db.insert('workflow_email_queue'");
+    const responsePos = result.javascript.indexOf('return res.', insertPos);
+    expect(insertPos).toBeGreaterThan(-1);
+    expect(responsePos).toBeGreaterThan(insertPos);
+  });
+
+  // Cycle 4.2 — same trigger fires from EVERY handler that lands on the
+  // trigger value, not just the first one. Two distinct user-written
+  // endpoints both assign awaiting; both must queue an email.
+  it("multiple user-defined handlers assigning the same trigger value all queue emails", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+when user updates deal at /api/deals/:id/awaiting:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Awaiting reply'
+  body is 'We are waiting on you.'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Both handlers exist.
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/awaiting'");
+    // No queue is declared, so the only sources of workflow_email_queue inserts
+    // are the two user-defined handlers. Both must inject — the test fails if
+    // only the first matched (regression on a "scan once and stop" mistake).
+    const inserts = (result.javascript.match(/db\.insert\(['"]workflow_email_queue['"]/g) || []).length;
+    expect(inserts).toBe(2);
+  });
+
+  // Cycle 4.3 — when the entity table doesn't have the recipient role's
+  // <role>_email field (e.g. `email customer when ...` but the Deals table
+  // has no `customer_email`), warn at compile time but still emit the queue
+  // insert. The runtime row lands with recipient_email='' so the failure mode
+  // is observable in the queue (operator can patch the data) instead of
+  // silently dropping the email at send time.
+  it("warns when entity is missing the recipient_email field but still emits the queue insert", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0); // warn, not error
+    const missingField = result.warnings.find(w =>
+      /customer_email/.test(String(w.message || w)) && /Deals/.test(String(w.message || w))
+    );
+    expect(missingField).toBeTruthy();
+    // Queue insert still fires (degraded with empty recipient_email at runtime)
+    expect(result.javascript).toMatch(/db\.insert\(['"]workflow_email_queue['"]/);
+  });
+
+  it("does NOT warn when the entity has the recipient_email field", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    const missingField = result.warnings.find(w =>
+      /customer_email/.test(String(w.message || w)) && /missing/.test(String(w.message || w))
+    );
+    expect(missingField).toBeUndefined();
+  });
+
+  // Cycle 4.1-extension — validator's never-fires check must recognize
+  // user-defined endpoints as valid trigger sources, not just queue actions.
+  // Otherwise an app whose only status-changing endpoint is hand-written
+  // gets a false-positive "never fires" warning even though the trigger
+  // does fire correctly.
+  it("validator does NOT warn never-fires when a user-defined endpoint provides the matching status transition", () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer_email
+  status, default 'pending'
+when user updates deal at /api/deals/:id/counter:
+  deal's status is 'awaiting'
+  save deal to Deals
+  send back deal with success message
+email customer when deal's status changes to 'awaiting':
+  subject is 'Counter'
+  body is 'Counter'`;
+    const result = compileProgram(src);
+    const neverFires = result.warnings.find(w => /never fires/.test(String(w.message || w)));
+    expect(neverFires).toBeUndefined();
+  });
+});
+
+describe('Queue primitive — compiler tables', () => {
+  it('emits a deal_decisions audit table when queue for deal: declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // JS backend emits db.createTable() rather than literal CREATE TABLE SQL.
+    // Backend code is in result.javascript (not serverJS).
+    expect(result.javascript).toContain('deal_decisions');
+    expect(result.javascript).toContain('deal_id');
+    expect(result.javascript).toContain('decision');
+    expect(result.javascript).toContain('decided_by');
+    expect(result.javascript).toContain('decided_at');
+  });
+
+  it('does NOT emit decisions table when no queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('deal_decisions');
+  });
+
+  it('emits a deal_notifications table when notify clauses present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  customer_email
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  notify customer on counter
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('deal_notifications');
+    expect(result.javascript).toContain('recipient_role');
+    expect(result.javascript).toContain('recipient_email');
+    expect(result.javascript).toContain('queue_status');
+  });
+
+  it('does NOT emit notifications table when no notify clauses', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('deal_notifications');
+  });
+});
+
+describe('Queue primitive — compiler URL handlers', () => {
+  it('emits GET /api/deals/queue handler that filters by pending status', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deals/queue'");
+    expect(result.javascript).toContain("'pending'");
+  });
+
+  it('emits PUT /api/deals/:id/<action> for each action', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.put('/api/deals/:id/approve'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/reject'");
+    expect(result.javascript).toContain("app.put('/api/deals/:id/counter'");
+    // Multi-word action 'awaiting customer' slugifies to 'awaiting'
+    expect(result.javascript).toContain("app.put('/api/deals/:id/awaiting'");
+  });
+
+  it('PUT handlers insert into the decisions audit table', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each PUT handler should insert a row into deal_decisions
+    expect(result.javascript).toMatch(/db\.insert\(['"]deal_decisions['"]/);
+  });
+
+  it('emits GET /api/deal-decisions for the audit history', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deal-decisions'");
+  });
+
+  it('action PUT handlers require login (return 401 without req.user)', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Each per-action PUT handler must short-circuit with 401 when no req.user.
+    // Compliance + audit story depends on it: only logged-in users record decisions.
+    expect(result.javascript).toMatch(/app\.put\('\/api\/deals\/:id\/approve'[\s\S]*?if \(!req\.user\) return res\.status\(401\)/);
+  });
+});
+
+// =============================================================================
+// CSV export primitive — every queue auto-emits a /export.csv URL + button
+// Plan: plans/plan-csv-export-primitive-04-27-2026.md
+// =============================================================================
+
+describe('CSV export — compiler URL handler', () => {
+  it('auto-emits GET /api/<entity>/export.csv when queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("app.get('/api/deals/export.csv'");
+    expect(result.javascript).toContain('text/csv');
+    expect(result.javascript).toContain('attachment; filename');
+  });
+
+  it('does NOT emit /export.csv when no queue declared', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('/export.csv');
+  });
+
+  it('emits RFC 4180 escape helper for cells with commas, quotes, newlines', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The compiled CSV handler must wrap cells containing , " or \n in quotes
+    // and double internal quotes per RFC 4180. Look for the escape helper.
+    expect(result.javascript).toMatch(/_clearCsvEscape|csvEscape/);
+  });
+
+  it('omits sensitive fields (password, token, api_key, secret) from CSV', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  email
+  password
+  api_token
+  display_name
+  status, default 'pending'
+queue for user:
+  reviewer is 'admin'
+  actions: ban, unban
+when user requests data from /api/users:
+  send back all Users`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The CSV handler should explicitly filter out sensitive field names
+    // before emitting them. Look for the sensitive-pattern filter.
+    expect(result.javascript).toMatch(/SENSITIVE_FIELDS|password|token|secret|api_key/);
+    // Specifically: there should be a filter that excludes password / api_token
+    expect(result.javascript).toMatch(/_csvSensitive/);
+  });
+});
+
+describe('CSV export — no export opt-out', () => {
+  it('parser accepts no export clause inside queue block', () => {
+    const src = `create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const q = ast.body.find(n => n.type === NodeType.QUEUE_DEF);
+    expect(q).toBeTruthy();
+    expect(q.noExport).toBe(true);
+  });
+
+  it('compiler suppresses CSV URL when no export clause present', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Deals table:
+  customer
+  status, default 'pending'
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject
+  no export
+when user requests data from /api/deals:
+  send back all Deals`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('/export.csv');
+  });
+});
+
+// =============================================================================
 // CANONICAL SYNTAX: receives + returning JSON text
 // =============================================================================
 
@@ -22939,6 +25296,35 @@ test 'blank title rejected':
   });
 });
 
+describe('Clear CLI test runner teardown', () => {
+  it('keeps a passing generated test result when server cleanup transport fails', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-teardown-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, `build for javascript backend
+
+when user requests data from /api/health:
+  script:
+    res.on('finish', () => setImmediate(() => process.exit(0)));
+  send back 'ok'
+`);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--quiet'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 120000,
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Results: 1 passed, 0 failed');
+      expect(result.stderr).toContain('keeping the passing test result');
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('HTTP test assertions in test blocks', () => {
   it('parses call POST with body fields into HTTP_TEST_CALL node', () => {
     const src = `build for javascript backend
@@ -23504,7 +25890,8 @@ page 'Test' at '/':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('_toast');
-    expect(r.javascript).toContain('alert-error');
+    expect(r.javascript).toContain('_toast("Failed!", "error");');
+    expect(r.html).toContain('alert-error');
   });
 
   it('show notification compiles to _toast', () => {
@@ -25334,6 +27721,145 @@ describe('AI helpers — exponential-backoff retry (Session 46)', () => {
   });
 });
 
+// REMOVED 2026-04-26: live: keyword tests deleted with the keyword. Path A defaults
+// (while-cap, recursion-cap, email/DB timeouts) per plans/plan-decidable-core-04-24-2026.md
+// are already shipped — see FEATURES.md "Hostile to bugs by construction" section.
+// Old work preserved on branch save/live-keyword-04-25-2026.
+
+// =============================================================================
+// TBD PLACEHOLDERS — Lean Lesson 1
+// =============================================================================
+// `TBD` is Clear's "to-be-determined" marker. It works anywhere a value or a
+// statement can go. The compiler accepts it (program still compiles green),
+// records each placeholder line on the result, and emits code that throws a
+// clean stub error if the placeholder line is reached at runtime. This lets
+// Meph (or a human) leave one piece unfinished and keep iterating on the rest
+// instead of rewriting the whole program.
+
+describe('TBD placeholders — Phase 1.3 (test runner skips stub-bearing tests)', () => {
+  // For these tests we need a program with at least one ENDPOINT (so the
+  // compiler emits the test harness at all) plus a TBD inside one of the
+  // tests. The harness must catch the "placeholder hit" runtime error and
+  // count it as SKIPPED rather than FAILED, and the final results line
+  // must include a skip count.
+  const stubProgram = [
+    'build for javascript backend',
+    'create a Items table:',
+    '  name, required',
+    "when user requests data from /api/items:",
+    "  send back 'ok'",
+    "test 'placeholder skip example':",
+    '  set thing = TBD',
+    "  expect thing is 'whatever'",
+    '',
+  ].join('\n');
+
+  it('compiled test harness defines a `skipped` counter and a SKIP path', () => {
+    const r = compileProgram(stubProgram);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toBeTruthy();
+    // The harness must declare a skipped counter alongside passed/failed
+    expect(r.tests).toContain('let passed = 0, failed = 0, skipped = 0');
+    // And it must check for the placeholder marker in the thrown error
+    expect(r.tests).toContain('placeholder hit at line');
+    // And it must log a SKIP line when it catches one
+    expect(r.tests).toContain('SKIP:');
+  });
+
+  it('Results line reports skipped due to stub separately from failures', () => {
+    const r = compileProgram(stubProgram);
+    // The summary line must distinguish skipped from failed so a partial
+    // program does not look like a failing one.
+    expect(r.tests).toContain('skipped due to stub');
+  });
+
+  it('a non-stub thrown error still counts as FAILED, not SKIPPED', () => {
+    // Same program shape but the test asserts a real failure, NOT a TBD
+    const failProgram = [
+      'build for javascript backend',
+      'create a Items table:',
+      '  name, required',
+      "when user requests data from /api/items:",
+      "  send back 'ok'",
+      "test 'real failure example':",
+      '  set thing = 5',
+      "  expect thing is 99",
+      '',
+    ].join('\n');
+    const r = compileProgram(failProgram);
+    expect(r.errors).toHaveLength(0);
+    // The harness should still throw real assertion errors as FAIL — the
+    // skip path should ONLY trigger when the message starts with the
+    // exact "placeholder hit at line" marker so non-stub failures are not
+    // accidentally hidden.
+    expect(r.tests).toContain('FAIL:');
+  });
+});
+
+describe('TBD placeholders — Phase 1.2 (compiler stub + position tracking)', () => {
+  it('a program with TBD compiles with zero errors', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('compiler exposes placeholder positions on the result', () => {
+    const src = 'build for javascript backend\nset x = TBD\nset y = 7\nset z = TBD\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.placeholders).toBeTruthy();
+    // Two TBDs on lines 2 and 4
+    expect(r.placeholders).toHaveLength(2);
+    const lines = r.placeholders.map(p => p.line).sort((a, b) => a - b);
+    expect(lines[0]).toBe(2);
+    expect(lines[1]).toBe(4);
+  });
+
+  it('compiled output throws a clean stub error mentioning the line number', () => {
+    const src = 'build for javascript backend\nset x = TBD\nshow x\n';
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const code = r.javascript || r.serverJS || '';
+    // The compiled stub must mention the line number AND a "fill it in" hint
+    // so the runtime error tells Meph (or Russell) exactly what to fix.
+    expect(code).toContain('placeholder');
+    expect(code).toMatch(/line 2/);
+    expect(code).toContain('fill it in or remove it');
+  });
+});
+
+describe('TBD placeholders — Phase 1.1 (grammar)', () => {
+  it('TBD in expression position parses as a placeholder literal', () => {
+    const src = 'set greeting = TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const stmt = ast.body[0];
+    expect(stmt.type).toBe(NodeType.ASSIGN);
+    expect(stmt.expression.type).toBe(NodeType.PLACEHOLDER);
+    expect(stmt.expression.line).toBe(1);
+  });
+
+  it('TBD as a standalone statement parses as a placeholder node', () => {
+    const src = 'TBD\n';
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(ast.body[0].line).toBe(1);
+  });
+
+  it('TBD inside a function body parses cleanly', () => {
+    const src = "to greet with name:\n  TBD\n";
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const fn = ast.body.find(n => n.type === NodeType.FUNCTION_DEF);
+    expect(fn).toBeTruthy();
+    expect(fn.body).toHaveLength(1);
+    expect(fn.body[0].type).toBe(NodeType.PLACEHOLDER);
+    expect(fn.body[0].line).toBe(2);
+  });
+});
+
 // Live App Editing — Phase A test files
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');
@@ -25379,5 +27905,669 @@ await import('./playground/wfp-api.test.js');
 // Cloudflare Workers for Platforms target — Phase 7.7 (deploy orchestration + lock)
 await import('./playground/deploy-cloudflare.test.js');
 
-run();
+// LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
+await import('./runtime/meph-widget.test.mjs');
 
+// =============================================================================
+// SHELL-5: Data tables emit upgrade — pills, avatars, money, actions, sort, select
+// =============================================================================
+describe('SHELL-5: data tables — auto-detected status pills', () => {
+  it('wraps a status field in <span class="clear-pill clear-pill-pending">', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-pill');
+    expect(out).toContain('clear-pill-');
+  });
+
+  it('lowercases status value for class name (Pending → clear-pill-pending)', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toMatch(/toLowerCase\(\)/);
+  });
+});
+
+describe('SHELL-5: data tables — avatar circle for name/customer/email columns', () => {
+  it('renders an avatar wrapper around a customer column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-avatar');
+  });
+
+  it('renders an avatar wrapper around a name column', () => {
+    const src = `build for web
+page 'App':
+  on page load get users from '/api/users'
+  display users as table showing name, role`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-avatar');
+  });
+});
+
+describe('SHELL-5: data tables — money columns get tabular-nums + right alignment', () => {
+  it('right-aligns and tabular-nums-formats a price column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, price`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('text-right');
+    expect(out).toContain('tabular-nums');
+  });
+
+  it('right-aligns an amount column', () => {
+    const src = `build for web
+page 'App':
+  on page load get expenses from '/api/expenses'
+  display expenses as table showing description, amount`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('tabular-nums');
+  });
+});
+
+describe('SHELL-5: data tables — new `with actions:` block syntax', () => {
+  it('parses an indented actions block under display table', () => {
+    const ast = parse(`page 'App':
+  display deals as table showing customer, status with actions:
+    'Approve' is primary
+    'Reject' is danger`);
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(Array.isArray(disp.actionButtons)).toBe(true);
+    expect(disp.actionButtons.length).toBe(2);
+    expect(disp.actionButtons[0].label).toBe('Approve');
+    expect(disp.actionButtons[0].style).toBe('primary');
+    expect(disp.actionButtons[1].label).toBe('Reject');
+    expect(disp.actionButtons[1].style).toBe('danger');
+  });
+
+  it('compiles action buttons into a hover-revealed row-actions column', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status with actions:
+    'Approve' is primary
+    'Review' is ghost`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('clear-row-actions');
+    expect(out).toContain('Approve');
+    expect(out).toContain('Review');
+  });
+
+  it('wires table actions to matching row action endpoints without wiring detail buttons by label', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+page 'App' at '/':
+  on page load get pending from '/api/deals/pending'
+
+  display pending as table showing customer, status with actions:
+    'Approve' is primary
+
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve'`;
+
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('has no action');
+  });
+
+  it('wires detail Approve buttons from explicit 14-year-old action syntax', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+page 'App' at '/':
+  on page load get pending from '/api/deals/pending'
+
+  display pending as table showing customer, status with actions:
+    'Approve' is primary
+
+  detail panel for selected_deal:
+    text selected_deal's customer
+    actions:
+      button 'Approve':
+        change selected_deal's status from 'pending' to 'approved'
+        update selected_deal at /api/deals/:id/approve
+        get pending from /api/deals/pending`;
+
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript || '';
+    const html = result.html || '';
+
+    expect(js).toContain('data-action="approve"');
+    expect(js).toContain("'/api/deals/' + id + '/approve'");
+    expect(js).toContain("headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }");
+    expect(js).toContain("body: JSON.stringify(_payload)");
+    expect(js).toContain("await _clear_action_output_Pending_approve(id, row)");
+    expect(js).toContain("_state.pending = await fetch('/api/deals/pending'");
+
+    expect(html).toContain('data-detail-for="selected_deal"');
+    expect(html).toContain('data-action="approve"');
+    expect(js).toContain("_record[\"status\"] = \"approved\"");
+    expect(js).toContain("fetch(\"/api/deals/\" + _id + \"/approve\"");
+    expect(js).not.toContain("document.querySelector('[data-detail-for=\"selected_deal\"] [data-action=\"approve\"]')");
+    expect(js).toContain("_state.selected_deal");
+  });
+
+  it('generates an approval UAT that proves the pending queue changes', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Deals table:
+  customer
+  status
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending'
+
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  deal's status is 'approved'
+  save deal to Deals
+  send back deal with success message
+
+when user sends seed to /api/seed:
+  create d1:
+    customer is 'Acme Corp'
+    status is 'pending'
+  save d1 as new Deal
+  send back 'seeded' with success message
+
+test:
+  can user approve a deal`;
+
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.tests).toContain('Approving a deal removes it from the pending queue');
+    expect(result.tests).toContain('"/api/seed"');
+    expect(result.tests).toContain('"/api/deals/pending"');
+    expect(result.tests).toContain('"/api/deals/" + target.id + "/approve"');
+    expect(result.tests).toContain('Approved deal should leave the pending queue');
+    expect(result.tests).toContain('after.length === before.length - 1');
+  });
+});
+
+describe('SHELL-5: data tables — sortable headers', () => {
+  it('every <th> carries a data-sortable attribute', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, price`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('data-sortable');
+  });
+});
+
+describe('SHELL-5: data tables — row selection', () => {
+  it('row click toggles is-selected on the <tr>', () => {
+    const src = `build for web
+page 'App':
+  on page load get deals from '/api/deals'
+  display deals as table showing customer, status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('is-selected');
+  });
+});
+
+describe('SHELL-5: data tables — backwards compat with `with delete and edit`', () => {
+  it('existing actions API still works (delete/edit shorthand)', () => {
+    const ast = parse(`page 'App':
+  display contacts as table showing name, email with delete and edit`);
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+});
+
+// =============================================================================
+// Routing primitive — `route X by FIELD:` (Phase 1, 2026-04-29)
+// Plan: plans/plan-routing-primitive-2026-04-29.md
+// =============================================================================
+
+describe('Routing primitive — parser', () => {
+  it('parses route lead by size: with one fixed rule', () => {
+    const src = `create a Leads table:
+  size, default 'SMB'
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    expect(endpoint).toBeTruthy();
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route).toBeTruthy();
+    expect(route.entityName).toBe('lead');
+    expect(route.field).toBe('size');
+    expect(route.rules).toHaveLength(1);
+    expect(route.rules[0]).toEqual({ type: 'fixed', match: 'SMB', owner: 'alice' });
+  });
+
+  it('parses default to owner (single-owner default)', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.rules).toHaveLength(2);
+    expect(route.rules[1]).toEqual({ type: 'default', strategy: 'fixed', owner: 'bob' });
+  });
+
+  it('parses default round-robin across [pool] into the right AST', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob, diana, evan]
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.rules).toHaveLength(2);
+    expect(route.rules[1]).toEqual({
+      type: 'default',
+      strategy: 'round_robin',
+      pool: ['alice', 'bob', 'diana', 'evan'],
+    });
+  });
+
+  it('singularizes plural entity name (queue F2 pattern)', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route leads by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const endpoint = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    const route = (endpoint.body || []).find(n => n.type === 'route_def');
+    expect(route.entityName).toBe('lead');
+  });
+});
+
+describe('Routing primitive — validator', () => {
+  it('ROUTE_ENTITY_NOT_IN_SCOPE: hard error when route entity is undefined', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route foo by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /Route block references|in scope/i.test(e.message || ''));
+    expect(err).toBeTruthy();
+    expect(err.message).toContain('foo');
+  });
+
+  it('ROUTE_AFTER_SAVE: hard error when route block runs after save', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  new_lead = save lead as new Lead
+  route lead by size:
+    'SMB' to alice`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /never reaches|after.*save|Move the route block/i.test(e.message || ''));
+    expect(err).toBeTruthy();
+  });
+
+  it('no ROUTE_AFTER_SAVE error when route comes BEFORE save', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const afterSaveErr = result.errors.find(e => /never reaches|after.*save|Move the route block/i.test(e.message || ''));
+    expect(afterSaveErr).toBeFalsy();
+  });
+
+  it('ROUTE_NO_DEFAULT: warning when block has no default rule', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /no default|unmatched values/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+  });
+
+  it('ROUTE_NO_DEFAULT does NOT fire when default is present', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /no default|unmatched values/i.test(w.message || ''));
+    expect(warn).toBeFalsy();
+  });
+
+  it('ROUTE_FIELD_NOT_ON_ENTITY: warning when field is not on the entity table', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by status:
+    'open' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /isn't on the/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+    expect(warn.message).toContain('status');
+  });
+
+  it('ROUTE_UNREACHABLE_RULE: warning when a fixed rule appears after default', () => {
+    const src = `create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+    'Enterprise' to charlie
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    const warn = (result.warnings || []).find(w => /never fires|after default|unreachable/i.test(w.message || ''));
+    expect(warn).toBeTruthy();
+  });
+});
+
+describe('Routing primitive — JS compiler emit', () => {
+  it('cycle 3.1: fixed-mapping rules compile to if/else over the field', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Mid-market' to bob
+    'Enterprise' to charlie
+    default to alice
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    // Reads from lead.size into a local
+    expect(js).toContain('lead.size');
+    // Each rule writes to lead.assigned_to. Compiler uses JSON.stringify so
+    // string literals are double-quoted in the output.
+    expect(js).toContain('lead.assigned_to = "alice"');
+    expect(js).toContain('lead.assigned_to = "bob"');
+    expect(js).toContain('lead.assigned_to = "charlie"');
+  });
+
+  it('cycle 3.2: round-robin default compiles to await _clear_route_pick', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob, diana, evan]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).toContain('_clear_route_pick');
+    expect(js).toMatch(/pool:\s*\[\s*"alice"/);
+    expect(js).toContain('routeId:');
+  });
+
+  it('cycle 4.1: round-robin program emits the cursor table + helper at module top', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'Enterprise' to charlie
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).toContain("createTable('_clear_route_cursors'");
+    expect(js).toContain('async function _clear_route_pick');
+    // Helper picks pool[(last_index + 1) % pool.length]
+    expect(js).toMatch(/last_index[\s\S]+pool\.length/);
+  });
+
+  it('cycle 4.2: cursor table + helper emit exactly once with multiple route blocks', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  region
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  route lead by region:
+    default round-robin across [charlie, diana]
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    const createMatches = js.match(/createTable\(['"]_clear_route_cursors['"]/g) || [];
+    expect(createMatches.length).toBe(1);
+    const helperMatches = js.match(/async function _clear_route_pick/g) || [];
+    expect(helperMatches.length).toBe(1);
+  });
+
+  it('cycle 4.3: a fixed-mapping-only route block does NOT emit cursor table or helper', () => {
+    const src = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript || '';
+    expect(js).not.toContain('_clear_route_cursors');
+    expect(js).not.toContain('_clear_route_pick');
+  });
+
+  it('cycle 5.1: Python emit — fixed-mapping rules compile to if/elif chain', () => {
+    const src = `build for python backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    'Enterprise' to charlie
+    default to bob
+  new_lead = save lead as new Lead`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const py = result.python || '';
+    // Python uses elif chains and dict-style assignment
+    expect(py).toContain("lead.get('size')");
+    expect(py).toContain("lead['assigned_to'] = \"alice\"");
+    expect(py).toContain("lead['assigned_to'] = \"charlie\"");
+    expect(py).toContain("lead['assigned_to'] = \"bob\"");
+  });
+
+  it('cycle 3.3: stable id is a content hash, not a line number', () => {
+    // Content-hash invariant: same rules + pool produce the same routeId
+    // regardless of where the route block lives in the file.
+    const a = `build for javascript backend
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    // Same program, but with comments above shifting the line number.
+    const b = `build for javascript backend
+# leading comment
+# another comment
+create a Leads table:
+  size
+  assigned_to
+when user sends lead to /api/leads:
+  route lead by size:
+    default round-robin across [alice, bob]
+  new_lead = save lead as new Lead`;
+    const ra = compileProgram(a);
+    const rb = compileProgram(b);
+    const jsA = ra.serverJS || ra.javascript || '';
+    const jsB = rb.serverJS || rb.javascript || '';
+    const idA = jsA.match(/routeId:\s*"([^"]+)"/);
+    const idB = jsB.match(/routeId:\s*"([^"]+)"/);
+    expect(idA).toBeTruthy();
+    expect(idB).toBeTruthy();
+    expect(idA[1]).toBe(idB[1]);
+  });
+});
+
+describe('Routing primitive — parser hard-fail', () => {
+  it('errors on missing `by`', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead size:
+    'SMB' to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain("'by'");
+  });
+
+  it('errors on missing field name', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by:
+    'SMB' to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('field');
+  });
+
+  it('errors on empty body', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+  new_lead = save lead as new Lead`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('at least one rule');
+  });
+
+  it('errors on bare-identifier match value (must be string)', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    SMB to alice`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('quoted strings');
+  });
+
+  it('errors on multiple `default` rules', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default to bob
+    default round-robin across [diana, evan]`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('only one default');
+  });
+
+  it('errors on empty round-robin pool', () => {
+    const src = `when user sends lead to /api/leads:
+  route lead by size:
+    'SMB' to alice
+    default round-robin across []`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('non-empty pool');
+  });
+});
+
+run();

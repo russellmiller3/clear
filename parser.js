@@ -40,6 +40,7 @@
 //   │     │    ├─ agent 'X' → AGENT                  │      │
 //   │     │    ├─ define function → FUNCTION_DEF     │      │
 //   │     │    ├─ if/while/repeat/for → CONTROL FLOW │      │
+//   │     │    ├─ change/update/delete → RECORD FX   │      │
 //   │     │    ├─ save/look up/delete → CRUD         │      │
 //   │     │    ├─ send back → RESPOND                │      │
 //   │     │    ├─ validate → VALIDATE                │      │
@@ -82,18 +83,19 @@
 //   USE / IMPORT MODULES .............. parseUse()
 //   PAGE DECLARATION .................. parsePage()
 //   SECTION ........................... parseSection()
+//   SIDEBAR NAV ....................... parseNav()
 //   STYLE DEF ......................... parseStyleDef()
 //   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
 //   STATIC CONTENT ELEMENTS ........... parseContent(), parseImage(), parseMedia()
 //   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
-//   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
+//   CRUD OPERATIONS ................... parseSave, parseDeleteFrom, parseDefineAs,
 //                                      parseLookUpAssignment, parseSaveAssignment
 //   TEST BLOCKS ....................... parseTestDef(), parseExpect(), UNIT_ASSERT detection
 //   ASK FOR (legacy) .................. parseAskFor()
 //   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
 //   CHART ............................. parseChart(), parseChartTypeFirst(), parseChartTitleFirst(),
 //                                      parseChartRemainder() — ECharts (line, bar, pie, area)
-//   BUTTON ............................ parseButton()
+//   BUTTON ............................ parseButton(), button action data-effect guards
 //   ENDPOINT .......................... parseEndpoint()
 //   ADVANCED FEATURES ................. parseStream, parseBackground, parseCron,
 //                                      parseSubscribe, parseUpdateDatabase, parseMigration, parseWait
@@ -118,6 +120,7 @@
 // =============================================================================
 
 import { tokenize, tokenizeLine, TokenType } from './tokenizer.js';
+import { normalizeThirdPersonInteractionAction } from './lib/verb-agreement.js';
 
 // =============================================================================
 // AST NODE TYPES
@@ -130,6 +133,7 @@ export const NodeType = Object.freeze({
   ASSIGN: 'assign',
   SHOW: 'show',
   IF_THEN: 'if_then',
+  FIELD_CHANGE: 'field_change',
 
   // Functions
   FUNCTION_DEF: 'function_def',
@@ -149,6 +153,11 @@ export const NodeType = Object.freeze({
 
   // Error handling (Phase 3)
   TRY_HANDLE: 'try_handle',
+
+  // Decidable Core — explicit effect fence (Path B Phase 1, 2026-04-25)
+  // `live:` block marks code that talks to the world (ask claude, call API,
+  // subscribe, timers). Body emits as-is for now; the fence makes the
+  // boundary visible to the compiler and the reader. See PHILOSOPHY.md Rule 18.
 
   // GP Phase 1: Map iteration
   MAP_KEYS: 'map_keys',
@@ -175,6 +184,7 @@ export const NodeType = Object.freeze({
   // Agent primitives
   AGENT: 'agent',
   ASK_AI: 'ask_ai',
+  GIVE_CLAUDE: 'give_claude',
   RUN_AGENT: 'run_agent',
   PARALLEL_AGENTS: 'parallel_agents',
   PIPELINE: 'pipeline',
@@ -187,6 +197,33 @@ export const NodeType = Object.freeze({
   // Workflow primitives (Phases 85-90)
   WORKFLOW: 'workflow',
   RUN_WORKFLOW: 'run_workflow',
+
+  // Approval queue primitive (Tier 1, 2026-04-27)
+  // `queue for X:` declares a human-approval queue with reviewer + actions + notifications
+  // Distinct from WORKFLOW which orchestrates AI agents over shared state.
+  QUEUE_DEF: 'queue_def',
+  // Routing primitive (2026-04-29). Statement-level node inside an endpoint.
+  // `route X by FIELD:` + indented body of `'value' to owner` lines and an
+  // optional `default` rule (single-owner or round-robin pool). Compiles to
+  // an if/else chain mutating X.assigned_to. Round-robin default uses the
+  // _clear_route_cursors SQLite table. Plan: plans/plan-routing-primitive-2026-04-29.md
+  ROUTE_DEF: 'route_def',
+  TRIGGERED_SEND_EMAIL: 'triggered_send_email',
+  // Triggered email primitive (2026-04-28). Top-level block:
+  // `email <role> when <entity>'s status changes to <value>:` + body
+  // (subject is, body is, provider is, track replies as). Same `email <role>
+  // when <trigger>` atom as the queue's email clause (F3), but lives outside
+  // queue blocks so any URL handler that sets the entity's status to the
+  // trigger value queues an email row in the WorkflowEmailQueue table.
+  EMAIL_TRIGGER: 'email_trigger',
+  // Email delivery directive (Phase B-1 part 2, 2026-04-28). Top-level:
+  //   email delivery using agentmail
+  // Tells the compiler to emit a small background worker that polls
+  // workflow_email_queue and sends pending rows via the named provider.
+  // Without the directive, no worker emits — default builds queue rows only.
+  // Worker fails loud at runtime when the provider's API key env var isn't
+  // set, so a misconfigured deploy doesn't silently succeed.
+  EMAIL_DELIVERY_DIRECTIVE: 'email_delivery_directive',
 
   // App-level policies (Enact guard types)
   POLICY: 'policy',
@@ -201,6 +238,12 @@ export const NodeType = Object.freeze({
   // Interactive layout patterns
   TAB_GROUP: 'tab_group',
   TAB: 'tab',
+  PAGE_HEADER: 'page_header',
+  TAB_STRIP: 'tab_strip',
+  ROUTE_TAB: 'route_tab',
+  STAT_STRIP: 'stat_strip',
+  STAT_CARD: 'stat_card',
+  DETAIL_PANEL: 'detail_panel',
   PANEL_ACTION: 'panel_action',  // toggle/open/close a panel or modal
   HIDE_ELEMENT: 'hide_element',  // hide X — toggle element visibility
   CLIPBOARD_COPY: 'clipboard_copy',  // copy X to clipboard
@@ -216,6 +259,8 @@ export const NodeType = Object.freeze({
 
   // Layout (Phase 7)
   SECTION: 'section',
+  NAV_SECTION: 'nav_section',
+  NAV_ITEM: 'nav_item',
 
   // Static content elements
   CONTENT: 'content',
@@ -384,6 +429,12 @@ export const NodeType = Object.freeze({
   BINARY_OP: 'binary_op',
   UNARY_OP: 'unary_op',
   CALL: 'call',
+
+  // Lean Lesson 1 — placeholder marker. Goes anywhere a value or a statement
+  // can. Compiler emits a tagged stub that throws a clean runtime error if
+  // execution ever reaches it. Keeps a partial program compiling instead of
+  // forcing a rewrite of the whole file.
+  PLACEHOLDER: 'placeholder',
 });
 
 // =============================================================================
@@ -496,6 +547,15 @@ function callNode(name, args, line) {
   return { type: NodeType.CALL, name, args, line };
 }
 
+// Lean Lesson 1 — placeholder marker. Drops into either expression position
+// (e.g. `set greeting = TBD`) or statement position (a line that's just `TBD`).
+// Both shapes record the source line so the compiler can emit a "this part
+// hasn't been filled in yet" stub at runtime and so the test runner can mark
+// any test that exercises the line as SKIPPED instead of FAILED.
+function placeholderNode(line) {
+  return { type: NodeType.PLACEHOLDER, line };
+}
+
 // Phase 3: Modules
 function useNode(module, line) {
   return { type: NodeType.USE, module, line };
@@ -529,7 +589,7 @@ function autoLabelFromName(name) {
     .join(' ');
 }
 
-function askForNode(variable, inputType, label, line) {
+function askForNode(variable, inputType, label, line, choices) {
   const baseType = inputType;
   let htmlType = 'text';
   let tag = 'input';
@@ -547,7 +607,12 @@ function askForNode(variable, inputType, label, line) {
     label: label || autoLabelFromName(variable),
   };
 
-  return { type: NodeType.ASK_FOR, variable, inputType, label, line, ui };
+  const node = { type: NodeType.ASK_FOR, variable, inputType, label, line, ui };
+  if (choices) {
+    node.choices = choices;
+    node.ui.choices = choices;
+  }
+  return node;
 }
 
 function displayNode(expression, format, label, line) {
@@ -568,8 +633,80 @@ function buttonNode(label, body, line) {
     tag: 'button',
     id: `btn_${sanitizeForId(label.replace(/\s+/g, '_'))}`,
     label,
+    text: label,
   };
   return { type: NodeType.BUTTON, label, body, line, ui };
+}
+
+function hasExecutableBody(body) {
+  return Array.isArray(body) && body.some(node => node && node.type !== NodeType.COMMENT);
+}
+
+function firstRecordUpdateWithoutChange(body) {
+  if (!Array.isArray(body)) return null;
+  const changedRecords = new Set();
+  for (const node of body) {
+    if (!node || node.type === NodeType.COMMENT) continue;
+    if (node.type === NodeType.FIELD_CHANGE && node.recordVar) {
+      changedRecords.add(String(node.recordVar));
+      continue;
+    }
+    const method = String(node.method || '').toUpperCase();
+    if (node.type === NodeType.API_CALL && node.recordVar && (method === 'PUT' || method === 'PATCH')) {
+      const recordVar = String(node.recordVar);
+      if (!changedRecords.has(recordVar)) return node;
+    }
+  }
+  return null;
+}
+
+const DOMAIN_ACTION_BUTTON_LABELS = new Set([
+  'approve', 'reject', 'assign', 'resolve', 'save', 'delete',
+]);
+
+function isDomainActionButtonLabel(label) {
+  const firstWord = String(label || '').trim().toLowerCase().match(/[a-z]+/)?.[0] || '';
+  return DOMAIN_ACTION_BUTTON_LABELS.has(firstWord);
+}
+
+function hasToastEffect(body) {
+  return Array.isArray(body) && body.some(node => node && node.type === NodeType.TOAST);
+}
+
+function hasBusinessMutationEffect(body) {
+  if (!Array.isArray(body)) return false;
+  for (const node of body) {
+    if (!node || node.type === NodeType.COMMENT || node.type === NodeType.TOAST) continue;
+    if (node.type === NodeType.FIELD_CHANGE) return true;
+    if (node.type === NodeType.API_CALL) {
+      const method = String(node.method || '').toUpperCase();
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true;
+    }
+    if (node.type === NodeType.CRUD) {
+      const operation = String(node.operation || '').toLowerCase();
+      if (['save', 'delete', 'remove', 'update'].includes(operation)) return true;
+    }
+    if (node.type === NodeType.LIST_PUSH) return true;
+  }
+  return false;
+}
+
+function validateButtonActionBody(label, body, line, errors) {
+  if (body.length === 0) {
+    errors.push({ line, message: `The button "${label}" has no action — add code that runs when clicked, indented below it. Example:\n  button "${label}":\n    show "clicked!"` });
+    return;
+  }
+  if (!hasExecutableBody(body)) {
+    errors.push({ line, message: `The button "${label}" has no executable action — comments explain behavior, but they do not run. Example:\n  button "${label}":\n    change selected_deal's status from 'pending' to 'approved'\n    update selected_deal at /api/deals/:id/approve` });
+    return;
+  }
+  if (isDomainActionButtonLabel(label) && hasToastEffect(body) && !hasBusinessMutationEffect(body)) {
+    errors.push({ line, message: `The button "${label}" cannot only show a toast. A toast is feedback, not the business action. Add the data action too: change the record, update or delete it at an endpoint, send data to an endpoint, or save an audit/queue row.` });
+  }
+  const vagueUpdate = firstRecordUpdateWithoutChange(body);
+  if (vagueUpdate) {
+    errors.push({ line: vagueUpdate.line || line, message: `The button "${label}" updates ${vagueUpdate.recordVar} but does not say what data changes. It needs a change line before it. Example:\n  button "${label}":\n    change ${vagueUpdate.recordVar}'s status from 'pending' to 'approved'\n    update ${vagueUpdate.recordVar} at ${vagueUpdate.url}` });
+  }
 }
 
 // Phase 5: Backend
@@ -587,6 +724,17 @@ function sectionNode(title, body, line, styleName) {
   const ui = { cssClass: classes.join(' '), title };
   const node = { type: NodeType.SECTION, title, body, line, ui };
   if (styleName) node.styleName = styleName;
+  return node;
+}
+
+function navSectionNode(title, body, line) {
+  return { type: NodeType.NAV_SECTION, title, body, line };
+}
+
+function navItemNode(title, path, line, count, icon) {
+  const node = { type: NodeType.NAV_ITEM, title, path, line };
+  if (count !== undefined) node.count = count;
+  if (icon) node.icon = icon;
   return node;
 }
 
@@ -838,7 +986,7 @@ const ZONE_OVERRIDES = {
     remove: 'action_delete',  // 'remove' also means action button in UI context
   },
   crud: {
-    delete: 'remove',         // In CRUD context, 'delete' = remove from database (tokenizer default)
+    delete: 'remove',         // Internal operation name for source-level database deletion
   },
   comparison: {},  // 'is' context-sensitivity already handled by parser
   agent: {
@@ -867,6 +1015,11 @@ function resolveCanonical(token, zone) {
 // Canonical-keyword handlers (keyed on firstToken.canonical)
 const CANONICAL_DISPATCH = new Map([
   // --- Simple single-line nodes ---
+  // Lean Lesson 1 — `TBD` as a standalone statement. Records the line so the
+  // compiler can emit a tagged stub and the test runner can skip any test
+  // that exercises it. Expression-position TBD (e.g. `set x = TBD`) is
+  // handled in parsePrimary below.
+  ['tbd', (ctx) => { ctx.body.push(placeholderNode(ctx.line)); return ctx.i + 1; }],
   ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
   ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
   ['auth_scaffold', (ctx) => { ctx.body.push({ type: NodeType.AUTH_SCAFFOLD, line: ctx.line }); return ctx.i + 1; }],
@@ -1189,10 +1342,13 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['delete_from', (ctx) => {
-    const method = 'DELETE';
-    let url = '';
-    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
-    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      ctx.body.push({ type: NodeType.API_CALL, method: 'DELETE', url: ctx.tokens[1].value, fields: [], line: ctx.line });
+      return ctx.i + 1;
+    }
+    const parsed = parseDeleteFrom(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
     return ctx.i + 1;
   }],
   ['sort_by', (ctx) => {
@@ -1241,9 +1397,8 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['remove_from', (ctx) => {
-    const parsed = parseRemoveFrom(ctx.tokens, ctx.line);
-    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-    else ctx.body.push(parsed.node);
+    const target = ctx.tokens[1]?.value || 'Records';
+    ctx.errors.push({ line: ctx.line, message: `Use delete from ${target} for database deletion. Use remove X from list only for list items.` });
     return ctx.i + 1;
   }],
   ['wait_kw', (ctx) => {
@@ -1460,6 +1615,15 @@ const CANONICAL_DISPATCH = new Map([
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
+  ['give_claude', (ctx) => {
+    // Plan 2026-04-26 — canonical AI call. Statement-level shape:
+    // `give claude <data> [with prompt[:] '<X>'] [as <name>]`. Replaces the
+    // assignment-form `answer = ask claude '<prompt>' with <data>` for new
+    // code. Old form still parses (additive Phase A; no migration breakage).
+    const parsed = parseGiveClaude(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
   ['use', (ctx) => {
     const parsed = parseUse(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
@@ -1467,12 +1631,22 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['page', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'header') {
+      const parsed = parsePageHeader(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
     const parsed = parsePage(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
   ['section', (ctx) => {
     const parsed = parseSection(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['nav', (ctx) => {
+    const parsed = parseNav(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -1643,7 +1817,7 @@ const CANONICAL_DISPATCH = new Map([
       return ctx.i + 1;
     }
     // Toast: show toast|alert|notification 'message' [as warning/error/success]
-    if (ctx.tokens.length >= 3 && (ctx.tokens[1].value === 'toast' || ctx.tokens[1].value === 'alert' || ctx.tokens[1].value === 'notification')) {
+    if (ctx.tokens.length >= 2 && (ctx.tokens[1].value === 'toast' || ctx.tokens[1].value === 'alert' || ctx.tokens[1].value === 'notification')) {
       let tPos = 2;
       let message = '';
       if (tPos < ctx.tokens.length && ctx.tokens[tPos].type === TokenType.STRING) {
@@ -1661,7 +1835,33 @@ const CANONICAL_DISPATCH = new Map([
     if (hasDisplayModifiers(ctx.tokens)) {
       const parsed = parseDisplay(ctx.tokens, ctx.line);
       if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-      else ctx.body.push(parsed.node);
+      else {
+        // SHELL-5: harvest indented `with actions:` block — each child line is
+        // `'Label' is style` where style ∈ primary|ghost|danger|secondary.
+        if (parsed.node._actionsBlockFollows) {
+          delete parsed.node._actionsBlockFollows;
+          parsed.node.actionButtons = [];
+          let j = ctx.i + 1;
+          while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+            const aTokens = ctx.lines[j].tokens;
+            if (aTokens && aTokens.length >= 3 && aTokens[0].type === TokenType.STRING) {
+              const label = aTokens[0].value;
+              let stylePos = -1;
+              for (let k = 1; k < aTokens.length; k++) {
+                if (aTokens[k].canonical === 'is' || aTokens[k].value === 'is') { stylePos = k + 1; break; }
+              }
+              const style = (stylePos >= 0 && stylePos < aTokens.length)
+                ? aTokens[stylePos].value.toLowerCase()
+                : 'ghost';
+              parsed.node.actionButtons.push({ label, style });
+            }
+            j++;
+          }
+          ctx.body.push(parsed.node);
+          return j;
+        }
+        ctx.body.push(parsed.node);
+      }
       return ctx.i + 1;
     }
     // Plain show
@@ -2361,14 +2561,19 @@ const CANONICAL_DISPATCH = new Map([
     // is a regular JSON endpoint, the fields are currently ignored (plain GET).
     if (ctx.tokens.length >= 4 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
       const fromIdx = ctx.tokens.findIndex((t, idx) => idx >= 2 && t.value === 'from');
-      if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length && ctx.tokens[fromIdx + 1].type === TokenType.STRING) {
+      if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length) {
         const targetVar = ctx.tokens[1].value;
-        const url = ctx.tokens[fromIdx + 1].value;
+        let url = '';
         // Optional: "with field1, field2, ..." → collect input fields
         const fields = [];
         let withPos = -1;
         for (let k = fromIdx + 2; k < ctx.tokens.length; k++) {
           if (ctx.tokens[k].value === 'with' || ctx.tokens[k].canonical === 'with') { withPos = k; break; }
+        }
+        url = tokenPathText(ctx.tokens.slice(fromIdx + 1, withPos > 0 ? withPos : ctx.tokens.length));
+        if (!url) {
+          ctx.errors.push({ line: ctx.line, message: "get needs an endpoint after 'from'. Example: get pending_deals from /api/deals/pending" });
+          return ctx.i + 1;
         }
         if (withPos > 0) {
           for (let k = withPos + 1; k < ctx.tokens.length; k++) {
@@ -2515,11 +2720,32 @@ CANONICAL_DISPATCH.set('script', (ctx) => {
     return j;
 });
 CANONICAL_DISPATCH.set('tab', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'strip') {
+      const parsed = parseTabStrip(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const tabTitle = ctx.tokens[1].value;
     const { body: tabBody, endIdx: tabEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
     ctx.body.push({ type: NodeType.TAB, title: tabTitle, body: tabBody, line: ctx.line });
     return tabEnd;
+});
+CANONICAL_DISPATCH.set('stat', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'strip') {
+      const parsed = parseStatStrip(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
+    return undefined;
+});
+CANONICAL_DISPATCH.set('detail', (ctx) => {
+    if (ctx.tokens[1] && String(ctx.tokens[1].value || '').toLowerCase() === 'panel') {
+      const parsed = parseDetailPanel(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (parsed.node) ctx.body.push(parsed.node);
+      return parsed.endIdx;
+    }
+    return undefined;
 });
 CANONICAL_DISPATCH.set('retry', (ctx) => {
     if (ctx.tokens.length < 3) return undefined;
@@ -2584,6 +2810,42 @@ CANONICAL_DISPATCH.set('skill', (ctx) => {
 CANONICAL_DISPATCH.set('workflow', (ctx) => {
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const result = parseWorkflow(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
+CANONICAL_DISPATCH.set('queue', (ctx) => {
+    // Disambiguate from any other 'queue' use: must START with `queue for ...`
+    // We DON'T require length >= 3 here because malformed input like `queue for:`
+    // (no entity name) needs parseQueueDef to emit the helpful error.
+    if (ctx.tokens.length < 2 || ctx.tokens[1].value !== 'for') return undefined;
+    const result = parseQueueDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
+CANONICAL_DISPATCH.set('route', (ctx) => {
+    // Statement-level routing primitive. Shape: `route <entity> by <field>:`
+    // followed by indented body of `'value' to <owner>` and `default ...` rules.
+    // Must have at least the entity name to dispatch — parseRouteDef reports
+    // structural errors (missing 'by', missing field, etc.) with line context.
+    if (ctx.tokens.length < 2) return undefined;
+    const result = parseRouteDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
+CANONICAL_DISPATCH.set('email', (ctx) => {
+    // Two top-level forms share the `email` keyword. Disambiguate by token[1]:
+    //   1. `email delivery using <provider>`     — flips live sending on
+    //   2. `email <role> when <entity>'s status changes to <value>:` — trigger
+    // Any other top-level use of `email` (rare; bare keyword) falls through.
+    if (ctx.tokens.length >= 4 &&
+        ctx.tokens[1].value === 'delivery' &&
+        ctx.tokens[2].value === 'using') {
+      const result = parseEmailDeliveryDirective(ctx.lines, ctx.i, ctx.errors);
+      if (result.node) ctx.body.push(result.node);
+      return result.endIdx;
+    }
+    if (ctx.tokens.length < 4 || ctx.tokens[2].value !== 'when') return undefined;
+    const result = parseEmailTrigger(ctx.lines, ctx.i, ctx.indent, ctx.errors, ctx.body);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
 });
@@ -2708,6 +2970,102 @@ CANONICAL_DISPATCH.set('close', (ctx) => {
   }
   return undefined;
 });
+
+function tokenPathText(tokens) {
+  if (!tokens || tokens.length === 0) return '';
+  if (tokens.length === 1 && tokens[0].type === TokenType.STRING) return tokens[0].value;
+  return tokens
+    .filter(t => t.type !== TokenType.COMMENT)
+    .map(t => String(t.rawValue ?? t.value ?? ''))
+    .join('');
+}
+
+function parseChangeValue(tokens, line) {
+  if (!tokens || tokens.length === 0) return { error: 'change needs a value.' };
+  if (tokens.length === 1 && String(tokens[0].value || '').toLowerCase() === 'empty') {
+    return { node: { type: NodeType.LITERAL_STRING, value: '', line }, isEmpty: true };
+  }
+  return parseExpression(tokens, 0, line);
+}
+
+function parseFieldChange(tokens, line) {
+  if (!tokens || tokens.length < 8) return null;
+  if (String(tokens[0].rawValue ?? tokens[0].value ?? '').toLowerCase() !== 'change') return null;
+  const record = tokens[1];
+  if (record.type !== TokenType.IDENTIFIER && record.type !== TokenType.KEYWORD) {
+    return { error: "change needs a record variable. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  let pos = 2;
+  if (tokens[pos]?.type !== TokenType.POSSESSIVE && tokens[pos]?.type !== TokenType.DOT) {
+    return { error: "change needs a field after the record. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  pos++;
+  const fieldToken = tokens[pos];
+  if (!fieldToken || (fieldToken.type !== TokenType.IDENTIFIER && fieldToken.type !== TokenType.KEYWORD)) {
+    return { error: "change needs a field name. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  pos++;
+  const fromIdx = tokens.findIndex((t, idx) => idx >= pos && String(t.rawValue ?? t.value ?? '').toLowerCase() === 'from');
+  const toIdx = tokens.findIndex((t, idx) => idx > fromIdx && String(t.rawValue ?? t.value ?? '').toLowerCase() === 'to');
+  if (fromIdx === -1 || toIdx === -1 || toIdx <= fromIdx + 1 || toIdx + 1 >= tokens.length) {
+    return { error: "change needs both old and new values. Example: change selected_deal's status from 'pending' to 'approved'" };
+  }
+  const fromValue = parseChangeValue(tokens.slice(fromIdx + 1, toIdx), line);
+  if (fromValue.error) return { error: fromValue.error };
+  const toValue = parseChangeValue(tokens.slice(toIdx + 1), line);
+  if (toValue.error) return { error: toValue.error };
+  return {
+    node: {
+      type: NodeType.FIELD_CHANGE,
+      recordVar: String(record.value),
+      field: String(fieldToken.value),
+      fromValue: fromValue.node,
+      fromEmpty: Boolean(fromValue.isEmpty),
+      toValue: toValue.node,
+      toEmpty: Boolean(toValue.isEmpty),
+      line,
+    },
+  };
+}
+
+function parseRecordApiEffect(tokens, line) {
+  if (!tokens || tokens.length < 4) return null;
+  const verb = String(tokens[0].rawValue ?? tokens[0].value ?? '').toLowerCase();
+  const isUpdate = verb === 'update';
+  const isDelete = verb === 'delete';
+  if (!isUpdate && !isDelete) return null;
+  if (isUpdate && String(tokens[1]?.rawValue ?? tokens[1]?.value ?? '').toLowerCase() === 'database') {
+    return null;
+  }
+
+  let recordPos = 1;
+  if (tokens[recordPos]?.value === 'the' || tokens[recordPos]?.value === 'this') recordPos++;
+  const record = tokens[recordPos];
+  if (!record || (record.type !== TokenType.IDENTIFIER && record.type !== TokenType.KEYWORD)) {
+    return null;
+  }
+
+  let connectorIdx = -1;
+  for (let k = recordPos + 1; k < tokens.length; k++) {
+    const word = String(tokens[k].rawValue ?? tokens[k].value ?? '').toLowerCase();
+    if (isUpdate && (word === 'at' || word === 'to')) { connectorIdx = k; break; }
+    if (isDelete && (word === 'from' || word === 'at')) { connectorIdx = k; break; }
+  }
+  if (connectorIdx === -1) return null;
+
+  const url = tokenPathText(tokens.slice(connectorIdx + 1));
+  if (!url || !url.startsWith('/')) return null;
+  return {
+    node: {
+      type: NodeType.API_CALL,
+      method: isUpdate ? 'PUT' : 'DELETE',
+      url,
+      recordVar: String(record.value),
+      fields: [],
+      line,
+    },
+  };
+}
 
 // "refresh page" / "reload page" — page refresh in web apps
 CANONICAL_DISPATCH.set('refresh', (ctx) => {
@@ -2882,10 +3240,11 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
     see: 'view', read: 'view', get: 'view', list: 'view',
     remove: 'delete',
     edit: 'update', change: 'update', modify: 'update',
+    approved: 'approve',
     find: 'search',
   };
   const canonicalAction = TEST_VERB_ALIAS[action] || action;
-  if (!['create', 'view', 'delete', 'update', 'search'].includes(canonicalAction)) return undefined;
+  if (!['create', 'view', 'delete', 'update', 'search', 'approve'].includes(canonicalAction)) return undefined;
   let pos = 3;
   // skip articles: a, an, the, new
   while (pos < ctx.tokens.length && ['a', 'an', 'the', 'new', 'all'].includes(ctx.tokens[pos].value)) pos++;
@@ -3014,6 +3373,22 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // Comment-only line
       if (firstToken.type === TokenType.COMMENT) {
         body.push(commentNode(firstToken.value, line));
+        i++;
+        continue;
+      }
+
+      const recordApiEffect = parseRecordApiEffect(tokens, line);
+      if (recordApiEffect) {
+        if (recordApiEffect.error) errors.push({ line, message: recordApiEffect.error });
+        else body.push(recordApiEffect.node);
+        i++;
+        continue;
+      }
+
+      const fieldChange = parseFieldChange(tokens, line);
+      if (fieldChange) {
+        if (fieldChange.error) errors.push({ line, message: fieldChange.error });
+        else body.push(fieldChange.node);
         i++;
         continue;
       }
@@ -4391,6 +4766,550 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
   };
 }
 
+// =============================================================================
+// QUEUE PRIMITIVE (Tier 1, 2026-04-27)
+// `queue for X:` declares a human-approval queue with reviewer + actions + notifications.
+// Distinct from `workflow` (above) which orchestrates AI agents over shared state.
+// Plan: plans/plan-queue-primitive-tier1-04-27-2026.md
+// =============================================================================
+
+// Levenshtein-style closest-match suggestion for queue body clauses.
+// Used by F1 (hard-fail on unknown queue body lines). Returns the closest
+// known clause within edit-distance 3, or null if nothing's close.
+function closestQueueClause(input, candidates) {
+  if (!input) return null;
+  const lower = input.toLowerCase();
+  let best = null;
+  let bestDist = 4; // hard cap — anything farther isn't a typo, it's a different word
+  for (const cand of candidates) {
+    const candFirst = cand.split(' ')[0]; // for 'no export', match against 'no'
+    const d = editDistance(lower, candFirst);
+    if (d < bestDist) {
+      bestDist = d;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+function editDistance(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+// Triggered email primitive (2026-04-28). Top-level block:
+//   email <role> when <entity>'s status changes to '<value>':
+//     subject is '<text>'
+//     body is '<text>'
+//     provider is '<provider name>'   (optional; default 'agentmail')
+//     track replies as <text>          (optional; e.g. 'deal activity')
+// Mirrors the F3 queue clause's `email <role> when <trigger>` atom but lives
+// at the top level so any URL handler that sets the entity's status to the
+// trigger value queues a row in the WorkflowEmailQueue table (no real sends
+// in default builds — that's gated behind `enable live email delivery via X`).
+// Email delivery directive (Phase B-1 part 2). Top-level form:
+//   email delivery using agentmail
+// Tells the compiler to emit a poll worker that drains workflow_email_queue
+// via the named provider. Default builds (no directive) emit no worker, so
+// tests + previews never accidentally touch a real provider URL.
+const VALID_DELIVERY_PROVIDERS = ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun'];
+function parseEmailDeliveryDirective(lines, startIdx, errors) {
+  const line = lines[startIdx];
+  const tokens = line.tokens;
+  // Expected: [email, delivery, using, <provider>]
+  if (tokens.length < 4) {
+    errors.push({
+      line: line.lineNum,
+      message: "email delivery directive needs a provider — write `email delivery using agentmail`",
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const providerToken = tokens[3];
+  const provider = String(providerToken.value || '').toLowerCase();
+  if (!VALID_DELIVERY_PROVIDERS.includes(provider)) {
+    errors.push({
+      line: line.lineNum,
+      message: `Unknown email delivery provider '${provider}' — valid providers: ${VALID_DELIVERY_PROVIDERS.join(', ')}`,
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  return {
+    node: {
+      type: NodeType.EMAIL_DELIVERY_DIRECTIVE,
+      provider,
+      line: line.lineNum,
+    },
+    endIdx: startIdx + 1,
+  };
+}
+
+function parseEmailTrigger(lines, startIdx, _parentIndent, errors, parentBody) {
+  const tokens = lines[startIdx].tokens;
+  const line = lines[startIdx].line || startIdx + 1;
+  // tokens[0] = 'email', [1] = role, [2] = 'when', [3] = entity ident, [4] = POSSESSIVE 's,
+  // [5] = 'status', [6] = 'changes', [7] = 'to' (KEYWORD), [8] = STRING value.
+  // The trailing ':' is consumed as the block opener, not a separate token.
+  const recipientRole = tokens[1] && tokens[1].value;
+  if (!recipientRole) {
+    errors.push({ line, message: "email trigger needs a recipient role. Example: email customer when deal's status changes to 'awaiting':" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // Entity name appears at tokens[3]. Confirm the possessive marker followed.
+  const entityNameRaw = tokens[3] && tokens[3].value;
+  const possessive = tokens[4] && (tokens[4].value === "'s" || tokens[4].type === 'possessive');
+  if (!entityNameRaw || !possessive) {
+    errors.push({ line, message: `email trigger needs an entity reference. Example: email ${recipientRole} when deal's status changes to 'awaiting':` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // F2 — singularize plural input so `email customer when deals's status ...:`
+  // produces the same workflow_email_queue insert as the singular form.
+  const entityName = singularizeEntityName(entityNameRaw);
+  // Find the trigger field ('status') and the trigger value (a string literal).
+  const triggerField = tokens[5] && tokens[5].value;
+  const triggerValueTok = tokens.find(t => t.type === 'string');
+  if (triggerField !== 'status' || !triggerValueTok) {
+    errors.push({ line, message: `email trigger needs the form: email <role> when <entity>'s status changes to '<value>':` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const triggerValue = triggerValueTok.value;
+
+  // Validate that the entity references a declared table. Tables in parentBody
+  // appear as { type: 'data_shape', name: 'Deals' } (plural-cased); the entity
+  // ref is the singular lowercase form.
+  const declaredTables = (parentBody || [])
+    .filter(n => n && n.type === NodeType.DATA_SHAPE && typeof n.name === 'string')
+    .map(n => n.name);
+  const matchesTable = declaredTables.some(tname => {
+    const lower = tname.toLowerCase();
+    return lower === entityName || lower === entityName + 's' || lower.replace(/s$/, '') === entityName;
+  });
+  if (!matchesTable) {
+    errors.push({ line, message: `email trigger references entity '${entityName}' but no table by that name has been declared. Add a 'create a ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}s table:' block before this trigger.` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Parse indented body lines.
+  const bodyIndent = lines[startIdx].indent;
+  let i = startIdx + 1;
+  let subject = null;
+  let body = null;
+  let provider = null;
+  let replyTracking = null;
+  while (i < lines.length && lines[i].indent > bodyIndent) {
+    const bodyTokens = lines[i].tokens;
+    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
+    const first = bodyTokens[0].value;
+    // `subject is '<text>'`, `body is '<text>'`, `provider is '<text>'`
+    if ((first === 'subject' || first === 'body' || first === 'provider') &&
+        bodyTokens[1] && bodyTokens[1].value === 'is' &&
+        bodyTokens[2] && bodyTokens[2].type === 'string') {
+      const value = bodyTokens[2].value;
+      if (first === 'subject') subject = value;
+      else if (first === 'body') body = value;
+      else if (first === 'provider') provider = value;
+      i++;
+      continue;
+    }
+    // `track replies as <free text>` — the trailing text is unquoted; collect tokens.
+    if (first === 'track' && bodyTokens[1] && bodyTokens[1].value === 'replies' &&
+        bodyTokens[2] && bodyTokens[2].value === 'as') {
+      const remaining = bodyTokens.slice(3).map(t => t.value).join(' ').trim();
+      if (remaining) replyTracking = remaining;
+      i++;
+      continue;
+    }
+    // F1-style hard-fail on unknown body lines with did-you-mean hint.
+    const lineText = bodyTokens.map(t => t.value).join(' ').trim();
+    const lineNum = lines[i].line || (i + 1);
+    const knownClauses = ['subject', 'body', 'provider', 'track'];
+    const suggestion = closestQueueClause(first, knownClauses);
+    const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
+    errors.push({
+      line: lineNum,
+      message:
+        `email trigger for '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}.${didYouMean} ` +
+        `Valid clauses inside an email trigger: \`subject is '...'\`, \`body is '...'\`, \`provider is '...'\` (optional), \`track replies as ...\` (optional).`,
+    });
+    i++;
+  }
+
+  if (!subject) {
+    errors.push({ line, message: `email trigger needs a subject. Add 'subject is \\'...\\'' inside the block.` });
+  }
+  if (!body) {
+    errors.push({ line, message: `email trigger needs a body. Add 'body is \\'...\\'' inside the block.` });
+  }
+  // Provider allow-list (Phase 5.3). Catches typos like 'agentmial' / 'sengrid'
+  // at compile time with a did-you-mean suggestion. Default 'agentmail' is the
+  // reply-aware choice for Marcus's deal desk; SendGrid / Resend / Postmark /
+  // Mailgun are alternates for one-way transactional sends.
+  if (provider) {
+    const validProviders = ['agentmail', 'sendgrid', 'resend', 'postmark', 'mailgun'];
+    if (!validProviders.includes(provider)) {
+      const suggestion = closestQueueClause(provider, validProviders);
+      const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
+      errors.push({
+        line,
+        message: `email trigger has unknown provider '${provider}'.${didYouMean} Valid providers: ${validProviders.map(p => `'${p}'`).join(', ')}.`
+      });
+    }
+  }
+
+  return {
+    node: {
+      type: NodeType.EMAIL_TRIGGER,
+      recipientRole,
+      entityName,
+      triggerField,
+      triggerValue,
+      subject,
+      body,
+      provider,
+      replyTracking,
+      line,
+    },
+    endIdx: i,
+  };
+}
+
+// F2 — Marcus's design feedback 2026-04-28: authors who type the plural form
+// (`queue for deals:`) should get the same generated audit table + URLs as
+// authors who type the singular (`queue for deal:`). Without this, `deals`
+// produces `deals_decisions` + `/api/deals-decisions` while `deal` produces
+// `deal_decisions` + `/api/deal-decisions` — same intent, different output.
+// The English-singularize is intentionally simple: it covers the cases Marcus's
+// 5 apps need (deals, leads, requests, tickets, activities) and leaves `-ss`
+// endings (address, business, status) alone so they don't get truncated wrong.
+function singularizeEntityName(word) {
+  if (typeof word !== 'string' || word.length < 2) return word;
+  const lower = word.toLowerCase();
+  if (lower.endsWith('ies') && lower.length > 3) return lower.slice(0, -3) + 'y';
+  if (lower.endsWith('sses')) return lower.slice(0, -2);
+  if (lower.endsWith('ches') || lower.endsWith('shes') || lower.endsWith('xes') || lower.endsWith('zes')) {
+    return lower.slice(0, -2);
+  }
+  if (lower.endsWith('ss')) return lower; // `address`, `business`, `status` stay as-is
+  if (lower.endsWith('s')) return lower.slice(0, -1);
+  return lower;
+}
+
+function parseQueueDef(lines, startIdx, _parentIndent, errors) {
+  const tokens = lines[startIdx].tokens;
+  const line = lines[startIdx].line || startIdx + 1;
+  // tokens[0] = 'queue', tokens[1] = 'for', tokens[2] = entityName (colon is consumed
+  // as block opener and is not a separate token).
+  if (tokens.length < 2 || tokens[1].value !== 'for') {
+    errors.push({ line, message: "queue needs 'for'. Example: queue for deal:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const entityNameRaw = tokens[2] && tokens[2].value;
+  if (!entityNameRaw) {
+    errors.push({ line, message: "queue needs an entity name. Example: queue for deal:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // F2 — singularize plural input so `queue for deals:` produces the same
+  // audit table + URLs as `queue for deal:`.
+  const entityName = singularizeEntityName(entityNameRaw);
+
+  // Parse indented body — `reviewer is 'X'` and `actions: a, b, c` and notify clauses
+  let reviewer = null;
+  const actions = [];
+  const notifications = [];
+  let noExport = false;
+  const queueIndent = lines[startIdx].indent;
+  let i = startIdx + 1;
+
+  while (i < lines.length && lines[i].indent > queueIndent) {
+    const bodyTokens = lines[i].tokens;
+    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
+    const first = bodyTokens[0].value;
+
+    if (first === 'reviewer' && bodyTokens[1] && bodyTokens[1].value === 'is') {
+      const valToken = bodyTokens[2];
+      if (valToken && valToken.type === TokenType.STRING) {
+        reviewer = valToken.value;
+      }
+      i++;
+      continue;
+    }
+
+    // F4 — `options:` and `buttons:` are synonyms for `actions:`. Managers
+    // type the menu metaphor (options) or the UI metaphor (buttons) — both
+    // resolve to the same action list. The canonical form for new code is
+    // still `actions:`; the synonyms exist so authoring feels natural.
+    if ((first === 'actions' || first === 'options' || first === 'buttons') && bodyTokens[1] && bodyTokens[1].value === ':') {
+      // Collect action names from tokens after ':', splitting on commas. Multi-word
+      // action names like 'awaiting customer' are joined by a space.
+      let current = '';
+      for (let j = 2; j < bodyTokens.length; j++) {
+        const t = bodyTokens[j];
+        if (t.value === ',') {
+          if (current.trim()) actions.push(current.trim());
+          current = '';
+        } else {
+          current += (current ? ' ' : '') + t.value;
+        }
+      }
+      if (current.trim()) actions.push(current.trim());
+      i++;
+      continue;
+    }
+
+    // F3 — email <role> when <action>, <action>, ... is the canonical form.
+    // Russell, 2026-04-28: verbs that name HOW (email, slack, text, webhook)
+    // beat vague verbs ("notify"). Both forms push to notifications with a
+    // `mechanism` field so downstream code can route email rows to the
+    // workflow email queue while leaving notify rows as generic notifications.
+    if ((first === 'email' || first === 'notify') && bodyTokens.length >= 4) {
+      const mechanism = first; // 'email' or 'notify'
+      const connector = first === 'email' ? 'when' : 'on';
+      const role = bodyTokens[1].value;
+      let connectorIdx = -1;
+      for (let j = 2; j < bodyTokens.length; j++) {
+        if (bodyTokens[j].value === connector) { connectorIdx = j; break; }
+      }
+      if (connectorIdx > 0) {
+        const onActions = [];
+        let current = '';
+        for (let j = connectorIdx + 1; j < bodyTokens.length; j++) {
+          const t = bodyTokens[j];
+          if (t.value === ',') {
+            if (current.trim()) onActions.push(current.trim());
+            current = '';
+          } else {
+            current += (current ? ' ' : '') + t.value;
+          }
+        }
+        if (current.trim()) onActions.push(current.trim());
+        notifications.push({ role, onActions, mechanism });
+      }
+      i++;
+      continue;
+    }
+
+    // `no export` opt-out clause — turns off the auto-emitted CSV download.
+    // Marcus moves FROM spreadsheets so the default is on; this is the escape.
+    if (first === 'no' && bodyTokens[1] && bodyTokens[1].value === 'export') {
+      noExport = true;
+      i++;
+      continue;
+    }
+
+    // F1 — hard-fail on unknown body lines with did-you-mean hint.
+    // Russell, 2026-04-28: silent skip swallows typos and the user has no idea
+    // why their email/notify clause didn't take effect. Every unknown line
+    // becomes an explicit error.
+    const lineText = bodyTokens.map(t => t.value).join(' ').trim();
+    const lineNum = lines[i].line || (i + 1);
+    const knownClauses = ['reviewer', 'actions', 'email', 'notify', 'no export'];
+    const suggestion = closestQueueClause(first, knownClauses);
+    const didYouMean = suggestion ? ` Did you mean '${suggestion}'?` : '';
+    errors.push({
+      line: lineNum,
+      message:
+        `queue '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}.${didYouMean} ` +
+        `Valid clauses inside a queue block: \`reviewer is 'X'\`, \`actions: a, b, c\`, ` +
+        `\`email <role> when <action>, <action>\`, \`notify <role> on <action>\` (legacy), \`no export\`.`,
+    });
+    i++;
+  }
+
+  if (actions.length === 0) {
+    errors.push({ line, message: `queue '${entityName}' needs actions: list. Example:\n  actions: approve, reject` });
+  }
+
+  return {
+    node: {
+      type: NodeType.QUEUE_DEF,
+      entityName,
+      reviewer,
+      actions,
+      notifications,
+      noExport,
+      line,
+    },
+    endIdx: i,
+  };
+}
+
+// Routing primitive (2026-04-29). Plan: plans/plan-routing-primitive-2026-04-29.md
+//
+// Shape: `route <entity> by <field>:` + indented body of rule lines.
+// Body line forms:
+//   'value' to owner             — fixed rule, match value is a quoted string
+//   default to owner             — default rule, single owner
+//   default round-robin across [a, b, c]   — default rule, round-robin pool
+//
+// AST: {type: 'route_def', entityName, field, rules: [...], line}
+//   rules[i] = {type: 'fixed', match, owner}
+//             | {type: 'default', strategy: 'fixed', owner}
+//             | {type: 'default', strategy: 'round_robin', pool: [...]}
+function parseRouteDef(lines, startIdx, _parentIndent, errors) {
+  const tokens = lines[startIdx].tokens;
+  const line = lines[startIdx].line || startIdx + 1;
+  // tokens[0] = 'route', tokens[1] = entity, tokens[2] = 'by', tokens[3] = field
+  if (tokens.length < 2) {
+    errors.push({ line, message: "route needs an entity name. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const entityNameRaw = tokens[1] && tokens[1].value;
+  if (!entityNameRaw) {
+    errors.push({ line, message: "route needs an entity name. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  if (!tokens[2] || tokens[2].value !== 'by') {
+    errors.push({ line, message: "route needs 'by'. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const field = tokens[3] && tokens[3].value;
+  if (!field) {
+    errors.push({ line, message: "route needs a field. Example: route lead by size:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  // Singularize plural input — `route leads by size:` should produce the same
+  // AST as `route lead by size:`. Reuses queue's helper (F2 pattern).
+  const entityName = singularizeEntityName(entityNameRaw);
+
+  const rules = [];
+  const routeIndent = lines[startIdx].indent;
+  let i = startIdx + 1;
+
+  while (i < lines.length && lines[i].indent > routeIndent) {
+    const bodyTokens = lines[i].tokens;
+    const lineNum = lines[i].line || (i + 1);
+    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
+    const first = bodyTokens[0];
+
+    // `default ...` rule. Two shapes:
+    //   default to <owner>
+    //   default round-robin across [<pool>]
+    if (first.value === 'default') {
+      // round-robin shape: tokens are `default round - robin across [...]`
+      // (the tokenizer splits round-robin into `round`, `-`, `robin`).
+      if (bodyTokens.length >= 6 &&
+          (bodyTokens[1].canonical === 'round' || bodyTokens[1].value === 'round') &&
+          bodyTokens[2].value === '-' &&
+          bodyTokens[3].value === 'robin' &&
+          bodyTokens[4].value === 'across') {
+        // Pool starts after `[` (token 5 is '[' if well-formed).
+        if (bodyTokens[5].value !== '[') {
+          errors.push({ line: lineNum, message: "round-robin needs a non-empty pool: `[alice, bob, ...]`" });
+          i++;
+          continue;
+        }
+        const pool = [];
+        for (let j = 6; j < bodyTokens.length; j++) {
+          const t = bodyTokens[j];
+          if (t.value === ',') continue;
+          if (t.value === ']') break;
+          pool.push(t.value);
+        }
+        if (pool.length === 0) {
+          errors.push({ line: lineNum, message: "round-robin needs a non-empty pool: `[alice, bob, ...]`" });
+          i++;
+          continue;
+        }
+        if (rules.some(r => r.type === 'default')) {
+          errors.push({ line: lineNum, message: "only one default allowed per route block" });
+          i++;
+          continue;
+        }
+        rules.push({ type: 'default', strategy: 'round_robin', pool });
+        i++;
+        continue;
+      }
+      // single-owner default: `default to <owner>`
+      if (bodyTokens.length >= 3 && bodyTokens[1].value === 'to') {
+        const owner = bodyTokens[2].value;
+        if (rules.some(r => r.type === 'default')) {
+          errors.push({ line: lineNum, message: "only one default allowed per route block" });
+          i++;
+          continue;
+        }
+        rules.push({ type: 'default', strategy: 'fixed', owner });
+        i++;
+        continue;
+      }
+      errors.push({
+        line: lineNum,
+        message: `route '${entityName}': don't know what to do with default on line ${lineNum}. ` +
+                 `Use \`default to <owner>\` or \`default round-robin across [a, b, c]\`.`,
+      });
+      i++;
+      continue;
+    }
+
+    // Fixed rule: `'value' to <owner>`. Match value MUST be a quoted string —
+    // the tokenizer splits hyphenated bare identifiers (`Mid-market` becomes
+    // 3 tokens), so quoted strings are the only consistent form.
+    if (first.type === TokenType.STRING) {
+      if (bodyTokens.length >= 3 && bodyTokens[1].value === 'to') {
+        const ownerTok = bodyTokens[2];
+        const owner = ownerTok.type === TokenType.STRING ? ownerTok.value : ownerTok.value;
+        rules.push({ type: 'fixed', match: first.value, owner });
+        i++;
+        continue;
+      }
+      errors.push({
+        line: lineNum,
+        message: `route '${entityName}': rule '${first.value}' needs 'to <owner>'. Example: '${first.value}' to alice`,
+      });
+      i++;
+      continue;
+    }
+
+    // Bare-identifier match value — reject with a friendly hint.
+    if (first.type === TokenType.IDENTIFIER || first.type === TokenType.KEYWORD) {
+      errors.push({
+        line: lineNum,
+        message: `route match values must be quoted strings: \`'${first.value}' to <owner>\`, not \`${first.value} to <owner>\`. ` +
+                 `Quotes match the if-chain form (\`if lead's size is '${first.value}'\`).`,
+      });
+      i++;
+      continue;
+    }
+
+    // Anything else — hard fail with the canonical forms.
+    const lineText = bodyTokens.map(t => t.value).join(' ').trim();
+    errors.push({
+      line: lineNum,
+      message:
+        `route '${entityName}': don't know what to do with '${lineText}' on line ${lineNum}. ` +
+        `Valid lines: \`'<value>' to <owner>\`, \`default to <owner>\`, \`default round-robin across [a, b, c]\`.`,
+    });
+    i++;
+  }
+
+  if (rules.length === 0) {
+    errors.push({ line, message: `route '${entityName}' block needs at least one rule. Example: 'SMB' to alice` });
+  }
+
+  return {
+    node: {
+      type: NodeType.ROUTE_DEF,
+      entityName,
+      field,
+      rules,
+      line,
+    },
+    endIdx: i,
+  };
+}
+
 // Block-form if: "if condition:" + indented body, optional "otherwise:" block
 // "match X:" with "when Y:" cases
 function parseMatch(lines, startIdx, blockIndent, errors) {
@@ -4916,6 +5835,327 @@ function parseSection(lines, startIdx, blockIndent, errors) {
 }
 
 // =============================================================================
+// SIDEBAR NAV
+// =============================================================================
+// CANONICAL:
+//   nav section 'Approvals':
+//     nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'
+
+function _navTokenIs(token, value, canonical) {
+  if (!token) return false;
+  const raw = String(token.value || '').toLowerCase();
+  return raw === value || (canonical && token.canonical === canonical);
+}
+
+function _navCollectValue(tokens, start) {
+  const parts = [];
+  let pos = start;
+  while (pos < tokens.length &&
+      !_navTokenIs(tokens[pos], 'with', 'with') &&
+      tokens[pos].type !== TokenType.COLON) {
+    parts.push(String(tokens[pos].value));
+    pos++;
+  }
+  return { value: parts.join(''), end: pos };
+}
+
+function parsePageHeader(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  if (tokens.length < 3 || tokens[2].type !== TokenType.STRING) {
+    errors.push({ line, message: "A page header needs a title in quotes. Example: page header 'CRO Review':" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  const title = tokens[2].value;
+  let subtitle = null;
+  const actions = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const child = lines[j];
+    const childTokens = child.tokens || [];
+    if (childTokens.length === 0) { j++; continue; }
+    const first = String(childTokens[0].value || '').toLowerCase();
+    const canonical = childTokens[0].canonical;
+
+    if ((canonical === 'subheading' || first === 'subtitle') && childTokens[1]?.type === TokenType.STRING) {
+      subtitle = childTokens[1].value;
+      j++;
+      continue;
+    }
+
+    if (first === 'actions') {
+      const parsed = parseBlock(lines, j + 1, child.indent, errors);
+      actions.push(...parsed.body);
+      j = parsed.endIdx;
+      continue;
+    }
+
+    errors.push({ line: childTokens[0].line, message: "Inside page header, use subtitle 'Text' or actions: with indented buttons." });
+    j++;
+  }
+
+  return { node: { type: NodeType.PAGE_HEADER, title, subtitle, actions, line }, endIdx: j };
+}
+
+function parseTabStrip(lines, startIdx, blockIndent, errors) {
+  const line = lines[startIdx].tokens[0].line;
+  const tabs = [];
+  let activeTab = null;
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const { tokens } = lines[j];
+    if (!tokens || tokens.length === 0) { j++; continue; }
+    const first = String(tokens[0].value || '').toLowerCase();
+
+    if (first === 'active' && String(tokens[1]?.value || '').toLowerCase() === 'tab') {
+      const isIdx = tokens.findIndex((t, idx) => idx > 1 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+      if (isIdx >= 0 && isIdx + 1 < tokens.length) {
+        activeTab = tokens.slice(isIdx + 1).map(t => String(t.value)).join('');
+      }
+      j++;
+      continue;
+    }
+
+    if (_navTokenIs(tokens[0], 'tab', 'tab') && tokens[1]?.type === TokenType.STRING) {
+      const title = tokens[1].value;
+      const toIdx = tokens.findIndex((t, idx) => idx > 1 && _navTokenIs(t, 'to', 'to_connector'));
+      if (toIdx === -1 || toIdx + 1 >= tokens.length) {
+        errors.push({ line: tokens[0].line, message: `The tab '${title}' needs a destination after 'to'. Example: tab '${title}' to '/pending'` });
+        j++;
+        continue;
+      }
+      const pathValue = _navCollectValue(tokens, toIdx + 1);
+      tabs.push({ type: NodeType.ROUTE_TAB, title, path: pathValue.value, line: tokens[0].line });
+      j++;
+      continue;
+    }
+
+    errors.push({ line: tokens[0].line, message: "Inside tab strip, use tab 'Pending' to '/pending' or active tab is 'Pending'." });
+    j++;
+  }
+
+  if (tabs.length === 0) {
+    errors.push({ line, message: "A tab strip needs at least one tab. Example:\n  tab strip:\n    tab 'Pending' to '/pending'" });
+    return { node: null, endIdx: j };
+  }
+
+  return { node: { type: NodeType.TAB_STRIP, tabs, activeTab, line }, endIdx: j };
+}
+
+function parseStatCard(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  if (tokens.length < 3 || String(tokens[1]?.value || '').toLowerCase() !== 'card' || tokens[2].type !== TokenType.STRING) {
+    errors.push({ line, message: "A stat card needs a label in quotes. Example: stat card 'Pending Count':" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  const label = tokens[2].value;
+  const card = { type: NodeType.STAT_CARD, label, value: null, delta: null, sparkline: null, icon: null, line };
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const childTokens = lines[j].tokens || [];
+    if (childTokens.length === 0) { j++; continue; }
+    const first = String(childTokens[0].value || '').toLowerCase();
+    const childLine = childTokens[0].line;
+
+    if (first === 'value') {
+      const parsed = parseExpression(childTokens, 1, childLine);
+      if (parsed.error) errors.push({ line: childLine, message: parsed.error });
+      else card.value = parsed.node;
+      j++;
+      continue;
+    }
+
+    if (first === 'delta') {
+      if (childTokens[1]?.type === TokenType.STRING) {
+        card.delta = childTokens[1].value;
+      } else {
+        errors.push({ line: childLine, message: `The stat card '${label}' delta needs quoted text. Example: delta '+1.8 pts vs last week'` });
+      }
+      j++;
+      continue;
+    }
+
+    if (first === 'sparkline') {
+      const parsed = parseExpression(childTokens, 1, childLine);
+      if (parsed.error) errors.push({ line: childLine, message: parsed.error });
+      else card.sparkline = parsed.node;
+      j++;
+      continue;
+    }
+
+    if (first === 'icon') {
+      if (childTokens[1]?.type === TokenType.STRING || childTokens[1]?.type === TokenType.IDENTIFIER || childTokens[1]?.type === TokenType.KEYWORD) {
+        card.icon = String(childTokens[1].value);
+      } else {
+        errors.push({ line: childLine, message: `The stat card '${label}' icon needs a name. Example: icon 'inbox'` });
+      }
+      j++;
+      continue;
+    }
+
+    errors.push({ line: childLine, message: "Inside a stat card, use value EXPR, delta 'TEXT', sparkline [1, 2, 3], or icon 'name'." });
+    j++;
+  }
+
+  if (!card.value) {
+    errors.push({ line, message: `The stat card '${label}' needs a value line. Example:\n  stat card '${label}':\n    value pending_count` });
+  }
+
+  return { node: card.value ? card : null, endIdx: j };
+}
+
+function parseStatStrip(lines, startIdx, blockIndent, errors) {
+  const line = lines[startIdx].tokens[0].line;
+  const cards = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const { tokens } = lines[j];
+    if (!tokens || tokens.length === 0) { j++; continue; }
+    const first = String(tokens[0].value || '').toLowerCase();
+    const second = String(tokens[1]?.value || '').toLowerCase();
+
+    if (first === 'stat' && second === 'card') {
+      const parsed = parseStatCard(lines, j, lines[j].indent, errors);
+      if (parsed.node) cards.push(parsed.node);
+      j = parsed.endIdx;
+      continue;
+    }
+
+    errors.push({ line: tokens[0].line, message: "Inside stat strip, use stat card 'Label': with indented value, delta, sparkline, and icon lines." });
+    j++;
+  }
+
+  if (cards.length === 0) {
+    errors.push({ line, message: "A stat strip needs at least one stat card. Example:\n  stat strip:\n    stat card 'Pending Count':\n      value pending_count" });
+    return { node: null, endIdx: j };
+  }
+
+  return { node: { type: NodeType.STAT_STRIP, cards, line }, endIdx: j };
+}
+
+function parseDetailPanel(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  if (tokens.length < 4 ||
+      String(tokens[1]?.value || '').toLowerCase() !== 'panel' ||
+      String(tokens[2]?.value || '').toLowerCase() !== 'for' ||
+      (tokens[3].type !== TokenType.IDENTIFIER && tokens[3].type !== TokenType.KEYWORD)) {
+    errors.push({ line, message: "A detail panel needs a selected row variable. Example: detail panel for selected_deal:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  const variable = String(tokens[3].value);
+  const body = [];
+  const actions = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > blockIndent) {
+    const child = lines[j];
+    const childTokens = child.tokens || [];
+    if (childTokens.length === 0) { j++; continue; }
+    const first = String(childTokens[0].value || '').toLowerCase();
+
+    if (first === 'actions') {
+      let actionEnd = j + 1;
+      while (actionEnd < lines.length && lines[actionEnd].indent > child.indent) actionEnd++;
+      const parsed = parseBlock(lines.slice(j + 1, actionEnd), 0, child.indent, errors);
+      actions.push(...parsed.body);
+      j = actionEnd;
+      continue;
+    }
+
+    let childEnd = j + 1;
+    while (childEnd < lines.length && lines[childEnd].indent > child.indent) childEnd++;
+    const parsed = parseBlock(lines.slice(j, childEnd), 0, blockIndent, errors);
+    body.push(...parsed.body);
+    j = childEnd;
+  }
+
+  if (body.length === 0 && actions.length === 0) {
+    errors.push({ line, message: `The detail panel for ${variable} is empty. Add content or actions inside it.` });
+  }
+
+  return { node: { type: NodeType.DETAIL_PANEL, variable, body, actions, line }, endIdx: j };
+}
+
+function parseNav(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  const kind = tokens[1];
+
+  if (_navTokenIs(kind, 'section', 'section')) {
+    if (tokens.length < 3 || tokens[2].type !== TokenType.STRING) {
+      errors.push({ line, message: "A nav section needs a title in quotes. Example: nav section 'Approvals':" });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    const title = tokens[2].value;
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `The nav section '${title}' needs at least one nav item. Example:\n  nav section '${title}':\n    nav item 'Pending' to '/pending'` });
+      return { node: null, endIdx };
+    }
+    return { node: navSectionNode(title, body, line), endIdx };
+  }
+
+  if (_navTokenIs(kind, 'item')) {
+    if (tokens.length < 5 || tokens[2].type !== TokenType.STRING) {
+      errors.push({ line, message: "A nav item needs a title and destination. Example: nav item 'Pending' to '/pending'" });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    const title = tokens[2].value;
+    const toIdx = tokens.findIndex((t, idx) => idx > 2 && _navTokenIs(t, 'to', 'to_connector'));
+    if (toIdx === -1 || toIdx + 1 >= tokens.length) {
+      errors.push({ line, message: `The nav item '${title}' needs a destination after 'to'. Example: nav item '${title}' to '/pending'` });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    const pathValue = _navCollectValue(tokens, toIdx + 1);
+    const path = pathValue.value;
+    if (!path) {
+      errors.push({ line, message: `The nav item '${title}' needs a destination path. Example: nav item '${title}' to '/pending'` });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+
+    let count;
+    let icon;
+    let pos = pathValue.end;
+    while (pos < tokens.length) {
+      if (!_navTokenIs(tokens[pos], 'with', 'with')) {
+        pos++;
+        continue;
+      }
+      pos++;
+      const option = tokens[pos];
+      if (_navTokenIs(option, 'count', 'length')) {
+        const countValue = _navCollectValue(tokens, pos + 1);
+        if (countValue.value) count = countValue.value;
+        pos = countValue.end;
+      } else if (_navTokenIs(option, 'icon')) {
+        const iconValue = _navCollectValue(tokens, pos + 1);
+        if (iconValue.value) icon = iconValue.value;
+        pos = iconValue.end;
+      } else {
+        pos++;
+      }
+    }
+
+    return { node: navItemNode(title, path, line, count, icon), endIdx: startIdx + 1 };
+  }
+
+  errors.push({ line, message: "Clear knows 'nav section' and 'nav item'. Example: nav item 'Pending' to '/pending'" });
+  return { node: null, endIdx: startIdx + 1 };
+}
+
+// =============================================================================
 // STYLE DEF (Phase 7)
 // =============================================================================
 // CANONICAL: style card: + indented properties
@@ -5011,7 +6251,8 @@ function isInputType(token) {
 // 'Label' is a text input that saves to var
 function parseLabelIsInput(tokens, line) {
   const label = tokens[0].value;
-  let pos = 3; // skip label + "is" + "a"/"the"
+  let pos = 2; // skip label + "is"
+  if (pos < tokens.length && (tokens[pos].canonical === 'a' || tokens[pos].canonical === 'the')) pos++;
 
   if (pos >= tokens.length || !isInputType(tokens[pos])) return null;
 
@@ -5028,21 +6269,6 @@ function parseLabelIsInput(tokens, line) {
 
   let variable = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-  // Skip optional "that" before "saves to"
-  if (pos < tokens.length && tokens[pos].type === TokenType.IDENTIFIER && tokens[pos].value === 'that') {
-    pos++;
-  }
-
-  // Optional: saves to <variable>
-  if (pos < tokens.length && tokens[pos].canonical === 'saves_to') {
-    pos++;
-    // Skip optional article: "saved as a todo", "saved as an item"
-    if (pos < tokens.length && (tokens[pos].canonical === 'a' || tokens[pos].canonical === 'the')) pos++;
-    if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
-      variable = tokens[pos].value;
-    }
-  }
-
   // Dropdown choices: 'Color' is a dropdown with ['Red', 'Green']
   let choices = null;
   if (inputType === 'choice') {
@@ -5058,6 +6284,19 @@ function parseLabelIsInput(tokens, line) {
         break;
       }
     }
+  }
+
+  // Optional: saves to <variable>. It can appear before or after dropdown choices.
+  for (let k = pos; k < tokens.length; k++) {
+    if (tokens[k].canonical !== 'saves_to') continue;
+    let variablePos = k + 1;
+    if (variablePos < tokens.length && (tokens[variablePos].canonical === 'a' || tokens[variablePos].canonical === 'an' || tokens[variablePos].canonical === 'the')) {
+      variablePos++;
+    }
+    if (variablePos < tokens.length && (tokens[variablePos].type === TokenType.IDENTIFIER || tokens[variablePos].type === TokenType.KEYWORD)) {
+      variable = tokens[variablePos].value;
+    }
+    break;
   }
 
   return { node: askForNode(variable, inputType, label, line, choices) };
@@ -5627,6 +6866,22 @@ function parseSave(tokens, line) {
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a variable and target. Example: save new_user to Users' };
   }
+  if (String(tokens[pos].value || '').toLowerCase() === 'updated') {
+    pos++;
+    const record = tokens[pos];
+    if (!record || (record.type !== TokenType.IDENTIFIER && record.type !== TokenType.KEYWORD)) {
+      return { error: "Use update <record> at <url> for selected-record UI updates. Example: update selected_deal at /api/deals/:id/approve" };
+    }
+    const toIdx = tokens.findIndex((t, idx) => idx > pos && String(t.rawValue ?? t.value ?? '').toLowerCase() === 'to');
+    if (toIdx === -1) {
+      return { error: `Use update ${record.value} at /api/... for selected-record UI updates.` };
+    }
+    const url = tokenPathText(tokens.slice(toIdx + 1));
+    if (!url) {
+      return { error: `Use update ${record.value} at /api/... for selected-record UI updates.` };
+    }
+    return { error: `Use update ${record.value} at ${url} for selected-record UI updates.` };
+  }
   // Reject inline object/array/string literals. Clear's "one operation per
   // line" philosophy says assign first, then save — and the compiler can't
   // emit a correct db.insert/update from an inline {...} anyway (we saw
@@ -5684,10 +6939,10 @@ function parseSave(tokens, line) {
   return { node };
 }
 
-function parseRemoveFrom(tokens, line) {
-  let pos = 1; // skip "remove from"
+function parseDeleteFrom(tokens, line) {
+  let pos = 1; // skip "delete from"
   if (pos >= tokens.length) {
-    return { error: 'The remove statement needs a target. Example: remove from Users where age is less than 18' };
+    return { error: 'The delete statement needs a target. Example: delete from Users where age is less than 18' };
   }
   const target = tokens[pos].value;
   pos++;
@@ -5976,13 +7231,15 @@ function parseSaveAssignment(name, tokens, pos, line) {
     pos++;
   }
   // Skip optional "new" before target: "save X as new Todo"
-  if (pos < tokens.length && tokens[pos].value === 'new') pos++;
+  let isInsert = false;
+  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
   let target = 'unknown';
   if (pos < tokens.length) {
     target = tokens[pos].value;
   }
 
   const node = crudNode('save', variable, target, null, line);
+  if (isInsert) node.isInsert = true;
   node.resultVar = name; // "new_todo = save incoming as Todo" -> resultVar is new_todo
 
   // Parse optional "with field is value" overrides. Lets the user set a
@@ -6445,25 +7702,37 @@ function parseDisplay(tokens, line) {
   }
 
   // Optional: with delete / with edit / with delete and edit
+  // Optional (SHELL-5): with actions:  + indented block of 'Label' is style.
+  // Tokenizer strips the trailing block-opener colon, so we detect SHELL-5
+  // form by `with actions` being the last two tokens. The caller harvests
+  // the indented child lines into node.actionButtons.
   let actions = null;
+  let actionsBlockFollows = false;
   if (pos < tokens.length && tokens[pos].canonical === 'with') {
     pos++;
-    actions = [];
-    while (pos < tokens.length) {
-      const resolved = resolveCanonical(tokens[pos], 'ui');
-      if (resolved === 'action_delete' || resolved === 'remove') {
-        actions.push('delete');
-      } else if (tokens[pos].value.toLowerCase() === 'edit') {
-        actions.push('edit');
-      }
+    if (pos < tokens.length && tokens[pos].value && tokens[pos].value.toLowerCase() === 'actions'
+        && pos === tokens.length - 1) {
+      actionsBlockFollows = true;
       pos++;
-      if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+    } else {
+      actions = [];
+      while (pos < tokens.length) {
+        const resolved = resolveCanonical(tokens[pos], 'ui');
+        if (resolved === 'action_delete' || resolved === 'remove') {
+          actions.push('delete');
+        } else if (tokens[pos].value.toLowerCase() === 'edit') {
+          actions.push('edit');
+        }
+        pos++;
+        if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+      }
     }
   }
 
   const node = displayNode(expr.node, format, label, line);
   node.columns = columns;
   if (actions && actions.length > 0) node.actions = actions;
+  if (actionsBlockFollows) node._actionsBlockFollows = true;
   return { node };
 }
 
@@ -6601,6 +7870,23 @@ function parseChartRemainder(tokens, pos, title, chartType, line) {
 // CANONICAL: button "Click Me":
 //   (indented body — code that runs when clicked)
 
+function isButtonActionConnector(token) {
+  const raw = String(token?.rawValue ?? token?.value ?? '').toLowerCase();
+  return raw === 'that' || raw === 'for' || token?.canonical === 'for_target';
+}
+
+function buttonActionConnectorKind(token) {
+  const raw = String(token?.rawValue ?? token?.value ?? '').toLowerCase();
+  if (raw === 'that') return 'that';
+  if (raw === 'for' || token?.canonical === 'for_target') return 'for';
+  return raw || token?.canonical || '';
+}
+
+function buttonActionTokenText(token) {
+  if (token?.type === TokenType.STRING) return JSON.stringify(token.value);
+  return String(token?.rawValue ?? token?.value ?? '');
+}
+
 function parseButton(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
@@ -6612,11 +7898,30 @@ function parseButton(lines, startIdx, blockIndent, errors) {
   }
   const label = tokens[pos].value;
 
-  const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
-
-  if (body.length === 0) {
-    errors.push({ line, message: `The button "${label}" has no action — add code that runs when clicked, indented below it. Example:\n  button "${label}":\n    show "clicked!"` });
+  const connectorIdx = tokens.findIndex((token, idx) => idx > pos && isButtonActionConnector(token));
+  if (connectorIdx !== -1 && connectorIdx < tokens.length - 1) {
+    const actionTokens = tokens.slice(connectorIdx + 1);
+    const connector = buttonActionConnectorKind(tokens[connectorIdx]);
+    const inlineActionText = actionTokens.map(buttonActionTokenText).join(' ');
+    const parserActionText = connector === 'that'
+      ? normalizeThirdPersonInteractionAction(inlineActionText)
+      : inlineActionText;
+    const parserActionTokens = parserActionText === inlineActionText
+      ? actionTokens
+      : tokenizeLine(parserActionText, line);
+    const { body } = parseBlock([{
+      tokens: parserActionTokens,
+      indent: blockIndent + 1,
+      raw: parserActionText,
+    }], 0, blockIndent, errors);
+    const node = buttonNode(label, body, line);
+    node.inlineAction = { connector, text: inlineActionText, normalizedText: parserActionText, line };
+    validateButtonActionBody(label, body, line, errors);
+    return { node, endIdx: startIdx + 1 };
   }
+
+  const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+  validateButtonActionBody(label, body, line, errors);
 
   return { node: buttonNode(label, body, line), endIdx };
 }
@@ -7655,6 +8960,200 @@ function parseTryHandle(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: tryHandleNode(tryBody, handlers, line, finallyBody), endIdx: i };
+}
+
+// =============================================================================
+// GIVE CLAUDE — canonical AI call (Plan 2026-04-26)
+// =============================================================================
+//
+// CANONICAL: give claude <data> [with prompt[:] '<instructions>'] [as <name>]
+//
+// Examples:
+//   give claude message
+//   give claude message with prompt: 'be concise and helpful'
+//   give claude article with prompt: 'summarize' as summary
+//   give claude message with prompt:           ← multi-line (Phase 5)
+//     'You are a deal-desk assistant.
+//     Reply only in JSON.'
+//
+// The result binds to `claude_reply` by default. The expression
+// `claude's reply` parses as MEMBER_ACCESS on a variable `claude` and
+// the compiler rewrites it to the underlying `claude_reply` (or the
+// `as <name>` chosen here). See validator.js for the registration
+// of `claude` as a defined name in any scope that contains a
+// preceding GIVE_CLAUDE statement.
+//
+// Multi-line prompt: when the line ends right at `with prompt:` with
+// nothing after, the parser walks the indented continuation block,
+// joins the lines with `\n`, and produces a single LITERAL_STRING.
+//
+function parseGiveClaude(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+
+  // Skip token[0] = 'give claude' (multi-word, canonical 'give_claude').
+  let pos = 1;
+
+  // Need data. End of line / no more meaningful tokens = parse error.
+  const meaningful = tokens.slice(pos).filter(t => t.type !== TokenType.COMMENT);
+  if (meaningful.length === 0) {
+    errors.push({
+      line,
+      message: "give claude needs a data argument. Example: give claude message with prompt: 'be concise'"
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Find the boundary of the data expression. It ends at the FIRST
+  // top-level `with`, `as`, or comment. We scan tokens at depth 0
+  // (parens balanced) so that `with` inside a function call doesn't
+  // terminate the data expression early.
+  let depth = 0;
+  let dataEnd = tokens.length;
+  let withPos = -1;
+  let asPos = -1;
+  for (let k = pos; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.type === TokenType.LPAREN || t.type === TokenType.LBRACKET) depth++;
+    else if (t.type === TokenType.RPAREN || t.type === TokenType.RBRACKET) depth--;
+    else if (t.type === TokenType.COMMENT) { dataEnd = k; break; }
+    else if (depth === 0) {
+      if (withPos === -1 && (t.value === 'with' || t.canonical === 'with')) {
+        withPos = k;
+        dataEnd = k;
+        break;
+      }
+      // `as` (canonical `as_format`) without preceding `with prompt:`
+      if (asPos === -1 && t.canonical === 'as_format') {
+        asPos = k;
+        dataEnd = k;
+        break;
+      }
+    }
+  }
+
+  // Parse data expression up to dataEnd.
+  const dataExpr = parseExpression(tokens, pos, line, dataEnd);
+  if (dataExpr.error) {
+    errors.push({ line, message: dataExpr.error });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  pos = dataEnd;
+
+  // Optional `with prompt[:] '<X>'` (or multi-line continuation).
+  let prompt = null;
+  let endIdx = startIdx + 1;
+  if (withPos !== -1) {
+    pos = withPos + 1; // skip `with`
+    // Expect `prompt` keyword. Trailing colon is already stripped by tokenizer.
+    if (pos >= tokens.length || tokens[pos].canonical !== 'prompt') {
+      errors.push({
+        line,
+        message: "give claude expects `with prompt: '<instructions>'` after the data. Example: give claude message with prompt: 'be concise'"
+      });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+    pos++; // skip `prompt`
+
+    // Optional trailing colon — `with prompt: 'X'` is canonical, but
+    // `with prompt 'X'` parses too (parser is lenient on the colon
+    // because the tokenizer makes it its own COLON token).
+    if (pos < tokens.length && tokens[pos].type === TokenType.COLON) pos++;
+
+    // After `prompt[:]`, look for: a string literal, a variable reference,
+    // or end-of-line (multi-line continuation).
+    const remaining = tokens.slice(pos).filter(t => t.type !== TokenType.COMMENT);
+    if (remaining.length === 0) {
+      // Phase 5: multi-line continuation. Walk indented lines, join with \n.
+      const promptLines = [];
+      let j = startIdx + 1;
+      while (j < lines.length && lines[j].indent > blockIndent) {
+        // Reconstruct the original text from the raw line if available.
+        const raw = lines[j].raw;
+        let pieceText;
+        if (typeof raw === 'string') {
+          pieceText = raw.trim();
+          // Strip surrounding single or double quotes if the whole indented
+          // line is one quoted segment of a multi-line string.
+          if ((pieceText.startsWith("'") && pieceText.endsWith("'") && pieceText.length >= 2) ||
+              (pieceText.startsWith('"') && pieceText.endsWith('"') && pieceText.length >= 2)) {
+            pieceText = pieceText.slice(1, -1);
+          } else if (pieceText.startsWith("'")) {
+            // Opening quote on first line, closing quote on a later line.
+            pieceText = pieceText.slice(1);
+          } else if (pieceText.endsWith("'")) {
+            pieceText = pieceText.slice(0, -1);
+          }
+        } else {
+          // Fallback: stitch tokens back together.
+          pieceText = lines[j].tokens.map(t => t.value).join(' ');
+        }
+        promptLines.push(pieceText);
+        j++;
+      }
+      if (promptLines.length === 0) {
+        errors.push({
+          line,
+          message: "give claude's `with prompt:` clause is empty — add a string after `prompt:` or indent a multi-line prompt below."
+        });
+        return { node: null, endIdx: startIdx + 1 };
+      }
+      prompt = { type: NodeType.LITERAL_STRING, value: promptLines.join('\n'), line };
+      endIdx = j;
+      // After multi-line prompt, no `as` clause is supported on the same
+      // header line (the rebind would be far away). Keep simple for v1.
+      pos = tokens.length;
+    } else if (tokens[pos].type === TokenType.STRING) {
+      prompt = { type: NodeType.LITERAL_STRING, value: tokens[pos].value, line };
+      pos++;
+    } else if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+      prompt = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+      pos++;
+    } else {
+      errors.push({
+        line,
+        message: "give claude's `with prompt:` clause needs a string or a variable. Example: give claude message with prompt: 'be concise'"
+      });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+  }
+
+  // Optional `as <name>` — names the result (default is `claude_reply`).
+  let resultName = 'claude_reply';
+  // After consuming the prompt, we may now have an `as <ident>` clause.
+  // Either we hit an `as_format` token earlier (no prompt), or we may
+  // have one after the prompt expression.
+  if (asPos !== -1 && withPos === -1) {
+    pos = asPos + 1; // skip `as`
+  } else {
+    // Skip whitespace and look for `as_format` at current pos.
+    while (pos < tokens.length && tokens[pos].type === TokenType.COMMENT) pos++;
+    if (pos < tokens.length && tokens[pos].canonical === 'as_format') pos++;
+    else pos = -1; // no `as` clause
+  }
+  if (pos !== -1 && pos < tokens.length) {
+    if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+      resultName = tokens[pos].value;
+      pos++;
+    } else {
+      errors.push({
+        line,
+        message: "give claude's `as <name>` clause needs an identifier. Example: give claude message with prompt: 'be concise' as answer"
+      });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+  }
+
+  return {
+    node: {
+      type: NodeType.GIVE_CLAUDE,
+      data: dataExpr.node,
+      prompt,
+      resultName,
+      line,
+    },
+    endIdx,
+  };
 }
 
 // =============================================================================
@@ -8920,6 +10419,14 @@ function parsePrimary(tokens, pos, line, end) {
 
   if (tok.canonical === 'nothing') {
     return { node: literalNothing(line), nextPos: pos + 1 };
+  }
+
+  // Lean Lesson 1 — `TBD` in expression position. Drops a placeholder marker
+  // wherever a value goes (`set greeting = TBD`, `respond TBD`, etc). The
+  // compiler emits a runtime stub that throws a "this part hasn't been filled
+  // in yet" error if the value is ever read.
+  if (tok.canonical === 'tbd') {
+    return { node: placeholderNode(line), nextPos: pos + 1 };
   }
 
   // "today" → date expression for start of current day

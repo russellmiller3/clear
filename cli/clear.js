@@ -30,6 +30,7 @@
 //   --quiet          Suppress non-essential output
 //   --no-test        Skip compiler test gate on build
 //   --auto-fix       Auto-patch patchable errors during build
+//   --trace          Print a copy-pasteable compile failure trace on errors
 //
 // Exit codes:
 //   0  Success
@@ -67,6 +68,7 @@ function parseFlags(args) {
     noTest: args.includes('--no-test'),
     autoFix: args.includes('--auto-fix'),
     stdout: args.includes('--stdout'),
+    trace: args.includes('--trace'),
   };
   const outIdx = args.indexOf('--out');
   flags.outDir = outIdx !== -1 ? resolve(args[outIdx + 1]) : null;
@@ -86,6 +88,13 @@ function output(data, flags) {
     if (data.error) console.error(`Error: ${data.error}`);
     if (data.errors) data.errors.forEach(e => console.error(`  Line ${e.line}: ${e.message}`));
     if (data.warnings) data.warnings.forEach(w => console.warn(`  Warning: ${w}`));
+    if (data.compileTrace) {
+      if (flags.trace) {
+        console.error('\n' + data.compileTrace.pasteText);
+      } else {
+        console.error('  Compile trace available. Re-run with --trace or --json to copy the debugging packet.');
+      }
+    }
     if (data.message) console.log(data.message);
     if (data.files) data.files.forEach(f => console.log(`  Created ${f}`));
   }
@@ -109,6 +118,156 @@ function makeModuleResolver(filePath) {
   };
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function stopChildAndWait(child, {
+  gracefulSignal = 'SIGTERM',
+  forceSignal = 'SIGKILL',
+  forceAfterMs = 2000,
+  closeGraceMs = 200,
+} = {}) {
+  const result = { closed: true, forced: false, timedOut: false };
+  if (!child) return result;
+
+  // Keep stdio moving while the child handles shutdown. On Windows, exiting
+  // the parent while the child is still closing async handles can trip libuv.
+  if (child.stdout) child.stdout.resume();
+  if (child.stderr) child.stderr.resume();
+
+  await new Promise(resolve => {
+    let done = false;
+    let forceTimer = null;
+    let hardTimer = null;
+
+    const finish = (closed = true) => {
+      if (done) return;
+      done = true;
+      result.closed = closed;
+      if (forceTimer) clearTimeout(forceTimer);
+      if (hardTimer) clearTimeout(hardTimer);
+      resolve();
+    };
+
+    child.once('close', () => finish(true));
+    child.once('error', () => finish(false));
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      hardTimer = setTimeout(finish, closeGraceMs);
+      return;
+    }
+
+    if (gracefulSignal) {
+      try {
+        child.kill(gracefulSignal);
+      } catch {
+        finish(false);
+        return;
+      }
+    }
+
+    forceTimer = setTimeout(() => {
+      try {
+        if (child.exitCode === null && child.signalCode === null) {
+          result.forced = true;
+          child.kill(forceSignal);
+        }
+      } catch {
+        finish(false);
+      }
+    }, forceAfterMs);
+    hardTimer = setTimeout(() => {
+      result.timedOut = true;
+      finish(false);
+    }, forceAfterMs + closeGraceMs);
+  });
+
+  if (closeGraceMs > 0) await wait(closeGraceMs);
+  return result;
+}
+
+function addClearTestShutdownHook(serverCode) {
+  if (!/\bconst\s+server\s*=\s*app\.listen\b/.test(serverCode)) return serverCode;
+  const hook = `
+
+// Clear test runner shutdown hook. This avoids the Windows signal path after
+// green test runs; the parent asks this temp server to close itself instead.
+if (typeof process !== 'undefined') {
+  let _clearTestShuttingDown = false;
+  function _clearTestCloseServer() {
+    if (_clearTestShuttingDown) return;
+    _clearTestShuttingDown = true;
+    const forceExit = setTimeout(() => process.exit(0), 1000);
+    try {
+      server.close(() => {
+        clearTimeout(forceExit);
+        process.exit(0);
+      });
+      if (server.closeIdleConnections) server.closeIdleConnections();
+      if (server.closeAllConnections) {
+        const closeAll = setTimeout(() => server.closeAllConnections(), 50);
+        if (closeAll.unref) closeAll.unref();
+      }
+    } catch {
+      process.exit(0);
+    }
+  }
+  app.post('/__clear_test_shutdown__', (_req, res) => {
+    res.status(204).end();
+    setImmediate(_clearTestCloseServer);
+  });
+}
+`;
+  const staticMarker = "const path = require('path');";
+  if (serverCode.includes(staticMarker)) {
+    return serverCode.replace(staticMarker, hook + '\n' + staticMarker);
+  }
+  return serverCode + hook;
+}
+
+async function requestClearTestShutdown(port, timeoutMs = 1000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`http://localhost:${port}/__clear_test_shutdown__`, {
+      method: 'POST',
+      signal: controller.signal,
+    });
+    return { ok: response.ok, status: response.status, timedOut: false };
+  } catch (e) {
+    return { ok: false, status: null, timedOut: e?.name === 'AbortError', error: e?.message || String(e) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function testRunnerExitFromError(e) {
+  const timedOut = e?.code === 'ETIMEDOUT' || (e?.killed && e?.signal === 'SIGTERM');
+  if (timedOut) return { code: 4, timedOut: true };
+  if (Number.isInteger(e?.status)) return { code: e.status, timedOut: false };
+  return { code: 2, timedOut: false };
+}
+
+function addClearTestRunnerCleanup(testCode) {
+  const fetchCleanup = `const BASE = process.env.TEST_URL || "http://localhost:3000";
+
+const _clearOriginalFetch = globalThis.fetch;
+if (typeof _clearOriginalFetch === 'function' && typeof Headers === 'function') {
+  globalThis.fetch = (url, options = {}) => {
+    const nextOptions = { ...options };
+    const headers = new Headers(options.headers || {});
+    if (!headers.has('connection')) headers.set('connection', 'close');
+    nextOptions.headers = headers;
+    return _clearOriginalFetch(url, nextOptions);
+  };
+}
+`;
+  let nextCode = testCode.replace('const BASE = process.env.TEST_URL || "http://localhost:3000";\n', fetchCleanup);
+  nextCode = nextCode.replace('  process.exit(failed > 0 ? 1 : 0);', '  process.exitCode = failed > 0 ? 1 : 0;');
+  return nextCode;
+}
+
 // =============================================================================
 // COMMANDS
 // =============================================================================
@@ -121,10 +280,15 @@ async function checkCommand(args) {
   const loaded = loadSource(file);
   if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
 
-  const { parse, validate } = await getCompiler();
+  const { parse, validate, buildCompileTrace } = await getCompiler();
   const ast = parse(loaded.source);
   if (ast.errors.length > 0) {
-    output({ ok: false, errors: ast.errors, warnings: [] }, flags);
+    output({
+      ok: false,
+      errors: ast.errors,
+      warnings: [],
+      compileTrace: buildCompileTrace(loaded.source, { errors: ast.errors, warnings: [] }, { sourceName: loaded.filePath, target: flags.target || 'check' }),
+    }, flags);
     process.exit(1);
   }
 
@@ -135,6 +299,9 @@ async function checkCommand(args) {
     warnings: validation.warnings,
     nodeCount: ast.body.length,
   };
+  if (!result.ok) {
+    result.compileTrace = buildCompileTrace(loaded.source, result, { sourceName: loaded.filePath, target: flags.target || 'check' });
+  }
   output(result, flags);
   process.exit(result.ok ? 0 : 1);
 }
@@ -356,7 +523,7 @@ async function buildCommand(args) {
   const loaded = loadSource(file);
   if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
 
-  const options = { sourceMap: true };
+  const options = { sourceMap: true, sourceName: loaded.filePath };
   if (flags.target) options.target = flags.target;
   options.moduleResolver = makeModuleResolver(loaded.filePath);
 
@@ -364,7 +531,7 @@ async function buildCommand(args) {
   const result = compileProgram(loaded.source, options);
 
   if (result.errors.length > 0) {
-    output({ ok: false, errors: result.errors, warnings: result.warnings }, flags);
+    output({ ok: false, errors: result.errors, warnings: result.warnings, compileTrace: result.compileTrace }, flags);
     process.exit(1);
   }
 
@@ -394,41 +561,92 @@ async function buildCommand(args) {
   mkdirSync(dir, { recursive: true });
   const files = [];
 
-  // Safely write a package.json commonjs shield.
-  // Never clobber a pre-existing real package.json. If one exists and is NOT
-  // our own sentinel (`{"type":"commonjs"}`), we're in a real project's dir
-  // (like the Clear repo root) and overwriting would break the parent project.
-  // This bug silently corrupted the repo root package.json every time Meph
-  // ran `clear build temp-app.clear` from the worktree root.
-  const SHIELD = '{"type":"commonjs"}\n';
-  function writePackageJsonShield() {
-    const pkgPath = resolve(dir, 'package.json');
-    if (existsSync(pkgPath)) {
-      const existing = readFileSync(pkgPath, 'utf8');
-      if (existing.trim() === SHIELD.trim()) return; // idempotent, our own file
-      if (!flags.quiet) {
-        console.warn(`  Warning: package.json already exists at ${dir} — not overwriting. If you're building inside an ESM project, use --out <subdir> to isolate the build output.`);
-      }
-      return;
+  // Safely write a package.json that's both a CommonJS shield AND lists the
+  // runtime dependencies the compiled server needs (express, ws, bcryptjs,
+  // jsonwebtoken, nodemailer, multer). Without deps the built app can't run
+  // standalone — `node server.js` throws "Cannot find module 'jsonwebtoken'".
+  // Never clobber a pre-existing real package.json (would break the parent
+  // project's setup). Idempotent on re-builds: re-run only updates the deps
+  // block when serverCode requires new modules.
+  const CJS_SHIELD_KEYS = new Set(['type', 'dependencies']); // package.json keys we own
+  function packageJsonForServer(serverCode) {
+    const deps = {};
+    if (serverCode && serverCode.length > 0) {
+      // Express + ws are emitted by the compiler whenever it generates a
+      // server. The other 4 are conditional based on runtime helpers used.
+      if (serverCode.includes("require('express')")) deps.express = '*';
+      if (serverCode.includes("require('ws')")) deps.ws = '*';
+      if (serverCode.includes("require('bcryptjs')")) deps.bcryptjs = '*';
+      if (serverCode.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
+      if (serverCode.includes("require('nodemailer')")) deps.nodemailer = '*';
+      if (serverCode.includes("require('multer')")) deps.multer = '*';
+      if (serverCode.includes("require('pg')")) deps.pg = '*';
+      if (serverCode.includes("require('better-sqlite3')")) deps['better-sqlite3'] = '*';
     }
-    writeFileSync(pkgPath, SHIELD);
+    const pkg = { type: 'commonjs' };
+    if (Object.keys(deps).length > 0) pkg.dependencies = deps;
+    return pkg;
+  }
+  function writePackageJsonShield(serverCode) {
+    const pkgPath = resolve(dir, 'package.json');
+    const desired = packageJsonForServer(serverCode || '');
+    if (existsSync(pkgPath)) {
+      let existing;
+      try { existing = JSON.parse(readFileSync(pkgPath, 'utf8')); } catch (_e) { existing = null; }
+      // Owner check: only overwrite if every key in the existing file is one
+      // of ours. If it has "name", "scripts", etc. we're inside a real project.
+      const ownsIt = existing && typeof existing === 'object'
+        && Object.keys(existing).every(k => CJS_SHIELD_KEYS.has(k));
+      if (!ownsIt) {
+        if (!flags.quiet) {
+          console.warn(`  Warning: package.json already exists at ${dir} and isn't a Clear-built file — not overwriting. If you're building inside an ESM project, use --out <subdir> to isolate the build output.`);
+        }
+        return;
+      }
+    }
+    writeFileSync(pkgPath, JSON.stringify(desired, null, 2) + '\n');
     if (!files.includes('package.json')) files.push('package.json');
+  }
+  // Run npm install when deps are present and node_modules is missing the
+  // listed packages. Fails open: if npm is slow or offline we warn but don't
+  // fail the build (user can install manually). Skipped via --skip-install
+  // for repeat builds where deps haven't changed.
+  function maybeInstallDeps(serverCode) {
+    if (flags.skipInstall || flags.stdout) return;
+    const desired = packageJsonForServer(serverCode || '');
+    if (!desired.dependencies || Object.keys(desired.dependencies).length === 0) return;
+    const nodeModules = resolve(dir, 'node_modules');
+    const need = Object.keys(desired.dependencies).some(d => !existsSync(resolve(nodeModules, d)));
+    if (!need) return;
+    const installTimeoutMs = Math.max(15000, Number(process.env.CLEAR_NPM_INSTALL_TIMEOUT_MS) || 60000);
+    if (!flags.quiet) console.log('  Installing dependencies (' + Object.keys(desired.dependencies).join(', ') + ')...');
+    try {
+      execSync('npm install --production --silent', { cwd: dir, timeout: installTimeoutMs, stdio: 'pipe' });
+    } catch (e) {
+      const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
+      if (!flags.quiet) {
+        if (timedOut) console.log(`  (npm install timed out after ${Math.round(installTimeoutMs / 1000)}s — run "npm install" inside ${dir} before "node server.js")`);
+        else console.log(`  (npm install failed: ${(e.message || '').slice(0, 140)} — run "npm install" inside ${dir} before "node server.js")`);
+      }
+    }
   }
 
   if (result.serverJS) {
     writeFileSync(resolve(dir, 'server.js'), result.serverJS);
     files.push('server.js');
-    // P5: ensure Node treats server.js as CommonJS even if the parent project's
-    // package.json declares "type": "module". Without this shield, the user
-    // gets "require is not defined in ES module scope" when they clear serve
-    // inside an ESM project.
-    writePackageJsonShield();
+    // Write package.json with deps so `node server.js` works standalone, then
+    // npm-install them. Without this the test runner installs deps via its
+    // own throwaway build dir but `clear build` left users with a missing
+    // jsonwebtoken module.
+    writePackageJsonShield(result.serverJS);
+    maybeInstallDeps(result.serverJS);
   } else if (result.javascript) {
     const jsName = result.javascript.includes('express') ? 'server.js' : `${name}.js`;
     writeFileSync(resolve(dir, jsName), result.javascript);
     files.push(jsName);
     if (jsName === 'server.js' || result.javascript.includes('require(')) {
-      writePackageJsonShield();
+      writePackageJsonShield(result.javascript);
+      maybeInstallDeps(result.javascript);
     }
   }
   if (result.html) {
@@ -448,14 +666,33 @@ async function buildCommand(args) {
     writeFileSync(resolve(dir, 'test.js'), result.tests);
     files.push('test.js');
   }
+  // Browser UAT — auto-generated Playwright walker that drives every page,
+  // every nav, every button, every table sort/filter, every detail-panel
+  // drilldown end-to-end. Lives next to the standard test.js so the dev
+  // can run either with one node command. Uses `.mjs` because the script
+  // needs top-level await (dynamic playwright import) — apps' package.json
+  // is CJS by default. Requires `playwright` dev dep (the script logs an
+  // install hint if it can't import it).
+  if (result.browserUAT) {
+    writeFileSync(resolve(dir, 'browser-uat.mjs'), result.browserUAT);
+    files.push('browser-uat.mjs');
+  }
 
   // Copy runtime if needed
   const allJS = (result.javascript || '') + (result.serverJS || '');
-  if (allJS.includes("require('./clear-runtime/")) {
+  // Detect whether the LAE widget bundle is referenced (the compiler emits the
+  // /__meph__/widget.js Express route + script tag whenever `allow signup and
+  // login` is in source). Without copying meph-widget.js the widget script
+  // 404s — harmless with onerror, but copying lets it work when STUDIO_PORT is
+  // set in the environment.
+  const needsWidget = (result.serverJS || '').includes("'/__meph__/widget.js'");
+  if (allJS.includes("require('./clear-runtime/") || needsWidget) {
     const runtimeDir = resolve(dir, 'clear-runtime');
     mkdirSync(runtimeDir, { recursive: true });
     const runtimeSrc = resolve(__dirname, '..', 'runtime');
-    for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+    const runtimeFiles = ['db.js', 'auth.js', 'rateLimit.js'];
+    if (needsWidget) runtimeFiles.push('meph-widget.js');
+    for (const f of runtimeFiles) {
       const src = resolve(runtimeSrc, f);
       if (existsSync(src)) { copyFileSync(src, resolve(runtimeDir, f)); }
     }
@@ -500,10 +737,12 @@ async function testCommand(args) {
     // Write server + test files
     const serverCode = result.serverJS || result.javascript || '';
     const testFile = resolve(buildDir, 'test.js');
-    writeFileSync(testFile, result.tests);
+    writeFileSync(testFile, addClearTestRunnerCleanup(result.tests));
 
     if (serverCode) {
-      writeFileSync(resolve(buildDir, 'server.js'), serverCode);
+      const testServerCode = addClearTestShutdownHook(serverCode);
+      const canRequestShutdown = testServerCode !== serverCode;
+      writeFileSync(resolve(buildDir, 'server.js'), testServerCode);
       if (result.html) writeFileSync(resolve(buildDir, 'index.html'), result.html);
       if (result.css) writeFileSync(resolve(buildDir, 'style.css'), result.css);
 
@@ -576,25 +815,34 @@ async function testCommand(args) {
       // suites (multi-agent research chains, LLM-graded evals, etc.).
       const testTimeoutMs = Math.max(10000, Number(process.env.CLEAR_TEST_TIMEOUT_MS) || 120000);
       if (!flags.quiet) console.log('  Running tests...\n');
+      let testExitCode = 0;
       try {
         const testEnv = { ...process.env, TEST_URL: `http://localhost:${port}`, JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret };
         const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: testTimeoutMs, env: testEnv });
         process.stdout.write(stdout);
       } catch (e) {
         if (e.stdout) process.stdout.write(e.stdout);
-        if (e.status === 4) { server.kill('SIGTERM'); process.exit(4); }
-        // Node represents execSync timeouts with .signal === 'SIGTERM' and .code === 'ETIMEDOUT'
-        // on Windows; on other platforms .killed === true. Surface a plain message either way.
-        const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
-        if (timedOut) {
+        const testError = testRunnerExitFromError(e);
+        if (testError.timedOut) {
           process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit.\n`);
           process.stderr.write(`  Set CLEAR_TEST_TIMEOUT_MS to a higher value for long-running suites (e.g. agent chains).\n`);
         } else if (e.stderr) {
           process.stderr.write(e.stderr);
         }
+        testExitCode = testError.code;
       } finally {
-        server.kill('SIGTERM');
+        const shutdownResult = canRequestShutdown ? await requestClearTestShutdown(port) : { ok: true };
+        const stopResult = await stopChildAndWait(server, canRequestShutdown ? { gracefulSignal: null, forceAfterMs: 5000 } : {});
+        const cleanupFailed = !stopResult.closed || stopResult.timedOut || (canRequestShutdown && (!shutdownResult.ok || stopResult.forced));
+        if (cleanupFailed && testExitCode === 0) {
+          process.stderr.write('\n  Warning: test server cleanup failed after tests passed; keeping the passing test result.\n');
+          if (shutdownResult.timedOut) process.stderr.write('  Shutdown request timed out before the server answered.\n');
+          if (stopResult.forced) process.stderr.write('  Forced the test server to stop after graceful shutdown failed.\n');
+        } else if (cleanupFailed && !flags.quiet) {
+          process.stderr.write('\n  Warning: test server cleanup needed a forced stop.\n');
+        }
       }
+      if (testExitCode) process.exit(testExitCode);
     } else {
       // Frontend-only app — run tests without server (no live API calls,
       // so the default 30s timeout is usually plenty; still honor the override).
@@ -602,11 +850,11 @@ async function testCommand(args) {
       try {
         execSync(`node test.js`, { cwd: buildDir, stdio: 'inherit', timeout: testTimeoutMs });
       } catch (e) {
-        const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
-        if (timedOut) {
+        const testError = testRunnerExitFromError(e);
+        if (testError.timedOut) {
           process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit (set CLEAR_TEST_TIMEOUT_MS to override).\n`);
         }
-        if (e.status === 4) process.exit(4);
+        process.exit(testError.code);
       }
     }
     return;
@@ -1038,7 +1286,7 @@ function helpCommand(flags = {}) {
   if (flags.json) {
     output({
       commands: ['build', 'check', 'prove', 'info', 'fix', 'test', 'eval', 'agent', 'run', 'serve', 'lint', 'dev', 'init', 'package', 'help'],
-      globalFlags: ['--json', '--quiet', '--no-test', '--auto-fix', '--stdout', '--out <dir>', '--port <n>'],
+      globalFlags: ['--json', '--quiet', '--no-test', '--auto-fix', '--stdout', '--trace', '--out <dir>', '--port <n>'],
       exitCodes: { 0: 'success', 1: 'compile error', 2: 'runtime error', 3: 'file not found', 4: 'test failure' },
     }, flags);
     return;
@@ -1072,6 +1320,7 @@ Flags:
   --out <dir>      Output directory
   --port <n>       Server port (default: 3000)
   --stdout         Print compiled output to stdout
+  --trace          Print copy-pasteable compile trace on errors
   --no-test        Skip compiler test gate
   --auto-fix       Auto-patch fixable errors
 

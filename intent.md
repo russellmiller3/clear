@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (126 total)
+## Node Types (172 total)
 
 ### Core Language
 
@@ -31,6 +31,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 |-----------|--------|-------------|
 | `THEME` | `theme 'midnight'` / `theme 'ivory'` / `theme 'nova'` | Sets `data-theme` on `<html>` |
 | `ASSIGN` | `x = 5` / `name is 'Alice'` / `define x as: expr` | `const x = 5` / `x = 5` |
+| `FIELD_CHANGE` | `change selected_deal's status from 'pending' to 'approved'` | Checks the selected record has the expected old value, then sets the named field to the new value |
 | `SHOW` | `show x` / `display x as dollars` | `console.log(x)` / `print(x)` |
 | `IF_THEN` | `if x is 5 then show 'yes'` / `if x is 5:` block | `if (x === 5) { ... }` |
 | `FUNCTION_DEF` | `define function greet(name):` / `define function add(a is number, b is number) returns number:` | `function greet(name) { ... }` — typed params emit JSDoc `@param`/`@returns`. Self-recursive functions are auto-wrapped in a depth counter (default 1000; override via `max depth N`). |
@@ -48,13 +49,14 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `CONTINUE` | `skip` / `continue` | `continue;` |
 | `COMMENT` | `# text` | `// text` / `# text` |
 | `TRY_HANDLE` | `try:` + `if error:` / `if error 'not found':` + optional `finally:` / `always do:` | `try { ... } catch (_err) { ... } finally { ... }` — typed handlers emit status checks; multiple handlers chain as `if/else if/else`; finally always runs |
+| `LIVE_BLOCK` | `live:` + indented body — explicit effect fence (Path B Phase 1, 2026-04-25). Body holds calls that talk to the world (`ask claude`, `call API`, `subscribe to`, timers). Phase B-1 is permissive: any statement is allowed inside. Phase B-2 will reject effect-shaped calls outside `live:`. See PHILOSOPHY.md Rule 18. | Body emits inline with a `// live: block — explicit effect fence` comment marker. No runtime semantics yet — fence is signal for the validator and the human reader. |
 | `THROW` | `send error 'message'` / `throw error` / `fail with` / `raise error` | `throw new Error('message')` (JS) / `raise Exception('message')` (Python) — custom errors from any context |
 | `LITERAL_STRING` (interpolated) | `'Hello, {name}!'` | `` `Hello, ${name}!` `` (JS) / `f"Hello, {name}!"` (Python) |
 | `USE` | `use 'helpers'` / `use double from 'helpers'` / `use everything from 'helpers'` / `use 'lib' from './lib.js'` | Module import (namespaced, selective, inline-all, or external JS) |
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |
 | `STORE` | `store settings` / `store settings as 'prefs'` | Save to localStorage (JSON) |
 | `RESTORE` | `restore settings` / `restore settings as 'prefs'` | Load from localStorage (JSON) |
-| `TOAST` | `show toast 'message'` / `show alert 'message'` | Toast notification UI |
+| `TOAST` | `show toast 'message'` / `show alert 'message'` | Native DaisyUI-style toast UI; message is required data and renders as text |
 | `TRANSACTION` | `transaction:` + block | Atomic database operations (begin/commit/rollback) |
 | `RETRY` | `retry 3 times:` + block | Retry loop with catch |
 | `TIMEOUT` | `with timeout 5 seconds:` + block | `Promise.race` with timeout |
@@ -83,6 +85,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `LITERAL_STRING` | `'hello'` | Single or double quotes |
 | `LITERAL_BOOLEAN` | `true`, `false` | |
 | `LITERAL_NOTHING` | `nothing` | `null` / `None` |
+| `PLACEHOLDER` | `TBD` (statement OR expression) | Lean Lesson 1 — drop anywhere a value or block can go. Compiles green. Runtime emits `throw new Error("placeholder hit at line N — fill it in or remove it")` (or `raise Exception(...)` in Python). Test harness catches that exact message and reports SKIPPED, not FAILED. `result.placeholders` lists every TBD line. |
 | `LITERAL_LIST` | `['a', 'b']` | |
 | `LITERAL_RECORD` | `create person:` + fields | Object literal |
 | `VARIABLE_REF` | `name` | |
@@ -109,6 +112,9 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `ASK_FOR` | `'Label' is a text input that saves to var` — also supports: `text area`, `text editor` (Quill WYSIWYG via CDN, toolbar + live `_state` binding), `number input`, `dropdown with ['a','b']`, `checkbox`, `file input` | `<input>` / `<textarea>` / `<div data-clear-rich-text>` / `<select>` |
 | `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` / `display x as chat showing role, content` | `<output>` or `<table>` with action buttons, or chat bubble component |
 | `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` | ECharts `<div>` with auto-configured option |
+| `STAT_STRIP` | `stat strip:` + stat cards | Responsive KPI card row |
+| `STAT_CARD` | `stat card 'Pending Count':` + `value EXPR`, optional `delta 'TEXT'`, `sparkline [1, 2, 3]`, `icon 'inbox'` | Polished KPI card with label, value, delta, optional sparkline and Lucide icon |
+| `DETAIL_PANEL` | `detail panel for selected_deal:` + indented content + optional `actions:` | 340px right rail populated from the selected table row; body can contain normal Clear UI primitives, with sticky action buttons at bottom |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
 | `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `divider` | `<h1>` / `<p>` / `<hr>` |
@@ -122,6 +128,8 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `DOWNLOAD_FILE` | `download X as 'filename'` | Trigger file download |
 | `LOADING_ACTION` | `show loading` / `hide loading` | Loading indicator |
 | `ON_CHANGE` | `when X changes:` + block | Reactive input handler |
+
+Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table control, and row drilldown must produce a UAT control with a plain `dataEffect`. Input-like controls must name the state variable they change with `saved as` or `saves to`. Buttons may use `that` or `for` as connector words when the inline action names the endpoint, state variable, or record it changes. Toast/alert/notification actions count as notification data only when they include a message. Domain action buttons like Approve, Reject, Assign, Resolve, Save, or Delete must also name the record, endpoint, queue, or audit row they change. Selected-record updates require `change <record>'s <field> from <old> to <new>` before `update <record> at <url>`. Selected-record deletes use `delete <record> from <url>`. After `that`, use third-person verbs because the button is the subject: `gets`, `sends`, `increases`, `decreases`, `goes to`, `stores`.
 
 ### Backend (Phase 5-6)
 
@@ -143,7 +151,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `DATA_SHAPE` | `create a Users table:` \| `table Users:` \| `create data shape User:` + fields | Table schema with constraints. All three lead forms parse identically. Field declarations accept both `price, number` and `name is text`. |
-| `CRUD` | `save X as User` / `look up all records in Users table` / `remove from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
+| `CRUD` | `save X as User` / `look up all records in Users table` / `delete from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
 | `SQL_AGGREGATE` | `sum of price from Orders` / `avg of score from Reviews where team is 'support'` | Server-side aggregation: compiles to `db.aggregate(table, fn, field, filter)` → `SELECT FN(col) FROM ... WHERE ...`. Distinguished from `sum of X in variable` (client-side JS reduce) by capitalized table name after `from`. Only supports equality filters (`is X`, `is 'Y' and Z is W`) — non-equality like `>` emits a runtime error. |
 
 Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hidden`, `renamed to NEW_NAME`, `(number)` type hint, FK by capitalized name.
@@ -340,6 +348,45 @@ Workflow step types (inside workflow body):
 | Repeat | `repeat until condition, max N times:` + steps | `for (_iter < N) { if (cond) break; ... }` |
 | Parallel | `at the same time:` + steps | `Promise.all([...])` |
 
+### Approval Queue Primitives (Phase 91)
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `QUEUE_DEF` | `queue for <entity>:` + indented body | Auto-generated audit table, optional notification queue table, filtered GET handler, per-action update handlers (auth-gated), CSV export URL (`GET /api/<entity>/export.csv`). Suppress CSV with `no export` clause inside the body. |
+| `ROUTE_DEF` | `route <entity> by <field>:` + indented body of `'value' to <owner>` rules and at most one `default to <owner>` or `default round-robin across [<pool>]` rule | Statement-level node inside an endpoint body. Compiles to an if/else chain over `<entity>.<field>`, mutating `<entity>.assigned_to`. Round-robin default emits `await _clear_route_pick({routeId, pool})` against the auto-emitted `_clear_route_cursors` SQLite table (cursor key is a content hash of entity+field+rules+pool, stable across line edits). No top-level emit (no auto-tables, URLs, or UI). Validator hard-errors on `ROUTE_ENTITY_NOT_IN_SCOPE` (entity not in scope) and `ROUTE_AFTER_SAVE` (route block after the save line — assignment never persists); warns on `ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE`. Match values on the LHS must be quoted strings. Both targets (JS + Python) supported. |
+| `EMAIL_TRIGGER` | `email <role> when <entity>'s status changes to <value>:` + indented body (`subject is`, `body is`, `provider is`, `track replies as`) | Top-level block. Auto-emits the shared `workflow_email_queue` table once per app. Both queue-generated update handlers (Phase 4.1) AND user-defined `when user updates <entity> at <path>:` endpoints (Phase 4.1-extension) that assign the entity's status to the trigger value inject an email-queue row before the response statement. Validator warns when the entity table has no `<role>_email` field (Phase 4.3) or when body / subject reference `{ident}` that doesn't match an entity field (Phase 5.2). Real provider sends deferred behind `enable live email delivery via X` directive. |
+
+Queue body clauses:
+
+| Clause | What it does |
+|--------|-------------|
+| `reviewer is 'Role'` | Stamps `decided_by` on every audit row |
+| `actions: a, b, c` | Each action becomes a generated update handler at `/api/<entity>s/:id/<action>` |
+| `notify <role> on <action>, <action>` | Inserts a row into the notifications queue for those actions |
+
+**Given:** a `Deals` table with a `status` field and the block:
+```
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  notify customer on counter, awaiting customer
+  notify rep on approve, reject
+```
+
+**The compiler emits:**
+- A `deal_decisions` audit table — `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note`.
+- A `deal_notifications` outbound queue table — `deal_id`, `recipient_role`, `recipient_email`, `notification_type`, `queue_status`, `queued_at`. Skipped when no `notify` clauses.
+- `GET /api/deals/queue` — filtered by `status = 'pending'` (the default open status).
+- `GET /api/deal-decisions` — full audit history.
+- `GET /api/deal-notifications` — notification log.
+- `PUT /api/deals/:id/<action>` for each action — slugifies multi-word actions (`awaiting customer` → `/awaiting`). Each handler: requires login, updates `Deals.status` to the action's terminal value, inserts an audit row, inserts notification rows for any matching `notify` clause, returns the updated record.
+
+**Status-transition map:** `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`, `awaiting customer` → `'awaiting'`. Custom action names use the action name itself as the status.
+
+**Recipient-email convention:** `notify customer on ...` resolves recipient_email by reading `<entity>.customer_email`. If the entity has no `<role>_email` field, the validator warns; the row is still queued with a blank email.
+
+UI auto-render (Phase 4 of the queue plan) is deferred: app authors hand-add buttons that change a named field, update the selected record through the generated action URL, and reload the affected queue. Backend, audit, notifications, and tests are fully generated.
+
 ### Testing (Phases 46b, 84)
 
 | Node Type | Syntax | Compiles To |
@@ -406,7 +453,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `paid = sum of price from Orders where status is 'paid'` | `db.aggregate('orders', 'SUM', 'price', { status: 'paid' })` | Filtered aggregate — equality only |
 | `new_todo = save X as new Todo` | `save X as Todo` | "new" is optional clarity |
 | `send back X with success message` | `send back X status 201` | Wraps with `message` field |
-| `delete the Todo with this id` | `remove from Todos where id is incoming's id` | URL param auto-bound |
+| `delete the Todo with this id` | `delete from Todos where id is incoming's id` | URL param auto-bound |
 | `send back all Todos` | `x = get all Todos; send back x` | Inline retrieval shorthand (parser desugars to [CRUD, RESPOND]) |
 | `send back the User with this id` | `x = look up User with this id; send back x` | Inline single-record lookup |
 | `send back all Users where active is true` | `x = get all Users where active is true; send back x` | Inline filtered list |
@@ -485,20 +532,49 @@ the full token system.
 | `section_dark` | Same as `page_section_dark` |
 | `card` | `card bg-base-200 border border-base-300/50 rounded-xl p-6` |
 
-**App/dashboard presets:**
+**App/dashboard presets** (Phase 1-3 shell upgrade — 04-25-2026, modeled on
+`landing/marcus-app-target.html`):
 
-| Preset | DaisyUI/Tailwind Classes |
-|--------|------------------------|
-| `app_layout` | `h-screen flex bg-base-100` (flex container for sidebar + main) |
-| `app_sidebar` | `menu p-4 w-60 min-h-full bg-base-200 border-r border-base-300/50 text-sm` |
-| `app_main` | `flex flex-col flex-1 min-w-0` (column wrapper for header + content) |
-| `app_content` | `flex-1 p-6 bg-base-100 overflow-y-auto` |
-| `app_header` | `navbar bg-base-200 border-b border-base-300/50 px-4 h-14 sticky top-0 z-30` |
-| `app_card` | `card bg-base-200 border border-base-300/50 rounded-xl p-5` |
+| Preset | HTML tag | Classes + inline style |
+|--------|----------|------------------------|
+| `app_layout` | `<div>` | `flex min-h-screen` (full-screen flex shell — page owns scroll) |
+| `app_sidebar` | `<aside>` | `hairline-r flex-shrink-0 flex flex-col scroll-y` + `style="width:240px;background:var(--clear-bg-rail);"` |
+| `app_main` | `<main>` | `flex-1 min-w-0 flex flex-col` |
+| `app_header` | `<header>` | `hairline-b sticky top-0 z-30 flex items-center gap-4 px-5` + `style="height:56px;background:var(--clear-bg-canvas);"` (3 slots: brand / breadcrumb / actions, exposed via `data-clear-slot=`) |
+| `app_content` | `<div>` | `flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6` |
+| `app_card` | `<div>` | `bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5` |
 
-App presets skip the max-width inner wrapper (unlike landing page presets) since they
-participate in flex layout. When app presets are detected, the outer `<main>` gets no
-constraining class and `<body>` uses `bg-base-100`.
+**Sidebar navigation nodes** (Phase 2 shell upgrade):
+
+| Node Type | Syntax | Notes |
+|-----------|--------|-------|
+| `NAV_SECTION` | `nav section 'Approvals':` | Labeled group inside `app_sidebar` |
+| `NAV_ITEM` | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` | Linked sidebar row; optional count and Lucide icon; route-based active state |
+
+**Page content chrome nodes** (Phase 3-4 shell upgrade):
+
+| Node Type | Syntax | Notes |
+|-----------|--------|-------|
+| `PAGE_HEADER` | `page header 'CRO Review':` + `subtitle '5 deals waiting'` + `actions:` | Main content title row; optional subtitle and right-aligned button actions |
+| `TAB_STRIP` | `tab strip:` + `tab 'Pending' to '/cro'` | Routed content tabs with underline active state |
+| `ROUTE_TAB` | `tab 'Pending' to '/cro'` | One tab row inside a `tab strip`; optional `active tab is 'Pending'` hint |
+| `STAT_STRIP` | `stat strip:` | Responsive KPI row inside `app_content` |
+| `STAT_CARD` | `stat card 'Pending Count':` + `value pending_count`, optional `delta '+1.8 pts vs last week'`, `sparkline [3, 4, 6, 5, 8]`, `icon 'inbox'` | Dashboard stat card with value, trend copy, mini sparkline, and Lucide icon |
+
+The shell tags use semantic HTML5 elements (`aside`, `main`, `header`) instead
+of generic divs — better accessibility and matches the polished slate-on-ivory
+mock chrome. CSS custom properties (`--clear-bg-rail`, `--clear-bg-canvas`,
+`--clear-line`) come from the design tokens block in `compiler.js`'s
+`CSS_RESET`. App presets skip the max-width inner wrapper (unlike landing page
+presets) since they participate in flex layout.
+
+`app_header` body content is auto-sorted into three slots when emitted:
+- `heading` children → `data-clear-slot="brand"` (left)
+- text/non-heading content → `data-clear-slot="breadcrumb"` (middle)
+- `button` children → `data-clear-slot="actions"` (right, ml-auto)
+
+Phase 6-7 of the shell upgrade plan add `detail panel`, Marcus app port, etc. —
+see `plans/plan-full-shell-upgrade-04-25-2026.md`.
 
 ### Design System
 
@@ -518,7 +594,7 @@ Canonical names map to arrays of aliases. The tokenizer does longest-match greed
 - `send email` collides with `send email to '/api'` -- parser detects block form vs API call
 - `find all` / `find first` -- parsed by token sequence, not synonym (avoids collision with `find pattern`)
 - `toggle` is a synonym for `checkbox` -- parser guards `toggle the X panel` vs bare `toggle`
-- `delete` is a synonym for `remove` -- `delete the X with this id` detected before list remove
+- `delete` is the source word for data deletion -- `delete the X with this id` is detected before list removal
 - `get` maps to `get_key` (map access) -- `get all X` and `get X from URL` detected before map get
 - `sending` is a synonym for `receiving` -- both work, `sending` is canonical
 
@@ -558,6 +634,7 @@ These are Studio (`playground/server.js`) features, not Clear language primitive
 | Capability | Where | What it does |
 |------------|-------|--------------|
 | **Hosted deploy** | `playground/deploy.js`, `playground/builder/` | `POST /api/deploy` packages the current source, tars it, POSTs to a shared builder machine that runs `docker build` → `docker push registry.fly.io` → `flyctl deploy` and returns a live URL. Customer never sees Fly. |
+| **One-click updates** (Cloudflare) | `playground/deploy-cloudflare.js:_deployUpdate`, `playground/deploy.js:/api/deploy` | When `/api/deploy` sees the app is already deployed, it routes through the incremental `mode: 'update'` path — re-uploads the Worker bundle only (no D1 reprovision, no domain reattach, no full secret push), records the new `versionId` against the tenant's `versions[]`, and returns in ~2s instead of ~12s. Schema changes (D1 SQL or `wrangler.toml`) are gated by `migrationsDiffer()` + a 409 `MIGRATION_REQUIRED` confirm round-trip. Per-app history capped at 20 entries; older versions stay on Cloudflare's side. |
 | **AI proxy routing** | `playground/ai-proxy/` | Every `ask claude` in a deployed app routes through a metered proxy that holds the only Anthropic key. Usage attributed to the tenant, billed via Stripe metered add-on. |
 | **Tenant + billing** | `playground/tenants.js`, `playground/billing.js` | One row per paying customer. Plan limits come from `plans.js`. Stripe Checkout creates tenants; webhook updates plan. Dedup'd by event_id so webhook replays don't double-bill. |
 | **Multi-tenant isolation** | `playground/sanitize.js` | Every app name starts with `clear-<tenantSlug>-`. Rollback, history, cert endpoints assert ownership before calling the builder. Per-app Firecracker VM isolation is Fly's default. |
