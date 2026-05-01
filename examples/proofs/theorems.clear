@@ -21,6 +21,9 @@ define function identity(x):
 define function double(x):
   return x * 2
 
+define function triple(x):
+  return x * 3
+
 
 # ---------------------------------------------------------------------------
 # Universal theorems — variables are free, so claims must hold for ANY input.
@@ -48,10 +51,14 @@ test 'identity returns its input':
   expect identity(y) is y
 
 # ---------------------------------------------------------------------------
-# Honest "I don't know" — the simplifier doesn't yet handle distributivity,
-# so this test should come back UNKNOWN, not falsely PROVED.
-# Tomorrow's symbolic-mode work expands the simplifier here.
+# Distributivity / like-term collection (PC-1)
 # ---------------------------------------------------------------------------
 
-test 'double is the same as adding to itself (NOT YET PROVABLE — distributivity)':
+test 'doubling is the same as adding to itself':
   expect double(x) is add(x, x)
+
+test 'tripling is the same as adding three copies':
+  expect triple(x) is add(add(x, x), x)
+
+test 'doubling then doubling is multiplying by 4':
+  expect double(double(x)) is multiply(x, 4)
