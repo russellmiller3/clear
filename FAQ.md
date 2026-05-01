@@ -162,6 +162,12 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 ## Where is X?
 
+### Where is the Clear Cloud pricing page?
+
+`landing/pricing.html` is the Marcus GTM pricing page. It carries the locked tiers from ROADMAP: Free, Team at $99/mo, Business at $499/mo, and Enterprise through sales.
+
+The static guard is `scripts/landing-pricing.test.mjs`. It checks the tier names, locked prices, one primary mailto sales CTA, and the no-emoji icon rule.
+
 ### Where does the routing primitive live?
 
 Parser: `parseRouteDef` in `parser.js` (after `parseQueueDef`). Dispatch: `CANONICAL_DISPATCH.set('route', ...)` next to the queue dispatch. Validator (5 rules): `case NodeType.ROUTE_DEF` in `validator.js`'s `checkNode` (hard errors for `ROUTE_ENTITY_NOT_IN_SCOPE` and `ROUTE_AFTER_SAVE`) plus `validateRouteBlocks` for the warning-tier rules. JS + Python compiler emit: `compileRouteDef` and `compileRouteDefPython` in `compiler.js` (after `compileQueueDef`). Dispatch case: `case NodeType.ROUTE_DEF` next to `QUEUE_DEF` and `EMAIL_TRIGGER`. Cursor table + helper emit: prelude pass walks the AST for any round-robin default and emits the `_clear_route_cursors` table + `_clear_route_pick` async function once at module top. Plan: `plans/plan-routing-primitive-2026-04-29.md`.

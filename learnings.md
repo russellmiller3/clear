@@ -2021,3 +2021,15 @@ Live verification also showed a reporting blind spot. Five Meph runs saw shape-m
 - **Test the boundary the agent actually sees.** Tool-local state is not enough; assert the serialized tool result contains the hint payload.
 - **A rejected hint still proves delivery.** `HINT_APPLIED: no` with a reason means Meph saw the hint. Treat that separately from "no hint reached Meph."
 - **Live verification summaries must distinguish no hint from weak hint.** Shape-match hints are weaker than exact-error hints, but they are not `none`.
+
+---
+
+## Session 2026-05-01: Pricing Pages Need A Sales CTA Guard
+
+The pricing page already had the four tiers and locked numbers, but the launch-critical sales action was only a normal link. A human could miss that during visual review, and the page would still look "done."
+
+### Gotchas-as-rules
+
+- **Pricing pages need a machine-checked primary sales action.** Tier names and prices are table stakes; Enterprise also needs a marked sales CTA.
+- **Static launch checks should encode the business contract.** "Free, Team $99, Business $499, Enterprise, primary sales CTA" is the product promise, so the test names those directly.
+- **No-emoji landing rules belong in the check for the page.** Design rules that repeatedly bite launch pages should fail locally, not wait for review.

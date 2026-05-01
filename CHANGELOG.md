@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - GTM pricing page sales CTA contract
+
+The pricing page now has a machine-checked sales path instead of relying on a
+visual review to notice whether Enterprise can actually contact sales.
+
+**What shipped:**
+- `landing/pricing.html` keeps the locked Free / Team $99 / Business $499 / Enterprise tiers.
+- The Enterprise button is marked as the primary sales CTA and links to the sales email.
+- A static check now fails if the locked tiers, prices, Enterprise tier, sales CTA, or no-emoji rule drift.
+- GTM-3 is removed from ROADMAP because the pricing surface is now shipped and checked.
+
+**Why for launch:** pricing is where a warm Marcus decides whether Clear feels real enough to buy. A pretty page without a primary sales action leaks the highest-intent lead.
+
+**Tests:** `node scripts/landing-pricing.test.mjs` passed with the bundled Node runtime.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:
