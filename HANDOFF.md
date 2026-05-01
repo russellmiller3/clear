@@ -2,10 +2,12 @@
 
 ## Status right now
 
-**Branch:** `feature/decidable-core-prover` (NOT merged to main yet — your call). Three commits tonight:
+**Branch:** `feature/decidable-core-prover` — local only, NOT pushed to origin yet. Three commits tonight:
 - `a024e3b` — milestone 1: concrete-mode prover + CLI command + 8 invoice proofs
 - `7a533eb` — milestone 2: symbolic-mode prover + 7 universal theorems
-- (final docs commit coming with this handoff)
+- `7b50bdc` — docs cascade for the priority surfaces
+
+**Why the branch isn't pushed.** The pre-push hook runs the e2e suite, which needs Playwright browsers. The sandbox I worked in tonight blocks the Playwright CDN download (host-allowlist), so the browsers can't be installed here. The compiler tests (2533) passed inside the hook run before the e2e step blew up — the failure is purely environmental, not in my code. **First step tomorrow: pull this branch (or just `git push -u origin feature/decidable-core-prover` from your machine where Playwright works) — that runs the full hook, e2e included, and lands the branch on GitHub.**
 
 **Tests green at every checkpoint.** Prover unit tests 30/30 (15 concrete + 15 symbolic). Compiler tests 2533/2533. Pre-commit hook ran on every commit.
 
