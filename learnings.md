@@ -1974,3 +1974,19 @@ Shipped Path A first as both a fix and a diagnostic. If Phase 7 measurement show
 - **Near-violations of PHILOSOPHY.md rules need precedent citations.** The WHILE counter emission (`_iter++; if (_iter > MAX) throw`) is extra lines that don't trace back to the Clear source — a brush with "1:1 mapping." It's acceptable only because `REPEAT UNTIL` already emits similar counter scaffolding; citing that precedent in the plan prevents the "did you really think about the rule?" pushback from becoming a real objection.
 - **New principles that codify existing behavior are stronger than ones that demand new behavior.** "Total by default, effects by label" deserves a PHILOSOPHY.md slot because the audit showed it's already ~94% true implicitly. The plan just closes the gap between what Clear does and what it claims to do.
 
+---
+
+## Session 47: Hint telemetry must prove delivery and measurement (2026-05-01)
+
+The flywheel was healthier than the summary made it look. Hint rows were stored as text labels (`yes`, `partial`, `inferred`), but the read-only summary counted `hint_helpful = 1`. That reported zero useful hints while the database actually held useful hint labels.
+
+The more important delivery check is the boundary Meph sees. A compile-local test only proves the hint object exists before dispatch. The real product boundary is the tool result string that `/api/chat` gives to Meph. The new test locks that contract: a compile result with hints must include the `HINT_APPLIED` protocol and worked source snippet in the returned tool-result content.
+
+Live verification also showed a reporting blind spot. Five Meph runs saw shape-match hints and correctly emitted `HINT_APPLIED: no` with reasons, but the summary collapsed shape-match server logs into `server_tier=none`. That made the run look like hints were absent when they were merely rejected by Meph as not useful.
+
+### Gotchas-as-rules
+
+- **Telemetry labels must match the column type.** If a column stores words, a numeric count is a silent lie. Add a helper and test the query string.
+- **Test the boundary the agent actually sees.** Tool-local state is not enough; assert the serialized tool result contains the hint payload.
+- **A rejected hint still proves delivery.** `HINT_APPLIED: no` with a reason means Meph saw the hint. Treat that separately from "no hint reached Meph."
+- **Live verification summaries must distinguish no hint from weak hint.** Shape-match hints are weaker than exact-error hints, but they are not `none`.
