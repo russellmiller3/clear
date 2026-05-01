@@ -1990,6 +1990,23 @@ Shipped Path A first as both a fix and a diagnostic. If Phase 7 measurement show
 
 ---
 
+## Session 2026-05-01: Launch Browser UAT Must Be Wired, Not Merely Present
+
+Russell's launch bar is not "we have a browser walker somewhere." It is "every
+customer-clickable feature is protected by a browser regression suite."
+
+The Marcus UAT runner already existed and drove the five launch apps. The gap
+was that neither the package scripts nor the push gate invoked it, so regressions
+could land while the most realistic test sat idle.
+
+### Gotchas-as-rules
+
+- **A test runner that is not in the default safety net is documentation, not protection.** If launch depends on it, wire it into the push gate.
+- **Browser coverage needs a real browser path, not just compiler assertions.** Static checks catch emitted strings; browser UAT catches broken routes, forms, buttons, and console failures.
+- **Child Node processes should reuse `process.execPath`.** Bare `node` can hit a blocked shim or a different runtime on Windows; the parent executable is the known-good one.
+
+---
+
 ## Session 47: Hint telemetry must prove delivery and measurement (2026-05-01)
 
 The flywheel was healthier than the summary made it look. Hint rows were stored as text labels (`yes`, `partial`, `inferred`), but the read-only summary counted `hint_helpful = 1`. That reported zero useful hints while the database actually held useful hint labels.

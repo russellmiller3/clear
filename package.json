@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node clear.test.js",
     "test:e2e": "node playground/e2e.test.js",
-    "test:all": "node clear.test.js && node playground/e2e.test.js",
+    "test:browser": "node scripts/run-marcus-uat.mjs",
+    "test:all": "node clear.test.js && node playground/e2e.test.js && npm run test:browser",
     "start": "node playground/server.js",
     "prepare": "husky"
   },

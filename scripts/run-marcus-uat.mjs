@@ -31,6 +31,7 @@ import net from 'net';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
+const NODE = process.execPath;
 
 // The 5 Marcus apps per the canonical list (snapshots/marcus-primitives-decomposition).
 const MARCUS_APPS = [
@@ -77,7 +78,7 @@ function runProcess(cmd, args, opts = {}) {
 async function buildApp(name) {
   const file = resolve(ROOT, 'apps', name, 'main.clear');
   if (!existsSync(file)) return { ok: false, error: 'main.clear not found' };
-  const result = await runProcess('node', [resolve(ROOT, 'cli', 'clear.js'), 'build', file]);
+  const result = await runProcess(NODE, [resolve(ROOT, 'cli', 'clear.js'), 'build', file]);
   if (result.code !== 0) {
     return { ok: false, error: 'build failed: ' + (result.stderr || result.stdout).slice(0, 500) };
   }
@@ -115,7 +116,7 @@ async function runOneApp(name, port) {
     log(`  ✗ no server.js at ${serverPath}`);
     return { name, ok: false, passed: 0, failed: 1, reason: 'no-server' };
   }
-  const server = spawn('node', [serverPath], {
+  const server = spawn(NODE, [serverPath], {
     cwd: appDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PORT: String(port) },
@@ -140,7 +141,7 @@ async function runOneApp(name, port) {
       log(`  ✗ no browser-uat.mjs — did the compiler emit it?`);
       return { name, ok: false, passed: 0, failed: 1, reason: 'no-uat' };
     }
-    const uat = await runProcess('node', [uatPath], {
+    const uat = await runProcess(NODE, [uatPath], {
       env: { ...process.env, TEST_URL: `http://127.0.0.1:${port}` },
     });
 
