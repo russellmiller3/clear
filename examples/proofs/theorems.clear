@@ -62,3 +62,27 @@ test 'tripling is the same as adding three copies':
 
 test 'doubling then doubling is multiplying by 4':
   expect double(double(x)) is multiply(x, 4)
+
+# ---------------------------------------------------------------------------
+# Conditional handling (PC-2)
+# A function with an `if/then` whose both branches reduce to the same value
+# is provable for ANY input — even when the input controls which branch fires.
+# ---------------------------------------------------------------------------
+
+define function constant_either_way(flag):
+  if flag:
+    return 42
+  otherwise:
+    return 42
+
+define function double_either_way(x, flag):
+  if flag:
+    return x + x
+  otherwise:
+    return x * 2
+
+test 'a constant function returns the same value regardless of branch':
+  expect constant_either_way(flag) is 42
+
+test 'two branches that compute the same thing in different forms still match':
+  expect double_either_way(x, flag) is multiply(x, 2)
