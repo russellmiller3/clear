@@ -1974,3 +1974,10 @@ Shipped Path A first as both a fix and a diagnostic. If Phase 7 measurement show
 - **Near-violations of PHILOSOPHY.md rules need precedent citations.** The WHILE counter emission (`_iter++; if (_iter > MAX) throw`) is extra lines that don't trace back to the Clear source — a brush with "1:1 mapping." It's acceptable only because `REPEAT UNTIL` already emits similar counter scaffolding; citing that precedent in the plan prevents the "did you really think about the rule?" pushback from becoming a real objection.
 - **New principles that codify existing behavior are stronger than ones that demand new behavior.** "Total by default, effects by label" deserves a PHILOSOPHY.md slot because the audit showed it's already ~94% true implicitly. The plan just closes the gap between what Clear does and what it claims to do.
 
+## Session 2026-05-01: Sandbox Child-Process Test Guards
+
+### Testing
+
+- **Skip only environment-impossible child-process checks.** Codex on Windows can run the parent test process but deny child Node spawns with `EPERM`. Keep `node --check` guards active on normal machines, but treat sandbox-only spawn denial as an explicit skip note so the suite stays green without deleting the real regression check.
+- **Meta-guards need the same sandbox path as positive checks.** A malformed-source test that proves `node --check` rejects bad JavaScript also depends on spawning Node. If the environment blocks child processes, skip that meta-guard too; otherwise it falsely reports the guard is broken.
+- **One shared blocker predicate beats seven local fixes.** Child-process failures show up as `error.code === 'EPERM'`, message text containing `EPERM`, or stderr text containing `EPERM`. Centralize that detection inside the test file so future spawn-based checks do not each invent a different skip rule.
