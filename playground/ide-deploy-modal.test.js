@@ -12,7 +12,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = '3459';
+const PORT = '3461';
 const BASE = `http://localhost:${PORT}`;
 
 let passed = 0, failed = 0;
@@ -38,6 +38,12 @@ console.log('Server ready. Launching browser...\n');
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
+const consoleErrors = [];
+page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+page.on('pageerror', err => consoleErrors.push(err.message));
+const unexpectedConsoleErrors = () => consoleErrors.filter(msg =>
+  !/Failed to load resource: the server responded with a status of 401 \(Unauthorized\)/.test(msg)
+);
 
 // Auto-dismiss any alert dialogs so doDeploy's "Nothing to deploy" alert
 // (or any other) doesn't hang Playwright.
@@ -61,8 +67,14 @@ try {
     window.fetch = async (url, opts) => {
       if (url === '/api/deploy' && opts?.method === 'POST') {
         window.__capturedDeployBody = JSON.parse(opts.body);
-        return new Response(JSON.stringify({ ok: false, error: 'test stub' }),
+        return new Response(JSON.stringify({ ok: true, jobId: 'job-live' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (String(url).includes('/api/deploy-status/job-live')) {
+        return new Response(JSON.stringify({
+          status: 'ok',
+          result: { url: 'https://hello.buildclear.dev', appName: 'hello', versionId: 'v-1234567890' },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       return window.__originalFetch(url, opts);
     };
@@ -70,8 +82,12 @@ try {
 
   // Open the modal
   await page.evaluate(() => window.doDeploy());
-  await page.waitForTimeout(200);
+  await page.waitForSelector('#deploy-modal', { state: 'visible' });
+  await page.waitForSelector('#deploy-progress [data-deploy-stage]', { timeout: 2000 }).catch(() => {});
   assert(await page.locator('#deploy-modal').isVisible(), 'publish modal opens');
+  const openErrors = unexpectedConsoleErrors();
+  assert(openErrors.length === 0,
+    `no unexpected console errors while opening publish modal (got: ${openErrors.join('; ') || 'none'})`);
 
   // No target picker — Studio is Clear-Cloud-only
   assert(await page.locator('#deploy-target-radio-group').count() === 0,
@@ -84,9 +100,16 @@ try {
   assert(/buildclear\.dev/i.test(placeholder || ''),
     `domain placeholder mentions buildclear.dev (got: "${placeholder}")`);
 
+  const progressStages = await page.locator('#deploy-progress [data-deploy-stage]').evaluateAll(nodes =>
+    nodes.map(n => n.getAttribute('data-deploy-stage'))
+  );
+  const progressHtml = await page.locator('#deploy-progress').innerHTML().catch(() => '');
+  assert(JSON.stringify(progressStages) === JSON.stringify(['compiling', 'packaging', 'uploading', 'provisioning-db', 'live']),
+    `progress rail exposes five stages (got: ${JSON.stringify(progressStages)}; html: ${progressHtml.slice(0, 160)})`);
+
   // Submit → POST body carries target='cloudflare'
   await page.locator('#deploy-submit-btn').click();
-  await page.waitForTimeout(300);
+  await page.waitForSelector('#deploy-copy-link-btn', { timeout: 2000 }).catch(() => {});
   const body = await page.evaluate(() => window.__capturedDeployBody);
   assert(body?.target === 'cloudflare',
     `submit POSTs target='cloudflare' (got: ${JSON.stringify(body?.target)})`);
@@ -95,6 +118,16 @@ try {
   const title = await page.locator('.deploy-title').innerText();
   assert(/clear cloud/i.test(title || ''),
     `modal title mentions Clear Cloud (got: "${title}")`);
+
+  assert(await page.locator('#deploy-copy-link-btn').count() === 1,
+    'live confirmation exposes Copy link action');
+  assert(await page.locator('#deploy-open-live-btn').count() === 1,
+    'live confirmation exposes Open in new tab action');
+  assert(await page.locator('#deploy-share-team-btn').count() === 1,
+    'live confirmation exposes Share with team action');
+  const liveUrl = await page.locator('#deploy-live-url').innerText().catch(() => '');
+  assert(liveUrl === 'https://hello.buildclear.dev',
+    `live confirmation shows the final URL (got: "${liveUrl}")`);
 
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);

@@ -6,6 +6,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-01: Publish progress UX](#session-2026-05-01-publish-progress-ux) | Browser red can be blocked by runner permissions; keep static UI contracts too |
 | [Clear Compiler](#clear-compiler) | 1:1 rule, synonym collisions, tokenizer eats colons, CRUD in assignments |
 | [Clear Compiler Refactoring](#clear-compiler-refactoring-2026-04-01) | Context object unifies per-language functions, parser-owned UI metadata, validation separate from codegen |
 | [Clear CLI & Phases 12-14](#clear-cli--language-phases-12-14-2026-04-01) | Self-contained imports, parseExpression return shape, synonym gotchas, data shape field parsing |
@@ -70,6 +71,16 @@ The certificate helper should not wake itself, scan pending domains, or resolve 
 ### Bridge at the state transition, not in a second scanner
 
 Once DNS verification flips a row to verified, the same worker has the freshest row, timestamp, and error context. Trigger certificate provisioning there with an injectable function. A separate "scan verified rows" loop would add another scheduler, another race, and another stale-state surface for no launch benefit.
+
+## Session 2026-05-01: Publish progress UX
+
+### Browser red is valuable, but keep a static fallback
+
+The Playwright modal test proved the gap first: Publish exposed no five-stage progress rail and no live-url actions. After that, this environment blocked further server-spawning browser reruns. **Lesson:** for Studio HTML contracts, pair the browser harness with a tiny static contract test that checks the required IDs/stages/actions. The browser test proves behavior when available; the static test keeps the exact customer-visible promises from silently disappearing when local process spawning is unavailable.
+
+### Coarse backend status still needs honest UI copy
+
+The deploy status endpoint currently reports coarse job states, not true per-step streaming. The modal should not pretend the backend is sending every sub-stage. **Lesson:** show the five customer-facing phases, advance the client-owned phases directly, and only mark "live" from the backend's success response. When the backend later streams finer statuses, the modal can map them into the same rail without changing the user contract.
 
 ---
 
