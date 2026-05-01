@@ -3206,6 +3206,62 @@ function escHtmlLocal(s) {
 // CURATED_THEMES mirrors compiler.js export — the 5 Marcus-facing themes.
 // Each swatch is [surface, accent] for the visual chip. If adding themes
 // here, also update compiler.js CURATED_THEMES and lib/packaging-cloudflare.js.
+const DEPLOY_PROGRESS_STAGES = [
+  { id: 'compiling', label: 'Compiling' },
+  { id: 'packaging', label: 'Packaging' },
+  { id: 'uploading', label: 'Uploading' },
+  { id: 'provisioning-db', label: 'Provisioning DB' },
+  { id: 'live', label: 'Live' },
+];
+
+function renderDeployProgress(activeStage = 'compiling', state = 'active') {
+  const activeIndex = Math.max(0, DEPLOY_PROGRESS_STAGES.findIndex(stage => stage.id === activeStage));
+  const steps = DEPLOY_PROGRESS_STAGES.map((stage, index) => {
+    const stepState = state === 'failed'
+      ? (index < activeIndex ? 'done' : index === activeIndex ? 'failed' : 'pending')
+      : (index < activeIndex ? 'done' : index === activeIndex ? state : 'pending');
+    return `
+      <div class="deploy-stage ${stepState}" data-deploy-stage="${stage.id}">
+        <span class="deploy-stage-dot" aria-hidden="true"></span>
+        <span>${stage.label}</span>
+      </div>`;
+  }).join('');
+  return `<div class="deploy-progress-rail" aria-label="Publish progress">${steps}</div>`;
+}
+
+function renderDeployLiveConfirmation(url, { wasUpdate = false, versionId = null } = {}) {
+  const safeUrl = escHtmlLocal(url);
+  const versionText = versionId ? `Version ${escHtmlLocal(versionId.slice(0, 10))}` : 'Live on Clear Cloud';
+  const title = wasUpdate ? 'Your update is live' : 'Your app is live';
+  return `
+    ${renderDeployProgress('live', 'done')}
+    <div class="deploy-live-panel">
+      <div class="deploy-live-kicker">${escHtmlLocal(versionText)}</div>
+      <div class="deploy-live-title">${title}</div>
+      <a id="deploy-live-url" href="${safeUrl}" target="_blank" rel="noopener">${safeUrl}</a>
+      <div class="deploy-live-actions">
+        <button id="deploy-copy-link-btn" type="button">Copy link</button>
+        <button id="deploy-open-live-btn" type="button">Open in new tab</button>
+        <button id="deploy-share-team-btn" type="button">Share with team</button>
+      </div>
+    </div>`;
+}
+
+function wireDeployLiveActions(url) {
+  const copyBtn = document.getElementById('deploy-copy-link-btn');
+  const openBtn = document.getElementById('deploy-open-live-btn');
+  const shareBtn = document.getElementById('deploy-share-team-btn');
+  if (copyBtn) copyBtn.onclick = async () => {
+    try { await navigator.clipboard.writeText(url); copyBtn.textContent = 'Copied'; }
+    catch { copyBtn.textContent = 'Copy failed'; }
+  };
+  if (openBtn) openBtn.onclick = () => window.open(url, '_blank', 'noopener');
+  if (shareBtn) shareBtn.onclick = () => {
+    const body = encodeURIComponent(`The app is live here: ${url}`);
+    window.location.href = `mailto:?subject=Clear app is live&body=${body}`;
+  };
+}
+
 window.__CLEAR_CURATED_THEMES = [
   { name: 'ivory',  label: 'Ivory',  swatch: ['#ffffff', '#0969da'], tag: 'Default · clean SaaS' },
   { name: 'sakura', label: 'Sakura', swatch: ['#fdf4f1', '#c75d7d'], tag: 'Retail · beauty · wellness' },
@@ -3333,7 +3389,7 @@ window.doDeploy = async function() {
         <a href="#" id="deploy-history-link" style="color:var(--ac1);cursor:pointer;text-decoration:underline">View version history</a>
       </div>
       <div id="deploy-history-panel" style="display:none;margin-top:8px;border:1px solid var(--bd);border-radius:6px;max-height:220px;overflow-y:auto"></div>
-      <div id="deploy-progress"></div>
+      <div id="deploy-progress">${renderDeployProgress('compiling')}</div>
     </div>`;
   // Pre-select the detected / default theme.
   const initial = window.__clearPickedTheme;
@@ -3499,7 +3555,7 @@ window.doDeploy = async function() {
     const appSlug = slugInput.value.trim();
     const domain = document.getElementById('deploy-domain').value.trim();
     const progress = document.getElementById('deploy-progress');
-    progress.textContent = 'packaging…';
+    progress.innerHTML = renderDeployProgress('packaging');
 
     const secrets = {};
     document.querySelectorAll('#deploy-secret-fields input').forEach(inp => {
@@ -3511,6 +3567,7 @@ window.doDeploy = async function() {
     // always declares its theme — makes re-deploys deterministic.
     const pickedTheme = window.__clearPickedTheme || 'ivory';
     const sourceWithTheme = _applyTheme(source, pickedTheme);
+    progress.innerHTML = renderDeployProgress('uploading');
 
     let r;
     try {
@@ -3564,22 +3621,20 @@ window.doDeploy = async function() {
     if (!r.body.ok) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'deploy failed')}</span>`; return; }
 
     const jobId = r.body.jobId;
-    progress.textContent = 'deploying…';
+    progress.innerHTML = renderDeployProgress('provisioning-db');
     const wasUpdate = !!(currentInfo && currentInfo.deployed);
 
     const poll = async () => {
       const s = await fetch(`/api/deploy-status/${encodeURIComponent(jobId)}`).then(x => x.ok ? x.json() : null).catch(() => null);
       if (!s) { setTimeout(poll, 2000); return; }
-      progress.textContent = deployStageLabel(s);
+      if (s.status === 'failed') progress.innerHTML = renderDeployProgress('provisioning-db', 'failed');
+      else if (s.status === 'ok') progress.innerHTML = renderDeployProgress('live', 'done');
+      else progress.innerHTML = renderDeployProgress('provisioning-db');
       if (s.status === 'ok') {
         const url = s.result?.url || `https://${s.result?.appName || 'app'}.fly.dev`;
         const versionId = s.result?.versionId;
-        // Phase 5 — different copy when this was an update vs a fresh publish.
-        const headerLine = wasUpdate
-          ? `Updated to version ${versionId ? versionId.slice(0, 10) : '(new)'}.`
-          : 'Live:';
-        progress.innerHTML = `<div style="margin-top:12px">${headerLine} <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
-          <button onclick="navigator.clipboard.writeText('${url}')">Copy</button></div>`;
+        progress.innerHTML = renderDeployLiveConfirmation(url, { wasUpdate, versionId });
+        wireDeployLiveActions(url);
         // BM-3 full: count successful Publishes. After 3 ships, the next page load
         // in builder mode auto-hides the source editor.
         try {
@@ -5682,6 +5737,20 @@ showFirstVisitOnboarding();
 #deploy-modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 #deploy-modal #deploy-progress { margin-top: 14px; font-size: 13px; color: var(--tx2); word-break: break-all; }
 #deploy-modal pre { background: var(--bg2); padding: 8px; border-radius: 4px; font-size: 11px; max-height: 180px; overflow: auto; }
+#deploy-modal .deploy-progress-rail { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px; margin-top:14px; }
+#deploy-modal .deploy-stage { min-width:0; display:flex; flex-direction:column; align-items:center; gap:5px; padding:8px 4px; border:1px solid var(--bd); border-radius:6px; background:var(--bg2); color:var(--tx3); font-size:10.5px; line-height:1.2; text-align:center; }
+#deploy-modal .deploy-stage-dot { width:9px; height:9px; border-radius:50%; border:1px solid currentColor; background:transparent; }
+#deploy-modal .deploy-stage.done { color:var(--accent); border-color:var(--accent); }
+#deploy-modal .deploy-stage.done .deploy-stage-dot { background:var(--accent); }
+#deploy-modal .deploy-stage.active { color:var(--tx1); border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-glow); }
+#deploy-modal .deploy-stage.active .deploy-stage-dot { background:var(--accent); }
+#deploy-modal .deploy-stage.failed { color:#e74c3c; border-color:#e74c3c; }
+#deploy-modal .deploy-stage.failed .deploy-stage-dot { background:#e74c3c; }
+#deploy-modal .deploy-live-panel { margin-top:14px; padding:14px; border:1px solid var(--bd); border-radius:8px; background:var(--bg2); }
+#deploy-modal .deploy-live-kicker { font-size:11px; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:5px; }
+#deploy-modal .deploy-live-title { font-size:18px; font-weight:700; color:var(--tx1); margin-bottom:8px; }
+#deploy-modal #deploy-live-url { display:block; color:var(--accent); font-family:ui-monospace,monospace; font-size:12px; margin-bottom:12px; overflow-wrap:anywhere; }
+#deploy-modal .deploy-live-actions { display:flex; gap:8px; flex-wrap:wrap; }
 
 /* Theme picker inside the Deploy modal. 5 curated themes (ivory, sakura,
    dusk, vault, arctic) — the shortlist exported from compiler.js as
