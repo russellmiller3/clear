@@ -224,7 +224,10 @@ export class FactorDB {
   //   Tier 3: same archetype + compile_ok=1 + test_pass=1
   //           → "here are working apps of the same shape" (v1 fallback)
   //
-  // Never returns the same source row twice. Stops as soon as topK is reached.
+  // Never returns the same source row twice. Exact-error fixes do NOT get
+  // padded with generic same-archetype examples; generic examples only fire
+  // when no exact-error fix exists. That keeps weak hints out of Meph's prompt
+  // and keeps measurement honest.
   querySuggestions({ archetype = null, error_sig = null, topK = 3 } = {}) {
     const seen = new Set();
     const results = [];
@@ -239,6 +242,8 @@ export class FactorDB {
     // successful compile in the same session. Strong signal — "how was this
     // specific error actually resolved?"
     if (error_sig) {
+      const sameArchetypeFixes = [];
+      const crossArchetypeFixes = [];
       const failingSessions = this._db.prepare(`
         SELECT DISTINCT session_id, created_at
         FROM code_actions
@@ -262,15 +267,25 @@ export class FactorDB {
         `).get(fs.session_id, fs.created_at);
         if (fix) {
           const tier = archetype && fix.archetype === archetype ? 'exact_error_same_archetype' : 'exact_error';
-          addRow(fix, tier);
+          if (tier === 'exact_error_same_archetype') sameArchetypeFixes.push(fix);
+          else crossArchetypeFixes.push(fix);
         }
+      }
+      for (const fix of sameArchetypeFixes) {
+        if (results.length >= topK) break;
+        addRow(fix, 'exact_error_same_archetype');
+      }
+      for (const fix of crossArchetypeFixes) {
+        if (results.length >= topK) break;
+        addRow(fix, 'exact_error');
       }
     }
 
     // Tier 3: archetype fallback. Only gold rows (compile AND test passed)
-    // with non-empty source to show Meph. See Tier 1+2 comment above.
-    if (archetype && results.length < topK) {
-      const need = topK - results.length;
+    // with non-empty source to show Meph. Only used when no exact-error fix
+    // exists; otherwise it pads good evidence with generic noise.
+    if (archetype && results.length === 0) {
+      const need = Math.min(topK, 2);
       const golds = this._db.prepare(`
         SELECT * FROM code_actions
         WHERE archetype = ? AND compile_ok = 1 AND test_pass = 1

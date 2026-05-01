@@ -1,9 +1,15 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
 import { unlinkSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
-const TEST_DB = '/tmp/factor-db-test.db';
-function cleanup() { try { unlinkSync(TEST_DB); } catch {} }
+const TEST_DB = join(tmpdir(), 'factor-db-test.db');
+function cleanup() {
+  for (const path of [TEST_DB, `${TEST_DB}-wal`, `${TEST_DB}-shm`]) {
+    try { unlinkSync(path); } catch {}
+  }
+}
 
 describe('FactorDB', () => {
   it('inserts a code action and reads it back', () => {
@@ -131,6 +137,54 @@ describe('FactorDB', () => {
     // Should return the fix row ONCE — tier 1 catches it, tier 3 should skip (already seen)
     expect(hints.length).toEqual(1);
     expect(hints[0].patch_summary).toEqual('the-fix');
+    db.close();
+    cleanup();
+  });
+
+  it('querySuggestions does not pad exact-error fixes with generic archetype examples', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const t1 = Date.now();
+    const WORKING_SRC = 'build for javascript backend\n\ntable Items:\n  name is text\n\nwhen user calls GET /api/items:\n  send back all Items\n';
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', 'E1', 0, 0, 0, '[]', 'fail', '', t1);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'exact fix', WORKING_SRC, t1 + 100);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('gold-1', 'crud_app', null, 1, 1, 1.0, '[]', 'generic gold 1', WORKING_SRC, t1 + 200);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('gold-2', 'crud_app', null, 1, 1, 0.9, '[]', 'generic gold 2', WORKING_SRC, t1 + 300);
+
+    const hints = db.querySuggestions({ archetype: 'crud_app', error_sig: 'E1', topK: 3 });
+    expect(hints.length).toEqual(1);
+    expect(hints[0].patch_summary).toEqual('exact fix');
+    expect(hints[0].tier).toEqual('exact_error_same_archetype');
+    db.close();
+    cleanup();
+  });
+
+  it('querySuggestions ranks same-archetype exact fixes before newer cross-archetype fixes', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const t1 = Date.now();
+    const CRUD_SRC = 'build for javascript backend\n\ntable Items:\n  name is text\n\nwhen user calls GET /api/items:\n  send back all Items\n';
+    const API_SRC = 'build for javascript backend\n\nwhen user calls GET /api/health:\n  send back { ok is true }\n';
+
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('crud-session', 'crud_app', 'E1', 0, 0, 0, '[]', 'crud fail', '', t1);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('crud-session', 'crud_app', null, 1, 1, 0.8, '[]', 'same archetype fix', CRUD_SRC, t1 + 100);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('api-session', 'api_service', 'E1', 0, 0, 0, '[]', 'api fail', '', t1 + 200);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('api-session', 'api_service', null, 1, 1, 1.0, '[]', 'newer cross archetype fix', API_SRC, t1 + 300);
+
+    const hints = db.querySuggestions({ archetype: 'crud_app', error_sig: 'E1', topK: 2 });
+    expect(hints.length).toEqual(2);
+    expect(hints[0].patch_summary).toEqual('same archetype fix');
+    expect(hints[0].tier).toEqual('exact_error_same_archetype');
+    expect(hints[1].patch_summary).toEqual('newer cross archetype fix');
+    expect(hints[1].tier).toEqual('exact_error');
     db.close();
     cleanup();
   });
