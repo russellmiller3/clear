@@ -33,7 +33,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const NODE = process.execPath;
 
-// The 5 Marcus apps per the canonical list (snapshots/marcus-primitives-decomposition).
+// The 5 Marcus apps per the canonical list
+// (snapshots/marcus-primitives-decomposition-04-27-2026.md). If you change
+// this list, also update playground/ide.html MARCUS_FEATURED.
 const MARCUS_APPS = [
   'deal-desk',
   'approval-queue',
