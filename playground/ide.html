@@ -645,6 +645,7 @@ body.builder-mode.show-source #editor-pane {
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
+    <button class="toolbar-btn" onclick="doProve()" title="Run the Decidable Core math prover against this source — proves test blocks as theorems and surfaces counterexamples">Prove</button>
     <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show/hide .clear source" style="display:none">Show Source ◀</button>
     <select id="builder-theme-picker" title="Preview theme" style="display:none"></select>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
@@ -3179,6 +3180,39 @@ window.sendApiRequest = async function(idx, method, pathTemplate) {
   } catch (err) {
     statusEl.textContent = 'No app running — click Run first';
     statusEl.className = 'ep-status-err';
+  }
+};
+
+// ==========================================================================
+// PROVE — runs the Decidable Core math prover against the current source.
+// Each test block is treated as a theorem; the prover proves them universal
+// (forall inputs) when possible and surfaces concrete counterexamples when
+// they fail. CLI equivalent: `clear prove <file>.clear`.
+// ==========================================================================
+window.doProve = async function() {
+  const source = editor.state.doc.toString();
+  showTab('terminal');
+  appendTerminal('<span class="term-cmd">$ clear prove main.clear</span>\n');
+  try {
+    const r = await fetch('/api/prove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+    const data = await r.json();
+    if (data.error) {
+      appendTerminal('<span class="term-err">' + escHtml(data.error) + '</span>\n');
+      setStatus('err', 'Prove failed');
+      return;
+    }
+    appendTerminalText(data.formatted || '(no proof output)');
+    const status = data.bundle?.status || 'unknown';
+    const counts = data.bundle?.counts || {};
+    const tag = status === 'proved' ? 'OK' : status === 'partial' ? 'OK' : 'err';
+    setStatus(tag, `Prove: ${status} (${counts.proved || 0} proved, ${counts.failed || 0} failed, ${counts.unverifiable || 0} unverifiable)`);
+  } catch (err) {
+    appendTerminal('<span class="term-err">' + escHtml(err.message || 'Network error') + '</span>\n');
+    setStatus('err', 'Prove failed');
   }
 };
 

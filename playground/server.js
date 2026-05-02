@@ -404,6 +404,26 @@ createEditApi(app, {
 });
 
 // =============================================================================
+// PROVE — runs the Decidable Core math prover on the source. Returns the
+// proof bundle (per-test verdicts + universal theorems) and a pre-formatted
+// terminal-friendly summary. Studio surfaces this via the toolbar Prove
+// button. Same engine as `clear prove <file>` on the CLI; this just wraps
+// it for the Studio terminal pane.
+// =============================================================================
+app.post('/api/prove', async (req, res) => {
+  try {
+    const { source } = req.body;
+    if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
+    if (!source.trim()) return res.json({ bundle: { status: 'empty', counts: {} }, formatted: 'No source to prove.' });
+    const { prove, formatBundle } = await import('../lib/prover/index.js');
+    const bundle = prove(source);
+    res.json({ bundle, formatted: formatBundle(bundle) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =============================================================================
 // COMPILE
 // =============================================================================
 app.post('/api/compile', (req, res) => {
