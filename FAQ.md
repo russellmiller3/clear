@@ -128,6 +128,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
+- [How does Publish show progress and the live URL?](#how-does-publish-show-progress-and-the-live-url)
 - [How do I share a compile failure trace?](#how-do-i-share-a-compile-failure-trace)
 - [How do I add a new approval action?](#how-do-i-add-a-new-approval-action)
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
@@ -818,6 +819,18 @@ Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:
 **Source:** `playground/ide.html` CSS block starting at "BUILDER MODE v0.1" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
 
 **Full spec:** `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
+
+---
+
+### How does Publish show progress and the live URL?
+
+The Publish modal lives in `playground/ide.html` inside `window.doDeploy()`.
+
+**Progress stages:** the modal exposes a five-step rail: compiling, packaging, uploading, provisioning DB, and live. The current backend status endpoint still returns coarse job states, so the UI advances across the client-owned phases and marks live when `/api/deploy-status/:jobId` returns `ok`.
+
+**Live confirmation:** success replaces the old text-only line with "Your app is live", the final URL, and three actions: copy link, open in new tab, and share with team.
+
+**Tests:** `node playground/ide-deploy-modal-static.test.js` locks the static modal contract. `node playground/ide-deploy-modal.test.js` is the browser harness when Playwright/server spawning is available.
 
 ---
 

@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Publish progress and live confirmation UX
+
+The Publish modal now behaves like a product handoff instead of a log line.
+
+**What shipped:**
+- Publish shows five visible stages: compiling, packaging, uploading, provisioning DB, and live.
+- The success state is a full "Your app is live" confirmation.
+- The live confirmation includes copy-link, open-in-new-tab, and share-with-team actions.
+- A static modal contract test locks the stages and live actions in place.
+
+**Why for launch:** Marcus needs to trust that Publish is doing real cloud work. The modal now explains the journey and gives him the exact next actions when the app is live.
+
+**Tests:** `node playground/ide-deploy-modal-static.test.js` passed. The Playwright modal test was red first, then the approval system blocked further browser reruns.
+
+---
+
 ## 2026-05-01 - CC-3 Stripe webhook receiver production hardening
 
 Clear Cloud now has a production-shaped Stripe webhook receiver for checkout completion. It mounts before the JSON parser, verifies Stripe's signature against the exact raw request body, and then updates the tenant's plan from the signed checkout event.
