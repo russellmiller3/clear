@@ -182,6 +182,8 @@ Added a fast launch guard for the lead-router demo. It proves the app still uses
 
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
+**PC-6 follow-up - symbolic inequalities for simple floors.** The prover can now prove small "never below zero" properties in symbolic mode. It is still not a general solver. It handles literal comparisons, conditional branch splits, and simple branch facts such as "fee is greater than 0" when proving `fee is at least 0`. `examples/proofs/theorems.clear` now includes a fee-floor theorem, bringing that file to 13 universal proofs. Tests: `node lib/prover/symbolic.test.js` passed 31 checks; `clear prove examples/proofs/theorems.clear` passed 13 proofs.
+
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:
 
 **Milestone 1 (`a024e3b`) — concrete-mode prover.** New CLI command `clear prove <file>` walks the AST directly and verifies every test block as a math proof against the source. Bypasses the compiler entirely so the proof path can never inherit a compiler bug. Pure-subset only: anything that touches the world (database, network, AI, time, UI) is refused with an UNVERIFIABLE verdict instead of being silently proved-as-wrong. New module: `lib/prover/` (evaluator, public API, proof-bundle formatter). 15 unit tests, 8 invoice-math proofs in `examples/proofs/invoice.clear`, all green. CLI exit codes 0/1/5 for proved/failed/unverifiable. Sidecar JSON output via `--bundle` for auditor-facing artifacts.

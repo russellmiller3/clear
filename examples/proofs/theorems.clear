@@ -24,6 +24,12 @@ define function double(x is number):
 define function triple(x is number):
   return x * 3
 
+define function late_fee_floor(fee is number):
+  if fee is greater than 0:
+    return fee
+  otherwise:
+    return 0
+
 
 # ---------------------------------------------------------------------------
 # Universal theorems — variables are free, so claims must hold for ANY input.
@@ -86,3 +92,12 @@ test 'a constant function returns the same value regardless of branch':
 
 test 'two branches that compute the same thing in different forms still match':
   expect double_either_way(x, flag) is multiply(x, 2)
+
+# ---------------------------------------------------------------------------
+# Inequality reasoning (PC-6)
+# The prover can now use a branch fact like "fee is greater than 0" to prove
+# a simple floor never returns a negative number.
+# ---------------------------------------------------------------------------
+
+test 'fee floor never returns a negative number':
+  expect late_fee_floor(fee) is at least 0

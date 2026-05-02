@@ -100,6 +100,17 @@ Fly can report certificate readiness through fields like `configured`, `client_s
 ### The trigger belongs to the DNS poller, not the cert helper
 
 The certificate helper should not wake itself, scan pending domains, or resolve DNS. CC-5b owns "domain flipped to verified"; CC-5c owns "given that verified row, ask Fly for HTTPS and poll until ready."
+| [Session PC-6: Symbolic inequalities](#session-pc-6-symbolic-inequalities-2026-05-01) | Branch facts can prove floor invariants without a general solver |
+
+---
+
+## Session PC-6: Symbolic inequalities (2026-05-01)
+
+### Branch facts are enough for floor invariants
+The prover did not need a solver to prove "late fee never goes negative." The useful case was narrower: split a conditional, carry the branch fact (`fee > 0`) into that branch, and prove the bound there. The other branch was literal zero.
+
+### Keep PC-6 deliberately small
+Symbolic comparisons now cover literal comparisons, Phi branch splits, and one-variable numeric bounds. That is enough for floor/clamp business rules. Do not turn this into a general SMT engine until real proof examples force it.
 
 ---
 

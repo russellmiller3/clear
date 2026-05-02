@@ -9,11 +9,11 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ## Where does the proof checker live? (Session 2026-05-01)
 
-**Path:** `lib/prover/`. Three files: `evaluator.js` (concrete-value AST walker), `symbolic.js` (symbolic-value algebra + simplifier), `index.js` (public `prove(source)` API + bundle formatter). Tests: `index.test.js` (15 concrete tests) + `symbolic.test.js` (15 symbolic tests).
+**Path:** `lib/prover/`. Three files: `evaluator.js` (concrete-value AST walker), `symbolic.js` (symbolic-value algebra + simplifier), `index.js` (public `prove(source)` API + bundle formatter). Tests: `index.test.js` (16 concrete tests) + `symbolic.test.js` (31 symbolic tests).
 
 **CLI:** `clear prove <file>` (in `cli/clear.js`). Flags: `--bundle` writes a `.proof.json` sidecar next to the source for auditor handoff; `--json` prints machine output. Exit codes: 0 proved, 1 failed (counterexample), 5 unverifiable / partial.
 
-**How it works in plain English.** Every `test` block becomes a proof obligation. The prover walks the AST directly — no compilation, no Node spawn — and either (a) verifies the assertion holds for the inputs given (concrete mode), or (b) when a test references a variable that wasn't bound by an assignment, automatically promotes it to a "for any input" placeholder and tries to prove the claim universally (symbolic mode). The symbolic simplifier knows constant folding, commutativity (`a+b == b+a`), associativity (`(a+b)+c == a+(b+c)`), and identity rules (`x+0 == x`, `x*1 == x`, `x*0 == 0`). It does NOT yet know distributivity, so claims like `2*x == x+x` come back as honest UNKNOWN.
+**How it works in plain English.** Every `test` block becomes a proof obligation. The prover walks the AST directly — no compilation, no Node spawn — and either (a) verifies the assertion holds for the inputs given (concrete mode), or (b) when a test references a variable that wasn't bound by an assignment, automatically promotes it to a "for any input" placeholder and tries to prove the claim universally (symbolic mode). The symbolic simplifier knows constant folding, numeric commutativity/associativity, identity rules (`x+0 == x`, `x*1 == x`, `x*0 == 0`), like-term collection (`x+x == 2*x`), division distribution, conditional branch merges, and simple branch-bound inequality proofs such as "if fee > 0 return fee, otherwise return 0" proving the result is at least zero.
 
 **What the prover refuses to verify.** Anything that touches the world: database, network, AI calls, email, time, randomness, UI side-effects. These get an UNVERIFIABLE verdict — the prover refuses to claim a math proof for code that depends on external state.
 
@@ -23,7 +23,7 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 **Where to add new pure operations.** `lib/prover/evaluator.js` — `HANDLERS` map. For symbolic mode: `lib/prover/symbolic.js` — same map shape. New impure operations get added to `IMPURE_NODE_TYPES` in evaluator.js so they're refused.
 
-**Demo files:** `examples/proofs/invoice.clear` (8 concrete proofs), `examples/proofs/pricing.clear` (10 concrete proofs), `examples/proofs/eligibility.clear` (13 concrete proofs), `examples/proofs/theorems.clear` (7 universal theorems via symbolic mode). Run any of them: `node cli/clear.js prove examples/proofs/<file>`.
+**Demo files:** `examples/proofs/invoice.clear` (8 concrete proofs), `examples/proofs/pricing.clear` (10 concrete proofs), `examples/proofs/eligibility.clear` (13 concrete proofs), `examples/proofs/theorems.clear` (13 universal theorems via symbolic mode). Run any of them: `node cli/clear.js prove examples/proofs/<file>`.
 
 ---
 
