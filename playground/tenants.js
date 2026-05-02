@@ -100,6 +100,17 @@ export class InMemoryTenantStore {
 		for (const t of this.tenants.values()) if (t.stripe_customer_id === id) return t;
 		return null;
 	}
+	// Cutover-only enumerator: copies the in-memory tenant rows into a
+	// returned array. Used by playground/seed-from-memory.js to walk every
+	// tenant when copying state from in-memory into Postgres at production
+	// cutover time. Not on any hot path; do not use during request handling.
+	async listTenants() {
+		return Array.from(this.tenants.values()).map(t => ({ ...t }));
+	}
+	// Cutover-only enumerator for the dedup set of stripe event ids.
+	async listStripeEvents() {
+		return Array.from(this.stripeEvents);
+	}
 	async incrementAppsDeployed(slug) {
 		const t = this.tenants.get(slug);
 		if (!t) return null;
@@ -592,6 +603,34 @@ export class PostgresTenantStore {
 	// CC-1 cycle 2 — reverse lookup by Stripe customer id. Used by the
 	// billing webhook handler to find the tenant whose subscription just
 	// changed. Short-circuits on null/empty input — partial unique on
+	// Cutover-only enumerator: walks every tenant row. Bounded by tenant
+	// count, not request volume, so a single pool checkout is fine. The
+	// seed script uses this to mirror in-memory state into Postgres.
+	async listTenants() {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT slug, stripe_customer_id, plan, apps_deployed,
+				        ai_spent_cents, ai_credit_cents, created_at, grace_expires_at
+				 FROM clear_cloud.tenants ORDER BY created_at`
+			);
+			return r.rows;
+		} finally {
+			client.release();
+		}
+	}
+	// Cutover-only enumerator for stripe event ids (dedup set).
+	async listStripeEvents() {
+		const client = await this._pool.connect();
+		try {
+			const r = await client.query(
+				`SELECT event_id FROM clear_cloud.stripe_events ORDER BY event_id`
+			);
+			return r.rows.map(row => row.event_id);
+		} finally {
+			client.release();
+		}
+	}
 	// stripe_customer_id allows multiple null tenants, and a SELECT WHERE
 	// stripe_customer_id IS NULL would match the first anonymous tenant
 	// (catastrophic — that's not a "match", it's a wildcard).
@@ -1331,6 +1370,14 @@ export class DualWriteTenantStore {
 		const r = await this._primary.getByStripeCustomer(id);
 		if (r) return r;
 		return await this._mirrorCall('getByStripeCustomer', [id]) || null;
+	}
+	// Cutover enumerators: read from primary only. The mirror is for
+	// background sync, not authoritative listing.
+	async listTenants() {
+		return this._primary.listTenants();
+	}
+	async listStripeEvents() {
+		return this._primary.listStripeEvents();
 	}
 	async appNameFor(slug, appSlug) {
 		const r = await this._primary.appNameFor(slug, appSlug);

@@ -702,6 +702,42 @@ await runAsync(async () => {
   assert(databases.has('d-load'), 'loadKnownApps still surfaces d1_database_id');
 });
 
+// ── CC-1 cutover: list-everything methods for the seed-from-memory script ─
+console.log('\n🌱 listTenants — empty store');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  const list = await s.listTenants();
+  assert(Array.isArray(list), 'listTenants returns an array');
+  assert(list.length === 0, 'empty store returns []');
+});
+
+console.log('\n🌱 listTenants — three tenants present');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.create({ slug: 'a', stripeCustomerId: 'cus_a', plan: 'pro' });
+  await s.create({ slug: 'b', stripeCustomerId: 'cus_b', plan: 'team' });
+  await s.create({ slug: 'c', stripeCustomerId: 'cus_c', plan: 'business' });
+  const list = await s.listTenants();
+  assert(list.length === 3, 'three tenants returned');
+  const slugs = list.map(t => t.slug).sort();
+  assert(slugs.join(',') === 'a,b,c', 'all slugs present');
+  const plans = list.map(t => t.plan).sort();
+  assert(plans.join(',') === 'business,pro,team', 'plans preserved on each row');
+});
+
+console.log('\n🌱 listStripeEvents — recorded events surface as array of ids');
+await runAsync(async () => {
+  const s = new InMemoryTenantStore();
+  await s.recordStripeEvent('evt_one');
+  await s.recordStripeEvent('evt_two');
+  await s.recordStripeEvent('evt_three');
+  const list = await s.listStripeEvents();
+  assert(Array.isArray(list), 'listStripeEvents returns array');
+  assert(list.length === 3, 'three events returned');
+  assert(list.includes('evt_one') && list.includes('evt_two') && list.includes('evt_three'),
+    'all event ids present');
+});
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
 
