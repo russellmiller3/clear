@@ -133,7 +133,141 @@ export function validate(ast) {
   validateInteractionVerbAgreement(ast.body, warnings);
   validateEmailTriggers(ast.body, warnings);
   validateRouteBlocks(ast.body, warnings);
+  validateRuleBlocks(ast.body, errors, warnings);
   return { errors, warnings };
+}
+
+// =============================================================================
+// rule keyword (2026-05-02). Plan: plans/plan-rule-keyword-rebuild-2026-05-02.md
+//
+// Validates RULE_DEF nodes:
+//   HARD errors:
+//     - rule_def nested inside another rule_def, endpoint, function_def, queue_def,
+//       workflow, or any container that isn't the top-level program body.
+//     - rule_def with empty body (defense-in-depth — parser already catches).
+//     - duplicate rule names within the same file (defense-in-depth).
+//   WARNINGS:
+//     - rule_def whose body has no `guard`, no `validate`, no `throw`, and no
+//       refusal-shaped statement. The rule never enforces anything; warn so the
+//       author either adds a guard or removes the empty wrapper.
+// =============================================================================
+function validateRuleBlocks(body, errors, warnings) {
+  if (!Array.isArray(body)) return;
+
+  // Pass 1 — top-level rules. Collect names to detect duplicates.
+  const seenNames = new Map();  // name -> first line where it was defined
+  for (const node of body) {
+    if (!node || node.type !== NodeType.RULE_DEF) continue;
+    const name = typeof node.name === 'string' ? node.name : '';
+    if (name && seenNames.has(name)) {
+      errors.push({
+        line: node.line || 0,
+        message: `rule '${name}' is already defined on line ${seenNames.get(name)}. Each rule name must be unique. Rename one of them — for example: rule ${name}-2:`,
+      });
+    } else if (name) {
+      seenNames.set(name, node.line || 0);
+    }
+    // Empty body — defense-in-depth.
+    const realStatements = (Array.isArray(node.body) ? node.body : []).filter(s =>
+      s && s.type !== NodeType.COMMENT
+    );
+    if (realStatements.length === 0) {
+      errors.push({
+        line: node.line || 0,
+        message: `rule '${name || '<unnamed>'}' has an empty body. Add at least one guard, validate, or refusal statement.`,
+      });
+    }
+    // No-refusal-path warning.
+    if (realStatements.length > 0 && !bodyHasRefusalPath(node.body)) {
+      warnings.push({
+        line: node.line || 0,
+        severity: 'quality',
+        code: 'rule_no_refusal_path',
+        message: `rule '${name || '<unnamed>'}' has no refusal path — its body has no guard, validate, or throw. The rule never enforces anything. Add a guard line, or remove the rule wrapper if the body is just observation.`,
+      });
+    }
+    // Nested-rule check on the body.
+    findNestedRules(node.body, name).forEach(nestedLine => {
+      errors.push({
+        line: nestedLine,
+        message: `rule blocks must be at the top level of the file — they cannot be nested inside another rule. Move the inner rule to the top level.`,
+      });
+    });
+  }
+
+  // Pass 2 — rule_def nodes that aren't at the top level. Walk every other
+  // top-level body and report any rule_def found inside.
+  for (const node of body) {
+    if (!node || typeof node !== 'object') continue;
+    if (node.type === NodeType.RULE_DEF) continue; // already handled above
+    findRulesInside(node, errors);
+  }
+}
+
+function bodyHasRefusalPath(body) {
+  if (!Array.isArray(body)) return false;
+  // A refusal-shaped statement: guard, validate, throw, or any node whose
+  // type contains 'refuse' (forward-compat for future REFUSE_WITH).
+  const refusalTypes = new Set([
+    NodeType.GUARD,
+    NodeType.VALIDATE,
+    NodeType.THROW,
+  ]);
+  for (const stmt of body) {
+    if (!stmt || typeof stmt !== 'object') continue;
+    if (refusalTypes.has(stmt.type)) return true;
+    if (typeof stmt.type === 'string' && /refuse/.test(stmt.type)) return true;
+    // Recurse into if-then bodies — a guard inside an if still counts.
+    if (Array.isArray(stmt.thenBody) && bodyHasRefusalPath(stmt.thenBody)) return true;
+    if (Array.isArray(stmt.elseBody) && bodyHasRefusalPath(stmt.elseBody)) return true;
+    if (Array.isArray(stmt.body) && bodyHasRefusalPath(stmt.body)) return true;
+  }
+  return false;
+}
+
+function findNestedRules(body, _outerName) {
+  // Walk the rule's body and collect any rule_def lines we find. The hook
+  // is recursive — a rule_def buried in a nested if/while/etc. still counts.
+  const lines = [];
+  function walk(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.RULE_DEF) lines.push(n.line || 0);
+      if (Array.isArray(n.body))     walk(n.body);
+      if (Array.isArray(n.thenBody)) walk(n.thenBody);
+      if (Array.isArray(n.elseBody)) walk(n.elseBody);
+    }
+  }
+  walk(body);
+  return lines;
+}
+
+function findRulesInside(node, errors) {
+  // Defense-in-depth: a rule_def found inside an endpoint, function, queue,
+  // workflow, page, etc. is a hard error. The parser shouldn't dispatch
+  // `rule` from inside those scopes, but a hand-built AST or a future change
+  // could slip one through.
+  if (!node || typeof node !== 'object') return;
+  const visit = (children, containerType) => {
+    if (!Array.isArray(children)) return;
+    for (const child of children) {
+      if (!child || typeof child !== 'object') continue;
+      if (child.type === NodeType.RULE_DEF) {
+        errors.push({
+          line: child.line || 0,
+          message: `rule '${child.name || '<unnamed>'}' is inside a ${containerType || 'container'} block. Rules must live at the top level of the file. Move it outside.`,
+        });
+      }
+      // Recurse into the child's sub-bodies too.
+      if (Array.isArray(child.body))     visit(child.body, child.type);
+      if (Array.isArray(child.thenBody)) visit(child.thenBody, child.type);
+      if (Array.isArray(child.elseBody)) visit(child.elseBody, child.type);
+    }
+  };
+  visit(node.body, node.type);
+  visit(node.thenBody, node.type);
+  visit(node.elseBody, node.type);
 }
 
 function validateToastPayload(body, errors) {
