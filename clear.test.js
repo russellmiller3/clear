@@ -14,6 +14,7 @@ import { parse, NodeType } from './parser.js';
 import { compile, compileNode, exprToCode, UTILITY_FUNCTIONS } from './compiler.js';
 import { validate } from './validator.js';
 import { compileProgram, SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './index.js';
+import { prove as proveSource, formatBundle as formatProofBundle } from './lib/prover/index.js';
 import {
   HARD_HINT_SWEEP_DEFAULTS,
   HARD_HINT_TASKS,
@@ -29043,6 +29044,75 @@ rule big-deal-needs-cro:
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('discount-cap');
     expect(result.javascript).toContain('big-deal-needs-cro');
+  });
+});
+
+describe('rule keyword — prover', () => {
+  it('produces a per-rule entry in the bundle for every rule_def in the file', () => {
+    const src = `rule discount-cap:
+  guard 1 is less than 2 or 'too big'`;
+    const bundle = proveSource(src);
+    expect(Array.isArray(bundle.rules)).toBe(true);
+    expect(bundle.rules.length).toBe(1);
+    expect(bundle.rules[0].name).toBe('discount-cap');
+  });
+
+  it('marks a tautological rule body as PROVED', () => {
+    const src = `rule trivially-true:
+  guard 1 is less than 2 or 'never fires'`;
+    const bundle = proveSource(src);
+    const rule = bundle.rules.find(r => r.name === 'trivially-true');
+    expect(rule).toBeTruthy();
+    expect(rule.verdict).toBe('proved');
+  });
+
+  it('marks a rule body that calls into an effect as UNVERIFIABLE', () => {
+    // The body has a CRUD lookup, which is impure. Any rule body that
+    // talks to the database (or any effect) cannot be proved
+    // universally — mark as unverifiable with a reason.
+    const src = `create a Deals table:
+  amount (number)
+rule reads-database:
+  found = look up Deal where status is 'pending'
+  guard found is not nothing or 'no deal found'`;
+    const bundle = proveSource(src);
+    const rule = bundle.rules.find(r => r.name === 'reads-database');
+    expect(rule).toBeTruthy();
+    expect(rule.verdict).toBe('unverifiable');
+    expect(typeof rule.reason).toBe('string');
+    expect(rule.reason.length > 0).toBe(true);
+  });
+
+  it('marks a rule body that has a counterexample as DISPROVED', () => {
+    // 1 > 2 is universally false — the guard always trips; the rule
+    // refuses every input. The "rule never holds" case is a counterexample.
+    const src = `rule always-fails:
+  guard 1 is greater than 2 or 'always wrong'`;
+    const bundle = proveSource(src);
+    const rule = bundle.rules.find(r => r.name === 'always-fails');
+    expect(rule).toBeTruthy();
+    expect(rule.verdict).toBe('disproved');
+  });
+
+  it('attributes per-rule verdict counts in the bundle summary', () => {
+    const src = `rule rule_a:
+  guard 1 is less than 2 or 'tautology'
+rule rule_b:
+  guard 1 is greater than 2 or 'counterexample'`;
+    const bundle = proveSource(src);
+    expect(bundle.ruleCounts).toBeTruthy();
+    expect(bundle.ruleCounts.proved).toBe(1);
+    expect(bundle.ruleCounts.disproved).toBe(1);
+    expect(bundle.ruleCounts.total).toBe(2);
+  });
+
+  it('renders rule verdicts in formatBundle output (CLI surface)', () => {
+    const src = `rule discount-cap:
+  guard 1 is less than 2 or 'tautology'`;
+    const bundle = proveSource(src);
+    const text = formatProofBundle(bundle);
+    expect(text).toContain('discount-cap');
+    expect(/proved|PROVED/.test(text)).toBe(true);
   });
 });
 
