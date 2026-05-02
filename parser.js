@@ -208,6 +208,14 @@ export const NodeType = Object.freeze({
   // an if/else chain mutating X.assigned_to. Round-robin default uses the
   // _clear_route_cursors SQLite table. Plan: plans/plan-routing-primitive-2026-04-29.md
   ROUTE_DEF: 'route_def',
+  // Named, provable business rule (2026-05-02). Top-level block:
+  //   rule <name>:
+  //     <body — guard / if / validate / refuse-style statements>
+  // Body parses with the same statement parser as endpoints. The name lets
+  // the prover and audit logs attribute verdicts by rule name
+  // ("discount-cap PROVED for every possible deal") instead of by line.
+  // Plan: plans/plan-rule-keyword-rebuild-2026-05-02.md
+  RULE_DEF: 'rule_def',
   TRIGGERED_SEND_EMAIL: 'triggered_send_email',
   // Triggered email primitive (2026-04-28). Top-level block:
   // `email <role> when <entity>'s status changes to <value>:` + body
@@ -2832,6 +2840,26 @@ CANONICAL_DISPATCH.set('route', (ctx) => {
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
 });
+CANONICAL_DISPATCH.set('rule', (ctx) => {
+    // Named, provable business rule (2026-05-02). Shape: `rule <name>:` +
+    // indented body of normal statements (guard / if / validate / etc.).
+    // The name is either a kebab-case identifier or a quoted string that
+    // we dasherize. Existing rule names in ctx.body let us hard-error
+    // duplicate rule names per file.
+    if (ctx.tokens.length < 2) {
+      ctx.errors.push({
+        line: ctx.line,
+        message: "rule needs a name. Example: rule discount-cap: or rule 'Discount cap':",
+      });
+      return ctx.i + 1;
+    }
+    const seenNames = ctx.body
+      .filter(n => n && n.type === NodeType.RULE_DEF && typeof n.name === 'string')
+      .map(n => n.name);
+    const result = parseRuleDef(ctx.lines, ctx.i, ctx.indent, ctx.errors, seenNames);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+});
 CANONICAL_DISPATCH.set('email', (ctx) => {
     // Two top-level forms share the `email` keyword. Disambiguate by token[1]:
     //   1. `email delivery using <provider>`     — flips live sending on
@@ -5307,6 +5335,137 @@ function parseRouteDef(lines, startIdx, _parentIndent, errors) {
       line,
     },
     endIdx: i,
+  };
+}
+
+// =============================================================================
+// rule keyword (2026-05-02). Plan: plans/plan-rule-keyword-rebuild-2026-05-02.md
+//
+// Shape: `rule <name>:` + indented body of normal statements.
+//   rule discount-cap:
+//     guard discount is less than 30 or 'Discount over 30% needs VP approval'
+//
+// Names are kebab-case identifiers. A quoted-string name (`rule 'Discount cap':`)
+// gets dasherized to `discount-cap` so the prover output is consistent.
+//
+// Body parses with parseBlock, so guard / if / validate / refuse-style
+// statements all work. The block is a labeled wrapper — no new runtime
+// semantics. The name is what lets the prover and audit logs say
+// "discount-cap PROVED for every possible deal" instead of "line 42 PROVED."
+//
+// Hard errors:
+//   - missing name
+//   - empty body
+//   - duplicate name in the same file (caller passes seenNames)
+// =============================================================================
+function dasherizeRuleName(raw) {
+  // Lowercase, strip $ and other symbols, collapse non-alphanumeric to a
+  // single dash, trim leading/trailing dashes. "Deals over $100k" becomes
+  // "deals-over-100k". Keep digits because real rule names like
+  // "discount-over-30" are common.
+  if (typeof raw !== 'string') return '';
+  return raw
+    .toLowerCase()
+    .replace(/\$/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function parseRuleDef(lines, startIdx, _parentIndent, errors, seenNames = []) {
+  const tokens = lines[startIdx].tokens;
+  // Use the physical line number on the first token. lines[startIdx].line
+  // does NOT exist as a numeric field — line tracking lives on tokens.
+  const line = (tokens[0] && tokens[0].line) || startIdx + 1;
+  // tokens[0] is `rule`. tokens[1] is either an IDENTIFIER (kebab-case name)
+  // or a STRING (quoted form we dasherize). The header may carry a trailing
+  // ':' as its own token — the tokenizer puts it at the end. Either way
+  // the rule's body lives on the following indented lines.
+
+  if (tokens.length < 2) {
+    errors.push({
+      line,
+      message: "rule needs a name. Example: rule discount-cap: or rule 'Discount cap':",
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Resolve the rule's name. Walk tokens between `rule` and the trailing
+  // colon. Quoted-string form: take the string and dasherize. Bare-token
+  // form: join the value tokens (they may include dashes that got tokenized
+  // as separate `name`, `-`, `name` tokens) and dasherize again as defense.
+  let name = '';
+  let nameOk = false;
+  if (tokens[1].type === TokenType.STRING) {
+    name = dasherizeRuleName(tokens[1].value);
+    nameOk = name.length > 0;
+  } else {
+    // Build from tokens up to the colon (or end of line).
+    const parts = [];
+    for (let k = 1; k < tokens.length; k++) {
+      const t = tokens[k];
+      if (t.value === ':') break;
+      parts.push(t.value);
+    }
+    if (parts.length > 0) {
+      // Tokens like `discount-cap` come through as `discount`, `-`, `cap`.
+      // Joining without spaces preserves the dashes; dasherize cleans up.
+      const joined = parts.join('');
+      // If joining produced something empty after cleanup, fall back to
+      // hyphen-joining so multi-word identifiers still survive.
+      const dashed = dasherizeRuleName(joined);
+      name = dashed.length > 0 ? dashed : dasherizeRuleName(parts.join('-'));
+      nameOk = name.length > 0;
+    }
+  }
+
+  if (!nameOk) {
+    errors.push({
+      line,
+      message: "rule needs a name. Example: rule discount-cap: or rule 'Discount cap':",
+    });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  if (seenNames.includes(name)) {
+    errors.push({
+      line,
+      message: `rule '${name}' is already defined earlier in this file. Each rule name must be unique. Rename one of them — for example: rule ${name}-2:`,
+    });
+    // Continue parsing the body so we still consume those lines and don't
+    // misreport indent errors on every body statement.
+  }
+
+  // Parse the indented body using the standard statement parser. parseBlock
+  // walks lines whose indent is strictly greater than ruleIndent and stops
+  // when indent drops back. It returns endIdx pointing at the first line
+  // that is NOT part of this block.
+  const ruleIndent = lines[startIdx].indent;
+  const block = parseBlock(lines, startIdx + 1, ruleIndent, errors);
+  const body = Array.isArray(block.body) ? block.body : [];
+  const endIdx = block.endIdx;
+
+  // Filter trailing pure-comment lines from the empty-body check —
+  // a rule with only a comment is still empty in spirit.
+  const realStatements = body.filter(s => s && s.type !== NodeType.COMMENT);
+  if (realStatements.length === 0) {
+    errors.push({
+      line,
+      message: `rule '${name}' block needs at least one statement. Example: guard discount is less than 30 or 'too big'`,
+    });
+  }
+
+  return {
+    node: {
+      type: NodeType.RULE_DEF,
+      name,
+      body,
+      line,
+      // Populated later by the prover. Kept as undefined here so JSON
+      // serialization stays compact for non-proved files.
+      proofVerdict: undefined,
+      proofReason: undefined,
+    },
+    endIdx,
   };
 }
 
