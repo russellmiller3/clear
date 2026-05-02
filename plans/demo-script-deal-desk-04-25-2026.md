@@ -3,7 +3,13 @@
 **Recorded for:** Marcus — sales-ops manager at a 100-500-person B2B company
 **Used for:** Cold-pitch DM on LinkedIn + email follow-up to prospects
 **Asset built live:** `apps/deal-desk/main.clear` — discount approval workflow with AI-drafted CRO summaries
-**Date:** 2026-04-25
+**Date:** 2026-04-25 (refreshed 2026-05-02 for current Studio state)
+
+**2026-05-02 patch notes** (Studio state changed since script was written):
+- Toolbar mode toggle is now a single "Dev mode / AI mode" dropdown (was "Dev | Builder" pill). Pre-recording: set it to **AI mode** so the editor is hidden by default — Marcus shouldn't see raw source until you choose to reveal it.
+- Publish modal now shows **five visible stages** — compiling, packaging, uploading, provisioning DB, live. Lean into that during the 22:00 publish beat ("watch — it's compiling, packaging, uploading, the database, and now it's live").
+- Optional **Run-Prove side-quest** (60 sec, see "Optional Prove side-quest" below): one click on the Prove button, the terminal pane shows the deal-desk math rules proved as theorems. Use only with technical audiences who'll appreciate "the math is checked, not just the tests."
+- New Studio first-click telemetry runs in the background; doesn't affect the demo, but the recording session does count as a first-click event in the metrics.
 
 ---
 
@@ -171,24 +177,39 @@ Each section: **Visual** (what's on screen) — **Talk track** (exactly what to 
 
 ### 22:00 — 26:00 — Publish. The "this is real" moment.
 
-**Visual:** Russell goes back to Studio. Clicks the **Publish** button. Loading state. Then a real URL appears — `deals.acme.buildclear.dev` or similar.
+**Visual:** Russell goes back to Studio. Clicks the **Publish** button. The progress modal walks through five visible stages — compiling, packaging, uploading, provisioning DB, live — then a "Your app is live" panel appears with copy-link, open-in-new-tab, and share-with-team buttons. URL looks like `deals.acme.buildclear.dev`.
 
 **Talk track:**
 > "Now the part that matters. This whole time, the app's been running on my laptop. Useless to your team. Watch this.
 >
 > [Back to Studio. Click Publish.]
 >
-> One button.
+> One button. Watch — it's compiling, packaging, uploading, setting up the database, and there it is. Live.
 >
-> [Wait for the URL to appear.]
+> [The "Your app is live" panel appears with the URL.]
 >
-> Done. That URL — right there — is real. Public internet. I can send it to anyone in my company right now and they can use the deal desk. Submit deals. Log in. Approve. Real database, real users, real app.
+> That URL — right there — is real. Public internet. I can send it to anyone in my company right now and they can use the deal desk. Submit deals. Log in. Approve. Real database, real users, real app.
 >
 > [Click the URL. New tab opens, the live site loads. Submit a quick test deal to prove it.]
 >
 > That's the whole thing. Spec to live URL in 26 minutes. No engineering ticket, no Retool seat, no code review."
 
-**Pacing:** The URL appearing is the punchline. Pause for it. Then click into it and prove it works on the public internet — that's the credibility moment.
+**Pacing:** The URL appearing is the punchline. Pause for it. The 5-stage modal earns the wait — the viewer sees real cloud work happening, not a black-box spinner. Then click into the URL and prove it works on the public internet — that's the credibility moment.
+
+---
+
+### Optional Prove side-quest (60 sec, after 22:00 if audience is technical)
+
+**Visual:** Back in Studio editor (toggle to Dev mode if you're showing source). Click the **Prove** button in the toolbar. Terminal pane shows `[PROVED]` lines for the deal-desk math rules.
+
+**Talk track:**
+> "One more thing — for the technical folks watching. The rule says 'discount over 20 percent goes to the queue.' I'd like to know that's actually what the app does, not just what I hope it does. Click Prove."
+>
+> [Click Prove. Terminal shows the proof bundle: PROVED, with `for any: discount` annotations.]
+>
+> "That's the math prover saying 'for ANY input, the rule holds.' Not 'we ran 100 test cases and got lucky' — provably true for every possible discount. Same engine you'd find in formal-methods tools, but built into the everyday IDE. No other AI coding tool ships with this."
+
+**Skip this** for non-technical audiences — the punchline doesn't land if "math proof" sounds like academic jargon. Reserve for engineering managers, CTOs, or audiences who've seen TLA+ / Lean.
 
 ---
 
