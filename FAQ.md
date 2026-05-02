@@ -159,6 +159,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How does the database layer work?](#how-does-the-database-layer-work)
 - [How does WebSocket/broadcast work?](#how-does-websocketbroadcast-work)
 - [How does the eval system work?](#how-does-the-eval-system-work)
+- [How do I show proof verdicts in business-friendly language?](#how-do-i-show-proof-verdicts-in-business-friendly-language-2026-05-02)
 
 **Why did we do X?**
 - [Why is `queue` separate from `workflow`?](#why-is-queue-separate-from-workflow)
