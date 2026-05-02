@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - Proof verdicts in business-friendly language (partial sandbox recovery)
+
+`node scripts/proof-business-language.mjs <file.clear>` turns the prover's terse verdicts into sentences a CRO or compliance buyer can actually read. Russell asked for exactly this earlier in the session — "results in business friendly format if possible (e.g. what business issues do these prevent? e.g. not 'race conditions' but 'overwriting a database entry')."
+
+**What shipped:**
+- `scripts/proof-business-language.mjs` — translator with verdict mapping (PROVED / PARTIAL / FAILED / UNVERIFIABLE / ERRORED) and a one-line headline that summarises the bundle in plain English.
+- `scripts/proof-business-language.test.mjs` — 27 tests covering empty bundles, free-variable rendering, headline pluralisation, count roll-ups, JSON payload shape.
+- `--json` flag emits a machine-readable payload Studio (or any caller) can consume to render verdicts inline.
+
+**Recovery context:** these two files survived a sandbox-Claude session because they were left in the working tree, never committed. The session's commits never reached the real GitHub remote (sandbox `origin` was a localhost proxy). The translator is the recoverable piece; the rule keyword work is still stranded.
+
+**Why for launch:** this is the regulated-tier pitch surface in plain English. A CRO doesn't think "PROVED for any free variables" — they think "we proved this rule for every possible deal." The translator delivers that translation today, no rule keyword required.
+
+**Tests:** 27 of 27 passing in `node scripts/proof-business-language.test.mjs`.
+
+---
+
 ## 2026-05-02 - Hard hint sweep verdict — all four "hard" tasks are saturated
 
 The 16-trial A/B sweep finished. Every task passed in both arms. Real finding: the four tasks we picked as "hard" aren't hard enough to discriminate between hint-on and hint-off on cc-agent + Haiku 4.5.
