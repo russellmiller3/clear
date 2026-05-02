@@ -66,6 +66,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 - 30+ bug classes blocked at compile time: SQL injection, auth bypass, mass assignment, missing rate limits, sensitive-field exposure, undefined variables, type mismatches, frontend-backend URL drift, etc.
 - Every CRUD = parameterized; every error response = PII-redacted; every `display X` = XSS-escaped.
 - Termination bounds: every `while` capped at 100 iterations, every recursive function capped at 1000 depth, every `send email` 30s timeout, every `ask claude` retries on transients.
+- **Concurrent-write races flagged at compile time (Phase 1, 2026-05-02).** Every endpoint that reads a record, changes a field, and saves the record back gets a warning unless the author declares `with optimistic lock` (version-checked save) or `safe to retry` (idempotent). The honest sentence: "we flag every endpoint where a race can happen in plain sight." Phase 2 wires the runtime that prevents the race; Phase 1 names the surface.
 - Compiles deterministically: same input → byte-for-byte identical output, every time.
 
 ### Maintenance rule for this exec summary
@@ -536,6 +537,7 @@ Every app compiled from Clear ships with these protections. Fix a pattern once, 
 | Type errors in function calls | Literal arg doesn't match typed param = error | `validateTypedCallArgs()` |
 | Member access on primitives | `score's name` where score is a number = warning | `validateMemberAccessTypes()` |
 | Agent tool mismatches | Agent references undefined function as tool = error | `validateAgentTools()` |
+| Read-modify-write races (Phase 1, 2026-05-02) | Endpoint reads → mutates → saves without `with optimistic lock` or `safe to retry` = warning `[READ_MODIFY_WRITE_NO_LOCK]` | `validateConcurrency()` |
 
 ### Business Logic (warnings — common mistakes caught)
 

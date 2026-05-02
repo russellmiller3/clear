@@ -252,6 +252,13 @@ page 'Chat' at '/':
 - Use `env('KEY')` for secrets, never hardcode them
 - Use `guard` for business logic checks: `guard stock is greater than 0 or 'Out of stock'`
 
+### Concurrency Rules (compiler-enforced, Phase 1 — 2026-05-02)
+- An endpoint that **looks up a record, mutates a field, and saves it back** triggers `[READ_MODIFY_WRITE_NO_LOCK]` warning. Two parallel requests can overwrite each other.
+- Silence the warning by declaring intent on a body line, like `requires login`:
+  - `with optimistic lock` — opt INTO version-checked saves (Phase 2 wires the runtime; Phase 1 declares intent). Use this for state-changing endpoints (approve, reject, transfer, decrement balance).
+  - `safe to retry` — declare the endpoint is idempotent. Use this for webhook receivers, bulk imports keyed by external id, anything where running the same request twice produces the same final state.
+- Insert-only (`save X as new <Table>`), DELETE-method, and pure-read endpoints have no race surface and don't need a declaration.
+
 ## Build Targets
 
 | What you want | Build directive |
