@@ -75,7 +75,11 @@ export async function dispatchTool(name, input, ctx, helpers) {
   }
   switch (name) {
     case 'edit_code':
-      return editCodeTool(input, ctx, helpers.compileProgram);
+      // Pass full helpers bag (not just compileProgram) so editCodeTool can
+      // route auto-compile through the shared hint pipeline once cycle 2 of
+      // plans/plan-cc-agent-hint-gap-fix-2026-04-29.md lands. Today the only
+      // helper editCodeTool reads is compileProgram — backward-compatible.
+      return editCodeTool(input, ctx, helpers);
 
     case 'compile':
       return compileTool(input, ctx, {
@@ -425,7 +429,14 @@ export function highlightCodeTool(input) {
  * @param {function} compileProgram - the Clear compiler entry point
  * @returns {string} JSON-stringified result
  */
-export function editCodeTool(input, ctx, compileProgram) {
+export function editCodeTool(input, ctx, helpersOrCompileProgram) {
+  // Accept either the full helpers bag (preferred — needed for hint pipeline
+  // attach below) or a bare compileProgram function (backward-compatible with
+  // the existing meph-tools.test.js call sites that haven't been updated).
+  const fullHelpers = typeof helpersOrCompileProgram === 'object' && helpersOrCompileProgram !== null
+    ? helpersOrCompileProgram
+    : null;
+  const compileProgram = fullHelpers ? fullHelpers.compileProgram : helpersOrCompileProgram;
   if (input.action === 'read') {
     return JSON.stringify({ source: ctx.source, errors: ctx.errors });
   }
@@ -435,7 +446,60 @@ export function editCodeTool(input, ctx, compileProgram) {
       const r = compileProgram(input.code);
       ctx.setErrors(r.errors);
       ctx.setLastCompileResult(r);
-      return JSON.stringify({ applied: true, errors: r.errors, warnings: r.warnings });
+      const result = { applied: true, errors: r.errors, warnings: r.warnings };
+
+      // Factor DB trajectory logging — mirrors compileTool's logAction shape.
+      // Cycle 4 of the cc-agent hint fix: without a row logged here, the
+      // post-turn HINT_APPLIED parser (in server.js / cc-agent) has no row id
+      // to update, so hint_applied stays NULL even when Meph reads + uses the
+      // hints. Setting ctx.hintState.lastFactorRowId before attachHintsForCompileResult
+      // runs gives the helper a real row to track against.
+      if (fullHelpers && ctx.factorDB && input.code) {
+        try {
+          const { sha1, safeArchetype, currentStep } = fullHelpers;
+          const compileOk = r.errors.length === 0 ? 1 : 0;
+          const errorSig = r.errors.length > 0
+            ? sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(input.code))
+            : null;
+          const sourceForLog = ctx.sourceBeforeEdit && ctx.sourceBeforeEdit.length > 0
+            ? ctx.sourceBeforeEdit
+            : input.code;
+          const step = currentStep(input.code, ctx.sessionSteps);
+          ctx.hintState.lastFactorRowId = ctx.factorDB.logAction({
+            session_id: ctx.sessionId,
+            archetype: safeArchetype(input.code),
+            task_type: 'compile_cycle',
+            error_sig: errorSig,
+            file_state_hash: sha1(input.code),
+            source_before: sourceForLog.slice(0, 5000),
+            patch_ops: [],
+            patch_summary: r.errors.length === 0
+              ? `Clean edit_code compile (${input.code.split('\n').length} lines)`
+              : `edit_code compile with ${r.errors.length} error(s): ${r.errors[0]?.message?.slice(0, 120) || 'unknown'}`,
+            compile_ok: compileOk,
+            test_pass: 0,
+            test_score: 0.0,
+            score_delta: 0.0,
+            step_id: step?.id || null,
+            step_index: step?.index ?? null,
+            step_name: step?.name || null,
+          });
+        } catch { /* non-fatal — logging is observability, not correctness */ }
+      }
+
+      // Hint pipeline attach — runs only when called via dispatch (full helpers
+      // bag) AND ctx has the Factor DB wired. cc-agent's edit_code lands here
+      // and now gets the same retrieval + reranker output that compileTool's
+      // explicit `compile` call would have produced. Closes the gap documented
+      // in snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md (97% of cc-agent
+      // rows had hint_applied=NULL because this auto-compile path skipped
+      // querySuggestions entirely).
+      if (fullHelpers && ctx.factorDB) {
+        try {
+          attachHintsForCompileResult(input.code, r, ctx, fullHelpers, result);
+        } catch { /* non-fatal — hints are additive, never block the edit */ }
+      }
+      return JSON.stringify(result);
     } catch (err) {
       return JSON.stringify({ applied: true, compileError: err.message });
     }
@@ -941,6 +1005,184 @@ export function runTestsTool(input, ctx, parseTestOutput) {
 }
 
 /**
+ * Attach Factor-DB-retrieved hints to a compile result. Lifted out of compileTool
+ * so editCodeTool can call the same path on its auto-compile (the cc-agent code
+ * path bypasses compileTool — see snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md).
+ *
+ * Mutates `result.hints` (text-match block + shape-search additive layer) and
+ * `ctx.hintState` (so the post-turn HINT_APPLIED parser can find the right row).
+ * No-op when ctx.factorDB is null OR CLEAR_HINT_DISABLE=1 OR hint retrieval
+ * raises (every block is wrapped in try/catch — non-fatal by design).
+ *
+ * Inputs:
+ *   source  : the Clear source string Meph just compiled
+ *   r       : compile result ({ errors, warnings, html, ... })
+ *   ctx     : MephContext with factorDB / hintState / pairwiseBundle / ebmBundle
+ *   helpers : { sha1, safeArchetype, currentStep, classifyErrorCategory,
+ *              rankPairwise, rankEBM, featurizeRow }
+ *   result  : the in-flight compile-tool response object that hints get attached to
+ */
+export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
+  const { sha1, safeArchetype, currentStep, classifyErrorCategory, rankPairwise, rankEBM, featurizeRow } = helpers;
+
+  // ── Factor DB suggestion injection (flywheel closes here) ──
+  // CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
+  // honest A/B measurement of hint effect on Meph's live pass rate.
+  // The off-arm pays zero DB-query cost so the A/B measures hint *effect*,
+  // not hint *compute overhead*.
+  const hintsDisabled = process.env.CLEAR_HINT_DISABLE === '1';
+  if (ctx.factorDB && r.errors.length > 0 && source && !hintsDisabled) {
+    try {
+      const archetype = safeArchetype(source);
+      const errorSig = sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(source));
+      // Retrieve wider pool when any reranker is loaded so it has room to reorder.
+      const retrievalK = (ctx.pairwiseBundle || ctx.ebmBundle) ? 10 : 3;
+      let hintRows = ctx.factorDB.querySuggestions({
+        archetype,
+        error_sig: errorSig,
+        topK: retrievalK,
+      });
+
+      // Rerank order of preference (highest → fallback):
+      //   1. Pairwise logistic — scores each candidate AGAINST the current error
+      //   2. Pointwise EBM — regression on row quality
+      //   3. BM25 raw — ordering from querySuggestions
+      let rerankedBy = 'bm25';
+      if (ctx.pairwiseBundle && hintRows.length > 0) {
+        try {
+          const errorCategory = classifyErrorCategory(
+            'Compile with ' + r.errors.length + ' error(s): ' +
+            (r.errors[0]?.message || '')
+          );
+          const currentStepHere = currentStep(source, ctx.sessionSteps);
+          for (const c of hintRows) {
+            try {
+              const prev = ctx.factorDB._db.prepare(
+                'SELECT patch_summary FROM code_actions WHERE session_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1'
+              ).get(c.session_id, c.created_at);
+              c.target_error_category = classifyErrorCategory(prev?.patch_summary || '');
+            } catch { c.target_error_category = 'none'; }
+          }
+          const rerankerCtx = {
+            archetype,
+            error_sig: errorSig,
+            error_category: errorCategory,
+            step_index: currentStepHere?.index ?? 0,
+            source_before: source,
+          };
+          const ranked = rankPairwise(ctx.pairwiseBundle, rerankerCtx, hintRows);
+          hintRows = ranked.slice(0, 3);
+          rerankedBy = 'pairwise';
+        } catch {
+          // Fall through to EBM on any failure — better to ship a hint
+          // ranked by the older model than to ship nothing.
+        }
+      }
+      if (rerankedBy === 'bm25' && ctx.ebmBundle && hintRows.length > 0) {
+        try {
+          const ranked = rankEBM(ctx.ebmBundle, hintRows, featurizeRow);
+          hintRows = ranked.slice(0, 3);
+          rerankedBy = 'ebm';
+        } catch {
+          hintRows = hintRows.slice(0, 3);
+        }
+      } else if (rerankedBy === 'bm25') {
+        hintRows = hintRows.slice(0, 3);
+      }
+      // Observability — distinguish "no candidates found" from "Meph ignored hints"
+      console.log(`[hints] archetype=${archetype} retrieved=${hintRows.length} reranked_by=${rerankedBy}${hintRows.length > 0 ? ' top_tier=' + hintRows[0].tier : ''}`);
+      if (hintRows.length > 0) {
+        const tiers = hintRows.map(h => h.tier);
+        const hasExact = tiers.some(t => t.startsWith('exact_error'));
+        const note = hasExact
+          ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
+          : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
+
+        const tierLabel = (t) => {
+          if (!t) return 'retrieved match';
+          if (t.startsWith('exact_error_same_archetype')) return 'SAME ERROR in same archetype';
+          if (t.startsWith('exact_error')) return 'SAME ERROR anywhere';
+          if (t.startsWith('same_archetype')) return 'same archetype, different error';
+          return t.replace(/_/g, ' ');
+        };
+        const hintBlocks = hintRows.map((h, i) => {
+          const scoreLabel = typeof h.pairwise_score === 'number'
+            ? `pairwise=${h.pairwise_score.toFixed(3)}`
+            : typeof h.ebm_score === 'number'
+              ? `EBM=${h.ebm_score.toFixed(3)}`
+              : 'score=n/a';
+          const header = `── Past Fix #${i + 1} [${tierLabel(h.tier)}, ${scoreLabel}, test_score=${h.test_score || 0}] ──`;
+          const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
+          const raw = (h.source_before || '').slice(0, 600);
+          const trimmed = raw.lastIndexOf('\n') > 400 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
+          const code = trimmed ? `Source that worked:\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
+          return [header, summary, code].filter(Boolean).join('\n');
+        }).join('\n\n');
+        const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
+
+        const topTier = hintRows[0]?.tier || '';
+        const tagRequired = `\n\n⚠ REQUIRED: Start your very next text block with \`HINT_APPLIED: yes, tier=${topTier}, helpful=<yes|no|partial>\` if you're going to use these hints, OR \`HINT_APPLIED: no, reason=<short reason>\` if they don't fit your real problem. Tag first, then your analysis. This is tracking signal, not optional.`;
+
+        const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
+
+        result.hints = {
+          note,
+          reranked_by: rerankedBy,
+          text,
+        };
+        ctx.hintState.hintsInjectedRowId = ctx.hintState.lastFactorRowId;
+        ctx.hintState.hintsInjectedErrorCount = r.errors.length;
+        ctx.hintState.hintsInjectedTier = hintRows[0]?.tier || null;
+        ctx.hintState.postHintMinErrorCount = null;
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // ── Shape-search retrieval (Lean Lesson 2 — additive layer) ──
+  // Fires on EVERY compile (success or failure) because Meph's program shape
+  // changes as he writes; shape-matched examples teach pre-emptively.
+  // Layered ON TOP of the text-match hints — does not replace them.
+  if (source && !hintsDisabled) {
+    try {
+      if (!ctx._canonicalExamplesLoaded) {
+        try {
+          ctx._canonicalExamples = loadCanonicalExamples();
+        } catch {
+          ctx._canonicalExamples = [];
+        }
+        ctx._canonicalExamplesLoaded = true;
+      }
+      const examples = ctx._canonicalExamples;
+      if (examples && examples.length > 0) {
+        const shapeMatches = matchShape(source, { top: 2, examples });
+        if (shapeMatches.length > 0) {
+          const shapeBlocks = shapeMatches.map(m => {
+            const ex = m.example;
+            const arch = m.signature.archetype;
+            const trimmed = (ex.source || '').slice(0, 600);
+            const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
+            const header = `── Canonical Example #${ex.number} [${arch}, shape_score=${m.score.toFixed(3)}] — ${ex.title} ──`;
+            return `${header}${code}`;
+          }).join('\n\n');
+          const shapeNote = `Shape-matched canonical examples (your program looks like these — reference for idiomatic Clear):`;
+          const shapeText = `${shapeNote}\n\n${shapeBlocks}`;
+
+          if (!result.hints) {
+            result.hints = { note: shapeNote, reranked_by: 'shape', text: shapeText };
+          } else {
+            result.hints.text = (result.hints.text || '') + '\n\n' + shapeText;
+          }
+          result.hints.shape_text = shapeText;
+          result.hints.shape_count = shapeMatches.length;
+          result.hints.shape_top_archetype = shapeMatches[0].signature.archetype;
+          console.log(`[hints] shape_match retrieved=${shapeMatches.length} top_archetype=${shapeMatches[0].signature.archetype} top_score=${shapeMatches[0].score.toFixed(3)}`);
+        }
+      }
+    } catch { /* non-fatal — shape-search is additive, never blocks compile */ }
+  }
+}
+
+/**
  * compile tool — the biggest Meph tool + the heart of the RL flywheel.
  *
  * Runs ctx.source through the passed-in compileProgram, mirrors result state
@@ -1083,213 +1325,11 @@ export function compileTool(input, ctx, helpers) {
     //     (the prose Meph actually reads) and drop the duplicate
     //     `hints.references` JSON array (~1-2KB per hint-serve).
 
-    // ── Factor DB suggestion injection (flywheel closes here) ──
-    // When compile fails, retrieve up-to-3 hints using layered retrieval:
-    //   Tier 1: exact same error_sig previously fixed in this archetype
-    //   Tier 2: exact same error_sig previously fixed anywhere
-    //   Tier 3: same-archetype passing gold rows (archetype-only fallback)
-    // Tier is attached to each hint so Meph sees which signal produced it.
-    //
-    // CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
-    // honest A/B measurement of hint effect on Meph's live pass rate
-    // (Session 44 Track 1.2). Passive observational data is confounded by
-    // selection bias — hints fire on hard tasks Meph is already struggling
-    // with, so "hints correlate with failure" is uninterpretable. A sweep
-    // controlling this flag produces a clean counterfactual. We skip the
-    // ENTIRE block (including querySuggestions + rerankers) so the hint-off
-    // arm pays zero DB-query cost — the A/B measures hint *effect*, not
-    // hint *compute overhead*.
-    const hintsDisabled = process.env.CLEAR_HINT_DISABLE === '1';
-    if (ctx.factorDB && r.errors.length > 0 && source && !hintsDisabled) {
-      try {
-        const archetype = safeArchetype(source);
-        const errorSig = sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(source));
-        // Retrieve wider pool (topK=10) when any reranker is loaded so the
-        // reranker has room to reorder. Without rerankers, keep the historical
-        // topK=3 behavior so no regression from retrieval alone.
-        const retrievalK = (ctx.pairwiseBundle || ctx.ebmBundle) ? 10 : 3;
-        let hintRows = ctx.factorDB.querySuggestions({
-          archetype,
-          error_sig: errorSig,
-          topK: retrievalK,
-        });
-
-        // Rerank order of preference (highest → fallback):
-        //   1. Pairwise logistic — scores each candidate AGAINST the current
-        //      error, so a high-test_score fix for a different problem gets
-        //      demoted. This is the one that answers the retrieval question
-        //      directly.
-        //   2. Pointwise EBM — regression on row quality; some lift over BM25.
-        //   3. BM25 raw — ordering from querySuggestions.
-        let rerankedBy = 'bm25';
-        if (ctx.pairwiseBundle && hintRows.length > 0) {
-          try {
-            const errorCategory = classifyErrorCategory(
-              'Compile with ' + r.errors.length + ' error(s): ' +
-              (r.errors[0]?.message || '')
-            );
-            const currentStepHere = currentStep(source, ctx.sessionSteps);
-            for (const c of hintRows) {
-              try {
-                const prev = ctx.factorDB._db.prepare(
-                  'SELECT patch_summary FROM code_actions WHERE session_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1'
-                ).get(c.session_id, c.created_at);
-                c.target_error_category = classifyErrorCategory(prev?.patch_summary || '');
-              } catch { c.target_error_category = 'none'; }
-            }
-            const rerankerCtx = {
-              archetype,
-              error_sig: errorSig,
-              error_category: errorCategory,
-              step_index: currentStepHere?.index ?? 0,
-              source_before: source,
-            };
-            const ranked = rankPairwise(ctx.pairwiseBundle, rerankerCtx, hintRows);
-            hintRows = ranked.slice(0, 3);
-            rerankedBy = 'pairwise';
-          } catch {
-            // Fall through to EBM on any failure — better to ship a hint
-            // ranked by the older model than to ship nothing.
-          }
-        }
-        if (rerankedBy === 'bm25' && ctx.ebmBundle && hintRows.length > 0) {
-          try {
-            const ranked = rankEBM(ctx.ebmBundle, hintRows, featurizeRow);
-            hintRows = ranked.slice(0, 3);
-            rerankedBy = 'ebm';
-          } catch {
-            hintRows = hintRows.slice(0, 3);
-          }
-        } else if (rerankedBy === 'bm25') {
-          hintRows = hintRows.slice(0, 3);
-        }
-        // Observability: always log retrieval outcome so we can distinguish
-        // "no candidates found" from "Meph ignored the hints he saw".
-        console.log(`[hints] archetype=${archetype} retrieved=${hintRows.length} reranked_by=${rerankedBy}${hintRows.length > 0 ? ' top_tier=' + hintRows[0].tier : ''}`);
-        if (hintRows.length > 0) {
-          const tiers = hintRows.map(h => h.tier);
-          const hasExact = tiers.some(t => t.startsWith('exact_error'));
-          const note = hasExact
-            ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
-            : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
-
-          // Prose-formatted hint block. This is what Meph actually reads —
-          // the JSON `references` array dropped in Session 41 was a duplicate
-          // of content in `text` plus scoring metadata Meph never reasoned
-          // about. Session 38 finding: Meph ignored hints buried in JSON.
-          // Prose works better because Meph's attention is text-first.
-          const tierLabel = (t) => {
-            if (!t) return 'retrieved match';
-            if (t.startsWith('exact_error_same_archetype')) return 'SAME ERROR in same archetype';
-            if (t.startsWith('exact_error')) return 'SAME ERROR anywhere';
-            if (t.startsWith('same_archetype')) return 'same archetype, different error';
-            return t.replace(/_/g, ' ');
-          };
-          const hintBlocks = hintRows.map((h, i) => {
-            const scoreLabel = typeof h.pairwise_score === 'number'
-              ? `pairwise=${h.pairwise_score.toFixed(3)}`
-              : typeof h.ebm_score === 'number'
-                ? `EBM=${h.ebm_score.toFixed(3)}`
-                : 'score=n/a';
-            const header = `── Past Fix #${i + 1} [${tierLabel(h.tier)}, ${scoreLabel}, test_score=${h.test_score || 0}] ──`;
-            const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
-            const raw = (h.source_before || '').slice(0, 600);
-            const trimmed = raw.lastIndexOf('\n') > 400 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
-            const code = trimmed ? `Source that worked:\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
-            return [header, summary, code].filter(Boolean).join('\n');
-          }).join('\n\n');
-          const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
-
-          // Per-hint-serve REQUIRED-tag line, placed in the hint payload itself
-          // (not just the system prompt) so Meph's attention catches it right
-          // where he's reading the hint. Measured: system-prompt-only reminders
-          // land ~45% of the time.
-          const topTier = hintRows[0]?.tier || '';
-          const tagRequired = `\n\n⚠ REQUIRED: Start your very next text block with \`HINT_APPLIED: yes, tier=${topTier}, helpful=<yes|no|partial>\` if you're going to use these hints, OR \`HINT_APPLIED: no, reason=<short reason>\` if they don't fit your real problem. Tag first, then your analysis. This is tracking signal, not optional.`;
-
-          const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
-
-          result.hints = {
-            note,
-            reranked_by: rerankedBy,
-            text,
-          };
-          // Remember which row carried the hints so the end-of-response
-          // HINT_APPLIED parse can update the right row.
-          ctx.hintState.hintsInjectedRowId = ctx.hintState.lastFactorRowId;
-          // Snapshot error count + best-hint-tier at hint-serve time — used
-          // for the inference fallback if Meph forgets the tag.
-          ctx.hintState.hintsInjectedErrorCount = r.errors.length;
-          ctx.hintState.hintsInjectedTier = hintRows[0]?.tier || null;
-          ctx.hintState.postHintMinErrorCount = null; // reset window
-        }
-      } catch { /* non-fatal */ }
-    }
-    // ────────────────────────────────────────────────────────────
-
-    // ── Shape-search retrieval (Lean Lesson 2 — additive layer) ──
-    // Find canonical worked examples whose program shape matches Meph's
-    // current source. Layered ON TOP of the text-match hints above — does
-    // not replace them. Fires on EVERY compile (success or failure) because
-    // Meph's program shape changes as he writes; the shape-matched examples
-    // teach him pre-emptively, before he hits the wall.
-    //
-    // Cap: top 2 examples (text-match already returned up to 3, so combined
-    // ceiling stays at 5 — well under the prompt-cost gate the plan flags).
-    // Gracefully no-op if canonical-examples.md isn't present.
-    //
-    // CLEAR_HINT_DISABLE=1 ALSO disables this block, so the hint A/B keeps
-    // its clean off-arm (no hint compute, no extra tokens).
-    if (source && !hintsDisabled) {
-      try {
-        // Cache the parsed examples on ctx so subsequent compiles in the same
-        // session reuse the parsed feature vectors. First call is ~2-5ms;
-        // every other call is microseconds.
-        if (!ctx._canonicalExamplesLoaded) {
-          try {
-            ctx._canonicalExamples = loadCanonicalExamples();
-          } catch {
-            // File missing or unreadable — don't block compile. The shape-
-            // match path silently turns off until the file lands.
-            ctx._canonicalExamples = [];
-          }
-          ctx._canonicalExamplesLoaded = true;
-        }
-        const examples = ctx._canonicalExamples;
-        if (examples && examples.length > 0) {
-          const shapeMatches = matchShape(source, { top: 2, examples });
-          if (shapeMatches.length > 0) {
-            const shapeBlocks = shapeMatches.map(m => {
-              const ex = m.example;
-              const arch = m.signature.archetype;
-              const trimmed = (ex.source || '').slice(0, 600);
-              const code = trimmed
-                ? `\n\`\`\`clear\n${trimmed}\n\`\`\``
-                : '';
-              const header = `── Canonical Example #${ex.number} [${arch}, shape_score=${m.score.toFixed(3)}] — ${ex.title} ──`;
-              return `${header}${code}`;
-            }).join('\n\n');
-            const shapeNote = `Shape-matched canonical examples (your program looks like these — reference for idiomatic Clear):`;
-            const shapeText = `${shapeNote}\n\n${shapeBlocks}`;
-
-            // Layer onto whatever the text-match path produced. If text-match
-            // already filled result.hints, append; otherwise create the hints
-            // record fresh. Either way `result.hints.shape_text` and
-            // `result.hints.shape_count` are populated so Meph and the
-            // observability log can both see the shape signal independently.
-            if (!result.hints) {
-              result.hints = { note: shapeNote, reranked_by: 'shape', text: shapeText };
-            } else {
-              result.hints.text = (result.hints.text || '') + '\n\n' + shapeText;
-            }
-            result.hints.shape_text = shapeText;
-            result.hints.shape_count = shapeMatches.length;
-            result.hints.shape_top_archetype = shapeMatches[0].signature.archetype;
-            console.log(`[hints] shape_match retrieved=${shapeMatches.length} top_archetype=${shapeMatches[0].signature.archetype} top_score=${shapeMatches[0].score.toFixed(3)}`);
-          }
-        }
-      } catch { /* non-fatal — shape-search is additive, never blocks compile */ }
-    }
+    // ── Hint pipeline (text-match retrieval + shape-search additive layer) ──
+    // Body lifted into attachHintsForCompileResult so editCodeTool's auto-
+    // compile can call the same path. Fix for the cc-agent hint gap:
+    // snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md
+    attachHintsForCompileResult(source, r, ctx, helpers, result);
     // ────────────────────────────────────────────────────────────
 
     // Only embed compiled output when compile HAS errors OR when Meph
