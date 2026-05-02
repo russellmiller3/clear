@@ -3,15 +3,40 @@
 The agent-side of Clear Cloud is done. The Publish button in Studio takes any
 Clear app and ships it to a live URL via Cloudflare in a few seconds.
 
-**These five items are the gating list to first paying Marcus customer.** Once
-they're in your hands, you can do a real publish, record the demo, cold-pitch,
-and close.
+**Status as of 2026-05-01:** `buildclear.dev` is registered. The remaining
+manual work is Cloudflare/Fly trust, Stripe live billing, Postgres, and an
+Anthropic org key. Agent launch branches have been cut for Stripe webhook
+hardening, DNS-to-certificate provisioning, Studio publish/onboarding polish,
+lead-router verification, Marcus page polish, and pricing.
 
-Order matters — items 1 and 2 unblock items 3-5.
+**These remaining items are the gating list to first paying Marcus customer.**
+Once they're in your hands, you can do a real publish, record the demo,
+cold-pitch, and close.
+
+Order matters. The domain is done; the trust/platform item now unblocks live
+payments and production custom domains.
 
 ---
 
-## 1. Register the domain — `buildclear.dev`
+## Agent branches ready to integrate
+
+| Branch | What it covers |
+|---|---|
+| `feature/cc3-stripe-webhook-receiver` | Stripe checkout completion webhook, fail-closed production secret handling |
+| `feature/cc5-domain-cert-bridge` | DNS verification poller plus Fly HTTPS certificate provisioning |
+| `feature/studio-onboarding-meph-first` | New users start in Meph chat instead of source code |
+| `feature/cc4-publish-progress-ux` | Publish progress rail and live URL confirmation |
+| `feature/studio-first-click-instrumentation` | First-click, time-to-first-app, and bounce telemetry |
+| `feature/lead-router-launch-verification` | Lead-router launch regression guard |
+| `feature/gtm-marcus-deal-desk-page` | Marcus deal-desk pitch page |
+| `feature/gtm-pricing-page` | Pricing page with sales CTA |
+
+Integrate these before the final live publish rehearsal. Keep the prover
+branches post-launch unless Russell explicitly flips priority.
+
+---
+
+## 1. Register the domain - `buildclear.dev` - DONE
 
 **Where:** Cloudflare Registrar (or any registrar — Cloudflare is easiest because
 it puts the zone in the same dashboard as the worker).
@@ -24,7 +49,8 @@ it as `CLEAR_CLOUD_ROOT_DOMAIN`.
 
 **Cost:** ~$15/year for the .dev TLD.
 
-**Done when:** `dig buildclear.dev NS` returns Cloudflare nameservers.
+**Done:** Russell registered the domain. Keep this section for DNS handoff and
+future verification, but it is no longer on the manual to-do list.
 
 ---
 
@@ -127,7 +153,7 @@ costs at typical usage. Net positive.
 
 ---
 
-## When all five are done
+## When the remaining manual items are done
 
 Set the env vars in a fresh terminal:
 
@@ -151,7 +177,21 @@ the click-by-click guide for the first real publish (env vars to set, how to
 seed a tenant, what the modal should show, how to confirm the URL works).
 
 End state: `https://deal-desk.buildclear.dev` serves the deal-desk app with
-working AI summaries. **That's the wedge — record the demo from there.**
+working AI summaries. **That's the wedge - record the demo from there.**
+
+---
+
+## Your current manual checklist
+
+- [x] Register `buildclear.dev`.
+- [ ] Enable Cloudflare Workers for Platforms / trust path, or Fly Trust
+  Verified if the active deploy path stays on Fly.
+- [ ] Create/verify Stripe live keys and webhook secret.
+- [ ] Provision Neon/Fly Postgres and save the connection string.
+- [ ] Create the Clear Cloud Anthropic org API key.
+- [ ] Set the env vars below and run the publish runbook.
+- [ ] Record the deal-desk demo once the live URL works.
+- [ ] Send 5-10 Marcus cold pitches with the recording.
 
 ---
 

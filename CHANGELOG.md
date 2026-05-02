@@ -6,6 +6,58 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-01 - Launch fan-out status doc sweep
+
+The roadmap and launch docs now reflect today's branch fan-out instead of treating those launch items as unstarted.
+
+**What shipped:**
+- `HANDOFF.md` now starts from the current launch state: hard sweep running, launch branches committed, manual blockers listed.
+- `LAUNCH.md` now separates agent-ready branches from Russell-owned external setup.
+- `ROADMAP.md` now calls out the integration path before the stale launch tables.
+- `FAQ.md` now has a lookup entry for the 2026-05-01 launch fan-out branches and merge order.
+
+**Why for launch:** tomorrow's session should start by finishing evidence and integrating branches, not rediscovering which worker built what.
+
+---
+
+## 2026-05-01 - Flywheel hint-effect report and precise retrieval
+
+The piece between "hints reach Meph" and "we can honestly say whether they help." The new report reads existing hint-on versus hint-off A/B artifacts, excludes saturated tasks from the headline, computes Fisher exact significance, prints a confidence interval, and returns `underpowered`, `inconclusive`, `significant_positive`, or `significant_negative`.
+
+**What shipped:**
+- `scripts/hint-effect-report.mjs` — read-only CLI over `playground/sessions/ab-hint-sweep-*.json`.
+- `scripts/hint-effect-report-helpers.mjs` — pure dependency-free math for task aggregation, saturated-task exclusion, suspicious-fast artifact rejection, Fisher exact p-values, and confidence intervals.
+- `scripts/hint-effect-report.test.mjs` — regression coverage for saturated-task exclusion, underpowered verdicts, suspicious-fast artifacts, significance math, and trial-row aggregation.
+- `playground/supervisor/ab-hint-hard-sweep.js` — hard-task A/B preset for `deal-with-detail-panel`, `lead-router`, `multi-tab-queue`, and `internal-request-queue`. It excludes saturated tasks by construction and defaults to cc-agent tool mode, so direct Anthropic API spend is $0.
+- `factorDB.querySuggestions()` now returns exact-error fixes without padding them with generic same-archetype examples. Same-archetype exact fixes outrank newer cross-archetype fixes. Generic gold examples only appear when no exact-error fix exists.
+- `playground/supervisor/factor-db.test.js` now uses the OS temp directory, so the suite runs on Windows instead of failing on `/tmp`.
+
+**Current result on existing artifacts:** **inconclusive**. Non-saturated tasks show 14/15 hint-on versus 12/15 hint-off (+13.3 points), but p=0.5977 and 95% CI is [-10.5%, 37.2%]. Saturated tasks (`counter`, `kpi-dashboard`) moved to the appendix.
+
+**What this means:** do not claim "the flywheel makes Meph better" yet. Claim "delivery works; current hard-task evidence is positive but not statistically significant; Deal Desk-style hard tasks are next."
+
+**Tests:** `node scripts/hint-effect-report.test.mjs`, `node playground/supervisor/factor-db.test.js`, `node scripts/hint-effect-report.mjs`, and `node clear.test.js` passed. Broad suite after the hard preset: 2,817 passed, 0 failed.
+
+---
+
+## 2026-05-01 - Launch verification and flywheel evidence hygiene
+
+The piece between "we think the launch path works" and "the repo can prove it on the next run." This batch wired real browser verification into the normal test path and made the flywheel telemetry report the data that actually exists.
+
+**What shipped:**
+- **Browser UAT is now a launch regression gate.** `npm run test:browser` runs the Marcus app walker, `npm run test:all` includes it, and pre-push runs it unless `SKIP_BROWSER_UAT=1` is set. `scripts/run-marcus-uat.mjs` now uses `process.execPath`, so the same Node binary drives child app servers.
+- **Sandbox-blocked child-process tests skip visibly instead of failing the suite.** When the Windows sandbox blocks `node` spawns with EPERM, packaging and child-process checks mark the environment unsupported. Real environments still run the checks.
+- **Hint telemetry counts the labels the database actually stores.** The Factor DB summary now treats `yes`, `partial`, and `inferred` as useful hint labels instead of checking for numeric `1`.
+- **Hint delivery is tested at Meph's real boundary.** The dispatcher-level compile-tool test proves the returned tool-result string includes the `HINT_APPLIED` protocol and the worked source snippet Meph receives.
+- **Live hint-flow summaries distinguish weak hints from absent hints.** Shape-match hints now report as `shape_match:<archetype>` instead of collapsing to `none`.
+- **Working rules got tightened.** One branch per feature, one small feature per commit, FAQ/learnings startup reads, learnings-as-you-go, and launch browser regression coverage are now in repo instructions.
+
+**Current flywheel read:** delivery works. Evidence that hints improve Meph is not statistically proved yet. Easy tasks are saturated, so the next measurement must exclude them and use harder tasks like Deal Desk.
+
+**Tests:** `node clear.test.js` passed 2,808 checks, `node playground/e2e.test.js` passed 75/75, and `node scripts/run-marcus-uat.mjs` passed 74 browser checks across 5 Marcus apps.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:

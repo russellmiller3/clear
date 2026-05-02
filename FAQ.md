@@ -96,6 +96,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where are the 2026-05-01 launch fan-out branches?](#where-are-the-2026-05-01-launch-fan-out-branches)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
 - [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
@@ -136,6 +137,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
 - [How do I run the tests?](#how-do-i-run-the-tests)
+- [How do we know whether hints make Meph better?](#how-do-we-know-whether-hints-make-meph-better)
 - [How do I rebuild the playground bundle?](#how-do-i-rebuild-the-playground-bundle)
 - [How do auth tokens work in compiled apps?](#how-do-auth-tokens-work-in-compiled-apps)
 - [How does the database layer work?](#how-does-the-database-layer-work)
@@ -206,6 +208,27 @@ Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as 
 
 ---
 
+### Where are the 2026-05-01 launch fan-out branches?
+
+Use these branches as the launch integration queue:
+
+| Branch | Purpose |
+|---|---|
+| `feature/cc3-stripe-webhook-receiver` | Stripe checkout completion webhook and production secret guard |
+| `feature/cc5-domain-cert-bridge` | DNS verification plus Fly HTTPS certificate provisioning |
+| `feature/studio-onboarding-meph-first` | Meph-first Studio onboarding |
+| `feature/cc4-publish-progress-ux` | Publish progress rail and live URL confirmation |
+| `feature/studio-first-click-instrumentation` | First-click, time-to-first-app, and bounce telemetry |
+| `feature/lead-router-launch-verification` | Lead-router launch regression check |
+| `feature/gtm-marcus-deal-desk-page` | Marcus deal-desk pitch page |
+| `feature/gtm-pricing-page` | Pricing page with sales CTA |
+
+Merge `feature/cc5-domain-cert-bridge` instead of separately merging the older CC-5b and CC-5c branches first. It contains the bridge between the two.
+
+Keep `feature/prover-inequality-reasoning` post-launch unless Russell explicitly flips priority.
+
+---
+
 ### Where is the incremental update logic for Cloudflare deploys?
 
 **`playground/deploy-cloudflare.js` → `_deployUpdate(opts)`** is the fast-path branch. The orchestrator `deploySource()` reads `opts.mode` — `'update'` routes to `_deployUpdate`, anything else falls through to the original `_deployInitial()` full-provision path. The dispatcher that decides which mode to pass lives one layer up in **`playground/deploy.js` → `/api/deploy` handler**, which calls `store.getAppRecord(tenantSlug, appSlug)` before invoking the orchestrator and sets `mode: 'update'` if a record comes back.
@@ -251,6 +274,15 @@ End-to-end:
 - **Multi-app runner** — `scripts/run-marcus-uat.mjs`: runs all 5 Marcus apps in sequence — builds each, spins up its server on a dedicated port (4400+i), runs the walker, kills the server, reports per-app pass/fail. Wipes per-app `clear-data.db` first so seeds always re-fire. Writes `snapshots/marcus-uat-failures-<date>.md` with stdout/stderr of any failing app for offline debug. Per-route screenshots land in `.clear-uat-screenshots/` (gitignored).
 - **Tests + parity guards** — `lib/uat-contract.test.js`: covers contract shape + generator smoke. The 5 Marcus apps' walkers are the integration test — 52/52 walker assertions green is the regression net for any compiler emit change.
 - **Requires** — the `playwright` dev dep (already in package.json). The script logs a clear "run npm install --save-dev playwright" hint if it's missing.
+
+Launch-suite commands:
+
+```sh
+npm run test:browser
+npm run test:all
+```
+
+`test:browser` runs `scripts/run-marcus-uat.mjs`. `test:all` runs compiler tests plus the browser walk. The pre-push hook runs the browser gate by default; set `SKIP_BROWSER_UAT=1` only when a constrained environment cannot run browsers.
 
 Run a single app's walker:
 
@@ -516,6 +548,45 @@ Bundle file: `playground/supervisor/reranker.json` (created manually after train
 4. If EBM bundle loaded: `rank(bundle, candidates, featurizeFactorRow)` rescores + resorts
 5. Top 3 returned in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
 6. Meph reads them in the tool result of his next turn
+
+2026-05-01 verification tightened the boundary. The regression test now asserts the dispatcher returns a compile-tool result string containing the `HINT_APPLIED` protocol and the worked source snippet. That is the string `/api/chat` sends back to Meph, so the test proves delivery at the agent-visible boundary rather than only inside helper state.
+
+Telemetry notes:
+
+- `scripts/factor-db-summary.mjs` counts text labels: `yes`, `partial`, and `inferred`.
+- `playground/supervisor/verify-hint-flow.js` reports shape-match hints as `shape_match:<archetype>`, not `none`.
+- A rejected hint still proves delivery. It means Meph saw the hint and said it did not help.
+
+### How do we know whether hints make Meph better?
+
+Use controlled hint-on versus hint-off A/B artifacts from `playground/supervisor/ab-hint-sweep.js`, not raw Factor DB rows. Raw rows are confounded because hints fire when Meph is already struggling.
+
+Run:
+
+```sh
+node scripts/hint-effect-report.mjs
+```
+
+To create new hard-task evidence without saturated toy tasks:
+
+```sh
+MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 \
+  node playground/supervisor/ab-hint-hard-sweep.js --trials=3 --workers=1
+```
+
+Default hard tasks are `deal-with-detail-panel`, `lead-router`,
+`multi-tab-queue`, and `internal-request-queue`. Direct Anthropic API spend is
+$0 in cc-agent mode.
+
+The report:
+
+- excludes saturated tasks from the headline,
+- rejects empty and suspicious-fast artifacts,
+- reports hint-on versus hint-off lift,
+- prints a Fisher exact p-value and 95% confidence interval,
+- returns `underpowered`, `inconclusive`, `significant_positive`, or `significant_negative`.
+
+Current read as of 2026-05-01: delivery works, but lift is not statistically proved. Existing non-saturated artifacts show 14/15 hint-on versus 12/15 hint-off (+13.3 points), p=0.5977, 95% CI [-10.5%, 37.2%]. Easy tasks like `counter` and `kpi-dashboard` are saturated and belong in the appendix. The next measurement needs Deal Desk or similarly complex apps as the anchor.
 
 ### Where is session data stored?
 

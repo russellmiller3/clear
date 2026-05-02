@@ -16,6 +16,7 @@
 - A task is not done while the worktree is dirty. Before calling work complete, every change must be intentionally committed, stashed with a clear name, or removed after confirming it is disposable. No loose modified, deleted, or untracked files.
 - When a review finds a repeatable miss, do not stop at advice. Add the smallest failing check or hook that would catch it next time, then fix the current instance until that check passes.
 - Update `learnings.md` as work proceeds. After each meaningful fix, phase, or mistake, append the concrete lesson before moving to the next lane.
+- Run the docs sweep after each completed phase before continuing. Update the relevant docs while the phase context is fresh, then move to the next phase.
 
 ## Branch Discipline
 

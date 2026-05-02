@@ -50,6 +50,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 45b: Scheduled-task shutdown leak](#session-45b-scheduled-task-shutdown-leak-2026-04-24) | Every `background` / `cron` / `agent runs every` compiled to an anonymous `setInterval`/`setTimeout`, which kept the event loop alive after `server.close()`; unified `_scheduledCancellers[]` registry drained by SIGTERM and SIGINT; HH:MM recursive setTimeout solved by closure over a mutable `_curTimer` so the canceller always sees the currently-armed timer |
 | [Session 45c: Multipart upload middleware auto-wiring](#session-45c-multipart-upload-middleware-auto-wiring-2026-04-24) | Client-side `upload X to '/api/foo'` always worked; server half received empty `req.body` because only `express.json()` was wired; compiler now walks nested AST (page > button > body) for UPLOAD_TO/ACCEPT_FILE, emits module-top multer + memoryStorage, injects `_upload.any()` middleware only on POST endpoints whose path matches an upload target — plain JSON POSTs untouched |
 | [Session 45d: Auth-capability gate on mutation security check](#session-45d-auth-capability-gate-on-mutation-security-check-2026-04-24) | "DELETE/PUT needs `requires login`" was firing as a hard error even on apps with NO auth setup (no Users+password, no `allow signup and login`) — Meph had no valid move since `requires login` had nothing to check against; 25 rows / 50% give-up rate on Factor DB; fix gates the error on capability presence and batches auth-less cases into one summary warning at file top |
+| [Session 54: Flywheel measurement and phase-doc discipline](#session-54-flywheel-measurement-and-phase-doc-discipline-2026-05-01) | Saturated tasks are not weak evidence, they are non-evidence; hint-effect reports need hard tasks + p-value + confidence interval; docs sweep happens after each phase, before continuing |
 
 ---
 
@@ -2021,3 +2022,24 @@ Live verification also showed a reporting blind spot. Five Meph runs saw shape-m
 - **Test the boundary the agent actually sees.** Tool-local state is not enough; assert the serialized tool result contains the hint payload.
 - **A rejected hint still proves delivery.** `HINT_APPLIED: no` with a reason means Meph saw the hint. Treat that separately from "no hint reached Meph."
 - **Live verification summaries must distinguish no hint from weak hint.** Shape-match hints are weaker than exact-error hints, but they are not `none`.
+
+---
+
+## Session 54: Flywheel measurement and phase-doc discipline (2026-05-01)
+
+We almost continued coding the measurement/retrieval fix before updating docs for the phase that had just ended and the commits that had already shipped. Russell caught it. The fix is a rule, not a promise: every completed phase gets a docs sweep before the next phase starts.
+
+The measurement lesson is sharper. Easy tasks that pass in both arms do not "slightly support" or "slightly weaken" the flywheel claim. They are saturated. They should be excluded from the headline and shown only in an appendix. The headline should only use tasks that can discriminate between hint-on and hint-off.
+
+The first real report made the call cleanly: current hard-task evidence is **inconclusive**. Non-saturated tasks were 14/15 hint-on vs 12/15 hint-off (+13.3 points), but p=0.5977 and the 95% confidence interval crossed zero. That's useful because it stops the dangerous middle ground: positive-looking data that is not claim-worthy.
+
+Retrieval had the matching product bug. Exact-error fixes were being padded with generic same-archetype gold examples. That made the prompt look richer while making the actual hint set weaker. The fixed rule: if an exact-error fix exists, return it without generic padding; use generic gold only when no exact fix exists.
+
+### Gotchas-as-rules
+
+- **Docs sweep after each phase, before continuing.** Phase context decays fast. Update `CHANGELOG.md`, `FEATURES.md`, `FAQ.md`, `RESEARCH.md`, `ROADMAP.md`, and `learnings.md` while the work is fresh.
+- **Saturated tasks are non-evidence.** If both arms pass at 90%+, remove that task from the headline lift number. Do not downweight it.
+- **"Statsig" means statistical significance here.** Report p-value, confidence interval, and `underpowered` when the sample is too small.
+- **Hard tasks prove the flywheel.** Deal Desk-style builds are the right measurement surface because toy tasks hide retrieval quality.
+- **Hard-task sweeps need a named preset.** If the task list lives only in chat, the next run will drift back to saturated toys. Put the hard task set in a script and import it into the main regression suite.
+- **Do not pad exact fixes with generic examples.** More hints is worse when the extra hints are weaker than the first one.
