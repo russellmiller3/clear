@@ -3,10 +3,30 @@
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
 Updated: **2026-05-01 (flywheel hint delivery verified; browser launch regression wired into the suite; hard hint-effect sweep preset shipped)**.
 
+## Latest measurement verdict (2026-05-02 evening)
+
+**Hard hint sweep — saturated. No measurable lift, no claim possible from this run.**
+
+16 trials across `deal-with-detail-panel`, `lead-router`, `multi-tab-queue`, `internal-request-queue`. Every trial passed regardless of hint state. Lift: +0.0% across all four tasks.
+
+**What this proves:** delivery works (Factor DB grew +34 rows, +17 passing during the run). The retrieval pipeline is shipping hints to cc-agent. The hints just don't change the outcome on tasks the base model already wins.
+
+**What this does NOT prove:** that hints don't help. Saturated tasks can't discriminate. The flywheel claim is still untested on this run.
+
+**Next measurement design:**
+- Deal Desk-shaped multi-feature builds. 4+ pages, workflow + agent + audit log + named rules. The deal-desk template itself is the candidate.
+- Single trial per condition is enough when the task is genuinely hard — the noise floor is lower than 16 trials of saturated toys.
+- Cost: ~$5-10 per Deal Desk build attempt vs ~$0 for the cc-agent toy sweeps. Worth it because the per-trial information content is dramatically higher.
+
+**The rule keyword unlocks the next pitch surface.** Once `rule:` exists with per-rule prover verdicts, the flywheel measurement gets a new axis: not just "does Meph's app pass tests" but "do Meph's apps pass tests AND ship with proved business rules." That's a measurable quality bar.
+
+---
+
 ## Session timeline (recent)
 
 | Session | Date | What shipped |
 |---------|------|--------------|
+| **55** | **2026-05-02 evening** | **Hard hint sweep saturated + sandbox-detection hook.** 16 trials across 4 "hard" tasks all passed in both arms. Lift +0.0%. Tasks are non-evidence — next measurement needs Deal Desk-shaped builds. Separately, a remote Claude session pushed 30+ commits including the `rule:` keyword + per-rule prover verdicts to a localhost git proxy thinking it was real GitHub. Work was stranded. New `.claude/hooks/verify-real-remote.mjs` hook (21 tests) blocks any `git push`/`git commit` against a localhost / private-network origin, so this can't recur. Rule keyword rebuild brief at `plans/plan-rule-keyword-rebuild-2026-05-02.md` if sandbox recovery fails. |
 | **54** | **2026-05-01** | **Flywheel evidence hygiene.** Hint delivery is now tested at the actual tool-result boundary Meph reads, Factor DB summaries count the text labels the database stores (`yes`, `partial`, `inferred`), and live hint-flow summaries distinguish weak shape-match hints from no hint. Current DB snapshot: **1,831 rows, 714 passing, 65 hint-served rows, 41 useful/partial/inferred labels**. New `scripts/hint-effect-report.mjs` excludes saturated tasks, rejects suspicious-fast artifacts, and reports p-value + confidence interval. Current result: **inconclusive** - hard-task subset 14/15 hint-on vs 12/15 hint-off (+13.3pp), p=0.5977, 95% CI [-10.5%, 37.2%]. Retrieval now avoids padding exact-error fixes with generic same-archetype examples. New hard sweep preset targets `deal-with-detail-panel`, `lead-router`, `multi-tab-queue`, and `internal-request-queue` with saturated tasks excluded by construction. |
 | **2026-05-01** | **2026-05-01** | **Provable correctness — moonshot first slice shipped.** New `clear prove <file>` command walks the AST directly (bypasses the compiler) and verifies every test block as a math proof against the source. Two milestones merged: (1) concrete-mode prover with 15 unit tests + 8 invoice proofs, (2) symbolic-mode prover that promotes free variables in tests to forall-quantifiers and proves universal theorems via a simplifier with constant folding, commutativity sort, associativity flatten, and identity rules. **7 real mathematical theorems proved for any input** (commutativity of `+` and `*`, associativity of `+`, identity / annihilation, identity function). 31 concrete proofs + 7 universal theorems demonstrated end-to-end. Compiler tests 2533 unchanged. The flagship moonshot claim — "Clear is the only AI coding tool whose output comes with a math certificate against its tests" — now demonstrable. Branch: `feature/decidable-core-prover` (commits `a024e3b`, `7a533eb`). Honest scope: proves source matches spec; compiler + runtime are still trusted (CompCert-style verification is a year-2 move). The dual-target architecture (Clear → JS AND Clear → Python from the same source) is a structural belt-and-suspenders nobody else can match. Next session: distributivity rule, conditional handling in symbolic mode, Phase B-2 effect quarantine in the validator, Marcus deal-desk proof bundle as the regulated-tier demo. |
 | **52** | **2026-04-26** | **Shell Upgrade Phase 6 teaching surface prepared.** Docs, Meph prompt, and curriculum now teach `detail panel for selected_deal:` with a sticky `actions:` bar. Compiler and chrome-check work are landing in the main thread; this adds the training target so future sweeps can measure selected-row right rails instead of generic cards. |

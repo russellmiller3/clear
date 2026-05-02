@@ -2159,6 +2159,24 @@ Live verification also showed a reporting blind spot. Five Meph runs saw shape-m
 
 ---
 
+## Session 55: Hard hint sweep saturated, sandbox-push stranded a remote epic (2026-05-02)
+
+Two findings, one cheap and one expensive.
+
+**Finding 1 (cheap, real):** the 16-trial A/B hint sweep on the four "hard" tasks finished with every trial passing in both arms. That's a saturation result. The cc-agent + Haiku 4.5 model already wins these tasks without retrieval, so they can't measure whether retrieval helps. Saturated tasks are non-evidence — keep them out of headline lift numbers, send them to an appendix. The next measurement needs Deal Desk-shaped multi-feature builds where the model genuinely struggles. One real Deal Desk attempt at a time will produce more information per dollar than 16 trials on toy tasks.
+
+**Finding 2 (expensive, never repeat):** a remote Claude session ran in a sandbox where `origin` pointed at a localhost git proxy. Every push "succeeded" with a normal-looking output. None reached the real GitHub remote. 30+ commits including the `rule:` keyword + named business rules + per-rule prover verdicts ended up stranded inside the sandbox. The session believed it had shipped; it had not. Recovery requires either format-patch through chat or a full rebuild from a written brief. Both paths are real but neither is free.
+
+### Gotchas-as-rules
+
+- **Saturated tasks are non-evidence.** If both arms pass at 100%, the task can't tell you whether the intervention helps. Move it to an appendix and pick a harder task.
+- **Wall-clock differences between arms with the same pass rate are still data.** `multi-tab-queue` was 180s with hints on vs 61s with hints off, both 100% passing — possible sign the hint payload makes cc-agent wander on easy tasks. File as a side-quest, not a headline.
+- **Never claim work is "shipped" or "pushed" without verifying origin is real.** First action in every coding session: read the URL `git config remote.origin.url` returns. If it contains `127.0.0.1`, `localhost`, `local_proxy`, `0.0.0.0`, or a private-network range, the session is DRAFT — pushes will not reach the real remote. Generate a patch, do not pretend pushes shipped. The `verify-real-remote.mjs` hook now enforces this before any `git push` / `git commit` / `git cherry-pick`.
+- **Sandboxes themselves aren't the problem.** They're useful for risky tooling, network-isolated experiments, throwaway exploration. The problem is a sandbox proxy URL that looks identical to a real remote. The hook closes that gap by reading the URL and blocking pushes against suspicious hosts.
+- **One named rule beats three unnamed checks for the audit-trail pitch.** Existing patterns (`guard`, `validate`, `if/otherwise`) cover the same ground as a `rule:` keyword would, but they leave business rules unnamed and scattered. The regulated-tier sentence is "every named rule has a math-grade verdict next to it." That sentence requires named rules, hence the keyword. Reuse-existing-patterns is a fallback, not the goal.
+
+---
+
 ## Session 54: Flywheel measurement and phase-doc discipline (2026-05-01)
 
 We almost continued coding the measurement/retrieval fix before updating docs for the phase that had just ended and the commits that had already shipped. Russell caught it. The fix is a rule, not a promise: every completed phase gets a docs sweep before the next phase starts.

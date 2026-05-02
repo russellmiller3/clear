@@ -6,6 +6,56 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - Hard hint sweep verdict — all four "hard" tasks are saturated
+
+The 16-trial A/B sweep finished. Every task passed in both arms. Real finding: the four tasks we picked as "hard" aren't hard enough to discriminate between hint-on and hint-off on cc-agent + Haiku 4.5.
+
+**Verdict:**
+- 8 of 8 hint-on trials passed; 8 of 8 hint-off trials passed.
+- Lift across all four tasks: **+0.0%**.
+- Wall clock: 32.6 min. Direct API spend: $0 (cc-agent tool mode).
+- Factor DB grew from 1856 → 1890 rows (+34); passing rows 736 → 753 (+17).
+
+**What this means:** the model already crushes `deal-with-detail-panel`, `lead-router`, `multi-tab-queue`, and `internal-request-queue` even without retrieval. We can't measure flywheel impact on tasks the model already wins. Saturated tasks are non-evidence; they belong in an appendix, not the headline.
+
+**Side observation:** wall-clock per trial was uneven between arms. `multi-tab-queue` averaged 180s with hints on vs 61s with hints off — same 100% pass rate, but hint-on took 3× longer. Possible signal that hint payload is making cc-agent wander on already-easy tasks. Worth a side-quest later; not the main story.
+
+**Next measurement:** harder tasks. Deal Desk-shaped multi-feature builds (4+ pages, workflow + agent + audit log + custom rules) on a single trial each. One real Deal Desk attempt is more informative than 16 trials on toy tasks.
+
+**Artifacts:**
+- Log: `playground/sessions/hard-hint-sweep-20260501-121600.log` (yesterday's run, 12 of 16 trials, also saturated)
+- Today's run log: `C:/tmp/hard-hint-sweep-2026-05-02.log`
+- A/B JSON: `playground/sessions/ab-hint-sweep-2026-05-02T14-27-30.json`
+
+---
+
+## 2026-05-02 - Sandbox-detection hook — never claim work shipped from a sandbox
+
+A remote Claude session shipped 30+ commits to a localhost git proxy thinking it was the real GitHub remote. Pushes "succeeded" but never reached origin. Work was stranded.
+
+**What shipped:**
+- `.claude/hooks/verify-real-remote.mjs` — PreToolUse hook on Bash. Blocks any `git push`, `git commit`, or `git cherry-pick` command when `git config remote.origin.url` returns a localhost / 127.0.0.1 / private-network / non-trusted host. Trusted: github.com, gitlab.com, bitbucket.org, *.dev.azure.com.
+- `.claude/hooks/verify-real-remote.test.mjs` — 21 tests covering localhost / proxy / private-network detection, trusted-host pass-through, and command-pattern matching.
+- `.claude/settings.json` — wired the hook into PreToolUse on Bash (fires before branch-discipline + before-rebuild checks).
+- Override for legitimate sandbox work: `SANDBOX_REMOTE_OVERRIDE=<url>` env var.
+
+**Why for launch:** any future session, local laptop or fresh remote sandbox, that clones the repo automatically inherits this hook. Stranded-work bug can't repeat.
+
+**Tests:** 21 of 21 passing in `node .claude/hooks/verify-real-remote.test.mjs`.
+
+---
+
+## 2026-05-02 - Rule keyword rebuild brief
+
+Sandbox-Claude built the `rule:` keyword + named business rules + per-rule prover verdicts on a feature branch that never reached real origin. To recover: try sandbox-Claude format-patch first (5-min attempt window); if dead, run the rebuild plan.
+
+**What shipped:**
+- `plans/plan-rule-keyword-rebuild-2026-05-02.md` — 293-line spec covering AST shape (`RULE_DEF`), parser pattern (uses `LIVE_BLOCK` and `ROUTE_DEF` as in-repo templates), validator hard errors and warnings, compiler emit for both backends, prover wiring for per-rule verdicts (proved / unverifiable / disproved), CLI output, demo files (deal-desk + lead-router + tour file), 13-commit TDD chain, and full doc cascade across all 13 surfaces including `cookbook.md`.
+
+**Why for launch:** per-rule prover verdicts are the regulated-tier pitch — the CRO sentence is "every named rule has a math-grade verdict next to it." The rebuild brief makes the keyword recoverable regardless of whether sandbox recovery succeeds.
+
+---
+
 ## 2026-05-02 - PC-8: `clear test` auto-runs the prover (default ON)
 
 Every `clear test <file>` session now also runs the Decidable Core prover and appends a one-line proof-status summary at the bottom. The math layer is no longer a separate command authors have to remember — it's the default feedback for every test run.
