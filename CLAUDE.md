@@ -554,3 +554,11 @@ Update `learnings.md` during the work, not at some vague end-of-session moment. 
 ## Browser Regression For Launch (MANDATORY)
 
 Launch-facing features are not done until automated browser coverage drives the real UI path. If a customer can click, type, navigate, publish, edit, or inspect it, the browser test suite must exercise it and fail on regression. Compiler tests are necessary, not sufficient.
+
+## Verify Remote Before Claiming Anything Shipped (MANDATORY — LEARNED EXPENSIVELY 2026-05-02)
+
+**Never claim work is "shipped" or "pushed" without verifying the remote is real.** First action in every coding session: run `git remote -v` and read the URL. If origin points at `127.0.0.1`, `localhost`, `local_proxy`, `0.0.0.0`, or any sandbox-local proxy, the session is a DRAFT — pushes will NOT reach Russell's real GitHub remote. Tell Russell explicitly that pushes will not reach his real remote, and either (a) generate a patch with `git format-patch` that he can apply, or (b) abort and pivot to read-only work. Never let him believe work shipped to GitHub when it didn't.
+
+**Hook backstop.** `.claude/hooks/verify-real-remote.mjs` blocks any `git push` / `git commit` / `git cherry-pick` against a localhost / 127.0.0.1 / private-network origin. 21 tests passing. Override only when you have verified the URL is intentional: `SANDBOX_REMOTE_OVERRIDE=<url>` in env.
+
+**Why this rule exists:** 2026-05-02 — a remote Claude session ran in a sandbox where `origin` pointed at a localhost git proxy. Every push "succeeded" with a normal-looking output. None reached the real GitHub remote. 30+ commits including the `rule:` keyword + per-rule prover verdicts ended up stranded inside the sandbox. The session believed it had shipped; it had not. Hours of work lost. The hook + this rule are the only reliable belt-and-suspenders that prevent recurrence.
