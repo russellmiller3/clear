@@ -1,8 +1,43 @@
-# Handoff — 2026-05-02 (full state: merge sweep + mode dropdown + CC-1 seed + Studio Prove)
+# Handoff — 2026-05-02 (late: rule keyword epic + sandbox-detection hook + race-condition Phase 1 in flight)
 
 ## Status right now
 
-**Branch:** `docs/handoff-2026-05-02-full-state` (this update). Main has been the single sink for everything that landed today.
+**Branch:** `docs/handoff-2026-05-02-late` (this update). Main is at `07a366a` and includes everything below. A background agent is on `feature/concurrency-phase1-detector` building the static read-modify-write detector (Phase 1 of the race-condition plan) — not merged yet.
+
+**The session arc, in five bands:**
+
+1. **Sandbox debacle and recovery (the early hours).** A remote Claude session shipped 30+ commits — including the `rule:` keyword epic — to a localhost git proxy thinking it was real GitHub. Pushes "succeeded" but never reached origin. Work stranded. Hours lost. Recovery path: write a rebuild plan, run an agent against it, restore the work to real `origin/main`. Two of sandbox-Claude's untracked files (`scripts/proof-business-language.mjs` + tests) survived in the working tree and were reclaimed cleanly.
+
+2. **Sandbox-detection hook + project rule.** New hook at `.claude/hooks/verify-real-remote.mjs` — fires both at session start and before any `git push` / `git commit` / `git cherry-pick`. Reads the URL `git config remote.origin.url` returns and refuses if it's localhost / 127.0.0.1 / private-network / unknown-host. 25 tests passing. Project CLAUDE.md gained a MANDATORY rule pairing the hook with the policy text. Both this Claude AND any future remote sandbox session inherits the protection the moment it clones the repo.
+
+3. **The `rule <name>:` keyword + per-rule prover verdicts (the regulated-tier pitch surface).** New top-level keyword names a business policy. The body parses with the same statement parser as endpoints. The prover walks every named rule and produces a per-rule verdict — `proved`, `disproved`, `unverifiable` — attributed by name. `clear prove` and `clear test --prove` render a "Business rules in this file:" section so auditors see "discount-cap-thirty PROVED for every possible deal" instead of "line 42 PROVED." Demo apps (deal-desk, lead-router) converted to use named rules. New tour file at `examples/rule-keyword-tour.clear` exhibits all three verdicts. 13-commit TDD chain, all 13 doc surfaces updated including cookbook.md.
+
+4. **`clear prove` default output is now CRO-readable.** The translator at `lib/proof-business-language.mjs` (moved from `scripts/`) is now wired as the default formatter. `clear prove` prints "We proved 3 of 3 named rules in this app, for every possible deal" instead of "PROVED for any: amount." Math-journal output lives behind `--math` for prover engineers; JSON output is unchanged for machine consumers. `clear test --prove` (PC-8) uses the same human headline format. `+7 tests`. The translator + the rule keyword + auto-prove compose into the audit-trail surface a CRO can read on their own.
+
+5. **Hard-sweep verdict — saturated.** 16 trials, every trial passed in both arms. 0% lift. Real finding — these "hard" tasks aren't hard enough on cc-agent + Haiku 4.5 to discriminate. Saturated tasks are non-evidence; the flywheel claim is still untested on tasks the model doesn't already crush. Next measurement target: Deal Desk-shaped multi-feature builds.
+
+6. **Race-condition plan written and Phase 1 firing in the background.** New plan at `plans/plan-concurrency-proofs-2026-05-02.md` — three phases: (1) static detection of read-modify-write patterns + new endpoint modifiers `safe to retry` / `with optimistic lock` (3-4 hrs, agent in flight now), (2) runtime auto-versioning + 409 Conflict on race + audit-row-first ordering (4-6 hrs), (3) `clear test --concurrency N` runner (3 hrs). After all three: `clear prove` adds a "Concurrent-safety verdicts" section per endpoint. The CRO sentence "no two concurrent approvals can both succeed on the same deal" requires Phase 2.
+
+**Today's commits on real `origin/main`** (all URLs verified `https://github.com/russellmiller3/clear.git`):
+- `bbc7a45` rule keyword epic — 13-commit TDD chain (parser → validator → compiler → prover → CLI → demos → tour file → 13 doc surfaces).
+- `e4b8814` `clear prove` default = CRO-readable + 7 new tests.
+- `149f506` sandbox-detection hook + 21 tests.
+- `792097f` SessionStart variant of the hook + 4 more tests.
+- `5cc5823` rule keyword rebuild brief.
+- `07e1e2a` hard-sweep verdict cascade.
+- `b5babd9` recovered translator (27 tests).
+- `2b33e01` + `dc0a31b` + `030e775` translator FEATURES + CHANGELOG + FAQ + TOC.
+- `3f3b32b` project CLAUDE.md rule for sandbox detection.
+- `bb63efe` plan: clear-prove-business-default.
+- `07a366a` plan: race-condition three-phase plan.
+
+**Test floor:** 2,853 compiler tests passing on main (was 2,817 at session start → +36 from the rule keyword and the formatter). After Phase 1 of race conditions lands, target is 2,863+.
+
+**Background agents in flight:**
+- **Race-condition Phase 1** — building the read-modify-write detector + the two new endpoint modifiers. Worktree-isolated. Will report back with a feature branch ready for review and ff-merge.
+- **IDE e2e test fix** — older spawn-task, still running. Repairs the Studio IDE test that breaks because the new Meph-first onboarding hides the editor on first load. 60 of 61 IDE tests still pass.
+
+**Genuine pickup state:** when a future session opens, the rule keyword + the CRO-readable default + the sandbox-detection hook are all live and tested on real GitHub. The race-condition Phase 1 branch may be ready to review when you check; if not, kick it off again or look at the agent's output file. Phase 2 of race conditions is the next critical-path move — it's what turns the audit-trail pitch from "every named rule is proved" into "every named rule is proved AND no concurrent schedule produces inconsistent state." Both clauses together are the regulated-industry sale.
 
 **What landed on main today, in four phases:**
 
