@@ -192,6 +192,14 @@ Toolbar button in `playground/ide.html` (next to `Compile`) wired to `window.doP
 
 Counts come from `bundle.counts`. Statuses are `proved`, `partial`, `failed`, `unverifiable`, `errored`. Symbolic mode triggers automatically when a `test` block has free variables — the prover treats them as forall-quantified placeholders and reports things like "for any: add" in the output.
 
+### How do I show proof verdicts in business-friendly language? (2026-05-02)
+
+`node scripts/proof-business-language.mjs <file.clear>` runs the prover and prints each verdict as a sentence a CRO or compliance buyer can read. Mapping: PROVED → "We proved: <test_name>, for every possible <vars>." UNVERIFIABLE → "<test_name> talks to the world (database / email / AI / time). The prover can't decide it; tests still cover the cases you wrote." FAILED → "Counterexample found for: <test_name>. The app fails when <example_inputs>." Plus a one-line headline that summarises the bundle in plain English.
+
+Read from a JSON bundle on stdin: `cat my-bundle.json | node scripts/proof-business-language.mjs --stdin`. Get a machine-readable payload Studio (or any caller) can render inline: append `--json`. The translator exports `translateBundle(bundle)` so the same logic can be imported anywhere — Studio's terminal pane is a likely future caller.
+
+Tests at `scripts/proof-business-language.test.mjs` (27 passing) cover the verdict mapping, free-variable rendering, headline pluralisation, and JSON payload shape. Recovered from a sandbox-Claude session 2026-05-02 — survived because the files were left in the working tree, never committed to the lost remote.
+
 ### How does `clear test` show proof status? (PC-8, 2026-05-02)
 
 `clear test <file>` auto-runs the prover after the test runner finishes and prints a one-line summary at the bottom: `Proofs: 3 proved, 1 partial, 2 unverifiable (run \`clear prove <file>\` for details)`. Auto-prove is on by default — opt out with `--no-prove`. Under `--json`, the proof bundle is included in the same JSON envelope as the test results.
