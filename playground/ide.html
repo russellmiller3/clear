@@ -533,6 +533,19 @@ body.builder-mode #chat-resizer::after {
 }
 body.builder-mode #chat-resizer:hover::after { background: var(--accent); }
 
+/* Fullscreen preview — hides editor + Meph chat panes so the running app
+   takes the entire window. Toggled by the ⛶ Fullscreen button in the
+   preview-tabs row, or dismissed with Esc. */
+body.preview-fullscreen #editor-pane,
+body.preview-fullscreen #chat-pane,
+body.preview-fullscreen #ep-resizer,
+body.preview-fullscreen #chat-resizer { display: none !important; }
+body.preview-fullscreen #preview-pane {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  border-left: 0 !important;
+}
+
 /* BM-2 (v0.2): Preview takes remaining space. */
 body.builder-mode #preview-pane {
   order: 2;
@@ -747,6 +760,7 @@ body.builder-mode.show-source #editor-pane {
       <button class="prev-tab" onclick="showTab('flywheel')" title="Factor DB training signal — rows accumulated from every Meph session">Flywheel</button>
       <button class="prev-tab" onclick="showTab('supervisor')" title="Run sweeps, browse past sessions, drill into trajectories">Supervisor</button>
       <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
+      <button class="prev-tab" id="fullscreen-toggle-btn" onclick="togglePreviewFullscreen()" title="Hide editor + chat — preview takes the whole window. Press Esc or click again to restore." style="margin-left:auto;font-size:11px;">⛶ Fullscreen</button>
     </div>
     <div id="meta-chips"></div>
     <div id="preview-content">
@@ -1962,6 +1976,21 @@ function appendTerminalText(text, cls) {
   if (json) { appendTerminal(json + '\n'); return; }
   appendTerminal('<span class="' + (cls || 'term-out') + '">' + escHtml(text) + '</span>\n');
 }
+
+// Fullscreen toggle — hides the editor + Meph chat panes so the running app
+// preview takes the entire window. Re-click (or Esc) restores the 3-pane layout.
+window.togglePreviewFullscreen = function() {
+  const body = document.body;
+  const btn = document.getElementById('fullscreen-toggle-btn');
+  const isFs = body.classList.toggle('preview-fullscreen');
+  if (btn) btn.textContent = isFs ? '⛶ Exit fullscreen' : '⛶ Fullscreen';
+};
+// Esc to exit fullscreen.
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.body.classList.contains('preview-fullscreen')) {
+    window.togglePreviewFullscreen();
+  }
+});
 
 window.showTab = function(tab) {
   activeTab = tab;
