@@ -521,6 +521,60 @@ It should not feel broad.
 
 ---
 
+## Product Status (as of 2026-05-02)
+
+### The 5 Marcus apps (canonical list)
+
+These are the templates Russell ships every customer pitch from. Source of truth: `snapshots/marcus-primitives-decomposition-04-27-2026.md`. They share ~90% structural overlap (queue + decisions + audit + notifications); each one is a re-skin of the same shape for a different ops workflow.
+
+| # | App | Pitch line |
+|---|-----|------------|
+| 1 | **Deal Desk** | Discount approvals routed to the CRO. AI-drafted summary on every request over 20%. |
+| 2 | **Approval Queue** | Generic submit → review → approve/reject. Expenses, PTO, vendor purchases, anything. |
+| 3 | **Lead Router** | Score inbound leads, enrich, auto-assign by territory and segment. |
+| 4 | **Onboarding Tracker** | Customer onboarding steps, who is stuck, how long, which CSM owns it. |
+| 5 | **Internal Request Queue** | IT, HR, and Facilities tickets — submit, classify, assign, resolve. |
+
+### UAT status — 74 of 74 green (2026-05-02 evening)
+
+`node scripts/run-marcus-uat.mjs` drives every page, every nav click, every form, every detail panel, every action button across all 5 apps via Playwright. As of 2026-05-02:
+
+| App | Walker checks | Result |
+|-----|---------------|--------|
+| Deal Desk | 28 | ✅ all pass |
+| Approval Queue | 9 | ✅ all pass |
+| Lead Router | 11 | ✅ all pass |
+| Onboarding Tracker | 12 | ✅ all pass |
+| Internal Request Queue | 14 | ✅ all pass |
+| **Total** | **74** | **✅ 0 failures** |
+
+This is the regression net. Any compiler change has to keep this 74/74 — if it drops, the demo breaks.
+
+### Compile cleanliness
+
+All 5 canonical apps compile with **0 errors and 0 warnings** (no dead nav, no CSRF holes, no missing-auth on mutations, no SQL injection, no stack-trace leakage). The compiler emits `requires login` enforcement on every mutation; this was patched in 4 apps on 2026-05-02 evening.
+
+### What's left before first paying customer
+
+| # | Step | Owner | Time |
+|---|------|-------|------|
+| 1 | Cloudflare account setup (Workers Paid + Workers for Platforms add-on, $30/mo standing) | Russell | 30 min |
+| 2 | Add `buildclear.dev` (or `.co`) as a zone in Cloudflare; point registrar nameservers | Russell | 15 min + DNS wait |
+| 3 | Create dispatch namespace `clear-customer-apps` | Russell | 2 min |
+| 4 | Generate API token (Workers Scripts:Edit, D1:Edit, Zone DNS:Edit, Account:Read) | Russell | 5 min |
+| 5 | Wire token + account ID + namespace into Studio's deploy flow | Agent | 1 hr |
+| 6 | Test-deploy one Marcus app end-to-end on real Cloudflare | Agent + Russell | 30 min |
+| 7 | Record the demo (deal-desk built in 30 min, hosted at `<slug>.buildclear.dev`) | Agent + Russell | 1 hr |
+| 8 | DM the first 5–10 Marcuses on LinkedIn with the recording | Russell | ongoing |
+
+### Domain
+
+- **Primary:** `buildclear.dev` (registered 2026-04-26)
+- **Upgrade option:** `buildclear.co` if `.com` is taken and the dev TLD ever feels wrong for Marcus buyers
+- **Don't waste cycles on:** rebranding to "ClearLabs", "Engelbart", or anything else — Clear Labs Inc. is a real biotech company; "Engelbart" is lost on sales-ops buyers; brand consistency with the language name matters
+
+---
+
 ## Proof Assets
 
 Only create these assets.
