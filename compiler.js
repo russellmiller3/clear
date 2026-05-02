@@ -11042,17 +11042,52 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   // Render text templates: replace {varname} with current values from
   // _recompute()'s closure scope (locals like `pending_count = count of pending`)
   // or from _state. Walk the AST to discover which variable names are referenced
-  // in any text/heading content node so we can list them at compile time —
-  // arrow-function callbacks can't reach closure vars dynamically by string.
+  // in any text / heading / nav-count / stat-card-value node so we can list them
+  // at compile time — arrow-function callbacks can't reach closure vars
+  // dynamically by string.
+  //
+  // Three patterns to capture (each one emits a `data-clear-tpl=` attribute
+  // on the rendered HTML, and every name we collect here gets plumbed into
+  // _tplCtx so the template substitution can resolve it):
+  //
+  //   1. CONTENT nodes whose `text` contains `{varname}` placeholders —
+  //      page subtitles, headings, body copy.
+  //   2. NAV_ITEM.count fields holding a bare identifier — each nav row's
+  //      count badge ("Pending 5", "Approved today 7").
+  //   3. STAT_CARD.value fields holding a VARIABLE_REF — each stat-strip
+  //      tile's big number.
+  //
+  // Pre-fix only pattern 1 was scanned; the deal-desk dashboard's three
+  // non-pending stat cards therefore showed empty values even though the
+  // `count of` declarations had populated the right closure variables.
   const _tplVars = new Set();
   const _tplVarRe = /\{([a-zA-Z_]\w*)\}/g;
-  for (const _node of flatNodes) {
+  const _idRe = /^[a-zA-Z_]\w*$/;
+  function _scanForTplVars(_node) {
+    if (!_node || typeof _node !== 'object') return;
+    // (1) Inline {varname} placeholders inside text-like content.
     if (_node.type === NodeType.CONTENT && typeof _node.text === 'string') {
       let _m;
       _tplVarRe.lastIndex = 0;
       while ((_m = _tplVarRe.exec(_node.text)) !== null) _tplVars.add(_m[1]);
     }
+    // (2) Nav-item count badge — `nav item 'Pending' to '/' with count pending_count`.
+    if (_node.type === NodeType.NAV_ITEM && typeof _node.count === 'string' && _idRe.test(_node.count)) {
+      _tplVars.add(_node.count);
+    }
+    // (3) Stat-card big number — `value pending_count` parses to a VARIABLE_REF.
+    if (_node.type === NodeType.STAT_CARD && _node.value && _node.value.type === NodeType.VARIABLE_REF && typeof _node.value.name === 'string') {
+      _tplVars.add(_node.value.name);
+    }
+    // Recurse into known child-bearing fields. flatNodes already unrolled
+    // PAGE / SECTION / DETAIL_PANEL / PAGE_HEADER; this catches the
+    // remaining containers that hold UI primitives in arrays:
+    //   - NAV_SECTION.body (array of NAV_ITEM)
+    //   - STAT_STRIP.cards (array of STAT_CARD)
+    if (Array.isArray(_node.body)) for (const _c of _node.body) _scanForTplVars(_c);
+    if (Array.isArray(_node.cards)) for (const _c of _node.cards) _scanForTplVars(_c);
   }
+  for (const _node of flatNodes) _scanForTplVars(_node);
   if (_tplVars.size > 0) {
     lines.push(`  // Substitute {varname} in text templates`);
     lines.push(`  const _tplCtx = Object.assign({}, _state || {});`);

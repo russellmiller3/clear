@@ -1268,6 +1268,10 @@ function _recompute() {
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof pending_count !== 'undefined') _tplCtx["pending_count"] = pending_count;
+  if (typeof approved_today_count !== 'undefined') _tplCtx["approved_today_count"] = approved_today_count;
+  if (typeof rejected_count !== 'undefined') _tplCtx["rejected_count"] = rejected_count;
+  if (typeof awaiting_count !== 'undefined') _tplCtx["awaiting_count"] = awaiting_count;
+  if (typeof total_deals_count !== 'undefined') _tplCtx["total_deals_count"] = total_deals_count;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
