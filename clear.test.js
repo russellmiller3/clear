@@ -25340,6 +25340,186 @@ when user requests data from /api/health:
   });
 });
 
+// =============================================================================
+// PC-8: `clear test` auto-prove integration (Decidable Core surfacing)
+// -----------------------------------------------------------------------------
+// After the test runner finishes, also call the prover and append a one-line
+// proof-status summary so every `clear test` session also gets math-level
+// feedback. Auto-prove is on by default; --no-prove opts out; --json includes
+// the bundle in machine-readable form.
+// =============================================================================
+describe('PC-8: clear test auto-prove integration', () => {
+  // Source with a frontend-only program (no server boot required) and a
+  // pure `test 'X':` block whose math the prover can decide concretely.
+  const PURE_PROVABLE_SOURCE = `build for javascript
+
+define function add(a, b):
+  return a + b
+
+test 'two plus three is five':
+  result = add(2, 3)
+  expect result is 5
+`;
+
+  it('runs prove by default and prints a one-line summary on the test session', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-autoprove-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, PURE_PROVABLE_SOURCE);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--quiet'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+
+      expect(result.status).toBe(0);
+      // New: a single proof-status line. Format: "Proofs: N proved, M ..."
+      // Auto-prove fires regardless of whether the JS test runner ran — the
+      // pure-function source above has no HTTP tests but the prover decides
+      // its `test 'X':` block concretely.
+      expect(result.stdout).toMatch(/Proofs:\s*\d+\s+proved/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--no-prove skips the proof summary entirely', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-autoprove-noprove-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, PURE_PROVABLE_SOURCE);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--quiet', '--no-prove'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+
+      expect(result.status).toBe(0);
+      // No proof summary line when opted out.
+      expect(result.stdout).not.toMatch(/Proofs:/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--json output includes the proof bundle alongside test results', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-autoprove-json-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, PURE_PROVABLE_SOURCE);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--json'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+
+      // The JSON envelope arrives on stdout. Extract the LAST JSON object so
+      // any preceding "Running tests..." chatter doesn't break parsing.
+      const stdout = result.stdout;
+      const jsonStart = stdout.lastIndexOf('{');
+      const jsonText  = stdout.slice(jsonStart);
+      let payload;
+      try {
+        payload = JSON.parse(jsonText);
+      } catch (err) {
+        throw new Error('Expected JSON payload in stdout. Got:\n' + stdout.slice(0, 800));
+      }
+
+      // The payload must include the proof bundle.
+      expect(payload).toHaveProperty('bundle');
+      expect(payload.bundle).toHaveProperty('status');
+      expect(payload.bundle).toHaveProperty('counts');
+      expect(payload.bundle.counts.proved).toBeGreaterThan(0);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--json + --no-prove omits the proof bundle', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-autoprove-json-noprove-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, PURE_PROVABLE_SOURCE);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--json', '--no-prove'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+
+      const stdout = result.stdout;
+      const jsonStart = stdout.lastIndexOf('{');
+      const jsonText  = stdout.slice(jsonStart);
+      let payload;
+      try {
+        payload = JSON.parse(jsonText);
+      } catch (err) {
+        throw new Error('Expected JSON payload in stdout. Got:\n' + stdout.slice(0, 800));
+      }
+
+      // No bundle when --no-prove is set, even with --json.
+      expect(payload.bundle).toBeUndefined();
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not crash the test run if the prover cannot decide anything', () => {
+    // Frontend-only app with no test blocks at all — prover returns "empty"
+    // status, runner falls back to "No tests found" path, still must not crash.
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-cli-autoprove-empty-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, `build for javascript
+
+define function double(x):
+  return x * 2
+`);
+
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'test', appPath, '--quiet'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 30000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+
+      // Exit cleanly even though there were no tests to run AND no proofs to verify.
+      expect(result.status).toBe(0);
+      // No crash signature in stderr.
+      expect(result.stderr).not.toMatch(/Cannot find module|TypeError|undefined is not/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('HTTP test assertions in test blocks', () => {
   it('parses call POST with body fields into HTTP_TEST_CALL node', () => {
     const src = `build for javascript backend
