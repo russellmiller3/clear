@@ -401,6 +401,18 @@ const SYNONYM_TABLE = Object.freeze({
   needs_login: Object.freeze(['needs login', 'need login', 'requires login', 'this endpoint requires login']),
   broadcast_to_all: Object.freeze(['broadcast to all', 'broadcast to everyone']),
 
+  // Concurrency declarations (Phase 1 — read-modify-write detector).
+  // Both modifiers appear inside an endpoint body, the same way `requires login`
+  // does. They silence the validator's READ_MODIFY_WRITE_NO_LOCK warning and
+  // declare the author's concurrency intent.
+  //   - `safe to retry` — endpoint is idempotent; concurrent requests are fine.
+  //   - `with optimistic lock` — endpoint opts INTO version-check semantics
+  //     (Phase 2 wires the runtime; Phase 1 just declares intent).
+  // Multi-word forms are listed longest-first so the tokenizer greedy-matches
+  // them ahead of single-word `with` and `retry`.
+  safe_to_retry: Object.freeze(['safe to retry', 'idempotent endpoint', 'idempotent']),
+  with_optimistic_lock: Object.freeze(['with optimistic lock', 'with version check', 'with version checking']),
+
   // Self-synonyms — words with no alternate spellings that still need a canonical
   // value so the unified dispatch table can find them. Without these, a word like
   // 'database' has no .canonical and would need a separate RAW_DISPATCH map.
@@ -479,6 +491,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.35.0';
+const SYNONYM_VERSION = '0.36.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

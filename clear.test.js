@@ -29353,4 +29353,167 @@ rule reads-the-database:
   });
 });
 
+// =============================================================================
+// concurrency Phase 1 — read-modify-write detector
+// Plan: plans/plan-concurrency-proofs-2026-05-02.md
+//
+// The validator flags every endpoint that reads a record into a variable,
+// modifies the variable, and saves it back without an explicit concurrency
+// declaration. Authors silence the warning in two ways:
+//   - `safe to retry` — declare "this is idempotent, races are fine"
+//   - `with optimistic lock` — opt into version-check semantics (Phase 2 wires
+//      the runtime; Phase 1 just declares intent)
+// Insert-only endpoints and delete-only endpoints are NOT flagged.
+// =============================================================================
+
+describe('concurrency Phase 1 — read-modify-write detector', () => {
+  it('warns when an endpoint looks up a record, mutates it via possessive assign, and saves it back', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('warns when an endpoint reads a counter, increments via possessive assign, and saves', () => {
+    const src = `target: backend
+create a Counter table:
+  count
+when user updates counter at /api/counter/:id:
+  counter = look up Counter where id is 1
+  set counter's count to counter's count + 1
+  save counter to Counter`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('warns when the mutation is a `change` field-change between literal values', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  selected_deal = look up Deal where id is incoming.id
+  change selected_deal's status from 'pending' to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('does NOT warn when the endpoint is insert-only (save as new — no preceding lookup)', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user sends deal to /api/deals:
+  save deal as new Deal`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).not.toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('does NOT warn when the endpoint is delete-only', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user deletes deal at /api/deals/:id:
+  needs login
+  delete from Deals where id is incoming.id`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).not.toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('does NOT warn when the endpoint declares `safe to retry`', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  safe to retry
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).not.toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('does NOT warn when the endpoint declares `with optimistic lock`', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  with optimistic lock
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).not.toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+
+  it('warning text names the endpoint path AND suggests both modifier fixes', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const messages = (r.warnings || []).map(w => (typeof w === 'string' ? w : w.message)).join('\n');
+    expect(messages).toContain('/api/deals/:id/approve');
+    // The author needs to know the two ways to silence the warning. The
+    // message must mention both `safe to retry` (idempotent) and
+    // `with optimistic lock` (version check) by name.
+    expect(messages).toContain('safe to retry');
+    expect(messages).toContain('with optimistic lock');
+  });
+
+  it('parser recognizes `safe to retry` as a body-line modifier and emits a SAFE_TO_RETRY node', () => {
+    const src = `target: backend
+when user updates deal at /api/deals/:id/approve:
+  safe to retry
+  send back 'ok'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const ep = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    expect(ep).toBeTruthy();
+    const found = (ep.body || []).some(n => n && n.type === NodeType.SAFE_TO_RETRY);
+    expect(found).toBe(true);
+  });
+
+  it('parser recognizes `with optimistic lock` as a body-line modifier and emits a WITH_OPTIMISTIC_LOCK node', () => {
+    const src = `target: backend
+when user updates deal at /api/deals/:id/approve:
+  with optimistic lock
+  send back 'ok'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const ep = ast.body.find(n => n.type === NodeType.ENDPOINT);
+    expect(ep).toBeTruthy();
+    const found = (ep.body || []).some(n => n && n.type === NodeType.WITH_OPTIMISTIC_LOCK);
+    expect(found).toBe(true);
+  });
+
+  it('endpoints unrelated to a mutated record do NOT trigger the warning (lookup without save)', () => {
+    // A read-only endpoint that looks up a record but never writes back — no
+    // race possible. The detector must not flag pure reads.
+    const src = `target: backend
+create a Deals table:
+  status
+when user requests data from /api/deals/:id:
+  selected_deal = look up Deal where id is incoming.id
+  send back selected_deal`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => w && (w.code || (typeof w === 'string' ? w : w.message))).join(' ');
+    expect(codes).not.toContain('READ_MODIFY_WRITE_NO_LOCK');
+  });
+});
+
 run();

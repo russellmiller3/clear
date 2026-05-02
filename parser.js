@@ -298,6 +298,14 @@ export const NodeType = Object.freeze({
   GUARD: 'guard',
   THROW: 'throw',
 
+  // Concurrency declarations (Phase 1 — read-modify-write detector).
+  // Both nodes are body-line markers inside an endpoint. They silence the
+  // validator's READ_MODIFY_WRITE_NO_LOCK warning. Phase 1 only declares
+  // intent; Phase 2 wires the runtime that makes WITH_OPTIMISTIC_LOCK
+  // actually emit version-checked UPDATEs at request time.
+  SAFE_TO_RETRY: 'safe_to_retry',
+  WITH_OPTIMISTIC_LOCK: 'with_optimistic_lock',
+
   // Auth scaffolding
   AUTH_SCAFFOLD: 'auth_scaffold',
 
@@ -1035,6 +1043,14 @@ const CANONICAL_DISPATCH = new Map([
   ['continue', (ctx) => { ctx.body.push(continueNode(ctx.line)); return ctx.i + 1; }],
   ['requires_auth', (ctx) => { ctx.body.push(requiresAuthNode(ctx.line)); return ctx.i + 1; }],
   ['needs_login', (ctx) => { ctx.body.push({ type: NodeType.REQUIRES_AUTH, line: ctx.line }); return ctx.i + 1; }],
+  // Concurrency declarations (Phase 1 — read-modify-write detector).
+  // Both handlers emit simple marker nodes inside the endpoint body. The
+  // validator walks ENDPOINT bodies looking for these markers; the compiler
+  // ignores them in Phase 1. Phase 2 wires `with optimistic lock` to emit
+  // version-checked UPDATEs. `safe to retry` declares the endpoint is
+  // idempotent and silences the warning permanently.
+  ['safe_to_retry', (ctx) => { ctx.body.push({ type: NodeType.SAFE_TO_RETRY, line: ctx.line }); return ctx.i + 1; }],
+  ['with_optimistic_lock', (ctx) => { ctx.body.push({ type: NodeType.WITH_OPTIMISTIC_LOCK, line: ctx.line }); return ctx.i + 1; }],
   ['target', (ctx) => {
     const parsed = parseTarget(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });

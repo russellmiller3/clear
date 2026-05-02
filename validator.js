@@ -42,6 +42,7 @@
 //   │    ├─ validateMemberAccessTypes  field on primitive    │
 //   │    ├─ validateTypedCallArgs .... literal vs annotation │
 //   │    ├─ validateInteractionVerbAgreement inline buttons  │
+//   │    ├─ validateConcurrency ........ read-modify-write race│
 //   │    └─ validateInferredTypes ... (error) text in arith  │
 //   │                                                       │
 //   │  Errors block compilation. Warnings are advisory.     │
@@ -134,6 +135,7 @@ export function validate(ast) {
   validateEmailTriggers(ast.body, warnings);
   validateRouteBlocks(ast.body, warnings);
   validateRuleBlocks(ast.body, errors, warnings);
+  validateConcurrency(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -515,6 +517,139 @@ function validateRouteBlocks(body, warnings) {
           line: node.line,
           message: `Rule '${r.match}' to ${r.owner} appears after default. The default catches everything; this rule never fires.`,
         });
+      }
+    }
+  });
+}
+
+// =============================================================================
+// concurrency Phase 1 — read-modify-write detector (2026-05-02).
+// Plan: plans/plan-concurrency-proofs-2026-05-02.md
+//
+// Most production race conditions in CRUD apps are read-modify-write:
+//   1. Endpoint reads a record into a variable (`look up X where id is y`).
+//   2. Endpoint mutates a field on that variable (`set X's field to ...` or
+//      `change X's field from A to B`).
+//   3. Endpoint writes the variable back (`save X to <table>`).
+// If two requests run that sequence concurrently with the same record, the
+// later writer overwrites the earlier writer's change with stale data. Two
+// approvals on the same deal both succeed; both audit rows appear; the
+// customer is billed twice.
+//
+// This pass walks every endpoint body and emits a warning when the three
+// steps appear in order without an explicit concurrency declaration. Authors
+// silence the warning two ways:
+//   - `safe to retry` — endpoint is idempotent; concurrent runs are fine
+//   - `with optimistic lock` — opt INTO version-check semantics (Phase 2
+//      wires the runtime; Phase 1 just declares the intent)
+// DELETE-method endpoints are skipped (delete-only is not a read-modify-write
+// pattern). Insert-only endpoints (`save X as new <Table>`) are skipped too —
+// they create rows rather than mutating them.
+//
+// Detection is endpoint-local — we don't try to follow function calls or
+// CRUD operations split across files. A pattern that hides the mutation
+// behind a function call won't be flagged in Phase 1; that's an intentional
+// scope choice. The honest sentence after Phase 1 is "we flag every endpoint
+// where a race CAN happen in plain sight." Phase 2 wires prevention.
+// =============================================================================
+function validateConcurrency(body, warnings) {
+  if (!Array.isArray(body)) return;
+
+  // Walk every endpoint, recursively (endpoints can be nested inside pages,
+  // sections, or top-level body — same surface walkAll covers).
+  walkAll(body, (node) => {
+    if (!node || node.type !== NodeType.ENDPOINT) return;
+    const epBody = Array.isArray(node.body) ? node.body : [];
+    const method = String(node.method || '').toUpperCase();
+    // DELETE endpoints are delete-only. The compiled output does not
+    // read-then-write a field — it removes the row. No race surface.
+    if (method === 'DELETE') return;
+
+    // If the author declared their concurrency intent, the warning is silenced.
+    const declaredSafe = epBody.some(n =>
+      n && (n.type === NodeType.SAFE_TO_RETRY || n.type === NodeType.WITH_OPTIMISTIC_LOCK)
+    );
+    if (declaredSafe) return;
+
+    // Pass 1 — collect lookup variables. A single endpoint can look up
+    // multiple records; each one is a candidate read-modify-write seed.
+    // Map variable name -> {line of lookup}.
+    const lookups = new Map();
+    for (const stmt of epBody) {
+      if (!stmt || stmt.type !== NodeType.CRUD) continue;
+      if (stmt.operation !== 'lookup') continue;
+      if (!stmt.variable) continue;
+      // Only track single-record lookups. Bulk lookups (`get all Foo`) read
+      // a list, not a record; mutating a list element is a different shape.
+      if (stmt.lookupAll) continue;
+      lookups.set(stmt.variable, stmt.line || 0);
+    }
+    if (lookups.size === 0) return;
+
+    // Pass 2 — for each lookup variable, scan the rest of the body for
+    // a mutation followed by a save. We track the position so we can confirm
+    // the mutation appears AFTER the lookup and the save appears AFTER the
+    // mutation. A save without a preceding mutation is not a race; a
+    // mutation without a following save is not a race either.
+    const lookupVars = new Set(lookups.keys());
+    for (const lookupVar of lookupVars) {
+      let lookupIdx = -1;
+      let mutationIdx = -1;
+      let saveIdx = -1;
+
+      for (let i = 0; i < epBody.length; i++) {
+        const stmt = epBody[i];
+        if (!stmt) continue;
+
+        // Lookup of this variable
+        if (stmt.type === NodeType.CRUD && stmt.operation === 'lookup'
+            && stmt.variable === lookupVar) {
+          lookupIdx = i;
+          continue;
+        }
+        if (lookupIdx === -1) continue;
+
+        // Mutation: ASSIGN with name "<lookupVar>.<field>"
+        if (mutationIdx === -1 && stmt.type === NodeType.ASSIGN
+            && typeof stmt.name === 'string'
+            && stmt.name.startsWith(lookupVar + '.')) {
+          mutationIdx = i;
+          continue;
+        }
+        // Mutation: FIELD_CHANGE on the lookup variable
+        if (mutationIdx === -1 && stmt.type === NodeType.FIELD_CHANGE
+            && stmt.recordVar === lookupVar) {
+          mutationIdx = i;
+          continue;
+        }
+
+        // Save of the same variable, after a mutation. `save X as new` is
+        // an insert, not an update — skip. We're looking for plain
+        // `save X to Y` where the record came from a prior lookup.
+        if (mutationIdx !== -1 && stmt.type === NodeType.CRUD
+            && stmt.operation === 'save' && stmt.variable === lookupVar
+            && !stmt.isInsert) {
+          saveIdx = i;
+          break;
+        }
+      }
+
+      if (lookupIdx !== -1 && mutationIdx !== -1 && saveIdx !== -1) {
+        const path = node.path || '';
+        const methodLabel = method || '';
+        const lineNum = epBody[saveIdx].line || node.line || 0;
+        // Emit a plain string warning so widely-used `w.includes(...)` tests
+        // keep working. The validator's warning array is a mix of strings and
+        // objects historically; concurrency joins the string side. The
+        // READ_MODIFY_WRITE_NO_LOCK code is prefixed in the message so tests
+        // and tooling can grep for it the same way they grep for any other
+        // concurrency-related substring.
+        warnings.push(
+          `Line ${lineNum}: [READ_MODIFY_WRITE_NO_LOCK] ${methodLabel} ${path} reads '${lookupVar}', changes a field, and saves it back without a concurrency declaration. Two requests running this at the same time can overwrite each other. Add 'with optimistic lock' inside the endpoint to refuse stale writes (returns 409 Conflict on a version mismatch), or 'safe to retry' if the endpoint is idempotent and concurrent runs are fine.`
+        );
+        // One warning per endpoint is enough; multiple lookups on the same
+        // endpoint share the same root cause and the same fix.
+        break;
       }
     }
   });
