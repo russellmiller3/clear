@@ -8073,6 +8073,20 @@ ${pad}}`;
       return jsCode;
     }
 
+    // Decidable Core Path B Phase 1 — `live:` block (explicit effect fence).
+    // Body emits inline with a comment marker. The fence is the signal:
+    // the compiler tracks the boundary so the validator can require effects
+    // to live inside it, and the comment keeps the boundary visible to a
+    // human reading the compiled output. Phase B-2 (validator quarantine)
+    // does the actual rejection of effects outside the fence.
+    case NodeType.LIVE_BLOCK: {
+      const bodyCode = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# live: block — explicit effect fence\n${bodyCode}`;
+      }
+      return `${pad}// live: block — explicit effect fence\n${bodyCode}`;
+    }
+
     case NodeType.RETRY: {
       const n = node.count || 3;
       const retryBody = compileBody(node.body, ctx);

@@ -107,6 +107,7 @@
 //   RESPOND ........................... parseRespond()
 //   MATH-STYLE FUNCTION DEFS .......... parseMathStyleFunction()
 //   TRY / HANDLE ...................... parseTryHandle()
+//   LIVE BLOCK ........................ parseLiveBlock() — Decidable Core Path B Phase 1
 //   INCREASE / DECREASE ............... parseIncDec()
 //   OBJECT DEFINITION ................. tryParseObjectDef()
 //   LINE-LEVEL PARSERS ................ parseTarget, parseAssignment, parseIfThen,
@@ -154,10 +155,11 @@ export const NodeType = Object.freeze({
   // Error handling (Phase 3)
   TRY_HANDLE: 'try_handle',
 
-  // Decidable Core — explicit effect fence (Path B Phase 1, 2026-04-25)
+  // Decidable Core — explicit effect fence (Path B Phase 1)
   // `live:` block marks code that talks to the world (ask claude, call API,
   // subscribe, timers). Body emits as-is for now; the fence makes the
   // boundary visible to the compiler and the reader. See PHILOSOPHY.md Rule 18.
+  LIVE_BLOCK: 'live_block',
 
   // GP Phase 1: Map iteration
   MAP_KEYS: 'map_keys',
@@ -1701,6 +1703,18 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['try', (ctx) => {
     const parsed = parseTryHandle(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['live', (ctx) => {
+    // Decidable Core Path B Phase 1 — explicit effect fence.
+    // `live:` opens a block whose body holds calls that talk to the world
+    // (ask claude, call API, subscribe to, every N seconds, send email).
+    // Body parses inline; the fence is a marker for the validator and the
+    // human reader. Variables defined inside leak out to the enclosing
+    // scope (fence, not scope) — same convention as TRY_HANDLE.
+    if (ctx.tokens.length !== 1) return undefined; // require bare `live:` (no args)
+    const parsed = parseLiveBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -9457,6 +9471,46 @@ function parseTryHandle(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: tryHandleNode(tryBody, handlers, line, finallyBody), endIdx: i };
+}
+
+// =============================================================================
+// LIVE BLOCK — Decidable Core Path B Phase 1 (explicit effect fence)
+// =============================================================================
+//
+// CANONICAL: live: + indented body
+//
+// Example:
+//   live:
+//     reply = ask claude 'be helpful' with question
+//     send back reply
+//
+// Body parses inline at `blockIndent + 1`. Empty body produces a parse
+// error with a fix-it hint that names what to put inside. The fence is
+// the signal — the compiler emits the body as-is with a comment marker
+// so the boundary stays visible in the JS/Python output too.
+//
+// Variables defined inside leak out to the enclosing scope (fence, not
+// scope) — same convention TRY_HANDLE uses for its body. This keeps
+// `live: result = ask claude '...'` followed by `send back result`
+// readable without a separate hoist line.
+//
+function parseLiveBlock(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+
+  // Parse the indented body
+  const bodyResult = parseBlock(lines, startIdx + 1, blockIndent, errors);
+  const body = bodyResult.body;
+  const endIdx = bodyResult.endIdx;
+
+  if (body.length === 0) {
+    errors.push({
+      line,
+      message: "The live: block is empty — it needs the calls that talk to the world (ask claude, call API, subscribe to, every N seconds, send email). Indent some code below it. Example:\n  live:\n    reply = ask claude 'be helpful' with question",
+    });
+  }
+
+  return { node: { type: NodeType.LIVE_BLOCK, body, line }, endIdx };
 }
 
 // =============================================================================

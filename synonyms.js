@@ -148,6 +148,16 @@ const SYNONYM_TABLE = Object.freeze({
   finally: Object.freeze(['finally', 'always do', 'after everything']),
 
   // ---------------------------------------------------------------------------
+  // Decidable Core — explicit effect fence (Path B Phase 1)
+  // CANONICAL: live: + indented body
+  // The `live:` block names code that talks to the world (ask claude,
+  // call API, subscribe to, every N seconds, send email). Single-word,
+  // no synonyms — the fence is one keyword on purpose so readers and
+  // Meph see the same shape every time.
+  // ---------------------------------------------------------------------------
+  live: Object.freeze(['live']),
+
+  // ---------------------------------------------------------------------------
   // Modules (Phase 3)
   // CANONICAL: use "helpers"
   // ---------------------------------------------------------------------------
@@ -509,6 +519,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.41.0';
+const SYNONYM_VERSION = '0.42.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
