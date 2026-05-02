@@ -1600,6 +1600,32 @@ define role 'viewer':
 requires role 'editor'
 ```
 
+## Concurrency Declarations
+
+When an endpoint reads a record, mutates a field, and saves the record back, two simultaneous requests can overwrite each other. The validator flags every endpoint where that pattern shows up in plain sight and refuses to ignore the race. Authors choose how to handle it:
+
+- **`safe to retry`** — declares the endpoint is idempotent, so concurrent runs are fine. Synonyms: `idempotent`, `idempotent endpoint`.
+- **`with optimistic lock`** — opts INTO version-checked saves. Phase 1 declares the intent; Phase 2 wires the runtime so the save returns 409 Conflict on a stale write. Synonyms: `with version check`, `with version checking`.
+
+Both modifiers go inside the endpoint body, like `requires login`.
+
+```clear
+when user updates deal at /api/deals/:id/approve:
+  requires login
+  with optimistic lock                       # opts into version-checked save
+  selected_deal = look up Deal where id is incoming.id
+  change selected_deal's status from 'pending' to 'approved'
+  save selected_deal to Deals
+  send back 'approved'
+
+when user sends event to /api/billing/webhook:
+  safe to retry                              # idempotent — Stripe replays are fine
+  process_webhook(event)
+  send back 'ok'
+```
+
+Endpoints without a read-modify-write pattern (insert-only, delete-only, pure reads) are not flagged. The warning code is `READ_MODIFY_WRITE_NO_LOCK`; it surfaces in `clear lint` and in the `clear prove` concurrency report.
+
 ## File Uploads
 
 ```clear

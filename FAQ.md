@@ -249,6 +249,15 @@ The CRO, auditor, or compliance reviewer reads "discount-cap-thirty PROVED for e
 
 `rule:` blocks live at the top level (compile error if nested). Raw `guard` lines live inside endpoints, agents, and other contexts where they catch one-off conditions.
 
+### How does Clear flag concurrent-write races? (Phase 1 detector, 2026-05-02)
+
+The validator pass `validateConcurrency` (`validator.js`) walks every endpoint body. If it sees a single-record `look up` followed by a possessive-assign or `change <var>'s field` mutation followed by a `save <var> to <table>` (not an insert), it emits a warning whose message starts with `[READ_MODIFY_WRITE_NO_LOCK]`. The author silences the warning two ways:
+
+- `safe to retry` (synonyms: `idempotent`, `idempotent endpoint`) — declares the endpoint is idempotent. Concurrent runs are fine.
+- `with optimistic lock` (synonyms: `with version check`, `with version checking`) — opts INTO version-checked saves. Phase 1 just declares intent; Phase 2 wires the runtime so the save returns 409 Conflict on a stale write.
+
+Both modifiers are body-line markers (parser dispatch, like `requires login`). The new node types are `SAFE_TO_RETRY` and `WITH_OPTIMISTIC_LOCK` in `parser.js`. Insert-only endpoints (`save X as new <Table>`) and DELETE-method endpoints are correctly skipped — no read-modify-write surface there. The honest sentence after Phase 1 is "we flag every endpoint where a race can happen in plain sight." The proof sentence comes after Phase 2.
+
 ### Where does the seed-from-memory cutover script live?
 
 `playground/seed-from-memory.js` exports `seedFromMemory({ source, target, onProgress })`. Walks every tenant via `source.listTenants()`, every app via `source.listAppsByTenant(slug)`, every audit entry via `source.getAuditLog`, and every stripe event via `source.listStripeEvents()`, writing each through the target store's public write API (`upsert`, `markAppDeployed`, `recordVersion`, `appendAuditEntry`, `markAuditEntry`, `recordStripeEvent`). Idempotent — `target.get(slug)` and `target.getAppRecord` skip already-present rows.

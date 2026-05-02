@@ -6,6 +6,29 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - Concurrency Phase 1 — read-modify-write race detector + endpoint modifiers
+
+The first half of the regulated-tier "we prove no race conditions" pitch surface. Until today, the prover walked one thread of execution at a time. It could prove "for any input X, this rule produces output Y." It could not prove "for any pair of concurrent requests A and B, the system reaches a sane final state." Two CROs approving the same deal at once both succeed; both audit rows appear; the customer is billed twice. That's the failure class auditors care about most.
+
+Phase 1 ships the cheapest, highest-leverage piece of the fix: a static detector that flags every endpoint where a read-modify-write race can happen in plain sight. Phase 2 (next branch) wires the runtime that prevents the race.
+
+**What shipped (Phase 1 of `plans/plan-concurrency-proofs-2026-05-02.md`):**
+- **Validator pass `validateConcurrency`** (`validator.js`) — walks every endpoint body. If it sees a single-record `look up X where ...` followed by an ASSIGN with a possessive name (`set X's field to ...`) or a `change X's field from A to B`, followed by a `save X to <table>` (not insert, not delete), it emits a warning prefixed `[READ_MODIFY_WRITE_NO_LOCK]`. Insert-only endpoints (`save X as new <Table>`), DELETE-method endpoints, and pure reads are correctly skipped.
+- **Two new endpoint body-line modifiers** silence the warning:
+  - `safe to retry` (synonyms: `idempotent`, `idempotent endpoint`) — declares the endpoint is idempotent; concurrent runs are fine.
+  - `with optimistic lock` (synonyms: `with version check`, `with version checking`) — opts INTO version-checked saves. Phase 1 just declares intent; Phase 2 wires the runtime so the save returns 409 Conflict on a stale write.
+- **Two new node types** `SAFE_TO_RETRY` and `WITH_OPTIMISTIC_LOCK` carry the marker into the validator and into Phase 2's compiler hook.
+- **Synonym table** bumped 0.35.0 → 0.36.0; `safe_to_retry` and `with_optimistic_lock` registered as multi-word synonyms (longest-match greedy ahead of single-word `with` and `retry`).
+- **11 new compiler tests** under `describe('concurrency Phase 1 — read-modify-write detector')` covering possessive-assign mutation, field-change mutation, counter-style increment, insert-only / delete-only / pure-read negative cases, both modifier silencing paths, parser node emission, and warning-text format.
+
+**The honest sentence after Phase 1:** "We flag every endpoint where a race can happen in plain sight." The proof sentence — "no two concurrent approvals can both succeed on the same deal" — comes after Phase 2 wires the runtime.
+
+**Why for launch:** Marcus is selling deal-desk to CROs at mid-market companies. CROs read auditor reports. Auditors care about race conditions because that's where insurance claims happen. Every other low-code platform punts on this. Clear's compiler now refuses to ship until the author either declares the race is fine or opts into automatic version checks.
+
+**Tests:** `node clear.test.js` passes 2,864 (was 2,853 baseline → +11 new). 8 core templates + deal-desk demo compile clean with zero false positives. Cross-target smoke (8 templates × 4 targets = 32 emissions) clean.
+
+---
+
 ## 2026-05-02 - `clear prove` default output is now CRO-readable
 
 The prover used to emit math-journal output ("PROVED for any: amount", "UNVERIFIABLE — symbolic engine: stripe call (effect)") that read as a developer artifact. After today's change, `clear prove <file.clear>` defaults to plain-English sentences a CRO or compliance buyer can read on their own.
