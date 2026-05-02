@@ -69,6 +69,10 @@ function parseFlags(args) {
     autoFix: args.includes('--auto-fix'),
     stdout: args.includes('--stdout'),
     trace: args.includes('--trace'),
+    // PC-8: `clear test` auto-runs the prover and appends a one-line proof
+    // summary. Set --no-prove to opt out (e.g. for very fast iteration loops
+    // where the math layer isn't relevant).
+    noProve: args.includes('--no-prove'),
   };
   const outIdx = args.indexOf('--out');
   flags.outDir = outIdx !== -1 ? resolve(args[outIdx + 1]) : null;
@@ -247,6 +251,79 @@ function testRunnerExitFromError(e) {
   if (timedOut) return { code: 4, timedOut: true };
   if (Number.isInteger(e?.status)) return { code: e.status, timedOut: false };
   return { code: 2, timedOut: false };
+}
+
+// =============================================================================
+// PC-8: auto-prove integration for `clear test`
+// -----------------------------------------------------------------------------
+// Every `clear test` session also gets math-level feedback unless --no-prove.
+// On TTY output, prints one summary line to stdout. On --json, includes the
+// bundle in the JSON envelope. On prover error, returns null — callers must
+// NOT crash the test run if the prover itself throws.
+// =============================================================================
+async function tryRunProver(source) {
+  try {
+    const proverModule = await import(
+      pathToFileURL(resolve(__dirname, '..', 'lib', 'prover', 'index.js')).href
+    );
+    return proverModule.prove(source);
+  } catch (err) {
+    // Prover failure must never break the test run. Return null so callers
+    // skip the proof line gracefully.
+    return null;
+  }
+}
+
+function summarizeProofBundle(bundle) {
+  // Produce the single-line summary printed to stdout under non-JSON output.
+  // Format: "Proofs: <N> proved, <N> failed, <N> unknown, <N> unverifiable
+  //          (run `clear prove <file>` for details)"
+  // Zero-count categories are elided to keep the line short, but the proved
+  // count is always shown (even 0) so the line is recognizable.
+  if (!bundle || !bundle.counts) return null;
+  const c = bundle.counts;
+  if (c.total === 0) return 'Proofs: no test blocks to prove';
+  const parts = [`${c.proved} proved`];
+  if (c.failed > 0)       parts.push(`${c.failed} failed`);
+  if (c.partial > 0)      parts.push(`${c.partial} unknown`);
+  if (c.unverifiable > 0) parts.push(`${c.unverifiable} unverifiable`);
+  if (c.errored > 0)      parts.push(`${c.errored} errored`);
+  return `Proofs: ${parts.join(', ')} (run \`clear prove <file>\` for details)`;
+}
+
+// Shared exit path for testCommand. Runs the prover (unless --no-prove),
+// prints the summary line under TTY output, builds a single JSON envelope
+// under --json, then exits with the test runner's code.
+async function finalizeWithProof(source, flags, { ok, exitCode, fallbackPayload }) {
+  let bundle = null;
+  if (!flags.noProve) {
+    bundle = await tryRunProver(source);
+  }
+
+  if (flags.json) {
+    // Compose one JSON envelope. The raw runner output already streamed its
+    // own structured logs via stderr/stdout; for machine consumers the proof
+    // bundle is the new payload they need.
+    const payload = {
+      ok,
+      exitCode,
+      ...(fallbackPayload || {}),
+    };
+    if (bundle) payload.bundle = bundle;
+    console.log(JSON.stringify(payload, null, 2));
+  } else {
+    // TTY output. Under --quiet we still emit the proof line because the
+    // user explicitly asked for it by NOT passing --no-prove.
+    if (!flags.quiet && fallbackPayload && fallbackPayload.message) {
+      console.log(fallbackPayload.message);
+    }
+    if (bundle) {
+      const line = summarizeProofBundle(bundle);
+      if (line) console.log(line);
+    }
+  }
+
+  process.exit(exitCode);
 }
 
 function addClearTestRunnerCleanup(testCode) {
@@ -842,27 +919,42 @@ async function testCommand(args) {
           process.stderr.write('\n  Warning: test server cleanup needed a forced stop.\n');
         }
       }
-      if (testExitCode) process.exit(testExitCode);
+      if (testExitCode) {
+        await finalizeWithProof(loaded.source, flags, { ok: false, exitCode: testExitCode });
+        return; // unreachable — finalizeWithProof always exits
+      }
     } else {
       // Frontend-only app — run tests without server (no live API calls,
       // so the default 30s timeout is usually plenty; still honor the override).
+      // Capture stdout instead of inheriting so the prover line lands AFTER
+      // the test runner output and so --json can build a single envelope.
       const testTimeoutMs = Math.max(10000, Number(process.env.CLEAR_TEST_TIMEOUT_MS) || 30000);
       try {
-        execSync(`node test.js`, { cwd: buildDir, stdio: 'inherit', timeout: testTimeoutMs });
+        const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: testTimeoutMs });
+        if (!flags.json) process.stdout.write(stdout);
       } catch (e) {
+        if (e.stdout && !flags.json) process.stdout.write(e.stdout);
         const testError = testRunnerExitFromError(e);
         if (testError.timedOut) {
           process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit (set CLEAR_TEST_TIMEOUT_MS to override).\n`);
         }
-        process.exit(testError.code);
+        await finalizeWithProof(loaded.source, flags, { ok: false, exitCode: testError.code });
+        return;
       }
     }
+    // Tests passed — append proof status and exit 0.
+    await finalizeWithProof(loaded.source, flags, { ok: true, exitCode: 0 });
     return;
   }
 
-  // Fallback: no auto-generated tests and no user tests
-  output({ ok: true, passed: 0, failed: 0, message: 'No tests found. Add test blocks to your Clear source.' }, flags);
-  process.exit(0);
+  // Fallback: no auto-generated tests and no user tests. Still attempt the
+  // proof pass — pure programs may have `test 'X':` blocks the prover decides
+  // even when there's no JS test runner output.
+  await finalizeWithProof(loaded.source, flags, {
+    ok: true,
+    exitCode: 0,
+    fallbackPayload: { ok: true, passed: 0, failed: 0, message: 'No tests found. Add test blocks to your Clear source.' },
+  });
 }
 
 // =============================================================================

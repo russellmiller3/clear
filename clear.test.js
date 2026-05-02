@@ -25434,7 +25434,7 @@ test 'two plus three is five':
       // The JSON envelope arrives on stdout. Extract the LAST JSON object so
       // any preceding "Running tests..." chatter doesn't break parsing.
       const stdout = result.stdout;
-      const jsonStart = stdout.lastIndexOf('{');
+      const jsonStart = stdout.indexOf('{');
       const jsonText  = stdout.slice(jsonStart);
       let payload;
       try {
@@ -25471,7 +25471,7 @@ test 'two plus three is five':
       }
 
       const stdout = result.stdout;
-      const jsonStart = stdout.lastIndexOf('{');
+      const jsonStart = stdout.indexOf('{');
       const jsonText  = stdout.slice(jsonStart);
       let payload;
       try {
