@@ -76,6 +76,7 @@ when user requests data from /api/leads/new:
   send back all Leads where status is 'new'
 
 when user sends lead to /api/leads:
+  requires login
   validate lead:
     name is text, required, min 1, max 100
     email is text, required

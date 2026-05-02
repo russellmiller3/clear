@@ -183,36 +183,36 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a deal with rep_name : 'mike.l' , customer : 'Beta Co' , list_price : 50000 , discount_percent : 10", async () => {
-      // clear:450
+      // clear:470
       _response = await fetch(_baseUrl + "/api/deals", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "rep_name": "mike.l", "customer": "Beta Co", "list_price": 50000, "discount_percent": 10 })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:451
+      // clear:471
       _expectSuccess(_response);
   });
 
   await test("can user submit a deal with rep_name : 'sarah.j' , customer : 'Acme Corp' , list_price : 240000 , discount_percent : 25", async () => {
-      // clear:454
+      // clear:474
       _response = await fetch(_baseUrl + "/api/deals", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "rep_name": "sarah.j", "customer": "Acme Corp", "list_price": 240000, "discount_percent": 25 })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:455
+      // clear:475
       _expectSuccess(_response);
   });
 
   await test("updating a deal should require login", async () => {
-      // clear:458
+      // clear:478
       // Could not find PUT endpoint for deal
   });
 
   await test("creating a deal should require login", async () => {
-      // clear:461
+      // clear:481
       _response = await fetch(_baseUrl + "/api/deals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -222,7 +222,7 @@ async function run() {
   });
 
   await test("can user approve a deal", async () => {
-      // clear:464
+      // clear:484
       // Could not find approve endpoint for deal
   });
 

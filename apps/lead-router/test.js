@@ -57,7 +57,7 @@ async function run() {
     payload["name"] = _uniqueText("name");
     payload["email"] = _uniqueText("email");
     const r = await fetch(BASE + "/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(r.status === 201, "Expected 201, got " + r.status);
@@ -66,13 +66,13 @@ async function run() {
   });
 
   await test("Creating a lead without any data is rejected", async () => {
-    const r = await fetch(BASE + "/api/leads", { method: "POST" });
+    const r = await fetch(BASE + "/api/leads", { method: "POST", headers: { "Authorization": "Bearer " + TEST_TOKEN } });
     assert(r.status === 400, "Expected 400, got " + r.status);
   });
 
   await test("Creating a lead with a blank name is rejected", async () => {
     const r = await fetch(BASE + "/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify({ name: "" })
     });
     assert(r.status === 400, "Expected 400, got " + r.status);
@@ -80,7 +80,7 @@ async function run() {
 
   await test("Creating a lead with a name that's too long is rejected", async () => {
     const r = await fetch(BASE + "/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify({ name: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" })
     });
     assert(r.status === 400, "Expected 400, got " + r.status);
@@ -91,7 +91,7 @@ async function run() {
     payload["name"] = _uniqueText("name");
     payload["email"] = _uniqueText("email");
     const r = await fetch(BASE + "/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(r.status === 201, "Expected 201, got " + r.status);
@@ -121,7 +121,7 @@ async function run() {
     payload["email"] = _uniqueText("flow_email");
     // Create
     const createResp = await fetch(BASE + "/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(createResp.status === 201, "Create failed: " + createResp.status);
@@ -146,21 +146,21 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a lead with name is 'Test' , email is 'test@x.com' , size is 'SMB'", async () => {
-      // clear:200
+      // clear:216
       _response = await fetch(_baseUrl + "/api/leads", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "name": "Test", "email": "test@x.com", "size": "SMB" })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:201
+      // clear:217
       _expectSuccess(_response);
-      // clear:202
+      // clear:218
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("updating a lead should require login", async () => {
-      // clear:205
+      // clear:221
       // Could not find PUT endpoint for lead
   });
 

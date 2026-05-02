@@ -61,6 +61,7 @@ when user requests data from /api/requests/my:
   send back all Requests
 
 when user sends request to /api/requests:
+  requires login
   validate request:
     title is text, required, min 1, max 200
     submitter is text, required

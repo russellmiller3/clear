@@ -68,6 +68,7 @@ when user requests data from /api/tickets/open:
   send back all Tickets where status is 'open'
 
 when user sends ticket to /api/tickets:
+  requires login
   validate ticket:
     subject is text, required, min 1, max 300
   new_ticket = save ticket as new Ticket

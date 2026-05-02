@@ -62,7 +62,7 @@ async function run() {
     payload["title"] = _uniqueText("title");
     payload["submitter"] = _uniqueText("submitter");
     const r = await fetch(BASE + "/api/requests", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(r.status === 201, "Expected 201, got " + r.status);
@@ -71,13 +71,13 @@ async function run() {
   });
 
   await test("Creating a request without any data is rejected", async () => {
-    const r = await fetch(BASE + "/api/requests", { method: "POST" });
+    const r = await fetch(BASE + "/api/requests", { method: "POST", headers: { "Authorization": "Bearer " + TEST_TOKEN } });
     assert(r.status === 400, "Expected 400, got " + r.status);
   });
 
   await test("Creating a request with a blank title is rejected", async () => {
     const r = await fetch(BASE + "/api/requests", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify({ title: "" })
     });
     assert(r.status === 400, "Expected 400, got " + r.status);
@@ -85,7 +85,7 @@ async function run() {
 
   await test("Creating a request with a title that's too long is rejected", async () => {
     const r = await fetch(BASE + "/api/requests", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify({ title: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" })
     });
     assert(r.status === 400, "Expected 400, got " + r.status);
@@ -96,7 +96,7 @@ async function run() {
     payload["title"] = _uniqueText("title");
     payload["submitter"] = _uniqueText("submitter");
     const r = await fetch(BASE + "/api/requests", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(r.status === 201, "Expected 201, got " + r.status);
@@ -126,7 +126,7 @@ async function run() {
     payload["submitter"] = _uniqueText("flow_submitter");
     // Create
     const createResp = await fetch(BASE + "/api/requests", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     assert(createResp.status === 201, "Create failed: " + createResp.status);
@@ -151,21 +151,21 @@ async function run() {
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a request with title is 'Test' , submitter is 'tester'", async () => {
-      // clear:221
+      // clear:222
       _response = await fetch(_baseUrl + "/api/requests", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "title": "Test", "submitter": "tester" })
       });
       _responseBody = await _response.json().catch(() => null);
       assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);
-      // clear:222
-      _expectSuccess(_response);
       // clear:223
+      _expectSuccess(_response);
+      // clear:224
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("updating a request should require login", async () => {
-      // clear:226
+      // clear:227
       // Could not find PUT endpoint for request
   });
 

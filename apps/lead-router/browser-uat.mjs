@@ -16,7 +16,7 @@ const CONTRACT = {
       "id": "Lead_Router",
       "title": "Lead Router",
       "route": "/",
-      "line": 124,
+      "line": 140,
       "expectedText": [
         "Lead Router",
         "Sales ops / intake",
@@ -42,12 +42,12 @@ const CONTRACT = {
   ],
   "controls": [
     {
-      "id": "nav_item_137_New_leads",
+      "id": "nav_item_153_New_leads",
       "kind": "nav-item",
       "label": "New leads",
-      "line": 137,
+      "line": 153,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_137_New_leads\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_153_New_leads\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -60,12 +60,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_139_Routing_rules",
+      "id": "nav_item_155_Routing_rules",
       "kind": "nav-item",
       "label": "Routing rules",
-      "line": 139,
+      "line": 155,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_139_Routing_rules\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_155_Routing_rules\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -78,12 +78,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_140_Owners",
+      "id": "nav_item_156_Owners",
       "kind": "nav-item",
       "label": "Owners",
-      "line": 140,
+      "line": 156,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_140_Owners\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_156_Owners\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -96,12 +96,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "button_151_Refresh",
+      "id": "button_167_Refresh",
       "kind": "button",
       "label": "Refresh",
-      "line": 151,
+      "line": 167,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_151_Refresh\"]",
+      "selector": "[data-clear-uat-id=\"button_167_Refresh\"]",
       "action": {
         "type": "api-call",
         "method": "GET",
@@ -110,10 +110,10 @@ const CONTRACT = {
       "dataEffect": "calls GET /api/leads/new"
     },
     {
-      "id": "input_control_173_Name",
+      "id": "input_control_189_Name",
       "kind": "input-control",
       "label": "Name",
-      "line": 173,
+      "line": 189,
       "sourcePageRoute": "/",
       "selector": "#input_name",
       "action": {
@@ -127,10 +127,10 @@ const CONTRACT = {
       "dataEffect": "updates name"
     },
     {
-      "id": "input_control_174_Email",
+      "id": "input_control_190_Email",
       "kind": "input-control",
       "label": "Email",
-      "line": 174,
+      "line": 190,
       "sourcePageRoute": "/",
       "selector": "#input_email",
       "action": {
@@ -144,10 +144,10 @@ const CONTRACT = {
       "dataEffect": "updates email"
     },
     {
-      "id": "input_control_175_Company",
+      "id": "input_control_191_Company",
       "kind": "input-control",
       "label": "Company",
-      "line": 175,
+      "line": 191,
       "sourcePageRoute": "/",
       "selector": "#input_company",
       "action": {
@@ -161,10 +161,10 @@ const CONTRACT = {
       "dataEffect": "updates company"
     },
     {
-      "id": "input_control_176_Size",
+      "id": "input_control_192_Size",
       "kind": "input-control",
       "label": "Size",
-      "line": 176,
+      "line": 192,
       "sourcePageRoute": "/",
       "selector": "#input_size",
       "action": {
@@ -182,10 +182,10 @@ const CONTRACT = {
       "dataEffect": "updates size"
     },
     {
-      "id": "input_control_177_Source",
+      "id": "input_control_193_Source",
       "kind": "input-control",
       "label": "Source",
-      "line": 177,
+      "line": 193,
       "sourcePageRoute": "/",
       "selector": "#input_source",
       "action": {
@@ -199,12 +199,12 @@ const CONTRACT = {
       "dataEffect": "updates source"
     },
     {
-      "id": "button_178_Add_Lead",
+      "id": "button_194_Add_Lead",
       "kind": "button",
       "label": "Add Lead",
-      "line": 178,
+      "line": 194,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_178_Add_Lead\"]",
+      "selector": "[data-clear-uat-id=\"button_194_Add_Lead\"]",
       "action": {
         "type": "api-call",
         "method": "POST",
@@ -213,10 +213,10 @@ const CONTRACT = {
       "dataEffect": "calls POST /api/leads"
     },
     {
-      "id": "table_interaction_188_New_Leads",
+      "id": "table_interaction_204_New_Leads",
       "kind": "table-interaction",
       "label": "New Leads",
-      "line": 188,
+      "line": 204,
       "sourcePageRoute": "/",
       "selector": "#output_New_Leads_table",
       "action": {
@@ -227,10 +227,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts New Leads"
     },
     {
-      "id": "table_drilldown_188_New_Leads",
+      "id": "table_drilldown_204_New_Leads",
       "kind": "table-drilldown",
       "label": "New Leads",
-      "line": 188,
+      "line": 204,
       "sourcePageRoute": "/",
       "selector": "#output_New_Leads_table button[data-row-select=\"true\"]",
       "action": {
@@ -247,35 +247,35 @@ const CONTRACT = {
     {
       "method": "GET",
       "path": "/api/leads",
-      "line": 57,
+      "line": 72,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/leads/new",
-      "line": 60,
+      "line": 75,
       "usedByControlIds": [
-        "button_151_Refresh"
+        "button_167_Refresh"
       ]
     },
     {
       "method": "POST",
       "path": "/api/leads",
-      "line": 63,
+      "line": 78,
       "usedByControlIds": [
-        "button_178_Add_Lead"
+        "button_194_Add_Lead"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/leads/:id",
-      "line": 76,
+      "line": 92,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/seed",
-      "line": 83,
+      "line": 99,
       "usedByControlIds": []
     }
   ],
