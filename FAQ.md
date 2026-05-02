@@ -201,9 +201,11 @@ Read from a JSON bundle on stdin: `cat my-bundle.json | node scripts/proof-busin
 
 Tests at `scripts/proof-business-language.test.mjs` (27 passing) cover the verdict mapping, free-variable rendering, headline pluralisation, and JSON payload shape. Recovered from a sandbox-Claude session 2026-05-02 — survived because the files were left in the working tree, never committed to the lost remote.
 
-### How does `clear test` show proof status? (PC-8, 2026-05-02)
+### How does `clear test` show proof status? (PC-8 + business-language default, 2026-05-02)
 
-`clear test <file>` auto-runs the prover after the test runner finishes and prints a one-line summary at the bottom: `Proofs: 3 proved, 1 partial, 2 unverifiable (run \`clear prove <file>\` for details)`. Auto-prove is on by default — opt out with `--no-prove`. Under `--json`, the proof bundle is included in the same JSON envelope as the test results.
+`clear test <file>` auto-runs the prover after the test runner finishes and prints a CRO-readable summary at the bottom — for example: `3 of 4 rules proved, 1 unverifiable (run \`clear prove <file>\` for details)`. Auto-prove is on by default — opt out with `--no-prove`. Under `--json`, the proof bundle is included in the same JSON envelope as the test results.
+
+The summary uses the business-language translator (`lib/proof-business-language.mjs`) so non-engineers reading test output see policy verdicts in plain English instead of math-journal terms. Math-journal output is still available behind `--math` on `clear prove` for prover engineers debugging the symbolic engine.
 
 Implementation: `tryRunProver(source)` and `summarizeProofBundle(bundle)` in `cli/clear.js` near `testRunnerExitFromError`. All three exit paths in `testCommand` (server-backed pass/fail, frontend-only pass/fail, no-tests fallback) route through the shared `finalizeWithProof` helper. The frontend-only path captures stdout (instead of `stdio: 'inherit'`) so the proof line lands AFTER the test runner output and so `--json` stays a single envelope. Prover failures are caught in `tryRunProver` so a broken prover never crashes the test run. Tests in `clear.test.js` under `describe('PC-8: clear test auto-prove integration')`.
 

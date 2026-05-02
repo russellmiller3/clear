@@ -6,6 +6,34 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - `clear prove` default output is now CRO-readable
+
+The prover used to emit math-journal output ("PROVED for any: amount", "UNVERIFIABLE — symbolic engine: stripe call (effect)") that read as a developer artifact. After today's change, `clear prove <file.clear>` defaults to plain-English sentences a CRO or compliance buyer can read on their own.
+
+**What shipped:**
+- `cli/clear.js` `proveCommand` now wires the business-language translator (`lib/proof-business-language.mjs`) as the default output. Math-journal output stays available behind `--math` for prover engineers debugging the symbolic engine.
+- `cli/clear.js` `summarizeProofBundle` (PC-8) now emits the translator headline format ("3 of 4 rules proved, 1 unverifiable") instead of the old terse "Proofs: 3 proved, 1 unknown" line.
+- The translator moved from `scripts/proof-business-language.mjs` to `lib/proof-business-language.mjs` for cleaner imports. The exported `translateBundle()` API is unchanged.
+- `clear.test.js` adds 7 tests under `describe('clear prove default formatting')` covering the headline, CRO sentences, `--math` fallback, `--json` invariance, and the `summarizeProofBundle` headline format under named rules.
+
+**Sample of the new output (`clear prove apps/deal-desk/main.clear`):**
+```
+We proved 3 of 3 named rules in this app, for every possible deal.
+
+  OK  discount-cap-thirty   PROVED for every possible deal
+  OK  price-floor-positive  PROVED for every possible deal
+  OK  risk-score-bounded    PROVED for every possible deal
+
+Tests in this file: 5 not math-checkable (5 total).
+  - We can't math-prove "can user submit a deal" because it talks to the world...
+```
+
+**Why for launch:** the rule keyword + per-rule prover verdicts + this CRO-readable default compose into the regulated-tier pitch surface. A CRO reads `clear prove apps/deal-desk/main.clear` and sees "We proved 3 of 3 named rules, for every possible deal" — that IS the audit-trail sentence that closes a regulated-industry deal.
+
+**Tests:** `node clear.test.js` passes 2,853 (was 2,846 baseline → +7 new).
+
+---
+
 ## 2026-05-02 - `rule <name>:` keyword + per-rule prover attribution (rebuild)
 
 The regulated-tier pitch piece. Auditors and CROs now see verdicts attributed by name — "discount-cap-thirty PROVED for every possible deal" — instead of "line 42 PROVED." This is the sentence that closes deals in regulated industries.
