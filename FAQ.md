@@ -192,6 +192,12 @@ Toolbar button in `playground/ide.html` (next to `Compile`) wired to `window.doP
 
 Counts come from `bundle.counts`. Statuses are `proved`, `partial`, `failed`, `unverifiable`, `errored`. Symbolic mode triggers automatically when a `test` block has free variables — the prover treats them as forall-quantified placeholders and reports things like "for any: add" in the output.
 
+### How does `clear test` show proof status? (PC-8, 2026-05-02)
+
+`clear test <file>` auto-runs the prover after the test runner finishes and prints a one-line summary at the bottom: `Proofs: 3 proved, 1 partial, 2 unverifiable (run \`clear prove <file>\` for details)`. Auto-prove is on by default — opt out with `--no-prove`. Under `--json`, the proof bundle is included in the same JSON envelope as the test results.
+
+Implementation: `tryRunProver(source)` and `summarizeProofBundle(bundle)` in `cli/clear.js` near `testRunnerExitFromError`. All three exit paths in `testCommand` (server-backed pass/fail, frontend-only pass/fail, no-tests fallback) route through the shared `finalizeWithProof` helper. The frontend-only path captures stdout (instead of `stdio: 'inherit'`) so the proof line lands AFTER the test runner output and so `--json` stays a single envelope. Prover failures are caught in `tryRunProver` so a broken prover never crashes the test run. Tests in `clear.test.js` under `describe('PC-8: clear test auto-prove integration')`.
+
 ### Where does the seed-from-memory cutover script live?
 
 `playground/seed-from-memory.js` exports `seedFromMemory({ source, target, onProgress })`. Walks every tenant via `source.listTenants()`, every app via `source.listAppsByTenant(slug)`, every audit entry via `source.getAuditLog`, and every stripe event via `source.listStripeEvents()`, writing each through the target store's public write API (`upsert`, `markAppDeployed`, `recordVersion`, `appendAuditEntry`, `markAuditEntry`, `recordStripeEvent`). Idempotent — `target.get(slug)` and `target.getAppRecord` skip already-present rows.

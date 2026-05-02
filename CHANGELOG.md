@@ -6,6 +6,34 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - PC-8: `clear test` auto-runs the prover (default ON)
+
+Every `clear test <file>` session now also runs the Decidable Core prover and appends a one-line proof-status summary at the bottom. The math layer is no longer a separate command authors have to remember — it's the default feedback for every test run.
+
+**What shipped:**
+- `cli/clear.js` — new `--no-prove` flag, `tryRunProver(source)`, `summarizeProofBundle(bundle)`, and a shared `finalizeWithProof(...)` helper that all three exit paths in `testCommand` route through.
+- Frontend-only test path now captures stdout (instead of `stdio: 'inherit'`) so the proof line lands AFTER the runner output and `--json` stays a single envelope.
+- Prover failures are caught — a broken prover never crashes the test run.
+- `--json` includes the full bundle alongside test results so machine consumers see the proof status.
+- 5 new tests in `clear.test.js` under `describe('PC-8: clear test auto-prove integration')`. All green. 2,822 total passing.
+
+**Sample output (real template):**
+
+```
+$ clear test apps/todo-fullstack/main.clear --quiet
+PASS: The Todo App page renders
+PASS: can user view all todos
+... (20 tests total)
+Results: 20 passed, 0 failed, 0 skipped due to stub
+Proofs: 0 proved, 5 unverifiable (run `clear prove <file>` for details)
+```
+
+**Why for launch:** the priority queue called out "every test session also gets proof status" as the next compounding win after Studio Prove. Now the math certificate is always one keystroke away — no extra command, no separate workflow. Every CI run that calls `clear test` automatically reports proof coverage.
+
+**Default change:** auto-prove is ON. Authors who want fast iteration can pass `--no-prove`. The proof line is informational, never gates the test exit code.
+
+---
+
 ## 2026-05-02 - Studio Run-Prove button — Decidable Core from the IDE
 
 The Decidable Core math prover, previously CLI-only (`clear prove <file>`), is now a one-click button in the Studio toolbar.

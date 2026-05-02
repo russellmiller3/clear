@@ -535,6 +535,8 @@ clear prove apps/my-app/main.clear            # proves every test block
 clear prove apps/my-app/main.clear --bundle   # also writes a .proof.json sidecar for auditors
 ```
 
+**Auto-prove is on by default in `clear test`.** Every test session also runs the prover and prints a one-line summary at the bottom (e.g. `Proofs: 3 proved, 1 partial, 2 unverifiable (run \`clear prove <file>\` for details)`). Pass `--no-prove` to skip the math layer. Under `--json`, the proof bundle ships in the same envelope as the test results.
+
 Use the prover **in addition to** the test runner — they cover different things:
 
 | Use `clear test`                                     | Use `clear prove`                                       |
