@@ -101,11 +101,54 @@ keyword epic to a localhost proxy thinking it was real origin. Work was
 stranded. Never again.`;
 }
 
+function buildSessionStartMessage(url) {
+  return `Sandbox-remote guard fired at session start.
+
+origin = ${url}
+
+This session's git origin is NOT a real GitHub remote. Pushes WILL NOT
+reach Russell's real repo — work made here will be stranded inside the
+sandbox unless you generate a patch.
+
+Treat this session as DRAFT:
+  - Read-only work (research, doc analysis, planning) is fine.
+  - For any code change, generate 'git format-patch' output that Russell
+    can paste / apply on his real machine.
+  - Tell Russell explicitly that pushes will not reach his real remote
+    BEFORE he asks you to commit anything.
+
+The PreToolUse hook will also block any 'git push' / 'git commit' /
+'git cherry-pick' against this origin. Override only when intentional:
+SANDBOX_REMOTE_OVERRIDE=<real-url> in env.
+
+Why: 2026-05-02 — sandbox session shipped 30+ commits including the rule
+keyword epic to a localhost git proxy thinking it was real origin.`;
+}
+
+function emitSessionContext(message) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: message,
+    },
+  }));
+}
+
 function main() {
   let raw = '';
   try { raw = readFileSync(0, 'utf8'); } catch { process.exit(0); }
   let data = {};
   try { data = JSON.parse(raw || '{}'); } catch { process.exit(0); }
+
+  // SessionStart event — emit a warning into the session context if origin
+  // is suspicious. Doesn't block; sessions can still read.
+  if (data?.hook_event_name === 'SessionStart') {
+    const url = getOriginUrl();
+    if (isSuspicious(url)) emitSessionContext(buildSessionStartMessage(url));
+    process.exit(0);
+  }
+
+  // PreToolUse event — block git push/commit/cherry-pick against suspicious origins.
   const toolName = data?.tool_name || '';
   if (toolName !== 'Bash') process.exit(0);
   const command = data?.tool_input?.command || '';

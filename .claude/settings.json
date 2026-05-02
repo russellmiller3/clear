@@ -120,6 +120,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node .claude/hooks/verify-real-remote.mjs",
+            "timeout": 5,
+            "statusMessage": "Verifying origin is a real remote, not a sandbox proxy..."
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/propose-new-hooks.mjs",
             "timeout": 10,
             "statusMessage": "Scanning learnings.md for new hook candidates..."

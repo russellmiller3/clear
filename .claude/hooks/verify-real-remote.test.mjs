@@ -39,5 +39,44 @@ it('does NOT trigger on git log', () => assert.equal(commandTouchesGit('git log 
 it('does NOT trigger on git diff', () => assert.equal(commandTouchesGit('git diff main'), false));
 it('does NOT trigger on plain echo', () => assert.equal(commandTouchesGit('echo "git push"'), true)); // false-positive accepted: word "git push" in any command triggers; safer than missing real pushes
 
+// SessionStart event-shape tests (the hook handles both PreToolUse and SessionStart).
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const HOOK = resolve(__dirname, 'verify-real-remote.mjs');
+
+function runHook(input, env = {}) {
+  const r = spawnSync('node', [HOOK], {
+    input,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
+  return { stdout: r.stdout || '', stderr: r.stderr || '', status: r.status };
+}
+
+it('SessionStart with sandbox URL emits additionalContext warning', () => {
+  const r = runHook('{"hook_event_name":"SessionStart"}', { SANDBOX_REMOTE_OVERRIDE: 'http://127.0.0.1:8080/git/' });
+  assert.ok(r.stdout.includes('SessionStart'), 'stdout has SessionStart event name');
+  assert.ok(r.stdout.includes('additionalContext'), 'stdout has additionalContext');
+  assert.ok(r.stdout.includes('Sandbox-remote guard fired at session start'), 'message identifies the guard');
+});
+
+it('SessionStart with real GitHub URL emits nothing (silent pass)', () => {
+  const r = runHook('{"hook_event_name":"SessionStart"}', { SANDBOX_REMOTE_OVERRIDE: 'https://github.com/foo/bar.git' });
+  assert.equal(r.stdout, '', 'no stdout on real remote');
+});
+
+it('PreToolUse path still blocks git push against sandbox', () => {
+  const r = runHook('{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}', { SANDBOX_REMOTE_OVERRIDE: 'http://127.0.0.1:8080/git/' });
+  assert.ok(r.stdout.includes('"permissionDecision":"deny"'), 'PreToolUse blocks the push');
+});
+
+it('PreToolUse path is silent on safe git commands', () => {
+  const r = runHook('{"tool_name":"Bash","tool_input":{"command":"git status"}}', { SANDBOX_REMOTE_OVERRIDE: 'http://127.0.0.1:8080/git/' });
+  assert.equal(r.stdout, '', 'git status does not trigger');
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
