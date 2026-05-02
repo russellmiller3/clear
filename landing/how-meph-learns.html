@@ -128,8 +128,8 @@
 <div class="hero">
   <div class="container">
     <div class="kicker">The Flywheel</div>
-    <h1>How Meph gets smarter every time you use it</h1>
-    <p class="lede">Most AI code assistants forget everything between conversations. This is the story of how we're fixing that for Clear — without changing the AI model itself.</p>
+    <h1>How we make Meph smarter without retraining</h1>
+    <p class="lede">Most AI code assistants forget everything between conversations. This page explains the architecture we built to fix that for Clear — without changing the AI model itself — and an honest read on what we're seeing today.</p>
   </div>
 </div>
 
@@ -338,15 +338,15 @@
 <p>This isn't hypothetical. All of the following is working in Clear right now:</p>
 
 <div class="stat-row">
-  <div class="stat"><div class="num">149</div><div class="lbl">Trajectories logged</div></div>
-  <div class="stat"><div class="num">57</div><div class="lbl">Passing examples</div></div>
+  <div class="stat"><div class="num">1,886</div><div class="lbl">Trajectories logged</div></div>
+  <div class="stat"><div class="num">768</div><div class="lbl">Passing examples</div></div>
   <div class="stat"><div class="num">15</div><div class="lbl">App types tracked</div></div>
-  <div class="stat"><div class="num">13</div><div class="lbl">Templates in Studio</div></div>
+  <div class="stat"><div class="num">41</div><div class="lbl">Times a hint actually fired</div></div>
 </div>
 
-<p>Inside Clear Studio there are two new tabs: <strong>Flywheel</strong> (shows the database growing in real time) and <strong>Supervisor</strong> (lets you run a training batch, click into any past session, see what Meph actually wrote). Every compile Meph does auto-logs. Every error he hits triggers a retrieval of 3 past examples.</p>
+<p>Inside Clear Studio there are two tabs: <strong>Flywheel</strong> (shows the database growing in real time) and <strong>Supervisor</strong> (lets you run a training batch, click into any past session, see what Meph actually wrote). Every compile Meph does auto-logs. The retrieval system is wired up — it pulls past fixes from the database whenever Meph hits a compile error.</p>
 
-<p>We're 143 passing examples away from training the first ranking model. At the current rate, that's a few weeks of curriculum runs, or faster with real users.</p>
+<p>The first ranking model has been trained. The harder question — does the retrieval actually move the needle on Meph's pass rate? — is still open. See "Honest limitations" below.</p>
 
 </div>
 </section>
@@ -366,6 +366,9 @@
 
 <h3>Bad data poisons the well</h3>
 <p>If the database fills up with wrong fixes that happened to pass superficial tests, the ranking model will confidently recommend bad patterns. We've built guardrails — only fully-passing sessions become training examples — but it's something to watch.</p>
+
+<h3>Hint delivery is the bottleneck right now</h3>
+<p>The mechanism works in principle: when a hint reaches Meph, he uses it about 70% of the time, and almost three-quarters of those uses are rated helpful. The catch is hints don't reach him very often. Today most rows in the database log no hint at all — the retriever's archetype filter is concentrated in a few app shapes (api_service, queue_workflow, routing_engine), and unfamiliar shapes slip through with nothing matched. We don't yet have positive lift evidence in a controlled A/B comparison. We believe the mechanism — every signal we have on individual hint quality is positive — but the across-the-board "Meph gets noticeably better as you use it" claim is still being earned, not measured. If you're considering Clear partly because of this flywheel, ask us where the measurement is at the moment.</p>
 
 </div>
 </section>
