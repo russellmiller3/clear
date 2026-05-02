@@ -97,6 +97,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
 - [Where are the 2026-05-01 launch fan-out branches?](#where-are-the-2026-05-01-launch-fan-out-branches)
+- [Where does the Stripe webhook receiver live?](#where-does-the-stripe-webhook-receiver-live)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
 - [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
@@ -226,6 +227,16 @@ Use these branches as the launch integration queue:
 Merge `feature/cc5-domain-cert-bridge` instead of separately merging the older CC-5b and CC-5c branches first. It contains the bridge between the two.
 
 Keep `feature/prover-inequality-reasoning` post-launch unless Russell explicitly flips priority.
+
+---
+
+### Where does the Stripe webhook receiver live?
+
+`playground/stripe-webhook-receiver.js` mounts `POST /api/stripe-webhook`. It must mount before `express.json()` so Stripe signatures verify against the exact raw request body. `playground/server.js` does that and passes the same tenant store used by Clear Cloud deploy, auth, routing, and quota.
+
+The receiver verifies `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`, then delegates the signed event to `playground/billing.js`. `checkout.session.completed` marks the tenant's plan from checkout metadata (`team` or `business`) and saves the Stripe customer id. Replayed event ids are deduped through the tenant store, so Stripe retries are safe.
+
+Local tests use `signStripeWebhookForTest()` and never need live Stripe keys. Production fails closed when `STRIPE_WEBHOOK_SECRET` is missing.
 
 ---
 

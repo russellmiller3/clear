@@ -95,12 +95,13 @@ business verification can take 1-3 days.
 - `STRIPE_WEBHOOK_SECRET` (whsec_..., from the webhook setup page)
 
 **Webhook:** point Stripe webhooks at
-`https://api.buildclear.dev/stripe/webhook` (or wherever your billing endpoint
-will live). For first customer, the test-mode endpoint is fine; real billing
-gets wired up when there's a real subscription to charge.
+`https://buildclear.dev/api/stripe-webhook` for the Clear Cloud Studio server.
+Subscribe at least to `checkout.session.completed`. The receiver verifies the
+raw signed body and flips the tenant plan from checkout metadata.
 
 **Done when:** you can run a `$0.50` test charge and see it land in your
-Stripe dashboard.
+Stripe dashboard, then replay a signed test webhook and see the tenant plan
+move to Team or Business.
 
 ---
 

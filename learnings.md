@@ -2043,3 +2043,16 @@ Retrieval had the matching product bug. Exact-error fixes were being padded with
 - **Hard tasks prove the flywheel.** Deal Desk-style builds are the right measurement surface because toy tasks hide retrieval quality.
 - **Hard-task sweeps need a named preset.** If the task list lives only in chat, the next run will drift back to saturated toys. Put the hard task set in a script and import it into the main regression suite.
 - **Do not pad exact fixes with generic examples.** More hints is worse when the extra hints are weaker than the first one.
+
+---
+
+## Session 2026-05-01: Stripe Webhooks Need Exact Raw Bytes
+
+The CC-3 receiver looked wired because a route existed and signature helpers had unit coverage. The production gap was subtler: Stripe signs the exact request bytes, but the old route lived after `express.json()` and re-serialized `req.body` before verifying. That can pass canonical JSON tests and still fail a real Stripe delivery with whitespace or ordering differences.
+
+### Gotchas-as-rules
+
+- **Mount signed webhooks before JSON parsing.** Stripe, GitHub, and similar providers sign bytes, not parsed objects.
+- **Test with non-canonical JSON.** Pretty-printed fixtures catch receivers that verify a re-serialized object instead of the raw body.
+- **Webhook retries must be idempotent at the state boundary.** Assert the tenant row changes once when the same event arrives twice.
+- **Production secrets fail closed.** If the webhook secret is missing in production, reject the request instead of accepting unsigned billing changes.
