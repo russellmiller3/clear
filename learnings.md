@@ -2120,3 +2120,12 @@ The CC-3 receiver looked wired because a route existed and signature helpers had
 - **Test with non-canonical JSON.** Pretty-printed fixtures catch receivers that verify a re-serialized object instead of the raw body.
 - **Webhook retries must be idempotent at the state boundary.** Assert the tenant row changes once when the same event arrives twice.
 - **Production secrets fail closed.** If the webhook secret is missing in production, reject the request instead of accepting unsigned billing changes.
+## Session 2026-05-01: Pricing Pages Need A Sales CTA Guard
+
+The pricing page already had the four tiers and locked numbers, but the launch-critical sales action was only a normal link. A human could miss that during visual review, and the page would still look "done."
+
+### Gotchas-as-rules
+
+- **Pricing pages need a machine-checked primary sales action.** Tier names and prices are table stakes; Enterprise also needs a marked sales CTA.
+- **Static launch checks should encode the business contract.** "Free, Team $99, Business $499, Enterprise, primary sales CTA" is the product promise, so the test names those directly.
+- **No-emoji landing rules belong in the check for the page.** Design rules that repeatedly bite launch pages should fail locally, not wait for review.
