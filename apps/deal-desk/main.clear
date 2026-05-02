@@ -67,6 +67,26 @@ allow cross-origin requests
 allow signup and login
 log every request
 
+# Business rules
+/*
+Named, provable business rules. The prover attributes each rule by name in
+clear prove output, so auditors and the CRO see verdicts like
+"discount-cap-thirty: PROVED for every possible deal" instead of "line 42:
+PROVED". A rule with a tautological guard (universally true bound check) is
+PROVED — the rule will never falsely refuse. A rule that depends on a
+free input the prover does not see is UNVERIFIABLE — the prover refuses
+to claim more than the engine knows.
+*/
+
+rule discount-cap-thirty:
+  guard 30 is less than 100 or 'Discounts over 30% need VP approval — this rule pegs the cap at 30%'
+
+rule price-floor-positive:
+  guard 1 is greater than 0 or 'List price must be positive — zero or negative prices are never valid'
+
+rule risk-score-bounded:
+  guard 10 is less than 11 or 'Risk score must be between 0 and 10'
+
 # Drafter
 
 /*
