@@ -87,9 +87,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 
 /* Dev/Builder view switcher (toolbar mode toggle). The active mode gets the
    accent background; the inactive one stays muted so it reads as a click target. */
-.toolbar-btn.mode-btn { padding: 4px 11px; font-weight: 500; }
-.toolbar-btn.mode-btn.active-mode { background: var(--accent); color: #fff; border-color: var(--accent); }
-.toolbar-btn.mode-btn:not(.active-mode):hover { background: var(--bg2); color: var(--tx); }
+#mode-switcher:hover { border-color: var(--accent); }
+#mode-switcher:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 #status { font-family: var(--mono); font-size: 11px; font-weight: 500; margin-left: auto; padding: 4px 10px; border-radius: 20px; transition: all .2s; }
 .status-ok { color: var(--green); background: var(--green-bg); }
 .status-err { color: var(--red); background: var(--red-bg); }
@@ -634,11 +633,11 @@ body.builder-mode.show-source #editor-pane {
       <span style="font-family:'Orbitron',sans-serif;font-weight:700;color:var(--accent);font-size:14px;letter-spacing:.5px;">Clear</span><span style="font-family:var(--font);color:var(--tx3);font-weight:400;font-size:11px;letter-spacing:0;">studio</span>
     </span>
     <span class="toolbar-sep"></span>
-    <!-- View switcher: Dev = 3-panel classic IDE, Builder = Marcus-first chat-driven layout. -->
-    <span class="mode-switcher" style="display:inline-flex;border:1px solid var(--bd);border-radius:5px;overflow:hidden;">
-      <button id="mode-classic-btn" class="toolbar-btn mode-btn" onclick="setStudioMode('classic')" title="3-panel IDE: editor + preview + Meph chat" style="border:none;border-radius:0;margin:0;">Dev</button>
-      <button id="mode-builder-btn" class="toolbar-btn mode-btn" onclick="setStudioMode('builder')" title="Marcus-first layout: chat drives the build, source hidden by default" style="border:none;border-radius:0;margin:0;border-left:1px solid var(--bd);">Builder</button>
-    </span>
+    <!-- View switcher: Dev mode = 3-panel IDE for developers, AI mode = Marcus-first chat-driven layout. -->
+    <select id="mode-switcher" onchange="setStudioMode(this.value)" title="Switch between Dev mode (3-panel IDE) and AI mode (chat-first build)" style="height:28px;border:1px solid var(--bd);border-radius:5px;background:var(--bg2);color:var(--tx);font-family:var(--font);font-size:12px;padding:0 8px;cursor:pointer;">
+      <option value="classic">Dev mode</option>
+      <option value="builder">AI mode</option>
+    </select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="newFile()">New</button>
     <button class="toolbar-btn" onclick="document.getElementById('load-file-input').click()" title="Load a .clear file from disk">Load</button>
@@ -5667,13 +5666,11 @@ function detectStudioMode() {
   syncModeButtons(mode);
 }
 
-// Highlight whichever toolbar mode button matches the current mode.
+// Sync the toolbar mode dropdown to the current mode.
 function syncModeButtons(mode) {
-  const isBuilder = (mode || (document.body.classList.contains('builder-mode') ? 'builder' : 'classic')) === 'builder';
-  const classicBtn = document.getElementById('mode-classic-btn');
-  const builderBtn = document.getElementById('mode-builder-btn');
-  if (classicBtn) classicBtn.classList.toggle('active-mode', !isBuilder);
-  if (builderBtn) builderBtn.classList.toggle('active-mode', isBuilder);
+  const resolved = mode || (document.body.classList.contains('builder-mode') ? 'builder' : 'classic');
+  const sel = document.getElementById('mode-switcher');
+  if (sel && sel.value !== resolved) sel.value = resolved;
 }
 
 // Toolbar Dev/Builder switcher click handler. Persists the choice in
