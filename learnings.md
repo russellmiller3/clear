@@ -7,6 +7,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | Section | Key Gotchas |
 |---------|-------------|
 | [Session 2026-05-01: Publish progress UX](#session-2026-05-01-publish-progress-ux) | Browser red can be blocked by runner permissions; keep static UI contracts too |
+| [Studio Instrumentation](#studio-instrumentation-2026-05-01) | allow-list events, never store source/chat/secrets, in-memory first |
 | [Clear Compiler](#clear-compiler) | 1:1 rule, synonym collisions, tokenizer eats colons, CRUD in assignments |
 | [Clear Compiler Refactoring](#clear-compiler-refactoring-2026-04-01) | Context object unifies per-language functions, parser-owned UI metadata, validation separate from codegen |
 | [Clear CLI & Phases 12-14](#clear-cli--language-phases-12-14-2026-04-01) | Self-contained imports, parseExpression return shape, synonym gotchas, data shape field parsing |
@@ -111,6 +112,16 @@ The prover did not need a solver to prove "late fee never goes negative." The us
 
 ### Keep PC-6 deliberately small
 Symbolic comparisons now cover literal comparisons, Phi branch splits, and one-variable numeric bounds. That is enough for floor/clamp business rules. Do not turn this into a general SMT engine until real proof examples force it.
+
+---
+
+## Studio Instrumentation (2026-05-01)
+
+**Privacy-safe analytics need an allow-list, not "send the event object."** Studio has source text, chat contents, API keys, form values, and selectors in memory. Funnel telemetry must throw all of that away and keep only coarse event names, timing numbers, mode, and allow-listed targets.
+
+**Use in-memory first when the product question is the event contract.** GTM-7 needed first-click, time-to-first-app, and bounce shape. Durable analytics can wait until the events are proven useful.
+
+**Tests should post fake secrets.** The regression test sends fake source, chat, and API-key fields and asserts none appear in the telemetry snapshot. That catches future changes that accidentally store raw payloads.
 
 ---
 

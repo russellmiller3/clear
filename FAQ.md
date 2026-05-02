@@ -7,6 +7,18 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where does Studio funnel instrumentation live? (GTM-7, 2026-05-01)
+
+**Browser path:** `playground/ide.html` records coarse Studio milestones: page loaded, first click, time to first app, and bounce before first app. It sends only event names, timing numbers, mode, and allow-listed targets like `chat_send` or `template_picker`.
+
+**Server path:** `playground/server.js` exposes `POST /api/studio-telemetry`, `GET /api/studio-telemetry`, and test-only reset via `POST /api/studio-telemetry/clear`. The sink is in-memory by design for this slice.
+
+**Privacy rule:** do not store source text, chat contents, API keys, form values, selectors, or arbitrary request fields. The test in `playground/server.test.js` posts fake secrets and asserts they never appear in the snapshot.
+
+**What remains:** durable analytics storage and a real dashboard. The local endpoint proves the event contract first.
+
+---
+
 ## Where does the proof checker live? (Session 2026-05-01)
 
 **Path:** `lib/prover/`. Three files: `evaluator.js` (concrete-value AST walker), `symbolic.js` (symbolic-value algebra + simplifier), `index.js` (public `prove(source)` API + bundle formatter). Tests: `index.test.js` (16 concrete tests) + `symbolic.test.js` (31 symbolic tests).

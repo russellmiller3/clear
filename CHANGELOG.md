@@ -177,6 +177,19 @@ Added a fast launch guard for the lead-router demo. It proves the app still uses
 **Why for launch:** lead-router is one of the Marcus demo apps. The browser walker proves the UI still works; this guard proves the actual routing promise stays true.
 
 **Tests:** `node --check scripts/lead-router-launch-verification.mjs`, `node cli/clear.js test apps/lead-router/main.clear`, and `node scripts/run-marcus-uat.mjs lead-router` passed locally. A fuller verifier run was blocked after the final cleanup by the Codex approval limit, not by the app.
+## 2026-05-01 - Studio first-click instrumentation
+
+GTM-7 now has a local measurement path in Studio: first click, time to first app, and pre-app bounce events.
+
+**What shipped:**
+- Studio sends privacy-safe funnel events to a server endpoint.
+- The server keeps a testable in-memory event buffer and summary.
+- The server drops source text, chat text, API keys, form values, selectors, and arbitrary request fields.
+- Tests cover event capture, summary counts, and secret/source/chat redaction.
+
+**Why for launch:** Marcus demos need evidence about where a first user stalls. This gives Russell a local readout before wiring a paid analytics backend.
+
+**Backend still pending:** durable analytics storage and dashboarding. Current sink is intentionally in-memory.
 
 ---
 

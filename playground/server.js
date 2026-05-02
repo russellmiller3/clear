@@ -764,6 +764,106 @@ app.post('/api/meph-actions/clear', (req, res) => {
 });
 
 // =============================================================================
+// STUDIO TELEMETRY — privacy-safe GTM funnel events
+// =============================================================================
+// Captures only coarse interaction names and timings. Never stores source text,
+// chat contents, API keys, form values, selectors, or arbitrary request fields.
+const studioTelemetryEvents = [];
+const STUDIO_TELEMETRY_EVENT_NAMES = new Set([
+  'studio_loaded',
+  'first_click',
+  'time_to_first_app',
+  'bounce',
+]);
+const STUDIO_TELEMETRY_TARGETS = new Set([
+  'chat_input',
+  'chat_send',
+  'template_picker',
+  'template_tile',
+  'run_button',
+  'deploy_button',
+  'compile_shortcut',
+  'source_toggle',
+  'chat_toggle',
+  'theme_toggle',
+  'docs_button',
+  'unknown',
+]);
+
+function _safeTelemetryString(value, fallback = null) {
+  if (typeof value !== 'string') return fallback;
+  const clean = value.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 60);
+  return clean || fallback;
+}
+
+function sanitizeStudioTelemetryEvent(raw, sessionId, mode) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = _safeTelemetryString(raw.name);
+  if (!STUDIO_TELEMETRY_EVENT_NAMES.has(name)) return null;
+  const event = {
+    name,
+    sessionId,
+    mode,
+    recorded_at: Date.now(),
+  };
+  for (const key of ['atMs', 'pageMs', 'ms']) {
+    const n = Number(raw[key]);
+    if (Number.isFinite(n) && n >= 0) event[key] = Math.round(n);
+  }
+  if (raw.target !== undefined) {
+    const target = _safeTelemetryString(raw.target, 'unknown');
+    event.target = STUDIO_TELEMETRY_TARGETS.has(target) ? target : 'unknown';
+  }
+  if (raw.via !== undefined) event.via = _safeTelemetryString(raw.via, 'unknown');
+  if (raw.reason !== undefined) event.reason = _safeTelemetryString(raw.reason, 'unknown');
+  return event;
+}
+
+function studioTelemetrySummary(events = studioTelemetryEvents) {
+  const firstAppTimes = events
+    .filter(e => e.name === 'time_to_first_app' && Number.isFinite(e.ms))
+    .map(e => e.ms);
+  return {
+    total: events.length,
+    firstClickCount: events.filter(e => e.name === 'first_click').length,
+    timeToFirstAppCount: firstAppTimes.length,
+    bounceCount: events.filter(e => e.name === 'bounce').length,
+    medianTimeToFirstAppMs: firstAppTimes.length
+      ? firstAppTimes.slice().sort((a, b) => a - b)[Math.floor(firstAppTimes.length / 2)]
+      : null,
+  };
+}
+
+app.post('/api/studio-telemetry', (req, res) => {
+  const body = req.body || {};
+  const sessionId = _safeTelemetryString(body.sessionId, 'anonymous');
+  const mode = _safeTelemetryString(body.mode, 'unknown');
+  const events = Array.isArray(body.events) ? body.events : [body];
+  const accepted = [];
+  for (const raw of events) {
+    const event = sanitizeStudioTelemetryEvent(raw, sessionId, mode);
+    if (!event) continue;
+    accepted.push(event);
+    studioTelemetryEvents.push(event);
+  }
+  while (studioTelemetryEvents.length > 1000) studioTelemetryEvents.shift();
+  res.json({ ok: true, accepted: accepted.length, summary: studioTelemetrySummary() });
+});
+
+app.get('/api/studio-telemetry', (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit || '100', 10) || 100, 1), 1000);
+  res.json({
+    events: studioTelemetryEvents.slice(-limit),
+    summary: studioTelemetrySummary(),
+  });
+});
+
+app.post('/api/studio-telemetry/clear', (req, res) => {
+  studioTelemetryEvents.length = 0;
+  res.json({ ok: true });
+});
+
+// =============================================================================
 // TEST RUNNER — parse test output into structured results
 // =============================================================================
 // parseTestOutput + compileForEval moved to playground/meph-helpers.js so

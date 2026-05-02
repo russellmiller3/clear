@@ -874,6 +874,55 @@ let lastCompiled = null;
 let sourceMapData = null; // { forward: { clearLine: [{ start, end }] }, reverse: { compiledLine: clearLine }, compiledLines: [] }
 let sourceMapTab = null; // which compiled sub-tab key the source map was built from ('serverJS', 'javascript', 'python')
 
+// GTM-7: privacy-safe Studio funnel instrumentation. Only event names and
+// timings leave the browser; source, chat text, field values, and secrets do not.
+const studioTelemetry = (() => {
+  const started = (performance && performance.now) ? performance.now() : Date.now();
+  const sessionId = (() => {
+    try {
+      const key = 'clear-studio-telemetry-session';
+      let id = sessionStorage.getItem(key);
+      if (!id) {
+        id = 'studio-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+        sessionStorage.setItem(key, id);
+      }
+      return id;
+    } catch {
+      return 'studio-' + Date.now().toString(36);
+    }
+  })();
+  let firstClickSent = false;
+  let firstAppSent = false;
+  const mode = () => document.body.classList.contains('builder-mode') ? 'builder' : 'classic';
+  const nowMs = () => Math.max(0, Math.round(((performance && performance.now) ? performance.now() : Date.now()) - started));
+  const send = (event) => {
+    const t = nowMs();
+    fetch('/api/studio-telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, mode: mode(), events: [{ ...event, atMs: t, pageMs: t }] }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+  return {
+    loaded() { send({ name: 'studio_loaded' }); },
+    firstClick(target) {
+      if (firstClickSent) return;
+      firstClickSent = true;
+      send({ name: 'first_click', target });
+    },
+    firstApp(via) {
+      if (firstAppSent) return;
+      firstAppSent = true;
+      send({ name: 'time_to_first_app', ms: nowMs(), via });
+    },
+    bounce(reason) {
+      if (firstAppSent) return;
+      send({ name: 'bounce', reason });
+    },
+  };
+})();
+
 function buildSourceMap(compiledCode) {
   if (!compiledCode) return null;
   const lines = compiledCode.split('\n');
@@ -1376,6 +1425,9 @@ async function autoCompile() {
     // BM-6: first successful compile means the user has chosen something — hide the tile gallery
     if (lastCompiled && (!lastCompiled.errors || lastCompiled.errors.length === 0)) {
       document.body.classList.add('has-compiled');
+      if (lastCompiled.html || lastCompiled.serverJS || lastCompiled.javascript || lastCompiled.python) {
+        studioTelemetry.firstApp(window._studioFirstAppVia || 'editor');
+      }
     }
     // Build persistent source map from compiled output — pick the target with markers
     if (lastCompiled.serverJS) { sourceMapData = buildSourceMap(lastCompiled.serverJS); sourceMapTab = 'serverJS'; }
@@ -3120,6 +3172,7 @@ window.sendApiRequest = async function(idx, method, pathTemplate) {
 // RUN
 // ==========================================================================
 window.doRun = async function() {
+  studioTelemetry.firstClick('run_button');
   // Determine what backend code we have — full-stack puts it in serverJS,
   // backend-only (no HTML) puts it in javascript
   const backendCode = lastCompiled?.serverJS || (!lastCompiled?.html && lastCompiled?.javascript) || null;
@@ -3151,6 +3204,7 @@ window.doRun = async function() {
       if (data.logs) data.logs.forEach(l => appendTerminalText(l));
       setStatus('ok', 'Running :' + data.port);
       runningPort = data.port;
+      studioTelemetry.firstApp('run');
       // Show output — but don't switch tabs if compile animation is playing
       if (!compileAnimRunning) {
         showTab('compiled');
@@ -3347,6 +3401,7 @@ function _formatTimeAgo(iso) {
 }
 
 window.doDeploy = async function() {
+  studioTelemetry.firstClick('deploy_button');
   const source = (typeof getSource === 'function') ? getSource() : (window._editor ? window._editor.state.doc.toString() : '');
   if (!source) { alert('Nothing to publish — compile first.'); return; }
 
@@ -4756,6 +4811,8 @@ window.sendChat = async function() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
   if (!msg && !pendingImages.length) return;
+  studioTelemetry.firstClick('chat_send');
+  window._studioFirstAppVia = 'chat';
   input.value = '';
 
   if (!selectedMephModelHasKey()) { showKeySetup(); return; }
@@ -5152,6 +5209,8 @@ async function loadTemplates() {
 async function loadTemplateByName(name) {
   if (!name) return;
   try {
+    studioTelemetry.firstClick('template_picker');
+    window._studioFirstAppVia = 'template';
     const r = await fetch('/api/template/' + name);
     const source = await r.text();
     suppressAutoCompile = true;
@@ -5672,6 +5731,29 @@ function renderTileGallery() {
 }
 
 renderTileGallery();
+
+studioTelemetry.loaded();
+document.addEventListener('click', (e) => {
+  const target = e.target && e.target.closest && e.target.closest('button, select, textarea, input, a, .tile-card');
+  if (!target) return;
+  const id = target.id || '';
+  const mapped =
+    id === 'chat-send' ? 'chat_send' :
+    id === 'chat-input' ? 'chat_input' :
+    id === 'template-picker' ? 'template_picker' :
+    id === 'run-btn' ? 'run_button' :
+    id === 'deploy-btn' ? 'deploy_button' :
+    id === 'source-toggle-btn' ? 'source_toggle' :
+    id === 'chat-toggle-btn' ? 'chat_toggle' :
+    id === 'theme-toggle' ? 'theme_toggle' :
+    target.classList?.contains('tile-card') ? 'template_tile' :
+    'unknown';
+  studioTelemetry.firstClick(mapped);
+}, { capture: true });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') studioTelemetry.bounce('hidden_before_first_app');
+});
+window.addEventListener('pagehide', () => studioTelemetry.bounce('pagehide_before_first_app'));
 
 // ==========================================================================
 // FIRST-VISIT ONBOARDING (GTM-5)
