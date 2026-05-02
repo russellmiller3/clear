@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 169 node types. 2,813 broad compiler/helper checks after the flywheel hint-effect report. Zero npm dependencies in the compiler.
+**Headline numbers:** 169 node types. 2,817 broad compiler/helper checks after the 2026-05-02 merge consolidation. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
 ---
@@ -105,6 +105,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Transactions | `as one operation:` / `atomically:` / `transaction:` / `begin:` | BEGIN/COMMIT/ROLLBACK |
 | Provable correctness — concrete | `clear prove <file>` | Walks the AST directly (no compiler in the path); proves every `test` block's assertions hold for the inputs given. Pure-subset only — anything impure (DB/net/AI/time/UI) returns UNVERIFIABLE instead of false PROVED. |
 | Provable correctness — symbolic | Free variables in a `test` block | Triggers symbolic mode automatically: variables become forall-quantified placeholders; simplifier rewrites both sides into canonical form; equality decided structurally. Proves theorems like `add(a, b) === add(b, a)` for ANY input. Honest UNKNOWN when the simplifier can't decide. |
+| Provable correctness — Studio button | `Prove` button in the toolbar (next to `Compile`) | Same engine as `clear prove`; posts source to `/api/prove`, renders the formatted bundle into the terminal pane, status bar shows proved/failed/unverifiable counts. Click-to-prove from the IDE without leaving Studio. |
 | TBD placeholder | `set greeting = TBD` / a line that's just `TBD` | Lean Lesson 1 — leave one piece unfinished, ship the rest. Compiles green, runtime throws "placeholder hit at line N — fill it in or remove it" when reached. Tests that exercise a stub report SKIPPED, not FAILED. `result.placeholders[]` lists every open hole. |
 
 ## Expressions
@@ -299,6 +300,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Run pipeline | `result = call pipeline 'Name' with data` | |
 | Dynamic fan-out | `for each x in list: r = call 'A' with x; add r to results` | Loop over runtime-sized list, accumulate |
 | Agent evals button | Studio IDE "Run Evals" next to "Run Tests" | Cost-gated modal before run; per-row cost chips; running total. Each row individually re-runnable. |
+| Studio mode dropdown | `<select>` in toolbar — "Dev mode" (3-panel IDE) / "AI mode" (Marcus-first chat) | URL param `?studio-mode=classic` / `?studio-mode=builder` overrides; localStorage persists choice. Synced with body class on every load so the dropdown label always matches the active layout. |
+| Run-Prove button | Studio toolbar "Prove" next to "Compile" | One-click Decidable Core math prover on the editor source. Renders proof bundle (PROVED / PARTIAL / FAILED / UNVERIFIABLE per test) into the terminal pane. Same engine as `clear prove` on the CLI. |
 | Auto-generated eval suite | Per-agent role + format + per-endpoint E2E | Built from receiving-var name + table schema + prompt noun-hints; no `'hello'` probes on core templates |
 | User-defined evals | `eval 'name':` top-level + `evals:` agent subsection | Two syntaxes; both produce specs in `result.evalSuite`; merge with auto-generated rows in the same Tests pane |
 | Export eval report | Markdown + CSV download from Tests pane | Grouped by agent, full criteria + input + output + grader feedback; CSV one-row-per-eval for spreadsheets / regression diffing |

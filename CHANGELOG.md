@@ -6,6 +6,64 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - Studio Run-Prove button — Decidable Core from the IDE
+
+The Decidable Core math prover, previously CLI-only (`clear prove <file>`), is now a one-click button in the Studio toolbar.
+
+**What shipped:**
+- New `POST /api/prove` endpoint in `playground/server.js` runs the same `prove(source)` engine as the CLI and returns both the structured bundle and a pre-formatted terminal-friendly summary.
+- `Prove` button next to `Compile` in `playground/ide.html` toolbar.
+- `window.doProve()` posts the editor source, switches to the terminal tab, renders the proof bundle (PROVED / PARTIAL / FAILED / UNVERIFIABLE per test), and updates the status bar with proved/failed/unverifiable counts.
+- Verified end-to-end at `localhost:3488` — clicking Prove on `test 'add is commutative': expect add called with 3, 5 is add called with 5, 3` renders `[PROVED] [symbolic] add is commutative — for any: add` in the terminal.
+
+**Why for launch:** the moonshot ("Clear is the only AI coding tool whose output comes with a math certificate against its tests") was demonstrable but only from a CLI. The button makes it real for anyone in Studio, including non-developers.
+
+---
+
+## 2026-05-02 - CC-1 seed-from-memory script + list enumerators
+
+Production cutover step 2 from `playground/tenant-store-factory.js`: a one-shot script that copies live in-memory tenant state into a target store via the public store API.
+
+**What shipped:**
+- `playground/seed-from-memory.js` — `seedFromMemory({ source, target, onProgress })` walks every tenant, app, version, audit entry, and stripe event from source into target. Idempotent — second run skips already-present rows.
+- `listTenants()` and `listStripeEvents()` on `InMemoryTenantStore`, `PostgresTenantStore`, `DualWriteTenantStore` — cutover-only enumerators that return arrays for the seed script. Not on any hot path.
+- CLI shim reads `$SEED_INPUT` JSON dump and writes to factory-built target store.
+- 24 new tests in `seed-from-memory.test.js`; tenants test floor went 121 → 131.
+
+**Why for launch:** once Russell provisions Postgres and sets `DATABASE_URL`, the cutover from in-memory to Postgres is one script run instead of an ad-hoc SQL dump.
+
+---
+
+## 2026-05-02 - Studio mode toggle: Dev mode / AI mode dropdown
+
+The two-button "Dev | Builder" pill in the Studio toolbar becomes a single `<select>` with clearer labels.
+
+**What shipped:**
+- `<select id="mode-switcher">` in `playground/ide.html` with options "Dev mode" (value `classic`) and "AI mode" (value `builder`). Internal mode IDs unchanged so URL params and stored prefs survive.
+- `syncModeButtons(mode)` now sets the dropdown's value to match the active body class on every load — old code matched buttons that no longer exist.
+- Hover/focus styles for the new `<select>` replace the obsolete `.toolbar-btn.mode-btn` styles.
+- Verified at `localhost:3488` — both `?studio-mode=classic` and `?studio-mode=builder` URLs reload with the dropdown showing the right label and the body class flipping correctly.
+
+**Why for launch:** "Builder" is developer jargon; "AI mode" is what Marcus is actually using. The label change costs nothing and reads correctly to the people the pricing page is selling to.
+
+---
+
+## 2026-05-02 - 16-branch consolidation merge sweep
+
+Every parallel-agent branch from the 2026-05-01 launch fan-out lands on main in a single 55-commit push.
+
+**What shipped:**
+- Merged into main: `feature/cc3-stripe-webhook-receiver`, `feature/cc4-publish-progress-ux`, `feature/cc5-domain-cert-bridge` (supersedes the older `cc5b` and `cc5c` standalone branches), `feature/cc-agent-hint-pipeline`, `feature/flywheel-measurement-retrieval`, `feature/gtm-marcus-deal-desk-page`, `feature/gtm-pricing-page`, `feature/honest-flywheel-claim`, `feature/launch-browser-regression`, `feature/launch-readiness-integration`, `feature/lead-router-launch-verification`, `feature/process-rules`, `feature/prover-inequality-reasoning`, `feature/studio-first-click-instrumentation`, `feature/studio-onboarding-meph-first`, plus several `docs/*` and `fix/sandbox-node-spawn-tests`.
+- Skipped: `deal-desk-uat` (stale Codex experiment), `feature/cc-5b-dns-poller` and `feature/cc5b-dns-verification-poller` (both superseded by the cc5 bridge).
+- New helper at `scripts/merge-keep-both.mjs` — auto-resolves "both branches added a session entry" conflicts in CHANGELOG / FAQ / learnings / `clear.test.js` describe blocks. Saves a manual edit per conflict on every multi-branch merge.
+- 60+ stale local + remote branches deleted as part of the sweep.
+
+**Why for launch:** the demo path — chat onboarding → publish modal → custom domain with HTTPS → Stripe checkout → Marcus pays — is now visible from main. The next demo recording ships from this trunk, not from a frankenstein checkout.
+
+**Tests:** 2,817 compiler tests green after consolidation. One Playwright e2e IDE test crashes because the new Meph-first onboarding hides the editor on first load — side-task chip queued for the fix.
+
+---
+
 ## 2026-05-01 - Publish progress and live confirmation UX
 
 The Publish modal now behaves like a product handoff instead of a log line.

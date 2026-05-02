@@ -186,6 +186,24 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 The static guard is `scripts/landing-pricing.test.mjs`. It checks the tier names, locked prices, one primary mailto sales CTA, and the no-emoji icon rule.
 
+### Where does the Studio Run-Prove button live?
+
+Toolbar button in `playground/ide.html` (next to `Compile`) wired to `window.doProve()`. The handler posts the editor source to `POST /api/prove` in `playground/server.js`, which calls `prove(source)` from `lib/prover/index.js` (the same engine `clear prove` uses on the CLI) and returns `{ bundle, formatted }`. The handler switches to the terminal tab via `showTab('terminal')`, renders `data.formatted` via `appendTerminalText`, and updates the status bar with proved/failed/unverifiable counts.
+
+Counts come from `bundle.counts`. Statuses are `proved`, `partial`, `failed`, `unverifiable`, `errored`. Symbolic mode triggers automatically when a `test` block has free variables — the prover treats them as forall-quantified placeholders and reports things like "for any: add" in the output.
+
+### Where does the seed-from-memory cutover script live?
+
+`playground/seed-from-memory.js` exports `seedFromMemory({ source, target, onProgress })`. Walks every tenant via `source.listTenants()`, every app via `source.listAppsByTenant(slug)`, every audit entry via `source.getAuditLog`, and every stripe event via `source.listStripeEvents()`, writing each through the target store's public write API (`upsert`, `markAppDeployed`, `recordVersion`, `appendAuditEntry`, `markAuditEntry`, `recordStripeEvent`). Idempotent — `target.get(slug)` and `target.getAppRecord` skip already-present rows.
+
+CLI usage: set `$DATABASE_URL` and `$SEED_INPUT` (path to JSON dump of in-memory state), then `node playground/seed-from-memory.js`. The `tenant-store-factory.js` builds the right target store automatically. Tests live in `playground/seed-from-memory.test.js` (24 tests covering empty, populated, idempotent rerun, audit-log copy, progress callback).
+
+### How do I switch between Dev mode and AI mode in Studio?
+
+Toolbar dropdown in `playground/ide.html` (`<select id="mode-switcher">`). Two options: "Dev mode" (3-panel IDE) and "AI mode" (Marcus-first chat layout). Internal mode IDs are still `classic` and `builder` — the rename is UI-only so saved preferences survive.
+
+`?studio-mode=classic` or `?studio-mode=builder` URL params override; choice persists in `localStorage` under `studio-mode-pref`. `syncModeButtons()` keeps the dropdown's value matched to the active body class on every page load.
+
 ### Where does the routing primitive live?
 
 Parser: `parseRouteDef` in `parser.js` (after `parseQueueDef`). Dispatch: `CANONICAL_DISPATCH.set('route', ...)` next to the queue dispatch. Validator (5 rules): `case NodeType.ROUTE_DEF` in `validator.js`'s `checkNode` (hard errors for `ROUTE_ENTITY_NOT_IN_SCOPE` and `ROUTE_AFTER_SAVE`) plus `validateRouteBlocks` for the warning-tier rules. JS + Python compiler emit: `compileRouteDef` and `compileRouteDefPython` in `compiler.js` (after `compileQueueDef`). Dispatch case: `case NodeType.ROUTE_DEF` next to `QUEUE_DEF` and `EMAIL_TRIGGER`. Cursor table + helper emit: prelude pass walks the AST for any round-robin default and emits the `_clear_route_cursors` table + `_clear_route_pick` async function once at module top. Plan: `plans/plan-routing-primitive-2026-04-29.md`.
