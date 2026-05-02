@@ -182,7 +182,7 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
 /* Proof strip */
 .proof-strip { background: #fff; border-top: 1px solid rgba(0,0,0,0.04); border-bottom: 1px solid rgba(0,0,0,0.04); }
 
-/* Live demo screenshot */
+/* Live demo */
 .demo-frame {
   background: #fff;
   border-radius: 16px;
@@ -193,64 +193,14 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
     0 24px 48px rgba(0,0,0,0.06);
   overflow: hidden;
 }
-.demo-frame img {
+.demo-frame iframe {
   display: block;
   width: 100%;
-  height: auto;
+  height: min(72vh, 760px);
+  min-height: 520px;
+  border: 0;
+  background: #f8f9fb;
 }
-.screenshot-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  background:
-    linear-gradient(135deg, #f8f9fb 0%, #eef2ff 50%, #f5f0ff 100%);
-  background-image:
-    linear-gradient(135deg, #f8f9fb 0%, #eef2ff 50%, #f5f0ff 100%),
-    repeating-linear-gradient(45deg, transparent 0 12px, rgba(99,102,241,0.04) 12px 13px);
-  background-blend-mode: multiply;
-  color: #6366f1;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-align: center;
-  padding: 32px;
-}
-.screenshot-placeholder .ph-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: rgba(99,102,241,0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6366f1;
-}
-.screenshot-placeholder .ph-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #4361ee;
-}
-.screenshot-placeholder .ph-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e1b4b;
-  letter-spacing: -0.01em;
-}
-.screenshot-placeholder .ph-meta {
-  font-size: 12px;
-  color: #94a3b8;
-  font-family: 'Inter', sans-serif;
-  font-weight: 400;
-}
-
 /* For/Get/Pay */
 .fgp-label {
   font-size: 11px;
@@ -298,8 +248,8 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
       Ships to a live URL in under 30 seconds
     </div>
     <h1 class="fade-up fade-d1 text-5xl md:text-[72px] font-extrabold leading-[1.05] tracking-[-0.035em] mb-6 max-w-4xl mx-auto">
-      Ship the first internal tool<br>
-      <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">on your backlog this Friday.</span>
+      Clear builds Marcus's Deal Desk.<br>
+      <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">Ship the first one this Friday.</span>
     </h1>
     <p class="fade-up fade-d2 text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed font-light">
       Describe the app in plain English. Get a real one back — database, login,
@@ -450,16 +400,13 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
         <div class="text-[11px] text-slate-400">Live</div>
       </div>
 
-      <!-- The screenshot itself: real img if file exists, otherwise the placeholder.
-           Swap this div for <img src="images/deal-desk-demo.png" alt="Deal Desk app — pending discount approval queue"> when the asset lands. -->
-      <div class="screenshot-placeholder">
-        <div class="ph-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-        </div>
-        <div class="ph-label">Deal-desk demo screenshot — TODO</div>
-        <div class="ph-title">Drop image at <span class="mono" style="font-family: 'JetBrains Mono', monospace; background: rgba(99,102,241,0.08); padding: 2px 8px; border-radius: 4px;">landing/images/deal-desk-demo.png</span></div>
-        <div class="ph-meta">Recommended: 1600&times;1000 PNG of the /cro Pending Queue view, ivory theme.</div>
-      </div>
+      <iframe
+        title="Deal Desk live preview"
+        data-publish-url="https://deals.demo.buildclear.dev"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;background:#f8f9fb;color:#162033;font-family:Inter,system-ui,sans-serif}.shell{display:grid;grid-template-columns:236px 1fr;min-height:720px}.rail{background:#fff;border-right:1px solid #e6e9f0;padding:18px}.brand{display:flex;align-items:center;gap:10px;font-weight:800;margin-bottom:26px}.mark{width:32px;height:32px;border-radius:9px;background:#4f46e5;color:#fff;display:grid;place-items:center}.nav-label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:18px 0 8px}.nav{display:flex;align-items:center;justify-content:space-between;height:34px;border-radius:8px;padding:0 10px;color:#475569;font-size:13px;font-weight:600}.nav.active{background:#eef2ff;color:#4338ca}.count{font-size:11px;border-radius:999px;background:#f1f5f9;padding:2px 7px}.main{padding:24px 28px}.crumb{font-size:13px;color:#64748b;margin-bottom:18px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.title h1{font-size:26px;line-height:1.1;margin:0 0 6px}.title p{margin:0;color:#64748b;font-size:14px}.button{background:#4f46e5;color:white;border-radius:8px;padding:9px 13px;font-weight:700;font-size:13px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.stat{background:white;border:1px solid #e6e9f0;border-radius:10px;padding:14px}.stat span{display:block;color:#94a3b8;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.stat strong{display:block;font-size:23px;margin-top:8px}.grid{display:grid;grid-template-columns:1.35fr .8fr;gap:16px}.card{background:white;border:1px solid #e6e9f0;border-radius:12px;overflow:hidden}.card h2{font-size:14px;margin:0;padding:14px 16px;border-bottom:1px solid #e6e9f0}.row{display:grid;grid-template-columns:1.2fr .7fr .8fr .7fr;gap:12px;padding:13px 16px;border-bottom:1px solid #eef1f6;font-size:13px;align-items:center}.head{color:#94a3b8;font-size:10px;font-weight:800;text-transform:uppercase}.pill{border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800;width:max-content}.pending{background:#fff7ed;color:#c2410c}.approved{background:#ecfdf5;color:#047857}.panel{padding:16px}.field{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:800;margin-top:12px}.value{font-size:14px;margin-top:5px}.agent{margin-top:16px;background:#eef2ff;border:1px solid #dbe4ff;color:#3730a3;border-radius:10px;padding:13px;font-size:13px;line-height:1.45}</style></head><body><div class="shell"><aside class="rail"><div class="brand"><div class="mark">D</div><div>Deal Desk</div></div><div class="nav-label">Approvals</div><div class="nav active"><span>Pending</span><span class="count">8</span></div><div class="nav"><span>Approved today</span><span class="count">12</span></div><div class="nav"><span>Rejected</span><span class="count">3</span></div><div class="nav"><span>Awaiting customer</span><span class="count">5</span></div><div class="nav-label">Workspace</div><div class="nav"><span>All deals</span></div><div class="nav"><span>Reports</span></div></aside><main class="main"><div class="crumb">Workspace / Deal Desk / Pending Queue</div><div class="top"><div class="title"><h1>Pending CRO approval</h1><p>8 deals waiting on you. Largest request: Acme Health at 30 percent.</p></div><div class="button">New deal</div></div><section class="stats"><div class="stat"><span>Pipeline at stake</span><strong>$1.8M</strong></div><div class="stat"><span>Median discount</span><strong>24%</strong></div><div class="stat"><span>SLA risk</span><strong>3</strong></div><div class="stat"><span>Clear Cloud</span><strong>Live</strong></div></section><section class="grid"><div class="card"><h2>Pending deals</h2><div class="row head"><div>Customer</div><div>Discount</div><div>Segment</div><div>Status</div></div><div class="row"><div>Acme Health</div><div>30%</div><div>Enterprise</div><div class="pill pending">Pending</div></div><div class="row"><div>Northstar Bio</div><div>26%</div><div>Mid-market</div><div class="pill pending">Pending</div></div><div class="row"><div>Rivian</div><div>15%</div><div>Enterprise</div><div class="pill approved">Approved</div></div></div><div class="card"><h2>Deal details</h2><div class="panel"><div class="field">List price</div><div class="value">$240,000 annual</div><div class="field">Discount</div><div class="value">30 percent requested</div><div class="field">Risk score</div><div class="value">High. Prior precedent is 25 percent.</div><div class="agent"><strong>Agent summary:</strong> Approve at 25 percent with a 3-year lock-in, or escalate for CFO review.</div></div></div></section></main></div></body></html>'
+      ></iframe>
     </div>
 
     <div class="flex items-center justify-center gap-4 mt-8 flex-wrap">

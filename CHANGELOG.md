@@ -137,6 +137,25 @@ without tests touching the real Fly network.
 - No DNS poller trigger wiring yet. CC-5b still owns waking up on verified domains and writing the cert id back.
 
 **Why for launch:** custom domains are not credible until HTTPS is automatic. This gives the poller a tiny, tested thing to call once DNS verification lands.
+## 2026-05-01 - Marcus landing page shows the Deal Desk proof
+
+The Marcus page now leads with the actual launch promise: Clear builds Marcus's
+Deal Desk, and the first one can ship this Friday. The first viewport shows
+Clear, Marcus, and the Deal Desk app immediately instead of a generic backlog
+pitch.
+
+**What shipped:**
+- `landing/marcus.html` now has the tighter Friday headline.
+- The live-demo section embeds a Deal Desk preview surface instead of a TODO screenshot placeholder.
+- The "See Deal Desk live" CTA points at `https://deals.demo.buildclear.dev`.
+- A static regression check guards the headline, CTA, embedded preview, and no-TODO rule.
+
+**Verification:** `node scripts/marcus-landing.test.mjs` passed. Browser check loaded
+the page locally, found zero console errors, verified the iframe was visible,
+and saved screenshots to `C:\tmp\marcus-landing.png` and `C:\tmp\marcus-live-demo.png`.
+
+**Open deployment note:** `deals.demo.buildclear.dev` currently resolves to a
+parked host, so the page uses the embedded preview until the published app URL is live.
 
 ---
 
