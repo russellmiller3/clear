@@ -78,6 +78,12 @@ needs WFP's namespace dispatcher. Standard Workers don't support the
 **Done when:** the Cloudflare dashboard shows "Workers for Platforms" enabled
 and you can create a dispatch namespace.
 
+**Custom-domain verification + HTTPS:** CC-5b is now a callable poller helper
+that can also bridge into CC-5c. Once the server has a Postgres pool and Fly
+token, schedule `pollPendingDomainVerifications({ db, flyToken })` every minute
+so pending domains move to verified or failed, and verified rows request a Fly
+certificate with id/status written back.
+
 ---
 
 ## 3. Stripe — live keys

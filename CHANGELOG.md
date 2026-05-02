@@ -91,6 +91,55 @@ The piece between "we think the launch path works" and "the repo can prove it on
 
 ---
 
+## 2026-05-01 - CC-5 domain-to-certificate bridge
+
+Custom-domain DNS verification now triggers Fly certificate provisioning in the same poller pass.
+
+**What shipped:**
+- `pollPendingDomainVerifications()` accepts an injectable certificate provisioner for tests and a Fly-token-backed default for production.
+- Verified rows request a Fly certificate, then write `fly_certificate_id`, `certificate_status`, readiness time, last checked time, and error text.
+- DNS tests now cover the full handoff: pending row -> verified row -> certificate writeback, with no real DNS or Fly network call.
+
+**Why for launch:** the custom-domain flow now has the missing bridge from "your DNS is right" to "HTTPS is being issued." That turns the domain checklist from a manual two-step into one schedulable worker.
+
+**Tests:** `node playground/cloud-domains/index.test.js` and `node playground/cloud-domains/fly-certificates.test.js` passed.
+
+---
+
+## 2026-05-01 - Clear Cloud custom-domain DNS poller
+
+CC-5b shipped as a callable worker helper for pending custom domains.
+
+**What shipped:**
+- Pending custom-domain rows now get checked against their stored expected CNAME.
+- Matching DNS flips the row to `verified` and records `verified_at`.
+- Wrong DNS flips the row to `failed` with the target it actually found.
+- Missing DNS stays `pending`, but still records `last_checked_at`.
+- Tests inject DNS, clock, and store dependencies, so the suite never hits real DNS.
+
+**Why for launch:** custom domains no longer depend on a human clicking verify at the right moment. Once scheduled every minute, the dashboard can move from "copy this record" to "your domain is ready" automatically.
+
+**Tests:** `node playground/cloud-domains/index.test.js` passed.
+
+---
+
+## 2026-05-01 - CC-5c Fly certificate helper scaffold
+
+The piece between "DNS is verified" and "the custom domain can serve HTTPS"
+now has a mock-tested boundary. Clear Cloud can request a Fly certificate,
+poll its status, and return a normalized `ready` / `pending` / `failed` state
+without tests touching the real Fly network.
+
+**What shipped:**
+- New Fly certificate helper for create, status, polling, and a CC-5b-shaped integration call.
+- Mocked API tests for create-cert, poll-cert-status, ready/pending state mapping, and Fly error text.
+- `app_domains` now has certificate id/status columns so CC-5b has a real writeback target.
+- No DNS poller trigger wiring yet. CC-5b still owns waking up on verified domains and writing the cert id back.
+
+**Why for launch:** custom domains are not credible until HTTPS is automatic. This gives the poller a tiny, tested thing to call once DNS verification lands.
+
+---
+
 ## 2026-05-01 — Provable correctness moonshot: math proofs against Clear source
 
 Built the first slice of provable correctness in one overnight session. Two milestones merged on `feature/decidable-core-prover`:

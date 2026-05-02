@@ -98,6 +98,8 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
 - [Where are the 2026-05-01 launch fan-out branches?](#where-are-the-2026-05-01-launch-fan-out-branches)
 - [Where does the Stripe webhook receiver live?](#where-does-the-stripe-webhook-receiver-live)
+- [Where does Clear Cloud custom-domain verification live?](#where-does-clear-cloud-custom-domain-verification-live)
+- [Where does Fly SSL certificate provisioning live?](#where-does-fly-ssl-certificate-provisioning-live)
 - [Where is the incremental update logic for Cloudflare deploys?](#where-is-the-incremental-update-logic-for-cloudflare-deploys)
 - [How do I rollback a Cloudflare app?](#how-do-i-rollback-a-cloudflare-app)
 - [Why do schema changes require explicit confirmation during an update?](#why-do-schema-changes-require-explicit-confirmation-during-an-update)
@@ -238,6 +240,31 @@ Keep `feature/prover-inequality-reasoning` post-launch unless Russell explicitly
 The receiver verifies `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`, then delegates the signed event to `playground/billing.js`. `checkout.session.completed` marks the tenant's plan from checkout metadata (`team` or `business`) and saves the Stripe customer id. Replayed event ids are deduped through the tenant store, so Stripe retries are safe.
 
 Local tests use `signStripeWebhookForTest()` and never need live Stripe keys. Production fails closed when `STRIPE_WEBHOOK_SECRET` is missing.
+
+---
+
+### Where does Clear Cloud custom-domain verification live?
+
+`playground/cloud-domains/index.js` owns the CC-5 custom-domain helper layer.
+
+- `addDomain()` writes `app_domains` rows with `status='pending'` and a stored expected CNAME.
+- `listPendingDomains()` reads rows waiting on DNS.
+- `pollPendingDomainVerifications()` is the CC-5b worker entrypoint. Call it once per minute from the Clear Cloud server or an external cron.
+- The poller uses `node:dns/promises.resolveCname` by default, but tests inject a resolver and clock.
+- Matching CNAME sets `verified`; wrong CNAME sets `failed`; no CNAME stays `pending`.
+- When a row verifies, the poller can call the injectable certificate provisioner and write the Fly certificate id/status fields in the same pass.
+
+Production should pass `flyToken` so the default bridge calls Fly. Tests should pass `provisionCertificate` so no real network runs.
+
+### Where does Fly SSL certificate provisioning live?
+
+**`playground/cloud-domains/fly-certificates.js`** is the CC-5c helper. It calls Fly's certificate API, polls certificate status, and normalizes every result to `ready`, `pending`, or `failed`.
+
+**What CC-5b calls:** after its DNS poller flips a domain row to verified, `pollPendingDomainVerifications({ flyToken })` uses `provisionFlyCertificateForDomain({ domainRow, token })`. Tests inject `provisionCertificate` directly. The row needs `id`, `domain`, and `fly_app_name`. The return value includes `certId` and `state` so the poller can write the cert id/status back.
+
+**Writeback target:** `app_domains` now has `fly_certificate_id`, `certificate_status`, `certificate_ready_at`, `certificate_last_checked_at`, and `certificate_error`. DNS verification status stays separate from HTTPS readiness.
+
+**Tests:** `playground/cloud-domains/fly-certificates.test.js` mocks Fly create/status responses. No test performs a real Fly network call.
 
 ---
 

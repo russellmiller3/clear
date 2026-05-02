@@ -281,5 +281,199 @@ console.log('\n🗂️  addDomain + listDomainsForApp + listPendingDomains\n');
     `all returned rows have status='pending'`);
 }
 
-console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
+// CC-5b poller: pending rows become verified / failed.
+console.log('\nCC-5b pollPendingDomainVerifications\n');
+
+{
+  function mockPollerDb() {
+    const rows = [
+      {
+        id: 1,
+        app_id: 10,
+        domain: 'deals.acme.com',
+        expected_cname: 'app-deals.buildclear.dev',
+        status: 'pending',
+        verified_at: null,
+        last_checked_at: null,
+        last_error: null,
+      },
+      {
+        id: 2,
+        app_id: 11,
+        domain: 'bad.acme.com',
+        expected_cname: 'app-bad.buildclear.dev',
+        status: 'pending',
+        verified_at: null,
+        last_checked_at: null,
+        last_error: null,
+      },
+      {
+        id: 3,
+        app_id: 12,
+        domain: 'waiting.acme.com',
+        expected_cname: 'app-waiting.buildclear.dev',
+        status: 'pending',
+        verified_at: null,
+        last_checked_at: null,
+        last_error: null,
+      },
+    ];
+    return {
+      rows,
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/^SELECT \* FROM app_domains WHERE status\s*=\s*'pending'/i.test(t)) {
+          return { rows: rows.filter(r => r.status === 'pending') };
+        }
+        if (/^UPDATE app_domains SET status = \$1/i.test(t)) {
+          const [status, verified_at, last_checked_at, last_error, id] = params;
+          const row = rows.find(r => r.id === id);
+          if (!row) throw new Error('missing row ' + id);
+          Object.assign(row, {
+            status,
+            verified_at,
+            last_checked_at,
+            last_error,
+          });
+          return { rows: [row] };
+        }
+        throw new Error('mock unhandled: ' + t.slice(0, 120));
+      },
+    };
+  }
+
+  const { pollPendingDomainVerifications } = await import('./index.js');
+  const checkedAt = new Date('2026-05-01T12:00:00.000Z');
+  const db = mockPollerDb();
+  const result = await pollPendingDomainVerifications({
+    db,
+    now: () => checkedAt,
+    resolveCname: async (domain) => {
+      if (domain === 'deals.acme.com') return ['app-deals.buildclear.dev.'];
+      if (domain === 'bad.acme.com') return ['elsewhere.example.com'];
+      if (domain === 'waiting.acme.com') return [];
+      throw new Error('unexpected domain ' + domain);
+    },
+  });
+
+  assert(result.checked === 3, `checked all pending domains (got ${result.checked})`);
+  assert(result.verified === 1, `one domain verified (got ${result.verified})`);
+  assert(result.failed === 1, `one domain failed (got ${result.failed})`);
+  assert(result.pending === 1, `one domain stayed pending (got ${result.pending})`);
+
+  const verified = db.rows.find(r => r.domain === 'deals.acme.com');
+  assert(verified.status === 'verified', `matching CNAME flips status to verified`);
+  assert(verified.verified_at === checkedAt, `verified row records verified_at`);
+  assert(verified.last_checked_at === checkedAt, `verified row records last_checked_at`);
+  assert(verified.last_error === null, `verified row clears last_error`);
+
+  const failedRow = db.rows.find(r => r.domain === 'bad.acme.com');
+  assert(failedRow.status === 'failed', `wrong CNAME flips status to failed`);
+  assert(failedRow.verified_at === null, `failed row does not set verified_at`);
+  assert(failedRow.last_checked_at === checkedAt, `failed row records last_checked_at`);
+  assert(failedRow.last_error.includes('elsewhere.example.com'),
+    `failed row explains the wrong target (got ${failedRow.last_error})`);
+
+  const pendingRow = db.rows.find(r => r.domain === 'waiting.acme.com');
+  assert(pendingRow.status === 'pending', `missing CNAME stays pending`);
+  assert(pendingRow.last_checked_at === checkedAt, `pending row records last_checked_at`);
+  assert(pendingRow.last_error === null, `pending row has no error`);
+}
+
+// CC-5b + CC-5c bridge: verified DNS rows trigger certificate provisioning.
+console.log('\nCC-5b/CC-5c bridge provisions certificates after DNS verifies\n');
+
+{
+  function mockBridgeDb() {
+    const rows = [
+      {
+        id: 7,
+        app_id: 70,
+        domain: 'crm.acme.com',
+        expected_cname: 'app-crm.buildclear.dev',
+        fly_app_name: 'clear-acme-crm',
+        status: 'pending',
+        verified_at: null,
+        last_checked_at: null,
+        last_error: null,
+        fly_certificate_id: null,
+        certificate_status: 'pending',
+        certificate_ready_at: null,
+        certificate_last_checked_at: null,
+        certificate_error: null,
+      },
+    ];
+    return {
+      rows,
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/^SELECT \* FROM app_domains WHERE status\s*=\s*'pending'/i.test(t)) {
+          return { rows: rows.filter(r => r.status === 'pending') };
+        }
+        if (/^UPDATE app_domains SET status = \$1/i.test(t)) {
+          const [status, verified_at, last_checked_at, last_error, id] = params;
+          const row = rows.find(r => r.id === id);
+          Object.assign(row, { status, verified_at, last_checked_at, last_error });
+          return { rows: [row] };
+        }
+        if (/^UPDATE app_domains SET fly_certificate_id = \$1/i.test(t)) {
+          const [
+            fly_certificate_id,
+            certificate_status,
+            certificate_ready_at,
+            certificate_last_checked_at,
+            certificate_error,
+            id,
+          ] = params;
+          const row = rows.find(r => r.id === id);
+          Object.assign(row, {
+            fly_certificate_id,
+            certificate_status,
+            certificate_ready_at,
+            certificate_last_checked_at,
+            certificate_error,
+          });
+          return { rows: [row] };
+        }
+        throw new Error('mock unhandled: ' + t.slice(0, 120));
+      },
+    };
+  }
+
+  const { pollPendingDomainVerifications } = await import('./index.js');
+  const checkedAt = new Date('2026-05-01T13:00:00.000Z');
+  const db = mockBridgeDb();
+  const provisionCalls = [];
+  const result = await pollPendingDomainVerifications({
+    db,
+    now: () => checkedAt,
+    resolveCname: async () => ['app-crm.buildclear.dev'],
+    provisionCertificate: async (domainRow) => {
+      provisionCalls.push(domainRow);
+      return {
+        ok: true,
+        certId: 'cert_bridge_789',
+        state: 'ready',
+        domainId: domainRow.id,
+      };
+    },
+  });
+
+  assert(result.verified === 1, `verified DNS count still increments`);
+  assert(result.certificatesRequested === 1,
+    `one certificate request counted (got ${result.certificatesRequested})`);
+  assert(provisionCalls.length === 1, `bridge calls the certificate provisioner once`);
+  assert(provisionCalls[0].domain === 'crm.acme.com', `bridge passes the verified domain row`);
+
+  const row = db.rows[0];
+  assert(row.status === 'verified', `row status is verified before cert writeback`);
+  assert(row.fly_certificate_id === 'cert_bridge_789', `cert id is written back`);
+  assert(row.certificate_status === 'ready', `cert status is written back`);
+  assert(row.certificate_ready_at === checkedAt, `ready cert records certificate_ready_at`);
+  assert(row.certificate_last_checked_at === checkedAt,
+    `cert writeback records certificate_last_checked_at`);
+  assert(row.certificate_error === null, `successful cert provisioning clears certificate_error`);
+}
+
+console.log(`\nFINAL ${failed === 0 ? 'PASS' : 'FAIL'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -67,6 +67,26 @@ The deploy status endpoint currently reports coarse job states, not true per-ste
 
 ---
 
+## Session: CC-5c Fly certificate provisioner helper (2026-05-01)
+
+### Keep the Fly boundary mockable until production account access is real
+
+CC-5c depends on Fly's production certificate API, but the repo can still ship a useful seam now. The helper takes `fetchImpl`, `apiBase`, and token inputs directly, so tests prove request shape and state normalization without touching the real network.
+
+### Normalize provider states before CC-5b writes rows
+
+Fly can report certificate readiness through fields like `configured`, `client_status`, `status`, or provider-specific payloads. CC-5b should not learn those shapes. It should receive only `ready`, `pending`, or `failed`, plus `certId`, then write those values back to the domain row.
+
+### The trigger belongs to the DNS poller, not the cert helper
+
+The certificate helper should not wake itself, scan pending domains, or resolve DNS. CC-5b owns "domain flipped to verified"; CC-5c owns "given that verified row, ask Fly for HTTPS and poll until ready."
+
+### Bridge at the state transition, not in a second scanner
+
+Once DNS verification flips a row to verified, the same worker has the freshest row, timestamp, and error context. Trigger certificate provisioning there with an injectable function. A separate "scan verified rows" loop would add another scheduler, another race, and another stale-state surface for no launch benefit.
+
+---
+
 ## Session D-1: Namespaced component calls (2026-04-24)
 
 ### The bug: `show ns's Card()` silently dropped the component
@@ -2018,6 +2038,21 @@ could land while the most realistic test sat idle.
 - **A test runner that is not in the default safety net is documentation, not protection.** If launch depends on it, wire it into the push gate.
 - **Browser coverage needs a real browser path, not just compiler assertions.** Static checks catch emitted strings; browser UAT catches broken routes, forms, buttons, and console failures.
 - **Child Node processes should reuse `process.execPath`.** Bare `node` can hit a blocked shim or a different runtime on Windows; the parent executable is the known-good one.
+
+---
+
+## Session 2026-05-01: DNS Pollers Should Be Callable Before Scheduled
+
+CC-5b needed the background behavior, but the useful unit is the callable worker:
+read pending rows, resolve CNAME, write the next state. The scheduler is just
+how often production invokes that unit.
+
+### Gotchas-as-rules
+
+- **Keep DNS and clock injectable.** Tests should prove state transitions without touching real DNS or waiting a minute.
+- **Store the expected CNAME at attach time.** The poller must compare against the value the user saw, even if root-domain config changes later.
+- **Wrong DNS is failed, missing DNS is pending.** A CNAME pointing elsewhere needs user action; no CNAME may only be propagation delay.
+- **CC-5c should consume verified rows.** Certificate provisioning starts from `status='verified'`, not from doing another DNS decision.
 
 ---
 
