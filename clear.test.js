@@ -28916,4 +28916,89 @@ rule discount-cap:
   });
 });
 
+describe('rule keyword — validator', () => {
+  it('hard-errors when a rule is nested inside another rule', () => {
+    // Defense-in-depth — the parser does not currently dispatch `rule` inside
+    // a rule body (the dispatcher is keyed on the canonical token), but if a
+    // future change starts allowing it, the validator should reject. We
+    // simulate a nested rule by hand-building the AST.
+    const ast = {
+      type: 'program',
+      body: [{
+        type: 'rule_def',
+        name: 'outer',
+        line: 1,
+        body: [{
+          type: 'rule_def',
+          name: 'inner',
+          line: 2,
+          body: [],
+        }],
+      }],
+      errors: [],
+    };
+    const { errors } = validate(ast);
+    const msg = errors.map(e => e.message).join(' ');
+    expect(/nested|top.?level|inside another rule/i.test(msg)).toBe(true);
+  });
+
+  it('hard-errors on a rule with empty body even if parser missed it', () => {
+    // Defense-in-depth. The parser emits a hard error for empty bodies, but
+    // a hand-built AST or a future parser path could skip that check.
+    const ast = {
+      type: 'program',
+      body: [{
+        type: 'rule_def',
+        name: 'discount-cap',
+        line: 1,
+        body: [],
+      }],
+      errors: [],
+    };
+    const { errors } = validate(ast);
+    const msg = errors.map(e => e.message).join(' ');
+    expect(/empty|at least one|body/i.test(msg)).toBe(true);
+  });
+
+  it('warns when a rule body has no refusal path', () => {
+    // A rule whose body contains only assignments / show / log has no
+    // guard, no validate, no throw — it never enforces anything. Warn.
+    const src = `rule discount-tracker:
+  show 'discount-tracker checked'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const { warnings } = validate(ast);
+    const msg = warnings.map(w => w.message).join(' ');
+    expect(/no refusal|never enforces|guard|validate/i.test(msg)).toBe(true);
+  });
+
+  it('does not warn when a rule body has a guard statement', () => {
+    const src = `rule discount-cap:
+  guard discount is less than 30 or 'too big'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const { warnings } = validate(ast);
+    const ruleWarnings = warnings.filter(w =>
+      typeof w.message === 'string' && /no refusal|never enforces/i.test(w.message)
+    );
+    expect(ruleWarnings).toHaveLength(0);
+  });
+
+  it('hard-errors on duplicate rule names (validator-level)', () => {
+    // The parser emits a duplicate-name error, but the validator should
+    // also flag it for hand-built ASTs.
+    const ast = {
+      type: 'program',
+      body: [
+        { type: 'rule_def', name: 'discount-cap', line: 1, body: [{ type: 'guard', expression: { type: 'literal_boolean', value: true }, line: 2 }] },
+        { type: 'rule_def', name: 'discount-cap', line: 3, body: [{ type: 'guard', expression: { type: 'literal_boolean', value: true }, line: 4 }] },
+      ],
+      errors: [],
+    };
+    const { errors } = validate(ast);
+    const msg = errors.map(e => e.message).join(' ');
+    expect(/duplicate|already defined|same name/i.test(msg)).toBe(true);
+  });
+});
+
 run();
