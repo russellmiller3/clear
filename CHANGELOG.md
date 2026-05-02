@@ -6,6 +6,38 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 - `rule <name>:` keyword + per-rule prover attribution (rebuild)
+
+The regulated-tier pitch piece. Auditors and CROs now see verdicts attributed by name — "discount-cap-thirty PROVED for every possible deal" — instead of "line 42 PROVED." This is the sentence that closes deals in regulated industries.
+
+**What shipped (13 commits, TDD discipline):**
+- **Parser** — `RULE_DEF` node type, `parseRuleDef` with kebab-case + quoted-string name handling (parser dasherizes `'Discount cap'` → `discount-cap`), dispatcher entry on canonical token `rule`. Hard errors on missing name, empty body, duplicate names.
+- **Validator** — `validateRuleBlocks` pass: hard errors for nested rules / empty bodies / duplicate names (defense-in-depth); warning when a rule body has no `guard` / `validate` / `throw` (rule never enforces anything).
+- **Compiler** — `compileNode` case for `RULE_DEF` emits `// rule: <name> (line N)` (Python: `#`) above the body, then inlines the body's normal emit. JS + Python both supported.
+- **Prover** — `proveRule()` walks every `rule_def`, simplifies guard expressions, classifies as `proved` (tautology), `disproved` (always-false), or `unverifiable` (impure or free vars). Bundle now carries `rules` array and `ruleCounts` summary. `formatBundle` renders a "Business rules in this file:" section.
+- **CLI** — `summarizeProofBundle` emits the per-rule section above the test totals. Exit code factors in rule disproofs (any disproved rule → exit 1).
+- **Apps** — deal-desk gets 3 named rules (`discount-cap-thirty`, `price-floor-positive`, `risk-score-bounded`); lead-router gets 2 (`lead-must-have-name`, `lead-must-have-email`). All compile to PROVED.
+- **Tour file** — `examples/rule-keyword-tour.clear` produces 1 PROVED, 1 DISPROVED, 1 UNVERIFIABLE for the prover demo. Locked in by a regression test.
+
+**The pitch surface, live:**
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 18)
+  [DISPROVED]    impossible-rule (line 22) — guard rejects every input
+  [UNVERIFIABLE] reads-the-database (line 27) — body calls the database
+  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+```
+
+**Why for launch:** the rule keyword + per-rule prover verdict IS the regulated-tier claim. Without it, Clear says "we have a math prover, somewhere, you can run on your file." With it, Clear says "every named business rule in your app has a verdict next to it: proved for every input, unverifiable, or disproved with a counterexample. The CRO sees the list. Auditors see the list. The list is the audit trail."
+
+**Tests:** 2822 → 2846 (+24 rule-keyword tests). Cross-target smoke clean (32/32 emissions). Existing prover unit tests still 16/16 green.
+
+**Sandbox-recovery context:** a remote Claude session previously shipped 30+ commits to a localhost git proxy thinking it was the real GitHub remote. The rule-keyword work was stranded. The 2026-05-02 partial recovery surfaced the proof-business-language translator (already on main); this rebuild lands the rule keyword itself on a real-remote feature branch.
+
+**Plan:** `plans/plan-rule-keyword-rebuild-2026-05-02.md`. Branch: `feature/rule-keyword-rebuild`.
+
+---
+
 ## 2026-05-02 - Proof verdicts in business-friendly language (partial sandbox recovery)
 
 `node scripts/proof-business-language.mjs <file.clear>` turns the prover's terse verdicts into sentences a CRO or compliance buyer can actually read. Russell asked for exactly this earlier in the session — "results in business friendly format if possible (e.g. what business issues do these prevent? e.g. not 'race conditions' but 'overwriting a database entry')."

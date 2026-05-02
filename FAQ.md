@@ -207,6 +207,46 @@ Tests at `scripts/proof-business-language.test.mjs` (27 passing) cover the verdi
 
 Implementation: `tryRunProver(source)` and `summarizeProofBundle(bundle)` in `cli/clear.js` near `testRunnerExitFromError`. All three exit paths in `testCommand` (server-backed pass/fail, frontend-only pass/fail, no-tests fallback) route through the shared `finalizeWithProof` helper. The frontend-only path captures stdout (instead of `stdio: 'inherit'`) so the proof line lands AFTER the test runner output and so `--json` stays a single envelope. Prover failures are caught in `tryRunProver` so a broken prover never crashes the test run. Tests in `clear.test.js` under `describe('PC-8: clear test auto-prove integration')`.
 
+### How do I write a named, provable business rule? (2026-05-02)
+
+Use `rule <name>:` at the top level. The body parses with the same statement parser as endpoints — `guard`, `validate`, `if` all work inside. The name lets the prover, audit logs, and CLI output attribute verdicts by rule name.
+
+```clear
+rule discount-cap-thirty:
+  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+```
+
+The name can also be a quoted string the parser dasherizes:
+
+```clear
+rule 'Deals over $100k need CRO sign-off':
+  guard amount is less than 100000 or 'Big deals need CRO sign-off'
+```
+
+becomes `deals-over-100k-need-cro-sign-off`. See SYNTAX.md "Named Business Rules" and AI-INSTRUCTIONS.md "Named Business Rules" for canonical usage.
+
+### How do I prove a business rule holds for every input? (2026-05-02)
+
+`node cli/clear.js prove <file.clear>` walks every `rule <name>:` block in the file and produces a per-rule verdict. The output ends with:
+
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 18)
+  [DISPROVED]    impossible-rule (line 22) — guard rejects every input
+  [UNVERIFIABLE] reads-the-database (line 27) — body calls the database
+  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+```
+
+Verdict semantics: PROVED = guard simplifies to a tautology (well-formed, never falsely refuses); DISPROVED = guard always fires (rule rejects everyone, that's a bug); UNVERIFIABLE = body has impure ops (CRUD/AI/HTTP) or free vars the prover cannot see. Implementation: `proveRule()` in `lib/prover/index.js` builds a symbolic env, walks each guard, and aggregates per-statement verdicts into a per-rule verdict. `clear test --prove` (PC-8) renders the same section above the totals line.
+
+### Why use `rule:` instead of raw `guard`? (2026-05-02)
+
+Use `rule:` when the policy has a name a non-engineer would say. Use raw `guard` for one-off checks that don't deserve a name.
+
+The CRO, auditor, or compliance reviewer reads "discount-cap-thirty PROVED for every possible deal" and trusts it because the verdict is attributed by name. They never read "line 42 PROVED" — that requires opening source. Per-rule attribution IS the regulated-tier pitch surface; raw guards inside endpoints don't get there.
+
+`rule:` blocks live at the top level (compile error if nested). Raw `guard` lines live inside endpoints, agents, and other contexts where they catch one-off conditions.
+
 ### Where does the seed-from-memory cutover script live?
 
 `playground/seed-from-memory.js` exports `seedFromMemory({ source, target, onProgress })`. Walks every tenant via `source.listTenants()`, every app via `source.listAppsByTenant(slug)`, every audit entry via `source.getAuditLog`, and every stripe event via `source.listStripeEvents()`, writing each through the target store's public write API (`upsert`, `markAppDeployed`, `recordVersion`, `appendAuditEntry`, `markAuditEntry`, `recordStripeEvent`). Idempotent — `target.get(slug)` and `target.getAppRecord` skip already-present rows.

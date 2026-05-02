@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-02: rule keyword rebuild (after sandbox-strand)
+
+A remote Claude session built the rule keyword end-to-end on a feature branch, but the session's `origin` pointed at a localhost git proxy. Every push "succeeded" but never reached real GitHub. Work was stranded. Recovery via patch-from-chat was uncertain, so the rebuild plan at `plans/plan-rule-keyword-rebuild-2026-05-02.md` was written and a worker agent executed it cleanly in 12 disciplined TDD commits.
+
+The rebuild ended up cleaner than the original would have been because writing the plan first forced explicit answers to four questions the original session improvised: name dasherization rules (kebab-case, quoted strings get sanitized), validator scope (top-level only, no nesting), prover semantics (PROVED = guard simplifies to tautology, DISPROVED = always rejects, UNVERIFIABLE = impure body), and the verdict surface (per-rule attribution by name, not by line number).
+
+### Gotchas-as-rules
+
+- **A feature branch from one session can land cleanly in another if you write the plan first.** The original sandbox session lost 30+ commits to a bad remote. The replacement landed in 12 commits with zero false starts because every parser/validator/compiler/prover decision was already on paper. Plans pay for themselves the second time you need them.
+- **Per-rule prover attribution unlocks the regulated-tier pitch.** PROVED for "discount-cap-thirty" reads as a policy verdict; PROVED for "line 42" reads as a developer artifact. The rule keyword's only unique value over raw `guard` is the name — every audit-trail conversation hinges on it.
+- **Rule names that are quoted strings dasherize, not pass through.** `rule 'Deals over $100k need CRO sign-off':` becomes `deals-over-100k-need-cro-sign-off` so the prover can grep, the audit log can index, and humans can search by stable identifier. Spaces and punctuation in identifiers create silent bugs in every downstream system.
+- **A new top-level keyword needs three doc surfaces minimum, not one.** Meph's system prompt, the user guide, and the cookbook each speak to a different reader (the AI builder, the human user, the AI-first-repo adopter). Skipping any one means the feature ships invisible to that audience.
+
 ## Table of Contents
 
 | Section | Key Gotchas |

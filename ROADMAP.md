@@ -191,6 +191,7 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 - **PC-4 — Marcus deal-desk proof bundle.** Add pure-function tests to deal-desk, run `clear prove` against them, ship the resulting `.proof.json` as the regulated-tier demo artifact. The pitch surface for compliance buyers. ~2-3 hours.
 - **PC-5 — full doc cascade for prove command.** intent.md / SYNTAX.md / AI-INSTRUCTIONS.md / USER-GUIDE.md / system-prompt.md / landing pages. Tonight only updated CHANGELOG, FEATURES, ROADMAP, RESEARCH, FAQ. ~2 hours.
 - **PC-6 — verified compiler (year 2).** CompCert-style proof that Clear → JS and Clear → Python preserve semantics. Closes the trust gap; only blocker to claiming "proven from source to runtime."
+- **PC-9 — `rule <name>:` keyword + per-rule prover attribution. SHIPPED 2026-05-02 on `feature/rule-keyword-rebuild`.** Top-level labeled wrapper around guard/validate statements; the prover walks every `rule_def` and produces a per-rule verdict (`proved` / `disproved` / `unverifiable`) attributed by name. `clear prove` and `clear test --prove` render a "Business rules in this file:" section — the regulated-tier pitch surface ("discount-cap-thirty PROVED for every possible deal" instead of "line 42: PROVED"). Adds 30+ tests (parser/validator/compiler/prover/CLI/tour-regression). Plan: `plans/plan-rule-keyword-rebuild-2026-05-02.md`.
 
 ---
 

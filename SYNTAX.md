@@ -3058,6 +3058,55 @@ route lead by region:
 
 **Round-robin state.** The cursor lives in `_clear_route_cursors` (auto-emitted SQLite table). Cursor key is a content hash of (entity + field + rules + pool), so adding comments above doesn't reset the cursor. Survives restarts via SQLite WAL.
 
+## Named Business Rules (`rule <name>:`)
+
+A `rule:` block is a top-level labeled wrapper that names a business rule so the prover, audit logs, and CLI output can attribute verdicts by name. Body parses with the same statement parser as endpoints — `guard`, `validate`, `if`, etc. all work inside.
+
+### Canonical form
+```clear
+rule discount-cap-thirty:
+  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+
+rule price-floor-positive:
+  guard price is greater than 0 or 'Prices must be positive'
+```
+
+### Quoted-string name (parser dasherizes)
+```clear
+rule 'Deals over $100k need CRO sign-off':
+  guard amount is less than 100000 or 'Big deals need CRO sign-off'
+```
+The parser dasherizes the quoted form — the name above becomes `deals-over-100k-need-cro-sign-off`.
+
+### What the prover sees
+
+Run `clear prove apps/deal-desk/main.clear` and the output ends with:
+
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 18)            — every possible input
+  [DISPROVED]    impossible-rule (line 22)                — counterexample: rejects all
+  [UNVERIFIABLE] reads-the-database (line 27)             — body calls the database
+  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+```
+
+That output is the regulated-tier pitch surface — auditors and CROs see verdicts attributed by name.
+
+**Verdict semantics:**
+- **PROVED** — every guard expression simplifies to a definite `true` for every possible input. The rule is well-formed and never falsely refuses.
+- **DISPROVED** — at least one guard always fires (rejects every input). The rule is broken — it refuses everyone. Counterexample is the rule's refusal message.
+- **UNVERIFIABLE** — body has impure operations (CRUD lookup, AI call, HTTP request) OR free variables the prover cannot see. The prover refuses to claim more than the engine knows.
+
+**Strict rules:**
+- Names must be unique per file. Duplicate name is a HARD ERROR (`RULE_NAME_DUPLICATE`).
+- Body must contain at least one statement. Empty body is a HARD ERROR (`RULE_BODY_EMPTY`).
+- Rules must live at the top level. Nesting inside an endpoint, function, or another rule is a HARD ERROR (`RULE_OUTSIDE_TOP_LEVEL`).
+- A body with no `guard`, `validate`, or `throw` triggers a warning (`rule_no_refusal_path`) — the rule never enforces anything.
+
+**When to use vs raw `guard`:**
+- Use `rule:` for named business policies the CRO / auditor cares about — the prover gives them a per-policy verdict.
+- Use raw `guard` for one-off checks inside an endpoint that don't deserve a policy name.
+
 ## Approval Queues (Single-Stage Reviewer)
 
 When an entity needs human approval before its status changes, declare a queue. One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action.

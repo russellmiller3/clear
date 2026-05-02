@@ -363,6 +363,20 @@ when user updates invoice at /api/invoices/:id/send:
   send back 'sent' with success message
 ```
 
+### Named, provable business rules (2026-05-02)
+
+Use `rule <name>:` at the top level for any policy a CRO or auditor would say out loud. The body parses with the same statement parser as endpoints, but the name lets `clear prove` attribute verdicts by rule:
+
+```clear
+rule discount-cap-thirty:
+  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+
+rule deal-over-100k-needs-cro-signoff:
+  guard amount is less than 100000 or 'Deals over $100k need CRO sign-off'
+```
+
+Quoted-string names dasherize: `rule 'Deals over $100k need CRO sign-off':` becomes `deals-over-100k-need-cro-sign-off`. Names must be unique per file; rules must live at the top level (no nesting); body must have at least one statement. `clear prove <file>` emits a "Business rules in this file:" section with `[PROVED]`, `[DISPROVED]`, or `[UNVERIFIABLE]` per rule. Use `rule:` when the policy has a name a non-engineer would say; use raw `guard` for one-off checks inside an endpoint. See `examples/rule-keyword-tour.clear` for a one-of-each-verdict demo.
+
 ### Computed values
 ```clear
 subtotal = quantity * unit_price

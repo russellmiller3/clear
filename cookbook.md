@@ -72,6 +72,20 @@ Clear has the Factor DB (compile/test outcomes per code action). Your repo proba
 
 Splitting these kills drift. Without the split, one file tries to be all three and silently rots.
 
+### Named, provable business rules — every CRO-facing policy is a one-liner with a math-grade verdict next to it
+
+Clear's `rule <name>:` keyword (2026-05-02) is the regulated-tier pattern. Every business policy that matters to a CRO, auditor, or compliance reviewer gets a name. The prover walks every `rule_def` in the file and produces a per-rule verdict — `proved`, `disproved`, or `unverifiable` — attributed by name in `clear prove` output:
+
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 18)
+  [DISPROVED]    impossible-rule (line 22) — guard rejects every input
+  [UNVERIFIABLE] reads-the-database (line 27) — body calls the database
+  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+```
+
+That output IS the audit trail. Auditors trust verdicts attributed by name; they don't trust "line 42 PROVED" because reading source isn't their job. **The principle is portable.** Any AI-first repo that ships behavior to regulated buyers should consider naming its policies and producing per-policy verdicts. Without names, the prover output is a developer log; with names, it's an audit artifact a non-engineer can show their auditor. See `intent.md` (RULE_DEF row) and `lib/prover/index.js` (proveRule) for the implementation.
+
 ## The Advanced Kit — add these once you have ~20 sessions of usage data
 
 ### 7. Domain-specific Factor DB

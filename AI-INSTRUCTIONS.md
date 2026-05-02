@@ -1647,12 +1647,80 @@ Not technically a guard (it doesn't reject based on data), but serves the same p
 | Endpoint from anonymous users | `requires login` |
 | Endpoint from wrong role | `requires role 'admin'` |
 | Business rule (stock, plan, etc.) | `guard X or 'message'` |
+| Named, provable business rule | `rule <name>:` + body (see "Named Business Rules" below) |
 | Input shape (missing/malformed fields) | `validate <entity>:` + rules |
 | Agent from doing bad things | `must not:` + `block arguments matching` |
 | Whole app from dangerous patterns | App-level policies at top of file |
 | Endpoint from brute force | `rate limit N per minute` |
 
 **Layer them.** A real endpoint has `requires login` + `validate` + `guard` + the app has `protect tables:`. Security isn't one check — it's defense in depth.
+
+## Named Business Rules (`rule <name>:`)
+
+Use a `rule:` block when a business policy deserves a name. The prover walks every `rule_def` and produces a per-rule verdict — auditors and CROs see "discount-cap-thirty PROVED for every possible deal" instead of "line 42: PROVED."
+
+### When to use
+- The policy has a **name a non-engineer would say** ("discount cap," "CRO sign-off threshold," "refund window").
+- A CRO, auditor, or compliance reviewer wants to know "did we enforce this?"
+- You want the prover to attribute the verdict by name in `clear prove` output.
+
+### When NOT to use
+- One-off check inside a single endpoint that doesn't deserve a name → use bare `guard X or 'msg'`.
+- Field validation that just checks shape/type → use `validate <entity>:` block.
+
+### Canonical form
+```clear
+rule discount-cap-thirty:
+  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+```
+
+### Quoted-string name (parser dasherizes)
+```clear
+rule 'Deals over $100k need CRO sign-off':
+  guard amount is less than 100000 or 'Big deals need CRO sign-off'
+```
+Becomes `deals-over-100k-need-cro-sign-off`. Use this form when the name reads better as a sentence.
+
+### Multiple guards in one rule
+```clear
+rule big-deal-needs-cro:
+  guard amount is less than 100001 or 'Big deals need CRO sign-off'
+  guard discount is less than 50 or 'Big discounts need CRO sign-off'
+```
+
+### What the prover output looks like
+Run `clear prove apps/deal-desk/main.clear`:
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 18)
+  [DISPROVED]    impossible-rule (line 22) — guard rejects every input
+  [UNVERIFIABLE] reads-the-database (line 27) — body calls the database
+  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+```
+
+**Verdict semantics:**
+- **PROVED** — every guard simplifies to a definite `true`. Rule never falsely refuses.
+- **DISPROVED** — at least one guard always fires (rejects every input). Rule is broken.
+- **UNVERIFIABLE** — body has impure ops (CRUD, AI, HTTP) OR free vars the prover cannot see.
+
+### Hard rules
+- **Names are unique per file.** Duplicate is a compile error.
+- **Body must have at least one statement.** Empty rule is a compile error.
+- **Rules live at the top level.** Nesting inside an endpoint, function, or another rule is a compile error.
+
+### Don't write
+```clear
+rule:                                # MISSING NAME
+  guard x or 'msg'
+
+rule discount-cap:                   # EMPTY BODY
+rule another:
+  guard 1 or 'msg'
+
+when user sends deal to /api/deals:
+  rule inline:                       # NESTED — top-level only
+    guard amount or 'msg'
+```
 
 ## Database Declaration
 

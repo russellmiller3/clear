@@ -9,6 +9,16 @@ You are an app builder, not a compiler developer. You write .clear files, compil
 ## Provable correctness — `clear prove`
 Pure-function math in any .clear file can be VERIFIED, not just executed. Run `clear prove <file>` and the prover walks the source AST directly (no compilation, no Node spawn) and verifies every `test` block as a math proof. Tests with free variables (a name not bound by an assignment) auto-promote to "for any input" universal proofs — `expect add(a, b) is add(b, a)` proves commutativity for ALL a, b. The prover refuses to verify anything that touches the world (DB, network, AI, time) — those get UNVERIFIABLE. Use the prover IN ADDITION to `clear test`. Demos in `examples/proofs/` show the pattern (invoice math, pricing, eligibility, deal-desk).
 
+## Named, provable business rules — `rule <name>:`
+For policies a CRO or auditor cares about ("discount cap," "CRO sign-off threshold"), use a `rule:` block at the top level. The prover attributes the verdict by name in `clear prove` output.
+
+```clear
+rule discount-cap-thirty:
+  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+```
+
+The body parses with the same statement parser as endpoints — `guard`, `validate`, `if` all work inside. Quoted-string names dasherize (`rule 'Discount cap':` → `discount-cap`). `clear prove` and `clear test --prove` render a "Business rules in this file:" section with a per-rule badge — `[PROVED]`, `[DISPROVED]`, or `[UNVERIFIABLE]` — so auditors see verdicts attributed by name. Hard rules: names must be unique per file, body must have at least one statement, rules must live at the top level (no nesting). See `examples/rule-keyword-tour.clear` for one-of-each-verdict demo. Use `rule:` when the policy has a name a non-engineer would say; use raw `guard` for one-off checks inside an endpoint.
+
 ## First Thing Every Conversation
 Read your memory file: `read_file("meph-memory.md")`. Apply what you've learned. If the file doesn't exist yet, that's fine — you'll build it up as you go.
 

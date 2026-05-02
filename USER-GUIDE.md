@@ -3509,6 +3509,86 @@ just runs without capturing anything.
 
 ---
 
+## Chapter 24: Writing Business Rules (Provable Policies)
+
+A **business rule** is a policy your CRO, auditor, or compliance reviewer cares about — "discounts over 30% need VP approval," "deals over $100k need CRO sign-off," "every lead needs an email." Clear has a `rule:` keyword that names these policies so the prover can give you a per-rule verdict in plain English.
+
+### The basics
+
+```clear
+rule discount-cap-thirty:
+  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+```
+
+That's it. The body is a normal `guard` line — same shape you'd use anywhere. The wrapper `rule discount-cap-thirty:` names the policy. Now when you run `clear prove`:
+
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 18)
+  1 of 1 rules proved.
+```
+
+The CRO sees this output and knows the policy holds. No code review required.
+
+### The three verdicts
+
+The prover walks every `rule:` block and produces one of three verdicts:
+
+- **PROVED** — every guard simplifies to `true`. The rule is well-formed and never falsely refuses.
+- **DISPROVED** — at least one guard always fires. The rule rejects every input — that's a bug.
+- **UNVERIFIABLE** — the body has a database lookup, an AI call, an HTTP request, or some other "talks to the world" operation. The prover refuses to claim more than its math engine can see.
+
+A small file with one of each:
+
+```clear
+rule discount-cap-thirty:
+  guard 30 is less than 100 or 'Discounts over 30% need VP approval'
+
+rule impossible-rule:
+  guard 1 is greater than 2 or 'This rule rejects every input'
+
+rule reads-the-database:
+  found = look up Deal where status is 'pending'
+  guard found is not nothing or 'Body calls the database'
+```
+
+Output:
+```
+Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 1)
+  [DISPROVED]    impossible-rule (line 4) — guard rejects every input
+  [UNVERIFIABLE] reads-the-database (line 7) — body calls the database
+  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+```
+
+That's the regulated-tier audit trail right there.
+
+### When to use `rule:` vs raw `guard`
+
+Use `rule:` when the policy has a name a non-engineer would say. Use raw `guard` for a one-off check inside an endpoint that doesn't deserve a name.
+
+The CRO trusts "discount-cap-thirty PROVED" because the verdict is attributed by name. They never read "line 42 PROVED" — that requires opening source. Per-rule attribution is what makes the prover output a real audit artifact instead of a developer log.
+
+### Quoted-string names
+
+If your rule name reads better as a sentence, use a quoted string and the parser will dasherize it:
+
+```clear
+rule 'Deals over $100k need CRO sign-off':
+  guard amount is less than 100000 or 'Big deals need CRO sign-off'
+```
+
+That becomes `deals-over-100k-need-cro-sign-off` in the prover output.
+
+### Hard rules
+
+- Names must be unique per file. Duplicate names are a compile error.
+- Body must have at least one statement. An empty rule is a compile error.
+- Rules live at the top level. You can't nest one inside an endpoint, function, or another rule.
+- A body with no `guard`, `validate`, or `throw` triggers a warning (the rule never enforces anything).
+
+---
+
 ## Appendix: What Meph Can Do
 
 Meph is the AI agent inside Clear Studio. Here's everything Meph has access to:

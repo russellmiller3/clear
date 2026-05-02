@@ -3,6 +3,18 @@
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
 Updated: **2026-05-01 (flywheel hint delivery verified; browser launch regression wired into the suite; hard hint-effect sweep preset shipped)**.
 
+## Capability surface — provable named business rules (2026-05-02)
+
+Clear now has a `rule <name>:` keyword that names business policies and gives the prover a per-rule attribution surface.
+
+What this unlocks for the regulated-tier pitch: every named rule in a Clear app comes back from `clear prove` with one of three verdicts — `PROVED for every possible <input>`, `DISPROVED — counterexample: <details>`, or `UNVERIFIABLE — <reason: calls Stripe, reads database, etc.>`. The CRO sees the list. The auditor sees the list. The list IS the audit trail.
+
+What this means for the flywheel measurement: when Meph builds an app with named rules, the test bundle now reports rule-level proof verdicts alongside test-level pass/fail. A future measurement axis becomes "Meph's apps don't just pass tests — they ship with N proved policies." That's a quality signal toy-task pass rates can't reach.
+
+The translator at `scripts/proof-business-language.mjs` (recovered from the sandbox 2026-05-02) turns each verdict into a CRO-readable sentence. The `rule:` keyword + the translator + auto-prove in `clear test` (PC-8) compose into the regulated-tier pitch surface: one command, named rules, math-grade verdicts, plain-English output.
+
+---
+
 ## Latest measurement verdict (2026-05-02 evening)
 
 **Hard hint sweep — saturated. No measurable lift, no claim possible from this run.**
