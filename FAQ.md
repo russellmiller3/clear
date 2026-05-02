@@ -261,6 +261,7 @@ Production should pass `flyToken` so the default bridge calls Fly. Tests should 
 **`playground/cloud-domains/fly-certificates.js`** is the CC-5c helper. It calls Fly's certificate API, polls certificate status, and normalizes every result to `ready`, `pending`, or `failed`.
 
 **What CC-5b calls:** after its DNS poller flips a domain row to verified, `pollPendingDomainVerifications({ flyToken })` uses `provisionFlyCertificateForDomain({ domainRow, token })`. Tests inject `provisionCertificate` directly. The row needs `id`, `domain`, and `fly_app_name`. The return value includes `certId` and `state` so the poller can write the cert id/status back.
+**What CC-5b should call:** after its DNS poller flips a domain row to verified, call `provisionFlyCertificateForDomain({ domainRow, token })`. The row needs `id`, `domain`, and `fly_app_name`. The return value includes `certId` and `state` so the poller can write the cert id/status back.
 
 **Writeback target:** `app_domains` now has `fly_certificate_id`, `certificate_status`, `certificate_ready_at`, `certificate_last_checked_at`, and `certificate_error`. DNS verification status stays separate from HTTPS readiness.
 
