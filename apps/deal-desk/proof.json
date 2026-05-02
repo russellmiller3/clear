@@ -1,0 +1,77 @@
+{
+  "status": "unverifiable",
+  "summary": "5 unverifiable (impure)",
+  "counts": {
+    "proved": 0,
+    "failed": 0,
+    "partial": 0,
+    "unverifiable": 5,
+    "errored": 0,
+    "total": 5
+  },
+  "results": [
+    {
+      "test": "can user submit a deal with rep_name : 'mike.l' , customer : 'Beta Co' , list_price : 50000 , discount_percent : 10",
+      "line": 469,
+      "status": "unverifiable",
+      "mode": "concrete",
+      "reason": "Impure: unknown node type 'test_intent' (line 470)",
+      "assertions": []
+    },
+    {
+      "test": "can user submit a deal with rep_name : 'sarah.j' , customer : 'Acme Corp' , list_price : 240000 , discount_percent : 25",
+      "line": 473,
+      "status": "unverifiable",
+      "mode": "concrete",
+      "reason": "Impure: unknown node type 'test_intent' (line 474)",
+      "assertions": []
+    },
+    {
+      "test": "updating a deal should require login",
+      "line": 477,
+      "status": "unverifiable",
+      "mode": "concrete",
+      "reason": "Impure: unknown node type 'test_intent' (line 478)",
+      "assertions": []
+    },
+    {
+      "test": "creating a deal should require login",
+      "line": 480,
+      "status": "unverifiable",
+      "mode": "concrete",
+      "reason": "Impure: unknown node type 'test_intent' (line 481)",
+      "assertions": []
+    },
+    {
+      "test": "can user approve a deal",
+      "line": 483,
+      "status": "unverifiable",
+      "mode": "concrete",
+      "reason": "Impure: unknown node type 'test_intent' (line 484)",
+      "assertions": []
+    }
+  ],
+  "rules": [
+    {
+      "name": "discount-cap-thirty",
+      "line": 81,
+      "verdict": "proved"
+    },
+    {
+      "name": "price-floor-positive",
+      "line": 84,
+      "verdict": "proved"
+    },
+    {
+      "name": "risk-score-bounded",
+      "line": 87,
+      "verdict": "proved"
+    }
+  ],
+  "ruleCounts": {
+    "proved": 3,
+    "disproved": 0,
+    "unverifiable": 0,
+    "total": 3
+  }
+}

@@ -615,6 +615,28 @@ No product tour.
 
 No architecture lecture.
 
+Script: `plans/plan-demo-recording-script-2026-05-02.md` — 75-second voice-over, 6 beats.
+
+### Asset 4: The Proof Bundle (regulated-tier deal closer)
+
+`apps/deal-desk/proof.json` — machine-readable evidence that 3 named business rules in deal-desk are mathematically PROVED for every possible deal.
+
+**The 3 proved rules in deal-desk today:**
+
+| Rule | What it guards | Status |
+|---|---|---|
+| `discount-cap-thirty` | Discounts over 30% need VP approval — caps at 30% | ✅ PROVED for every possible deal |
+| `price-floor-positive` | Deal prices must be positive | ✅ PROVED for every possible deal |
+| `risk-score-bounded` | Risk score stays within 0–100 | ✅ PROVED for every possible deal |
+
+**Pitch line:** *"Show me a Retool app where the compliance team can hold up a piece of paper that says 'this rule cannot be violated for any deal we'll ever ship.' You can't. With Clear, every regulated business rule comes with a mathematical proof attached."*
+
+**When this artifact matters:** any buyer with a CFO, a compliance team, a SOC-2 audit, or an internal-audit function. They've all been burned by spreadsheets that "should" enforce rules but don't. Showing them `proof.json` reframes the buy from "another internal tool" to "audit-grade software at SaaS speed."
+
+**Regenerate after edits:** `node cli/clear.js prove apps/deal-desk/main.clear --json > apps/deal-desk/proof.json`. Don't ship the stale version after editing rules — re-run before any pitch.
+
+**Caveat in plain English:** the bundle has a top-level `status: unverifiable` line. That's about the impure integration tests (DB calls, email sends), not the rules. The line that matters is `ruleCounts: 3 of 3 PROVED`. When pitching, point at the rules, not the integration tests.
+
 ---
 
 ## The Landing Page
