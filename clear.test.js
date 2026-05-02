@@ -29164,4 +29164,193 @@ describe('rule keyword — tour file regression', () => {
   });
 });
 
+describe('clear prove default formatting', () => {
+  // Source with one provable rule, one rule that talks to the world. Drives
+  // the translator's PROVED + UNVERIFIABLE verdict paths through the full
+  // CLI pipeline so the integration is exercised end-to-end. Any drift in
+  // bundle shape, exit code, or formatter wiring fails one of these tests.
+  const RULE_SOURCE = `create a Deals table:
+  amount (number)
+
+rule discount-cap-thirty:
+  guard 1 is less than 2 or 'tautology'
+
+rule reads-the-database:
+  found = look up Deal where amount is greater than 0
+  guard found is not nothing or 'no deal'
+`;
+
+  it('default output uses the translator headline (plain English, not math journal)', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-prove-default-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, RULE_SOURCE);
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'prove', appPath], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+      // Translator headline lives at the top of default output. Format:
+      // "We proved N of M named rules in this app, for every possible deal."
+      expect(result.stdout).toMatch(/We proved \d+ of \d+ named rules/);
+      // Default output speaks plain English, not math-journal terms. The
+      // string "UNVERIFIABLE" is the math-mode verdict label — it must not
+      // appear in default output.
+      expect(result.stdout).not.toMatch(/UNVERIFIABLE/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('default output renders a CRO-readable line for the proved rule', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-prove-default-proved-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, RULE_SOURCE);
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'prove', appPath], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+      // The proved rule must surface by name with the universal-quantifier
+      // language the translator emits.
+      expect(result.stdout).toMatch(/discount-cap-thirty/);
+      expect(result.stdout).toMatch(/PROVED for every possible deal/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('default output renders a plain-English line for the unverifiable rule', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-prove-default-unver-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, RULE_SOURCE);
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'prove', appPath], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+      // The unverifiable rule must surface its impurity in plain English —
+      // no "UNVERIFIABLE" tag, instead a phrase like "talks to the world"
+      // or "reads or writes the database" or "not provable".
+      expect(result.stdout).toMatch(/reads-the-database/);
+      expect(result.stdout).toMatch(/not provable|not math-checkable|talks to|reads or writes/i);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--math flag falls back to the math-journal formatBundle output', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-prove-math-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, RULE_SOURCE);
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'prove', appPath, '--math'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+      // formatBundle's math-mode output uses the bracketed verdict label.
+      // The translator never emits this string — its presence proves the
+      // math fallback is wired and the default flag actually flips paths.
+      expect(result.stdout).toMatch(/\[PROVED\]|\[UNVERIFIABLE\]|\[DISPROVED\]/);
+      // Translator headline must NOT show under --math.
+      expect(result.stdout).not.toMatch(/We proved \d+ of \d+ named rules/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--json output is the structured bundle with no human formatting', () => {
+    const workDir = mkdtempSync(pathJoin(REPO_ROOT, '.tmp-clear-prove-json-'));
+    try {
+      const appPath = pathJoin(workDir, 'app.clear');
+      writeFixtureFileSync(appPath, RULE_SOURCE);
+      const cliPath = pathJoin(REPO_ROOT, 'cli', 'clear.js');
+      const result = spawnSync(process.execPath, [cliPath, 'prove', appPath, '--json'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (isChildProcessBlocked(result.error)) {
+        console.log('   Skipping CLI subprocess test: this sandbox blocks Node child processes.');
+        return;
+      }
+      // --json must produce a parseable bundle. The structured shape is
+      // what machine consumers (Studio, sweep tooling, evals) read; the
+      // translator's prose lines must NOT leak into this output.
+      const payload = JSON.parse(result.stdout);
+      expect(payload).toHaveProperty('rules');
+      expect(payload).toHaveProperty('ruleCounts');
+      expect(Array.isArray(payload.rules)).toBe(true);
+      // No "We proved N of M" prose anywhere in the JSON envelope — the
+      // translator output stays out of the machine surface.
+      expect(result.stdout).not.toMatch(/We proved \d+ of \d+ named rules/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('translateBundle is importable from lib/ for cleaner CLI imports', () => {
+    // Plan calls for the script to live at lib/proof-business-language.mjs
+    // so cli/clear.js can import it without reaching into scripts/. The
+    // import path is the seam under test; if the move regresses, this
+    // test fails before any subprocess work runs.
+    return import('./lib/proof-business-language.mjs').then(({ translateBundle }) => {
+      expect(typeof translateBundle).toBe('function');
+      const out = translateBundle({
+        results: [{ test: 'sample', status: 'proved' }],
+      });
+      expect(out).toHaveProperty('headline');
+      expect(out).toHaveProperty('lines');
+    });
+  });
+
+  it('summarizeProofBundle uses the translator headline format under rules', () => {
+    // PC-8's auto-prove summary line at the bottom of `clear test`. After
+    // the rule keyword lands, that line should use the translator's
+    // headline format — "N of M rules proved" — instead of the older
+    // "Proofs: N proved, M unknown" math-journal phrasing for rule files.
+    const bundle = {
+      counts:     { proved: 0, failed: 0, partial: 0, unverifiable: 0, errored: 0, total: 0 },
+      ruleCounts: { proved: 1, disproved: 0, unverifiable: 1, total: 2 },
+      rules: [
+        { name: 'discount-cap', verdict: 'proved' },
+        { name: 'reads-db',     verdict: 'unverifiable', reason: 'database read' },
+      ],
+      results: [],
+      status:  'proved',
+    };
+    return import('./cli/clear.js').then(({ summarizeProofBundle }) => {
+      const line = summarizeProofBundle(bundle);
+      expect(line).toBeTruthy();
+      // Headline reads "1 of 2 rules proved" — not "1 proved, 1 unverifiable".
+      expect(line).toMatch(/1 of 2 rules proved/);
+      // The unverifiable count surfaces with plain-English wording.
+      expect(line).toMatch(/1 unverifiable/);
+    });
+  });
+});
+
 run();

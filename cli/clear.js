@@ -419,12 +419,13 @@ async function checkCommand(args) {
 async function proveCommand(args) {
   const flags = parseFlags(args);
   const file = flags.positional[0];
-  if (!file) { output({ error: 'Usage: clear prove <file.clear> [--bundle]' }, flags); process.exit(1); }
+  if (!file) { output({ error: 'Usage: clear prove <file.clear> [--bundle] [--math]' }, flags); process.exit(1); }
 
   const loaded = loadSource(file);
   if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
 
   const { prove, formatBundle } = await import(pathToFileURL(resolve(__dirname, '..', 'lib', 'prover', 'index.js')).href);
+  const { formatProveOutput } = await import(pathToFileURL(resolve(__dirname, '..', 'lib', 'proof-business-language.mjs')).href);
   const bundle = prove(loaded.source);
 
   // --bundle: write a sidecar .proof.json next to the source.
@@ -434,10 +435,19 @@ async function proveCommand(args) {
     if (!flags.quiet && !flags.json) console.log(`Proof bundle written to ${sidecarPath}`);
   }
 
+  // Output paths:
+  //   --json:  the structured bundle (machine consumers — Studio, evals, etc.)
+  //   --math:  formatBundle's terse math-journal verdicts (prover engineers)
+  //   default: the translator's CRO-readable surface (the customer pitch)
+  const wantMath = args.includes('--math');
   if (flags.json) {
     console.log(JSON.stringify(bundle, null, 2));
   } else if (!flags.quiet) {
-    console.log(formatBundle(bundle));
+    if (wantMath) {
+      console.log(formatBundle(bundle));
+    } else {
+      console.log(formatProveOutput(bundle));
+    }
   }
 
   // Exit code semantics:
