@@ -134,3 +134,13 @@ Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 [quirk] guard with status 400 compiles to 403, NOT 400. Use `if X: send back 'msg' with status 400` for correct 400 responses.
 [pattern] Nested if blocks work: `if outer: / if inner: / send back ...` compiles correctly to nested JS if statements.
 [done] Built Math Calculator (Level 2) — nested ifs for add/subtract/multiply/divide, nested if to return 400 on divide-by-zero. All 3 HTTP tests pass.
+
+[done] Internal Request Queue (Level 8) session 3 — all 4 HTTP tests + 11 built-in tests pass. POST /api/requests public (no auth), validate title+submitter required → 400 on missing. GET /api/requests lists all. GET /api/requests/new filters by status='new'. PUT /api/requests/:id requires login. Key: GET /new must be declared BEFORE any GET /:id route or it gets swallowed. `save data as new Request` does correct insert returning id. `save changes to Requests` on PUT updates by url :id.
+[pattern] Filtered GET route order: always declare specific static paths (GET /api/requests/new) BEFORE parameterized paths (GET /api/requests/:id). Otherwise /new matches as an :id value and returns 404 or wrong data.
+
+[done] Built Multi-Tab Approval Queue (Level 7) — CRO page at /cro with app_layout, app_sidebar (nav section + nav items), app_main, page header + subtitle + actions, 3-tab strip (Pending/Approved/Escalated), stat strip with 3 stat cards. All 5 pages declared (analytics + settings stubs added to satisfy no-stub-nav rule). GET /cro → 200 with "CRO Review" in body. Compiles clean.
+[pattern] Tab strip + page header in app shell: wrap all content in app_layout > app_sidebar + app_main > app_content. page header goes inside app_content directly before tab strip. Stat strip goes in a section after tab strip. Works cleanly.
+[pattern] No-stub-nav rule applies: every nav item must have a matching page declaration or TBD stub. Analytics and Settings pages need stub declarations even when not the focus of the task.
+
+[done] Internal Request Queue (Level 8) session 4 — clean first-compile, all 4 HTTP tests pass. POST 201+id, GET 200 length>0, GET /new 200 filtered, POST missing submitter 400. Patterns held: GET /new declared before /:id, `save data as new Request` for insert, `validate data: title is text, required / submitter is text, required` for 400, `save changes to Requests` for PUT. No errors, 3 warnings (CSRF expected, logging advisory, generic var name — all safe to ignore for benchmark tasks).
+[pattern] Level 8 internal queue recipe: POST public+validate required fields, GET all, GET /static-filter BEFORE /:id, PUT /:id requires login. Compiles clean every time with this ordering.
