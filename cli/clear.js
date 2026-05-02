@@ -274,21 +274,54 @@ async function tryRunProver(source) {
   }
 }
 
-function summarizeProofBundle(bundle) {
-  // Produce the single-line summary printed to stdout under non-JSON output.
-  // Format: "Proofs: <N> proved, <N> failed, <N> unknown, <N> unverifiable
-  //          (run `clear prove <file>` for details)"
-  // Zero-count categories are elided to keep the line short, but the proved
-  // count is always shown (even 0) so the line is recognizable.
+export function summarizeProofBundle(bundle) {
+  // Produce the multi-line summary printed to stdout under non-JSON output.
+  // Tests in the file get the same one-line summary they had before. If the
+  // file has any rule_def blocks, a per-rule "Business rules" section is
+  // emitted ABOVE the totals line — auditors and CROs see the verdicts
+  // attributed by name, which is the regulated-tier pitch surface.
   if (!bundle || !bundle.counts) return null;
   const c = bundle.counts;
-  if (c.total === 0) return 'Proofs: no test blocks to prove';
-  const parts = [`${c.proved} proved`];
-  if (c.failed > 0)       parts.push(`${c.failed} failed`);
-  if (c.partial > 0)      parts.push(`${c.partial} unknown`);
-  if (c.unverifiable > 0) parts.push(`${c.unverifiable} unverifiable`);
-  if (c.errored > 0)      parts.push(`${c.errored} errored`);
-  return `Proofs: ${parts.join(', ')} (run \`clear prove <file>\` for details)`;
+  const ruleCounts = bundle.ruleCounts || { proved: 0, disproved: 0, unverifiable: 0, total: 0 };
+  const rules = Array.isArray(bundle.rules) ? bundle.rules : [];
+
+  // Every-zero case — no test blocks AND no rules.
+  if (c.total === 0 && ruleCounts.total === 0) {
+    return 'Proofs: no test blocks or rules to prove';
+  }
+
+  const lines = [];
+
+  if (ruleCounts.total > 0) {
+    lines.push('Business rules in this file:');
+    for (const r of rules) {
+      const badge =
+        r.verdict === 'proved'       ? '[PROVED]      ' :
+        r.verdict === 'disproved'    ? '[DISPROVED]   ' :
+        r.verdict === 'unverifiable' ? '[UNVERIFIABLE]' :
+                                       '[UNKNOWN]     ';
+      const reasonTail = r.reason ? ` — ${r.reason}` : '';
+      lines.push(`  ${badge} ${r.name} (line ${r.line || '?'})${reasonTail}`);
+    }
+    const ruleParts = [`${ruleCounts.proved} of ${ruleCounts.total} rules proved`];
+    if (ruleCounts.unverifiable > 0) ruleParts.push(`${ruleCounts.unverifiable} unverifiable`);
+    if (ruleCounts.disproved > 0)    ruleParts.push(`${ruleCounts.disproved} disproved`);
+    lines.push(`  ${ruleParts.join('. ')}.`);
+  }
+
+  if (c.total > 0) {
+    const parts = [`${c.proved} proved`];
+    if (c.failed > 0)       parts.push(`${c.failed} failed`);
+    if (c.partial > 0)      parts.push(`${c.partial} unknown`);
+    if (c.unverifiable > 0) parts.push(`${c.unverifiable} unverifiable`);
+    if (c.errored > 0)      parts.push(`${c.errored} errored`);
+    lines.push(`Proofs: ${parts.join(', ')} (run \`clear prove <file>\` for details)`);
+  } else if (ruleCounts.total > 0) {
+    // Rules-only file — give the user a hint that more detail is available.
+    lines.push(`(run \`clear prove <file>\` for the full bundle)`);
+  }
+
+  return lines.join('\n');
 }
 
 // Shared exit path for testCommand. Runs the prover (unless --no-prove),
@@ -409,10 +442,11 @@ async function proveCommand(args) {
 
   // Exit code semantics:
   //   0 — every test PROVED, OR there were no tests (nothing to claim)
-  //   1 — at least one test FAILED (counterexample found)
+  //   1 — at least one test FAILED OR at least one rule DISPROVED
   //   5 — at least one test was UNVERIFIABLE / errored (impure code in path)
   if (bundle.status === 'proved' || bundle.status === 'partial') process.exit(0);
   if (bundle.counts && bundle.counts.failed > 0) process.exit(1);
+  if (bundle.ruleCounts && bundle.ruleCounts.disproved > 0) process.exit(1);
   process.exit(5);
 }
 

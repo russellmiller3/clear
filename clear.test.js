@@ -29116,4 +29116,29 @@ rule rule_b:
   });
 });
 
+describe('rule keyword — clear test --prove summary line', () => {
+  it('summarizeProofBundle includes rule counts when rules exist', () => {
+    // Build a bundle with rules manually so the test does not depend on
+    // CLI process spawning. The summary should mention rule counts.
+    const bundle = {
+      counts:     { proved: 0, failed: 0, partial: 0, unverifiable: 0, errored: 0, total: 0 },
+      ruleCounts: { proved: 1, disproved: 0, unverifiable: 0, total: 1 },
+      rules:      [{ name: 'discount-cap', verdict: 'proved' }],
+      results:    [],
+      status:     'proved',
+    };
+    // We dispatch summarizeProofBundle through dynamic import from cli/clear.js
+    // so the test exercises the actual function shipped in the CLI.
+    return import('./cli/clear.js').then(({ summarizeProofBundle }) => {
+      const line = summarizeProofBundle(bundle);
+      expect(line).toBeTruthy();
+      expect(/rule|business/i.test(line)).toBe(true);
+    }).catch((err) => {
+      // If the CLI doesn't export summarizeProofBundle yet, the dynamic
+      // import fails — that's the failing state the implementation must fix.
+      expect('summarizeProofBundle is not exported by cli/clear.js').toBe('exported');
+    });
+  });
+});
+
 run();
