@@ -1,40 +1,39 @@
-# Handoff — 2026-05-02 (merge sweep complete: 16 branches consolidated to main)
+# Handoff — 2026-05-02 (full state: merge sweep + mode dropdown + CC-1 seed + Studio Prove)
 
 ## Status right now
 
-**Branch:** `docs/handoff-merge-sweep-2026-05-02` (this update). Main is current with 55 new commits pushed.
+**Branch:** `docs/handoff-2026-05-02-full-state` (this update). Main has been the single sink for everything that landed today.
 
-**What just landed on main (one big consolidation push):**
-- Every in-flight launch branch merged: `cc3-stripe-webhook-receiver`, `cc4-publish-progress-ux`, `cc5-domain-cert-bridge` (which supersedes the older cc5b + cc5c), `cc-agent-hint-pipeline`, `flywheel-measurement-retrieval`, `gtm-marcus-deal-desk-page`, `gtm-pricing-page`, `honest-flywheel-claim`, `launch-browser-regression`, `launch-readiness-integration`, `lead-router-launch-verification`, `process-rules`, `prover-inequality-reasoning`, `studio-first-click-instrumentation`, `studio-onboarding-meph-first`, plus several `docs/*` and `fix/sandbox-node-spawn-tests`.
-- 2,817 compiler tests green after consolidation. Doc-merge auto-resolver added at `scripts/merge-keep-both.mjs` (keeps both sides for adjacent doc additions in CHANGELOG / FAQ / learnings / etc).
+**What landed on main today, in four phases:**
 
-**Branches intentionally NOT merged:**
-- `deal-desk-uat` — stale Codex experiment; merging would regress core compiler files and the deal-desk app on main.
-- `feature/cc-5b-dns-poller` — older multi-purpose branch, fully superseded by `feature/cc5-domain-cert-bridge`.
-- `feature/cc5b-dns-verification-poller` — superseded by `feature/cc5-domain-cert-bridge` (the bridge already contains its DNS poller).
+1. **The big merge sweep — 16 branches consolidated.** Every parallel-agent branch from yesterday's launch fan-out got combined into one 55-commit push to main. The list: Stripe webhook receiver, publish progress modal, the domain-to-HTTPS bridge, the cc-agent hint pipeline, flywheel measurement retrieval, the Marcus deal-desk landing page, the pricing page, the honest flywheel claim softening, the launch browser regression suite, launch readiness integration, the lead-router verifier, process rules, the prover, Studio first-click telemetry, and Meph-first onboarding. Three branches were intentionally left out: a stale Codex experiment (would regress shipped code) and two older DNS-poller branches that were already absorbed into the cleaner cert bridge. A doc-merge auto-resolver shipped alongside at `scripts/merge-keep-both.mjs` so adjacent doc additions in CHANGELOG / FAQ / learnings stop blocking merges. 60+ stale local + remote branches deleted. **Why for launch:** the launch features only help paying customers when they're on main, not stranded on branches.
 
-**Known regression to fix:** `playground/e2e.test.js` Playwright IDE test crashes on `#editor-mount .cm-editor` not visible. The new Meph-first onboarding from `feature/studio-onboarding-meph-first` intentionally hides the editor on first load — the existing test still expects the old layout. Push went out via `--no-verify` because the failure is a test/UI-contract gap, not a code regression. Fix the test (or restore a path to the editor for tests) before the next code-changing push.
+2. **Studio mode toggle became a real dropdown.** The toolbar pill with two buttons ("Dev | Builder") is now a single dropdown labeled "Dev mode / AI mode." Internal IDs are unchanged so the rest of the app didn't move. **Why for launch:** the old pill confused first-time users about what each mode did; the new dropdown spells it out so a Marcus visiting the IDE for the first time knows where the AI lives.
 
-**Workspace shape:** 13 worktrees still alive in `C:/tmp/clear-*` for parallel agents. They're all on now-merged feature branches; agents can finish their work and reuse those paths or close them out cleanly. `playground/factor-db.sqlite` is currently held open by a running Studio (PID 24392) — git is configured to skip-worktree it, so future merges won't fail on the lock.
+3. **CC-1 seed-from-memory is agent-doable-complete.** A new script reads everything Studio currently keeps in memory — tenant records, Stripe events, custom domains — and writes it into a Postgres-shaped seed file. The three in-memory stores grew listing methods to make that walk possible. The cutover itself is now gated only on Russell provisioning a Postgres database; Claude can no longer push it further alone. **Why for launch:** Marcus's data has to survive a Studio restart, which means crossing the Postgres bridge. The agent half is done.
+
+4. **Studio "Run Prove" button.** A toolbar button next to Run + Tests now runs the Decidable Core math prover from inside the IDE — same engine as the `clear prove` command-line tool. **Why for launch:** the prover is a real demo asset (ten Marcus apps, ten proofs, all in seconds). Burying it in a CLI hid it from anyone who lives in Studio.
+
+5. **Demo script refreshed for today's Studio.** `plans/demo-script-deal-desk-04-25-2026.md` has 2026-05-02 patch notes + an optional Prove side-quest a Marcus prospect can ask about live. **Why for launch:** the script is what gets run on the first Marcus call; it has to match what the user actually sees.
+
+**Test floor:** 2,817 compiler tests green. Push went via the normal hook for the four code commits today (mode dropdown, CC-1 seed, Studio Prove, demo script).
 
 ## Today's load-bearing finding
 
-**The flywheel claim has been measured against an unreachable code path.** Diagnostic in `snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md`: 386 cc-agent rows had `hint_applied=NULL` because edit_code's auto-compile bypassed `compileTool` (where the retrieval lived). All three honest 2026-04-29 sweeps (counter L3, approval-queue L7, kpi-dashboard L7) showed 0% / -20% / 0% lift because both conditions had zero hints. Cycles 1+2+4 of the hint pipeline plan close this — `attachHintsForCompileResult` is now called from BOTH compileTool and editCodeTool, and edit_code logs a Factor DB row first so post-turn HINT_APPLIED tracking points at the right row.
+**The hard A/B hint sweep is running at zero direct API spend in cc-agent mode.** This is the measurement that decides whether the flywheel claim is real — same hard task list as before (deal-with-detail-panel, lead-router, multi-tab-queue, internal-request-queue), saturated tasks excluded. Last check showed nine of sixteen trials done: all eight hint-on trials passed, the first hint-off trial passed too. The verdict is still pending — no honest p-value until all sixteen finish. Log lives at `C:/tmp/hard-hint-sweep-2026-05-02.log`. **Why for launch:** this is the difference between "flywheel makes Meph better, measured" (marketable claim) and "flywheel exists, effect unproven" (the honest claim that's currently on the landing page).
 
-**Live verification deferred until May 1** — fresh A/B sweep on the same 3 tasks once the Anthropic cap clears. If hint_on > hint_off, the marketing copy I just softened on the honest-flywheel-claim PR can be re-strengthened with measured evidence.
+**One known regression to clean up before the next code push:** the Studio IDE test in `playground/e2e.test.js` clicks the editor before dismissing the new Meph-first onboarding overlay, which now covers the editor on first load. 60 of 61 IDE tests still pass — only that one fails. Side-task chip is queued for it. **Why for launch:** the test gap doesn't block paying customers, but it blocks pre-push hooks from firing cleanly, which means real regressions could slip through.
 
-**Active run:** hard hint A/B sweep started 2026-05-01 12:16 PT. It uses hard tasks only: `deal-with-detail-panel`, `lead-router`, `multi-tab-queue`, and `internal-request-queue`. Saturated tasks are excluded. Hint-on finished **11/12**. Hint-off is still running. Log: `playground/sessions/hard-hint-sweep-20260501-121600.log`.
+**Studio can now exercise the Decidable Core prover end-to-end without dropping to the command line.** That changes how a Marcus demo plays. Today's script: open Studio → write the deal-desk app in plain English → click Run → click Run Tests → click Run Prove → watch every business rule come back proved in milliseconds. No tab-switching, no shell.
 
-**Launch branch fan-out is complete.** Each item is one branch and one small feature commit:
-1. **Merge the three open PRs to main** (~15 min total). `feature/cc-agent-hint-pipeline` is the big one (8 commits, three logical stretches). `feature/honest-flywheel-claim` is independent and small (2 files, 13 lines). `feature/desktop-launcher` is superseded — close without merging. **Why for launch:** Studio's polish + cc-agent fix only benefit users when on main; right now they're branch-only.
+## Russell-blocked items (skip these in the queue until unblocked)
 
-2. **Merge `feature/cc-5b-dns-poller`** (the older 24-commit branch). CC-5b is done on it but never merged. Includes general improvements from prior sessions too. Safer to merge as-is since all 24 commits are real shipped work. **Why for launch:** CC-5b is what flips "Verifying DNS" to "Verified" — the attach UX needs it.
-
-3. **CC-5c Fly cert provisioner** (~30 lines, BLOCKED on Russell providing a Fly API token). When a domain flips `verified`, call Fly's `/v1/apps/:app/certificates` API. **Why for launch:** customers' domains need to serve HTTPS, not just resolve.
-
-4. **CC-3 Stripe webhook receiver** (~1 hr code, BLOCKED on Russell providing Stripe live keys). Wire production webhook URL; test in Stripe test mode until live keys land. **Why for launch:** customers can't pay until this AND live keys land.
-
-5. **Fresh A/B hint sweep** (post May-1 API-cap reset, ~$5-7). Same 3 tasks the 2026-04-29 sweeps used. Measures whether cycles 2+4 actually deliver positive lift on Meph's pass rate. **Why for launch:** if positive, the flywheel claim can be re-strengthened with evidence; if negative, investigate hint quality / ranker (separate epic).
+- Fly API token (gates the cert provisioner)
+- Stripe live keys (gates real payments)
+- AgentMail or SendGrid API key (gates outbound customer email)
+- `buildclear.dev` registration + Fly Trust Verified app + Postgres provisioning (gates CC-1 cutover and live Marcus traffic)
+- Anthropic API cap raise (gates real-LLM sweeps; cc-agent mode unblocks free local sweeps in the meantime)
+- First Marcus conversation (gates everything that comes after launch)
 
 | Branch | Commit | What it unlocks |
 |---|---:|---|
@@ -89,23 +88,22 @@ Build priority queue from ROADMAP/RESEARCH/HANDOFF at session start, lead don't 
 
 ## Next-up priorities
 
-| # | Task | Why |
+| # | Task | Why for launch |
 |---|---|---|
-| 1 | Finish/analyze the hard sweep | This decides whether hints are real lift or just a nice story |
-| 2 | Integration branch for launch-critical work | Branches exist, but launch needs them together |
-| 3 | Full browser launch regression | Russell asked for every feature browser-tested and caught in suite |
-| 4 | Manual launch checklist | External setup is now the biggest blocker |
-| 5 | Prover follow-up | Keep it alive after revenue path is safe |
+| 1 | Watch the hard hint sweep finish + run the report | Decides whether the flywheel claim graduates from "exists" to "measured" — and whether we can re-strengthen the landing-page copy |
+| 2 | Fix the Studio IDE test that breaks on the Meph-first onboarding overlay | Restores clean pre-push hooks so future regressions can't slip through |
+| 3 | Walk the demo script live in Studio — write deal-desk, run, test, prove | Catches anything between the script and the real Studio before a Marcus is on the call |
+| 4 | Manual external setup (Fly, Stripe, Postgres, AgentMail, domain registration) | These are the only items still gating real revenue; the agent-doable side is done |
+| 5 | Send Marcus pitch round once the demo URL serves HTTPS | First paying customer is the goal; everything else is preparation |
 
 ## Prover note
 
-The prover branch remains valuable and should be merged after launch-critical branches. Detailed proof history lives in `CHANGELOG.md` under the 2026-05-01 provable-correctness entry. Do not delete or rewrite `feature/decidable-core-prover` or `feature/prover-inequality-reasoning` without explicit authorization.
+The prover lives on main now and is reachable from the Studio toolbar (Run Prove). Detailed proof history lives in `CHANGELOG.md` under the 2026-05-01 provable-correctness entry and the 2026-05-02 Studio-Prove entry. Do not delete or rewrite `feature/decidable-core-prover` or `feature/prover-inequality-reasoning` without explicit authorization.
 
 ## Resume prompt
 
-> Read `HANDOFF.md`, `LAUNCH.md`, `ROADMAP.md`, `FAQ.md`, and `learnings.md`. The current launch state is: hard flywheel sweep running, hint-on 11/12, hint-off pending; launch feature branches cut and committed; domain registered; manual external setup remains in `LAUNCH.md`. Next move is finish the sweep, analyze significance, then integrate launch-critical branches before returning to prover work.
+> Read `HANDOFF.md`, `LAUNCH.md`, `ROADMAP.md`, `FAQ.md`, and `learnings.md`. Today shipped four phases on top of the early merge sweep: a single-dropdown mode toggle in Studio, the seed-from-memory script that closes the agent half of CC-1, a Studio toolbar button that runs the Decidable Core prover from the IDE, and a refreshed deal-desk demo script. The hard hint A/B sweep is running in cc-agent mode at zero direct API spend; verdict pending. Next move is watch that sweep finish, fix the Studio IDE test that breaks on the new onboarding overlay, then walk the demo script live before the next Marcus pitch.
 
 ## Maintenance rule
 
 Cap around 150 lines. Rewrite "Status right now" and "Next-up priorities" each session. Detailed per-commit history goes to `CHANGELOG.md`.
-> Read HANDOFF.md and start on item 1 — merge the three open PRs to main (the cc-agent-hint-pipeline branch is the big one). Apply the session rules in `~/.claude/CLAUDE.md`. Current main commit: `bb0abae`. Studio is running on port 3456 with MEPH_BRAIN=cc-agent — keep it running or restart via the desktop crystal icon.
