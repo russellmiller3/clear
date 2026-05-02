@@ -6,6 +6,9 @@ node clear.test.js || exit 1
 echo "🎯 Running e2e tests (templates + curriculum)..."
 node playground/e2e.test.js || exit 1
 
+echo "Running lead-router launch verification..."
+node scripts/lead-router-launch-verification.mjs || exit 1
+
 # Launch browser UAT: drives every Marcus app in a real browser walker.
 # Zero API spend. Skip only with SKIP_BROWSER_UAT=1 for emergencies.
 if [ "$SKIP_BROWSER_UAT" != "1" ]; then

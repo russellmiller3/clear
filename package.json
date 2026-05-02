@@ -5,8 +5,9 @@
   "scripts": {
     "test": "node clear.test.js",
     "test:e2e": "node playground/e2e.test.js",
+    "test:lead-router": "node scripts/lead-router-launch-verification.mjs",
     "test:browser": "node scripts/run-marcus-uat.mjs",
-    "test:all": "node clear.test.js && node playground/e2e.test.js && npm run test:browser",
+    "test:all": "node clear.test.js && node playground/e2e.test.js && npm run test:lead-router && npm run test:browser",
     "start": "node playground/server.js",
     "prepare": "husky"
   },
