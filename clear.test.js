@@ -28823,4 +28823,97 @@ describe('Hard hint sweep preset', () => {
   });
 });
 
+// =============================================================================
+// rule keyword (2026-05-02) — named, provable business rules
+// Plan: plans/plan-rule-keyword-rebuild-2026-05-02.md
+// =============================================================================
+//
+// `rule <name>:` is a top-level labeled wrapper around statements that name a
+// business rule. The body parses with the same statement parser as endpoints,
+// so guard / if / refuse-style statements all work inside. The name lets the
+// prover (and audit logs) attribute verdicts: "discount-cap PROVED for every
+// possible deal" instead of "line 42 PROVED."
+// =============================================================================
+
+describe('rule keyword — parser', () => {
+  it('parses rule with a kebab-case name and a guard body', () => {
+    const src = `rule discount-cap:
+  guard discount is less than 30 or 'Discount over 30% needs VP approval'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const rule = ast.body.find(n => n.type === 'rule_def');
+    expect(rule).toBeTruthy();
+    expect(rule.name).toBe('discount-cap');
+    expect(Array.isArray(rule.body)).toBe(true);
+    expect(rule.body.length).toBe(1);
+    expect(rule.body[0].type).toBe('guard');
+  });
+
+  it('parses rule with a quoted-string name and dasherizes it', () => {
+    const src = `rule 'Deals over $100k need CRO approval':
+  guard amount is less than 100000 or 'Deals over $100k need CRO sign-off'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const rule = ast.body.find(n => n.type === 'rule_def');
+    expect(rule).toBeTruthy();
+    // Dasherized: lowercase, spaces become dashes, $ stripped, k preserved.
+    expect(rule.name).toBe('deals-over-100k-need-cro-approval');
+  });
+
+  it('parses rule body with multi-line if / guard statements', () => {
+    const src = `rule big-deal-needs-cro:
+  guard amount is less than 100001 or 'Big deals need CRO sign-off'
+  guard discount is less than 50 or 'Big discounts need CRO sign-off'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const rule = ast.body.find(n => n.type === 'rule_def');
+    expect(rule).toBeTruthy();
+    expect(rule.body.length).toBe(2);
+    expect(rule.body.every(s => s.type === 'guard')).toBe(true);
+  });
+
+  it('hard-errors when rule name is missing', () => {
+    const src = `rule:
+  guard x is less than 10 or 'too big'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    const msg = ast.errors.map(e => e.message).join(' ');
+    expect(/name|identifier/i.test(msg)).toBe(true);
+  });
+
+  it('hard-errors when rule body is empty', () => {
+    const src = `rule discount-cap:
+rule another:
+  guard x is less than 10 or 'too big'`;
+    // First rule has no indented body lines — body is empty. The second rule
+    // is at the same indent level, so it terminates the first rule's body.
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    const msg = ast.errors.map(e => e.message).join(' ');
+    expect(/empty|body|at least one/i.test(msg)).toBe(true);
+  });
+
+  it('hard-errors on duplicate rule names in the same file', () => {
+    const src = `rule discount-cap:
+  guard discount is less than 30 or 'too big'
+rule discount-cap:
+  guard discount is less than 50 or 'too big'`;
+    const ast = parse(src);
+    expect(ast.errors.length).toBeGreaterThan(0);
+    const msg = ast.errors.map(e => e.message).join(' ');
+    expect(/duplicate|already defined|same name/i.test(msg)).toBe(true);
+  });
+
+  it('records the line number on the rule_def node', () => {
+    const src = `database is local memory
+
+rule discount-cap:
+  guard discount is less than 30 or 'too big'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const rule = ast.body.find(n => n.type === 'rule_def');
+    expect(rule.line).toBe(3);
+  });
+});
+
 run();
