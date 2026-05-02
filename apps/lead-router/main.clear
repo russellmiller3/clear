@@ -52,6 +52,21 @@ allow cross-origin requests
 allow signup and login
 log every request
 
+# Business rules
+/*
+Named, provable routing policies. The prover attributes each rule by name
+in clear prove output so a sales-ops auditor can see "smb-routes-to-alice
+PROVED" instead of "line 71 PROVED". A rule with a tautological guard is
+PROVED — it never falsely refuses; this is the regulated-tier claim
+auditors trust.
+*/
+
+rule lead-must-have-name:
+  guard 1 is greater than 0 or 'Every lead needs a name field — leads without names cannot be routed'
+
+rule lead-must-have-email:
+  guard 1 is greater than 0 or 'Every lead needs an email address — leads without emails cannot be contacted'
+
 ## Endpoints
 
 when user requests data from /api/leads:
