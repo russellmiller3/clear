@@ -114,6 +114,15 @@ The prover did not need a solver to prove "late fee never goes negative." The us
 Symbolic comparisons now cover literal comparisons, Phi branch splits, and one-variable numeric bounds. That is enough for floor/clamp business rules. Do not turn this into a general SMT engine until real proof examples force it.
 
 ---
+## Session 2026-05-01: Publish progress UX
+
+### Browser red is valuable, but keep a static fallback
+
+The Playwright modal test proved the gap first: Publish exposed no five-stage progress rail and no live-url actions. After that, this environment blocked further server-spawning browser reruns. **Lesson:** for Studio HTML contracts, pair the browser harness with a tiny static contract test that checks the required IDs/stages/actions. The browser test proves behavior when available; the static test keeps the exact customer-visible promises from silently disappearing when local process spawning is unavailable.
+
+### Coarse backend status still needs honest UI copy
+
+The deploy status endpoint currently reports coarse job states, not true per-step streaming. The modal should not pretend the backend is sending every sub-stage. **Lesson:** show the five customer-facing phases, advance the client-owned phases directly, and only mark "live" from the backend's success response. When the backend later streams finer statuses, the modal can map them into the same rail without changing the user contract.
 
 ## Studio Instrumentation (2026-05-01)
 
@@ -2190,6 +2199,7 @@ The pricing page already had the four tiers and locked numbers, but the launch-c
 - **Pricing pages need a machine-checked primary sales action.** Tier names and prices are table stakes; Enterprise also needs a marked sales CTA.
 - **Static launch checks should encode the business contract.** "Free, Team $99, Business $499, Enterprise, primary sales CTA" is the product promise, so the test names those directly.
 - **No-emoji landing rules belong in the check for the page.** Design rules that repeatedly bite launch pages should fail locally, not wait for review.
+
 ## Session 2026-05-01: Studio Onboarding Must Be Meph-First
 
 GTM-5 is not just "Builder Mode is the default." A new user can still land in

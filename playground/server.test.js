@@ -14,7 +14,8 @@ import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 let passed = 0, failed = 0, total = 0;
-const BASE = 'http://localhost:3457'; // Different port so it doesn't collide
+const PORT = process.env.CLEAR_SERVER_TEST_PORT || '3462';
+const BASE = `http://localhost:${PORT}`; // Different port so it doesn't collide
 
 function assert(condition, msg) {
   total++;
@@ -152,7 +153,7 @@ async function getJson(path) {
 // =============================================================================
 // START SERVER
 // =============================================================================
-console.log('Starting playground server on port 3457...');
+console.log(`Starting playground server on port ${PORT}...`);
 const server = spawn(process.execPath, ['playground/server.js'], {
   cwd: join(__dirname, '..'),
   // CC-4 cycle 5 — CLEAR_ALLOW_SEED unlocks the test-only seed/inject/lookup
@@ -160,7 +161,7 @@ const server = spawn(process.execPath, ['playground/server.js'], {
   // smoke test below seeds a tenant, injects a fake CF api wrapper, ships the
   // deal-desk source, and verifies the multi-tenant subdomain binding landed.
   // CLEAR_CLOUD_ROOT_DOMAIN pins the deploy URL so we can assert it exactly.
-  env: { ...process.env, PORT: '3457', CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
+  env: { ...process.env, PORT, CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
   stdio: 'pipe',
 });
 

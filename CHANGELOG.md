@@ -91,6 +91,7 @@ The piece between "we think the launch path works" and "the repo can prove it on
 
 ---
 
+
 ## 2026-05-01 - CC-5 domain-to-certificate bridge
 
 Custom-domain DNS verification now triggers Fly certificate provisioning in the same poller pass.
@@ -190,6 +191,9 @@ GTM-7 now has a local measurement path in Studio: first click, time to first app
 **Why for launch:** Marcus demos need evidence about where a first user stalls. This gives Russell a local readout before wiring a paid analytics backend.
 
 **Backend still pending:** durable analytics storage and dashboarding. Current sink is intentionally in-memory.
+
+---
+
 ## 2026-05-01 - Studio onboarding starts in Meph chat
 
 New users now land in Builder Mode with Meph asking what they want to build.
@@ -204,6 +208,38 @@ The raw source editor no longer opens as the first screen.
 **Why for launch:** Marcus should describe the app first. Source is still there, but it no longer feels like the front door.
 
 **Tests:** `node playground/studio-onboarding-static.test.js` passed. The Builder Mode browser suite reached and passed the new first-load assertions; full rerun was blocked by the local escalation usage limit after stale layout assertions were updated.
+
+---
+
+## 2026-05-01 - Publish progress and live confirmation UX
+
+The Publish modal now behaves like a product handoff instead of a log line.
+
+**What shipped:**
+- Publish shows five visible stages: compiling, packaging, uploading, provisioning DB, and live.
+- The success state is a full "Your app is live" confirmation.
+- The live confirmation includes copy-link, open-in-new-tab, and share-with-team actions.
+- A static modal contract test locks the stages and live actions in place.
+
+**Why for launch:** Marcus needs to trust that Publish is doing real cloud work. The modal now explains the journey and gives him the exact next actions when the app is live.
+
+**Tests:** `node playground/ide-deploy-modal-static.test.js` passed. The Playwright modal test was red first, then the approval system blocked further browser reruns.
+
+---
+
+## 2026-05-01 - Studio first-click instrumentation
+
+GTM-7 now has a local measurement path in Studio: first click, time to first app, and pre-app bounce events.
+
+**What shipped:**
+- Studio sends privacy-safe funnel events to a server endpoint.
+- The server keeps a testable in-memory event buffer and summary.
+- The server drops source text, chat text, API keys, form values, selectors, and arbitrary request fields.
+- Tests cover event capture, summary counts, and secret/source/chat redaction.
+
+**Why for launch:** Marcus demos need evidence about where a first user stalls. This gives Russell a local readout before wiring a paid analytics backend.
+
+**Backend still pending:** durable analytics storage and dashboarding. Current sink is intentionally in-memory.
 
 ---
 

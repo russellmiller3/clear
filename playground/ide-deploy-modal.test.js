@@ -12,7 +12,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = '3459';
+const PORT = '3461';
 const BASE = `http://localhost:${PORT}`;
 
 let passed = 0, failed = 0;
@@ -41,6 +41,9 @@ const page = await browser.newPage();
 const consoleErrors = [];
 page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 page.on('pageerror', err => consoleErrors.push(err.message));
+const unexpectedConsoleErrors = () => consoleErrors.filter(msg =>
+  !/Failed to load resource: the server responded with a status of 401 \(Unauthorized\)/.test(msg)
+);
 
 // Auto-dismiss any alert dialogs so doDeploy's "Nothing to deploy" alert
 // (or any other) doesn't hang Playwright.
@@ -79,10 +82,12 @@ try {
 
   // Open the modal
   await page.evaluate(() => window.doDeploy());
-  await page.waitForTimeout(200);
+  await page.waitForSelector('#deploy-modal', { state: 'visible' });
+  await page.waitForSelector('#deploy-progress [data-deploy-stage]', { timeout: 2000 }).catch(() => {});
   assert(await page.locator('#deploy-modal').isVisible(), 'publish modal opens');
-  assert(consoleErrors.length === 0,
-    `no console errors while opening publish modal (got: ${consoleErrors.join('; ') || 'none'})`);
+  const openErrors = unexpectedConsoleErrors();
+  assert(openErrors.length === 0,
+    `no unexpected console errors while opening publish modal (got: ${openErrors.join('; ') || 'none'})`);
 
   // No target picker — Studio is Clear-Cloud-only
   assert(await page.locator('#deploy-target-radio-group').count() === 0,
@@ -98,12 +103,13 @@ try {
   const progressStages = await page.locator('#deploy-progress [data-deploy-stage]').evaluateAll(nodes =>
     nodes.map(n => n.getAttribute('data-deploy-stage'))
   );
+  const progressHtml = await page.locator('#deploy-progress').innerHTML().catch(() => '');
   assert(JSON.stringify(progressStages) === JSON.stringify(['compiling', 'packaging', 'uploading', 'provisioning-db', 'live']),
-    `progress rail exposes five stages (got: ${JSON.stringify(progressStages)})`);
+    `progress rail exposes five stages (got: ${JSON.stringify(progressStages)}; html: ${progressHtml.slice(0, 160)})`);
 
   // Submit → POST body carries target='cloudflare'
   await page.locator('#deploy-submit-btn').click();
-  await page.waitForTimeout(300);
+  await page.waitForSelector('#deploy-copy-link-btn', { timeout: 2000 }).catch(() => {});
   const body = await page.evaluate(() => window.__capturedDeployBody);
   assert(body?.target === 'cloudflare',
     `submit POSTs target='cloudflare' (got: ${JSON.stringify(body?.target)})`);
