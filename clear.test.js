@@ -29001,4 +29001,49 @@ describe('rule keyword — validator', () => {
   });
 });
 
+describe('rule keyword — compiler', () => {
+  it('emits a labeled comment with the rule name in JS output', () => {
+    const src = `rule discount-cap:
+  guard 20 is less than 30 or 'too big'`;
+    const result = compileProgram(src, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+    // The compiled output must mention the rule's name in a comment so
+    // stack traces and code review can attribute by name.
+    expect(result.javascript).toContain('discount-cap');
+  });
+
+  it('emits a labeled comment with the rule name in Python output', () => {
+    const src = `rule discount-cap:
+  guard 20 is less than 30 or 'too big'`;
+    const result = compileProgram(src, { target: 'backend' });
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('discount-cap');
+  });
+
+  it('compiles the body — guard inside rule still produces the throw / status check', () => {
+    // The whole point: rule is a labeled wrapper. The guard inside has
+    // to compile to whatever guard always compiles to. Any test that
+    // ran on a bare guard should keep passing inside a rule.
+    const src = `rule discount-cap:
+  guard 20 is less than 30 or 'too big'`;
+    const result = compileProgram(src, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+    // Bare-statement guard outside an endpoint compiles to a throw.
+    // The exact form depends on context; what matters is the MESSAGE
+    // 'too big' makes it through to compiled output.
+    expect(result.javascript).toContain('too big');
+  });
+
+  it('compiles multiple rules in the same file with both names visible', () => {
+    const src = `rule discount-cap:
+  guard 20 is less than 30 or 'too big'
+rule big-deal-needs-cro:
+  guard 100 is less than 200 or 'needs CRO'`;
+    const result = compileProgram(src, { target: 'web' });
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('discount-cap');
+    expect(result.javascript).toContain('big-deal-needs-cro');
+  });
+});
+
 run();
