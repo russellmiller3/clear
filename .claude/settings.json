@@ -67,6 +67,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node .claude/hooks/verify-real-remote.mjs",
+            "timeout": 5,
+            "statusMessage": "Verifying origin is a real remote, not a sandbox proxy..."
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/require-branch-work.mjs",
             "timeout": 5,
             "statusMessage": "Checking branch discipline before shell work..."
