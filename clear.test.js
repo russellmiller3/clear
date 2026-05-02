@@ -29020,17 +29020,17 @@ describe('rule keyword — compiler', () => {
     expect(result.python).toContain('discount-cap');
   });
 
-  it('compiles the body — guard inside rule still produces the throw / status check', () => {
+  it('compiles the body — guard inside rule still produces the throw / status check (backend)', () => {
     // The whole point: rule is a labeled wrapper. The guard inside has
     // to compile to whatever guard always compiles to. Any test that
     // ran on a bare guard should keep passing inside a rule.
+    // Backend target because GUARD is a backend-only node — that's
+    // unrelated to rule_def; it's the same rule for any guard.
     const src = `rule discount-cap:
   guard 20 is less than 30 or 'too big'`;
-    const result = compileProgram(src, { target: 'web' });
+    const result = compileProgram(src, { target: 'backend' });
     expect(result.errors).toHaveLength(0);
-    // Bare-statement guard outside an endpoint compiles to a throw.
-    // The exact form depends on context; what matters is the MESSAGE
-    // 'too big' makes it through to compiled output.
+    // Backend JS guard emits a status-403 throw with the message.
     expect(result.javascript).toContain('too big');
   });
 

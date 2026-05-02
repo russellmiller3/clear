@@ -7681,6 +7681,29 @@ ${pad}}`;
     case NodeType.ROUTE_DEF:
       return compileRouteDef(node, ctx, pad);
 
+    case NodeType.RULE_DEF: {
+      // Named, provable business rule (2026-05-02). Plan:
+      // plans/plan-rule-keyword-rebuild-2026-05-02.md
+      //
+      // Emit a labeled comment with the rule name, then inline the body.
+      // The body's guard / validate / throw statements compile to their
+      // normal throws or HTTP status codes — `rule:` adds no new runtime
+      // semantics, just a label that audit logs and the prover can read.
+      const ruleName = node.name || '<unnamed-rule>';
+      const lineMarker = node.line ? ` (line ${node.line})` : '';
+      const bodyCtx = { ...ctx, insideRule: ruleName };
+      const bodyLines = (node.body || [])
+        .map(n => compileNode(n, bodyCtx))
+        .filter(Boolean)
+        .join('\n');
+      if (ctx.lang === 'python') {
+        const header = `${pad}# rule: ${ruleName}${lineMarker}`;
+        return bodyLines ? `${header}\n${bodyLines}` : header;
+      }
+      const header = `${pad}// rule: ${ruleName}${lineMarker}`;
+      return bodyLines ? `${header}\n${bodyLines}` : header;
+    }
+
     case NodeType.EMAIL_TRIGGER:
       return compileEmailTrigger(node, ctx, pad);
 
