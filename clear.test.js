@@ -29141,4 +29141,27 @@ describe('rule keyword — clear test --prove summary line', () => {
   });
 });
 
+describe('rule keyword — tour file regression', () => {
+  it('examples/rule-keyword-tour.clear produces 1 PROVED, 1 DISPROVED, 1 UNVERIFIABLE', () => {
+    const fs = readFileSync;
+    const src = fs(
+      pathJoin(pathDirname(fileURLToPath(import.meta.url)), 'examples', 'rule-keyword-tour.clear'),
+      'utf8'
+    );
+    const bundle = proveSource(src);
+    expect(bundle.ruleCounts).toBeTruthy();
+    expect(bundle.ruleCounts.proved).toBe(1);
+    expect(bundle.ruleCounts.disproved).toBe(1);
+    expect(bundle.ruleCounts.unverifiable).toBe(1);
+    expect(bundle.ruleCounts.total).toBe(3);
+    // Verdict ordering — names match the file's section headers.
+    const proved = bundle.rules.find(r => r.verdict === 'proved');
+    const disproved = bundle.rules.find(r => r.verdict === 'disproved');
+    const unverifiable = bundle.rules.find(r => r.verdict === 'unverifiable');
+    expect(proved.name).toBe('discount-cap-thirty');
+    expect(disproved.name).toBe('impossible-rule');
+    expect(unverifiable.name).toBe('reads-the-database');
+  });
+});
+
 run();

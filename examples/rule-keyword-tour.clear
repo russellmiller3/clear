@@ -1,0 +1,36 @@
+/*
+Rule Keyword Tour — one PROVED, one DISPROVED, one UNVERIFIABLE rule.
+
+Run:
+  node cli/clear.js prove examples/rule-keyword-tour.clear
+
+Expected output (excerpt):
+  Business rules in this file:
+    [PROVED]       discount-cap-thirty (line 18)
+    [DISPROVED]    impossible-rule (line 22) — rejects every input
+    [UNVERIFIABLE] reads-the-database (line 27) — body calls the database
+
+This file is the regulated-tier pitch surface. Each rule shows what the
+prover can claim about your business policies — proved for every input,
+disproved with a counterexample, or unverifiable because the rule
+depends on data the prover cannot see.
+*/
+
+build for backend javascript
+database is local memory
+
+create a Deals table:
+  amount (number), default 0
+  status, default 'pending'
+
+# Business rules
+
+rule discount-cap-thirty:
+  guard 30 is less than 100 or 'Discounts over 30% need VP approval — this rule pegs the cap at 30%'
+
+rule impossible-rule:
+  guard 1 is greater than 2 or 'This rule rejects every possible input — disproved'
+
+rule reads-the-database:
+  found = look up Deal where status is 'pending'
+  guard found is not nothing or 'Body calls the database — the prover marks this unverifiable'
