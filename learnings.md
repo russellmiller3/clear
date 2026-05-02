@@ -2151,3 +2151,14 @@ The pricing page already had the four tiers and locked numbers, but the launch-c
 - **Pricing pages need a machine-checked primary sales action.** Tier names and prices are table stakes; Enterprise also needs a marked sales CTA.
 - **Static launch checks should encode the business contract.** "Free, Team $99, Business $499, Enterprise, primary sales CTA" is the product promise, so the test names those directly.
 - **No-emoji landing rules belong in the check for the page.** Design rules that repeatedly bite launch pages should fail locally, not wait for review.
+## Session 2026-05-01: Studio Onboarding Must Be Meph-First
+
+GTM-5 is not just "Builder Mode is the default." A new user can still land in
+Builder Mode and feel dumped into source if the editor auto-opens. The product
+contract is: Meph asks what to build first; source is reachable, not primary.
+
+### Gotchas-as-rules
+
+- **Default mode is not the same as first screen.** Test the visible first load: prompt, editor hidden, source toggle reachable.
+- **Do not auto-open source for onboarding.** The old first-three-publishes rule taught Clear, but it made the editor the front door.
+- **Browser harnesses should wait on HTTP readiness, not stdout.** A "server ready" log can be a timeout path; probe the actual URL before opening the browser.
