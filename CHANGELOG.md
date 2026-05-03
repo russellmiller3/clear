@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 evening - Runtime witness wired: every PROVED rule actually rejects bad inputs
+
+Closed the trust gap that has been hanging over the regulated-tier pitch. The prover's "structural proof" verdict (PROVED for field-referencing rules) was a trust delegation: the prover believed the compiler emitted a correct runtime guard, but nobody had ever measured whether it did. This change measures it.
+
+**What shipped (one branch, two coupled changes):**
+- **Compiler — every rule rejection now carries the rule name in the JSON body.** When a guard sits inside a `rule X:` block, the compiler reads `ctx.insideRule` and emits `res.status(403).json({ error: "<msg>", rule: "<rule-name>" })` instead of just `{ error: "<msg>" }`. Raw guards (outside `rule:` blocks) keep the old shape — no behavior change for non-named policies. The audit trail then ties every 403 back to the named policy that fired.
+- **Runtime witness harness wired (was a stub).** `lib/prover/runtime-witness.test.js` now compiles each rule shape, writes the compiled JavaScript app to a `.cjs` tempfile next to `clear-runtime/`, spawns it on a free port (via `net.createServer().listen(0)` to avoid the herd at port 3000), waits for the listening line, sends 20 inputs that VIOLATE the rule's condition, and asserts every one comes back as a 403 with the rule name in the body. Three rule shapes covered: `discount-cap-thirty` (single-field upper bound), `price-floor-positive` (single-field lower bound), `cross-field-comparison` (one field compared against another). 60 measured rejections, all carrying the rule name.
+- **Scope assertion: `clear-runtime/package.json` added.** The repo's root `package.json` declares `"type": "module"`, but the runtime helpers (`db.js`, `auth.js`, `rateLimit.js`, `meph-widget.js`) are CommonJS. Without the directory-scoped `{"type": "commonjs"}`, node treats them as ESM and the spawned compiled apps fail with `require is not defined`. This file scopes the directory back to CJS so spawned apps boot. Per the existing learnings rule on ESM/CJS scope assertions in mixed projects.
+
+**Why for launch:** the regulated-tier pitch sentence is "we proved every named business rule for every possible input." That sentence had ONE weak link: the proof was structural ("the compiler emits a runtime guard"), and nobody had measured the compiler's promise. A CRO who asks "but how do you KNOW it actually rejects bad inputs?" now gets a runnable answer: "this test sends 20 violating inputs per rule and verifies every rejection by name — `node lib/prover/runtime-witness.test.js`. Run it yourself." Two-witness verification is the credibility story for Marcus's CTO.
+
+**Tests:** `node lib/prover/runtime-witness.test.js` 4/4 (3 spawn-and-measure cases + 1 sync sanity check). `node lib/prover/business-rules-eval.test.js` 35/35 still green. `node clear.test.js` 2899/2899 still green.
+
+**Caveat caught while wiring:** `testUtils.it()` is synchronous — it does NOT await async test functions. Async tests fire-and-forget and ALL print ✅ regardless of whether they actually pass. The harness uses top-level await (outside the describe/it block) for the spawn-and-measure cases so the process actually waits. This is a known blind spot in `clear.test.js` for any async test where the body has real awaits — added to the next-moves list as a follow-up.
+
+---
+
 ## 2026-05-02 - Prover gaps closed: equality folding, empty-body verdicts, impure expressions
 
 Closed four wrong-verdict gaps the business-rules eval surfaced — the eval went from 31 of 35 passing to 35 of 35. Each gap was a case where the prover would have shipped the wrong answer to a CRO.

@@ -7755,12 +7755,26 @@ ${pad}}`;
     case NodeType.GUARD: {
       const expr = exprToCode(node.expression, ctx);
       const msg = node.message || 'Access denied';
+      // When this guard sits inside a `rule X:` block, attach the rule name
+      // to the runtime rejection. The audit trail then ties every 403 back
+      // to the named policy that fired — the regulated-tier story is "every
+      // rejection includes which rule rejected it." Without the name in the
+      // body, the proof system's "PROVED for rule X" claim has no runtime
+      // witness; with it, the runtime-witness harness can independently
+      // verify the prover's verdict against actual rejections.
+      const ruleName = ctx.insideRule || null;
       if (ctx.insideAgent) {
         if (ctx.lang === 'python') return `${pad}if not (${expr}):\n${pad}    raise ValueError("${msg}")`;
         return `${pad}if (!(${expr})) { throw new Error("${msg}"); }`;
       }
       if (ctx.lang === 'python') {
+        if (ruleName) {
+          return `${pad}if not (${expr}):\n${pad}    raise HTTPException(status_code=403, detail={"error": "${msg}", "rule": "${ruleName}"})`;
+        }
         return `${pad}if not (${expr}):\n${pad}    raise HTTPException(status_code=403, detail="${msg}")`;
+      }
+      if (ruleName) {
+        return `${pad}if (!(${expr})) { return res.status(403).json({ error: "${msg}", rule: "${ruleName}" }); }`;
       }
       return `${pad}if (!(${expr})) { return res.status(403).json({ error: "${msg}" }); }`;
     }
