@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 night (latest) - Tenant isolation HTTP cross-tenant proof PASSES
+
+The runtime witness shipped earlier tonight verified the auto-injection reached compiled output. The actual HTTP-level proof — "spawn the server, sign up two distinct users, have tenant A insert a row, have tenant B query, assert B sees zero of A's rows" — sat as a graceful-skip until auth dependencies were available. Tonight that test runs end-to-end and passes green.
+
+**What shipped:**
+- **`runtime/db.js`:** every table auto-gets a `tenant_id INTEGER` column at `createTable` time, including backfill via `ALTER TABLE` for tables that predate this change. Cost is one INTEGER per row regardless of whether the source declared shared scope; far cheaper than making auto-injection a per-table decision.
+- **The HTTP proof now runs to completion:** spawn server → POST /auth/signup as alice@a.test (auto-issued tenant_id=1) → POST /auth/signup as bob@b.test (auto-issued tenant_id=2) → POST /api/deals as alice with secret status `tenant-A-secret` → GET /api/deals as bob → assert bob sees zero of alice's rows. **This passes.** Bob's response excludes alice's row entirely. Alice's own GET still sees her row.
+
+**Why for launch:** Marcus's CRO runs `node lib/tenant-isolation-witness.test.js`. Green output. The "we proved row isolation" sentence has a literal receipt — not slides, not promises, a runnable test.
+
+---
+
 ## 2026-05-03 night (later) - Tenant isolation Phase 1+2 — row-level security by construction
 
 The hardest regulated-tier requirement is "customer A cannot read, modify, or delete customer B's records." Marcus apps deployed on shared infrastructure share a Postgres instance; without auto-scoped CRUD, the only thing stopping cross-tenant access is author discipline. Tonight that became structural.
