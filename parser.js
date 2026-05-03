@@ -2687,7 +2687,16 @@ CANONICAL_DISPATCH.set('database', (ctx) => {
       if (connectionExpr.error) connectionExpr = null;
       else connectionExpr = connectionExpr.node;
     }
-    ctx.body.push({ type: NodeType.DATABASE_DECL, backend: backend.toLowerCase(), connection: connectionExpr, line: ctx.line });
+    // Tenant isolation Phase 1 (2026-05-03): when the source declares
+    // `database is shared with tenant scope`, mark the node so future
+    // compiler passes auto-inject `WHERE tenant_id = caller's tenant_id`
+    // into every CRUD operation. Phase 1 just sets the flag; the auto-
+    // injection lands in a follow-up. Plan: regulated-tier completeness.
+    const backendLower = backend.toLowerCase();
+    const tenantScope = /\b(shared|with)\s+.*tenant\s+scope\b/.test(backendLower) || /\btenant[- ]scope\b/.test(backendLower);
+    const node = { type: NodeType.DATABASE_DECL, backend: backendLower, connection: connectionExpr, line: ctx.line };
+    if (tenantScope) node.tenantScope = true;
+    ctx.body.push(node);
     return ctx.i + 1;
 });
 // `owner is 'email'` — declares who can edit a running app via the Live

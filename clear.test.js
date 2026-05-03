@@ -29537,6 +29537,45 @@ when user requests data from /api/deals/:id:
 });
 
 // ---------------------------------------------------------------------------
+// Tenant isolation Phase 1 — `database is shared with tenant scope`.
+//
+// Marcus apps deployed on Clear Cloud share a Postgres instance. Without
+// row-level filters, customer A can query customer B's records by guessing
+// IDs. This is the hard regulated-tier requirement: every CRUD must be
+// scoped by the caller's tenant_id, and the compiler must emit that
+// scoping automatically.
+//
+// Phase 1 of this work: recognize the source syntax. The parser now sets
+// `tenantScope: true` on the DATABASE_DECL node when the database is
+// declared as shared. Phase 2 (multi-day) will wire the automatic
+// WHERE-clause injection into every CRUD operation. This first commit
+// just establishes the marker so downstream compiler passes have a
+// flag to read.
+// ---------------------------------------------------------------------------
+describe('tenant isolation Phase 1 — DATABASE_DECL.tenantScope', () => {
+  it('database is shared with tenant scope sets tenantScope:true on the AST node', () => {
+    const src = `database is shared with tenant scope
+create a Deals table:
+  status`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const dbDecl = ast.body.find(n => n && n.type === NodeType.DATABASE_DECL);
+    expect(dbDecl).toBeTruthy();
+    expect(dbDecl.tenantScope).toBe(true);
+  });
+
+  it('regular database declarations leave tenantScope unset', () => {
+    const src = `database is local memory
+create a Deals table:
+  status`;
+    const ast = parse(src);
+    const dbDecl = ast.body.find(n => n && n.type === NodeType.DATABASE_DECL);
+    expect(dbDecl).toBeTruthy();
+    expect(!!dbDecl.tenantScope).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Concurrency Phase 2 — runtime optimistic locking.
 //
 // Phase 1 (shipped 2026-05-02) detected read-modify-write patterns and
