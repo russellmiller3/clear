@@ -3310,6 +3310,18 @@ Two layers — pick based on what the customer needs to hear.
 
 You don't write `tenant_id` anywhere — it's auto-issued at signup and threaded by the compiler. The auth scaffold (`allow signup and login`) already populates `req.user.tenant_id` and the JWT carries the claim.
 
+### Inviting teammates to an existing tenant (2026-05-03 night)
+
+By default every signup creates a brand-new tenant — Alice signing up doesn't land Bob in her workspace. To let teammates share a tenant, the compiled app exposes two new endpoints when `allow signup and login` AND `database is shared with tenant scope` are BOTH on:
+
+- **`POST /auth/invite`** (authenticated): returns a single-use token bound to the caller's tenant. Pass it to a teammate.
+- **`GET /auth/invite`**: lists invites the caller created (audit + recall), with `used_at` and `used_by_email` per row.
+- **`POST /auth/signup`** accepts an optional `invite_token`. With it, the new user joins the inviter's tenant. Without it, the brand-new-tenant default still applies.
+
+Single-use, in-memory (durable storage is a follow-up). No new keyword — the existing `allow signup and login` + tenant-scope pair triggers the whole flow.
+
+When a Marcus user asks "how do I let my coworkers in?", the answer is "your app already has it — call POST /auth/invite, share the link, they sign up with the token." No code change required.
+
 ## Retry, Timeout, and Race (Production Resilience)
 
 **Use `retry` for flaky external calls.** Exponential backoff is built in:

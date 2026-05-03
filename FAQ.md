@@ -187,6 +187,19 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 The static guard is `scripts/landing-pricing.test.mjs`. It checks the tier names, locked prices, one primary mailto sales CTA, and the no-emoji icon rule.
 
+### Where do multi-user-per-tenant invites live? (2026-05-03 night)
+
+The whole flow lives in `compiler.js`, gated on `tenantScope && hasAuthScaffold` (i.e. source declares both `allow signup and login` AND `database is shared with tenant scope`). When both flags are on:
+
+- **`_invites = []`** in-memory array sits next to `_users`.
+- **`POST /auth/signup`** is rewritten to destructure `invite_token` and, if present, look it up in `_invites`. If the invite is found and unused, the new user's `tenant_id` is set to the invite's `tenant_id` (instead of `_users.length + 1`), and the invite is marked consumed (`used_at`, `used_by_email`, `used_by_user_id`).
+- **`POST /auth/invite`** (authenticated): generates a 32-hex-char token via `crypto.randomBytes(16).toString('hex')`, records `tenant_id` from `req.user`, returns `{ token, tenant_id, created_at }`. Single-use.
+- **`GET /auth/invite`** (authenticated): returns invites the caller created with `used_at` and `used_by_email` per row.
+
+End-to-end HTTP test in `lib/invite-multi-user-witness.test.js` runs the Alice → Bob → Carol scenario over real fetch. Storage is in-memory for this slice — durable storage is a follow-up; the design spreads cleanly because the invite shape is just a row.
+
+The CRO sentence: "your team signs up by passing around an invite link, just like Slack."
+
 ### Where does Postgres row-level security live? (2026-05-03 night)
 
 Two surfaces. The runtime helpers live in `runtime/db-postgres.js`: `withTenantScope(id, fn)` runs a function inside an `AsyncLocalStorage` context that every CRUD call detects and uses to wrap the query in `BEGIN + SET LOCAL app.current_tenant_id + query + COMMIT`. `enableRowLevelSecurity(tableName)` runs `ALTER TABLE x ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` (so even the table owner cannot bypass) + drop-and-recreate `clear_tenant_isolation` policy with `current_setting('app.current_tenant_id')::int`.

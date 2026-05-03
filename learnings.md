@@ -2,6 +2,21 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-03 night: multi-user-per-tenant via single-use invite tokens
+
+The default tenant-isolation flow had every signup mint a brand-new tenant_id, so teammates landed in separate workspaces. Tonight we added the invite endpoints (`POST /auth/invite` and `GET /auth/invite`) plus an optional `invite_token` field on signup. Joiners use the inviter's tenant; non-invited signups still mint a new tenant. The Alice → Bob → Carol HTTP test passes end-to-end.
+
+### Gotchas-as-rules
+
+- **Mark the invite consumed AFTER `_users.push(user)`, not before.** If you mark it consumed before the push and then `_users.push` fails (uniqueness, validation), the token is dead but no user joined — a botched signup burned the invite. Order: validate, look up invite (don't mutate yet), build the user, push to `_users`, then mark the invite consumed. The window between lookup and consumption is bounded by Node's single-threaded event loop in this in-memory slice; the durable-storage follow-up needs to wrap lookup+consume in a transaction.
+- **Generate invite tokens with `crypto.randomBytes(16).toString('hex')`, not Math.random.** 16 bytes = 32 hex chars = 128 bits of entropy, computationally infeasible to guess. Math.random's prediction surface is too small for a security-critical token. The same pattern is already used for `_JWT_SECRET` fallback elsewhere in the auth scaffold — reuse it.
+- **Gate the invite emit on BOTH `hasAuthScaffold` AND `tenantScope`.** Without auth, there's no user to authenticate the invite caller. Without tenant scope, there are no tenants to invite into. Either flag missing should keep the emit silent — apps that don't need invites shouldn't get them.
+- **Don't add a new keyword for invites — extend the existing `allow signup and login` semantics.** The 1:1 mapping rule says every line of compiled output traces back to one Clear line. The invite endpoints emit FROM the existing `allow signup and login` line in the source — the same line that already emits POST /auth/signup, POST /auth/login, GET /auth/me. The 1:1 trace-back is preserved because all four endpoints share one originator. If a future user wants to opt OUT of invites (small single-tenant tool with shared scope), that's the moment to add a new keyword — not before.
+- **Audit endpoint matters more than it looks.** `GET /auth/invite` listing the caller's own invites is what makes "who joined the workspace via which token" answerable. Without it, the in-memory `_invites` array is invisible to the app's owner and Marcus can't track who they invited.
+- **The signup body destructure changes shape under tenant scope** — `const { email, password, invite_token } = req.body` vs `const { email, password } = req.body`. JavaScript is permissive about extra body fields, so destructuring `invite_token` when it's not declared in the source is harmless. But the conditional emit is cleaner and the no-tenant-scope path stays bit-for-bit identical to before.
+
+---
+
 ## Session 2026-05-03 night: Postgres ROW LEVEL SECURITY as defense in depth
 
 The application-layer tenant filter shipped earlier the same night already prevents cross-tenant reads in compiled output. Tonight we added the second layer — Postgres database-level RLS policies — so the database itself refuses cross-tenant queries. Two independent layers, either alone sufficient. The work shipped as runtime helpers in `runtime/db-postgres.js` (`withTenantScope`, `enableRowLevelSecurity`) plus compiler emit in `compiler.js` (per-request middleware + startup hook), gated strictly on `tenantScope && isPostgres`.
@@ -89,6 +104,7 @@ The rebuild ended up cleaner than the original would have been because writing t
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-03 night: multi-user-per-tenant invites](#session-2026-05-03-night-multi-user-per-tenant-via-single-use-invite-tokens) | Mark invite consumed AFTER user push; crypto.randomBytes for token; gate emit on auth+scope; reuse existing keyword (1:1 mapping); audit endpoint matters |
 | [Session 2026-05-03 night: Postgres ROW LEVEL SECURITY](#session-2026-05-03-night-postgres-row-level-security-as-defense-in-depth) | SET LOCAL is transaction-scoped; FORCE RLS prevents owner bypass; AsyncLocalStorage threads tenant id through awaits; current_setting needs `, true` for unset case |
 | [Session 2026-05-01: Publish progress UX](#session-2026-05-01-publish-progress-ux) | Browser red can be blocked by runner permissions; keep static UI contracts too |
 | [Studio Instrumentation](#studio-instrumentation-2026-05-01) | allow-list events, never store source/chat/secrets, in-memory first |

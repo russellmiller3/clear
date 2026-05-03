@@ -6,7 +6,23 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 night (latest) - Postgres ROW LEVEL SECURITY shipped as defense in depth
+## 2026-05-03 night (latest) - Multi-user-per-tenant via single-use invite tokens
+
+The default tenant-isolation behavior had every signup create a brand-new tenant_id, which meant teammates landed in separate silos and couldn't see each other's records. That blocked any team trial of a Marcus app — "everyone at Acme Corp who clicks signup gets their own private workspace" is the wrong default for collaboration.
+
+**What shipped:**
+- **`compiler.js`:** when source declares both `allow signup and login` AND `database is shared with tenant scope`, the compiled server now emits two new endpoints. `POST /auth/invite` (authenticated) returns a 32-hex-char crypto token bound to the caller's tenant; the response shape is `{ token, tenant_id, created_at }`. `GET /auth/invite` lists invites the caller created, with `used_at` and `used_by_email` for audit.
+- **`compiler.js`:** signup body extended with optional `invite_token`. With it, the new user joins the inviter's tenant and the invite is marked consumed (`used_at`, `used_by_email`, `used_by_user_id` recorded). Without it, the brand-new-tenant default is preserved exactly. Reusing a consumed token returns 400 with "Invalid or already-used invite token". Bogus tokens return the same.
+- **Storage:** in-memory `_invites = []` array, same first-slice pattern as `_users`. Durable storage is a follow-up.
+- **End-to-end HTTP test:** `lib/invite-multi-user-witness.test.js` runs the full Alice → Bob → Carol scenario over real HTTP. Alice signs up (tenant 1), generates an invite, hands the token to Bob. Bob signs up with `invite_token` and joins tenant 1. Alice posts a deal. Bob GETs `/api/deals` and sees Alice's deal (same tenant). Carol signs up plain — gets a fresh tenant. Carol GETs `/api/deals` and sees nothing (different tenant). Reusing Alice's first invite returns 400. Bogus tokens return 400. The audit endpoint shows the consumed invite with Bob's email. All green.
+
+**Why for launch:** "how do my teammates join my workspace?" used to be unanswerable in compiled apps. Now the answer is "click the invite link" — same pattern Slack, Linear, and Notion use. No new keyword needed; the existing `allow signup and login` + `database is shared with tenant scope` pair triggers the whole flow.
+
+**Gating is strict.** Apps without `with tenant scope` emit unchanged output: no `_invites` array, no invite endpoints, no `invite_token` destructure. All 8 core templates still compile clean with the same warning counts.
+
+---
+
+## 2026-05-03 night - Postgres ROW LEVEL SECURITY shipped as defense in depth
 
 The application-layer tenant filter shipped earlier tonight prevents Customer A from reading Customer B's records by construction in the compiled output. But "trust the compiled output" is not the answer a regulated-tier compliance buyer wants to hear. Tonight we added the second layer: the Postgres database itself now refuses cross-tenant queries via real `ROW LEVEL SECURITY` policies, fired per-request by `SET LOCAL app.current_tenant_id`.
 

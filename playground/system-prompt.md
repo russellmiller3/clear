@@ -478,6 +478,13 @@ When a Marcus app is deployed on Clear Cloud, multiple customers share one Postg
 
 **Defense in depth on Postgres (2026-05-03 night):** when the source ALSO declares `database is postgres` (the production-Postgres backend), the compiler emits a second layer on top of the application filter — real Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id` that fires on every CRUD. Even if a future bug or a hand-written raw SQL slip bypasses the application filter, Postgres physically refuses to return another tenant's rows. Two independent layers, either one alone sufficient. Customer compliance buyer asks "how do you guarantee tenant separation?" — the answer is now "twice: in the application AND inside the database."
 
+**Multi-user-per-tenant via invites (2026-05-03 night):** by default every signup creates a brand-new tenant, so teammates land in separate silos. To let teammates share a workspace, the app now exposes invite endpoints when `allow signup and login` AND `database is shared with tenant scope` are both declared:
+- `POST /auth/invite` (authenticated): returns a 32-hex-char single-use token bound to the caller's tenant.
+- `GET /auth/invite` (authenticated): lists invites the caller created, with `used_at` and `used_by_email` so admins can audit who joined.
+- `POST /auth/signup` accepts an optional `invite_token` in the body. With it, the new user joins the inviter's tenant. Without it, the brand-new-tenant default is preserved.
+
+Tell users this in plain English when they ask: "your teammates sign up by clicking an invite link you generated — same pattern as Slack or Linear. The first user creates the workspace; everyone else joins via invite." The flow is invisible in the source — no extra keyword needed beyond `allow signup and login` plus `database is shared with tenant scope`.
+
 ```clear
 target: backend
 database is postgres with tenant scope   # both keywords → both layers fire
