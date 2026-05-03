@@ -3687,7 +3687,15 @@ function generateE2ETests(body) {
           message: `Single assertion in test '${td.name}'. Consider adding a second assertion to verify a related behavior.` });
       }
 
-      const bodyLines = bodyNodes.map(n => compileNode(n, { ...testCtx, indent: 2 })).filter(Boolean);
+      // If this test has any explicit `expect it ...` clause, suppress
+      // the implicit "Create should succeed" / "View should return 200"
+      // asserts that the CRUD intent compiler would otherwise hard-code
+      // for `can user submit X` / `can user view X` steps. The user's
+      // expectation is authoritative.
+      const hasExplicitExpect = bodyNodes.some(n => n.type === NodeType.EXPECT_RESPONSE);
+      const perTestCtx = { ...testCtx, indent: 2 };
+      if (hasExplicitExpect) perTestCtx.skipImplicitAsserts = true;
+      const bodyLines = bodyNodes.map(n => compileNode(n, perTestCtx)).filter(Boolean);
       lines.push(`  await test(${JSON.stringify(td.name)}, async () => {`);
       for (const bl of bodyLines) {
         // Each compiled line may be multi-line; indent each line inside the test
@@ -8056,7 +8064,15 @@ ${pad}}`;
         }
         return header + (pyBody || `${pyPad}pass`);
       }
-      const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
+      // If the test body contains any explicit EXPECT_RESPONSE node
+      // (`expect it succeeds`, `expect it fails`, `expect it is rejected`,
+      // etc.), suppress the implicit "Create should succeed" / "View should
+      // return 200" asserts that the CRUD intent compiler would otherwise
+      // hard-code. The user's expect clause is authoritative; the implicit
+      // assert is only a fallback for tests that don't say what they expect.
+      const hasExplicitExpect = nonMockBody.some(n => n.type === NodeType.EXPECT_RESPONSE);
+      const testCtx = hasExplicitExpect ? { ...ctx, skipImplicitAsserts: true } : ctx;
+      const bodyCode = compileBody(nonMockBody, testCtx, { declared: new Set() });
       if (mockNodes.length > 0) {
         // Build mock responses. _askAI returns a plain string for text responses,
         // and an object for structured output (with schema). Match that behavior:
@@ -8450,7 +8466,11 @@ ${pad}}`;
         code += `${pad}  body: JSON.stringify(${payload})\n`;
         code += `${pad}});\n`;
         code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
-        code += `${pad}assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);`;
+        // Skip the implicit success assertion when the test has an explicit
+        // `expect it ...` clause. The user's expectation is authoritative.
+        if (!ctx.skipImplicitAsserts) {
+          code += `${pad}assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);`;
+        }
         return code;
       }
 
@@ -8461,7 +8481,9 @@ ${pad}}`;
         const opts = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { headers: AUTH_HEADERS }' : '';
         let code = `${pad}_response = await fetch(_baseUrl + ${path}${opts});\n`;
         code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
-        code += `${pad}assert(_response.status === 200, "View should return 200, got " + _response.status);`;
+        if (!ctx.skipImplicitAsserts) {
+          code += `${pad}assert(_response.status === 200, "View should return 200, got " + _response.status);`;
+        }
         return code;
       }
 

@@ -1469,11 +1469,14 @@ const CANONICAL_DISPATCH = new Map([
         ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'equals', value: 401, field: null, line: ctx.line });
         return ctx.i + 1;
       }
-      // "expect it is rejected"
+      // "expect it is rejected" — accept any 4xx, since validation
+      // typically returns 400 but business-rule rejection returns 403.
+      // "Rejected" semantically means "the system deliberately said no,"
+      // not specifically status 400.
       if ((verb === 'is' || ctx.tokens[2].canonical === 'is') && ctx.tokens.length >= 4) {
         const w = ctx.tokens[3].value;
         if (w === 'rejected') {
-          ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'equals', value: 400, field: null, line: ctx.line });
+          ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'failure', value: null, field: null, line: ctx.line });
           return ctx.i + 1;
         }
         if (w === 'not' && ctx.tokens.length >= 5 && ctx.tokens[4].value === 'found') {
@@ -3329,14 +3332,25 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
         pos++;
         if (pos < ctx.tokens.length) {
           const valToken = ctx.tokens[pos];
-          if (valToken.type === TokenType.STRING) {
+          // Handle negative literal: `-` followed by NUMBER becomes a
+          // negative literal_number. Tokenizer splits `-100` into two
+          // tokens (operator + number); without this, the parser would
+          // emit `variable_ref { name: '-' }` and the compiled JS would
+          // reference `_` — undefined at runtime.
+          if (valToken.value === '-' && pos + 1 < ctx.tokens.length && ctx.tokens[pos + 1].type === TokenType.NUMBER) {
+            const num = ctx.tokens[pos + 1];
+            fields.push({ name: fieldName, value: { type: 'literal_number', value: -num.value, line: ctx.line } });
+            pos += 2;
+          } else if (valToken.type === TokenType.STRING) {
             fields.push({ name: fieldName, value: { type: 'literal_string', value: valToken.value, line: ctx.line } });
+            pos++;
           } else if (valToken.type === TokenType.NUMBER) {
             fields.push({ name: fieldName, value: { type: 'literal_number', value: valToken.value, line: ctx.line } });
+            pos++;
           } else {
             fields.push({ name: fieldName, value: { type: 'variable_ref', name: valToken.value, line: ctx.line } });
+            pos++;
           }
-          pos++;
         }
       }
     }

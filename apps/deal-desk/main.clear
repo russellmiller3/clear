@@ -472,19 +472,46 @@ page 'Sign in' at '/login':
 
 # Tests
 
-test:
+/*
+Real business-rule coverage. Each test exercises one of the named
+rules in the POST /api/deals handler. Tests below check the rule
+NAMES the prover and audit PDF report on, not just generic
+"happy path / unhappy path" pairs.
+*/
+
+test 'happy path: discount under cap is accepted':
   can user submit a deal with rep_name: 'mike.l', customer: 'Beta Co', list_price: 50000, discount_percent: 10
   expect it succeeds
 
-test:
-  can user submit a deal with rep_name: 'sarah.j', customer: 'Acme Corp', list_price: 240000, discount_percent: 25
+test 'happy path: discount at threshold-1 still accepted':
+  can user submit a deal with rep_name: 'sarah.j', customer: 'Acme Corp', list_price: 240000, discount_percent: 29
   expect it succeeds
 
-test:
+test 'rule discount-cap-thirty: discount of 30 is rejected':
+  can user submit a deal with rep_name: 'rejected.case', customer: 'Big Corp', list_price: 100000, discount_percent: 30
+  expect it is rejected
+
+test 'rule discount-cap-thirty: discount of 35 is rejected':
+  can user submit a deal with rep_name: 'rejected.case', customer: 'Big Corp', list_price: 100000, discount_percent: 35
+  expect it is rejected
+
+test 'rule discount-not-over-cap: discount of 100 is rejected':
+  can user submit a deal with rep_name: 'absurd.case', customer: 'Free Co', list_price: 50000, discount_percent: 100
+  expect it is rejected
+
+test 'rule price-floor-positive: list_price of 0 is rejected':
+  can user submit a deal with rep_name: 'free.case', customer: 'Zero Inc', list_price: 0, discount_percent: 10
+  expect it is rejected
+
+test 'rule price-floor-positive: negative list_price is rejected':
+  can user submit a deal with rep_name: 'neg.case', customer: 'Negative Inc', list_price: -100, discount_percent: 10
+  expect it is rejected
+
+test 'auth: updating a deal requires login':
   updating a deal should require login
 
-test:
+test 'auth: creating a deal requires login':
   creating a deal should require login
 
-test:
+test 'happy path: approving a deal works':
   can user approve a deal
