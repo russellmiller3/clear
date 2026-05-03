@@ -204,6 +204,13 @@ function createTable(name, schema) {
   for (const [field, config] of Object.entries(schema || {})) {
     cols.push(field + ' ' + toSQLiteType(config));
   }
+  // Concurrency Phase 2: every table gets an auto-managed `_version`
+  // column so `with optimistic lock` saves can do a version check
+  // without the author having to declare the field. Defaults to 0
+  // for new rows and existing rows that predate this change. The
+  // updateWithVersion runtime helper bumps it on every successful
+  // save and refuses saves where the expected version has moved.
+  cols.push('_version INTEGER DEFAULT 0');
   _db.prepare('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')').run();
 
   // Schema evolution: add columns present in schema but missing from the table
@@ -213,6 +220,11 @@ function createTable(name, schema) {
       _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN ' + field + ' ' + toSQLiteType(config)).run();
       existing.add(field);
     }
+  }
+  // Backfill _version on tables that were created before Phase 2.
+  if (!existing.has('_version')) {
+    _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN _version INTEGER DEFAULT 0').run();
+    existing.add('_version');
   }
   backfillRenamedFields(tableName, schema, existing);
 }
@@ -414,6 +426,83 @@ function update(table, filterOrRecord, data) {
   return result.changes;
 }
 
+// =============================================================================
+// OPTIMISTIC LOCKING (concurrency Phase 2, 2026-05-03)
+// =============================================================================
+//
+// updateWithVersion(table, record, expectedVersion)
+//   Like update(), but the UPDATE includes `WHERE id = ? AND _version = ?`
+//   and `SET _version = _version + 1`. If 0 rows are affected, another
+//   request moved the version between the read and the save — throw a
+//   VERSION_CONFLICT error that the compiled handler translates to a
+//   409 Conflict response. This prevents the classic race where two
+//   concurrent approvals both read the same row, both succeed, and the
+//   second silently overwrites the first.
+//
+// The `_version` column is added automatically when the table is first
+// created (see createTable below). Existing rows get _version = 0 on
+// first read; the first save bumps to 1; subsequent saves bump from
+// whatever the caller read.
+function updateWithVersion(table, record, expectedVersion) {
+  const tableName = table.toLowerCase();
+  const schema = _schemas[tableName] || {};
+
+  if (record == null || typeof record !== 'object' || record.id === undefined) {
+    const err = new Error(
+      'Cannot update ' + table + ' with optimistic lock without an id on the record.'
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  // Default expected version to 0 if not supplied (first-write case).
+  const expVer = (expectedVersion == null) ? 0 : Number(expectedVersion);
+
+  const updateData = sanitizeRecord(record);
+  enforceTypes(updateData, schema);
+
+  // Guard: throw 404 when updating by id but record doesn't exist. Same
+  // as plain update() — we want a clean "no record" signal separate from
+  // the "version moved" signal.
+  const exists = _db.prepare('SELECT 1 FROM ' + tableName + ' WHERE id = ? LIMIT 1').get([record.id]);
+  if (!exists) {
+    const err = new Error('No record found with id ' + record.id);
+    err.status = 404;
+    throw err;
+  }
+
+  // Build SET clause from the record's writable columns + always bump
+  // _version. Skip id and _version in the column list — the WHERE
+  // clause pins id, and _version moves via SET.
+  const setCols = Object.keys(updateData).filter(function(k) { return k !== 'id' && k !== '_version'; });
+  const setVals = setCols.map(function(k) { return coerceForStorage(updateData[k]); });
+
+  const setParts = setCols.map(function(k) { return k + ' = ?'; });
+  setParts.push('_version = _version + 1');
+
+  const sql = 'UPDATE ' + tableName + ' SET ' + setParts.join(', ')
+    + ' WHERE id = ? AND _version = ?';
+
+  const result = _db.prepare(sql).run(setVals.concat([record.id, expVer]));
+
+  if (result.changes === 0) {
+    // Either the row doesn't exist (handled above) or the version moved.
+    // Read current version so the client can retry against the live row.
+    const row = _db.prepare('SELECT _version FROM ' + tableName + ' WHERE id = ?').get([record.id]);
+    const err = new Error(
+      'Version conflict on ' + table + ' id=' + record.id + ': '
+      + 'expected version ' + expVer + ', current version is ' + (row ? row._version : 'unknown')
+      + '. Another request modified this record after you read it. Re-read and retry.'
+    );
+    err.code = 'VERSION_CONFLICT';
+    err.status = 409;
+    err.expectedVersion = expVer;
+    err.currentVersion = row ? row._version : null;
+    throw err;
+  }
+  return result.changes;
+}
+
 function remove(table, filter) {
   const tableName = table.toLowerCase();
   const w = buildWhere(filter);
@@ -462,6 +551,7 @@ module.exports = {
   findOne,
   insert,
   update,
+  updateWithVersion,
   remove,
   aggregate,
   run,

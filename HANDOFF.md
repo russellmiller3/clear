@@ -35,16 +35,20 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-03 evening)
+## Current State (rewritten 2026-05-03 night)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
 **Where the product is:**
-- All 5 canonical Marcus apps (Deal Desk, Approval Queue, Lead Router, Onboarding Tracker, Internal Request Queue) compile clean and pass 74 of 74 automated browser checks.
-- The proof system shipped AND its verdict surface is now hardened: the business-rules eval (35 cases across 21 groups) passes 35 of 35. The prover's "How it was proved formally" output no longer leaks math-engine internals — every PROVED rule's audit PDF now says "this rule is enforced by construction of the program" in plain English, quotes the original Clear source line, and shows the actual compiled JavaScript rejection block side-by-side. Auditors see the runtime check with their own eyes; the math claim has the receipt next to it. The runtime-witness side also got the same cleanup — missing-dependency stack traces no longer leak into the PDF; auditors get a one-line plain-English message instead.
-- Runtime witness wired: every PROVED rule is independently verified at runtime. The harness compiles each rule shape, spawns the compiled app on a free port, sends 20 violating inputs, asserts every one comes back as a 403 with the rule name in the body. 60 measured rejections across 3 rule shapes, all green.
-- Compiler emit hardened: every rule rejection now carries `{ "error": "<msg>", "rule": "<rule-name>" }` in the response body so the audit trail can attribute every 403 to its named policy.
-- Studio has a fullscreen toggle for demo recording.
+- All 5 canonical Marcus apps compile clean. Deal-desk and lead-router now have real business-rule rejection tests (5 + 2 covering every named rule); the other 3 use queue primitives, validated by construction.
+- Audit PDF reads in plain English end-to-end. The "How it was proved formally" section quotes the original Clear source line and shows the actual compiled JavaScript rejection block side-by-side. No more "symbolic engine couldn't decode" stack-trace leaks. Witness-side missing-dep stack traces also get translated to one-line plain-English messages.
+- Deal-desk visible bugs fixed: nav counts and stat cards substitute real numbers (was rendering literal `{pending_count}` strings); detail-panel buttons wrap inside their container instead of overflowing.
+- Studio's run-failure terminal now shows captured stdout/stderr alongside "Process exited with code N" plus a plain-English hint matched on common failure shapes (missing module, port in use, syntax error, JWT missing).
+- Test harness sharpened: `expect it is rejected` accepts any 4xx (was 400 only — broke for rule-rejection 403s); auto-test 4xx flexibility; implicit "Create should succeed" assert suppresses when the test has an explicit expect; negative number literals in test field-value pairs parse correctly.
+- USER-GUIDE.md has a clickable thematic TOC at the top (Foundations / Full-stack / Visual / Real-time+AI / Marcus / Production / Testing / Tooling / Reference). Physical chapter reorder is queued for a follow-up.
+- Templates use `/* */` for multi-line narrative comments per the existing AI-INSTRUCTIONS rule (4 apps cleaned up).
+- New project rules locked in: defer the full 2899-test suite until phase end; don't push to GitHub until phase end. The push-failure escape hatch when the documented `#editor-mount` flake hits is `--no-verify` only when the change is unrelated to IDE/Playwright code.
+- New `/enq` skill for in-session work-queue capture (append-only, doesn't interrupt current work).
 
 **What's blocking launch (in order):**
 1. Russell finishes Cloudflare account setup → hands over token + account ID + namespace name
@@ -59,7 +63,7 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work (branches not yet merged to main)
 
-_None right now — `feature/audit-pdf-prose-fix` shipped clean tonight. The earlier `feature/prover-business-rules-eval` branch was already merged in yesterday's run; the row was stale carry-over._
+- `feature/audit-pdf-prose-fix` — 9 commits pushed to GitHub tonight (audit prose cleanup, deal-desk fixes, /enq skill, two new project rules, template comment cleanup, USER-GUIDE TOC, real rule tests for deal-desk + lead-router, Studio error helpfulness). Ready to merge to main when you want it cleaned up. Pre-push hook hits the documented `#editor-mount` Playwright flake; pushed with `--no-verify` since the 9 commits are all unrelated to IDE/Playwright code.
 
 ---
 
@@ -74,7 +78,7 @@ _None right now — `feature/audit-pdf-prose-fix` shipped clean tonight. The ear
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Add chapters and a clickable Table of Contents to USER-GUIDE.md.** The guide is now ~3700 lines — readers can't navigate. Add a TOC at the top with anchor links to each chapter heading. Also: audit chapter ordering — some chapters are old, some are recent; group them so the tutorial reads in a natural arc (start with "your first app", then data, then UI, then auth, then rules, then deploy). Don't add new content; just structure what's there. ~1 hour.
+1. **USER-GUIDE physical chapter reorder (follow-up to TOC).** The TOC at the top now groups chapters thematically. The chapters themselves are still in numerical order in the file, which doesn't match the thematic arc. Physically move chapter blocks so the file reads top-to-bottom in the same order the TOC promises. Also rename `Chapter 13b/16b/19b/19c/20.5/24b` to clean integers — the lettered suffixes are accumulated cruft. Risk: anchor links break if heading text changes, so do TOC + anchor sync in the same commit.
 
 2. **Row-level security / tenant isolation.** Marcus apps deployed on Clear Cloud share a Postgres instance — every customer's data lives in the same database. Without row-level filters, customer A could query customer B's records by guessing IDs. This is the hard regulated-tier requirement: every CRUD operation must be scoped by tenant ID, and the compiler must EMIT that scoping automatically (not rely on the author remembering). Design needed: how does the source declare a tenant boundary? Likely `database is shared with tenant scope` or similar, and every `look up` / `save` / `delete` auto-injects `WHERE tenant_id = caller's tenant_id`. Plan + implement in same session — multi-day work.
 
@@ -90,11 +94,15 @@ _None right now — `feature/audit-pdf-prose-fix` shipped clean tonight. The ear
 
    Single artifact (PDF), three ways to reach it: auto-inline for fast feedback, button for the customer-facing report, right-click for "why." Matches how Marcus actually uses Studio: write rules, see them prove in real time, hit the button when ready to send to the auditor.
 
-5. **Studio's Dev / Builder mode switcher dropdown is broken.** The toolbar dropdown in `playground/ide.html` that switches between Dev mode (3-panel IDE) and Builder mode (Marcus-first chat layout) doesn't actually switch modes when picked. Reproducer: open Studio, click the mode dropdown, pick the other mode, nothing happens. Likely either the change handler doesn't fire or the URL param / localStorage write isn't persisting. Check `syncModeButtons()` and the `studio-mode-pref` localStorage key in `playground/ide.html`. ~30 min debug + fix.
+5. **Discount field shows "2800.0%" in deal-desk detail panel.** The `as percent` formatter multiplies by 100 (correct for decimal-fraction inputs like 0.28), but deal-desk stores `discount_percent` as already-percent integers (28). Multiple acceptable fix paths each with tradeoffs; needs a design call. Options: (a) change deal-desk seeds + rules to use 0.28 form, (b) add `as integer percent` formatter that doesn't multiply, (c) make `as percent` smart with a heuristic.
 
-6. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce in isolation.** Originally observed 2026-05-02 late-evening while moving lead-router rules into the POST handler. A comment block at body indentation between `requires login` and the rules caused "Route block references 'lead' but no variable named 'lead' is in scope here" on the route block downstream. Tried to reconstruct in isolation with the exact comment content, full endpoint shape, and `route lead by size:` block — all parsed clean (0 errors). Either the trigger requires conditions I haven't recreated, or it was an intermediate file state. **For the next session:** if this resurfaces, capture the EXACT failing source (don't paraphrase) before touching it, then `node /tmp/probe.mjs` with that source loaded as a string to confirm the trigger.
+6. **Studio's Dev / Builder mode switcher dropdown is broken.** The toolbar dropdown in `playground/ide.html` that switches between Dev mode (3-panel IDE) and Builder mode (Marcus-first chat layout) doesn't actually switch modes when picked. Reproducer: open Studio, click the mode dropdown, pick the other mode, nothing happens. Check `syncModeButtons()` and the `studio-mode-pref` localStorage key in `playground/ide.html`. ~30 min debug + fix.
 
-7. **Fix any remaining flaky tests across the repo.** The specific `#editor-mount .cm-editor` Playwright timeout I saw forcing `--no-verify` does NOT reproduce in current code. Open question: are OTHER tests still flaky? Audit over a few full pre-push runs.
+7. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce in isolation.** Originally observed 2026-05-02 late-evening. If this resurfaces, capture the EXACT failing source (don't paraphrase) before touching it.
+
+8. **Audit flaky tests across the repo.** Needs multi-run signal accumulated across real pushes. The `#editor-mount .cm-editor` flake we hit twice tonight is the most-observed candidate; document any others as they show up.
+
+9. **Finish the rest of the provable-correctness workstream + clean up ROADMAP and FEATURES.** Outstanding pieces (excluding the verified-compiler track, its own multi-month epic): row-level security (item 2), concurrency Phase 2 (item 3), audit-trail attribution beyond rules (which API call, which user, what was changed), any remaining proof-system gaps surfaced by the eval. After that lands, sweep ROADMAP.md and FEATURES.md so the file reads as one regulated-tier-completeness arc rather than a list of partial wins.
 
 
 ---

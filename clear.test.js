@@ -29536,4 +29536,76 @@ when user requests data from /api/deals/:id:
   });
 });
 
+// ---------------------------------------------------------------------------
+// Concurrency Phase 2 — runtime optimistic locking.
+//
+// Phase 1 (shipped 2026-05-02) detected read-modify-write patterns and
+// added the `with optimistic lock` and `safe to retry` modifier nodes.
+// Phase 2 wires the runtime so `with optimistic lock` actually does
+// something — emits a version-check UPDATE that returns 409 Conflict
+// when another request moved the row's version between the read and
+// the save.
+//
+// Plan: plans/plan-concurrency-proofs-2026-05-02.md (Phase 2)
+// ---------------------------------------------------------------------------
+describe('concurrency Phase 2 — with optimistic lock emits version-check save', () => {
+  it('save under `with optimistic lock` compiles to a version-checked update', () => {
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  with optimistic lock
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // The compiled save must use db.updateWithVersion (or equivalent
+    // version-check helper), NOT the regular db.update. The version
+    // check is what makes the lock real — without it, two concurrent
+    // approvers can both succeed.
+    expect(js).toContain('updateWithVersion');
+  });
+
+  it('version-check save returns 409 Conflict when row moved underneath', () => {
+    // The compiled handler must catch a version-mismatch error and
+    // respond 409, not 500. Auditors / clients use the 409 to retry;
+    // 500 looks like a server bug.
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  with optimistic lock
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const js = r.javascript || r.serverJS || '';
+    // The 409 path must be wired explicitly. We assert on both the
+    // status code and the rule for clean detection.
+    expect(js).toMatch(/409/);
+    expect(js).toMatch(/version_conflict|version mismatch|optimistic lock|VERSION_CONFLICT/i);
+  });
+
+  it('lookup under `with optimistic lock` reads the _version field too', () => {
+    // The save needs the version that was read at lookup time. If the
+    // lookup doesn't capture _version, the save can't compare.
+    const src = `target: backend
+create a Deals table:
+  status
+when user updates deal at /api/deals/:id/approve:
+  with optimistic lock
+  selected_deal = look up Deal where id is incoming.id
+  set selected_deal's status to 'approved'
+  save selected_deal to Deals`;
+    const r = compileProgram(src);
+    const js = r.javascript || r.serverJS || '';
+    // Either the lookup helper returns _version with the row, or the
+    // save call passes an explicit version arg through. The simpler
+    // pattern: save passes selected_deal._version as a separate arg.
+    expect(js).toMatch(/_version/);
+  });
+});
+
 run();

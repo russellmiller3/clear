@@ -555,6 +555,37 @@ Never bundle unrelated features, fixes, docs, and generated artifacts into one g
 
 Use one branch per feature. Do not group multiple features onto one branch, and do not create branch-per-phase branches inside one feature. If the next task is a different feature, cut a new branch before editing.
 
+## The Hardest Thing Goes First (MANDATORY — added 2026-05-03)
+
+**When picking the next move from the queue, default to the HIGHEST-LEVERAGE item, not the easiest.** Russell named this pattern explicitly on 2026-05-03 night: "there's a persistent pattern of you skipping harder work." Real and recurring. The fix is a hard prior on hardest-first picking and a tight set of dodge-words that act as stop signals.
+
+**The hardest item wins by default.**
+- If the queue has an item tagged "multi-day" / "load-bearing for launch" / "regulated-tier" / "north-star-blocking" / "concurrency" / "tenant isolation" / "provable correctness completion" — that IS the next move. Not the small polish item that comes after.
+- "Multi-day" means STARTS WITH ONE COMMIT, not skip-for-now. Multi-day epics are the most important kind of work; they're labeled multi-day BECAUSE they matter.
+- "Phase wrap" is not a reason to skip the next hard thing — it's a moment to push the next hard thing onto the same branch.
+
+**Dodge-words — treat as STOP signals.** When tempted to write any of these phrases as REASONS to defer, pause and ask: am I dodging?
+- "Multi-day work" / "big piece" / "needs a focused session"
+- "Design call needed" / "decide which pattern is canonical"
+- "Needs Russell input" (when no specific input is actually required)
+- "Let me wrap this phase first" / "let me ship the small wins"
+- "Follow-up to this" (where this = the easier half)
+- "Substantively done" (when 60% of the work shipped and 40% was deferred)
+
+**The honest test, run before every "next move" decision:**
+1. List every open queue item.
+2. Sort by "how much does this move the needle on first paying customer?"
+3. Pick the top item. NOT the second-place item that's faster to ship.
+4. If reaching for #2 over #1, say WHY out loud. If the reason is any dodge-word above, fix the framing — start #1 anyway.
+
+**Hardest first applies even at session-end.** When a session is winding down, the temptation is to pick small wins to fill the remaining time. Wrong move. Better to make a 30-minute dent in the load-bearing thing and stop mid-flow with a clear handoff than to ship 4 polish commits and leave the centerpiece untouched. Mid-flow dents on hard work compound; polish commits don't.
+
+**Self-application — the test:** at the end of every reply that names a "next move," re-read the named move. If a HARDER item exists in the queue and isn't being picked, the reply is wrong. Rewrite.
+
+**Hook backstop.** `~/.claude/hooks/hardest-first.mjs` (Stop event) checks the priority queue for items tagged with launch-blocking keywords ("concurrency", "tenant isolation", "row-level", "regulated-tier", "provable correctness completion") and blocks any stop where the most recent commits are style/docs/test only AND those high-impact items are still open. Hook is enforcement; this rule is intent.
+
+**Why this rule exists (the cost it prevents):** every session where Claude ships 9 polish commits but skips the regulated-tier centerpiece is a session where Russell pays attention cost on the polish without the polish moving him toward first paying Marcus customer. The polish is real value, but it's NOT the load-bearing piece. Marcus signs because Clear can prove no double-approvals — not because the discount field formats correctly. Hardest-first is the discipline that converts agent throughput into actual launch progress.
+
 ## Defer Full Test Suite Until A Phase Boundary (MANDATORY — added 2026-05-03)
 
 **Don't run `node clear.test.js` (the full 2899-test compiler suite) after every single edit.** The output is token-expensive to read, and the cost compounds across a session. Run it once per phase boundary instead — same cadence as the doc cascade and the GitHub push.

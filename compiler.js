@@ -464,6 +464,22 @@ export const UTILITY_FUNCTIONS = [
 }`, deps: [] },
   { name: '_clearError', code: `function _clearError(err, ctx) {
   const debug = typeof process !== 'undefined' && process.env.CLEAR_DEBUG;
+  // Concurrency Phase 2: a VERSION_CONFLICT from updateWithVersion
+  // surfaces as 409 with the original message (not "Something went
+  // wrong") so clients can retry against the live row. Plan:
+  // plans/plan-concurrency-proofs-2026-05-02.md.
+  if (err && err.code === 'VERSION_CONFLICT') {
+    return {
+      status: 409,
+      response: {
+        error: err.message || 'version conflict',
+        code: 'VERSION_CONFLICT',
+        expectedVersion: err.expectedVersion,
+        currentVersion: err.currentVersion,
+        hint: 'Another request modified this record after you read it. Re-read the record and retry the save.',
+      },
+    };
+  }
   const status = err.status || (err.message && (err.message.includes('required') || err.message.includes('must be') || err.message.includes('must be unique') || err.message.includes('already exists')) ? 400 : 500);
   const safeMsg = status === 400 ? err.message : 'Something went wrong';
   // Always compute hints and structured info (not just in debug mode)
@@ -4427,7 +4443,12 @@ function compileEndpoint(node, ctx, pad) {
   if (endpointBodyUsesIncoming(node.body)) epDeclared.add('incoming');
   const hasIdParam = node.path.includes(':id');
   const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
-  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
+  // Concurrency Phase 2: detect `with optimistic lock` modifier on this
+  // endpoint so save-statements inside the body emit a version-checked
+  // UPDATE instead of a regular UPDATE. Plan:
+  // plans/plan-concurrency-proofs-2026-05-02.md (Phase 2).
+  const endpointHasOptimisticLock = (node.body || []).some(n => n && n.type === NodeType.WITH_OPTIMISTIC_LOCK);
+  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint, endpointHasOptimisticLock });
   let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
   // Auto-wire multer middleware on POST endpoints that are the target of a
   // client-side `upload X to '<path>'`. Without this, the multipart body
@@ -4836,6 +4857,15 @@ function compileCrud(node, ctx, pad) {
     if (node.isInsert) return `${pad}${varCode} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
     const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    // Concurrency Phase 2: when the enclosing endpoint declared
+    // `with optimistic lock`, the save must run a version-checked
+    // UPDATE. The runtime helper `db.updateWithVersion` returns the
+    // version-conflict error shape that the catch wrapper translates
+    // into a 409 Conflict response. Without this, two concurrent
+    // approvers can both succeed and clobber each other's audit row.
+    // Plan: plans/plan-concurrency-proofs-2026-05-02.md (Phase 2).
+    const dbUpdateFn = ctx.endpointHasOptimisticLock ? 'db.updateWithVersion' : 'db.update';
+    const versionArg = ctx.endpointHasOptimisticLock ? `, ${varCode}._version` : '';
     if (ctx.endpointHasId) {
       // Use _pick to filter incoming fields through the schema (mass-assignment protection).
       // The id comes from the URL param, not the body — set it after picking so db.update
@@ -4843,9 +4873,9 @@ function compileCrud(node, ctx, pad) {
       // variable has all fields with correct types (numeric id, all columns). Without this,
       // the variable only contains the partial request body, so `send back X` returns an
       // incomplete response.
-      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}_picked_${varCode}.id = req.params.id;\n${pad}await _clearTry(() => db.update('${table}', _picked_${varCode}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', { id: _picked_${varCode}.id }) || {});`;
+      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}_picked_${varCode}.id = req.params.id;\n${pad}await _clearTry(() => ${dbUpdateFn}('${table}', _picked_${varCode}${versionArg}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', { id: _picked_${varCode}.id }) || {});`;
     }
-    return `${pad}await _clearTry(() => db.update('${table}', _pick(${varCode}, ${schemaName})), ${updateCtx});${lineComment}`;
+    return `${pad}await _clearTry(() => ${dbUpdateFn}('${table}', _pick(${varCode}, ${schemaName})${versionArg}), ${updateCtx});${lineComment}`;
   }
   if (node.operation === 'remove') {
     const removeCtx = `{ op: 'remove', table: '${table}', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: ${JSON.stringify(node._rawSource || '')} }`;
