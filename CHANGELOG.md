@@ -6,7 +6,22 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 late night (latest) - Studio Prove button → audit PDF download
+## 2026-05-03 late night (latest) - Audit log captures WHAT was changed (sanitized body_summary)
+
+The audit trail shipped earlier tonight answered who/when/where for every state-changing request. The third compliance question — "show me what was modified" — needed the request body in each row. This commit adds it, with sensitive-field redaction so the audit log isn't its own attack surface.
+
+**What shipped:**
+- **`compiler.js`:** `audit_log` schema gains a `body_summary` text column. The capture middleware computes it from `req.body` BEFORE the route handler runs (handler mutations like `_pick` or strip don't lose the original shape).
+- **Sanitizer (`_sanitizeAuditBody`):** shallow-walks the body, redacts fields whose names match `/password|token|secret|api[_-]?key|jwt|auth/i` to `[redacted]`, stringifies nested objects via JSON.stringify capped at 200 chars per field, full body capped at 1024 chars total. Catches serialization errors and writes `[unserializable-body]` so weird inputs don't crash the audit insert.
+- **Witness test:** three new assertions on the no-scope E2E. Signup body_summary contains `alice@a.test` (email not redacted) but does NOT contain the literal password string and DOES contain the `[redacted]` marker. Deal POST body_summary contains the `status` field.
+
+**Why for launch:** the third compliance question is answerable. Marcus's buyer asks "show me what was modified, not just who and when" — the answer is the row's `body_summary` field. Combined with method + path + tenant_id, the full reconstruction is: Alice on tenant 7 POST `/api/deals` at `2026-05-03T22:30:00Z` with `{status: 'approved', deal_id: 42}`. Credentials redacted so the audit log itself isn't an exfiltration target.
+
+**End-to-end results:** tenant-isolation 3/3, invite 4/4, audit-trail 7/7 (including the new redaction assertions), all 8 core templates compile clean.
+
+---
+
+## 2026-05-03 late night - Studio Prove button → audit PDF download
 
 The toolbar Prove button used to dump the prover's raw math journal into the terminal — useful for the developer, useless for the compliance buyer. The HANDOFF redesign (item 4) splits the old single-action button into three modes: auto-check on save (4a, future), button → audit PDF download (4b, this commit), right-click → debug drilldown (4c, future). Tonight's commits ship the second mode end-to-end.
 
