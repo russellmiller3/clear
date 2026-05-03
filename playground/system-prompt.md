@@ -465,6 +465,36 @@ when user sends order to /api/orders:
 
 `caller` is the canonical form — one word, unambiguous with every entity var. The older multi-word forms (`current user`, `authenticated user`, `logged in user`) still work and compile to the same output, but prefer `caller` in new code. You can now safely name your Users-table receiving var just `user` — `caller` won't shadow it.
 
+## Tenant isolation — `database is shared with tenant scope` (2026-05-03)
+
+When a Marcus app is deployed on Clear Cloud, multiple customers share one Postgres instance. To prevent customer A from reading or modifying customer B's records, declare `database is shared with tenant scope` at the top of the source. The compiler then auto-scopes every CRUD operation by the caller's `tenant_id`:
+
+- `look up X where ...` → query also filters by `tenant_id = req.user.tenant_id`
+- `save X as new T` → inserted record gets `tenant_id` from `req.user.tenant_id` (server-side override; body cannot fake it)
+- `save X to T` → updated record carries the caller's tenant_id
+- `remove X` / `delete X at /api/...:id` → WHERE clause includes `tenant_id`
+
+**You don't need to write `tenant_id` anywhere in your source.** It's invisible to the author, automatic in the compiled output. The auth layer must populate `req.user.tenant_id` (the JWT carries it). For apps that genuinely don't need tenant isolation (single-tenant tools, internal apps), don't declare shared scope — the compiler defaults to single-tenant semantics.
+
+```clear
+target: backend
+database is shared with tenant scope
+allow signup and login
+
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  requires login
+  found = look up all Deals      # auto-filtered by req.user.tenant_id
+  send back found
+
+when user sends deal to /api/deals:
+  requires login
+  saved = save deal as new Deal  # tenant_id auto-set from req.user.tenant_id
+  send back saved
+```
+
 ## Concurrency — `safe to retry` + `with optimistic lock` (Phase 2 wired 2026-05-03)
 
 When you write an endpoint that reads a record, changes a field, and saves it back, the compiler will warn `[READ_MODIFY_WRITE_NO_LOCK]` because two simultaneous requests could overwrite each other. You have two ways to handle that:

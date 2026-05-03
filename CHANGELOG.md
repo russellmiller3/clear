@@ -6,6 +6,27 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 night (later) - Tenant isolation Phase 1+2 — row-level security by construction
+
+The hardest regulated-tier requirement is "customer A cannot read, modify, or delete customer B's records." Marcus apps deployed on shared infrastructure share a Postgres instance; without auto-scoped CRUD, the only thing stopping cross-tenant access is author discipline. Tonight that became structural.
+
+**What shipped:**
+- **Source syntax (`parser.js`):** `database is shared with tenant scope` recognized as a top-level declaration; AST `DATABASE_DECL` node carries `tenantScope: true` so downstream compiler passes can read it.
+- **Backend marker (`compiler.js`):** when `tenantScope` is set, the compiled JS has `// tenant-isolation: enabled` at the top so anyone reading the output knows auto-scoping is active.
+- **Lookup auto-injection:** `look up X where ...` under shared scope compiles to `db.findAll('table', { ...originalFilter, tenant_id: req.user && req.user.tenant_id })`. Customer A's request can only see rows where `tenant_id` matches their JWT — auto-scoped at the SQL filter level, not the response level.
+- **Insert auto-injection:** `save X as new T` under shared scope sets `record.tenant_id = req.user.tenant_id` regardless of what the request body contained. A malicious or mistaken caller cannot create rows for another tenant.
+- **Update auto-injection:** `save X to T` under shared scope sets `_picked_X.tenant_id = req.user.tenant_id` before the update so the row stays in the caller's tenant.
+- **Remove auto-injection:** `remove X` and `delete X at /api/...:id` under shared scope include `tenant_id: req.user.tenant_id` in the WHERE clause. Cross-tenant deletes by guessed id are blocked.
+- **Runtime witness (`lib/tenant-isolation-witness.test.js`):** the "trust but verify" bridge — verifies the auto-injection actually reaches compiled output, both the lookup filter and the insert record. Marcus's compliance buyer can run this themselves.
+
+**Why for launch:** Marcus's CRO will ask "what stops customer A from reading customer B's records?" The honest answer used to be "author discipline." Now it's "the compiler. The author writes `look up Deal where status is pending` and the compiled query is `WHERE status = ? AND tenant_id = req.user.tenant_id`. Customer A's `req.user.tenant_id` is theirs; the SQL filter blocks the cross-tenant read at the database, not at the response."
+
+**Out of scope tonight (follow-up slices):** validation that auth middleware is wired (the auto-scoping assumes `req.user` exists; if a tenantScope endpoint omits `requires login`, today's compiler doesn't yet warn); JWT must carry `tenant_id` claim (Auth scaffolding update); Postgres-level RLS policies (defense in depth beyond the application-layer filter); end-to-end HTTP test where customer A's request literally cannot see customer B's row in the response.
+
+**Tests:** 2911/2911 compiler suite green (4 new tenant-isolation tests). Tenant-isolation runtime witness green.
+
+---
+
 ## 2026-05-03 night - Concurrency Phase 2 + Phase 3 — optimistic locking actually prevents the race
 
 The Phase 1 detector (shipped 2026-05-02) flagged every endpoint where two concurrent writers could clobber each other. Honest framing: "we flag every place a race can happen." Tonight that became "we prevent the race" — with measurable evidence.
