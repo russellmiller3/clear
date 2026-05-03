@@ -28071,6 +28071,12 @@ await import('./lib/snapshot.test.js');
 await import('./lib/widget-injection.test.js');
 await import('./lib/owner-decl.test.js');
 
+// Prover business-rules eval (2026-05-02) — regression net for the kinds
+// of rule shapes a real ops manager would write. 2 known-failing cases
+// today (equality-on-constants, empty-rule-body) surface real prover gaps
+// that next session should fix; rest pass.
+await import('./lib/prover/business-rules-eval.test.js');
+
 // Cloudflare Workers for Platforms target — Phase 1
 await import('./lib/packaging-cloudflare.test.js');
 
