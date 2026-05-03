@@ -6,7 +6,24 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 night (latest) - API-call audit trail captures every state-change
+## 2026-05-03 night (latest) - Durable storage for users + invites — auth state survives restarts
+
+The auth scaffold previously stored users (`_users = []`) and invites (`_invites = []`) in in-memory arrays. A process restart wiped accounts. With the audit log now durable but users still in-memory, "your app survives a restart" was a half-truth. Tonight closes the gap.
+
+**What shipped:**
+- **`compiler.js`:** the auth scaffold creates `_auth_users` (email-unique, password_hash, role, created_at) and `_auth_invites` (token-unique, created_by_user_id, created_by_email, used_at, used_by_user_id, used_by_email) tables at module load. The `id` and `tenant_id` columns are auto-issued (id by `db.insert`'s SERIAL/AUTOINCREMENT, tenant_id by the runtime auto-add).
+- **Signup refactored**: `db.findOne('_auth_users', { email })` for the duplicate check, `db.insert('_auth_users', record)` for the write. For default-tenant signups (no invite_token), inserts without tenant_id first to learn the auto-issued id, then UPDATEs to set `tenant_id = user.id`. Invite consumption stays AFTER the user insert so a botched signup doesn't burn the token.
+- **Login + /me refactored**: read via `db.findOne('_auth_users', ...)`. /me now async.
+- **Invite endpoints refactored**: `POST /auth/invite` uses `db.insert` then UPDATEs to set tenant_id (same pattern as signup); `GET /auth/invite` uses `db.findAll('_auth_invites', { created_by_user_id: req.user.id })`.
+- **Three witness tests update for per-test DB isolation.** The durable table introduced a Windows file-lock race: a SIGTERM'd previous server kept the SQLite WAL file briefly, the next test's `unlinkSync` silently failed, and the next test's signup collided on email-uniqueness with leftover rows. Fix: each test passes a unique `CLEAR_DB_PATH` env var to its spawned server (the runtime db.js already reads it as a path override). Cleanup tries to unlink the unique file at end; failures are tolerated since the path is unique anyway.
+
+**Why for launch:** "your app survives a restart" is now true end-to-end. Audit log + invites + user accounts all persist. Marcus's "I rebooted my Worker and the deal data disappeared" worry is solved at the auth layer, not just the data layer.
+
+**End-to-end results:** tenant-isolation 3/3, invite 4/4, audit-trail 7/7, all 8 core templates compile clean with the same warning counts as before.
+
+---
+
+## 2026-05-03 night - API-call audit trail captures every state-change
 
 The compliance buyer's question — "show me every state change in the last hour" — used to mean "we'd have to grep server logs." Now it means `GET /audit`.
 
