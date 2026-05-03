@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 - Properly-awaiting test helpers: `describeAsync` + `itAsync`
+
+The test runner's `it()` is sync — it calls the test function but does NOT await it. Async test bodies fire-and-forget; the `✅` mark prints before any awaits resolve. Bodies whose internals are also sync (compileProgram, etc.) happen to work; bodies with real awaits (spawn, fetch, sleep) silently mis-count. The runtime-witness harness hit this hard a couple sessions ago — three "passing" tests were actually firing failed spawns in the background, only visible when the post-test crash bubbled up.
+
+**What shipped (additive — zero risk to existing tests):**
+- **`describeAsync(name, fn)`** awaits its body. **`itAsync(name, fn)`** awaits its callback. Used together with explicit `await` between calls, the pass/fail count stays correct because each test resolves before the next begins. Existing `describe`, `it`, `testAsync` exports unchanged.
+- **`lib/prover/runtime-witness.test.js` refactored** to use `describeAsync` + `itAsync` instead of the top-level await + manual `console.log` pattern it had before. Same green result (60 measured rejections across 3 rule shapes), cleaner shape — and serves as the canonical worked example for migrating other async tests.
+
+**Why for launch:** every silent test failure is a credibility risk during the pitch — if a test was passing-but-actually-broken, the next compiler change could land a regression nobody caught. The proper-awaiting helpers make "this test runs spawn/fetch/sleep, here's how to write it correctly" a one-line answer instead of a "rewrite the test runner" project.
+
+**Tests:** `node clear.test.js` 2899/2899 (no change). `node lib/prover/runtime-witness.test.js` 4/4 (3 spawn-and-measure cases via the new helpers + 1 sync sanity).
+
+**Follow-up filed as Next Move #1:** audit existing `async () =>` tests in `clear.test.js`, classify each as pure-sync-body or real-await-body, migrate the real-await ones to the new helpers. Could surface real silent failures — that's the point.
+
+---
+
 ## 2026-05-03 - Old `enforce that X or 'msg'` syntax fully removed
 
 Closed the transitional back-compat path that landed earlier today with the new `, or fail with error message:` syntax. The parser is now strict — only the new form is accepted.
