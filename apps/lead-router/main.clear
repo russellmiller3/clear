@@ -63,9 +63,9 @@ when user requests data from /api/leads/new:
 when user sends lead to /api/leads:
   requires login
   rule lead-must-have-name:
-    enforce that lead's name is not '' or 'Every lead needs a name field — leads without names cannot be routed'
+    enforce that lead's name is not '', or fail with error message: 'Every lead needs a name field — leads without names cannot be routed'
   rule lead-must-have-email:
-    enforce that lead's email is not '' or 'Every lead needs an email address — leads without emails cannot be contacted'
+    enforce that lead's email is not '', or fail with error message: 'Every lead needs an email address — leads without emails cannot be contacted'
   validate lead:
     name is text, required, min 1, max 100
     email is text, required

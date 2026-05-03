@@ -208,7 +208,7 @@ Scan this in 30 seconds. If you remember Clear can do something but can't rememb
 | Requires login | `requires login` | JWT middleware check |
 | Requires role | `requires role 'admin'` | Role-based access |
 | Define role | `define role 'editor':` + permissions | Custom RBAC |
-| Guard | `enforce that stock > 0 or 'Out of stock'` | Conditional 400 |
+| Guard | `enforce that stock > 0, or fail with error message: 'Out of stock'` | Conditional 400 |
 | Validate | `validate <entity>:` + field rules | Per-field 400 errors |
 | Rate limit | `rate limit 10 per minute` | Request throttling |
 | CORS | `allow cross-origin requests` | |

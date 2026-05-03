@@ -229,6 +229,14 @@ const SYNONYM_TABLE = Object.freeze({
   requires_role: Object.freeze(['requires role', 'this endpoint requires role']),
   define_role: Object.freeze(['define role']),
   enforce_that: Object.freeze(['enforce that']),
+  // Marker for the message side of `enforce that X, or fail with error message: 'msg'`.
+  // 5-word multi-word synonym — wins via longest-match against the 2-word
+  // `fail with` (which is a synonym for `send_error` in standalone use).
+  // Parser's enforce_that handler scans backward for the pattern
+  //   STRING preceded by ':' preceded by 'or_fail_with_msg'
+  // to find the message and set the expression endpoint. The leading
+  // comma is conventional but tolerated as optional.
+  or_fail_with_msg: Object.freeze(['or fail with error message']),
   // `has tool` / `has tools` is the canonical form for listing an agent's
   // or skill's callable functions. `can` and `can use` are legacy aliases
   // kept working for backward compatibility.
@@ -491,6 +499,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.38.0';
+const SYNONYM_VERSION = '0.39.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

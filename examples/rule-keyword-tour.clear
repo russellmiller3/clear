@@ -26,11 +26,11 @@ create a Deals table:
 # Business rules
 
 rule discount-cap-thirty:
-  enforce that 30 is less than 100 or 'Discounts over 30% need VP approval — this rule pegs the cap at 30%'
+  enforce that 30 is less than 100, or fail with error message: 'Discounts over 30% need VP approval — this rule pegs the cap at 30%'
 
 rule impossible-rule:
-  enforce that 1 is greater than 2 or 'This rule rejects every possible input — disproved'
+  enforce that 1 is greater than 2, or fail with error message: 'This rule rejects every possible input — disproved'
 
 rule reads-the-database:
   found = look up Deal where status is 'pending'
-  enforce that found is not nothing or 'Body calls the database — the prover marks this unverifiable'
+  enforce that found is not nothing, or fail with error message: 'Body calls the database — the prover marks this unverifiable'

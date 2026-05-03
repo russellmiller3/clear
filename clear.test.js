@@ -7950,7 +7950,7 @@ describe('Guard - custom error messages', () => {
     const result = compileProgram(`
 build for javascript backend
 when user calls POST /api/order:
-  enforce that stock is greater than 0 or 'Out of stock'
+  enforce that stock is greater than 0, or fail with error message: 'Out of stock'
   send back 'ordered'
     `);
     expect(result.errors).toHaveLength(0);
@@ -8361,7 +8361,7 @@ create a Users table:
   role, required
 when user sends user to /api/users:
   requires login
-  enforce that caller's role is 'admin' or 'forbidden'
+  enforce that caller's role is 'admin', or fail with error message: 'forbidden'
   save user as new User
   send back user
     `);
@@ -11550,7 +11550,7 @@ when user calls PUT /api/invoices/:id/pay sending payment_data:
   validate payment_data:
     amount is number, required
   define invoice as: look up records in Invoices table where id is incoming's id
-  enforce that invoice is not nothing or 'Invoice not found'
+  enforce that invoice is not nothing, or fail with error message: 'Invoice not found'
   send back 'paid' with success message
     `;
     const result = compileProgram(src);
@@ -11884,7 +11884,7 @@ describe('Agent primitives - parser', () => {
   it('parses full agent with guard and ask ai', () => {
     const src = `build for javascript backend
 agent 'Qualifier' receiving lead:
-  enforce that lead's email is not nothing or 'Email required'
+  enforce that lead's email is not nothing, or fail with error message: 'Email required'
   summary = ask ai 'Classify this lead' with lead's company
   if summary contains 'enterprise':
     lead's tier is 'enterprise'
@@ -12159,7 +12159,7 @@ create a Pages table:
   created_at_date, auto
 
 agent 'Page Analyzer' receiving page_data:
-  enforce that page_data's url is not nothing or 'URL is required'
+  enforce that page_data's url is not nothing, or fail with error message: 'URL is required'
   page_data's title is 'Analyzed'
   send back page_data
 
@@ -12232,7 +12232,7 @@ create a Leads table:
   score (number), default 0
 
 agent 'Lead Scorer' receiving lead:
-  enforce that lead's company is not nothing or 'Company is required'
+  enforce that lead's company is not nothing, or fail with error message: 'Company is required'
   analysis = ask ai 'Rate this company on a scale of 1-10 for enterprise potential' with lead's company
   lead's score is analysis
   send back lead
@@ -12291,7 +12291,7 @@ describe('GAN: Multi-agent pipeline', () => {
   const src = `build for javascript backend
 
 agent 'Validator' receiving data:
-  enforce that data's email is not nothing or 'Email required'
+  enforce that data's email is not nothing, or fail with error message: 'Email required'
   send back data
 
 agent 'Enricher' receiving data:
@@ -12659,7 +12659,7 @@ create a Candidates table:
   applied_at_date, auto
 
 agent 'Screener' receiving candidate:
-  enforce that candidate's name is not nothing or 'Name is required'
+  enforce that candidate's name is not nothing, or fail with error message: 'Name is required'
   result = ask ai 'Does this candidate meet minimum qualifications? Reply YES or NO.' with candidate's experience
   candidate's screening_pass is result
   send back candidate
@@ -28869,7 +28869,7 @@ describe('rule keyword — parser', () => {
 
   it('parses rule body with multi-line if / guard statements', () => {
     const src = `rule big-deal-needs-cro:
-  enforce that amount is less than 100001 or 'Big deals need CRO sign-off'
+  enforce that amount is less than 100001, or fail with error message: 'Big deals need CRO sign-off'
   enforce that discount is less than 50 or 'Big discounts need CRO sign-off'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
@@ -28914,7 +28914,7 @@ rule another:
 
   it('hard-errors on duplicate rule names in the same file', () => {
     const src = `rule discount-cap:
-  enforce that discount is less than 30 or 'too big'
+  enforce that discount is less than 30, or fail with error message: 'too big'
 rule discount-cap:
   enforce that discount is less than 50 or 'too big'`;
     const ast = parse(src);
@@ -29055,7 +29055,7 @@ describe('rule keyword — compiler', () => {
 
   it('compiles multiple rules in the same file with both names visible', () => {
     const src = `rule discount-cap:
-  enforce that 20 is less than 30 or 'too big'
+  enforce that 20 is less than 30, or fail with error message: 'too big'
 rule big-deal-needs-cro:
   enforce that 100 is less than 200 or 'needs CRO'`;
     const result = compileProgram(src, { target: 'web' });
@@ -29114,7 +29114,7 @@ rule reads-database:
 
   it('attributes per-rule verdict counts in the bundle summary', () => {
     const src = `rule rule_a:
-  enforce that 1 is less than 2 or 'tautology'
+  enforce that 1 is less than 2, or fail with error message: 'tautology'
 rule rule_b:
   enforce that 1 is greater than 2 or 'counterexample'`;
     const bundle = proveSource(src);
@@ -29192,12 +29192,12 @@ describe('clear prove default formatting', () => {
 
 when user sends deal to /api/deals:
   rule discount-cap-thirty:
-    enforce that deal's discount_percent is less than 30 or 'too high'
+    enforce that deal's discount_percent is less than 30, or fail with error message: 'too high'
   send back 'ok'
 
 rule reads-the-database:
   found = look up Deal where amount is greater than 0
-  enforce that found is not nothing or 'no deal'
+  enforce that found is not nothing, or fail with error message: 'no deal'
 `;
 
   it('default output uses the translator headline (plain English, not math journal)', () => {

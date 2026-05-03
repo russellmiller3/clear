@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 - New canonical refusal-message form for `enforce that` (transitional)
+
+Russell's locked canonical form now ships: `enforce that X, or fail with error message: 'why'` reads as "enforce X, OR if not, fail with this error message." The old form `enforce that X or 'msg'` reads weird because `or` was in the wrong position (sounded like "X or this string" not "if not X, this message"). New form is a proper English sentence; old form was a parser-friendly compromise.
+
+**What shipped:**
+- **New 5-word multi-word synonym** `or fail with error message` (canonical token `or_fail_with_msg`) added in `synonyms.js`. Wins via longest-match against the existing 2-word `fail with` synonym (which still works in standalone use for `send_error`). SYNONYM_VERSION 0.38.0 → 0.39.0.
+- **Parser updated** to recognize the new separator: scan backward for STRING preceded by `:` preceded by `or_fail_with_msg`. Comma between expression and marker is conventional but tolerated as optional. The bare no-message form `enforce that X` keeps working with a default refusal message — that case is unchanged.
+- **Bulk rewrite ran** across every `.clear` app, every standalone source file in `apps/`, `examples/`, and the prover eval source strings — 98 lines updated across 14 files. The line-based rewrite script (`scripts/rewrite-enforce-that-msg.mjs`) is committed for repeatability and as the template for the back-compat removal pass.
+- **Doc cascade:** `intent.md`, `FEATURES.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `playground/system-prompt.md` all now show the new canonical form in their authoritative examples.
+
+**Transitional state — back-compat path still active:**
+
+The parser falls back to the OLD form (STRING preceded by `or` token) when the new form isn't matched. This is INTENTIONAL — about 20 inline source strings inside `clear.test.js` use the old form embedded in JS string literals (escaped quotes, multi-line strings). The line-based rewrite script can't safely walk those without a JS-aware parse. Removing back-compat now would break the test suite. Filed as the next HANDOFF Next Move: a careful pass that walks `clear.test.js` strings, then strips the parser fallback. ~15-20 min.
+
+**Why for launch:** every prospect who reads a Clear `.clear` source file sees the policy line. `enforce that X, or fail with error message: '...'` reads like a policy doc; `enforce that X or '...'` reads like a glitch. The pitch surface speaks the customer's language.
+
+**Tests:** `node clear.test.js` 2899/2899 (unchanged). `node lib/prover/business-rules-eval.test.js` 35/35 (eval source strings updated to new form). `node lib/prover/runtime-witness.test.js` 4/4 (harness rule sources updated). All 8 core templates compile clean with the new syntax in lead-router and others.
+
+---
+
 ## 2026-05-03 - Playground bundle build fixed
 
 The browser bundle (`playground/clear-compiler.min.js`, used by the Studio playground for in-browser compile previews) hadn't been rebuildable since the cloud-packaging module landed — `npx esbuild` failed with "Could not resolve fs / path / url" because the cloud packaging walks node-only modules at the top of its imports. Studio users were silently running stale compiler bytecode whenever the source compiler changed. Fixed today.

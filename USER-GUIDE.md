@@ -1256,7 +1256,7 @@ when user calls PUT /api/settings/:id sending setting:
 ```clear
 when user calls POST /api/orders sending order:
   requires login
-  enforce that stock is greater than 0 or 'Out of stock'
+  enforce that stock is greater than 0, or fail with error message: 'Out of stock'
   new_order = save order as new Order
   send back new_order with success message
 ```
@@ -3517,7 +3517,7 @@ A **business rule** is a policy your CRO, auditor, or compliance reviewer cares 
 
 ```clear
 rule discount-cap-thirty:
-  enforce that discount is less than 30 or 'Discounts over 30% need VP approval'
+  enforce that discount is less than 30, or fail with error message: 'Discounts over 30% need VP approval'
 ```
 
 That's it. The body is a normal `guard` line — same shape you'd use anywhere. The wrapper `rule discount-cap-thirty:` names the policy. Now when you run `clear prove`:
@@ -3542,14 +3542,14 @@ A small file with one of each:
 
 ```clear
 rule discount-cap-thirty:
-  enforce that 30 is less than 100 or 'Discounts over 30% need VP approval'
+  enforce that 30 is less than 100, or fail with error message: 'Discounts over 30% need VP approval'
 
 rule impossible-rule:
-  enforce that 1 is greater than 2 or 'This rule rejects every input'
+  enforce that 1 is greater than 2, or fail with error message: 'This rule rejects every input'
 
 rule reads-the-database:
   found = look up Deal where status is 'pending'
-  enforce that found is not nothing or 'Body calls the database'
+  enforce that found is not nothing, or fail with error message: 'Body calls the database'
 ```
 
 Output:
@@ -3575,7 +3575,7 @@ If your rule name reads better as a sentence, use a quoted string and the parser
 
 ```clear
 rule 'Deals over $100k need CRO sign-off':
-  enforce that amount is less than 100000 or 'Big deals need CRO sign-off'
+  enforce that amount is less than 100000, or fail with error message: 'Big deals need CRO sign-off'
 ```
 
 That becomes `deals-over-100k-need-cro-sign-off` in the prover output.

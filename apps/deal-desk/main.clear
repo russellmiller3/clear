@@ -117,13 +117,13 @@ when user sends deal to /api/deals:
     discount_percent is number, min 0, max 100
 
   rule discount-cap-thirty:
-    enforce that deal's discount_percent is less than 30 or 'Discounts of 30% or more require VP approval — submit through the VP escalation queue, not the standard CRO desk'
+    enforce that deal's discount_percent is less than 30, or fail with error message: 'Discounts of 30% or more require VP approval — submit through the VP escalation queue, not the standard CRO desk'
 
   rule price-floor-positive:
-    enforce that deal's list_price is greater than 0 or 'List price must be positive — zero or negative prices are never valid'
+    enforce that deal's list_price is greater than 0, or fail with error message: 'List price must be positive — zero or negative prices are never valid'
 
   rule discount-not-over-cap:
-    enforce that deal's discount_percent is less than 100 or 'Discount cannot meet or exceed 100% — that would mean giving the product away or paying the customer'
+    enforce that deal's discount_percent is less than 100, or fail with error message: 'Discount cannot meet or exceed 100% — that would mean giving the product away or paying the customer'
 
   if deal's discount_percent is greater than 20:
     deal's status is 'pending'

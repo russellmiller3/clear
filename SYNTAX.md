@@ -1571,7 +1571,7 @@ Requires `bcryptjs` and `jsonwebtoken` npm packages. Auto-generates an in-memory
 ```clear
 requires login
 requires role 'admin'
-enforce that product's stock is greater than 0 or 'Out of stock'
+enforce that product's stock is greater than 0, or fail with error message: 'Out of stock'
 
 # Access the authenticated caller
 # `caller` is the canonical one-word form. `current user` still works
@@ -3091,16 +3091,16 @@ A `rule:` block is a top-level labeled wrapper that names a business rule so the
 ### Canonical form
 ```clear
 rule discount-cap-thirty:
-  enforce that discount is less than 30 or 'Discounts over 30% need VP approval'
+  enforce that discount is less than 30, or fail with error message: 'Discounts over 30% need VP approval'
 
 rule price-floor-positive:
-  enforce that price is greater than 0 or 'Prices must be positive'
+  enforce that price is greater than 0, or fail with error message: 'Prices must be positive'
 ```
 
 ### Quoted-string name (parser dasherizes)
 ```clear
 rule 'Deals over $100k need CRO sign-off':
-  enforce that amount is less than 100000 or 'Big deals need CRO sign-off'
+  enforce that amount is less than 100000, or fail with error message: 'Big deals need CRO sign-off'
 ```
 The parser dasherizes the quoted form — the name above becomes `deals-over-100k-need-cro-sign-off`.
 

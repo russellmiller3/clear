@@ -682,7 +682,7 @@ when user updates bookmark at /api/bookmarks/:id:
 when user updates bookmark at /api/bookmarks/:id:
   requires login
   existing = look up Bookmark with this id
-  enforce that existing's owner is caller or 'not yours'
+  enforce that existing's owner is caller, or fail with error message: 'not yours'
   save bookmark to Bookmarks
   send back 'updated'
 ```
@@ -1553,9 +1553,9 @@ Pair with `define role 'editor':` to declare custom roles with specific permissi
 ```clear
 when user sends order to /api/orders:
   requires login
-  enforce that product's stock is greater than 0 or 'Out of stock'
-  enforce that order's total is less than 10000 or 'Orders over $10k need manual approval'
-  enforce that caller's plan is not 'free' or 'Upgrade to Pro to place orders'
+  enforce that product's stock is greater than 0, or fail with error message: 'Out of stock'
+  enforce that order's total is less than 10000, or fail with error message: 'Orders over $10k need manual approval'
+  enforce that caller's plan is not 'free', or fail with error message: 'Upgrade to Pro to place orders'
   save order as new Order
 ```
 
@@ -1671,21 +1671,21 @@ Use a `rule:` block when a business policy deserves a name. The prover walks eve
 ### Canonical form
 ```clear
 rule discount-cap-thirty:
-  enforce that discount is less than 30 or 'Discounts over 30% need VP approval'
+  enforce that discount is less than 30, or fail with error message: 'Discounts over 30% need VP approval'
 ```
 
 ### Quoted-string name (parser dasherizes)
 ```clear
 rule 'Deals over $100k need CRO sign-off':
-  enforce that amount is less than 100000 or 'Big deals need CRO sign-off'
+  enforce that amount is less than 100000, or fail with error message: 'Big deals need CRO sign-off'
 ```
 Becomes `deals-over-100k-need-cro-sign-off`. Use this form when the name reads better as a sentence.
 
 ### Multiple guards in one rule
 ```clear
 rule big-deal-needs-cro:
-  enforce that amount is less than 100001 or 'Big deals need CRO sign-off'
-  enforce that discount is less than 50 or 'Big discounts need CRO sign-off'
+  enforce that amount is less than 100001, or fail with error message: 'Big deals need CRO sign-off'
+  enforce that discount is less than 50, or fail with error message: 'Big discounts need CRO sign-off'
 ```
 
 ### What the prover output looks like
@@ -1711,15 +1711,15 @@ Business rules in this file:
 ### Don't write
 ```clear
 rule:                                # MISSING NAME
-  enforce that x or 'msg'
+  enforce that x, or fail with error message: 'msg'
 
 rule discount-cap:                   # EMPTY BODY
 rule another:
-  enforce that 1 or 'msg'
+  enforce that 1, or fail with error message: 'msg'
 
 when user sends deal to /api/deals:
   rule inline:                       # NESTED — top-level only
-    enforce that amount or 'msg'
+    enforce that amount, or fail with error message: 'msg'
 ```
 
 ## Database Declaration
@@ -2555,7 +2555,7 @@ set scored to call 'Lead Scorer' with lead_data
 set analysis to ask ai 'Rate 1-10' with lead's company
 
 # TERSE (still work, but don't generate these)
-enforce that lead's email is not nothing or 'Email is required'
+enforce that lead's email is not nothing, or fail with error message: 'Email is required'
 scored = call 'Lead Scorer' with lead_data
 analysis = ask ai 'Rate 1-10' with lead's company
 ```

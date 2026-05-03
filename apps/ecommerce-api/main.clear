@@ -53,8 +53,8 @@ when user calls POST /api/orders receiving order:
     user_id is text, required
     total is number, required, min 0
   define product as: look up records in Products table where id is order's product_id
-  enforce that product is not nothing or 'Product not found'
-  enforce that product's stock is greater than 0 or 'Out of stock'
+  enforce that product is not nothing, or fail with error message: 'Product not found'
+  enforce that product's stock is greater than 0, or fail with error message: 'Out of stock'
   define new_order as: save order as Order
   send back new_order status 201
 
