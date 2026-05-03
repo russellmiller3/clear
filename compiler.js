@@ -14272,6 +14272,15 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
       // single-use, and recorded with creator + consumer for audit.
       lines.push('const _invites = [];');
     }
+    // API-call audit log — captures every state-changing request with
+    // who (req.user), what (method + path), when (ISO timestamp), and the
+    // outcome (status code). Read-only requests (GET/HEAD/OPTIONS) are
+    // skipped because they don't change state. The Studio Meph widget
+    // proxy paths are skipped because they're dev-tool noise. Per-queue
+    // audit tables (the `queue for X:` primitive) are unrelated — those
+    // log business decisions; this log captures API traffic. In-memory
+    // for the first slice; durable storage is a follow-up.
+    lines.push('const _audit_log = [];');
     lines.push('');
     lines.push('// JWT middleware — extracts user from token on every request');
     lines.push('app.use((req, res, next) => {');
@@ -14282,6 +14291,42 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('    } catch(e) { req.user = null; }');
     lines.push('  }');
     lines.push('  next();');
+    lines.push('});');
+    lines.push('');
+    lines.push('// API-call audit middleware — captures every state-change.');
+    lines.push('// Runs AFTER the JWT middleware so req.user is populated when');
+    lines.push("// available; runs BEFORE routes so every state-changing request");
+    lines.push('// (POST/PUT/PATCH/DELETE) is logged regardless of where it lands.');
+    lines.push('app.use((req, res, next) => {');
+    lines.push("  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();");
+    lines.push("  if (req.path && req.path.startsWith('/__meph__')) return next();");
+    lines.push('  const _audit_started_at = new Date().toISOString();');
+    lines.push("  res.on('finish', () => {");
+    lines.push('    _audit_log.push({');
+    lines.push('      ts: _audit_started_at,');
+    lines.push('      user_id: req.user ? req.user.id : null,');
+    lines.push('      user_email: req.user ? req.user.email : null,');
+    lines.push('      tenant_id: req.user ? (req.user.tenant_id !== undefined ? req.user.tenant_id : null) : null,');
+    lines.push('      method: req.method,');
+    lines.push('      path: req.path,');
+    lines.push('      status: res.statusCode,');
+    lines.push('    });');
+    lines.push('  });');
+    lines.push('  next();');
+    lines.push('});');
+    lines.push('');
+    lines.push('// GET /audit — list audit entries the caller is allowed to see.');
+    lines.push('// Tenant-scoped when shared scope is on (caller sees only their');
+    lines.push('// tenant); whole log otherwise. Authentication required so the');
+    lines.push('// log isn\'t a public-facing data leak.');
+    lines.push("app.get('/audit', (req, res) => {");
+    lines.push("  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+    if (tenantScope) {
+      lines.push('  const filtered = _audit_log.filter(e => e.tenant_id === req.user.tenant_id);');
+    } else {
+      lines.push('  const filtered = _audit_log.slice();');
+    }
+    lines.push('  res.json(filtered);');
     lines.push('});');
     lines.push('');
     lines.push('// POST /auth/signup — create new user');
