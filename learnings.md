@@ -2,6 +2,20 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-03 late night: durable storage for `_users` + `_invites`
+
+The auth scaffold's last in-memory holdouts (`_users = []` and `_invites = []` arrays) now sit in real `_auth_users` + `_auth_invites` SQL tables. Process restart no longer wipes accounts or pending invites. The audit_log durability shipped earlier the same night was a half-truth without this — durable audit + ephemeral users meant the audit log would survive a restart but would be auditing accounts that no longer existed. Both layers are durable now.
+
+### Gotchas-as-rules
+
+- **Windows file-lock cross-contamination between tests is invisible until durable state lands.** With in-memory `_users = []`, every spawned server started with empty users, so test isolation was free. Once users move to a SQLite file, a test that signs up Alice and a SECOND test that tries to sign up Alice will collide — UNLESS the DB file is reliably cleaned between them. On Windows, the previous test's SIGTERM'd server keeps the SQLite WAL file briefly locked, and the next test's `unlinkSync(dbPath)` silently fails (try/catch swallows). Result: stale rows leak between tests. Fix: pass a unique `CLEAR_DB_PATH` env var to each spawned server (the runtime db.js already reads it as a path override). The unique path means cross-contamination is structurally impossible — even if cleanup fails, the next test's path is different.
+- **The `id` ↔ `tenant_id` init order matters when moving auth to durable storage.** Default tenant assignment is `tenant_id = user.id`. With in-memory storage, both come from `_users.length + 1` — known synchronously. With durable storage, the id is auto-issued by `db.insert` (SERIAL/AUTOINCREMENT), so it's unknown until after the insert returns. The clean two-step: insert without tenant_id → read user.id from returned row → UPDATE the same row to set `tenant_id = user.id`. Two queries per default-tenant signup, but correct. The same pattern applies to invites (insert, then UPDATE to set tenant_id from req.user).
+- **`db.createTable` schemas should NOT include tenant_id as a declared field.** The SQLite runtime auto-adds `tenant_id INTEGER` to every table for shared-scope safety. Declaring it again in the schema arg causes "duplicate column name" at table-create time. Same applies to `_version` (concurrency Phase 2 auto-adds it). Skip both in your schema; the runtime handles them.
+- **Mark consumed invite AFTER user insert succeeds, not before.** If you mark the invite consumed before the user insert and then the insert fails (uniqueness violation, validation error), the token is dead but no user joined — a botched signup burned the invite. Order matters: validate, look up invite, build user, INSERT user, only then UPDATE the invite to mark consumed.
+- **Async `app.get` handlers need `async (req, res) => {...}`.** `GET /auth/me` was synchronous before the durable refactor (`_users.find` is sync). Switching to `await db.findOne` requires the handler signature to be async. Forgetting this turns a Promise into a JSON response — the JSON serializer renders `{}` instead of the resolved user — and the test failure looks like "user is empty" rather than "you forgot async."
+
+---
+
 ## Session 2026-05-03 night: multi-user-per-tenant via single-use invite tokens
 
 The default tenant-isolation flow had every signup mint a brand-new tenant_id, so teammates landed in separate workspaces. Tonight we added the invite endpoints (`POST /auth/invite` and `GET /auth/invite`) plus an optional `invite_token` field on signup. Joiners use the inviter's tenant; non-invited signups still mint a new tenant. The Alice → Bob → Carol HTTP test passes end-to-end.
@@ -104,6 +118,7 @@ The rebuild ended up cleaner than the original would have been because writing t
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-03 late night: durable storage for `_users` + `_invites`](#session-2026-05-03-late-night-durable-storage-for-_users--_invites) | Windows file-lock cross-contamination invisible until durable state lands (fix: per-test CLEAR_DB_PATH); id ↔ tenant_id init order needs two-step insert+update; never declare tenant_id or _version in createTable schema; mark invite consumed AFTER user insert; async handlers need async signature |
 | [Session 2026-05-03 night: multi-user-per-tenant invites](#session-2026-05-03-night-multi-user-per-tenant-via-single-use-invite-tokens) | Mark invite consumed AFTER user push; crypto.randomBytes for token; gate emit on auth+scope; reuse existing keyword (1:1 mapping); audit endpoint matters |
 | [Session 2026-05-03 night: Postgres ROW LEVEL SECURITY](#session-2026-05-03-night-postgres-row-level-security-as-defense-in-depth) | SET LOCAL is transaction-scoped; FORCE RLS prevents owner bypass; AsyncLocalStorage threads tenant id through awaits; current_setting needs `, true` for unset case |
 | [Session 2026-05-01: Publish progress UX](#session-2026-05-01-publish-progress-ux) | Browser red can be blocked by runner permissions; keep static UI contracts too |
