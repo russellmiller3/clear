@@ -93,6 +93,21 @@ try {
   assert(await page.locator('#theme-toggle').isVisible(), 'theme toggle visible');
 
   // ==========================================================================
+  // MODE SWITCHER (regression net for the 2026-05-03 setStudioMode bug)
+  // ==========================================================================
+  // Bug class: <script type="module"> puts top-level functions in module
+  // scope. Inline `onchange="setStudioMode(this.value)"` walks the GLOBAL
+  // scope and silently fails when the function isn't on window. Verify
+  // the function bridge is in place WITHOUT actually triggering a mode
+  // switch (which would reload the page and break downstream tests).
+  console.log('\n🔀 Mode switcher (regression net)');
+  assert(await page.locator('#mode-switcher').isVisible(), 'mode-switcher dropdown visible');
+  const setStudioModeOnWindow = await page.evaluate(() => typeof window.setStudioMode === 'function');
+  assert(setStudioModeOnWindow, 'window.setStudioMode is a function (the inline onchange can find it)');
+  const modeOptions = await page.locator('#mode-switcher option').count();
+  assert(modeOptions === 2, `mode-switcher has 2 options (got ${modeOptions})`);
+
+  // ==========================================================================
   // NEW BUTTON
   // ==========================================================================
   console.log('\n📄 New button');
