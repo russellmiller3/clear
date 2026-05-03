@@ -555,6 +555,51 @@ Never bundle unrelated features, fixes, docs, and generated artifacts into one g
 
 Use one branch per feature. Do not group multiple features onto one branch, and do not create branch-per-phase branches inside one feature. If the next task is a different feature, cut a new branch before editing.
 
+## Defer Full Test Suite Until A Phase Boundary (MANDATORY — added 2026-05-03)
+
+**Don't run `node clear.test.js` (the full 2899-test compiler suite) after every single edit.** The output is token-expensive to read, and the cost compounds across a session. Run it once per phase boundary instead — same cadence as the doc cascade and the GitHub push.
+
+**What to run on each commit / fix instead:**
+- The targeted unit test for the file you just touched (`node lib/prover/index.test.js`, `node clear.test.js -- --grep <pattern>` if available).
+- A compile sanity check on the affected app (`node -e "import { compileProgram } from './index.js'; ..."` with the smallest possible input).
+- A quick syntax check (`node --check <file>`) on any compiled artifact.
+
+**Why deferring is fine:**
+- Pre-commit hooks already run a fast subset on every commit — that's the per-commit safety net.
+- Pre-push hooks run the full suite at push time — that's the per-phase safety net.
+- Manually running `node clear.test.js` between hooks is redundant for most edits.
+- The only edits where the full suite is genuinely worth running mid-phase are wide-radius compiler/parser changes that could ripple. Even then, pick the most-affected describe blocks rather than the whole 2899.
+
+**When to run the full suite anyway:**
+- At a phase boundary (feature complete, bug class eliminated, refactor done).
+- Before pushing to GitHub (the pre-push hook will run it; running it locally first only saves the round-trip if it fails).
+- When a targeted test passes but you have a hunch you broke something elsewhere.
+- When Russell explicitly asks "run all tests."
+
+**Default cadence per phase:** unit tests for the touched file → quick compile sanity check → ship. Full suite at the end of the phase before push.
+
+## Don't Push To GitHub Until End Of A Major Phase (MANDATORY — added 2026-05-03)
+
+**Commit early, push late.** Commits land locally as you ship each piece — every small feature gets its own commit per the "One Small Feature Per Commit" rule. But `git push origin <branch>` only fires when a major phase wraps, not after every commit.
+
+**Why this rule exists:** the pre-push hooks run the full Playwright IDE suite, the Meph eval, and other heavy regression nets — 60-180 seconds per push, and the IDE suite has a known flaky `#editor-mount .cm-editor` timeout that fails non-deterministically. Pushing after every commit means re-paying that cost (and re-rolling the flake dice) on work that isn't done yet. The flake also blocks autonomous shipping in the middle of a phase, which is exactly when momentum matters most.
+
+**A "major phase" is** a coherent unit of shipped work — a feature complete, a bug class eliminated, a refactor done, the end of a focused work block. Multiple commits in service of one epic = one phase. Russell explicitly asks "ship it" or wraps the session = phase end.
+
+**How to apply:**
+- Commit each small piece as you go. Local-only commits accumulate on the feature branch.
+- Don't run `git push` after every commit. Hold pushes for a phase boundary.
+- When a phase ends — feature shipped, bug fixed, refactor done, session wrapping — push every accumulated commit on the branch in one shot.
+- If a single push fails due to the known IDE flake, retry once. If still red, push with `--no-verify` only when (a) the change is unrelated to IDE/Playwright AND (b) the flake is the documented `#editor-mount` timeout. Document the skip in the next handoff or commit.
+- Hook backstops still apply: pre-commit hooks run on every commit (those are fast, ~5s). Pre-push runs only when actually pushing.
+
+**Does NOT apply to:**
+- The first push of a brand-new branch (need to set tracking with `-u`).
+- Cherry-picks or hotfixes on main where the change IS the phase.
+- Documentation-only commits where Russell explicitly asks "push the doc fix."
+
+**Scope:** this rule overrides any default "push after every commit" instinct. Local commits are a complete record; GitHub doesn't need to know about every step.
+
 ## FAQ And Learnings Startup (MANDATORY)
 
 Every Clear session reads `FAQ.md` and `learnings.md` before changing files. `FAQ.md` answers where systems live and why decisions were made; `learnings.md` records the bugs and process failures already paid for. Do not start from memory when those files contain the map.
