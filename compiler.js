@@ -14261,6 +14261,17 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
       lines.push(`const _OWNER_EMAIL = ${JSON.stringify(ownerDecl.email)};`);
     }
     lines.push('const _users = [];');
+    if (tenantScope) {
+      // Multi-user-per-tenant invites. By default every signup creates a
+      // brand-new tenant, which means everyone at "Acme Corp" who signs
+      // up lands in their own data silo and can't see each other's rows.
+      // Invites fix that: an existing user generates a token, hands it
+      // to a teammate, and the teammate's signup joins the same tenant.
+      // First slice is in-memory like _users — durable storage is a
+      // follow-up. Tokens are 16 cryptographic bytes (32 hex chars),
+      // single-use, and recorded with creator + consumer for audit.
+      lines.push('const _invites = [];');
+    }
     lines.push('');
     lines.push('// JWT middleware — extracts user from token on every request');
     lines.push('app.use((req, res, next) => {');
@@ -14276,28 +14287,58 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('// POST /auth/signup — create new user');
     lines.push("app.post('/auth/signup', async (req, res) => {");
     lines.push('  try {');
-    lines.push('    const { email, password } = req.body;');
+    // Multi-user-per-tenant invite: when shared scope is declared, the
+    // signup body may carry an `invite_token`. If present and unused,
+    // the new user joins the inviter's tenant; otherwise a brand-new
+    // tenant is auto-issued (current behavior preserved). Without
+    // tenant scope, invite_token is ignored.
+    if (tenantScope) {
+      lines.push('    const { email, password, invite_token } = req.body;');
+    } else {
+      lines.push('    const { email, password } = req.body;');
+    }
     lines.push("    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });");
     lines.push("    if (_users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });");
     lines.push('    const password_hash = await bcrypt.hash(password, 10);');
+    // Tenant isolation: when shared scope is declared, every signup
+    // gets a tenant_id. With invite_token, the new user joins the
+    // inviter's tenant; without it, a brand-new tenant equal to the
+    // user's id (each user is their own tenant by default).
+    if (tenantScope) {
+      lines.push('    const _new_user_id = _users.length + 1;');
+      lines.push('    let _new_tenant_id = _new_user_id;');
+      lines.push('    let _consumed_invite = null;');
+      lines.push('    if (invite_token) {');
+      lines.push('      _consumed_invite = _invites.find(inv => inv.token === invite_token && !inv.used_at);');
+      lines.push("      if (!_consumed_invite) return res.status(400).json({ error: 'Invalid or already-used invite token' });");
+      lines.push('      _new_tenant_id = _consumed_invite.tenant_id;');
+      lines.push('    }');
+    }
     // If the app declared an owner, check it at signup time. Otherwise
     // everyone is a plain user and no one can reach the Live App Editing
     // widget (it self-gates on role === 'owner').
-    // Tenant isolation: when shared scope is declared, the user row
-    // gets a tenant_id (auto-issued for new signups) and the JWT
-    // carries it as a claim so every subsequent request has
-    // req.user.tenant_id available for auto-scoping. Without this,
-    // every CRUD-with-tenant-scope would get tenant_id: undefined and
-    // silently match nothing (or insert tenantless rows). New signups
-    // get tenant_id = user.id (each user is their own tenant by
-    // default; multi-user-per-tenant flows can extend this later).
-    const tenantInit = tenantScope ? ', tenant_id: _users.length + 1' : '';
+    const tenantInit = tenantScope ? ', tenant_id: _new_tenant_id' : '';
+    const userIdRef = tenantScope ? '_new_user_id' : '_users.length + 1';
     if (body.find(n => n.type === NodeType.OWNER_DECL)) {
-      lines.push(`    const user = { id: _users.length + 1, email, password_hash, role: email === _OWNER_EMAIL ? 'owner' : 'user'${tenantInit}, created_at: new Date().toISOString() };`);
+      lines.push(`    const user = { id: ${userIdRef}, email, password_hash, role: email === _OWNER_EMAIL ? 'owner' : 'user'${tenantInit}, created_at: new Date().toISOString() };`);
     } else {
-      lines.push(`    const user = { id: _users.length + 1, email, password_hash, role: 'user'${tenantInit}, created_at: new Date().toISOString() };`);
+      lines.push(`    const user = { id: ${userIdRef}, email, password_hash, role: 'user'${tenantInit}, created_at: new Date().toISOString() };`);
     }
     lines.push('    _users.push(user);');
+    if (tenantScope) {
+      // Mark the invite consumed only AFTER the user is in the array.
+      // Until that line, _consumed_invite still has used_at: null, so a
+      // concurrent signup with the same token would also see it as
+      // unused. In-memory single-process Express handles requests
+      // sequentially per event loop turn so the race is bounded; for
+      // the durable-storage follow-up we'll wrap the lookup-and-mark
+      // in a transaction.
+      lines.push('    if (_consumed_invite) {');
+      lines.push('      _consumed_invite.used_at = new Date().toISOString();');
+      lines.push('      _consumed_invite.used_by_email = email;');
+      lines.push('      _consumed_invite.used_by_user_id = user.id;');
+      lines.push('    }');
+    }
     const tenantClaim = tenantScope ? ', tenant_id: user.tenant_id' : '';
     const tenantInResponse = tenantScope ? ', tenant_id: user.tenant_id' : '';
     lines.push(`    const token = jwt.sign({ id: user.id, email: user.email, role: user.role${tenantClaim} }, _JWT_SECRET, { expiresIn: "7d" });`);
@@ -14305,6 +14346,53 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('  } catch(e) { res.status(500).json({ error: e.message }); }');
     lines.push('});');
     lines.push('');
+    if (tenantScope) {
+      // POST /auth/invite — authenticated, generates an invite token
+      // bound to the caller's tenant. Recipients call /auth/signup with
+      // { invite_token } to join the same tenant. Single-use; expires
+      // when consumed.
+      lines.push('// POST /auth/invite — generate a token that lets a teammate join the caller\'s tenant');
+      lines.push("app.post('/auth/invite', (req, res) => {");
+      lines.push('  try {');
+      lines.push("    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+      lines.push('    if (req.user.tenant_id === undefined || req.user.tenant_id === null) {');
+      lines.push("      return res.status(400).json({ error: 'Inviting user has no tenant_id' });");
+      lines.push('    }');
+      lines.push("    const token = require('crypto').randomBytes(16).toString('hex');");
+      lines.push('    const invite = {');
+      lines.push('      token,');
+      lines.push('      tenant_id: req.user.tenant_id,');
+      lines.push('      created_by_user_id: req.user.id,');
+      lines.push('      created_by_email: req.user.email,');
+      lines.push('      created_at: new Date().toISOString(),');
+      lines.push('      used_at: null,');
+      lines.push('      used_by_user_id: null,');
+      lines.push('      used_by_email: null,');
+      lines.push('    };');
+      lines.push('    _invites.push(invite);');
+      lines.push('    res.status(201).json({');
+      lines.push('      token: invite.token,');
+      lines.push('      tenant_id: invite.tenant_id,');
+      lines.push('      created_at: invite.created_at,');
+      lines.push('    });');
+      lines.push('  } catch(e) { res.status(500).json({ error: e.message }); }');
+      lines.push('});');
+      lines.push('');
+      // GET /auth/invite — list invites the caller created (audit/recall)
+      lines.push('// GET /auth/invite — list invites this caller has created (recall + audit)');
+      lines.push("app.get('/auth/invite', (req, res) => {");
+      lines.push("  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+      lines.push('  const mine = _invites.filter(inv => inv.created_by_user_id === req.user.id);');
+      lines.push('  res.json(mine.map(inv => ({');
+      lines.push('    token: inv.token,');
+      lines.push('    tenant_id: inv.tenant_id,');
+      lines.push('    created_at: inv.created_at,');
+      lines.push('    used_at: inv.used_at,');
+      lines.push('    used_by_email: inv.used_by_email,');
+      lines.push('  })));');
+      lines.push('});');
+      lines.push('');
+    }
     lines.push('// POST /auth/login — authenticate user');
     lines.push("app.post('/auth/login', async (req, res) => {");
     lines.push('  try {');
