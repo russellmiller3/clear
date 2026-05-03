@@ -14269,14 +14269,25 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // If the app declared an owner, check it at signup time. Otherwise
     // everyone is a plain user and no one can reach the Live App Editing
     // widget (it self-gates on role === 'owner').
+    // Tenant isolation: when shared scope is declared, the user row
+    // gets a tenant_id (auto-issued for new signups) and the JWT
+    // carries it as a claim so every subsequent request has
+    // req.user.tenant_id available for auto-scoping. Without this,
+    // every CRUD-with-tenant-scope would get tenant_id: undefined and
+    // silently match nothing (or insert tenantless rows). New signups
+    // get tenant_id = user.id (each user is their own tenant by
+    // default; multi-user-per-tenant flows can extend this later).
+    const tenantInit = tenantScope ? ', tenant_id: _users.length + 1' : '';
     if (body.find(n => n.type === NodeType.OWNER_DECL)) {
-      lines.push("    const user = { id: _users.length + 1, email, password_hash, role: email === _OWNER_EMAIL ? 'owner' : 'user', created_at: new Date().toISOString() };");
+      lines.push(`    const user = { id: _users.length + 1, email, password_hash, role: email === _OWNER_EMAIL ? 'owner' : 'user'${tenantInit}, created_at: new Date().toISOString() };`);
     } else {
-      lines.push("    const user = { id: _users.length + 1, email, password_hash, role: 'user', created_at: new Date().toISOString() };");
+      lines.push(`    const user = { id: _users.length + 1, email, password_hash, role: 'user'${tenantInit}, created_at: new Date().toISOString() };`);
     }
     lines.push('    _users.push(user);');
-    lines.push('    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, _JWT_SECRET, { expiresIn: "7d" });');
-    lines.push('    res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role } });');
+    const tenantClaim = tenantScope ? ', tenant_id: user.tenant_id' : '';
+    const tenantInResponse = tenantScope ? ', tenant_id: user.tenant_id' : '';
+    lines.push(`    const token = jwt.sign({ id: user.id, email: user.email, role: user.role${tenantClaim} }, _JWT_SECRET, { expiresIn: "7d" });`);
+    lines.push(`    res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role${tenantInResponse} } });`);
     lines.push('  } catch(e) { res.status(500).json({ error: e.message }); }');
     lines.push('});');
     lines.push('');
@@ -14289,8 +14300,8 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("    if (!user) return res.status(401).json({ error: 'Invalid email or password' });");
     lines.push('    const valid = await bcrypt.compare(password, user.password_hash);');
     lines.push("    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });");
-    lines.push('    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, _JWT_SECRET, { expiresIn: "7d" });');
-    lines.push('    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });');
+    lines.push(`    const token = jwt.sign({ id: user.id, email: user.email, role: user.role${tenantClaim} }, _JWT_SECRET, { expiresIn: "7d" });`);
+    lines.push(`    res.json({ token, user: { id: user.id, email: user.email, role: user.role${tenantInResponse} } });`);
     lines.push('  } catch(e) { res.status(500).json({ error: e.message }); }');
     lines.push('});');
     lines.push('');
