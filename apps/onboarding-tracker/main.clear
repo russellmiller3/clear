@@ -30,8 +30,10 @@ create a Customers table:
   notes
 
 # Customer-success queue
-// Auto-generates audit, notification queue, and action URLs. Each action
-// records who acted, when, and where declared, queues an email to the customer.
+/*
+Auto-generates audit, notification queue, and action URLs. Each action
+records who acted, when, and where declared, queues an email to the customer.
+*/
 
 queue for customer:
   reviewer is 'success_manager'

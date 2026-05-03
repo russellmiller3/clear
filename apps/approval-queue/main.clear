@@ -32,8 +32,10 @@ create a Requests table:
   created_at_date, auto
 
 # Approval queue
-// Auto-generates audit table, notification queue, filtered URL, and update URLs
-// for each action. Each update requires login.
+/*
+Auto-generates audit table, notification queue, filtered URL, and update URLs
+for each action. Each update requires login.
+*/
 
 queue for request:
   reviewer is 'approver'

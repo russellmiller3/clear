@@ -34,8 +34,10 @@ create a Requests table:
   created_at_date, auto
 
 # Triage queue
-// Auto-generates audit, action URLs, and filtered queue URL.
-// Each action requires login and records the triage decision.
+/*
+Auto-generates audit, action URLs, and filtered queue URL.
+Each action requires login and records the triage decision.
+*/
 
 queue for request:
   reviewer is 'ops'
