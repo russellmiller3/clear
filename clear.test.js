@@ -29573,6 +29573,33 @@ create a Deals table:
     expect(dbDecl).toBeTruthy();
     expect(!!dbDecl.tenantScope).toBe(false);
   });
+
+  it('compiled JS surfaces the tenant-isolation marker when shared scope is declared', () => {
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  send back all Deals`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toContain('tenant-isolation: enabled');
+  });
+
+  it('regular database declarations do NOT emit the tenant-isolation marker', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  send back all Deals`;
+    const r = compileProgram(src);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).not.toContain('tenant-isolation: enabled');
+  });
 });
 
 // ---------------------------------------------------------------------------
