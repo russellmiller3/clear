@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 evening - Human-readable audit PDF — the regulated-tier deliverable
+
+A compliance buyer asks "how do you know your business rules actually hold?" and you hand them a navy/amber-styled PDF with math verdicts and measured runtime evidence per rule. That's what shipped tonight.
+
+**What shipped:**
+- **`scripts/audit-bundle.mjs`** — Node script that takes a `.clear` file and produces a JSON bundle. For each named rule, it captures the math-checker's verdict, walks the rule's guard expression to auto-generate 20 inputs that violate the rule, spawns the compiled app on a free port, sends those inputs, and records every rejection response. Rule shapes covered today: single-field bounds (`<`, `>`, `<=`, `>=`), equality on constants, non-empty checks, non-null checks, two-field comparisons within the same incoming record. Rules with shapes the auto-violator can't handle (cross-record, regex, set membership, computed) get a "automation pending" note rather than a fake claim.
+- **`scripts/audit-pdf.py`** — Python script (ReportLab) that consumes the JSON bundle and renders a navy/amber compliance PDF following the existing `pe-document-style` skill. CONFIDENTIAL header bar, metrics row showing `N/N rules proved · M/M violating inputs rejected`, trust-basis explanation page, one page per rule with math verdict + runtime witness + sample table of 5 violating inputs and their actual rejection responses.
+- **`apps/audit-demo/main.clear`** — minimal 20-line demo app (3 rules, no auth, no DB) used for the worked example. Lets the audit pipeline be tested end-to-end without external dependencies.
+- **Doc-cascade hook** — promoted FEATURES.md and Meph's system prompt to REQUIRED in `.claude/hooks/doc-cascade.mjs`. Russell flagged today that 14 polish ships landed without those two surfaces being touched. Now they're called out as load-bearing.
+- **Skills consolidated** — ship now invokes the docs skill as the single source of truth for the doc cascade. Before, ship and docs each had their own embedded list and they drifted. Docs skill now BLOCKS on missing USER-GUIDE worked example for any new node type or canonical-syntax change.
+
+**Why for launch:** "trust but verify" was an aspirational sentence until tonight. Now Marcus's CRO can run two commands, get a PDF, and see for themselves that every named rule was both math-proved and measurably enforced against 20 violating inputs each. The credibility surface for the regulated-tier pitch is now a runnable artifact, not slides.
+
+**Sample output for the audit-demo app:**
+- 4-page PDF, 10KB
+- Page 1: title + metrics row (3/3 rules proved, 60/60 violating inputs rejected) + trust-basis prose
+- Pages 2-4: one rule per page, each showing the math verdict, the runtime witness summary, and a 5-row sample table
+
+**Tests:** all 2899 compiler tests still pass; runtime-witness still 4/4; eval still 35/35. Audit pipeline runs end-to-end on `apps/audit-demo/main.clear` in ~5 seconds.
+
+---
+
 ## 2026-05-03 - Properly-awaiting test helpers: `describeAsync` + `itAsync`
 
 The test runner's `it()` is sync — it calls the test function but does NOT await it. Async test bodies fire-and-forget; the `✅` mark prints before any awaits resolve. Bodies whose internals are also sync (compileProgram, etc.) happen to work; bodies with real awaits (spawn, fetch, sleep) silently mis-count. The runtime-witness harness hit this hard a couple sessions ago — three "passing" tests were actually firing failed spawns in the background, only visible when the post-test crash bubbled up.
