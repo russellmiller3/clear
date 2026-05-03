@@ -94,6 +94,12 @@ git push origin main --no-verify
 
 ---
 
+## Audit results (so future cron iterations skip what's already verified)
+
+- **Tautology-rule audit (2026-05-03):** zero unintentional tautology rules remain in any `.clear` app. Every `enforce that` line in `apps/` references a real entity field (`deal's discount_percent`, `invoice's status`, `lead's email`, etc.). The two intentional tautologies in `examples/rule-keyword-tour.clear` are demo content showing PROVED / DISPROVED / UNVERIFIABLE verdicts side-by-side and should NOT be changed. The lead-router fix earlier on 2026-05-02 was the last placeholder rule that needed real fields. Don't re-run this audit unless someone introduces new placeholder rules.
+
+---
+
 ## Trust Notes (read before claiming something proves anything)
 
 The proof system today proves rules two ways. Know which one is firing before you cite it in a pitch.
