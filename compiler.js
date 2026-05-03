@@ -14278,9 +14278,14 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // skipped because they don't change state. The Studio Meph widget
     // proxy paths are skipped because they're dev-tool noise. Per-queue
     // audit tables (the `queue for X:` primitive) are unrelated — those
-    // log business decisions; this log captures API traffic. In-memory
-    // for the first slice; durable storage is a follow-up.
-    lines.push('const _audit_log = [];');
+    // log business decisions; this log captures API traffic. Stored in
+    // a real `audit_log` SQL table so the log survives process restarts
+    // (compliance buyers ask for "show me state changes last quarter").
+    // Schema intentionally omits tenant_id — the runtime auto-adds a
+    // tenant_id column to every table (so apps that later turn on shared
+    // scope don't need a migration). Listing it here would cause a
+    // "duplicate column name" error in SQLite.
+    lines.push("db.createTable('audit_log', { ts: { type: 'text' }, user_id: { type: 'number' }, user_email: { type: 'text' }, method: { type: 'text' }, path: { type: 'text' }, status: { type: 'number' } });");
     lines.push('');
     lines.push('// JWT middleware — extracts user from token on every request');
     lines.push('app.use((req, res, next) => {');
@@ -14293,16 +14298,18 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('  next();');
     lines.push('});');
     lines.push('');
-    lines.push('// API-call audit middleware — captures every state-change.');
-    lines.push('// Runs AFTER the JWT middleware so req.user is populated when');
-    lines.push("// available; runs BEFORE routes so every state-changing request");
-    lines.push('// (POST/PUT/PATCH/DELETE) is logged regardless of where it lands.');
+    lines.push('// API-call audit middleware — captures every state-change to the');
+    lines.push('// audit_log table. Runs AFTER the JWT middleware so req.user is');
+    lines.push('// populated when available; runs BEFORE routes so every state-');
+    lines.push('// changing request (POST/PUT/PATCH/DELETE) is logged regardless of');
+    lines.push("// where it lands. The db.insert is fire-and-forget — the response");
+    lines.push("// already shipped, so insert latency doesn't add to user-visible time.");
     lines.push('app.use((req, res, next) => {');
     lines.push("  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();");
     lines.push("  if (req.path && req.path.startsWith('/__meph__')) return next();");
     lines.push('  const _audit_started_at = new Date().toISOString();');
     lines.push("  res.on('finish', () => {");
-    lines.push('    _audit_log.push({');
+    lines.push("    Promise.resolve(db.insert('audit_log', {");
     lines.push('      ts: _audit_started_at,');
     lines.push('      user_id: req.user ? req.user.id : null,');
     lines.push('      user_email: req.user ? req.user.email : null,');
@@ -14310,7 +14317,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('      method: req.method,');
     lines.push('      path: req.path,');
     lines.push('      status: res.statusCode,');
-    lines.push('    });');
+    lines.push("    })).catch(e => { console.error('[clear:audit] insert failed:', e.message); });");
     lines.push('  });');
     lines.push('  next();');
     lines.push('});');
@@ -14318,15 +14325,18 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('// GET /audit — list audit entries the caller is allowed to see.');
     lines.push('// Tenant-scoped when shared scope is on (caller sees only their');
     lines.push('// tenant); whole log otherwise. Authentication required so the');
-    lines.push('// log isn\'t a public-facing data leak.');
-    lines.push("app.get('/audit', (req, res) => {");
+    lines.push('// log isn\'t a public-facing data leak. Reads from the durable');
+    lines.push("// audit_log table so a process restart doesn't wipe history.");
+    lines.push("app.get('/audit', async (req, res) => {");
     lines.push("  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+    lines.push('  try {');
     if (tenantScope) {
-      lines.push('  const filtered = _audit_log.filter(e => e.tenant_id === req.user.tenant_id);');
+      lines.push("    const rows = await db.findAll('audit_log', { tenant_id: req.user.tenant_id });");
     } else {
-      lines.push('  const filtered = _audit_log.slice();');
+      lines.push("    const rows = await db.findAll('audit_log');");
     }
-    lines.push('  res.json(filtered);');
+    lines.push('    res.json(rows);');
+    lines.push("  } catch(e) { res.status(500).json({ error: e.message }); }");
     lines.push('});');
     lines.push('');
     lines.push('// POST /auth/signup — create new user');
