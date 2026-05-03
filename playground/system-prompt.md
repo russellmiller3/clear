@@ -465,11 +465,11 @@ when user sends order to /api/orders:
 
 `caller` is the canonical form — one word, unambiguous with every entity var. The older multi-word forms (`current user`, `authenticated user`, `logged in user`) still work and compile to the same output, but prefer `caller` in new code. You can now safely name your Users-table receiving var just `user` — `caller` won't shadow it.
 
-## Concurrency — `safe to retry` + `with optimistic lock` (Phase 1, 2026-05-02)
+## Concurrency — `safe to retry` + `with optimistic lock` (Phase 2 wired 2026-05-03)
 
 When you write an endpoint that reads a record, changes a field, and saves it back, the compiler will warn `[READ_MODIFY_WRITE_NO_LOCK]` because two simultaneous requests could overwrite each other. You have two ways to handle that:
 
-- `with optimistic lock` — opts INTO version-checked saves. Use this for state-changing endpoints (approve, reject, transfer, decrement balance). Synonyms: `with version check`, `with version checking`. Phase 2 wires the runtime so the save returns 409 Conflict on a stale write; Phase 1 just declares the intent so the compiler stops warning and Phase 2 has somewhere to plug in.
+- `with optimistic lock` — version-checked saves. Use this for state-changing endpoints (approve, reject, transfer, decrement balance). Synonyms: `with version check`, `with version checking`. The compiler emits a UPDATE with `WHERE id = ? AND _version = ?` and bumps `_version`; if another writer moved the version, the save returns **409 Conflict** with a `VERSION_CONFLICT` marker the client uses to retry. Every table auto-gets a `_version` column.
 - `safe to retry` — declares the endpoint is idempotent. Use this for webhook receivers, bulk imports keyed by an external id, anything where running the same request twice produces the same final state. Synonyms: `idempotent`, `idempotent endpoint`.
 
 Both go on a body line, like `requires login`:

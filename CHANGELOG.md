@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 night - Concurrency Phase 2 + Phase 3 — optimistic locking actually prevents the race
+
+The Phase 1 detector (shipped 2026-05-02) flagged every endpoint where two concurrent writers could clobber each other. Honest framing: "we flag every place a race can happen." Tonight that became "we prevent the race" — with measurable evidence.
+
+**What shipped:**
+
+- **Compiler emit (`compiler.js`):** when an endpoint declares `with optimistic lock`, the save now compiles to `db.updateWithVersion('table', record, expectedVersion)` instead of `db.update('table', record)`. The version is read from the looked-up record at lookup time and passed through to the save.
+- **Runtime helper (`runtime/db.js`):** `updateWithVersion` runs an UPDATE with `WHERE id = ? AND _version = ?` and bumps `_version` by 1 on success. If 0 rows match (because another writer moved the version), it throws an error with `code: 'VERSION_CONFLICT'`, `status: 409`, and both the expected and current version numbers attached.
+- **Schema auto-evolution:** every `createTable` now auto-adds `_version INTEGER DEFAULT 0` to every table. Existing tables get the column backfilled at server start. No source change required.
+- **Error translation:** the compiled `_clearError` recognizes `VERSION_CONFLICT` and returns 409 with the original message + a retry hint, NOT the generic "Something went wrong" 500. Clients can distinguish "race lost, retry" from "validation error, fix and retry."
+- **Runtime witness (`lib/concurrency-witness.test.js`):** the "trust but verify" bridge for the regulated-tier promise. Spawns a fresh DB, inserts a row, runs `updateWithVersion` once successfully (bumps `_version` to 1), then runs `updateWithVersion` again with the OLD expected version (0). The second call throws VERSION_CONFLICT with status 409 and reports `expected=0, current=1`. The row's final value is the FIRST writer's, never the second writer's. This is the foundation for "the second writer cannot accidentally clobber the first writer's change."
+- **`clear test --concurrency N` (Phase 3):** every test runs N times in parallel and reports "(N/N parallel runs OK)" or "(K/N parallel runs OK, M conflicted — expected for optimistic-lock endpoints)". Verified on deal-desk: 14 user tests at concurrency 5 all report (5/5 parallel runs OK).
+- **Honest scope note:** the "fire 10 parallel HTTP PUTs and count winners" pattern doesn't naturally observe a race today because Node's single-threaded event loop + better-sqlite3's synchronous writes effectively serialize parallel HTTP requests against the same row. The full HTTP-race story needs a future change where the client carries the version it read previously (so all racers carry the same stale version). The version-check mechanism itself is proven by the runtime witness; integrating it into client-supplied-version semantics is a follow-up.
+
+**Why for launch:** the regulated-tier close sentence — "the second writer cannot accidentally clobber the first writer's change" — is now backed by a runnable test. Marcus's compliance buyer can run `node lib/concurrency-witness.test.js` themselves and see the 409 response with the version numbers. The promise has a receipt.
+
+**Tests:** 2902/2902 compiler suite green (3 new Phase 2 tests added). Concurrency runtime witness (1 sanity + 1 mechanism) green.
+
+---
+
 ## 2026-05-03 evening (later) - Audit PDF prose stops reading like a stack trace
 
 The audit PDF that goes to a compliance buyer used to leak math-engine internals straight into the auditor's hands — a section literally read "the symbolic engine couldn't decode the guard expression: Symbolic limit: unsupported node 'member_access'." Auditors don't care about prover internals; they want to know WHY they should trust the verdict. Tonight that section reads in plain English instead, and now also shows the actual compiled JavaScript rejection block right next to the math claim.
