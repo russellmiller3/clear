@@ -95,7 +95,6 @@ git push origin main --no-verify
 
 6. **Multi-line `/* */` comments inside endpoint bodies break scope.** Discovered 2026-05-02 late-evening while moving lead-router rules into the POST handler. A comment block at body indentation between `requires login` and the next statement caused the compiler to report "Route block references 'lead' but no variable named 'lead' is in scope here" — as if the endpoint body had ended at the comment. Removing the comment fixed it. Reproducer: `apps/lead-router/main.clear` history before commit `<this fix>` had a `/* */` block at indent 2 inside a `when user sends ...` body and the entire downstream endpoint code (route block, save, send back) lost scope. Fix the parser's comment handling so multi-line comments don't terminate or mis-indent the enclosing block. Single-line `#` comments work fine; this is `/* */`-specific.
 
-7. **Translator hardcodes "deal" as the entity name.** `clear prove apps/lead-router/main.clear` outputs "PROVED for every possible deal" even though the entity is `lead`. The business-language translator at `lib/proof-business-language.mjs` likely has "deal" baked in as the example noun. Should derive from the rule's actual input variable name (`lead`, `deal`, `pto_request`, `expense`, `ticket`, etc.) or fall back to a generic "input" if it can't tell. Cosmetic but hits credibility — a CRO seeing "deal" in a lead-router pitch sniffs out the hardcoded template immediately.
 
 ---
 

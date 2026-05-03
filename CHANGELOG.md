@@ -6,6 +6,36 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-02 late-evening - Per-rule entity detection in the proof translator
+
+Closed the "PROVED for every possible deal" hardcode that was lying about every non-deal-desk app. The translator now extracts the entity from each rule's guard expression and threads it through to the CRO-readable sentence.
+
+**What shipped:**
+- **Prover (`lib/prover/index.js`)** — `proveRule()` now calls a new `extractRuleEntity()` helper that walks every guard expression in the rule body and pulls the first variable reference's name. The entity (`lead`, `deal`, `expense`, `ticket`, `pto_request`, etc.) is attached to the rule's verdict object. Rules with no variable in any guard (tautologies like `enforce that 1 < 2`) get no entity — translator falls back to neutral "input."
+- **Translator (`lib/proof-business-language.mjs`)** — per-rule sentence reads "PROVED for every possible <entity>" using the attached entity, falls back to "input" when missing. Headline does the same with one extra check: only PROVED rules contribute to the entity-consensus calculation. An unverifiable rule that does `found = look up Deal where ...` would otherwise pull in the local variable name "found" as the headline noun — useless.
+- **Test source updated** — the `default output renders a CRO-readable line for the proved rule` test in `clear.test.js` now uses a real field-referencing rule (`enforce that deal's discount_percent is less than 30`) inside an endpoint, so it actually exercises entity detection instead of relying on the old hardcode. Assertion still reads "PROVED for every possible deal" but now it's a measured property, not a coincidence.
+
+**Sample output now correct on every app:**
+```
+$ node cli/clear.js prove apps/lead-router/main.clear
+We proved 2 of 2 named rules in this app, for every possible lead.
+
+  OK  lead-must-have-name   PROVED for every possible lead
+  OK  lead-must-have-email  PROVED for every possible lead
+
+$ node cli/clear.js prove apps/deal-desk/main.clear
+We proved 2 of 2 named rules in this app, for every possible deal.
+
+  OK  price-floor-positive   PROVED for every possible deal
+  OK  discount-not-over-cap  PROVED for every possible deal
+```
+
+**Why for launch:** a CRO who sees "PROVED for every possible deal" on a lead-router pitch immediately reads it as a template artifact — credibility-killing. The fix makes every rule's verdict speak in the entity name actually used in the source. The deal-desk pitch keeps its "deal" sentence because the source uses `deal`; the lead-router pitch reads "lead"; the expense-tracker pitch reads "expense." The pitch surface speaks the customer's language.
+
+**Tests:** `node clear.test.js` 2899/2899. `node lib/prover/business-rules-eval.test.js` 35/35. `node lib/prover/runtime-witness.test.js` 4/4 (3 spawn-and-measure + 1 sync sanity). `node cli/clear.js prove apps/lead-router/main.clear` shows lead-named verdicts; `apps/deal-desk/main.clear` shows deal-named.
+
+---
+
 ## 2026-05-02 evening - Runtime witness wired: every PROVED rule actually rejects bad inputs
 
 Closed the trust gap that has been hanging over the regulated-tier pitch. The prover's "structural proof" verdict (PROVED for field-referencing rules) was a trust delegation: the prover believed the compiler emitted a correct runtime guard, but nobody had ever measured whether it did. This change measures it.

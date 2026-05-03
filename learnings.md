@@ -2,6 +2,16 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-02 late-evening: per-rule entity detection in the translator
+
+The translator was hardcoded to "deal" as the noun in every PROVED-rule sentence. Lead-router, expense-tracker, ticket-queue — all read "PROVED for every possible deal." Wrong every time except for deal-desk. Filed as cosmetic in HANDOFF; turned out to need a small structural change to fix correctly (a one-character noun swap to "input" was always-right-but-never-compelling).
+
+### Gotchas-as-rules
+
+- **When the translator can't see structure, do the structural extraction in the layer that CAN see it.** The translator only sees the proof bundle (a flat list of rule verdicts). The prover sees the AST. The right place to extract the entity name is in the prover, attached to each rule's verdict object — then the translator just renders what the prover gives it. Pushing the parsing into the translator (regex over reason text, etc.) would have been brittle. Pulling it into the prover where the AST is in scope is one helper function and a thread-through.
+- **Pick a noun for "any" with care.** "PROVED for every possible deal" is compelling when the rule is about deals. "PROVED for every possible input" is never wrong but always weaker. The choice between always-wrong-sometimes vs always-weaker has a third option: always-right-when-detectable, always-honest-when-not. Extract the entity per-rule. Fall back only when the rule has no variable to point at (tautologies). Apply the same logic to the headline noun, but ONLY count PROVED rules' entities toward the consensus — unverifiable rules sometimes carry misleading variable names (e.g. `found` from `found = look up Deal where ...` is a local result variable, not the rule's audience).
+- **A test that asserts on hardcoded output stops testing the feature once the feature changes.** The `default output renders a CRO-readable line for the proved rule` test asserted on "PROVED for every possible deal" using a source that didn't actually have a `deal` variable anywhere — the assertion only passed because the noun was hardcoded. The moment the hardcode came out, the test broke even though the feature improved. Fix: make the test source use a real field-referencing rule with the named entity, so the assertion measures real entity propagation.
+
 ## Session 2026-05-02 late-evening: runtime witness for the prover
 
 Russell's gut question "if the prover says PROVED how do we know it's telling the truth" turned out to be load-bearing for the regulated-tier pitch. The fix needs two parts that look small individually and large together: the compiler attaches the rule name to every rejection, and a harness independently verifies every PROVED rule actually rejects 20 violating inputs at runtime. Both are needed; either alone is half a story.

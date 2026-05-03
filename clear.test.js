@@ -29190,8 +29190,10 @@ describe('clear prove default formatting', () => {
   const RULE_SOURCE = `create a Deals table:
   amount (number)
 
-rule discount-cap-thirty:
-  enforce that 1 is less than 2 or 'tautology'
+when user sends deal to /api/deals:
+  rule discount-cap-thirty:
+    enforce that deal's discount_percent is less than 30 or 'too high'
+  send back 'ok'
 
 rule reads-the-database:
   found = look up Deal where amount is greater than 0
