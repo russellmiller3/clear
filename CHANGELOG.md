@@ -6,7 +6,20 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 night (latest) - Real-Postgres witness for the RLS layer
+## 2026-05-03 night (latest) - API-call audit trail captures every state-change
+
+The compliance buyer's question — "show me every state change in the last hour" — used to mean "we'd have to grep server logs." Now it means `GET /audit`.
+
+**What shipped:**
+- **`compiler.js`:** when `allow signup and login` is declared, the auth scaffold gets a new `_audit_log = []` array next to `_users` (and `_invites` when tenant scope is on). A capture middleware runs right after the JWT middleware and before any route — it skips read-only methods (GET/HEAD/OPTIONS) and the Studio Meph proxy paths, and on every other request hooks `res.on('finish')` to push a row into `_audit_log` with `{ ts, user_id, user_email, tenant_id, method, path, status }`. A new `GET /audit` endpoint returns the log; under shared tenant scope it filters by `req.user.tenant_id` so cross-tenant audit leakage is prevented at this layer too.
+- **End-to-end HTTP test (`lib/audit-trail-witness.test.js`):** 5 cases — compile-shape, GET/HEAD/OPTIONS filter, tenant-scope filter, no-scope full E2E (Alice's signup + 2 deal POSTs captured, her read-only GETs filtered out), tenant-scope full E2E (Bob in tenant 2 sees only his own rows, Alice's are hidden).
+- **All 8 core templates compile clean** with the same warning counts as before — the new middleware is gated strictly on `hasAuthScaffold`, no impact on auth-less apps.
+
+**Why for launch:** this is separate from the per-queue audit (which logs business decisions inside `queue for X:` blocks) and the rule-rejection attribution (which puts rule names in 403 responses). The new layer captures API traffic across every endpoint — what regulated-tier compliance buyers ask about. The CRO sentence: "every state change your app handled today is queryable, with caller identity, route, status, and timestamp — and under tenant scope, each customer can read only their own slice."
+
+---
+
+## 2026-05-03 night - Real-Postgres witness for the RLS layer
 
 The earlier RLS commits tonight ship a runtime layer (FakePool unit tests prove the SQL shape is right) plus a compile-emit (28-case test proves the gating is right). Neither verifies that a real Postgres engine actually enforces the policy — that's the trust gap this commit closes.
 
