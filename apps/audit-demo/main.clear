@@ -1,0 +1,24 @@
+/*
+Audit demo app — minimal source the audit pipeline runs against to
+demonstrate the human-readable PDF audit report. Three named business
+rules; no database, no auth, no external dependencies. Just a POST
+endpoint that validates incoming deals through three rules.
+
+Used by `scripts/audit-bundle.mjs` and `scripts/write-audit-pdf.py`.
+*/
+
+build for javascript backend
+
+allow cross-origin requests
+
+when user sends deal to /api/deals:
+  rule discount-cap-thirty:
+    enforce that deal's discount_percent is less than 30, or fail with error message: 'Discounts of 30% or more require VP approval'
+
+  rule price-floor-positive:
+    enforce that deal's list_price is greater than 0, or fail with error message: 'List price must be positive'
+
+  rule risk-score-bounded:
+    enforce that deal's risk_score is less than 11, or fail with error message: 'Risk score out of bounds — model assigned a value beyond 10'
+
+  send back 'ok'

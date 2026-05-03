@@ -3589,6 +3589,38 @@ That becomes `deals-over-100k-need-cro-sign-off` in the prover output.
 
 ---
 
+## Chapter 24b: Audit Reports (Hand a Compliance Buyer a PDF)
+
+When a CRO or compliance buyer asks "how do you know your business rules actually hold?", you generate an audit PDF.
+
+```bash
+node scripts/audit-bundle.mjs apps/your-app/main.clear > /tmp/bundle.json
+python scripts/audit-pdf.py /tmp/bundle.json /tmp/audit.pdf
+```
+
+The PDF lists every named rule in your app, with two independent proofs per rule:
+
+1. **How it was proved formally** — the math-checker walks the rule and either folds it to a tautology, or proves it's structurally enforced (any execution past the guard satisfies the condition because the runtime rejects violators before the next line runs).
+
+2. **How it was verified at runtime** — the audit script spawns your compiled application on a free port, sends 20 inputs that violate the rule, and records the rejection responses. If every input came back as a 403 with the rule's name in the body, the math claim is corroborated by measured runtime evidence.
+
+**Sample output for a 3-rule deal app:** the PDF opens with a CONFIDENTIAL header bar, a metrics row showing `3/3 rules proved · 60/60 violating inputs rejected`, a trust-basis explanation, then one page per rule with the math verdict, the runtime witness summary, and a sample table of 5 violating inputs and their actual rejection responses. Navy/amber compliance styling — looks like a board document, not a developer artifact.
+
+**Try it now:**
+
+```bash
+node scripts/audit-bundle.mjs apps/audit-demo/main.clear > /tmp/bundle.json
+python scripts/audit-pdf.py /tmp/bundle.json /tmp/audit.pdf
+```
+
+`apps/audit-demo/main.clear` is a 20-line example with three rules (`discount-cap-thirty`, `price-floor-positive`, `risk-score-bounded`). Open the resulting PDF to see what your auditors will see.
+
+**What rule shapes work today:** the runtime-witness auto-violator handles single-field bounds (`field is less than N`, `field is greater than N`, `field is at least N`, `field is at most N`), equality on constants, non-empty checks, non-null checks, and two-field comparisons within the same incoming record. Rules with cross-record constraints, regex matching, set membership, or computed expressions show up in the PDF with a "math-proved only; runtime witness automation pending for this rule shape" note — the math claim is still recorded, just not measurably corroborated.
+
+**When to regenerate:** every time you change a rule, every time you ship to production, every quarterly audit. The PDF is dated — the buyer trusts what they see was true at the time the file was generated.
+
+---
+
 ## Appendix: What Meph Can Do
 
 Meph is the AI agent inside Clear Studio. Here's everything Meph has access to:
