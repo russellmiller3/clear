@@ -41,7 +41,7 @@ Then read each doc file and identify gaps:
 1. **`intent.md`** — authoritative spec. Every node type needs a row. Every syntax form needs an example.
 2. **`SYNTAX.md`** — complete syntax reference. Every feature needs syntax + example.
 3. **`AI-INSTRUCTIONS.md`** — conventions for AI writing Clear. When to use each feature, gotchas.
-4. **`USER-GUIDE.md`** — tutorial-style coverage. Worked examples for every major feature.
+4. **`USER-GUIDE.md`** — **BLOCKING for new node types AND canonical-syntax changes.** Tutorial-style coverage. Every new node type, every new top-level keyword, every canonical-syntax change MUST land a fresh worked teaching example here — not just an inline example, a 5-15 line snippet that shows the feature in a realistic Marcus app context, with prose around it explaining when to use it. If you ship a feature without a USER-GUIDE worked example, future Meph users will not learn it, prospects reading the tutorial will not see it, and the regulated-tier pitch ("read this guide and you can write a policy app") breaks. Skipping this step is a ship-blocker — the docs skill should refuse to declare done if the diff added a node type or changed canonical syntax and USER-GUIDE.md was untouched.
 5. **`ROADMAP.md`** — completion status. New features marked as done. Stats current.
 6. **`PHILOSOPHY.md`** — design rules. Update if a new principle is established.
 7. **`learnings.md`** — engineering lessons. Add if new gotchas or patterns discovered.
