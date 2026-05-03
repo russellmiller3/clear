@@ -144,9 +144,9 @@
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/confirm-before-start.mjs",
+            "command": "node .claude/hooks/starting-protocol.mjs",
             "timeout": 5,
-            "statusMessage": "Confirm-before-start: reading HANDOFF and waiting for 'g'..."
+            "statusMessage": "Starting protocol: reading HANDOFF + relevant learnings, waiting for 'g'..."
           }
         ]
       }
