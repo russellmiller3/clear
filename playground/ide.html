@@ -3273,7 +3273,31 @@ window.doRun = async function() {
     });
     const data = await r.json();
     if (data.error) {
+      // Render captured stdout/stderr from the crashed process so the
+      // user sees the actual error, not just "Process exited with code 1".
+      // The server captures both streams into data.logs; without surfacing
+      // them, every crash looks identical.
+      if (data.logs && data.logs.length) {
+        data.logs.forEach(l => appendTerminalText(l));
+      }
       appendTerminal('<span class="term-err">' + escHtml(data.error) + '</span>\n');
+      // Add a one-line plain-English hint if we recognize the failure shape.
+      const allLogs = (data.logs || []).join('\n');
+      let hint = '';
+      if (/Cannot find module|MODULE_NOT_FOUND/i.test(allLogs)) {
+        const m = allLogs.match(/Cannot find module ['"]([^'"]+)['"]/);
+        const dep = m ? m[1] : 'a dependency';
+        hint = 'Hint: the compiled app needs `' + dep + '` installed. Try running `npm install` in the build directory, or check that the package is listed in your imports.';
+      } else if (/EADDRINUSE/i.test(allLogs)) {
+        hint = 'Hint: the port is already in use. Click Stop, wait a moment, and try Run again.';
+      } else if (/SyntaxError|Unexpected token|Unexpected identifier/i.test(allLogs)) {
+        hint = 'Hint: the compiled JavaScript did not parse. This usually points at a compiler bug or a malformed string in your source.';
+      } else if (/JWT_SECRET|jsonwebtoken/i.test(allLogs)) {
+        hint = 'Hint: the app needs the `jsonwebtoken` package for login. Make sure auth is wired up correctly in your source.';
+      }
+      if (hint) {
+        appendTerminal('<span class="term-status">' + escHtml(hint) + '</span>\n');
+      }
       setStatus('err', 'Run failed');
       showTab('terminal');
     } else {
