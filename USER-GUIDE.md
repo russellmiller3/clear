@@ -16,6 +16,62 @@ Let's jump in.
 
 ---
 
+## Table of Contents
+
+**Foundations — your first day with Clear**
+- [Chapter 1: Hello, World](#chapter-1-hello-world-the-easiest-chapter-youll-ever-read)
+- [Chapter 2: Making Decisions](#chapter-2-making-decisions-your-app-gets-an-opinion)
+- [Chapter 3: Lists and Loops](#chapter-3-lists-and-loops-doing-things-more-than-once)
+- [Chapter 4: Functions](#chapter-4-functions-teaching-your-program-new-tricks)
+- [Chapter 5: Your First Web App](#chapter-5-your-first-web-app-its-a-tip-calculator-obviously)
+
+**Full-stack basics — apps with a database and a real backend**
+- [Chapter 6: The Full-Stack Todo App](#chapter-6-the-full-stack-todo-app-the-real-deal)
+- [Chapter 7: Expense Tracker](#chapter-7-expense-tracker-now-youre-cooking)
+- [Chapter 8: Multi-Page Apps](#chapter-8-multi-page-apps-because-one-page-is-never-enough)
+- [Chapter 13: Working with Data](#chapter-13-working-with-data)
+- [Chapter 15: Modules](#chapter-15-modules-when-one-file-isnt-enough)
+
+**Making it pretty — visual layer**
+- [Chapter 11: Making It Pretty (Styling and Layout)](#chapter-11-making-it-pretty-styling-and-layout)
+- [Chapter 13b: Charts (Visualizing Your Data)](#chapter-13b-charts-visualizing-your-data)
+- [Chapter 20: Designing Beautiful Pages](#chapter-20-designing-beautiful-pages)
+
+**Real-time and AI — when your app needs to think**
+- [Chapter 9: Real-Time Features](#chapter-9-real-time-features-making-things-go-brrr)
+- [Chapter 10: AI-Powered Apps](#chapter-10-ai-powered-apps-the-fun-part)
+- [Chapter 10b: Chat Interfaces](#chapter-10b-chat-interfaces-making-your-app-talk)
+- [Chapter 19: Workflows (Multi-Step AI Pipelines)](#chapter-19-workflows-multi-step-ai-pipelines)
+
+**Marcus apps — work-management primitives**
+- [Chapter 19b: Approval Queues (The Deal Desk in 10 Lines)](#chapter-19b-approval-queues-the-deal-desk-in-10-lines)
+- [Chapter 19c: Triggered Emails](#chapter-19c-triggered-emails-send-the-customer-a-real-reply)
+- [Chapter 22: Scheduled Tasks](#chapter-22-scheduled-tasks-set-it-and-forget-it)
+
+**Production concerns — security, errors, policies**
+- [Chapter 12: Security](#chapter-12-security-the-part-you-cant-skip)
+- [Chapter 14: Error Handling](#chapter-14-error-handling-because-things-go-wrong)
+- [Chapter 21: Policies (Safety Guardrails)](#chapter-21-policies-safety-guardrails)
+
+**Testing and provable correctness**
+- [Chapter 17: Testing](#chapter-17-testing-proving-your-code-works)
+- [Chapter 23: Writing Tests](#chapter-23-writing-tests-proving-your-api-works)
+- [Chapter 24: Writing Business Rules (Provable Policies)](#chapter-24-writing-business-rules-provable-policies)
+- [Chapter 24b: Audit Reports](#chapter-24b-audit-reports-hand-a-compliance-buyer-a-pdf)
+
+**Tooling and shipping**
+- [Chapter 16: The Clear CLI](#chapter-16-the-clear-cli-your-toolbox)
+- [Chapter 16b: Clear Studio](#chapter-16b-clear-studio-the-ide)
+- [Chapter 18: Going Live (Deploying Your App)](#chapter-18-going-live-deploying-your-app)
+- [Chapter 20.5: Ship It — One-Click Deploy](#chapter-205-ship-it--one-click-deploy)
+
+**Reference**
+- [Quick Reference](#quick-reference)
+- [What's Next?](#whats-next-you-did-it)
+- [Appendix: What Meph Can Do](#appendix-what-meph-can-do)
+
+---
+
 ## Chapter 1: Hello, World (The Easiest Chapter You'll Ever Read)
 
 Every programming tutorial starts here. Tradition demands it:
