@@ -30,6 +30,7 @@
 'use strict';
 
 const { Pool } = require('pg');
+const { AsyncLocalStorage } = require('async_hooks');
 
 // Defer DATABASE_URL check to first query — don't crash on require() for health-check-only servers
 var pool = null;
@@ -51,7 +52,115 @@ function getPool() {
 const _schemas = {};
 // Track which tables have been created in Postgres (avoids re-running CREATE TABLE)
 const _tablesCreated = new Set();
+// Track which tables have had RLS enabled (avoids re-running policy DDL)
+const _rlsEnabled = new Set();
 const IDENT_RE = /^[a-z_][a-z0-9_]*$/i;
+
+// =============================================================================
+// TENANT-SCOPED ROW-LEVEL SECURITY (defense in depth)
+// =============================================================================
+//
+// When the source declares `database is shared with tenant scope`, the
+// compiled app already injects `tenant_id = req.user.tenant_id` into every
+// app-layer CRUD filter. RLS adds a second layer: the database itself
+// refuses cross-tenant reads/writes, even if a future bug or raw-SQL slip
+// bypasses the app filter.
+//
+// How it works:
+//   1. Express middleware wraps each authenticated request with
+//      `withTenantScope(req.user.tenant_id, next)`. AsyncLocalStorage
+//      threads the tenant id through every nested await.
+//   2. Every CRUD call in the request goes through `_query`, which detects
+//      the tenant context, opens a transaction, runs `SET LOCAL
+//      app.current_tenant_id = <id>`, runs the actual query, and commits.
+//      SET LOCAL clears at COMMIT/ROLLBACK, so the pooled connection is
+//      safe to reuse for the next request without a stale var.
+//   3. `enableRowLevelSecurity(table)` (called once per shared-scope table
+//      at app startup) runs `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`
+//      and creates a policy that requires `tenant_id =
+//      current_setting('app.current_tenant_id')::int` for every row read,
+//      written, updated, or deleted.
+//
+// Net effect: Postgres physically refuses to return another tenant's rows.
+// A future query that forgets the WHERE clause still reads zero foreign
+// rows because the policy filters them out at the database layer.
+//
+// =============================================================================
+
+const _tenantStore = new AsyncLocalStorage();
+
+// Public: runs `fn` inside an async-local tenant context. Every CRUD call
+// nested inside `fn` (no matter how deep the await chain) automatically
+// scopes its query to this tenant via `SET LOCAL app.current_tenant_id`.
+// Pass `null`/`undefined` for no scope (CRUD goes through pool directly).
+function withTenantScope(tenantId, fn) {
+  if (tenantId === undefined || tenantId === null) return fn();
+  var n = parseInt(tenantId, 10);
+  if (!Number.isFinite(n)) return fn();
+  return _tenantStore.run({ tenantId: n }, fn);
+}
+
+// Internal: returns the current tenant id, or null when no scope is active.
+function _currentTenantId() {
+  var ctx = _tenantStore.getStore();
+  return ctx && Number.isFinite(ctx.tenantId) ? ctx.tenantId : null;
+}
+
+// Internal: runs a SQL query. When a tenant scope is active, wraps the
+// query in BEGIN + SET LOCAL + COMMIT so the database-level RLS policy
+// fires. When no scope is active, goes straight to the pool (current
+// behavior preserved for non-shared-scope apps and pre-auth requests).
+async function _query(sql, params) {
+  var tenantId = _currentTenantId();
+  if (tenantId === null) {
+    return await getPool().query(sql, params || []);
+  }
+  var client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    // tenantId is already a finite integer (validated in withTenantScope),
+    // so direct interpolation is safe — no SQL injection surface.
+    await client.query('SET LOCAL app.current_tenant_id = ' + tenantId);
+    var res = await client.query(sql, params || []);
+    await client.query('COMMIT');
+    return res;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Public: enables row-level security on a table and creates the
+// tenant-isolation policy. Idempotent — safe to call repeatedly. Bypasses
+// the tenant context (uses the pool directly) because policy DDL must run
+// as the table owner, not as a tenant. Called once per shared-scope table
+// at app startup, after createTable.
+async function enableRowLevelSecurity(tableName) {
+  if (!IDENT_RE.test(tableName)) throw new Error('Invalid table name: ' + tableName);
+  var lc = tableName.toLowerCase();
+  if (_rlsEnabled.has(lc)) return;
+  // Make sure the table exists before trying to enable RLS on it.
+  await ensureTable(lc);
+  // ENABLE RLS — turn on policy enforcement.
+  await getPool().query('ALTER TABLE ' + lc + ' ENABLE ROW LEVEL SECURITY');
+  // FORCE RLS — apply policies even to the table owner (without this, the
+  // owner connection bypasses RLS, which defeats defense-in-depth: a bug
+  // running as the owner could still leak cross-tenant rows).
+  await getPool().query('ALTER TABLE ' + lc + ' FORCE ROW LEVEL SECURITY');
+  // Drop-and-recreate so policy text changes propagate on redeploy.
+  // Postgres 16+ supports CREATE POLICY IF NOT EXISTS; we use the older
+  // pattern for compat with 12/13/14/15.
+  await getPool().query('DROP POLICY IF EXISTS clear_tenant_isolation ON ' + lc);
+  await getPool().query(
+    'CREATE POLICY clear_tenant_isolation ON ' + lc +
+    ' FOR ALL TO PUBLIC' +
+    " USING (tenant_id = current_setting('app.current_tenant_id', true)::int)" +
+    " WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::int)"
+  );
+  _rlsEnabled.add(lc);
+}
 
 // =============================================================================
 // TYPE HELPERS
@@ -280,7 +389,7 @@ async function findAll(table, filter, options) {
     var off = parseOffset(options.offset);
     if (off) sql += ' OFFSET ' + off;
   }
-  var res = await getPool().query(sql, w.params);
+  var res = await _query(sql, w.params);
   return includeHidden ? res.rows : res.rows.map(function(row) { return stripHidden(row, schema); });
 }
 
@@ -290,7 +399,7 @@ async function findOne(table, filter, options) {
   var schema = _schemas[tableName] || {};
   var includeHidden = !!(options && options.includeHidden);
   var w = buildWhere(filter);
-  var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
+  var res = await _query('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
   if (!res.rows[0]) return null;
   return includeHidden ? res.rows[0] : stripHidden(res.rows[0], schema);
 }
@@ -311,7 +420,7 @@ async function aggregate(table, fn, field, filter) {
   var col = fn === 'COUNT' ? '*' : field;
   var sql = 'SELECT ' + fn + '(' + col + ') as result FROM ' + tableName + ' ' + w.clause;
   try {
-    var res = await getPool().query(sql, w.params);
+    var res = await _query(sql, w.params);
     return res.rows[0] ? (res.rows[0].result || 0) : 0;
   } catch (e) {
     console.warn('[clear] db.aggregate failed:', e.message);
@@ -330,17 +439,23 @@ async function insert(table, record) {
   var reqErr = validateRequired(record, schema);
   if (reqErr) throw new Error(reqErr);
 
-  // Unique constraint check (application-level, before SQL)
+  // Unique constraint check (application-level, before SQL).
+  // Under tenant scope, uniqueness becomes per-tenant — different tenants
+  // can have the same email/slug because RLS hides the other tenant's rows.
+  // That's the intended semantics: tenant A's "deal-001" doesn't block
+  // tenant B from creating their own "deal-001".
   for (var field in schema) {
     if (!schema.hasOwnProperty(field)) continue;
     if (!schema[field].unique || record[field] === undefined) continue;
-    var check = await getPool().query(
+    var check = await _query(
       'SELECT 1 FROM ' + tableName + ' WHERE "' + field + '" = $1 LIMIT 1', [record[field]]
     );
     if (check.rows.length > 0) throw new Error(field + " must be unique -- '" + record[field] + "' already exists");
   }
 
-  // Foreign key check (application-level)
+  // Foreign key check (application-level). Under tenant scope, FK targets
+  // are also tenant-filtered — you can't reference another tenant's row
+  // because RLS won't let the SELECT see it.
   for (var fkField in schema) {
     if (!schema.hasOwnProperty(fkField)) continue;
     if (schema[fkField].type !== 'fk') continue;
@@ -350,7 +465,7 @@ async function insert(table, record) {
     if (!refTable) continue;
     if (!refTable.endsWith('s')) refTable += 's';
     await ensureTable(refTable);
-    var fkCheck = await getPool().query('SELECT 1 FROM ' + refTable + ' WHERE id = $1 LIMIT 1', [value]);
+    var fkCheck = await _query('SELECT 1 FROM ' + refTable + ' WHERE id = $1 LIMIT 1', [value]);
     if (fkCheck.rows.length === 0) throw new Error(fkField + ' references non-existent record (id ' + value + ' not found in ' + refTable + ')');
   }
 
@@ -358,14 +473,14 @@ async function insert(table, record) {
   var fields = Object.keys(withDefaults).filter(function(k) { return k !== 'id'; });
 
   if (fields.length === 0) {
-    var res = await getPool().query('INSERT INTO ' + tableName + ' DEFAULT VALUES RETURNING *');
+    var res = await _query('INSERT INTO ' + tableName + ' DEFAULT VALUES RETURNING *');
     return res.rows[0];
   }
 
   var placeholders = fields.map(function(_, idx) { return '$' + (idx + 1); });
   var values = fields.map(function(f) { return withDefaults[f]; });
   var quotedFields = fields.map(function(f) { return '"' + f + '"'; });
-  var res2 = await getPool().query(
+  var res2 = await _query(
     'INSERT INTO ' + tableName + ' (' + quotedFields.join(', ') + ') VALUES (' + placeholders.join(', ') + ') RETURNING *',
     values
   );
@@ -399,9 +514,11 @@ async function update(table, filterOrRecord, data) {
   var w = buildWhere(filter);
   if (!w.clause) return 0;
 
-  // Guard: throw 404 when updating by id but record doesn't exist
+  // Guard: throw 404 when updating by id but record doesn't exist.
+  // Under tenant scope, "exists" also means "exists in this tenant" — a
+  // cross-tenant id will 404 because RLS hides the row.
   if (filter.id !== undefined) {
-    var exists = await getPool().query('SELECT 1 FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
+    var exists = await _query('SELECT 1 FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
     if (exists.rows.length === 0) {
       var err = new Error('No record found with id ' + filter.id);
       err.status = 404;
@@ -417,7 +534,7 @@ async function update(table, filterOrRecord, data) {
   var setValues = setCols.map(function(k) { return updateData[k]; });
 
   var sql = 'UPDATE ' + tableName + ' SET ' + setEntries.join(', ') + ' ' + w.clause;
-  var result = await getPool().query(sql, w.params.concat(setValues));
+  var result = await _query(sql, w.params.concat(setValues));
   return result.rowCount;
 }
 
@@ -425,7 +542,7 @@ async function remove(table, filter) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
   var w = buildWhere(filter);
-  var result = await getPool().query('DELETE FROM ' + tableName + ' ' + w.clause, w.params);
+  var result = await _query('DELETE FROM ' + tableName + ' ' + w.clause, w.params);
   return result.rowCount;
 }
 
@@ -434,7 +551,7 @@ async function remove(table, filter) {
 // =============================================================================
 
 async function run(sql) {
-  await getPool().query(sql);
+  await _query(sql);
 }
 
 async function execute(sql) {
@@ -476,4 +593,7 @@ module.exports = {
   save: save,
   load: load,
   reset: reset,
+  // Tenant-scoped row-level security (defense in depth)
+  withTenantScope: withTenantScope,
+  enableRowLevelSecurity: enableRowLevelSecurity,
 };
