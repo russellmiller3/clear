@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-03 late night: Studio mode-switcher dropdown silently broken
+
+The toolbar Dev/Builder mode dropdown in `playground/ide.html` did nothing when picked. Live repro against a running playground server traced it to `setStudioMode` not being on `window`, even though the function was defined and the inline `onchange` handler clearly tried to call it.
+
+### Gotchas-as-rules
+
+- **`<script type="module">` puts top-level functions in module scope, not global.** An inline `onclick="foo()"` / `onchange="bar(this.value)"` attribute walks the GLOBAL scope to find its handler. If `foo` is declared inside a `type="module"` script, the inline handler can't find it — it silently does nothing. This is the dropdown bug's root cause and is invisible from reading the JS source (the function exists; it's just unreachable from the HTML).
+- **The fix pattern in mixed-paradigm files (HTML inline handlers + module script): `window.foo = foo;` next to the declaration.** `playground/ide.html` already follows this pattern for 60+ other functions (`window.doCompile = autoCompile`, etc — search for `window\.` in that file). Any new inline-handler function must be exposed the same way. `setStudioMode` was the one that was missed.
+- **Live-browser repro is the only way to find this class of bug.** Compile-time tests pass; static analysis doesn't catch it; reading the JS shows a perfectly defined function. Only running the page and inspecting `typeof window.<name>` from the dev console (or via `preview_eval`) makes the gap visible.
+- **When debugging "this dropdown / button does nothing" in Studio, check `typeof window.<handler>` before reading the handler's source.** A 5-second console probe rules out the most common silent failure (module-scope vs global). If the function IS on window, then the bug is in the handler's logic; if it's NOT, the fix is one line.
+
+---
+
 ## Session 2026-05-03 late night: durable storage for `_users` + `_invites`
 
 The auth scaffold's last in-memory holdouts (`_users = []` and `_invites = []` arrays) now sit in real `_auth_users` + `_auth_invites` SQL tables. Process restart no longer wipes accounts or pending invites. The audit_log durability shipped earlier the same night was a half-truth without this — durable audit + ephemeral users meant the audit log would survive a restart but would be auditing accounts that no longer existed. Both layers are durable now.
@@ -118,6 +131,7 @@ The rebuild ended up cleaner than the original would have been because writing t
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-03 late night: Studio mode-switcher dropdown silently broken](#session-2026-05-03-late-night-studio-mode-switcher-dropdown-silently-broken) | `<script type="module">` puts top-level functions in module scope, not global; inline `onclick`/`onchange` attributes can't find them — fix is `window.foo = foo` next to the declaration; live-browser `typeof window.<name>` is the 5-second probe |
 | [Session 2026-05-03 late night: durable storage for `_users` + `_invites`](#session-2026-05-03-late-night-durable-storage-for-_users--_invites) | Windows file-lock cross-contamination invisible until durable state lands (fix: per-test CLEAR_DB_PATH); id ↔ tenant_id init order needs two-step insert+update; never declare tenant_id or _version in createTable schema; mark invite consumed AFTER user insert; async handlers need async signature |
 | [Session 2026-05-03 night: multi-user-per-tenant invites](#session-2026-05-03-night-multi-user-per-tenant-via-single-use-invite-tokens) | Mark invite consumed AFTER user push; crypto.randomBytes for token; gate emit on auth+scope; reuse existing keyword (1:1 mapping); audit endpoint matters |
 | [Session 2026-05-03 night: Postgres ROW LEVEL SECURITY](#session-2026-05-03-night-postgres-row-level-security-as-defense-in-depth) | SET LOCAL is transaction-scoped; FORCE RLS prevents owner bypass; AsyncLocalStorage threads tenant id through awaits; current_setting needs `, true` for unset case |
