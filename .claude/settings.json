@@ -141,6 +141,12 @@
             "command": "node .claude/hooks/propose-new-tools.mjs",
             "timeout": 15,
             "statusMessage": "Checking for new-tool-building opportunities..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/confirm-before-start.mjs",
+            "timeout": 5,
+            "statusMessage": "Confirm-before-start: reading HANDOFF and waiting for 'g'..."
           }
         ]
       }
