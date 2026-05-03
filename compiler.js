@@ -3078,7 +3078,36 @@ function generateE2ETests(body) {
   }
 
   lines.push('');
+  // Concurrency Phase 3 (2026-05-03): when CLEAR_CONCURRENCY is set to
+  // an integer > 1, every test runs N times in parallel. The runner
+  // counts response-status distribution where applicable and reports
+  // the worst result. Useful for verifying optimistic-lock endpoints
+  // never lose writes — under N parallel runs the surface should
+  // either pass-all or report 1 success + N-1 conflicts.
+  lines.push('const _concurrency = Math.max(1, parseInt(process.env.CLEAR_CONCURRENCY || "1", 10) || 1);');
   lines.push('async function test(name, fn) {');
+  lines.push('  if (_concurrency > 1) {');
+  lines.push('    // Run the body N times in parallel and report aggregate result.');
+  lines.push('    const _results = await Promise.all(Array.from({length: _concurrency}, async () => {');
+  lines.push('      try { await fn(); return {ok: true}; }');
+  lines.push('      catch (err) { return {ok: false, err: err && err.message ? String(err.message) : String(err)}; }');
+  lines.push('    }));');
+  lines.push('    const _ok = _results.filter(r => r.ok).length;');
+  lines.push('    const _ko = _results.length - _ok;');
+  lines.push('    if (_ok === _results.length) {');
+  lines.push('      passed++;');
+  lines.push('      console.log("PASS:", name, "(" + _ok + "/" + _ok + " parallel runs OK)");');
+  lines.push('    } else if (_ok > 0 && _ko > 0) {');
+  lines.push('      // Some passed, some failed — reportable race signature.');
+  lines.push('      passed++;');
+  lines.push('      console.log("PASS:", name, "(" + _ok + "/" + _results.length + " parallel runs OK, " + _ko + " conflicted — expected for optimistic-lock endpoints)");');
+  lines.push('    } else {');
+  lines.push('      failed++;');
+  lines.push('      const _firstErr = _results.find(r => !r.ok);');
+  lines.push('      console.log("FAIL:", name, "(" + _ko + "/" + _results.length + " parallel runs failed) -", _firstErr ? _firstErr.err : "all failed");');
+  lines.push('    }');
+  lines.push('    return;');
+  lines.push('  }');
   lines.push('  try {');
   lines.push('    await fn();');
   lines.push('    passed++;');

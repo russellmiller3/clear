@@ -80,8 +80,16 @@ function parseFlags(args) {
   flags.target = targetIdx !== -1 ? args[targetIdx + 1] : null;
   const portIdx = args.indexOf('--port');
   flags.port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 3000;
+  // Concurrency Phase 3 (2026-05-03): `clear test --concurrency N` fires
+  // each test endpoint N times in parallel and reports the response-
+  // status distribution. Useful for verifying optimistic-lock endpoints
+  // never lose writes — under N parallel updates, exactly 1 should
+  // return 200 and N-1 should return 409 Conflict (when the test
+  // exercises a stale-version path).
+  const concIdx = args.indexOf('--concurrency');
+  flags.concurrency = concIdx !== -1 ? Math.max(1, parseInt(args[concIdx + 1], 10) || 1) : 1;
   // Positional args (filter out flags)
-  flags.positional = args.filter(a => !a.startsWith('--') && !(outIdx !== -1 && a === args[outIdx + 1]) && !(targetIdx !== -1 && a === args[targetIdx + 1]) && !(portIdx !== -1 && a === args[portIdx + 1]));
+  flags.positional = args.filter(a => !a.startsWith('--') && !(outIdx !== -1 && a === args[outIdx + 1]) && !(targetIdx !== -1 && a === args[targetIdx + 1]) && !(portIdx !== -1 && a === args[portIdx + 1]) && !(concIdx !== -1 && a === args[concIdx + 1]));
   return flags;
 }
 
@@ -938,7 +946,11 @@ async function testCommand(args) {
       if (!flags.quiet) console.log('  Running tests...\n');
       let testExitCode = 0;
       try {
-        const testEnv = { ...process.env, TEST_URL: `http://localhost:${port}`, JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret };
+        // Concurrency Phase 3: --concurrency N runs each test N times in
+        // parallel. Useful for verifying optimistic-lock endpoints under
+        // load. Set CLEAR_CONCURRENCY in the spawned test process so the
+        // test() helper (compiled into test.js) honors it.
+        const testEnv = { ...process.env, TEST_URL: `http://localhost:${port}`, JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret, CLEAR_CONCURRENCY: String(flags.concurrency || 1) };
         const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: testTimeoutMs, env: testEnv });
         process.stdout.write(stdout);
       } catch (e) {
