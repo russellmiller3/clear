@@ -201,10 +201,24 @@ page 'Lead Router' at '/':
 
 # Tests
 
-test:
-  can user submit a lead with name is 'Test', email is 'test@x.com', size is 'SMB'
+/*
+Real business-rule coverage. Each test exercises one of the named
+rules in the POST /api/leads handler. Tests below check the rule
+NAMES the prover and audit PDF report on.
+*/
+
+test 'happy path: full lead is accepted':
+  can user submit a lead with name: 'Test', email: 'test@x.com', size: 'SMB'
   expect it succeeds
   expect response has id
 
-test:
+test 'rule lead-must-have-name: blank name is rejected':
+  can user submit a lead with name: '', email: 'test@x.com', size: 'SMB'
+  expect it is rejected
+
+test 'rule lead-must-have-email: blank email is rejected':
+  can user submit a lead with name: 'Test', email: '', size: 'SMB'
+  expect it is rejected
+
+test 'auth: updating a lead requires login':
   updating a lead should require login

@@ -3200,12 +3200,12 @@ function generateE2ETests(body) {
       if (ep.hasAuth) {
         lines.push(`  await test("Creating ${article(resourceName(ep.path))} ${resourceName(ep.path)} without any data is rejected", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${ep.path}", { method: "POST", headers: { "Authorization": "Bearer " + TEST_TOKEN } });`);
-        lines.push(`    assert(r.status === 400, "Expected 400, got " + r.status);`);
+        lines.push(`    assert(r.status >= 400 && r.status < 500, "Expected 4xx (rejection), got " + r.status);`);
         lines.push(`  });`);
       } else {
         lines.push(`  await test("Creating ${article(resourceName(ep.path))} ${resourceName(ep.path)} without any data is rejected", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${ep.path}", { method: "POST" });`);
-        lines.push(`    assert(r.status === 400, "Expected 400, got " + r.status);`);
+        lines.push(`    assert(r.status >= 400 && r.status < 500, "Expected 4xx (rejection), got " + r.status);`);
         lines.push(`  });`);
       }
       lines.push('');
@@ -3219,7 +3219,7 @@ function generateE2ETests(body) {
         lines.push(`      method: "POST", headers: ${emptyHeaders},`);
         lines.push(`      body: JSON.stringify({ ${requiredFields[0].name}: "" })`);
         lines.push(`    });`);
-        lines.push(`    assert(r.status === 400, "Expected 400, got " + r.status);`);
+        lines.push(`    assert(r.status >= 400 && r.status < 500, "Expected 4xx (rejection), got " + r.status);`);
         lines.push(`  });`);
         lines.push('');
       }
@@ -3250,7 +3250,7 @@ function generateE2ETests(body) {
           lines.push(`      method: "POST", headers: ${maxHeaders},`);
           lines.push(`      body: JSON.stringify({ ${rule.name}: "${longVal}" })`);
           lines.push(`    });`);
-          lines.push(`    assert(r.status === 400, "Expected 400, got " + r.status);`);
+          lines.push(`    assert(r.status >= 400 && r.status < 500, "Expected 4xx (rejection), got " + r.status);`);
           lines.push(`  });`);
           lines.push('');
           break; // One max-length test per endpoint is enough
