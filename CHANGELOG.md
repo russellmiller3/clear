@@ -6,7 +6,22 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 night (latest) - Durable storage for users + invites — auth state survives restarts
+## 2026-05-03 late night (latest) - Studio Prove button → audit PDF download
+
+The toolbar Prove button used to dump the prover's raw math journal into the terminal — useful for the developer, useless for the compliance buyer. The HANDOFF redesign (item 4) splits the old single-action button into three modes: auto-check on save (4a, future), button → audit PDF download (4b, this commit), right-click → debug drilldown (4c, future). Tonight's commits ship the second mode end-to-end.
+
+**What shipped:**
+- **`playground/server.js`:** new `POST /api/prove-pdf` endpoint. Receives source in request body, stages work in a per-request tmpdir, runs the existing two-stage pipeline (`scripts/audit-bundle.mjs <source>` → bundle JSON → `scripts/audit-pdf.py <bundle> <out>` → audit.pdf), returns the PDF as `application/pdf` with a `Content-Disposition: attachment; filename="audit.pdf"` header. 60s timeout on the bundle stage, 30s on the PDF stage. Cleans up tmpdir + every staged file in a finally block. 2 new bad-input rejection tests added to the 272-test server suite.
+- **`playground/ide.html`:** `doProve()` rewritten — POST to `/api/prove-pdf`, receive PDF blob, create blob URL, click hidden anchor to trigger download, revoke the URL after 1s. Terminal shows `$ clear prove --pdf main.clear` then `audit.pdf downloaded — hand it to your compliance buyer`. Failure paths preserved with hints: Python/reportlab errors get a "install reportlab" hint; HTTP errors render with the message; status bar goes red on any failure.
+- **End-to-end verified live** against a running playground via `preview_eval`: clicked the button with a tiny rule, `URL.createObjectURL` received a 3843-byte PDF blob with `application/pdf` content type, magic bytes `%PDF-`, terminal showed both the new command line and the success message.
+
+**Why for launch:** demo flow is now one click from "click Prove" to "hand PDF to compliance buyer." That's the regulated-tier deliverable, not "squint at math journal in terminal." Marcus's CRO sentence: "after writing the rules, the developer clicks Prove and gets a navy/amber compliance PDF — same artifact every auditor reads, ready to email."
+
+**Future cycles in this redesign:** auto-check on save with inline editor margin verdicts (HANDOFF 4a) — needs CodeMirror gutter integration. Right-click context menu → debug drilldown (HANDOFF 4c) — moves the math-journal-to-terminal flow there. Both separate from this commit.
+
+---
+
+## 2026-05-03 night - Durable storage for users + invites — auth state survives restarts
 
 The auth scaffold previously stored users (`_users = []`) and invites (`_invites = []`) in in-memory arrays. A process restart wiped accounts. With the audit log now durable but users still in-memory, "your app survives a restart" was a half-truth. Tonight closes the gap.
 
