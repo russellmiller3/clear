@@ -197,13 +197,19 @@ function validateRuleBlocks(body, errors, warnings) {
     });
   }
 
-  // Pass 2 — rule_def nodes that aren't at the top level. Walk every other
-  // top-level body and report any rule_def found inside.
-  for (const node of body) {
-    if (!node || typeof node !== 'object') continue;
-    if (node.type === NodeType.RULE_DEF) continue; // already handled above
-    findRulesInside(node, errors);
-  }
+  // Pass 2 — historically banned `rule:` blocks nested inside endpoints,
+  // functions, queues, etc. (DESIGN CHANGE 2026-05-02 evening, after
+  // Russell's pushback on the deal-desk demo): rules now live where the
+  // data they validate lives. A rule like `discount-cap-thirty` that
+  // checks `deal's discount_percent` belongs INSIDE the POST /api/deals
+  // handler where `deal` is in scope — not at top-level where the field
+  // can't be referenced. The prover walks rules recursively into nested
+  // scopes (lib/prover/index.js → collectRuleDefs), so per-rule audit
+  // attribution still works the same. Auditability isn't lost: every
+  // rule still has a stable name and shows up in the proof bundle.
+  // findRulesInside() is kept below for future use if we ever need
+  // location-restricted rules in some specific container, but it's no
+  // longer wired in by default.
 }
 
 function bodyHasRefusalPath(body) {

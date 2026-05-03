@@ -228,7 +228,7 @@ const SYNONYM_TABLE = Object.freeze({
   requires_auth: Object.freeze(['requires auth', 'this endpoint requires auth']),
   requires_role: Object.freeze(['requires role', 'this endpoint requires role']),
   define_role: Object.freeze(['define role']),
-  guard: Object.freeze(['guard']),
+  enforce_that: Object.freeze(['enforce that']),
   // `has tool` / `has tools` is the canonical form for listing an agent's
   // or skill's callable functions. `can` and `can use` are legacy aliases
   // kept working for backward compatibility.
@@ -491,6 +491,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.36.0';
+const SYNONYM_VERSION = '0.37.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

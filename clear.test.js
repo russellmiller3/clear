@@ -5002,7 +5002,7 @@ describe('Compiler - define role', () => {
 
 describe('Parser - guard', () => {
   it('parses guard with expression', () => {
-    const ast = parse("on POST '/delete':\n  guard is_admin == true\n  send back 'ok'");
+    const ast = parse("on POST '/delete':\n  enforce that is_admin == true\n  send back 'ok'");
     const endpoint = ast.body.find(n => n.type === 'endpoint');
     const guard = endpoint.body.find(n => n.type === 'guard');
     expect(guard).toBeDefined();
@@ -5012,13 +5012,13 @@ describe('Parser - guard', () => {
 
 describe('Compiler - guard', () => {
   it('compiles guard to JS conditional with 403', () => {
-    const result = compileProgram("target: backend\non POST '/delete':\n  guard is_admin == true\n  send back 'ok'");
+    const result = compileProgram("target: backend\non POST '/delete':\n  enforce that is_admin == true\n  send back 'ok'");
     expect(result.javascript).toContain('is_admin');
     expect(result.javascript).toContain('403');
   });
 
   it('compiles guard to Python conditional', () => {
-    const result = compileProgram("target: python backend\non POST '/delete':\n  guard is_admin == true\n  send back 'ok'");
+    const result = compileProgram("target: python backend\non POST '/delete':\n  enforce that is_admin == true\n  send back 'ok'");
     expect(result.python).toContain('is_admin');
     expect(result.python).toContain('403');
   });
@@ -7950,7 +7950,7 @@ describe('Guard - custom error messages', () => {
     const result = compileProgram(`
 build for javascript backend
 when user calls POST /api/order:
-  guard stock is greater than 0 or 'Out of stock'
+  enforce that stock is greater than 0 or 'Out of stock'
   send back 'ordered'
     `);
     expect(result.errors).toHaveLength(0);
@@ -7962,7 +7962,7 @@ when user calls POST /api/order:
     const result = compileProgram(`
 build for javascript backend
 when user calls POST /api/order:
-  guard stock is greater than 0
+  enforce that stock is greater than 0
   send back 'ordered'
     `);
     expect(result.javascript).toContain('Access denied');
@@ -8361,7 +8361,7 @@ create a Users table:
   role, required
 when user sends user to /api/users:
   requires login
-  guard caller's role is 'admin' or 'forbidden'
+  enforce that caller's role is 'admin' or 'forbidden'
   save user as new User
   send back user
     `);
@@ -11550,7 +11550,7 @@ when user calls PUT /api/invoices/:id/pay sending payment_data:
   validate payment_data:
     amount is number, required
   define invoice as: look up records in Invoices table where id is incoming's id
-  guard invoice is not nothing or 'Invoice not found'
+  enforce that invoice is not nothing or 'Invoice not found'
   send back 'paid' with success message
     `;
     const result = compileProgram(src);
@@ -11884,7 +11884,7 @@ describe('Agent primitives - parser', () => {
   it('parses full agent with guard and ask ai', () => {
     const src = `build for javascript backend
 agent 'Qualifier' receiving lead:
-  guard lead's email is not nothing or 'Email required'
+  enforce that lead's email is not nothing or 'Email required'
   summary = ask ai 'Classify this lead' with lead's company
   if summary contains 'enterprise':
     lead's tier is 'enterprise'
@@ -11945,7 +11945,7 @@ describe('Agent primitives - compiler', () => {
   });
 
   it('agent guard compiles to throw not res.status', () => {
-    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  guard d's name is not nothing or 'Name required'\n  send back d");
+    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  enforce that d's name is not nothing or 'Name required'\n  send back d");
     expect(result.errors).toHaveLength(0);
     const js = result.javascript;
     const agentStart = js.indexOf('async function agent_t');
@@ -12159,7 +12159,7 @@ create a Pages table:
   created_at_date, auto
 
 agent 'Page Analyzer' receiving page_data:
-  guard page_data's url is not nothing or 'URL is required'
+  enforce that page_data's url is not nothing or 'URL is required'
   page_data's title is 'Analyzed'
   send back page_data
 
@@ -12232,7 +12232,7 @@ create a Leads table:
   score (number), default 0
 
 agent 'Lead Scorer' receiving lead:
-  guard lead's company is not nothing or 'Company is required'
+  enforce that lead's company is not nothing or 'Company is required'
   analysis = ask ai 'Rate this company on a scale of 1-10 for enterprise potential' with lead's company
   lead's score is analysis
   send back lead
@@ -12291,7 +12291,7 @@ describe('GAN: Multi-agent pipeline', () => {
   const src = `build for javascript backend
 
 agent 'Validator' receiving data:
-  guard data's email is not nothing or 'Email required'
+  enforce that data's email is not nothing or 'Email required'
   send back data
 
 agent 'Enricher' receiving data:
@@ -12659,7 +12659,7 @@ create a Candidates table:
   applied_at_date, auto
 
 agent 'Screener' receiving candidate:
-  guard candidate's name is not nothing or 'Name is required'
+  enforce that candidate's name is not nothing or 'Name is required'
   result = ask ai 'Does this candidate meet minimum qualifications? Reply YES or NO.' with candidate's experience
   candidate's screening_pass is result
   send back candidate
@@ -12766,7 +12766,7 @@ describe('Explicit syntax: check ... otherwise error (guard)', () => {
   });
 
   it('old guard syntax still works as alias', () => {
-    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  guard d's name is not nothing or 'Name is required'\n  send back d");
+    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  enforce that d's name is not nothing or 'Name is required'\n  send back d");
     expect(result.errors).toHaveLength(0);
     const agent = result.ast.body.find(n => n.type === 'agent');
     const guard = agent.body.find(n => n.type === 'guard');
@@ -28839,7 +28839,7 @@ describe('Hard hint sweep preset', () => {
 describe('rule keyword — parser', () => {
   it('parses rule with a kebab-case name and a guard body', () => {
     const src = `rule discount-cap:
-  guard discount is less than 30 or 'Discount over 30% needs VP approval'`;
+  enforce that discount is less than 30 or 'Discount over 30% needs VP approval'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28852,7 +28852,7 @@ describe('rule keyword — parser', () => {
 
   it('parses rule with a quoted-string name and dasherizes it', () => {
     const src = `rule 'Deals over $100k need CRO approval':
-  guard amount is less than 100000 or 'Deals over $100k need CRO sign-off'`;
+  enforce that amount is less than 100000 or 'Deals over $100k need CRO sign-off'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28863,8 +28863,8 @@ describe('rule keyword — parser', () => {
 
   it('parses rule body with multi-line if / guard statements', () => {
     const src = `rule big-deal-needs-cro:
-  guard amount is less than 100001 or 'Big deals need CRO sign-off'
-  guard discount is less than 50 or 'Big discounts need CRO sign-off'`;
+  enforce that amount is less than 100001 or 'Big deals need CRO sign-off'
+  enforce that discount is less than 50 or 'Big discounts need CRO sign-off'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28875,7 +28875,7 @@ describe('rule keyword — parser', () => {
 
   it('hard-errors when rule name is missing', () => {
     const src = `rule:
-  guard x is less than 10 or 'too big'`;
+  enforce that x is less than 10 or 'too big'`;
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
     const msg = ast.errors.map(e => e.message).join(' ');
@@ -28885,7 +28885,7 @@ describe('rule keyword — parser', () => {
   it('hard-errors when rule body is empty', () => {
     const src = `rule discount-cap:
 rule another:
-  guard x is less than 10 or 'too big'`;
+  enforce that x is less than 10 or 'too big'`;
     // First rule has no indented body lines — body is empty. The second rule
     // is at the same indent level, so it terminates the first rule's body.
     const ast = parse(src);
@@ -28896,9 +28896,9 @@ rule another:
 
   it('hard-errors on duplicate rule names in the same file', () => {
     const src = `rule discount-cap:
-  guard discount is less than 30 or 'too big'
+  enforce that discount is less than 30 or 'too big'
 rule discount-cap:
-  guard discount is less than 50 or 'too big'`;
+  enforce that discount is less than 50 or 'too big'`;
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
     const msg = ast.errors.map(e => e.message).join(' ');
@@ -28909,7 +28909,7 @@ rule discount-cap:
     const src = `database is local memory
 
 rule discount-cap:
-  guard discount is less than 30 or 'too big'`;
+  enforce that discount is less than 30 or 'too big'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28975,7 +28975,7 @@ describe('rule keyword — validator', () => {
 
   it('does not warn when a rule body has a guard statement', () => {
     const src = `rule discount-cap:
-  guard discount is less than 30 or 'too big'`;
+  enforce that discount is less than 30 or 'too big'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const { warnings } = validate(ast);
@@ -29005,7 +29005,7 @@ describe('rule keyword — validator', () => {
 describe('rule keyword — compiler', () => {
   it('emits a labeled comment with the rule name in JS output', () => {
     const src = `rule discount-cap:
-  guard 20 is less than 30 or 'too big'`;
+  enforce that 20 is less than 30 or 'too big'`;
     const result = compileProgram(src, { target: 'web' });
     expect(result.errors).toHaveLength(0);
     // The compiled output must mention the rule's name in a comment so
@@ -29015,7 +29015,7 @@ describe('rule keyword — compiler', () => {
 
   it('emits a labeled comment with the rule name in Python output', () => {
     const src = `rule discount-cap:
-  guard 20 is less than 30 or 'too big'`;
+  enforce that 20 is less than 30 or 'too big'`;
     const result = compileProgram(src, { target: 'backend' });
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('discount-cap');
@@ -29028,7 +29028,7 @@ describe('rule keyword — compiler', () => {
     // Backend target because GUARD is a backend-only node — that's
     // unrelated to rule_def; it's the same rule for any guard.
     const src = `rule discount-cap:
-  guard 20 is less than 30 or 'too big'`;
+  enforce that 20 is less than 30 or 'too big'`;
     const result = compileProgram(src, { target: 'backend' });
     expect(result.errors).toHaveLength(0);
     // Backend JS guard emits a status-403 throw with the message.
@@ -29037,9 +29037,9 @@ describe('rule keyword — compiler', () => {
 
   it('compiles multiple rules in the same file with both names visible', () => {
     const src = `rule discount-cap:
-  guard 20 is less than 30 or 'too big'
+  enforce that 20 is less than 30 or 'too big'
 rule big-deal-needs-cro:
-  guard 100 is less than 200 or 'needs CRO'`;
+  enforce that 100 is less than 200 or 'needs CRO'`;
     const result = compileProgram(src, { target: 'web' });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('discount-cap');
@@ -29050,7 +29050,7 @@ rule big-deal-needs-cro:
 describe('rule keyword — prover', () => {
   it('produces a per-rule entry in the bundle for every rule_def in the file', () => {
     const src = `rule discount-cap:
-  guard 1 is less than 2 or 'too big'`;
+  enforce that 1 is less than 2 or 'too big'`;
     const bundle = proveSource(src);
     expect(Array.isArray(bundle.rules)).toBe(true);
     expect(bundle.rules.length).toBe(1);
@@ -29059,7 +29059,7 @@ describe('rule keyword — prover', () => {
 
   it('marks a tautological rule body as PROVED', () => {
     const src = `rule trivially-true:
-  guard 1 is less than 2 or 'never fires'`;
+  enforce that 1 is less than 2 or 'never fires'`;
     const bundle = proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'trivially-true');
     expect(rule).toBeTruthy();
@@ -29074,7 +29074,7 @@ describe('rule keyword — prover', () => {
   amount (number)
 rule reads-database:
   found = look up Deal where status is 'pending'
-  guard found is not nothing or 'no deal found'`;
+  enforce that found is not nothing or 'no deal found'`;
     const bundle = proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'reads-database');
     expect(rule).toBeTruthy();
@@ -29087,7 +29087,7 @@ rule reads-database:
     // 1 > 2 is universally false — the guard always trips; the rule
     // refuses every input. The "rule never holds" case is a counterexample.
     const src = `rule always-fails:
-  guard 1 is greater than 2 or 'always wrong'`;
+  enforce that 1 is greater than 2 or 'always wrong'`;
     const bundle = proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'always-fails');
     expect(rule).toBeTruthy();
@@ -29096,9 +29096,9 @@ rule reads-database:
 
   it('attributes per-rule verdict counts in the bundle summary', () => {
     const src = `rule rule_a:
-  guard 1 is less than 2 or 'tautology'
+  enforce that 1 is less than 2 or 'tautology'
 rule rule_b:
-  guard 1 is greater than 2 or 'counterexample'`;
+  enforce that 1 is greater than 2 or 'counterexample'`;
     const bundle = proveSource(src);
     expect(bundle.ruleCounts).toBeTruthy();
     expect(bundle.ruleCounts.proved).toBe(1);
@@ -29108,7 +29108,7 @@ rule rule_b:
 
   it('renders rule verdicts in formatBundle output (CLI surface)', () => {
     const src = `rule discount-cap:
-  guard 1 is less than 2 or 'tautology'`;
+  enforce that 1 is less than 2 or 'tautology'`;
     const bundle = proveSource(src);
     const text = formatProofBundle(bundle);
     expect(text).toContain('discount-cap');
@@ -29173,11 +29173,11 @@ describe('clear prove default formatting', () => {
   amount (number)
 
 rule discount-cap-thirty:
-  guard 1 is less than 2 or 'tautology'
+  enforce that 1 is less than 2 or 'tautology'
 
 rule reads-the-database:
   found = look up Deal where amount is greater than 0
-  guard found is not nothing or 'no deal'
+  enforce that found is not nothing or 'no deal'
 `;
 
   it('default output uses the translator headline (plain English, not math journal)', () => {

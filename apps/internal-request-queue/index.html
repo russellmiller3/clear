@@ -739,6 +739,18 @@ function _recompute() {
   document.getElementById('input_category').value = _state.category;
   document.getElementById('input_priority').value = _state.priority;
   document.getElementById('input_submitter').value = _state.submitter;
+  // Substitute {varname} in text templates
+  const _tplCtx = Object.assign({}, _state || {});
+  if (typeof new_count !== 'undefined') _tplCtx["new_count"] = new_count;
+  if (typeof all_count !== 'undefined') _tplCtx["all_count"] = all_count;
+  if (typeof team_count !== 'undefined') _tplCtx["team_count"] = team_count;
+  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
+    const _tpl = _el.getAttribute('data-clear-tpl');
+    _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
+      const _val = _tplCtx[_v];
+      return (_val == null) ? '' : String(_val);
+    });
+  });
   { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="selected_request"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.selected_request); }
 }
 

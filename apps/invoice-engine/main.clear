@@ -127,8 +127,8 @@ when user calls POST /api/invoices sending invoice:
 when user calls PUT /api/invoices/:id/send:
   requires login
   define invoice as: look up records in Invoices table where id is incoming's id
-  guard invoice is not nothing or 'Invoice not found'
-  guard invoice's status is 'draft' or 'Only draft invoices can be sent'
+  enforce that invoice is not nothing or 'Invoice not found'
+  enforce that invoice's status is 'draft' or 'Only draft invoices can be sent'
   invoice's status is 'sent'
   save invoice to Invoices
   send back 'sent' with success message
@@ -140,8 +140,8 @@ when user calls PUT /api/invoices/:id/pay sending billing:
     method is text, required
     reference is text
   define invoice as: look up records in Invoices table where id is incoming's id
-  guard invoice is not nothing or 'Invoice not found'
-  guard invoice's status is 'sent' or 'Only sent invoices can be marked as paid'
+  enforce that invoice is not nothing or 'Invoice not found'
+  enforce that invoice's status is 'sent' or 'Only sent invoices can be marked as paid'
   billing's invoice_id is incoming's id
   new_payment = save billing as new Payment
   invoice's status is 'paid'
@@ -151,8 +151,8 @@ when user calls PUT /api/invoices/:id/pay sending billing:
 when user calls PUT /api/invoices/:id/cancel:
   requires login
   define invoice as: look up records in Invoices table where id is incoming's id
-  guard invoice is not nothing or 'Invoice not found'
-  guard invoice's status is not 'paid' or 'Paid invoices cannot be cancelled'
+  enforce that invoice is not nothing or 'Invoice not found'
+  enforce that invoice's status is not 'paid' or 'Paid invoices cannot be cancelled'
   invoice's status is 'cancelled'
   save invoice to Invoices
   send back 'cancelled' with success message
@@ -161,8 +161,8 @@ when user calls DELETE /api/invoices/:id:
   requires login
   requires role 'admin'
   define invoice as: look up records in Invoices table where id is incoming's id
-  guard invoice is not nothing or 'Invoice not found'
-  guard invoice's status is 'draft' or 'Only draft invoices can be deleted'
+  enforce that invoice is not nothing or 'Invoice not found'
+  enforce that invoice's status is 'draft' or 'Only draft invoices can be deleted'
   delete the Invoice with this id
   send back 'deleted' with success message
 

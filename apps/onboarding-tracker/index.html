@@ -754,6 +754,7 @@ function _recompute() {
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof total !== 'undefined') _tplCtx["total"] = total;
+  if (typeof step_total !== 'undefined') _tplCtx["step_total"] = step_total;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {

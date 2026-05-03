@@ -139,7 +139,7 @@ Interaction contract: every `ASK_FOR`, `BUTTON`, nav item, route tab, table cont
 | `RESPOND` | `send back content` / `send back content status 201` | `res.json(data)` |
 | `REQUIRES_AUTH` | `this endpoint requires auth` | JWT middleware check |
 | `REQUIRES_ROLE` | `this endpoint requires role 'admin'` | Role check middleware |
-| `GUARD` | `guard stock > 0 or 'Out of stock'` | Conditional 400 response |
+| `GUARD` | `enforce that stock > 0 or 'Out of stock'` | Conditional 400 response |
 | `LOG_REQUESTS` | `log every request` | Request logging middleware |
 | `ALLOW_CORS` | `allow cross-origin requests` | CORS headers |
 | `DEPLOY` | `deploy to vercel` / `deploy to netlify` | Deployment directive |
@@ -274,7 +274,7 @@ Service calls use direct REST API calls via `fetch()`, not SDK imports. Auth via
 | `ASK_AI` | `set answer to ask ai 'prompt' with context` | `answer = ask ai 'prompt' with context` | `await _askAI("prompt", context)` |
 | `ASK_AI` (structured) | `set result to ask ai 'prompt' with context returning JSON text:` + fields | (same) | `await _askAI("prompt", context, schema)` |
 | `RUN_AGENT` | `set result to call 'Name' with data` | `result = call 'Name' with data` | `await agent_name(data)` |
-| `GUARD` | `check X is not missing, otherwise error 'msg'` | `guard X is not nothing or 'msg'` | `throw new Error("msg")` (in agent) / `res.status(403)` (in endpoint) |
+| `GUARD` | `check X is not missing, otherwise error 'msg'` | `enforce that X is not nothing or 'msg'` | `throw new Error("msg")` (in agent) / `res.status(403)` (in endpoint) |
 | `PARALLEL_AGENTS` | `do these at the same time:` + assignments | (same) | `const [a, b] = await Promise.all([...])` |
 | `PIPELINE` | `pipeline 'Name' with var:` + steps (`'Agent'` or `stepname with 'Agent'`) | (same) | `async function pipeline_name(var) { ... }` |
 | `RUN_PIPELINE` | `result = call pipeline 'Name' with data` | (same) | `await pipeline_name(data)` |

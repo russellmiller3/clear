@@ -711,8 +711,8 @@ function _recompute() {
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof total !== 'undefined') _tplCtx["total"] = total;
-  if (typeof owners !== 'undefined') _tplCtx["owners"] = owners;
   if (typeof rules !== 'undefined') _tplCtx["rules"] = rules;
+  if (typeof owners !== 'undefined') _tplCtx["owners"] = owners;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {

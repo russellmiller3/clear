@@ -16,7 +16,7 @@ const CONTRACT = {
       "id": "Deal_Desk",
       "title": "Deal Desk",
       "route": "/",
-      "line": 286,
+      "line": 283,
       "expectedText": [
         "Deal Desk",
         "Clear",
@@ -39,7 +39,7 @@ const CONTRACT = {
       "id": "Approved_today",
       "title": "Approved today",
       "route": "/approved",
-      "line": 386,
+      "line": 383,
       "expectedText": [
         "Approved today",
         "Approved requests cleared today and ready for audit.",
@@ -52,7 +52,7 @@ const CONTRACT = {
       "id": "Rejected",
       "title": "Rejected",
       "route": "/rejected",
-      "line": 396,
+      "line": 393,
       "expectedText": [
         "Rejected",
         "Rejected deals",
@@ -66,7 +66,7 @@ const CONTRACT = {
       "id": "Awaiting_customer",
       "title": "Awaiting customer",
       "route": "/awaiting",
-      "line": 406,
+      "line": 403,
       "expectedText": [
         "Awaiting customer",
         "Counters, signatures, and procurement follow-ups needing customer action.",
@@ -79,7 +79,7 @@ const CONTRACT = {
       "id": "All_deals",
       "title": "All deals",
       "route": "/all",
-      "line": 416,
+      "line": 413,
       "expectedText": [
         "All deals",
         "Total deal-desk requests across every status.",
@@ -94,7 +94,7 @@ const CONTRACT = {
       "id": "Reports",
       "title": "Reports",
       "route": "/reports",
-      "line": 429,
+      "line": 426,
       "expectedText": [
         "Reports",
         "Approval velocity, discount pressure, and value-at-stake reporting.",
@@ -110,7 +110,7 @@ const CONTRACT = {
       "id": "New_discount_request",
       "title": "New discount request",
       "route": "/new",
-      "line": 443,
+      "line": 440,
       "expectedText": [
         "New discount request",
         "Submit a discount request. Over 20 percent goes to the CRO queue.",
@@ -123,7 +123,7 @@ const CONTRACT = {
       "id": "Sign_in",
       "title": "Sign in",
       "route": "/login",
-      "line": 462,
+      "line": 459,
       "expectedText": [
         "Sign in",
         "Sign in to the CRO console",
@@ -177,12 +177,12 @@ const CONTRACT = {
   ],
   "controls": [
     {
-      "id": "nav_item_306_Pending",
+      "id": "nav_item_303_Pending",
       "kind": "nav-item",
       "label": "Pending",
-      "line": 306,
+      "line": 303,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_306_Pending\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_303_Pending\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -195,12 +195,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_307_Approved_today",
+      "id": "nav_item_304_Approved_today",
       "kind": "nav-item",
       "label": "Approved today",
-      "line": 307,
+      "line": 304,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_307_Approved_today\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_304_Approved_today\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/approved"
@@ -213,12 +213,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /approved"
     },
     {
-      "id": "nav_item_308_Rejected",
+      "id": "nav_item_305_Rejected",
       "kind": "nav-item",
       "label": "Rejected",
-      "line": 308,
+      "line": 305,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_308_Rejected\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_305_Rejected\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/rejected"
@@ -231,12 +231,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /rejected"
     },
     {
-      "id": "nav_item_309_Awaiting_customer",
+      "id": "nav_item_306_Awaiting_customer",
       "kind": "nav-item",
       "label": "Awaiting customer",
-      "line": 309,
+      "line": 306,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_309_Awaiting_customer\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_306_Awaiting_customer\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/awaiting"
@@ -249,12 +249,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /awaiting"
     },
     {
-      "id": "nav_item_312_All_deals",
+      "id": "nav_item_309_All_deals",
       "kind": "nav-item",
       "label": "All deals",
-      "line": 312,
+      "line": 309,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_312_All_deals\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_309_All_deals\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/all"
@@ -267,12 +267,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /all"
     },
     {
-      "id": "nav_item_313_Reports",
+      "id": "nav_item_310_Reports",
       "kind": "nav-item",
       "label": "Reports",
-      "line": 313,
+      "line": 310,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_313_Reports\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_310_Reports\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/reports"
@@ -285,12 +285,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /reports"
     },
     {
-      "id": "route_tab_328_Pending",
+      "id": "route_tab_325_Pending",
       "kind": "route-tab",
       "label": "Pending",
-      "line": 328,
+      "line": 325,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"route_tab_328_Pending\"]",
+      "selector": "[data-clear-uat-id=\"route_tab_325_Pending\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -303,12 +303,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "route_tab_329_My_approvals",
+      "id": "route_tab_326_My_approvals",
       "kind": "route-tab",
       "label": "My approvals",
-      "line": 329,
+      "line": 326,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"route_tab_329_My_approvals\"]",
+      "selector": "[data-clear-uat-id=\"route_tab_326_My_approvals\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/approved"
@@ -321,12 +321,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /approved"
     },
     {
-      "id": "route_tab_330_All",
+      "id": "route_tab_327_All",
       "kind": "route-tab",
       "label": "All",
-      "line": 330,
+      "line": 327,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"route_tab_330_All\"]",
+      "selector": "[data-clear-uat-id=\"route_tab_327_All\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/all"
@@ -339,10 +339,10 @@ const CONTRACT = {
       "dataEffect": "navigates to /all"
     },
     {
-      "id": "table_interaction_348_Pending",
+      "id": "table_interaction_345_Pending",
       "kind": "table-interaction",
       "label": "Pending",
-      "line": 348,
+      "line": 345,
       "sourcePageRoute": "/",
       "selector": "#output_Pending_table",
       "action": {
@@ -353,10 +353,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts Pending"
     },
     {
-      "id": "table_drilldown_348_Pending",
+      "id": "table_drilldown_345_Pending",
       "kind": "table-drilldown",
       "label": "Pending",
-      "line": 348,
+      "line": 345,
       "sourcePageRoute": "/",
       "selector": "#output_Pending_table button[data-row-select=\"true\"]",
       "action": {
@@ -369,12 +369,12 @@ const CONTRACT = {
       "dataEffect": "selects a Pending row for detail state"
     },
     {
-      "id": "button_367_Draft_AI_summary",
+      "id": "button_364_Draft_AI_summary",
       "kind": "button",
       "label": "Draft AI summary",
-      "line": 367,
+      "line": 364,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_367_Draft_AI_summary\"]",
+      "selector": "[data-clear-uat-id=\"button_364_Draft_AI_summary\"]",
       "action": {
         "type": "api-call",
         "method": "POST",
@@ -383,12 +383,12 @@ const CONTRACT = {
       "dataEffect": "calls POST /api/deals/draft"
     },
     {
-      "id": "button_369_Reject",
+      "id": "button_366_Reject",
       "kind": "button",
       "label": "Reject",
-      "line": 369,
+      "line": 366,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_369_Reject\"]",
+      "selector": "[data-clear-uat-id=\"button_366_Reject\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -397,12 +397,12 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/deals/:id/reject"
     },
     {
-      "id": "button_373_Counter",
+      "id": "button_370_Counter",
       "kind": "button",
       "label": "Counter",
-      "line": 373,
+      "line": 370,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_373_Counter\"]",
+      "selector": "[data-clear-uat-id=\"button_370_Counter\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -411,12 +411,12 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/deals/:id/counter"
     },
     {
-      "id": "button_377_Approve",
+      "id": "button_374_Approve",
       "kind": "button",
       "label": "Approve",
-      "line": 377,
+      "line": 374,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_377_Approve\"]",
+      "selector": "[data-clear-uat-id=\"button_374_Approve\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -425,10 +425,10 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/deals/:id/approve"
     },
     {
-      "id": "table_interaction_394_Approved_Deals",
+      "id": "table_interaction_391_Approved_Deals",
       "kind": "table-interaction",
       "label": "Approved Deals",
-      "line": 394,
+      "line": 391,
       "sourcePageRoute": "/approved",
       "selector": "#output_Approved_Deals_table",
       "action": {
@@ -439,10 +439,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts Approved Deals"
     },
     {
-      "id": "table_interaction_404_Rejected_Deals",
+      "id": "table_interaction_401_Rejected_Deals",
       "kind": "table-interaction",
       "label": "Rejected Deals",
-      "line": 404,
+      "line": 401,
       "sourcePageRoute": "/rejected",
       "selector": "#output_Rejected_Deals_table",
       "action": {
@@ -453,10 +453,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts Rejected Deals"
     },
     {
-      "id": "table_interaction_414_Awaiting_Deals",
+      "id": "table_interaction_411_Awaiting_Deals",
       "kind": "table-interaction",
       "label": "Awaiting Deals",
-      "line": 414,
+      "line": 411,
       "sourcePageRoute": "/awaiting",
       "selector": "#output_Awaiting_Deals_table",
       "action": {
@@ -467,10 +467,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts Awaiting Deals"
     },
     {
-      "id": "table_interaction_427_All_Deals",
+      "id": "table_interaction_424_All_Deals",
       "kind": "table-interaction",
       "label": "All Deals",
-      "line": 427,
+      "line": 424,
       "sourcePageRoute": "/all",
       "selector": "#output_All_Deals_table",
       "action": {
@@ -481,10 +481,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts All Deals"
     },
     {
-      "id": "table_interaction_441_All_Deals",
+      "id": "table_interaction_438_All_Deals",
       "kind": "table-interaction",
       "label": "All Deals",
-      "line": 441,
+      "line": 438,
       "sourcePageRoute": "/reports",
       "selector": "#output_All_Deals_2_table",
       "action": {
@@ -495,10 +495,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts All Deals"
     },
     {
-      "id": "input_control_449_Your_name",
+      "id": "input_control_446_Your_name",
       "kind": "input-control",
       "label": "Your name",
-      "line": 449,
+      "line": 446,
       "sourcePageRoute": "/new",
       "selector": "#input_rep_name",
       "action": {
@@ -512,10 +512,10 @@ const CONTRACT = {
       "dataEffect": "updates rep name"
     },
     {
-      "id": "input_control_450_Customer",
+      "id": "input_control_447_Customer",
       "kind": "input-control",
       "label": "Customer",
-      "line": 450,
+      "line": 447,
       "sourcePageRoute": "/new",
       "selector": "#input_customer",
       "action": {
@@ -529,10 +529,10 @@ const CONTRACT = {
       "dataEffect": "updates customer"
     },
     {
-      "id": "input_control_451_List_price____",
+      "id": "input_control_448_List_price____",
       "kind": "input-control",
       "label": "List price ($)",
-      "line": 451,
+      "line": 448,
       "sourcePageRoute": "/new",
       "selector": "#input_list_price",
       "action": {
@@ -546,10 +546,10 @@ const CONTRACT = {
       "dataEffect": "updates list price"
     },
     {
-      "id": "input_control_452_Discount__",
+      "id": "input_control_449_Discount__",
       "kind": "input-control",
       "label": "Discount %",
-      "line": 452,
+      "line": 449,
       "sourcePageRoute": "/new",
       "selector": "#input_discount_percent",
       "action": {
@@ -563,12 +563,12 @@ const CONTRACT = {
       "dataEffect": "updates discount percent"
     },
     {
-      "id": "button_453_Submit_for_approval",
+      "id": "button_450_Submit_for_approval",
       "kind": "button",
       "label": "Submit for approval",
-      "line": 453,
+      "line": 450,
       "sourcePageRoute": "/new",
-      "selector": "[data-clear-uat-id=\"button_453_Submit_for_approval\"]",
+      "selector": "[data-clear-uat-id=\"button_450_Submit_for_approval\"]",
       "action": {
         "type": "api-call",
         "method": "POST",
@@ -581,83 +581,83 @@ const CONTRACT = {
     {
       "method": "GET",
       "path": "/api/deals/pending",
-      "line": 108,
+      "line": 88,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/deals/approved",
-      "line": 112,
+      "line": 92,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/deals/rejected",
-      "line": 115,
+      "line": 95,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/deals/awaiting",
-      "line": 118,
+      "line": 98,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/deals/all",
-      "line": 121,
+      "line": 101,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/deals",
-      "line": 124,
+      "line": 111,
       "usedByControlIds": [
-        "button_453_Submit_for_approval"
+        "button_450_Submit_for_approval"
       ]
     },
     {
       "method": "POST",
       "path": "/api/deals/draft",
-      "line": 139,
+      "line": 136,
       "usedByControlIds": [
-        "button_367_Draft_AI_summary"
+        "button_364_Draft_AI_summary"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/deals/:id",
-      "line": 144,
+      "line": 141,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/seed",
-      "line": 157,
+      "line": 154,
       "usedByControlIds": []
     },
     {
       "method": "PUT",
       "path": "/api/deals/:id/reject",
-      "line": 371,
+      "line": 368,
       "usedByControlIds": [
-        "button_369_Reject"
+        "button_366_Reject"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/deals/:id/counter",
-      "line": 375,
+      "line": 372,
       "usedByControlIds": [
-        "button_373_Counter"
+        "button_370_Counter"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/deals/:id/approve",
-      "line": 379,
+      "line": 376,
       "usedByControlIds": [
-        "button_377_Approve"
+        "button_374_Approve"
       ]
     }
   ],

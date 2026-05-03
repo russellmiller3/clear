@@ -14,7 +14,7 @@ For policies a CRO or auditor cares about ("discount cap," "CRO sign-off thresho
 
 ```clear
 rule discount-cap-thirty:
-  guard discount is less than 30 or 'Discounts over 30% need VP approval'
+  enforce that discount is less than 30 or 'Discounts over 30% need VP approval'
 ```
 
 The body parses with the same statement parser as endpoints — `guard`, `validate`, `if` all work inside. Quoted-string names dasherize (`rule 'Discount cap':` → `discount-cap`). `clear prove` and `clear test --prove` render a "Business rules in this file:" section with a per-rule badge — `[PROVED]`, `[DISPROVED]`, or `[UNVERIFIABLE]` — so auditors see verdicts attributed by name. Hard rules: names must be unique per file, body must have at least one statement, rules must live at the top level (no nesting). See `examples/rule-keyword-tour.clear` for one-of-each-verdict demo. Use `rule:` when the policy has a name a non-engineer would say; use raw `guard` for one-off checks inside an endpoint.
@@ -457,7 +457,7 @@ Without `owner is`, no user can reach the Live App Editing widget — it gates o
 ```clear
 when user sends order to /api/orders:
   requires login
-  guard caller's plan is not 'free' or 'Upgrade to Pro'
+  enforce that caller's plan is not 'free' or 'Upgrade to Pro'
   order's owner_id is caller's id
   save order as new Order
   send back order

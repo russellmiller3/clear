@@ -9,7 +9,7 @@ create a Pages table:
   analyzed_at_date, auto
 
 agent 'Page Analyzer' receives subject:
-  guard subject's url is not nothing or 'URL is required'
+  enforce that subject's url is not nothing or 'URL is required'
   subject's title is 'Analyzed'
   subject's link_count is 42
   send back subject

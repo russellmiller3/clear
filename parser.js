@@ -1224,7 +1224,7 @@ const CANONICAL_DISPATCH = new Map([
     ctx.body.push(defineRoleNode(roleName, permissions, [], ctx.line));
     return j;
   }],
-  ['guard', (ctx) => {
+  ['enforce_that', (ctx) => {
     let endPos = ctx.tokens.length;
     let guardMessage = null;
     for (let k = ctx.tokens.length - 1; k > 1; k--) {

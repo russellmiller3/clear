@@ -716,6 +716,18 @@ function _recompute() {
   document.getElementById('input_description').value = _state.description;
   document.getElementById('input_amount').value = _state.amount;
   document.getElementById('input_requester').value = _state.requester;
+  // Substitute {varname} in text templates
+  const _tplCtx = Object.assign({}, _state || {});
+  if (typeof pending_count !== 'undefined') _tplCtx["pending_count"] = pending_count;
+  if (typeof all_count !== 'undefined') _tplCtx["all_count"] = all_count;
+  if (typeof pending_amount !== 'undefined') _tplCtx["pending_amount"] = pending_amount;
+  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
+    const _tpl = _el.getAttribute('data-clear-tpl');
+    _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
+      const _val = _tplCtx[_v];
+      return (_val == null) ? '' : String(_val);
+    });
+  });
   { const _panel = document.querySelector('[data-detail-panel="true"][data-detail-for="selected_request"]'); if (_panel) _panel.classList.toggle('is-empty', !_state.selected_request); }
 }
 

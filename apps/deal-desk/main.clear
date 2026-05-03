@@ -67,26 +67,6 @@ allow cross-origin requests
 allow signup and login
 log every request
 
-# Business rules
-/*
-Named, provable business rules. The prover attributes each rule by name in
-clear prove output, so auditors and the CRO see verdicts like
-"discount-cap-thirty: PROVED for every possible deal" instead of "line 42:
-PROVED". A rule with a tautological guard (universally true bound check) is
-PROVED — the rule will never falsely refuse. A rule that depends on a
-free input the prover does not see is UNVERIFIABLE — the prover refuses
-to claim more than the engine knows.
-*/
-
-rule discount-cap-thirty:
-  guard 30 is less than 100 or 'Discounts over 30% need VP approval — this rule pegs the cap at 30%'
-
-rule price-floor-positive:
-  guard 1 is greater than 0 or 'List price must be positive — zero or negative prices are never valid'
-
-rule risk-score-bounded:
-  guard 10 is less than 11 or 'Risk score must be between 0 and 10'
-
 # Drafter
 
 /*
@@ -121,6 +101,13 @@ when user requests data from /api/deals/awaiting:
 when user requests data from /api/deals/all:
   send back all Deals
 
+// Named business rules (2026-05-02). Each rule has a stable name so the
+// audit trail records "deal rejected: discount-cap-thirty" instead of a
+// generic "validation failed". The prover walks every named rule and
+// reports a verdict per name; rules that read fields off the incoming
+// deal are reported as UNVERIFIABLE (correct — they depend on user
+// input the prover does not see), but they ARE enforced at runtime
+// here. Rules with constant-only guards would be PROVED.
 when user sends deal to /api/deals:
   requires login
   validate deal:
@@ -128,6 +115,16 @@ when user sends deal to /api/deals:
     customer is text, required, min 1, max 200
     list_price is number, min 0
     discount_percent is number, min 0, max 100
+
+  rule discount-cap-thirty:
+    enforce that deal's discount_percent is less than 30 or 'Discounts of 30% or more require VP approval — submit through the VP escalation queue, not the standard CRO desk'
+
+  rule price-floor-positive:
+    enforce that deal's list_price is greater than 0 or 'List price must be positive — zero or negative prices are never valid'
+
+  rule discount-not-over-cap:
+    enforce that deal's discount_percent is less than 100 or 'Discount cannot meet or exceed 100% — that would mean giving the product away or paying the customer'
+
   if deal's discount_percent is greater than 20:
     deal's status is 'pending'
   otherwise:

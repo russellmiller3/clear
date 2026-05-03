@@ -74,8 +74,8 @@ define function check_stock(product_name):
 
 define function process_return(target_order_id, return_reason):
   order = look up Order where id is target_order_id
-  guard order is not missing or 'Order not found'
-  guard order's status is 'delivered' or 'Only delivered orders can be returned'
+  enforce that order is not missing or 'Order not found'
+  enforce that order's status is 'delivered' or 'Only delivered orders can be returned'
   create return_record:
     order_id is target_order_id
     reason is return_reason
