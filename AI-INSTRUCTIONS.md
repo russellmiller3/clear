@@ -3291,6 +3291,25 @@ one-line change — all CRUD operations compile to the right adapter automatical
 - **Supabase:** Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars. Uses Supabase SDK.
 - **PostgreSQL:** Set `DATABASE_URL` env var. Uses `runtime/db-postgres.js` — same API as SQLite adapter with lazy table creation. Best for Railway deploys (`clear deploy`).
 
+### Tenant-scope on shared databases
+
+When multiple customers share one database (Marcus apps deployed on Clear Cloud), declare `with tenant scope` so Customer A cannot see Customer B's records:
+
+```
+# Application-layer tenant filter only (any backend)
+database is shared with tenant scope
+
+# Application filter PLUS Postgres ROW LEVEL SECURITY (defense in depth)
+database is postgres with tenant scope
+```
+
+Two layers — pick based on what the customer needs to hear.
+
+- **`database is shared with tenant scope`** alone gives you the application-layer filter. Every CRUD auto-scopes by `req.user.tenant_id` from the JWT. Customer A genuinely cannot read, modify, or delete Customer B's records — by construction in the compiled output. Works with any backend (SQLite default, Postgres, Supabase). The CRO sentence: "tenant separation is enforced in the application code; row isolation is structural, not author discipline."
+- **`database is postgres with tenant scope`** turns on a SECOND layer: the database itself emits `ROW LEVEL SECURITY` policies on every shared-scope table, and every request runs `SET LOCAL app.current_tenant_id` before its query. Even if a future bug or raw-SQL slip bypasses the application filter, Postgres physically refuses to return another tenant's rows. Use this for regulated-tier customers whose compliance buyer asks "how do you guarantee tenant separation at the database layer?" — the answer is now "twice, in two independent places."
+
+You don't write `tenant_id` anywhere — it's auto-issued at signup and threaded by the compiler. The auth scaffold (`allow signup and login`) already populates `req.user.tenant_id` and the JWT carries the claim.
+
 ## Retry, Timeout, and Race (Production Resilience)
 
 **Use `retry` for flaky external calls.** Exponential backoff is built in:

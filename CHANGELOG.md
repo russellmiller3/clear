@@ -6,7 +6,26 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 night (latest) - Tenant isolation HTTP cross-tenant proof PASSES
+## 2026-05-03 night (latest) - Postgres ROW LEVEL SECURITY shipped as defense in depth
+
+The application-layer tenant filter shipped earlier tonight prevents Customer A from reading Customer B's records by construction in the compiled output. But "trust the compiled output" is not the answer a regulated-tier compliance buyer wants to hear. Tonight we added the second layer: the Postgres database itself now refuses cross-tenant queries via real `ROW LEVEL SECURITY` policies, fired per-request by `SET LOCAL app.current_tenant_id`.
+
+**What shipped:**
+- **`runtime/db-postgres.js`:** new `withTenantScope(id, fn)` runs a function inside an `AsyncLocalStorage` context. Every CRUD call nested inside (no matter how deep the await chain) detects the active tenant id and wraps its query in a `BEGIN + SET LOCAL app.current_tenant_id + query + COMMIT` transaction. `SET LOCAL` clears at COMMIT/ROLLBACK so the pooled connection is safe to reuse with no var leakage. Outside tenant scope, CRUD goes straight to `pool.query` — zero overhead for non-shared-scope apps.
+- **`runtime/db-postgres.js`:** new `enableRowLevelSecurity(table)` runs `ALTER TABLE x ENABLE ROW LEVEL SECURITY` + `ALTER TABLE x FORCE ROW LEVEL SECURITY` (defense in depth — without FORCE, the table owner connection bypasses RLS) + drop-and-recreate `clear_tenant_isolation` policy with `current_setting('app.current_tenant_id')::int`. Idempotent and rejects non-identifier table names.
+- **`compiler.js`:** when source declares both `database is postgres` AND `database is shared with tenant scope`, the compiled server now wires:
+  - A per-request middleware right after auth mounts: `app.use((req, res, next) => req.user && req.user.tenant_id ? db.withTenantScope(req.user.tenant_id, next) : next())`. Threads the JWT's `tenant_id` claim into the async-local context every CRUD reads.
+  - A startup hook that calls `db.enableRowLevelSecurity(t)` once per data-shape table at boot. Fire-and-forget so a slow Postgres doesn't gate `app.listen()`; the application-layer tenant filter remains active during the small window between listen and policy creation.
+  - A clear log line on init failure: `[clear:rls] init failed (app-layer filter still active)` — the surviving layer is named, not implied.
+- **Tests:** 22-case unit test (`runtime/db-postgres-rls.test.js`) covering AsyncLocalStorage propagation, BEGIN/SET LOCAL/COMMIT ordering, NaN tenant-id rejection, ENABLE+FORCE+CREATE POLICY DDL shape, idempotency, table-name validation, insert scope. 28-case compile-shape test (`lib/postgres-rls-compile.test.js`) covering Postgres+shared-scope (full emit), SQLite+shared-scope (no RLS, app filter only), Postgres+no-scope (no RLS), plain SQLite (nothing), and Postgres+shared-scope+zero-tables (middleware emits, startup hook skipped).
+
+**Why for launch:** the regulated-tier customer's compliance buyer asks "how do you guarantee tenant separation?" Today the answer is "twice — the application filter prevents it, AND the database itself refuses cross-tenant rows. Two independent layers, either one alone sufficient." The CRO sentence: "even if a future bug bypasses our application filter, Postgres physically rejects the cross-tenant read." That's the regulated-tier completeness story.
+
+**Gating is strict.** All other backends (SQLite default, Supabase via supabase-js client) emit unchanged output. Plain Postgres apps without `with tenant scope` emit unchanged. Only `database is postgres with tenant scope` triggers both layers. Verified by control-case tests across 4 backend × scope combinations.
+
+---
+
+## 2026-05-03 night - Tenant isolation HTTP cross-tenant proof PASSES
 
 The runtime witness shipped earlier tonight verified the auto-injection reached compiled output. The actual HTTP-level proof — "spawn the server, sign up two distinct users, have tenant A insert a row, have tenant B query, assert B sees zero of A's rows" — sat as a graceful-skip until auth dependencies were available. Tonight that test runs end-to-end and passes green.
 

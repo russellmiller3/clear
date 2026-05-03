@@ -2,6 +2,22 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-03 night: Postgres ROW LEVEL SECURITY as defense in depth
+
+The application-layer tenant filter shipped earlier the same night already prevents cross-tenant reads in compiled output. Tonight we added the second layer — Postgres database-level RLS policies — so the database itself refuses cross-tenant queries. Two independent layers, either alone sufficient. The work shipped as runtime helpers in `runtime/db-postgres.js` (`withTenantScope`, `enableRowLevelSecurity`) plus compiler emit in `compiler.js` (per-request middleware + startup hook), gated strictly on `tenantScope && isPostgres`.
+
+### Gotchas-as-rules
+
+- **`SET LOCAL` is transaction-scoped — wrap every CRUD in BEGIN/COMMIT or the policy never fires.** Postgres `SET LOCAL app.current_tenant_id` only applies inside a transaction and clears at COMMIT/ROLLBACK. A `pool.query(SET LOCAL ...)` followed by `pool.query(SELECT ...)` does NOT carry the var across — pool gives a fresh connection each time. The fix is one transactional block per CRUD: `client.query('BEGIN'); client.query('SET LOCAL ...'); client.query(actual); client.query('COMMIT'); client.release();`. The other tempting shortcut — `SET app.current_tenant_id` (session-scoped, no LOCAL) — is WORSE because the var persists when the connection returns to the pool, and the next request gets a stale tenant. SET LOCAL inside an explicit transaction is the only safe pattern.
+- **`FORCE ROW LEVEL SECURITY` is necessary, not optional.** `ALTER TABLE x ENABLE ROW LEVEL SECURITY` turns policies on for non-owner connections only. The table owner connection (which the app's pool typically uses for DDL and migrations) bypasses RLS by default. `ALTER TABLE x FORCE ROW LEVEL SECURITY` makes policies apply to the owner too. Without FORCE, the defense-in-depth claim is hollow — a bug running on the owner pool can still leak cross-tenant rows. Always emit both ENABLE and FORCE.
+- **AsyncLocalStorage is the clean way to thread per-request state through `await` chains.** Express middleware can attach `req.tenant_id` but every CRUD function would have to accept `req` as an extra arg — a giant refactor. AsyncLocalStorage lets the middleware do `tenantStore.run({ tenantId }, () => next())` and every nested CRUD reads `tenantStore.getStore()?.tenantId` with zero signature changes. The runtime depends on Node's `async_hooks` module (built-in, no npm), which is Node-only — but the Postgres adapter only ever runs on Node, so the dependency is safe.
+- **`current_setting('app.current_tenant_id', true)::int` — the `true` second arg is load-bearing.** Without it (`current_setting('app.current_tenant_id')`), Postgres throws when the var is unset. With `true`, it returns `NULL`, which `::int` then coerces to NULL, and the policy comparison `tenant_id = NULL` is `UNKNOWN` (effectively false) — the row is hidden. That's the correct behavior for unauthenticated requests: the policy still fires, returns no rows, and the app filter further confirms by responding 401.
+- **`CREATE POLICY` doesn't have `IF NOT EXISTS` until Postgres 16.** For 12-15 compatibility, use `DROP POLICY IF EXISTS clear_tenant_isolation ON x; CREATE POLICY clear_tenant_isolation ON x ...`. Drop-and-recreate also makes policy edits land cleanly on redeploys without a separate migration step.
+- **Don't gate `app.listen()` on the RLS init.** A slow Postgres handshake during boot would delay the server accepting requests for seconds. Better: emit the RLS DDL in a fire-and-forget async IIFE that runs in parallel with listen(). The application-layer tenant filter is still active during the small window before policies are created — defense in depth means BOTH layers exist, not that one waits on the other. Log a clear failure mode (`[clear:rls] init failed (app-layer filter still active)`) so an operator who does see an init error knows the surviving layer is named, not implied.
+- **Don't conflate Supabase backend with raw Postgres.** Supabase apps use `supabase-js` client (REST API on top of Postgres) — they don't use `pg.Pool`, so the SET LOCAL pattern doesn't apply. Supabase RLS uses `auth.uid()` from the JWT instead. The compile-emit gating is `tenantScope && dbBackend.includes('postgres')`, which excludes Supabase (its backend string is `'supabase'`, not `'postgres'`). Supabase RLS is its own design problem — defer to a follow-up cycle.
+
+---
+
 ## Session 2026-05-03: enforce-that refusal-message rename (transitional)
 
 Russell's locked canonical form for the message side of `enforce that` shipped today. The rename was the top item in the queue all day; deferred multiple times because "this touches dozens of files." When I finally took a focused shot, the actual scope was 130 occurrences across 19 files — bigger than I'd want for a hands-off ship, smaller than the "dozens of files" framing suggested. The work landed in one focused branch with the back-compat path intact for a follow-up cleanup.
@@ -73,6 +89,7 @@ The rebuild ended up cleaner than the original would have been because writing t
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-03 night: Postgres ROW LEVEL SECURITY](#session-2026-05-03-night-postgres-row-level-security-as-defense-in-depth) | SET LOCAL is transaction-scoped; FORCE RLS prevents owner bypass; AsyncLocalStorage threads tenant id through awaits; current_setting needs `, true` for unset case |
 | [Session 2026-05-01: Publish progress UX](#session-2026-05-01-publish-progress-ux) | Browser red can be blocked by runner permissions; keep static UI contracts too |
 | [Studio Instrumentation](#studio-instrumentation-2026-05-01) | allow-list events, never store source/chat/secrets, in-memory first |
 | [Clear Compiler](#clear-compiler) | 1:1 rule, synonym collisions, tokenizer eats colons, CRUD in assignments |

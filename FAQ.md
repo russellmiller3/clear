@@ -187,6 +187,16 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 The static guard is `scripts/landing-pricing.test.mjs`. It checks the tier names, locked prices, one primary mailto sales CTA, and the no-emoji icon rule.
 
+### Where does Postgres row-level security live? (2026-05-03 night)
+
+Two surfaces. The runtime helpers live in `runtime/db-postgres.js`: `withTenantScope(id, fn)` runs a function inside an `AsyncLocalStorage` context that every CRUD call detects and uses to wrap the query in `BEGIN + SET LOCAL app.current_tenant_id + query + COMMIT`. `enableRowLevelSecurity(tableName)` runs `ALTER TABLE x ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` (so even the table owner cannot bypass) + drop-and-recreate `clear_tenant_isolation` policy with `current_setting('app.current_tenant_id')::int`.
+
+The compile-emit lives in `compiler.js`. When source declares both `database is postgres` AND `database is shared with tenant scope` (`tenantScopeWithRLS = tenantScope && isPostgres`), the compiled server emits a per-request middleware (`app.use((req, res, next) => req.user && req.user.tenant_id ? db.withTenantScope(req.user.tenant_id, () => next()) : next())`) right after the auth middleware, plus a startup hook that calls `db.enableRowLevelSecurity(tableName)` once per data shape at boot. Fire-and-forget so a slow Postgres doesn't gate `app.listen()` — the application-layer tenant filter remains active during the small window before policies create.
+
+Tests: `runtime/db-postgres-rls.test.js` (22 cases on the runtime — AsyncLocalStorage propagation, BEGIN/SET LOCAL/COMMIT ordering, idempotency, table-name validation) plus `lib/postgres-rls-compile.test.js` (28 cases on the compile-emit gating across all 4 backend × scope combinations).
+
+The CRO sentence: tenant separation is enforced by the application AND by Postgres itself — two independent layers.
+
 ### Where does the Studio Run-Prove button live?
 
 Toolbar button in `playground/ide.html` (next to `Compile`) wired to `window.doProve()`. The handler posts the editor source to `POST /api/prove` in `playground/server.js`, which calls `prove(source)` from `lib/prover/index.js` (the same engine `clear prove` uses on the CLI) and returns `{ bundle, formatted }`. The handler switches to the terminal tab via `showTab('terminal')`, renders `data.formatted` via `appendTerminalText`, and updates the status bar with proved/failed/unverifiable counts.

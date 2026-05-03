@@ -476,6 +476,17 @@ When a Marcus app is deployed on Clear Cloud, multiple customers share one Postg
 
 **You don't need to write `tenant_id` anywhere in your source.** It's invisible to the author, automatic in the compiled output. The auth layer must populate `req.user.tenant_id` (the JWT carries it). For apps that genuinely don't need tenant isolation (single-tenant tools, internal apps), don't declare shared scope — the compiler defaults to single-tenant semantics.
 
+**Defense in depth on Postgres (2026-05-03 night):** when the source ALSO declares `database is postgres` (the production-Postgres backend), the compiler emits a second layer on top of the application filter — real Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id` that fires on every CRUD. Even if a future bug or a hand-written raw SQL slip bypasses the application filter, Postgres physically refuses to return another tenant's rows. Two independent layers, either one alone sufficient. Customer compliance buyer asks "how do you guarantee tenant separation?" — the answer is now "twice: in the application AND inside the database."
+
+```clear
+target: backend
+database is postgres with tenant scope   # both keywords → both layers fire
+allow signup and login
+
+create a Deals table:
+  status
+```
+
 ```clear
 target: backend
 database is shared with tenant scope
