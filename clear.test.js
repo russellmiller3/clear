@@ -28888,16 +28888,28 @@ describe('rule keyword — parser', () => {
     expect(/name|identifier/i.test(msg)).toBe(true);
   });
 
-  it('hard-errors when rule body is empty', () => {
+  it('parses rule with empty body without erroring (prover/validator handle it)', () => {
     const src = `rule discount-cap:
 rule another:
   enforce that x is less than 10 or 'too big'`;
     // First rule has no indented body lines — body is empty. The second rule
     // is at the same indent level, so it terminates the first rule's body.
+    // Empty rule body is NOT a parse error: the prover surfaces it as an
+    // UNVERIFIABLE verdict ("rule body is empty"), and the validator hard-
+    // errors at compile time. Both downstream catches are exercised in their
+    // own test blocks; the parser stays permissive so the proof bundle can
+    // still attribute a verdict to the rule.
     const ast = parse(src);
-    expect(ast.errors.length).toBeGreaterThan(0);
-    const msg = ast.errors.map(e => e.message).join(' ');
-    expect(/empty|body|at least one/i.test(msg)).toBe(true);
+    const ruleErrors = (ast.errors || []).filter(e =>
+      /rule '.*' block needs at least one statement/i.test(e.message)
+    );
+    expect(ruleErrors.length).toBe(0);
+    const rules = ast.body.filter(n => n.type === 'rule_def');
+    expect(rules.length).toBe(2);
+    expect(rules[0].name).toBe('discount-cap');
+    expect(rules[0].body.length).toBe(0);
+    expect(rules[1].name).toBe('another');
+    expect(rules[1].body.length).toBe(1);
   });
 
   it('hard-errors on duplicate rule names in the same file', () => {

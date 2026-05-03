@@ -35,15 +35,14 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-03 evening)
+## Current State (rewritten 2026-05-02 late-evening)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
 **Where the product is:**
 - All 5 canonical Marcus apps (Deal Desk, Approval Queue, Lead Router, Onboarding Tracker, Internal Request Queue) compile clean and pass 74 of 74 automated browser checks.
-- The proof system shipped: every named business rule in deal-desk shows "PROVED for every possible deal" via `clear prove`. Real field-referencing rules now work (not the old tautology placeholders).
+- The proof system shipped AND its verdict surface is now hardened: the business-rules eval (35 cases across 21 groups) passes 35 of 35. Four wrong-verdict gaps closed today — equality-on-constants now folds correctly, empty rule bodies now report UNVERIFIABLE instead of vanishing, and impure expressions hidden inside assignments are now detected. These were exactly the cases where the prover would have lied to a CRO during a demo.
 - Studio has a fullscreen toggle for demo recording.
-- 8 commits on real GitHub today across 2 branches; 3 of them (fullscreen, stat-cards, rename) already merged to main.
 
 **What's blocking launch (in order):**
 1. Russell finishes Cloudflare account setup → hands over token + account ID + namespace name
@@ -82,17 +81,13 @@ git push origin main --no-verify
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Fix the two proof-system gaps surfaced by the eval harness:**
-   - Equality-on-constants doesn't simplify. `enforce that 5 is equal to 7` should report "rejects all inputs" but reports "enforced for every input." Fix in `lib/prover/symbolic.js` — extend the simplifier to evaluate `===` / `!==` between two literal numbers or strings. ~10-20 lines + 2 new test cases. Should also handle `is greater than or equal to` / `is less than or equal to` for completeness.
-   - Empty rule bodies vanish. A `rule X:` with no indented child lines doesn't appear in the proof bundle at all. The handler in `lib/prover/index.js:115` claims to return UNVERIFIABLE for empty bodies but never gets called because the parser doesn't emit a node. Check parser handling; ensure a node IS emitted (with empty body) so the proof system can give the documented verdict.
+1. **Wire the runtime-witness harness** at `lib/prover/runtime-witness.test.js`. Today it's a stub with 3 cases declared and skipped. To wire it up: take the compiled JavaScript backend output, write it to a tempfile, spawn `node tempfile.js`, wait for the server to listen, send the violating inputs via `fetch()`, assert every one comes back as a rejection (HTTP 400 or 403) with the rule's name in the error message. If even one violating input slips through with success, the proof system is lying — break the test loud. This is the "trust but verify" bridge for the regulated-tier pitch.
 
-2. **Wire the runtime-witness harness** at `lib/prover/runtime-witness.test.js`. Today it's a stub with 3 cases declared and skipped. To wire it up: take the compiled JavaScript backend output, write it to a tempfile, spawn `node tempfile.js`, wait for the server to listen, send the violating inputs via `fetch()`, assert every one comes back as a rejection (HTTP 400 or 403) with the rule's name in the error message. If even one violating input slips through with success, the proof system is lying — break the test loud. This is the "trust but verify" bridge for the regulated-tier pitch.
+2. **Lead-router rules cleanup**: `apps/lead-router/main.clear` still has tautology rules (`enforce that 1 is greater than 0`) at top-level. Same fix pattern as deal-desk: move them into the POST handler, reference real fields. ~15 minutes of work.
 
-3. **Expand the eval harness** at `lib/prover/business-rules-eval.test.js` from 16 cases to 25-30. Coverage gaps to add: cross-record constraints, set membership, regex, string length, date math, percentage formulas. Each new case is `{ src, name, expectedVerdict, why }` per the existing pattern.
+3. **Replace `or 'msg'` with `, or fail with error message: 'msg'` in enforce-that syntax (Russell's preferred form, locked 2026-05-03 evening)**: `enforce that X or 'message'` reads weird — `or` is in the wrong position. Final canonical form: `enforce that discount is less than 30, or fail with error message: 'Discounts over 30% need VP approval'`. Reads as "enforce that X is true, OR if not, fail with this error message." Same pattern as today's `guard → enforce that` rename: add `, or fail with error message:` as a multi-word synonym in `synonyms.js`, bump SYNONYM_VERSION, write a one-shot bulk-replace script for all .clear apps + tests + teaching docs, update the parser's enforce-that handler to accept the new separator. ~30-45 min. No back-compat per project rule. Verify the full compiler test suite + 35-case eval still green after the rename.
 
-4. **Lead-router rules cleanup**: `apps/lead-router/main.clear` still has tautology rules (`enforce that 1 is greater than 0`) at top-level. Same fix pattern as deal-desk: move them into the POST handler, reference real fields. ~15 minutes of work.
-
-5. **Replace `or 'msg'` with `, or fail with error message: 'msg'` in enforce-that syntax (Russell's preferred form, locked 2026-05-03 evening)**: `enforce that X or 'message'` reads weird — `or` is in the wrong position. Final canonical form: `enforce that discount is less than 30, or fail with error message: 'Discounts over 30% need VP approval'`. Reads as "enforce that X is true, OR if not, fail with this error message." Same pattern as today's `guard → enforce that` rename: add `, or fail with error message:` as a multi-word synonym in `synonyms.js`, bump SYNONYM_VERSION, write a one-shot bulk-replace script for all .clear apps + tests + teaching docs, update the parser's enforce-that handler to accept the new separator. ~30-45 min. No back-compat per project rule. Verify 2864/2864 compiler tests + 35-case eval still green after the rename.
+4. **Pre-existing playground bundle build is broken.** `npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js` fails with "Could not resolve fs/path/url" because `lib/packaging-cloudflare.js` imports node-only modules. Either add `--platform=node` (changes the bundle target), or split packaging-cloudflare out of the index.js graph for browser builds, or add `--external:fs --external:path --external:url`. Independent of any prover work — a stale playground bundle ships compiler changes invisibly to Studio users.
 
 ---
 

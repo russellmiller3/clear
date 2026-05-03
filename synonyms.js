@@ -88,8 +88,8 @@ const SYNONYM_TABLE = Object.freeze({
   //   statement position → assignment (=)
   //   expression position → comparison (==)
   // Multi-word forms are always comparison (handled by greedy matching).
-  is: Object.freeze(['is', 'equals', 'equal to', '==']),
-  'is not': Object.freeze(['is not', 'not equal to', 'differs from', '!=']),
+  is: Object.freeze(['is', 'equals', 'equal to', 'is equal to', '==']),
+  'is not': Object.freeze(['is not', 'not equal to', 'is not equal to', 'differs from', '!=']),
   'is greater than': Object.freeze(['is greater than', 'is more than', 'exceeds', '>']),
   'is less than': Object.freeze(['is less than', 'is fewer than', 'is under', '<']),
   'is at least': Object.freeze(['is at least', 'is greater than or equal to', '>=']),
@@ -491,6 +491,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.37.0';
+const SYNONYM_VERSION = '0.38.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

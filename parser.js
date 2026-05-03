@@ -5460,15 +5460,12 @@ function parseRuleDef(lines, startIdx, _parentIndent, errors, seenNames = []) {
   const body = Array.isArray(block.body) ? block.body : [];
   const endIdx = block.endIdx;
 
-  // Filter trailing pure-comment lines from the empty-body check —
-  // a rule with only a comment is still empty in spirit.
-  const realStatements = body.filter(s => s && s.type !== NodeType.COMMENT);
-  if (realStatements.length === 0) {
-    errors.push({
-      line,
-      message: `rule '${name}' block needs at least one statement. Example: guard discount is less than 30 or 'too big'`,
-    });
-  }
+  // Empty rule body is NOT a parse error. The prover handles it: an
+  // empty rule body surfaces as an UNVERIFIABLE verdict with the reason
+  // "rule body is empty" in the proof bundle, which is a clearer and more
+  // actionable signal than a generic parse error. Removing the parser
+  // error also lets the prover bundle still include the rule in its
+  // per-rule attribution rather than bailing out on parse_error.
 
   return {
     node: {

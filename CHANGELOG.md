@@ -6,7 +6,22 @@ Newest entries at the top.
 
 ---
 
-<<<<<<< Updated upstream
+## 2026-05-02 - Prover gaps closed: equality folding, empty-body verdicts, impure expressions
+
+Closed four wrong-verdict gaps the business-rules eval surfaced — the eval went from 31 of 35 passing to 35 of 35. Each gap was a case where the prover would have shipped the wrong answer to a CRO.
+
+**What shipped (one focused branch, four surgical fixes):**
+- **`is equal to` / `is not equal to` are now multi-word synonyms.** The tokenizer was matching `is` as a single-token operator and leaving `equal to` as a stray identifier on the right side, so `5 is equal to 7` parsed as "5 equals (variable named 'equal to')" — a free-variable structural proof instead of a constant-folded counter-example. Adding the 3-word forms makes the tokenizer collapse them to one `==` operator, and the simplifier folds `5 == 7` to `false` → DISPROVED. Same for the negative form. `synonyms.js` SYNONYM_VERSION 0.37.0 → 0.38.0.
+- **Empty rule bodies no longer hard-fail at the parser.** The parser used to push an error when `rule X:` had no indented body, which sent the whole bundle down the `parse_error` early-return path and dropped every rule from the verdict list. The prover already returns UNVERIFIABLE with reason "rule body is empty" for this exact case, and the validator still catches it at compile time. Removed the redundant parser error so the proof bundle can attribute a verdict to the empty rule like every other rule.
+- **The impurity check now descends into expression nodes.** A rule like `scored = ask claude '…'` wraps the AI call in an `assign` node whose RHS is the impure node. The walker only descended into `body` / `thenBody` / `elseBody` arrays, missing the impurity hidden one level deep. Added single-node descent into `n.expression` so `ask claude` and `call api '…'` inside an assignment correctly mark the rule UNVERIFIABLE instead of structurally PROVED.
+- **Eval harness reaches 35 cases across 21 groups.** HANDOFF Next Move #3 ("expand from 16 to 25-30") was already exceeded — the harness now covers 35 verdicts. All green.
+
+**Why for launch:** these were exactly the cases where the prover would have lied to Marcus's CTO. `enforce that 5 is equal to 7` claiming PROVED, an empty rule silently disappearing, an `ask claude` rule claiming structural enforcement — every one would have been a credibility-killing demo moment. The four-line synonym addition + the two-line walk extension + the parser permissive-pass fixes the verdict surface for the entire regulated-tier pitch.
+
+**Tests:** `node lib/prover/business-rules-eval.test.js` 35/35 (was 31/35). `node clear.test.js` 2899/2899 (was 2898/2899). All 8 core templates compile clean.
+
+---
+
 ## 2026-05-02 - `clear prove` default output is now CRO-readable
 
 The prover used to emit math-journal output ("PROVED for any: amount", "UNVERIFIABLE — symbolic engine: stripe call (effect)") that read as a developer artifact. After today's change, `clear prove <file.clear>` defaults to plain-English sentences a CRO or compliance buyer can read on their own.
@@ -134,8 +149,6 @@ Sandbox-Claude built the `rule:` keyword + named business rules + per-rule prove
 
 ---
 
-=======
->>>>>>> Stashed changes
 ## 2026-05-02 - PC-8: `clear test` auto-runs the prover (default ON)
 
 Every `clear test <file>` session now also runs the Decidable Core prover and appends a one-line proof-status summary at the bottom. The math layer is no longer a separate command authors have to remember — it's the default feedback for every test run.
