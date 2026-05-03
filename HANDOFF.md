@@ -83,9 +83,44 @@ git push origin main --no-verify
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Fix any remaining flaky tests across the repo.** The specific `#editor-mount .cm-editor` Playwright timeout I saw forcing `--no-verify` earlier this session does NOT reproduce in the current code — `#editor-mount` is no longer used anywhere; the IDE test now uses `#editor-pane .cm-editor` which is the correct selector. So that specific fail is already gone. Open question: are OTHER tests still flaky? Audit `clear.test.js`, `playground/*.test.js`, `lib/**/*.test.js`, `scripts/*.test.mjs`, `.claude/hooks/*.test.mjs` over a few full pre-push runs — note any test that fails non-deterministically. Either fix the race / wait properly / mock the dep, or quarantine with a clear `it.skip` and a TODO. Goal: pre-push hook returns a clean signal Russell can trust again.
+1. **Fix the audit PDF's "How it was proved formally" prose — strip prover-internals jargon, show the actual runtime check the compiler emitted.** The current text reads like a stack trace ("symbolic engine couldn't decode the guard expression: Symbolic limit: unsupported node 'member_access'"). Auditors don't care about prover internals; they want to know WHY they should trust the verdict. Two coupled changes:
 
-3. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce in isolation.** Originally observed 2026-05-02 late-evening while moving lead-router rules into the POST handler. A comment block at body indentation between `requires login` and the rules caused "Route block references 'lead' but no variable named 'lead' is in scope here" on the route block downstream. Tried to reconstruct in isolation with the exact comment content, full endpoint shape, and `route lead by size:` block — all parsed clean (0 errors). Either the trigger requires conditions I haven't recreated, or it was an intermediate file state. **For the next session:** if this resurfaces, capture the EXACT failing source (don't paraphrase) before touching it, then `node /tmp/probe.mjs` with that source loaded as a string to confirm the trigger.
+   **(a) Math-checker emits a clean tag, not prose.** In `lib/prover/index.js`'s `proveRule`, replace the long natural-language `enforcedReasons.push(...)` strings with a structured tag — `{ kind: 'tautology' }` or `{ kind: 'structural-enforcement', line: N, expression: '<expr>' }`. The PDF writer picks the human-readable paragraph based on the tag. Prose stays out of the prover.
+
+   **(b) Show the actual compiled check.** The PDF section "How it was proved formally" should include the snippet of compiled JavaScript that does the rejection — line number from the source, then the actual `if (!(...)) { return res.status(403)... }` block. The auditor sees with their own eyes that the program literally rejects bad inputs. The math claim ("no path through this program reaches the next line with a violating input") then has the receipt right next to it.
+
+   **What the new output should look like for `price-floor-positive`:**
+
+   > **How it was proved formally**
+   >
+   > This rule is enforced by **construction of the program**, not by math simulation.
+   >
+   > The math-checker can't simulate every possible deal — `list_price` could be any number. So instead it reads the structure of the compiled app and says: the compiler put a hard check at line 18 that rejects any deal whose `list_price` is not greater than 0.
+   >
+   > **The actual runtime check (compiled from line 18 of your source):**
+   >
+   > ```js
+   > if (!(deal?.list_price > 0)) {
+   >   return res.status(403).json({
+   >     error: "List price must be positive",
+   >     rule: "price-floor-positive"
+   >   });
+   > }
+   > ```
+   >
+   > **The claim, in plain English:** no line after this check ever runs for a deal with `list_price ≤ 0`. Not because we proved it abstractly, but because the program literally rejects those deals before reaching the next line. The runtime evidence below confirms the rejection actually fires for 20 violating inputs.
+
+   To implement: extract the compiled check string by re-compiling the source per rule, finding the lines whose source-map traces back to the rule's body, and embedding them into `audit-bundle.mjs`'s JSON output. Then `audit-pdf.py` renders them in a code block. ~2 hours.
+
+2. **Add chapters and a clickable Table of Contents to USER-GUIDE.md.** The guide is now ~3700 lines — readers can't navigate. Add a TOC at the top with anchor links to each chapter heading. Also: audit chapter ordering — some chapters are old, some are recent; group them so the tutorial reads in a natural arc (start with "your first app", then data, then UI, then auth, then rules, then deploy). Don't add new content; just structure what's there. ~1 hour.
+
+3. **Row-level security / tenant isolation.** Marcus apps deployed on Clear Cloud share a Postgres instance — every customer's data lives in the same database. Without row-level filters, customer A could query customer B's records by guessing IDs. This is the hard regulated-tier requirement: every CRUD operation must be scoped by tenant ID, and the compiler must EMIT that scoping automatically (not rely on the author remembering). Design needed: how does the source declare a tenant boundary? Likely `database is shared with tenant scope` or similar, and every `look up` / `save` / `delete` auto-injects `WHERE tenant_id = caller's tenant_id`. Plan + implement in same session — multi-day work.
+
+4. **Concurrency Phase 2 — actually prevent the race conditions Phase 1 detects.** Phase 1 (shipped 2026-05-02) FLAGS every endpoint where a read-modify-write race can happen. Phase 2 RUNS the runtime that prevents those races: optimistic locking with a `version` column on every mutable table, automatic retry on version mismatch, `safe to retry` modifier for endpoints where idempotency is provable, hard-fail when concurrent edits would corrupt state. The honest pitch sentence after Phase 2 is "we prove no races," not "we flag every endpoint where a race can happen." This was supposed to ship today and didn't — it's the load-bearing piece for "Marcus's data won't get corrupted under load." Multi-day work.
+
+5. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce in isolation.** Originally observed 2026-05-02 late-evening while moving lead-router rules into the POST handler. A comment block at body indentation between `requires login` and the rules caused "Route block references 'lead' but no variable named 'lead' is in scope here" on the route block downstream. Tried to reconstruct in isolation with the exact comment content, full endpoint shape, and `route lead by size:` block — all parsed clean (0 errors). Either the trigger requires conditions I haven't recreated, or it was an intermediate file state. **For the next session:** if this resurfaces, capture the EXACT failing source (don't paraphrase) before touching it, then `node /tmp/probe.mjs` with that source loaded as a string to confirm the trigger.
+
+6. **Fix any remaining flaky tests across the repo.** The specific `#editor-mount .cm-editor` Playwright timeout I saw forcing `--no-verify` does NOT reproduce in current code. Open question: are OTHER tests still flaky? Audit over a few full pre-push runs.
 
 
 ---
