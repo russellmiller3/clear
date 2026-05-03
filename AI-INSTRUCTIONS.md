@@ -1646,7 +1646,7 @@ Not technically a guard (it doesn't reject based on data), but serves the same p
 |------------------------|----------|
 | Endpoint from anonymous users | `requires login` |
 | Endpoint from wrong role | `requires role 'admin'` |
-| Business rule (stock, plan, etc.) | `enforce that X or 'message'` |
+| Business rule (stock, plan, etc.) | `enforce that X, or fail with error message: 'message'` |
 | Named, provable business rule | `rule <name>:` + body (see "Named Business Rules" below) |
 | Input shape (missing/malformed fields) | `validate <entity>:` + rules |
 | Agent from doing bad things | `must not:` + `block arguments matching` |
@@ -1665,7 +1665,7 @@ Use a `rule:` block when a business policy deserves a name. The prover walks eve
 - You want the prover to attribute the verdict by name in `clear prove` output.
 
 ### When NOT to use
-- One-off check inside a single endpoint that doesn't deserve a name → use bare `enforce that X or 'msg'`.
+- One-off check inside a single endpoint that doesn't deserve a name → use bare `enforce that X, or fail with error message: 'msg'`.
 - Field validation that just checks shape/type → use `validate <entity>:` block.
 
 ### Canonical form

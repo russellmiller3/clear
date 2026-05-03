@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 - Old `enforce that X or 'msg'` syntax fully removed
+
+Closed the transitional back-compat path that landed earlier today with the new `, or fail with error message:` syntax. The parser is now strict — only the new form is accepted.
+
+**What shipped:**
+- **Walked every inline source string in `clear.test.js`** (20 hits) and rewrote to the new form. Used a permissive regex (`/(enforce that .+?) or '([^']*)'/g`) that catches the pattern anywhere on a line, not just at line start — handles backtick template strings, double-quoted JS strings with embedded `\n`, and multi-line test fixtures.
+- **Rewrote `AI-INSTRUCTIONS.md` and `USER-GUIDE.md`** examples (5 hits combined) so the canonical-form table and the tutorial both speak the new form.
+- **Stripped the parser back-compat fallback** in `parser.js`'s `enforce_that` handler — the secondary scan for `STRING preceded by 'or'` token is gone. Bare `enforce that X` (no message) still works with default refusal; that's not a back-compat concern, it's a separate supported shape.
+- **Left intentional historical references intact:** `CHANGELOG.md`, `HANDOFF.md`, `learnings.md`, comments in `parser.js` and `lib/prover/index.js`, plus the rewrite-script's own pattern string. Those are narrative or self-references about the old form, not canonical examples.
+
+**Why for launch:** "no back-compat per project rule" is now actually true for this syntax. Any `.clear` source file with the old form fails to parse with a clear error pointing at the new canonical. Pitch surface speaks one language.
+
+**Tests:** `node clear.test.js` 2899/2899 (unchanged). `node lib/prover/business-rules-eval.test.js` 35/35. `node lib/prover/runtime-witness.test.js` 4/4. All 8 core templates compile clean.
+
+---
+
 ## 2026-05-03 - New canonical refusal-message form for `enforce that` (transitional)
 
 Russell's locked canonical form now ships: `enforce that X, or fail with error message: 'why'` reads as "enforce X, OR if not, fail with this error message." The old form `enforce that X or 'msg'` reads weird because `or` was in the wrong position (sounded like "X or this string" not "if not X, this message"). New form is a proper English sentence; old form was a parser-friendly compromise.

@@ -1225,15 +1225,14 @@ const CANONICAL_DISPATCH = new Map([
     return j;
   }],
   ['enforce_that', (ctx) => {
-    // Canonical message form (2026-05-03): `enforce that X, or fail with error
-    // message: 'msg'`. Reads as English: "enforce X, OR if not, fail with
-    // this error message." Old form `enforce that X or 'msg'` is still
-    // accepted during the transition — full removal is a follow-up commit.
-    // Bare `enforce that X` (no message) keeps working with a default
-    // refusal — the no-message case has its own tests and is not deprecated.
+    // Canonical message form (2026-05-03, back-compat removed): scan
+    // backward for STRING preceded by ':' preceded by `or_fail_with_msg`.
+    // The leading comma between expression and marker is conventional but
+    // tolerated as optional. Bare `enforce that X` (no message) keeps
+    // working with a default refusal — the no-message case has its own
+    // tests and is not deprecated.
     let endPos = ctx.tokens.length;
     let guardMessage = null;
-    // First try the new form: STRING preceded by ':' preceded by `or_fail_with_msg`.
     for (let k = ctx.tokens.length - 1; k >= 3; k--) {
       const t = ctx.tokens[k];
       if (t.type !== TokenType.STRING) continue;
@@ -1247,17 +1246,6 @@ const CANONICAL_DISPATCH = new Map([
       if (maybeComma && maybeComma.value === ',') exprEnd = k - 3;
       endPos = exprEnd;
       break;
-    }
-    // Fall back to the old form: STRING preceded by 'or'. Stays working
-    // until the back-compat removal commit.
-    if (guardMessage === null) {
-      for (let k = ctx.tokens.length - 1; k > 1; k--) {
-        if (ctx.tokens[k].type === TokenType.STRING && k > 0 && ctx.tokens[k-1].canonical === 'or') {
-          guardMessage = ctx.tokens[k].value;
-          endPos = k - 1;
-          break;
-        }
-      }
     }
     const result = parseExpression(ctx.tokens, 1, ctx.line, endPos);
     if (result.error) {

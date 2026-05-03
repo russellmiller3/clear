@@ -1339,7 +1339,7 @@ different. **Use them together, not instead of each other.**
 |------------------------|----------|
 | Endpoint from anonymous users | `requires login` |
 | Endpoint from wrong role | `requires role 'admin'` |
-| Business rule (stock, plan, etc.) | `enforce that X or 'message'` |
+| Business rule (stock, plan, etc.) | `enforce that X, or fail with error message: 'message'` |
 | Input shape (required fields, format) | `validate <entity>:` + rules |
 | Agent from doing bad things | `must not:` + `block arguments matching` |
 | Whole app from dangerous patterns | App-level policies at top |
@@ -1355,8 +1355,8 @@ when user calls POST /api/orders sending order:
   validate order:                                  # 4. input shape
     product_id is number, required
     quantity is number, required, min 1, max 100
-  enforce that user's plan is not 'free' or 'Upgrade to Pro'  # 5. business rule
-  enforce that product's stock > 0 or 'Out of stock'          # 5. business rule
+  enforce that user's plan is not 'free', or fail with error message: 'Upgrade to Pro'  # 5. business rule
+  enforce that product's stock > 0, or fail with error message: 'Out of stock'          # 5. business rule
   new_order = save order as new Order
   send back new_order with success message
 ```

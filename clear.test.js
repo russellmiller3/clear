@@ -11945,7 +11945,7 @@ describe('Agent primitives - compiler', () => {
   });
 
   it('agent guard compiles to throw not res.status', () => {
-    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  enforce that d's name is not nothing or 'Name required'\n  send back d");
+    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  enforce that d's name is not nothing, or fail with error message: 'Name required'\n  send back d");
     expect(result.errors).toHaveLength(0);
     const js = result.javascript;
     const agentStart = js.indexOf('async function agent_t');
@@ -12766,7 +12766,7 @@ describe('Explicit syntax: check ... otherwise error (guard)', () => {
   });
 
   it('old guard syntax still works as alias', () => {
-    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  enforce that d's name is not nothing or 'Name is required'\n  send back d");
+    const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  enforce that d's name is not nothing, or fail with error message: 'Name is required'\n  send back d");
     expect(result.errors).toHaveLength(0);
     const agent = result.ast.body.find(n => n.type === 'agent');
     const guard = agent.body.find(n => n.type === 'guard');
@@ -28845,7 +28845,7 @@ describe('Hard hint sweep preset', () => {
 describe('rule keyword — parser', () => {
   it('parses rule with a kebab-case name and a guard body', () => {
     const src = `rule discount-cap:
-  enforce that discount is less than 30 or 'Discount over 30% needs VP approval'`;
+  enforce that discount is less than 30, or fail with error message: 'Discount over 30% needs VP approval'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28858,7 +28858,7 @@ describe('rule keyword — parser', () => {
 
   it('parses rule with a quoted-string name and dasherizes it', () => {
     const src = `rule 'Deals over $100k need CRO approval':
-  enforce that amount is less than 100000 or 'Deals over $100k need CRO sign-off'`;
+  enforce that amount is less than 100000, or fail with error message: 'Deals over $100k need CRO sign-off'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28870,7 +28870,7 @@ describe('rule keyword — parser', () => {
   it('parses rule body with multi-line if / guard statements', () => {
     const src = `rule big-deal-needs-cro:
   enforce that amount is less than 100001, or fail with error message: 'Big deals need CRO sign-off'
-  enforce that discount is less than 50 or 'Big discounts need CRO sign-off'`;
+  enforce that discount is less than 50, or fail with error message: 'Big discounts need CRO sign-off'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28881,7 +28881,7 @@ describe('rule keyword — parser', () => {
 
   it('hard-errors when rule name is missing', () => {
     const src = `rule:
-  enforce that x is less than 10 or 'too big'`;
+  enforce that x is less than 10, or fail with error message: 'too big'`;
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
     const msg = ast.errors.map(e => e.message).join(' ');
@@ -28891,7 +28891,7 @@ describe('rule keyword — parser', () => {
   it('parses rule with empty body without erroring (prover/validator handle it)', () => {
     const src = `rule discount-cap:
 rule another:
-  enforce that x is less than 10 or 'too big'`;
+  enforce that x is less than 10, or fail with error message: 'too big'`;
     // First rule has no indented body lines — body is empty. The second rule
     // is at the same indent level, so it terminates the first rule's body.
     // Empty rule body is NOT a parse error: the prover surfaces it as an
@@ -28916,7 +28916,7 @@ rule another:
     const src = `rule discount-cap:
   enforce that discount is less than 30, or fail with error message: 'too big'
 rule discount-cap:
-  enforce that discount is less than 50 or 'too big'`;
+  enforce that discount is less than 50, or fail with error message: 'too big'`;
     const ast = parse(src);
     expect(ast.errors.length).toBeGreaterThan(0);
     const msg = ast.errors.map(e => e.message).join(' ');
@@ -28927,7 +28927,7 @@ rule discount-cap:
     const src = `database is local memory
 
 rule discount-cap:
-  enforce that discount is less than 30 or 'too big'`;
+  enforce that discount is less than 30, or fail with error message: 'too big'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const rule = ast.body.find(n => n.type === 'rule_def');
@@ -28993,7 +28993,7 @@ describe('rule keyword — validator', () => {
 
   it('does not warn when a rule body has a guard statement', () => {
     const src = `rule discount-cap:
-  enforce that discount is less than 30 or 'too big'`;
+  enforce that discount is less than 30, or fail with error message: 'too big'`;
     const ast = parse(src);
     expect(ast.errors).toHaveLength(0);
     const { warnings } = validate(ast);
@@ -29023,7 +29023,7 @@ describe('rule keyword — validator', () => {
 describe('rule keyword — compiler', () => {
   it('emits a labeled comment with the rule name in JS output', () => {
     const src = `rule discount-cap:
-  enforce that 20 is less than 30 or 'too big'`;
+  enforce that 20 is less than 30, or fail with error message: 'too big'`;
     const result = compileProgram(src, { target: 'web' });
     expect(result.errors).toHaveLength(0);
     // The compiled output must mention the rule's name in a comment so
@@ -29033,7 +29033,7 @@ describe('rule keyword — compiler', () => {
 
   it('emits a labeled comment with the rule name in Python output', () => {
     const src = `rule discount-cap:
-  enforce that 20 is less than 30 or 'too big'`;
+  enforce that 20 is less than 30, or fail with error message: 'too big'`;
     const result = compileProgram(src, { target: 'backend' });
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('discount-cap');
@@ -29046,7 +29046,7 @@ describe('rule keyword — compiler', () => {
     // Backend target because GUARD is a backend-only node — that's
     // unrelated to rule_def; it's the same rule for any guard.
     const src = `rule discount-cap:
-  enforce that 20 is less than 30 or 'too big'`;
+  enforce that 20 is less than 30, or fail with error message: 'too big'`;
     const result = compileProgram(src, { target: 'backend' });
     expect(result.errors).toHaveLength(0);
     // Backend JS guard emits a status-403 throw with the message.
@@ -29057,7 +29057,7 @@ describe('rule keyword — compiler', () => {
     const src = `rule discount-cap:
   enforce that 20 is less than 30, or fail with error message: 'too big'
 rule big-deal-needs-cro:
-  enforce that 100 is less than 200 or 'needs CRO'`;
+  enforce that 100 is less than 200, or fail with error message: 'needs CRO'`;
     const result = compileProgram(src, { target: 'web' });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('discount-cap');
@@ -29068,7 +29068,7 @@ rule big-deal-needs-cro:
 describe('rule keyword — prover', () => {
   it('produces a per-rule entry in the bundle for every rule_def in the file', () => {
     const src = `rule discount-cap:
-  enforce that 1 is less than 2 or 'too big'`;
+  enforce that 1 is less than 2, or fail with error message: 'too big'`;
     const bundle = proveSource(src);
     expect(Array.isArray(bundle.rules)).toBe(true);
     expect(bundle.rules.length).toBe(1);
@@ -29077,7 +29077,7 @@ describe('rule keyword — prover', () => {
 
   it('marks a tautological rule body as PROVED', () => {
     const src = `rule trivially-true:
-  enforce that 1 is less than 2 or 'never fires'`;
+  enforce that 1 is less than 2, or fail with error message: 'never fires'`;
     const bundle = proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'trivially-true');
     expect(rule).toBeTruthy();
@@ -29092,7 +29092,7 @@ describe('rule keyword — prover', () => {
   amount (number)
 rule reads-database:
   found = look up Deal where status is 'pending'
-  enforce that found is not nothing or 'no deal found'`;
+  enforce that found is not nothing, or fail with error message: 'no deal found'`;
     const bundle = proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'reads-database');
     expect(rule).toBeTruthy();
@@ -29105,7 +29105,7 @@ rule reads-database:
     // 1 > 2 is universally false — the guard always trips; the rule
     // refuses every input. The "rule never holds" case is a counterexample.
     const src = `rule always-fails:
-  enforce that 1 is greater than 2 or 'always wrong'`;
+  enforce that 1 is greater than 2, or fail with error message: 'always wrong'`;
     const bundle = proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'always-fails');
     expect(rule).toBeTruthy();
@@ -29116,7 +29116,7 @@ rule reads-database:
     const src = `rule rule_a:
   enforce that 1 is less than 2, or fail with error message: 'tautology'
 rule rule_b:
-  enforce that 1 is greater than 2 or 'counterexample'`;
+  enforce that 1 is greater than 2, or fail with error message: 'counterexample'`;
     const bundle = proveSource(src);
     expect(bundle.ruleCounts).toBeTruthy();
     expect(bundle.ruleCounts.proved).toBe(1);
@@ -29126,7 +29126,7 @@ rule rule_b:
 
   it('renders rule verdicts in formatBundle output (CLI surface)', () => {
     const src = `rule discount-cap:
-  enforce that 1 is less than 2 or 'tautology'`;
+  enforce that 1 is less than 2, or fail with error message: 'tautology'`;
     const bundle = proveSource(src);
     const text = formatProofBundle(bundle);
     expect(text).toContain('discount-cap');
