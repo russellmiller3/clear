@@ -11046,10 +11046,17 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     if (inp.inputType === 'file') continue;
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
+    // Multi-page apps may declare inputs on one page (e.g. a "New deal" form)
+    // that don't exist on other pages. _recompute() runs on every page, so a
+    // bare getElementById('input_X').value = ... throws TypeError when the
+    // input isn't on the current page — which kills the rest of _recompute()
+    // including the template-substitution loop that fills nav counts and
+    // stat cards. Guard each setter with a null-check so missing inputs are
+    // a silent no-op and rendering downstream of this point still runs.
     if (inp.inputType === 'yes/no') {
-      lines.push(`  document.getElementById('${inputId}').checked = Boolean(_state.${name});`);
+      lines.push(`  { const _el = document.getElementById('${inputId}'); if (_el) _el.checked = Boolean(_state.${name}); }`);
     } else {
-      lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
+      lines.push(`  { const _el = document.getElementById('${inputId}'); if (_el) _el.value = _state.${name}; }`);
     }
   }
 
@@ -16162,11 +16169,16 @@ const CSS_COMPONENTS = [
   position: sticky;
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 14px;
   border-top: 1px solid var(--clear-line);
   background: var(--clear-bg-panel);
+}
+.clear-detail-actions .btn {
+  flex: 0 1 auto;
+  min-width: 0;
 }` },
   { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }
 .clear-chat-head { padding: 12px 16px; border-bottom: 1px solid oklch(var(--color-base-content) / 0.1); display: flex; align-items: center; justify-content: space-between; }
