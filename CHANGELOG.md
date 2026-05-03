@@ -6,6 +6,27 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 - Playground bundle build fixed
+
+The browser bundle (`playground/clear-compiler.min.js`, used by the Studio playground for in-browser compile previews) hadn't been rebuildable since the cloud-packaging module landed — `npx esbuild` failed with "Could not resolve fs / path / url" because the cloud packaging walks node-only modules at the top of its imports. Studio users were silently running stale compiler bytecode whenever the source compiler changed. Fixed today.
+
+**What shipped:**
+- **Browser stub for cloud packaging** (`lib/packaging-cloudflare.browser-stub.js`) — exports the four symbols `compiler.js` imports (`buildWorkerBundle`, `_selectWorkersUtilities`, `loadAuthWebcryptoSource`, `extractKnowledgeTextSync`) with throw-on-call bodies. Browser code never reaches them; if it ever did the error explains "this is a server-only path."
+- **Build script** (`scripts/build-playground-bundle.mjs`) — uses esbuild's JS API with a tiny resolve plugin that intercepts `lib/packaging-cloudflare.js` (matched by regex on the import path) and redirects to the stub. Server-side Node code (the CLI, the test suite, `playground/server.js`) keeps loading the REAL packaging-cloudflare.js — the swap only happens for the browser bundle.
+- **`esbuild` added as a devDependency.** Build tooling, not runtime; doesn't reach compiled output. Existing devDeps already include husky, pg-mem, playwright — same category.
+- **`npm run bundle` shortcut** added to `package.json` scripts.
+- **`CLAUDE.md` updated** — old `npx esbuild ...` command replaced with `npm run bundle`. Also clarified that the "Zero npm packages" rule applies to compiler RUNTIME, not build tooling.
+
+**Dead ends documented (don't retry):**
+- esbuild's CLI `--alias` rejects relative paths — only bare module names.
+- A build script using esbuild's JS API requires esbuild installed locally; `npx esbuild` doesn't expose the JS API.
+
+**Why for launch:** Studio is the demo surface. Every time a compiler change lands and the playground bundle isn't rebuilt, the in-browser compiler shows STALE output to anyone clicking through the IDE — including Marcus during a demo. A working `npm run bundle` means every push can keep the playground compiler in sync with main.
+
+**Tests:** `node clear.test.js` 2899/2899. New bundle (793K, was a stale 808K from a prior session) loads in Node and exposes `compileProgram` plus the full export surface; a tiny smoke compile (build-for-web heading) returns 0 errors and 10K of HTML.
+
+---
+
 ## 2026-05-02 late-evening - Per-rule entity detection in the proof translator
 
 Closed the "PROVED for every possible deal" hardcode that was lying about every non-deal-desk app. The translator now extracts the entity from each rule's guard expression and threads it through to the CRO-readable sentence.

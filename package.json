@@ -9,6 +9,7 @@
     "test:browser": "node scripts/run-marcus-uat.mjs",
     "test:all": "node clear.test.js && node playground/e2e.test.js && npm run test:lead-router && npm run test:browser",
     "start": "node playground/server.js",
+    "bundle": "node scripts/build-playground-bundle.mjs",
     "prepare": "husky"
   },
   "private": true,
@@ -19,6 +20,7 @@
     "pg": "^8.20.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.0",
     "husky": "^9.1.7",
     "pg-mem": "^3.0.14",
     "playwright": "^1.59.1"

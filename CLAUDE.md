@@ -243,11 +243,23 @@ Always use these skills — never jump straight to coding a new feature.
 Do not make this repo public. The playground uses an obfuscated bundle
 (`playground/clear-compiler.min.js`). Rebuild it after compiler changes:
 
-npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js
+npm run bundle
 
+(or `node scripts/build-playground-bundle.mjs` directly). The build script
+swaps in a tiny browser stub for `lib/packaging-cloudflare.js` (which
+imports node-only `fs` / `path` / `url`) so the browser bundle builds
+cleanly. esbuild is a devDependency — installed via `npm install`. The
+plain CLI form `npx esbuild index.js --bundle --format=esm --minify` does
+NOT work because esbuild can't resolve node-only modules for the browser
+target, and the CLI's `--alias` flag rejects relative paths.
 
 ## No External Dependencies
-The compiler is pure ESM JavaScript. Zero npm packages. Runs in Node and browser.
+The compiler RUNTIME (what ships in compiled apps and the browser bundle)
+is pure ESM JavaScript with zero npm packages — runs in Node and browser.
+Build tooling (esbuild for the playground bundle, husky for git hooks,
+pg-mem for tests) lives in devDependencies and never reaches compiled
+output. Compiled apps still depend on express / better-sqlite3 / bcryptjs
+/ pg at runtime — those are listed under `dependencies`.
 
 ## Clear Studio (IDE)
 Run `node playground/server.js` → opens `http://localhost:3456`.
