@@ -4946,11 +4946,20 @@ function compileCrud(node, ctx, pad) {
   }
   if (node.operation === 'remove') {
     const removeCtx = `{ op: 'remove', table: '${table}', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    // Tenant isolation Phase 2: under shared scope, every remove
+    // includes tenant_id in the WHERE so a malicious caller cannot
+    // delete another tenant's row by guessing its id.
+    const tenantWrap = (filterExpr) => ctx.tenantScope
+      ? `{ ...${filterExpr}, tenant_id: req.user && req.user.tenant_id }`
+      : filterExpr;
     // When inside a DELETE endpoint with :id and no explicit condition, auto-inject id filter
     if (ctx.endpointHasId && !node.condition) {
-      return `${pad}await _clearTry(() => db.remove('${table}', { id: req.params.id }), ${removeCtx});${lineComment}`;
+      const filter = tenantWrap(`{ id: req.params.id }`);
+      return `${pad}await _clearTry(() => db.remove('${table}', ${filter}), ${removeCtx});${lineComment}`;
     }
-    const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
+    const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
+    const wrapped = tenantWrap(baseFilter);
+    const where = (node.condition || ctx.tenantScope) ? `, ${wrapped}` : '';
     return `${pad}await _clearTry(() => db.remove('${table}'${where}), ${removeCtx});${lineComment}`;
   }
   if (node.operation === 'upsert') {
