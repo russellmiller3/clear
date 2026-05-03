@@ -1312,6 +1312,31 @@ when user requests data from /api/items:
   assert(historyBody.versions[0] && historyBody.versions[0].versionId === 'script-id', `widget UAT deploy-history exposes newest version (got ${historyBody.versions[0] && historyBody.versions[0].versionId})`);
 }
 
+// =============================================================================
+// /api/prove-pdf — bad-input rejection paths
+// =============================================================================
+// Full happy path needs Python + reportlab + node-resolved audit-bundle
+// pipeline; that's a heavy E2E covered by manual + CI runs. These checks
+// just lock in the request validation: empty body returns 400, missing
+// source returns 400. The endpoint must exist and reject bad input
+// without spawning the heavy stages.
+console.log('\n📑 /api/prove-pdf');
+{
+  const empty = await fetch(`${BASE}/api/prove-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(empty.status === 400, `empty body → 400 (got ${empty.status})`);
+
+  const blank = await fetch(`${BASE}/api/prove-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: '   ' }),
+  });
+  assert(blank.status === 400, `whitespace-only source → 400 (got ${blank.status})`);
+}
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;

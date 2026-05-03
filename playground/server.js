@@ -424,6 +424,118 @@ app.post('/api/prove', async (req, res) => {
 });
 
 // =============================================================================
+// PROVE → PDF
+// =============================================================================
+// Studio's Prove button can hand the developer a navy/amber compliance PDF
+// with the math verdict per rule + the runtime witness data (20 violating
+// inputs per PROVED rule + the rejection responses they produced). Same
+// artifact the CLI workflow `node scripts/audit-bundle.mjs <file> | python
+// scripts/audit-pdf.py - <out>` produces — this endpoint wraps both stages
+// for in-Studio download. The HANDOFF redesign for the Prove button (item 4)
+// turns "click Prove → terminal dump" into "click Prove → PDF download."
+// =============================================================================
+app.post('/api/prove-pdf', async (req, res) => {
+  const { source } = req.body || {};
+  if (!source || !source.trim()) {
+    return res.status(400).json({ error: 'Missing or empty source' });
+  }
+
+  // Lazy imports so the regular Studio path (which doesn't need fs/spawn for
+  // proof generation) doesn't pay the load cost on every server boot.
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+  const { spawn } = await import('child_process');
+
+  // Stage area inside the repo so the audit-bundle script (which writes
+  // build artifacts relative to its source's package.json) can find what
+  // it needs. Each request gets its own subdir under os.tmpdir() so
+  // concurrent Prove clicks don't clobber each other.
+  const stamp = `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  const tmpDir = path.join(os.tmpdir(), 'clear-prove-pdf-' + stamp);
+  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
+  const sourcePath = path.join(tmpDir, 'main.clear');
+  const bundlePath = path.join(tmpDir, 'bundle.json');
+  const pdfPath = path.join(tmpDir, 'audit.pdf');
+
+  const cleanup = () => {
+    for (const p of [sourcePath, bundlePath, pdfPath]) {
+      try { fs.unlinkSync(p); } catch {}
+    }
+    try { fs.rmdirSync(tmpDir); } catch {}
+  };
+
+  try {
+    fs.writeFileSync(sourcePath, source, 'utf8');
+
+    // Stage 1: bundle (Node). Captures stdout JSON.
+    const bundleJson = await new Promise((resolveBundle, rejectBundle) => {
+      const proc = spawn(process.execPath, [path.join(ROOT_DIR, 'scripts', 'audit-bundle.mjs'), sourcePath], {
+        cwd: ROOT_DIR,
+        env: { ...process.env, NODE_ENV: 'test' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (d) => { stdout += d.toString(); });
+      proc.stderr.on('data', (d) => { stderr += d.toString(); });
+      const timer = setTimeout(() => {
+        try { proc.kill('SIGTERM'); } catch {}
+        rejectBundle(new Error('audit-bundle timed out after 60s'));
+      }, 60_000);
+      proc.on('exit', (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          rejectBundle(new Error(`audit-bundle exited with code ${code}: ${stderr.split('\n').slice(0, 5).join(' | ')}`));
+          return;
+        }
+        resolveBundle(stdout);
+      });
+    });
+    fs.writeFileSync(bundlePath, bundleJson, 'utf8');
+
+    // Stage 2: PDF (Python). Reads bundle.json, writes audit.pdf.
+    await new Promise((resolvePdf, rejectPdf) => {
+      const proc = spawn('python', [path.join(ROOT_DIR, 'scripts', 'audit-pdf.py'), bundlePath, pdfPath], {
+        cwd: ROOT_DIR,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stderr = '';
+      proc.stderr.on('data', (d) => { stderr += d.toString(); });
+      const timer = setTimeout(() => {
+        try { proc.kill('SIGTERM'); } catch {}
+        rejectPdf(new Error('audit-pdf timed out after 30s'));
+      }, 30_000);
+      proc.on('exit', (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          rejectPdf(new Error(`audit-pdf exited with code ${code}: ${stderr.split('\n').slice(0, 5).join(' | ')}`));
+          return;
+        }
+        resolvePdf();
+      });
+      proc.on('error', (e) => {
+        clearTimeout(timer);
+        rejectPdf(new Error('audit-pdf could not spawn (is python installed?): ' + e.message));
+      });
+    });
+
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error('audit-pdf reported success but produced no PDF file');
+    }
+    const pdfBytes = fs.readFileSync(pdfPath);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit.pdf"');
+    res.setHeader('Content-Length', String(pdfBytes.length));
+    res.end(pdfBytes);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    cleanup();
+  }
+});
+
+// =============================================================================
 // COMPILE
 // =============================================================================
 app.post('/api/compile', (req, res) => {
