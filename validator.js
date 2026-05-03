@@ -136,7 +136,47 @@ export function validate(ast) {
   validateRouteBlocks(ast.body, warnings);
   validateRuleBlocks(ast.body, errors, warnings);
   validateConcurrency(ast.body, warnings);
+  validateTenantScope(ast.body, warnings);
   return { errors, warnings };
+}
+
+// =============================================================================
+// Tenant isolation (2026-05-03). Plan: regulated-tier completeness arc.
+//
+// When the source declares `database is shared with tenant scope`, every
+// endpoint that does CRUD must `require login` — otherwise `req.user`
+// is undefined and the auto-injected `tenant_id: req.user && req.user.tenant_id`
+// silently becomes `tenant_id: undefined`, which matches NOTHING in the
+// table. The CRUD operation then reads zero rows or fails to insert.
+// That's a "tenant-isolation hole" by misconfiguration: the silent
+// failure looks like the auto-scoping working when really it's not.
+//
+// This validator catches misconfigured endpoints at compile time so
+// the hole never reaches deployment.
+// =============================================================================
+function validateTenantScope(body, warnings) {
+  if (!Array.isArray(body)) return;
+  const dbDecl = body.find(n => n && n.type === 'database_decl');
+  if (!dbDecl || !dbDecl.tenantScope) return;
+  for (const node of body) {
+    if (!node || node.type !== 'endpoint' || !Array.isArray(node.body)) continue;
+    // Skip seed-style endpoints (`/seed`, `/setup`, `/init`) — those run
+    // once at startup, often without a logged-in user.
+    if (typeof node.path === 'string' && (
+      node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init')
+    )) continue;
+    // Does this endpoint touch the database? Look for any CRUD child.
+    const hasCrud = node.body.some(b => b && b.type === 'crud');
+    if (!hasCrud) continue;
+    // Does the endpoint require login?
+    const hasAuth = node.body.some(b => b && (b.type === 'requires_auth' || b.type === 'requires_role'));
+    if (hasAuth) continue;
+    const lineNum = node.line || 0;
+    const methodLabel = (node.method || 'request').toUpperCase();
+    warnings.push(
+      `Line ${lineNum}: [TENANT_SCOPE_NEEDS_AUTH] ${methodLabel} ${node.path} touches the database under shared tenant scope but does not require login. The auto-injected tenant_id filter needs req.user.tenant_id from the JWT, which is undefined without auth. Add 'requires login' to this endpoint, or move the seed-only logic to a /seed-prefixed path.`
+    );
+  }
 }
 
 // =============================================================================

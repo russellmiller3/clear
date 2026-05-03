@@ -29669,6 +29669,36 @@ when user sends deal to /api/deals:
     const js = r.javascript || r.serverJS || '';
     expect(js).not.toMatch(/tenant_id\s*:\s*req\.user\.tenant_id/);
   });
+
+  it('validator warns when shared scope endpoint omits requires login', () => {
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  found = look up all Deals
+  send back found`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => typeof w === 'string' ? w : (w.message || JSON.stringify(w))).join(' ');
+    expect(codes).toContain('TENANT_SCOPE_NEEDS_AUTH');
+  });
+
+  it('validator does NOT warn when shared scope endpoint has requires login', () => {
+    const src = `target: backend
+database is shared with tenant scope
+allow signup and login
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  requires login
+  found = look up all Deals
+  send back found`;
+    const r = compileProgram(src);
+    const codes = (r.warnings || []).map(w => typeof w === 'string' ? w : (w.message || JSON.stringify(w))).join(' ');
+    expect(codes).not.toContain('TENANT_SCOPE_NEEDS_AUTH');
+  });
 });
 
 // ---------------------------------------------------------------------------
