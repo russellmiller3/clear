@@ -202,6 +202,31 @@ Read from a JSON bundle on stdin: `cat my-bundle.json | node scripts/proof-busin
 
 Tests at `scripts/proof-business-language.test.mjs` (27 passing) cover the verdict mapping, free-variable rendering, headline pluralisation, and JSON payload shape. Recovered from a sandbox-Claude session 2026-05-02 — survived because the files were left in the working tree, never committed to the lost remote.
 
+### How do I write a test that spawns a server, fetches over HTTP, or otherwise does real I/O? (2026-05-03)
+
+Use the paired async helpers in `lib/testUtils.js` — `describeAsync` + `itAsync` — instead of the standard `describe` + `it`. The standard pair is synchronous: `it()` calls the async function but never awaits it, so `✅` prints before any awaits resolve and rejections become unhandled errors AFTER the test was already counted as passing. Real-I/O tests need explicit awaiting.
+
+The shape:
+
+```js
+import { describeAsync, itAsync, expect } from '../testUtils.js';
+
+await describeAsync('my suite that spawns servers', async () => {
+  await itAsync('case 1: server boots and answers', async () => {
+    const port = await findFreePort();
+    const server = await startCompiledServer(serverJS, port);
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/`);
+      expect(r.status).toBe(200);
+    } finally {
+      server.cleanup();
+    }
+  });
+});
+```
+
+Each `await itAsync(...)` runs sequentially inside `describeAsync`, so the pass/fail count is correct by the time `describeAsync` resolves. Worked example: `lib/prover/runtime-witness.test.js` uses this pattern to spawn 3 compiled apps on free ports and fire 60 violating inputs across them. The standard `describe` + `it` exports stay available for sync tests.
+
 ### How does `clear test` show proof status? (PC-8 + business-language default, 2026-05-02)
 
 `clear test <file>` auto-runs the prover after the test runner finishes and prints a CRO-readable summary at the bottom — for example: `3 of 4 rules proved, 1 unverifiable (run \`clear prove <file>\` for details)`. Auto-prove is on by default — opt out with `--no-prove`. Under `--json`, the proof bundle is included in the same JSON envelope as the test results.
