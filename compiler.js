@@ -4921,6 +4921,18 @@ function compileCrud(node, ctx, pad) {
     // Plan: plans/plan-concurrency-proofs-2026-05-02.md (Phase 2).
     const dbUpdateFn = ctx.endpointHasOptimisticLock ? 'db.updateWithVersion' : 'db.update';
     const versionArg = ctx.endpointHasOptimisticLock ? `, ${varCode}._version` : '';
+    // Tenant isolation Phase 2: under shared scope, set tenant_id on the
+    // record before update so the row's tenant column stays consistent.
+    // Future slice will switch the WHERE clause to also require
+    // tenant_id match (3-arg db.update form) so a cross-tenant id cannot
+    // be hijacked. For now: tenant_id-on-record prevents accidental
+    // cross-tenant overwrites where the body omits it.
+    const tenantSetLine = ctx.tenantScope
+      ? `\n${pad}_picked_${varCode}.tenant_id = req.user && req.user.tenant_id;`
+      : '';
+    const tenantSetLineNoId = ctx.tenantScope
+      ? `\n${pad}/* tenant-scope: pick already includes tenant_id from request; runtime update preserves it */`
+      : '';
     if (ctx.endpointHasId) {
       // Use _pick to filter incoming fields through the schema (mass-assignment protection).
       // The id comes from the URL param, not the body — set it after picking so db.update
@@ -4928,7 +4940,7 @@ function compileCrud(node, ctx, pad) {
       // variable has all fields with correct types (numeric id, all columns). Without this,
       // the variable only contains the partial request body, so `send back X` returns an
       // incomplete response.
-      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}_picked_${varCode}.id = req.params.id;\n${pad}await _clearTry(() => ${dbUpdateFn}('${table}', _picked_${varCode}${versionArg}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', { id: _picked_${varCode}.id }) || {});`;
+      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}_picked_${varCode}.id = req.params.id;${tenantSetLine}\n${pad}await _clearTry(() => ${dbUpdateFn}('${table}', _picked_${varCode}${versionArg}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', { id: _picked_${varCode}.id }) || {});`;
     }
     return `${pad}await _clearTry(() => ${dbUpdateFn}('${table}', _pick(${varCode}, ${schemaName})${versionArg}), ${updateCtx});${lineComment}`;
   }
