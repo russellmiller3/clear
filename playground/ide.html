@@ -5773,6 +5773,15 @@ function setStudioMode(target) {
   url.searchParams.set('studio-mode', target);
   window.location.href = url.toString();
 }
+// Expose on window so the inline `onchange="setStudioMode(this.value)"` on
+// the mode-switcher dropdown can find it. This file's <script> tag is a
+// module (line 818), which gives top-level functions module scope, not
+// global. Without this assignment the dropdown silently does nothing —
+// inline handlers walk the global scope and find no setStudioMode there.
+// Same pattern applies to the 60+ other inline-handler functions in this
+// file (search for `window\.` assignments) — `setStudioMode` was the one
+// that got missed.
+window.setStudioMode = setStudioMode;
 
 // Run on initial load. Every mode change is a full navigation (URL param),
 // so no need for ongoing listeners.
