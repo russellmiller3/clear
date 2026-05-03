@@ -4794,7 +4794,20 @@ function compileCrud(node, ctx, pad) {
   }
 
   if (node.operation === 'lookup') {
-    const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
+    // Tenant isolation Phase 2: when the source declares
+    // `database is shared with tenant scope`, every lookup auto-scopes
+    // by `tenant_id = req.user.tenant_id`. Without this, customer A
+    // could query customer B's records by guessing IDs. The injection
+    // is transparent: the author writes `look up Deal where status is
+    // 'pending'`, the compiler emits a filter that ALSO requires
+    // tenant_id to match the caller's tenant. Plan: regulated-tier
+    // completeness arc, 2026-05-03.
+    const tenantWrap = (filterExpr) => ctx.tenantScope
+      ? `{ ...${filterExpr}, tenant_id: req.user && req.user.tenant_id }`
+      : filterExpr;
+    const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
+    const wrappedFilter = tenantWrap(baseFilter);
+    const where = node.condition || ctx.tenantScope ? `, ${wrappedFilter}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
     let lookupCode;
     if (isSingleLookup) {
@@ -4802,8 +4815,7 @@ function compileCrud(node, ctx, pad) {
     } else if (node.noLimit) {
       lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}'${where})).map(_revive);`;
     } else {
-      const filterArg = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
-      lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}', ${filterArg}, { limit: ${DEFAULT_QUERY_LIMIT} })).map(_revive);`;
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}', ${wrappedFilter}, { limit: ${DEFAULT_QUERY_LIMIT} })).map(_revive);`;
     }
     // PERF-5: explicit pagination pushes LIMIT + OFFSET into SQL instead of
     // fetching all rows then slicing client-side. Works for literal page

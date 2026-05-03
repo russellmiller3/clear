@@ -29600,6 +29600,42 @@ when user requests data from /api/deals:
     const js = r.javascript || r.serverJS || '';
     expect(js).not.toContain('tenant-isolation: enabled');
   });
+
+  it('lookup under tenant scope injects tenant_id from req.user into the filter', () => {
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  requires login
+  found = look up Deal where status is 'pending'
+  send back found`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // The lookup must scope by req.user.tenant_id automatically — without
+    // this, customer A could query customer B's records by guessing IDs.
+    // Defensive: req.user could be undefined (no auth on this lookup
+    // would be a separate validator failure); the && guard prevents a
+    // null-deref crash in case the endpoint is misconfigured.
+    expect(js).toMatch(/tenant_id\s*:\s*req\.user(\s*&&\s*req\.user)?\.tenant_id/);
+  });
+
+  it('lookup WITHOUT tenant scope does NOT inject tenant_id', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  status
+
+when user requests data from /api/deals:
+  requires login
+  found = look up Deal where status is 'pending'
+  send back found`;
+    const r = compileProgram(src);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).not.toMatch(/tenant_id\s*:\s*req\.user\.tenant_id/);
+  });
 });
 
 // ---------------------------------------------------------------------------
