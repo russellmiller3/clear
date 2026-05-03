@@ -14293,7 +14293,14 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // tenant_id column to every table (so apps that later turn on shared
     // scope don't need a migration). Listing it here would cause a
     // "duplicate column name" error in SQLite.
-    lines.push("db.createTable('audit_log', { ts: { type: 'text' }, user_id: { type: 'number' }, user_email: { type: 'text' }, method: { type: 'text' }, path: { type: 'text' }, status: { type: 'number' } });");
+    //
+    // body_summary captures WHAT was changed (the request body's JSON,
+    // sanitized) so the compliance buyer's third question — "show me
+    // what was modified, not just who and when" — has a literal answer.
+    // Sensitive fields (password, token, secret, api_key, jwt, auth)
+    // are redacted to "[redacted]" in the middleware before insert.
+    // 1KB cap on the column to bound storage cost per audit row.
+    lines.push("db.createTable('audit_log', { ts: { type: 'text' }, user_id: { type: 'number' }, user_email: { type: 'text' }, method: { type: 'text' }, path: { type: 'text' }, status: { type: 'number' }, body_summary: { type: 'text' } });");
     lines.push('');
     lines.push('// JWT middleware — extracts user from token on every request');
     lines.push('app.use((req, res, next) => {');
@@ -14312,10 +14319,35 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('// changing request (POST/PUT/PATCH/DELETE) is logged regardless of');
     lines.push("// where it lands. The db.insert is fire-and-forget — the response");
     lines.push("// already shipped, so insert latency doesn't add to user-visible time.");
+    // Sanitizing helper: shallow-walks the body and redacts fields whose
+    // names look secret-y (password, token, secret, api_key, jwt, auth).
+    // Capped at 1KB total so a giant POST doesn't bloat the audit log.
+    // Defined inline so the compiled app doesn't need a separate runtime
+    // module import.
+    lines.push('function _sanitizeAuditBody(body) {');
+    lines.push('  if (body === null || body === undefined) return null;');
+    lines.push("  if (typeof body !== 'object') return String(body).slice(0, 1024);");
+    lines.push('  const sensitive = /password|token|secret|api[_-]?key|jwt|auth/i;');
+    lines.push('  const cleaned = {};');
+    lines.push('  for (const k in body) {');
+    lines.push('    if (!Object.prototype.hasOwnProperty.call(body, k)) continue;');
+    lines.push("    if (sensitive.test(k)) { cleaned[k] = '[redacted]'; continue; }");
+    lines.push('    const v = body[k];');
+    lines.push("    if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {");
+    lines.push('      cleaned[k] = v;');
+    lines.push('    } else {');
+    lines.push("      try { cleaned[k] = JSON.stringify(v).slice(0, 200); } catch { cleaned[k] = '[unserializable]'; }");
+    lines.push('    }');
+    lines.push('  }');
+    lines.push("  try { return JSON.stringify(cleaned).slice(0, 1024); } catch { return '[unserializable-body]'; }");
+    lines.push('}');
     lines.push('app.use((req, res, next) => {');
     lines.push("  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();");
     lines.push("  if (req.path && req.path.startsWith('/__meph__')) return next();");
     lines.push('  const _audit_started_at = new Date().toISOString();');
+    // Snapshot body BEFORE the route handler runs (handlers can mutate
+    // req.body, especially if they re-pick or strip fields).
+    lines.push('  const _audit_body = _sanitizeAuditBody(req.body);');
     lines.push("  res.on('finish', () => {");
     lines.push("    Promise.resolve(db.insert('audit_log', {");
     lines.push('      ts: _audit_started_at,');
@@ -14325,6 +14357,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('      method: req.method,');
     lines.push('      path: req.path,');
     lines.push('      status: res.statusCode,');
+    lines.push('      body_summary: _audit_body,');
     lines.push("    })).catch(e => { console.error('[clear:audit] insert failed:', e.message); });");
     lines.push('  });');
     lines.push('  next();');
