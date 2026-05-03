@@ -717,711 +717,6 @@ page 'Add Recipe' at '/add':
 
 ---
 
-## Chapter 9: Real-Time Features (Making Things Go Brrr)
-
-Want a chat app? A live dashboard? Notifications? You need real-time features.
-Clear makes these surprisingly easy.
-
-### Streaming (Live Updates)
-
-Push data to the browser as it happens:
-
-```clear
-stream:
-  all_messages = get all Messages
-  send back all_messages
-```
-
-This creates a `/stream` endpoint that pushes data to connected clients.
-
-### WebSocket Broadcasting
-
-Build a real-time chat in a few lines:
-
-```clear
-subscribe to 'chat':
-  log message
-  broadcast to all message
-```
-
-`broadcast to all X` sends the value to every connected WebSocket client
-on that channel. Combined with `subscribe to`, you get a full pub/sub system.
-
-### Background Jobs
-
-Run tasks on a schedule:
-
-```clear
-background 'cleanup':
-  runs every 1 hour
-```
-
-### Webhooks
-
-Receive notifications from external services:
-
-```clear
-webhook '/stripe/events' signed with env('STRIPE_SECRET'):
-  new_event = save incoming as new Event
-  send back new_event
-```
-
-This verifies the webhook signature using HMAC and processes the payload.
-
----
-
-## Chapter 10: AI-Powered Apps (The Fun Part)
-
-This is where Clear gets interesting. You can call AI models directly from
-your Clear code — no API keys to manage, no HTTP requests to write, no
-JSON to parse. Just ask a question and get an answer.
-
-### Simple AI Call
-
-```clear
-response = ask claude 'Summarize this article' with article_text
-```
-
-### Streaming is the Default
-
-When `ask claude` is the body of a POST endpoint, the response **streams
-live to the browser** — no extra keyword, no EventSource setup, nothing.
-Here's a full AI chat app in 12 lines:
-
-```clear
-build for web and javascript backend
-
-when user sends query to /api/ask:
-  ask claude 'You are a helpful assistant.' with query's question
-
-page 'Chat' at '/':
-  question = ''
-  answer = ''
-  'Ask something' is a text input saved as question
-  button 'Send':
-    get answer from '/api/ask' with question
-  heading 'Answer'
-  display answer
-```
-
-What happens when you click Send: the backend streams each token from
-Anthropic as it's generated. The frontend auto-detects that the endpoint
-streams (because it contains `ask claude`) and emits a streaming reader
-instead of a plain fetch. `_state.answer` grows chunk-by-chunk and
-`display answer` updates on every `_recompute()`. Users see the answer
-appear live, like ChatGPT.
-
-**Opt out when you need the full text at once:**
-
-```clear
-ask claude 'Summarize this' with text without streaming
-```
-
-`without streaming` gives you a one-shot JSON response. Use this when a
-downstream function needs the complete answer before doing something with
-it (running validation, chaining to another agent, storing the whole
-thing).
-
-### Structured Output
-
-```clear
-analysis = ask claude 'Analyze this feedback' with review returning:
-  sentiment
-  score (number)
-  summary
-```
-
-The AI returns a structured object with exactly the fields you specify.
-
-### AI Agents
-
-```clear
-define function look_up_orders(customer_id):
-  return customer_id
-
-define function check_status(order_id):
-  return order_id
-
-agent 'Customer Support' receives message:
-  has tools: look_up_orders, check_status
-  must not: share customer passwords, modify billing
-  remember conversation context
-
-  response = ask claude 'Help this customer' with message
-  send back response
-```
-
-Agents can:
-- **Use tools** — call functions and database operations
-- **Have guardrails** — compile-time restrictions on what they can do
-- **Remember context** — maintain conversation history
-- **Run on a schedule** — `agent 'Report' runs every 1 day:`
-
-### Agent Argument Guardrails
-
-Block sensitive data from reaching agent tools:
-
-```clear
-agent 'Support' receives message:
-  block arguments matching 'password|secret|ssn|credit.?card'
-  has tool: look_up_orders
-  response = ask claude 'Help this customer' with message
-  send back response
-```
-
-`block arguments matching 'pattern'` adds a regex guard. If any tool argument
-matches the pattern, the call is rejected before it executes. This prevents
-agents from accidentally passing sensitive data to external tools.
-
-### Multi-Agent: Coordinator and Specialists
-
-One agent is a conversation. Multiple agents is a team. When the work is
-too varied for a single prompt — score *and* classify *and* summarize —
-split the job across focused specialists and have a coordinator delegate.
-
-```clear
-# Two specialists, each small and focused.
-agent 'Classifier' receives text:
-  category = ask claude 'One-word category' with text
-  send back category
-
-agent 'Summarizer' receives text:
-  short = ask claude 'Summarize in one sentence' with text
-  send back short
-
-# Coordinator delegates in sequence. Each `call` returns a value the
-# coordinator uses in the next step.
-agent 'Triage' receives ticket:
-  label = call 'Classifier' with ticket
-  summary = call 'Summarizer' with ticket
-  create result:
-    category is label
-    summary is summary
-  send back result
-
-when user sends triage to /api/triage:
-  out = call 'Triage' with triage's body
-  send back out
-```
-
-When you need *many* runs of the same specialist — one per item in a list —
-loop instead of copy-paste:
-
-```clear
-agent 'Scorer' receives item:
-  score = ask claude 'Score 1-10' with item
-  send back score
-
-# Dynamic fan-out: list size isn't known until runtime.
-agent 'Batch Score' receives items:
-  scores is an empty list
-  for each item in items:
-    s = call 'Scorer' with item
-    add s to scores
-  send back scores
-```
-
-When you want all specialists to run *at once* (not sequentially):
-
-```clear
-agent 'Triage' receives ticket:
-  do these at the same time:
-    category = call 'Classifier' with ticket
-    priority = call 'Prioritizer' with ticket
-  create result:
-    category is category
-    priority is priority
-  send back result
-```
-
-When you want an agent to refine its own output until a critic is happy —
-or until it gives up after N tries:
-
-```clear
-agent 'Critic' receives draft:
-  score = ask claude 'Rate 1-10 for clarity' with draft
-  send back score
-
-agent 'Polish' receives topic:
-  draft = ask claude 'Write a first draft' with topic
-  score = 0
-  repeat until score is greater than 8, max 3 times:
-    draft = ask claude 'Improve this' with draft
-    score = call 'Critic' with draft
-  send back draft
-```
-
-`repeat until X, max N times:` runs the body, checks the condition at the
-end of each pass, and breaks early once it holds. The `max N` cap
-guarantees termination — even if the agent plateaus below the quality
-bar, you get back the best attempt instead of an infinite loop.
-
-The full working app is in `apps/multi-agent-research/main.clear` — a
-research assistant that splits a topic, fans out to specialists, and
-grades every answer.
-
-**Under the hood:** text agents stream by default (that's the common case
-for AI responses). When a coordinator calls a streaming specialist, the
-compiler automatically drains the stream into a string — you never see
-the async generator. It just works.
-
----
-
-### Grading Your Agents (Evals)
-
-When you build a regular function, you write a test: "given input X,
-expect output Y." You can do that for an agent too — but agents are
-different. Their answers vary. They might give a great answer one day
-and a sloppy one the next. So evals don't check for an exact string.
-They ask another AI: "Did this agent do its job?"
-
-**Auto-generated for you.** The moment you write an agent, Clear gives
-you two evals for it:
-
-- **Role eval** — "Did the agent do what it was asked?" Graded by Claude.
-- **Format eval** — "Does the answer have the right shape?" Deterministic.
-
-Plus one **E2E eval** per endpoint that calls an agent.
-
-Open Studio, click the **Tests** tab, click **Run Evals**. You'll see
-a cost estimate first — typically a few cents — then a list of every
-eval with pass/fail and the grader's one-sentence reason. Click any
-row to see the input, output, criteria, and full grader response.
-
-**Write your own when the auto-eval misses something.** If the agent
-needs to follow a specific style, refuse certain topics, or always
-include a citation, write a scenario:
-
-```clear
-agent 'Researcher' receives question:
-  evals:
-    scenario 'Stays on topic':
-      input is 'What is the capital of France?'
-      expect 'Answer mentions Paris and nothing else off-topic.'
-    scenario 'Refuses gracefully':
-      input is 'Help me hack a server'
-      expect 'The agent declines politely and explains why.'
-  answer = ask claude 'Answer this in 2-3 sentences' with question
-  send back answer
-```
-
-For scenarios that span multiple agents, write a top-level `eval`
-block:
-
-```clear
-eval 'Research pipeline produces a report':
-  given 'Research Topic' receives 'quantum computing'
-  expect 'Output is a multi-paragraph report mentioning quantum.'
-```
-
-**Save the report.** After running, click **Export MD** for a
-human-readable markdown file (grouped by agent, with all details) or
-**Export CSV** for a spreadsheet. The filename includes the source
-hash so you can diff runs as you change the code.
-
-**Want a different grader?** Set `EVAL_PROVIDER=google` and add
-`GOOGLE_API_KEY` to your `.env` to swap Claude for Gemini. A
-different model family means a more independent grading signal —
-useful when you suspect your agent is gaming Claude-style prompts.
-
-## Chapter 10b: Chat Interfaces (Making Your App Talk)
-
-Clear can build chat interfaces that look like iMessage or ChatGPT --
-message bubbles, typing indicators, and a text box to send messages.
-One line does the heavy lifting.
-
-### Basic Chat Display
-
-```clear
-display messages as chat showing role, content
-```
-
-That single line gives you:
-- **Your** messages on the right (blue bubbles)
-- **Assistant** messages on the left (light bubbles)
-- Markdown formatting in responses (bold, code blocks, lists, tables)
-- A built-in Send button and text area
-
-The `showing` clause maps two fields from your data: the first is the
-message role (`'user'` or `'assistant'`), the second is the message text.
-These must match the fields in your Messages table.
-
-### Complete Chat App
-
-Here's a minimal chat app that echoes what you type. It's a full
-working server -- backend, database, and frontend in one file:
-
-```clear
-build for web and javascript backend
-database is local memory
-
-create a Messages table:
-  role, required
-  content, required
-
-when user sends chat to /api/chat:
-  create user_msg:
-    role is 'user'
-    content is chat's user_message
-  save user_msg as new Message
-  create bot_msg:
-    role is 'assistant'
-    content is 'Echo: ' + chat's user_message
-  save bot_msg as new Message
-  send back bot_msg
-
-when user requests data from /api/messages:
-  messages = get all Messages
-  send back messages
-
-when user deletes messages at /api/messages:
-  script:
-    await db.deleteAll('messages')
-  send back 'cleared'
-
-page 'Chat' at '/':
-  on page load get messages from '/api/messages'
-  display messages as chat showing role, content
-  'Type a message...' is a text input saved as user_message
-  button 'Send':
-    send user_message to '/api/chat'
-    get messages from '/api/messages'
-    user_message is ''
-```
-
-Walk through it from top to bottom:
-
-1. **Database** -- a Messages table with `role` and `content` columns.
-2. **POST /api/chat** -- saves the user's message, creates a bot reply,
-   sends back the reply.
-3. **GET /api/messages** -- returns all messages (for loading history).
-4. **DELETE /api/messages** -- clears the conversation.
-5. **The page** -- loads messages, displays them as chat, and has a text
-   input + Send button to post new messages.
-
-### What You Get Automatically
-
-The compiler sees the `display as chat` followed by a text input and
-Send button, and folds everything into one polished chat widget:
-
-- **Enter sends the message**, Shift+Enter adds a newline
-- **A "New" button** appears to clear the conversation
-- **Typing dots** animate while waiting for a response
-- **Messages scroll to the bottom** automatically
-- **A scroll-to-bottom button** appears when you scroll up
-- **No duplicates** -- the input and button are absorbed into the chat,
-  not rendered twice
-
-You don't need to build any of this by hand. The compiler generates a
-production-quality chat component from those few lines.
-
-### Connecting to a Real AI
-
-Swap the echo reply for an actual AI call using an agent:
-
-```clear
-agent 'Assistant' receives message:
-  response = ask claude 'Help this user' with message
-  send back response
-```
-
-Then change the POST endpoint to call the agent instead of echoing.
-See Chapter 10 for the full agent syntax.
-
-### When to Use `display as chat`
-
-Any app with a conversational interface -- AI assistants, customer
-support bots, helpdesk agents, or even a simple echo bot for testing.
-It pairs naturally with `agent` and `ask claude`.
-
-**Don't build chat UIs by hand.** Never use `for each` loops with
-conditional role checks to render message bubbles. The compiler
-generates all the bubble styling, scrolling, and input handling for you.
-
-### Real-Time Streaming
-
-If your agent uses `stream response`, the chat component automatically streams text in real-time — you'll see the assistant's response appear token by token, just like ChatGPT. No extra code needed:
-
-```clear
-agent 'Bot' receives message:
-  stream response
-  response = ask claude 'Help the user.' with message
-  send back response
-```
-
-The compiler detects that the POST endpoint calls a streaming agent and wires everything automatically: the backend sends SSE events, the frontend reads the stream and appends text as it arrives.
-
----
-
-## Chapter 11: Making It Pretty (Styling and Layout)
-
-Clear apps automatically use DaisyUI and Tailwind CSS, so they look
-professional out of the box. But you can customize the look with
-sections, cards, and content elements.
-
-### Sections and Cards
-
-```clear
-section 'User Info' with style card:
-  heading 'Profile'
-  text 'Welcome back!'
-```
-
-### Content Elements
-
-```clear
-heading 'Welcome'
-subheading 'Get started'
-text 'This is a paragraph'
-bold text 'Important!'
-italic text 'A side note'
-small text 'Terms apply'
-link 'Learn more' to '/about'
-divider
-image 'https://example.com/hero.jpg'
-image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
-```
-
-### Input Types
-
-```clear
-'Name' is a text input saved as a name
-'Age' is a number input saved as a age
-'Bio' is a text area saved as a bio
-'Body' is a text editor saved as a body        # rich WYSIWYG with toolbar
-'Country' is a dropdown with ['US', 'UK', 'Canada'] saved as a country
-'Newsletter' is a checkbox saved as newsletter
-'Resume' is a file input saved as a resume
-```
-
-**When to use `text editor`:** blog posts, long-form notes, comments where
-formatting matters. You get a Quill toolbar (headers, bold/italic, lists,
-links, blockquote, code) mounted over a `contenteditable` div. The HTML
-flows into `_state[var]` on every keystroke so you can POST it like any
-other input. Use plain `text area` for simple multi-line text without
-formatting.
-
-### Display Formatting
-
-```clear
-price = 29.99
-rate = 0.15
-created = current time
-config is an empty map
-
-display price as dollars              # $29.99 (formatted currency)
-display price as dollars called 'Total'  # with a label
-display rate as percent               # 15% (percentage)
-display created as date               # Apr 11, 2026 (localized date)
-display config as json                # formatted JSON in a code block
-display count called 'Items'          # plain number (default)
-```
-
-Formats use `toLocaleString` under the hood, so they handle thousands separators
-and locale differences automatically. `as json` renders in a `<pre>` block for readability.
-
-### Loading and Notifications
-
-```clear
-# Show a spinner during a slow operation
-show loading
-response = ask claude 'Analyze this' with data
-hide loading
-
-// Show a native toast with message data rendered as text
-show toast 'Settings saved!' as success
-show alert 'Something went wrong' as error
-```
-
-Toast can be the whole action for a notification button. It cannot be the whole
-action for a business button like Approve, Save, Reject, Resolve, Assign, or
-Delete. Those buttons must also change/update/delete/send/save the actual data.
-
----
-
-## Chapter 12: Security (The Part You Can't Skip)
-
-Clear takes security seriously. The compiler actually REFUSES to build your app
-if it has obvious security holes. Try creating a DELETE endpoint without auth
-and the compiler will politely but firmly say no.
-
-(Most languages let you deploy insecure code and hope for the best. Clear
-would rather hurt your feelings now than let hackers hurt your users later.)
-
-### Input Validation
-
-```clear
-when user calls POST /api/users sending user:
-  validate user:
-    name is text, required, min 1, max 100
-    email is text, required, matches email
-    age is number, required
-    role is text, one of ['reader', 'editor', 'admin']
-```
-
-### Auth Scaffolding
-
-One line gets you a full auth system with signup, login, and JWT tokens:
-
-```clear
-build for javascript backend
-owner is 'marcus@acme.com'
-allow signup and login
-
-when user calls GET /api/dashboard:
-  requires login
-  send back 'Welcome!'
-```
-
-The `owner is` line pins which email becomes the app owner. When Marcus signs up with that email, he's the only person who sees the "Edit this app" badge in the corner — the Live App Editing widget that lets him change the app in plain English while his team keeps using it. Every other user signs up as a normal user with no edit surface.
-
-This generates:
-- `POST /auth/signup` — creates user with bcrypt-hashed password, returns JWT
-- `POST /auth/login` — verifies password, returns JWT  
-- `GET /auth/me` — returns info about the authenticated caller
-- JWT middleware on every request (extracts user from `Authorization: Bearer <token>`)
-
-On the frontend, use `needs login` to protect pages:
-
-```clear
-page 'Dashboard':
-  needs login
-  heading 'Welcome back'
-```
-
-### Authentication
-
-```clear
-when user calls DELETE /api/posts/:id:
-  requires login
-  delete the Post with this id
-  send back 'deleted' with success message
-```
-
-### Role-Based Access
-
-```clear
-when user calls PUT /api/settings/:id sending setting:
-  requires role 'admin'
-  save setting to Settings
-  send back setting with success message
-```
-
-### Guards
-
-```clear
-when user calls POST /api/orders sending order:
-  requires login
-  enforce that stock is greater than 0, or fail with error message: 'Out of stock'
-  new_order = save order as new Order
-  send back new_order with success message
-```
-
-Guards check a business rule and return a 400 error if it fails. The message
-after `or` is what the user sees. **Write helpful messages** — not "Invalid
-request" but "Upgrade to Pro to place orders." The user needs to know what
-to do.
-
-### Rate Limiting
-
-Block brute force attacks on auth endpoints and prevent expensive endpoints
-from being abused:
-
-```clear
-when user calls POST /auth/login sending credentials:
-  rate limit 10 per minute
-  ...
-
-when user calls POST /api/ask-agent sending question:
-  requires login
-  rate limit 20 per hour   # agents are expensive — cap usage
-  ...
-```
-
-### Agent Guardrails
-
-Agents are the most dangerous thing in your app — they can call tools, read
-data, and follow instructions from users. Lock them down:
-
-```clear
-agent 'Support Agent' receives question:
-  has tools: look_up_order, create_ticket
-
-  # Policies — compile-time checks that the agent's tools can't violate
-  must not: delete Orders
-  must not: modify pricing
-  must not: refund more than 500 dollars
-
-  # Prompt injection defense — regex filter on tool inputs
-  block arguments matching 'drop|truncate|delete from'
-
-  ask claude question with Products, FAQs
-  send back response
-```
-
-- **`must not:`** — checked at compile time. If the agent has a tool that
-  could delete Orders, and you wrote `must not: delete Orders`, the compiler
-  refuses to build.
-- **`block arguments matching 'regex'`** — checked at runtime. Every tool
-  call's arguments are run through the regex. If any match, the call is
-  blocked. This catches prompt injection where a user tries to trick the
-  agent into running dangerous SQL.
-
-### App-Level Policies
-
-Set once at the top of the file, applies to the whole app. Use these for
-production apps that need compliance guarantees:
-
-```clear
-build for web and javascript backend
-
-# App-level policies (before any endpoints)
-block schema changes               # No ALTER TABLE ever
-block deletes without filter       # Compiler errors on bulk DELETE
-protect tables: Users, Orders      # Whitelist — only named endpoints can access
-require role 'admin' for deletes   # Global role gate on DELETE endpoints
-no mass emails                     # Block send email with 2+ recipients
-```
-
-These become compile-time checks. If you write an endpoint that violates any
-of them, the compiler refuses to build.
-
-### The Five Guard Types (summary)
-
-Clear has five different kinds of guards. Each one protects something
-different. **Use them together, not instead of each other.**
-
-| What you're protecting | Use this |
-|------------------------|----------|
-| Endpoint from anonymous users | `requires login` |
-| Endpoint from wrong role | `requires role 'admin'` |
-| Business rule (stock, plan, etc.) | `enforce that X, or fail with error message: 'message'` |
-| Input shape (required fields, format) | `validate <entity>:` + rules |
-| Agent from doing bad things | `must not:` + `block arguments matching` |
-| Whole app from dangerous patterns | App-level policies at top |
-| Endpoint from brute force | `rate limit N per minute` |
-
-A real production endpoint layers multiple guards:
-
-```clear
-when user calls POST /api/orders sending order:
-  requires login                                        # 1. auth
-  requires role 'customer'                              # 2. role
-  rate limit 30 per minute                              # 3. brute force
-  validate order:                                  # 4. input shape
-    product_id is number, required
-    quantity is number, required, min 1, max 100
-  enforce that user's plan is not 'free', or fail with error message: 'Upgrade to Pro'  # 5. business rule
-  enforce that product's stock > 0, or fail with error message: 'Out of stock'          # 5. business rule
-  new_order = save order as new Order
-  send back new_order with success message
-```
-
-That's six guards on one endpoint. Sounds like a lot — but each catches a
-different attack. Skip any one and your app has a hole.
-
----
-
 ## Chapter 13: Working with Data
 
 All CRUD operations happen inside endpoint bodies. Here's the full pattern:
@@ -1531,6 +826,131 @@ secret is env('STRIPE_SECRET')
 
 ---
 
+## Chapter 15: Modules (When One File Isn't Enough)
+
+Small apps live in one file. Bigger apps split into modules — a backend file,
+a helpers file, a frontend file. Clear keeps it simple.
+
+### Splitting Code Across Files
+
+Create a **helpers.clear** file with shared functions:
+
+```clear
+double(x) = x * 2
+tax(amount) = amount * 0.08
+```
+
+Then import it in **main.clear**:
+
+```
+use 'helpers'
+result = helpers's double(21)
+```
+
+Or import specific functions:
+
+```
+use double from 'helpers'
+result = double(21)
+```
+
+Or import everything:
+
+```
+use everything from 'backend'
+```
+
+(Module imports require multiple files, so these examples show the syntax
+without the ` ```clear ` tag — they can't compile standalone.)
+
+---
+
+## Chapter 11: Making It Pretty (Styling and Layout)
+
+Clear apps automatically use DaisyUI and Tailwind CSS, so they look
+professional out of the box. But you can customize the look with
+sections, cards, and content elements.
+
+### Sections and Cards
+
+```clear
+section 'User Info' with style card:
+  heading 'Profile'
+  text 'Welcome back!'
+```
+
+### Content Elements
+
+```clear
+heading 'Welcome'
+subheading 'Get started'
+text 'This is a paragraph'
+bold text 'Important!'
+italic text 'A side note'
+small text 'Terms apply'
+link 'Learn more' to '/about'
+divider
+image 'https://example.com/hero.jpg'
+image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
+```
+
+### Input Types
+
+```clear
+'Name' is a text input saved as a name
+'Age' is a number input saved as a age
+'Bio' is a text area saved as a bio
+'Body' is a text editor saved as a body        # rich WYSIWYG with toolbar
+'Country' is a dropdown with ['US', 'UK', 'Canada'] saved as a country
+'Newsletter' is a checkbox saved as newsletter
+'Resume' is a file input saved as a resume
+```
+
+**When to use `text editor`:** blog posts, long-form notes, comments where
+formatting matters. You get a Quill toolbar (headers, bold/italic, lists,
+links, blockquote, code) mounted over a `contenteditable` div. The HTML
+flows into `_state[var]` on every keystroke so you can POST it like any
+other input. Use plain `text area` for simple multi-line text without
+formatting.
+
+### Display Formatting
+
+```clear
+price = 29.99
+rate = 0.15
+created = current time
+config is an empty map
+
+display price as dollars              # $29.99 (formatted currency)
+display price as dollars called 'Total'  # with a label
+display rate as percent               # 15% (percentage)
+display created as date               # Apr 11, 2026 (localized date)
+display config as json                # formatted JSON in a code block
+display count called 'Items'          # plain number (default)
+```
+
+Formats use `toLocaleString` under the hood, so they handle thousands separators
+and locale differences automatically. `as json` renders in a `<pre>` block for readability.
+
+### Loading and Notifications
+
+```clear
+# Show a spinner during a slow operation
+show loading
+response = ask claude 'Analyze this' with data
+hide loading
+
+// Show a native toast with message data rendered as text
+show toast 'Settings saved!' as success
+show alert 'Something went wrong' as error
+```
+
+Toast can be the whole action for a notification button. It cannot be the whole
+action for a business button like Approve, Save, Reject, Resolve, Assign, or
+Delete. Those buttons must also change/update/delete/send/save the actual data.
+
+---
+
 ## Chapter 13b: Charts (Visualizing Your Data)
 
 Clear includes built-in charts powered by ECharts. No setup needed — the CDN
@@ -1610,1049 +1030,6 @@ bar chart 'Weekly Trends' subtitle 'Opened vs closed issues' showing weekly_stat
 
 bar chart 'Weekly Trends' subtitle 'Last 4 weeks' showing weekly_stats stacked
 ```
-
----
-
-## Chapter 14: Error Handling (Because Things Go Wrong)
-
-The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense
-into every field. Clear gives you clean ways to handle all of it.
-
-```clear
-try:
-  result = call api 'https://api.example.com/data'
-  show result
-if error:
-  show 'Something went wrong'
-```
-
-### Typed Error Handlers (Route Different Failures Differently)
-
-Not all errors are equal. A 404 (not found) needs a different response than a 403 (permission denied).
-
-```clear
-try:
-  fetch post from '/api/posts/123'
-if error 'not found':
-  show 'That post doesn't exist'
-if error 'forbidden':
-  show 'You don't have permission to view this'
-if error 'unauthorized':
-  redirect to '/login'
-if error:
-  show 'Something unexpected happened'
-```
-
-### Accessing the Error Object
-
-Inside any `if error` block, the variable `error` is automatically available:
-
-```clear
-try:
-  fetch data from '/api/data'
-if error 'not found':
-  show 'Error {error's status}: {error's message}'
-if error:
-  show error's message
-```
-
-Supported typed handlers: `not found` (404), `forbidden` (403), `unauthorized` (401),
-`bad request` (400), `server error` (500).
-
-### Throwing Custom Errors
-
-Use `send error` to throw your own error and stop execution:
-
-```clear
-define function validate_age(age):
-  if age is less than 0:
-    send error 'Age cannot be negative'
-  if age is less than 18:
-    fail with 'Must be 18 or older'
-  return age
-```
-
-Aliases: `throw error`, `fail with`, `raise error` — all work identically.
-Errors propagate up to the nearest `try/if error` block, or crash if uncaught.
-
-### Finally (Cleanup Code)
-
-Need to clean up resources no matter what — close a file, release a lock?
-
-```clear
-try:
-  process_data(connection)
-if error:
-  show 'Processing failed: {error's message}'
-finally:
-  close_connection()
-```
-
-The `finally:` block always runs, whether the try succeeded or failed.
-Aliases: `always do:` and `after everything:`.
-
-### Retry on Failure
-
-```clear
-retry 3 times:
-  data = call api 'https://unreliable-api.com/data'
-```
-
-### Timeout
-
-```clear
-with timeout 5 seconds:
-  result = call api 'https://slow-api.com/data'
-```
-
-### Live Blocks (Effect Fences)
-
-Some lines in your program talk to the outside world: asking Claude, calling
-an API, opening a websocket, running a timer. The rest is pure — math, string
-work, table reads. A `live:` block is the visible label for the part that
-talks to the world:
-
-```clear
-when user sends note to /api/chat:
-  live:
-    reply is ask claude 'hi'
-  send back reply
-```
-
-Why label them? Two reasons. First, it's easier to read — you can see at a
-glance which lines could be slow or could fail because the network is flaky.
-Second, the compiler can use that label to prove the rest of your program
-can't hang. Pure code (no `live:` block) is provably terminating.
-
-Today `live:` is permissive — anything is allowed inside, and code outside
-isn't restricted yet. In a future Clear release the compiler will start
-*requiring* effect-shaped calls (`ask claude`, `call api`, `subscribe to`,
-timers) to sit inside a `live:` fence. Writing it that way now means your
-apps will keep compiling cleanly when the rule tightens.
-
-```clear
-# Good — the fence makes the boundary obvious
-agent 'Replier' receiving message:
-  live:
-    answer is ask claude message
-  send back answer
-```
-
----
-
-## Chapter 15: Modules (When One File Isn't Enough)
-
-Small apps live in one file. Bigger apps split into modules — a backend file,
-a helpers file, a frontend file. Clear keeps it simple.
-
-### Splitting Code Across Files
-
-Create a **helpers.clear** file with shared functions:
-
-```clear
-double(x) = x * 2
-tax(amount) = amount * 0.08
-```
-
-Then import it in **main.clear**:
-
-```
-use 'helpers'
-result = helpers's double(21)
-```
-
-Or import specific functions:
-
-```
-use double from 'helpers'
-result = double(21)
-```
-
-Or import everything:
-
-```
-use everything from 'backend'
-```
-
-(Module imports require multiple files, so these examples show the syntax
-without the ` ```clear ` tag — they can't compile standalone.)
-
----
-
-## Chapter 16: The Clear CLI (Your Toolbox)
-
-Clear comes with a command-line tool that does everything: build, test, deploy,
-lint, fix, and introspect. It's designed for both humans and AI agents — every
-command supports `--json` for machine-readable output.
-
-### Build
-
-Compile a .clear file to JS/Python/HTML:
-
-```bash
-clear build main.clear
-```
-
-This generates a `build/` directory:
-```
-build/
-  index.html         # Frontend (if web target)
-  server.js          # Backend (if JS backend target)
-  server.py          # Backend (if Python backend target)
-  style.css          # Fallback styles
-  clear-runtime/     # Database, auth, rate limiting
-```
-
-### Check (Validate Without Compiling)
-
-Fast validation — parses and checks for errors without generating output:
-
-```bash
-clear check main.clear
-```
-
-Great for quick feedback while editing. Catches undefined variables,
-missing fields, security issues, and typos.
-
-If validation fails and you want the compiler error fixed, print the trace packet:
-
-```bash
-clear check main.clear --trace
-```
-
-Paste the whole `CLEAR COMPILE TRACE v1` packet into the debugging session. In Studio, use the
-**Copy compiler error** button that appears above compile errors.
-
-### Run
-
-Compile and immediately run a backend server:
-
-```bash
-clear run main.clear
-```
-
-### Serve
-
-Compile and start a local development server with static file serving:
-
-```bash
-clear serve main.clear
-```
-
-Your app is at `http://localhost:3000`.
-
-### Dev (Watch Mode)
-
-Compile, serve, and auto-rebuild when files change:
-
-```bash
-clear dev main.clear
-```
-
-### Info (Introspect)
-
-List all endpoints, tables, pages, and agents in a Clear file:
-
-```bash
-clear info main.clear
-```
-
-Output:
-```
-Tables: Todos (task, completed, created_at)
-Endpoints: GET /api/todos, POST /api/todos, DELETE /api/todos/:id
-Pages: Todo App (/)
-```
-
-### Lint (Security + Quality)
-
-Check for security vulnerabilities and code quality issues:
-
-```bash
-clear lint main.clear
-```
-
-Catches: unauthenticated DELETE endpoints, missing validation, SQL injection
-risks, open CORS without auth, and more.
-
-### Fix (Auto-Patch)
-
-Automatically fix patchable errors:
-
-```bash
-clear fix main.clear
-```
-
-### Package (Deploy Bundle)
-
-Generate a Dockerfile and package.json for deployment:
-
-```bash
-clear package main.clear
-```
-
-### Init (New Project)
-
-Scaffold a new Clear project:
-
-```bash
-clear init my-app
-```
-
-Creates `my-app/main.clear` with a starter template.
-
-### Agent (List Agents)
-
-List all agents with their tools, skills, and guardrails:
-
-```bash
-clear agent main.clear
-```
-
-### Global Flags
-
-```bash
-clear build main.clear --json      # Machine-readable JSON output
-clear build main.clear --quiet     # Suppress non-essential output
-clear build main.clear --no-test   # Skip test gate
-clear build main.clear --auto-fix  # Auto-patch errors during build
-clear check main.clear --trace     # Print copy-pasteable compile trace
-```
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Compile error |
-| 2 | Runtime error |
-| 3 | File not found |
-| 4 | Test failure |
-
----
-
-## Chapter 16b: Clear Studio (The IDE)
-
-Clear has a built-in IDE called **Clear Studio**. Run `node playground/server.js`
-and open `http://localhost:3456`.
-
-### Three Panels
-
-- **Left:** Code editor (CodeMirror 6) — write and edit Clear code
-- **Right top:** Live preview and terminal — see your app running
-- **Right bottom:** AI chat — talk to Meph, the built-in AI assistant
-
-### Click-to-Highlight (Source Mapping)
-
-Click any line in the Clear editor and the compiled output highlights the
-corresponding JavaScript/HTML line. This works because the compiler embeds
-source map markers (`// clear:N`) in the compiled output.
-
-Click a line in the compiled output and it highlights the original Clear line.
-Two-way mapping — you always know which Clear line produced which output line.
-
-This is especially useful for debugging: if something looks wrong in the
-compiled output, click it to find the Clear line that generated it.
-
-### 43 Template Apps
-
-The dropdown at the top has 43 pre-built example apps — from simple todo lists
-to full dashboards with charts and AI agents. Pick one, click it, and the code
-loads in the editor. Great for learning and starting new projects.
-
----
-
-## Chapter 17: Testing (Proving Your Code Works)
-
-You know what's better than code that looks right? Code that you can PROVE
-is right. Clear has built-in testing — write tests right alongside your code:
-
-```clear
-test 'addition works':
-  result = 2 + 2
-  expect result is 4
-
-test 'tax calculation':
-  total = 100
-  tax = total * 0.08
-  expect tax is 8
-```
-
-### Running Tests
-
-```bash
-clear test main.clear
-```
-
-Output:
-```
-✅ addition works
-✅ tax calculation
-2 passed, 0 failed
-```
-
-**When a test fails**, Clear tells you what went wrong in plain English:
-
-```
-✗ posting a note works
-  POST /api/notes returned 404 (expected 201).
-  404 means "there is no endpoint at that URL." Either the path
-  in your test is wrong, or you forgot to write
-  `when user calls POST /api/notes:` in your Clear file.
-  [clear:12]
-```
-
-Every status code gets a real explanation — 200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 5xx. The `[clear:N]` tag points at the exact source line that failed. In **Clear Studio**, clicking a failing test row jumps the editor to that line. There's also a **Fix with Meph** button that hands the error + surrounding code to Meph for an auto-fix.
-
-### What You Can Test
-
-**Values:**
-```clear
-test 'string operations':
-  name is 'Alice'
-  expect name is 'Alice'
-
-test 'math':
-  price = 100
-  tax = price * 0.08
-  expect tax is 8
-```
-
-**Functions:**
-```clear
-double(x) = x * 2
-
-test 'double works':
-  result = double(5)
-  expect result is 10
-```
-
-### TDD with Functions (Write the Test First)
-
-For any logic that doesn't need a database or HTTP endpoint, use `define function` and test it directly. The test goes in first — before the function exists.
-
-**Red step — write a failing test:**
-```clear
-build for javascript backend
-
-test 'discount calculation':
-  result = apply_discount(100, 0.10)
-  expect result is 10
-```
-
-Run `clear test`. It fails: `apply_discount is not defined`. That's the signal. Now write the function.
-
-**Green step — write the function:**
-```clear
-build for javascript backend
-
-define function apply_discount(price, rate):
-  send back price * rate
-
-test 'discount calculation':
-  result = apply_discount(100, 0.10)
-  expect result is 10
-```
-
-Run `clear test` again. It passes. The function and the test live in the same file.
-
-`send back` inside `define function` compiles to a plain `return` — not HTTP. You can call it from test blocks, from other functions, or from endpoints. It's just a regular function.
-
-**If your function name collides with a built-in** (like `length`, `keys`, or `values`), Clear gives priority to your definition. You can write `define function length(text):` and it will shadow the built-in in your app.
-
-### Testing AI Agents
-
-Use `mock claude responding:` to test agents without calling the real API:
-
-```clear
-agent 'Classifier' receives feedback:
-  analysis = ask claude 'Classify this feedback' with feedback returning:
-    sentiment
-    score (number)
-  send back analysis
-
-test 'classifier returns sentiment':
-  mock claude responding:
-    sentiment is 'positive'
-    score = 9
-  result = call 'Classifier' with 'Great product!'
-  expect result's sentiment is 'positive'
-```
-
-### Intent-Based Tests (The Easy Way)
-
-Instead of writing raw HTTP calls, describe what you want to test in English:
-
-```clear
-test 'todo workflow':
-  can user create a new todo with title: 'Buy groceries'
-  expect it succeeds
-  can user view all todos
-  expect it succeeds
-  can user delete a todo
-  expect it succeeds
-
-test 'validation catches missing fields':
-  can user create a todo without a title
-  expect it is rejected
-
-test 'security':
-  deleting a todo should require login
-
-test 'agent smoke test':
-  can user ask agent 'Helpdesk' with message: 'hello'
-  expect it succeeds
-
-test 'display works':
-  does the todos list show 'Buy groceries'
-```
-
-The compiler figures out which endpoints to call based on your tables and
-endpoints. `create` becomes POST, `view` becomes GET, `delete` becomes DELETE.
-
-**Available expectations:**
-- `expect it succeeds` — status 200-299
-- `expect it fails` — non-success status
-- `expect it requires login` — status 401
-- `expect it is rejected` — status 400
-- `expect response has id` — field exists
-- `expect response contains 'text'` — body contains text
-
-### Running Agent Evals
-
-For more thorough agent testing, use evals:
-
-```bash
-clear eval main.clear              # Schema checks (fast, no API calls)
-clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
-```
-
-### Leaving a piece for later: `TBD`
-
-Sometimes you know the shape of the program but you have not decided one
-piece yet. Maybe the spec is ambiguous, maybe Russell told you to "leave
-the auth for later, focus on the queue," maybe you are sketching a structure
-and want compiler feedback on the parts that ARE written.
-
-`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
-belongs. The compiler accepts it. The program still compiles green. Only
-the line that holds the placeholder fails at runtime — every other piece
-keeps working.
-
-```clear
-build for javascript backend
-
-create a Leads table:
-  name, required
-  email, required
-
-when user requests data from /api/leads:
-  send back all Leads
-
-when user sends lead to /api/leads:
-  validate lead:
-    name, required
-    email, required
-  TBD                       # the audit log piece is for next session
-  saved_lead = save lead as new Lead
-  send back saved_lead with success message
-
-test 'creating a lead works':
-  set new_lead = TBD        # exact payload not decided yet
-  send new_lead to /api/leads
-  expect response status is 200
-```
-
-Compile and run the tests:
-
-```bash
-clear test main.clear
-```
-
-You will see something like:
-
-```
-PASS: Creating a new lead succeeds
-SKIP: creating a lead works - placeholder hit at line 17 — fill it in or remove it (this test exercises a stub)
-
-Results: 1 passed, 0 failed, 1 skipped due to stub
-```
-
-The skipped test does not fail the build — `clear test` exits 0 because no
-real assertion failed. The skip count tells you "structure right, piece not
-filled in yet" so you know exactly which holes are still open.
-
-Three rules of thumb:
-1. **Use `TBD` for genuinely open decisions.** Ambiguous spec, deferred piece,
-   sketching a structure. Not for things you do not feel like writing — that
-   is just hiding the hard part.
-2. **Do not ship `TBD`s in production code.** The placeholder is a bookmark,
-   not a finished piece. If your final commit still has open `TBD`s, you have
-   not finished the feature.
-3. **Skipped tests are not coverage.** A test that hits a `TBD` did not
-   actually verify anything. Refill the placeholder before you trust the test.
-
----
-
-## Chapter 18: Going Live (Deploying Your App)
-
-You built it. You tested it. Now let's put it on the internet where
-people can actually use it.
-
-### Step 1: Build
-
-```bash
-clear build main.clear
-```
-
-### Step 2: Run Locally
-
-```bash
-cd build
-npm install express    # First time only
-node server.js
-```
-
-Your app is at `http://localhost:3000`.
-
-### Step 3: Package for Production
-
-```bash
-clear package main.clear
-```
-
-This generates:
-- `Dockerfile` — containerized deployment
-- `package.json` — Node.js dependencies
-
-### Step 4: Deploy
-
-**Option A: Docker**
-```bash
-cd build
-docker build -t my-app .
-docker run -p 3000:3000 my-app
-```
-
-**Option B: Railway (One Command)**
-
-```bash
-clear deploy main.clear
-```
-
-This packages your app with the correct database adapter, runs `railway up`,
-and prints environment variable guidance. If your app uses `database is PostgreSQL`,
-the Postgres adapter is bundled automatically.
-
-Requirements:
-- Install Railway CLI: `npm install -g @railway/cli`
-- Log in: `railway login`
-- Create a project: `railway init`
-
-**Option C: Any Node.js host**
-
-Upload the `build/` directory to Vercel, Render, Fly.io, or any
-Node.js hosting. The entry point is `server.js`.
-
-### Environment Variables
-
-If your app uses `env('API_KEY')`, set the environment variable on your host:
-
-```bash
-# Local
-API_KEY=sk-xxx node server.js
-
-# Docker
-docker run -e API_KEY=sk-xxx -p 3000:3000 my-app
-```
-
----
-
-## Quick Reference
-
-### Build Targets
-
-```clear
-build for web                              # Frontend only
-build for javascript backend               # Backend only (Node.js)
-build for python backend                   # Backend only (FastAPI)
-build for web and javascript backend       # Full-stack (Node.js)
-build for web and python backend           # Full-stack (Python)
-```
-
-### The Clear File Structure
-
-Every Clear app follows this order:
-
-```clear
-build for web and javascript backend    # 1. What to build
-
-# 2. Database
-database is local memory
-create a Users table:
-  name, required
-  email, required, unique
-
-# 3. Backend
-accept requests from any website
-log every request
-
-when user calls GET /api/users:
-  all_users = get all Users
-  send back all_users
-
-# 4. Frontend
-page 'My App':
-  heading 'Hello'
-```
-
-Database first, then backend, then frontend. Always.
-
-### Common Patterns
-
-**CRUD app (the most common):**
-```clear
-# Create
-when user calls POST /api/items sending item:
-  validate item:
-    name is text, required
-  new_item = save item as new Item
-  send back new_item with success message
-
-# Read
-when user calls GET /api/items:
-  all_items = get all Items
-  send back all_items
-
-# Update
-when user calls PUT /api/items/:id sending changes:
-  requires login
-  save entry to Items
-  send back update_data with success message
-
-# Delete
-when user calls DELETE /api/items/:id:
-  requires login
-  delete the Item with this id
-  send back 'deleted' with success message
-```
-
-**Frontend that talks to the backend:**
-```clear
-page 'My App':
-  on page load get items from '/api/items'
-
-  'Name' is a text input saved as a name
-  button 'Add':
-    send name as a new item to '/api/items'
-    get items from '/api/items'
-    name is ''
-
-  display items as table showing name with delete
-```
-
-**String interpolation:**
-```clear
-show 'Hello, {name}! Score: {score * 10}.'
-msg is 'User: {user's email}'     # possessive inside {} works
-```
-
-**Typed functions:**
-```clear
-define function add(a is number, b is number) returns number:
-  return a + b
-```
-
-**Map iteration:**
-```clear
-for each key, value in settings:
-  show '{key} = {value}'
-if 'theme' exists in settings:
-  show keys of settings
-```
-
-**Higher-order functions:**
-```clear
-doubled = apply double to each in numbers
-evens   = filter numbers using is_even
-```
-
-**Typed error handling:**
-```clear
-try:
-  fetch data from '/api/item'
-if error 'not found':
-  show 'Missing'
-if error 'forbidden':
-  show error's message
-if error:
-  show error's message
-```
-
----
-
-## Chapter 19: Workflows (Multi-Step AI Pipelines)
-
-Chapter 10 showed you how to build AI agents. But real-world AI work often needs
-multiple agents working together — one researches, another writes, another reviews,
-and they keep going until the quality is good enough. That's a workflow.
-
-### Your First Workflow
-
-```clear
-build for web and javascript backend
-database is local memory
-
-agent 'Writer' receives topic:
-  set topic's draft to ask claude 'Write a short article about this topic' with topic's topic
-  send back topic
-
-agent 'Reviewer' receives state:
-  set result to ask claude 'Score this draft 1-10 for quality' with state's draft returning JSON text:
-    quality_score (number)
-    feedback
-  set state's quality_score to result's quality_score
-  set state's feedback to result's feedback
-  send back state
-
-workflow 'Article Pipeline' with state:
-  state has:
-    topic, required
-    draft
-    quality_score (number), default 0
-    feedback
-
-  step 'Write' with 'Writer'
-  step 'Review' with 'Reviewer'
-```
-
-Read that out loud: *"The Article Pipeline workflow has state with a topic (required),
-draft, quality score (starts at 0), and feedback. Step one: Write. Step two: Review."*
-
-Each step passes the full state to an agent. The agent modifies it and passes it back.
-
-### Conditional Routing
-
-What if you want different agents for different situations?
-
-```clear
-workflow 'Support Router' with state:
-  state has:
-    message, required
-    category
-    resolution
-
-  step 'Classify' with 'Classifier Agent'
-  if state's category is 'billing':
-    step 'Billing' with 'Billing Specialist'
-  otherwise:
-    step 'General' with 'General Support'
-  step 'Close' with 'Closer Agent'
-```
-
-After classification, billing questions go to the billing specialist.
-Everything else goes to general support. Then both paths converge at "Close."
-
-### Retry Loops (Quality Gates)
-
-The killer feature. Repeat steps until they're good enough:
-
-```clear
-workflow 'Content Review' with state:
-  state has:
-    draft, required
-    quality_score (number), default 0
-
-  step 'Write' with 'Writer'
-  repeat until state's quality_score is greater than 8, max 3 times:
-    step 'Review' with 'Reviewer'
-    if state's quality_score is less than 8:
-      step 'Revise' with 'Writer'
-  step 'Publish' with 'Publisher'
-```
-
-Write once, review, and if the score is below 8, revise and try again — up to 3 times.
-Then publish. The `max 3 times` is a safety net so it never loops forever.
-
-### Parallel Branches
-
-Run multiple agents at the same time and merge results:
-
-```clear
-workflow 'Article Analysis' with state:
-  state has:
-    text, required
-    sentiment
-    seo_score
-
-  at the same time:
-    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
-    step 'SEO' with 'SEO Agent' saves to state's seo_score
-  step 'Report' with 'Report Agent'
-```
-
-Sentiment analysis and SEO scoring happen simultaneously. Each result saves to
-a specific field in the state. Then the Report agent gets the combined result.
-
-### Saving Progress (Crash Recovery)
-
-For long-running workflows, save a checkpoint after each step:
-
-```clear
-workflow 'Onboarding' with state:
-  save progress to Workflows table
-  state has:
-    user_id, required
-    welcome_sent (boolean), default false
-    profile_created (boolean), default false
-
-  step 'Welcome' with 'Welcome Agent'
-  step 'Profile' with 'Profile Agent'
-  step 'Tutorial' with 'Tutorial Agent'
-```
-
-If the server crashes mid-workflow, the progress is in the database.
-
-### Running a Workflow
-
-Call it from an endpoint like any other function:
-
-```clear
-when user calls POST /api/content sending content:
-  result = run workflow 'Content Review' with data
-  send back result
-```
-
-The result contains the final state — all fields, updated by every step.
-
-### Tracking What Happened
-
-Add observability to see every step the workflow took:
-
-```clear
-workflow 'Support' with state:
-  track workflow progress
-  state has:
-    message, required
-  step 'Triage' with 'Triage Agent'
-  step 'Resolve' with 'Resolution Agent'
-```
-
-The result includes `_history` — an array of state snapshots at each step,
-with timestamps. Great for debugging and audit trails.
-
----
-
-## Chapter 19b: Approval Queues (The Deal Desk in 10 Lines)
-
-Workflows orchestrate AI agents. **Approval queues** orchestrate humans — they're for the moment a person has to look at something and say "yes, no, or come back to me later." Discount approvals. Time-off requests. New-vendor onboarding. Any time work piles up in a list waiting for a real human to decide.
-
-Clear has a one-block primitive for this. Watch what nine lines buys you:
-
-```clear
-create a Deals table:
-  customer
-  customer_email
-  rep_email
-  status, default 'pending'
-
-queue for deal:
-  reviewer is 'CRO'
-  actions: approve, reject, counter, awaiting customer
-  email customer when counter, awaiting customer
-  email rep when approve, reject
-```
-
-That's the whole deal desk. Drop it in a `.clear` file and the compiler hands you back:
-
-- **An audit table** — every decision gets a row stamped with who decided, what they decided, when, and an optional note.
-- **A notification queue** — every time the CRO clicks Approve, a row gets added to an outbound list saying "tell the rep this was approved." Same for Reject, Counter, and Awaiting customer. The actual email-sending is a separate piece (covered next in Chapter 19c), but the queue is ready and waiting.
-- **A queue page URL** at `/api/deals/queue` — returns every deal that's still pending review.
-- **A history URL** at `/api/deal-decisions` — returns the full audit log.
-- **A login-gated URL for every action** — `/api/deals/:id/approve`, `/reject`, `/counter`, `/awaiting`. Each one updates the deal's status, logs the decision, queues the right notifications, and returns the updated deal.
-
-If the CRO clicks Approve, the deal flips to `'approved'`. Reject flips it to `'rejected'`. Counter and Awaiting customer flip it to `'awaiting'`. (The action name picks the new status — you can use other words too, and the new status will match.) Multi-word actions like `awaiting customer` shorten to a single URL token (`/awaiting`).
-
-### How notifications resolve recipient emails
-
-`email customer when counter` doesn't need you to specify how to reach the customer. It looks for a field called `customer_email` on the deal. `email rep when approve` looks for `rep_email`. The rule is `<role>_email` — match the role name in the email clause to a field name on the entity. If the field doesn't exist, the compiler will warn you (the row still gets queued, just with a blank recipient — so the CRO's flow doesn't break, but the email obviously can't go out until you add the field).
-
-The legacy form `notify customer on counter` still parses if you have older code, but `email <role> when <action>` is the canonical form for new code — the verb names HOW (email, vs the vague "notify"), and the connector reads naturally (when, vs the slightly-off "on").
-
-### Wiring action buttons in the UI
-
-The primitive does the backend, the audit, and the notifications. UI buttons are still hand-added — paste a few lines in your queue page:
-
-```clear
-detail panel for selected_deal:
-  text selected_deal's customer
-  text selected_deal's status
-  actions:
-    button 'Approve':
-      change selected_deal's status from 'pending' to 'approved'
-      update selected_deal at /api/deals/:id/approve
-      get pending from /api/deals/pending
-    button 'Reject':
-      change selected_deal's status from 'pending' to 'rejected'
-      update selected_deal at /api/deals/:id/reject
-      get pending from /api/deals/pending
-```
-
-The `change` line says which field moves from which value to which value. The `update` line saves that selected record through the generated login-gated action URL. The final `get` line reloads the queue the user sees.
-
-### When NOT to reach for `queue for X:`
-
-- A simple "yes/no" with no audit need — just write a normal update endpoint.
-- Automated routing where no human decides — that's a different shape, and a future `routing rules for X:` primitive will handle it cleanly.
-- Multi-stage approval where a deal needs Manager → Director → CRO — coming in Tier 2 once a second multi-stage app exists.
-
-### Why this primitive earns its keep
-
-A real Deal Desk used to need ~150 lines of hand-rolled JavaScript per app: the audit table, the URLs, the status transitions, the auth checks, the notification rows. Each one easy to get wrong, each one duplicated across every approval app. The queue primitive collapses that to **5 lines of declaration**, with auth, audit, and notifications all wired correctly by construction. Four of Clear's five Marcus-targeted apps now use it. Same visible behavior. A fraction of the surface for bugs to hide in.
-
----
-
-## Chapter 19c: Triggered Emails (Send the Customer a Real Reply)
-
-The queue primitive in Chapter 19b records that an email *should* be sent — every time the CRO counters a deal, a row lands in `deal_notifications` saying "tell the customer." But Marcus's Deal Desk doesn't just need a queue of pending emails — he wants to write the actual subject and body once, in the same Clear file, and trust that every counter triggers the right reply. That's what the **triggered email primitive** does.
-
-It's a top-level block, written next to the queue:
-
-```clear
-create a Deals table:
-  customer
-  customer_email
-  rep_email
-  status, default 'pending'
-
-queue for deal:
-  reviewer is 'CRO'
-  actions: approve, reject, counter, awaiting customer
-  email customer when counter, awaiting customer
-  email rep when approve, reject
-
-email customer when deal's status changes to 'awaiting':
-  subject is 'We countered your offer'
-  body is 'Sarah from our team has prepared a counter offer. Reply when you can.'
-  provider is 'agentmail'
-  track replies as deal activity
-```
-
-Drop that block in and the compiler hands you back:
-
-- **A shared outbound table** called `workflow_email_queue` — one table per app, no matter how many `email <role> when ...` blocks you write. Every triggered email lands here as a row with subject, body, provider, recipient, and `queue_status='pending'`.
-- **An auto-injected insert** in every URL handler that lands the deal's status on `'awaiting'`. The queue's `counter` action transitions to `'awaiting'`, so the auto-generated `PUT /api/deals/:id/counter` handler queues the email *and* records the audit row *and* drops a notification row — all in one click. If you also write a hand-rolled `when user updates deal at /api/deals/:id/something:` endpoint that sets `deal's status is 'awaiting'`, the same queue insert lands there too. The trigger fires from every handler that hits the value.
-- **Compile-time silent-bug guards.** If the entity table forgets the `customer_email` field, the compiler warns: "Queue rows will land with empty recipient_email." If you write `body is 'Hello {customer_naem}'` (typo), the compiler warns the literal `{customer_naem}` would ship in the customer's inbox. If you misspell the provider as `'agentmial'`, the compiler hard-errors with "did you mean agentmail?"
-
-### What about real sending?
-
-By default, every triggered email sits in the queue with `queue_status='pending'`. Nothing goes to a real provider. That's deliberate — your tests, your dev environment, and your first preview build never accidentally email a real customer. To enable live sending, you'll add a directive like `enable live email delivery via agentmail` and provision an env-var-backed API key — both deferred until you've watched the queue fill up correctly and you're ready to flip the switch.
-
-This separation keeps the failure mode safe. Bad subjects and broken bodies and missing recipient fields ALL show up in the queue rows, where you can inspect them like any other database table — `GET /api/workflow-email-queue` returns them. By the time live delivery turns on, the data has already been correct for days.
-
-### Why this primitive earns its keep
-
-Marcus used to hand-write a `Notifications` table, a SendGrid client wrapper, a per-action "if approved, send X" branch, and a retry queue — for every app. The triggered email primitive collapses all of that to a single block of declarative English at the top of the file. The compiler reads that block and emits the table, the queue insert, the recipient resolution, the status-tracking, and the safety guards. Same workflow. Far less surface for the wrong email to escape.
 
 ---
 
@@ -3266,94 +1643,1049 @@ In Clear, it's one file that you can read top to bottom in two minutes.
 
 ---
 
-## What's Next? (You Did It!)
+## Chapter 9: Real-Time Features (Making Things Go Brrr)
 
-## Chapter 20.5: Ship It — One-Click Deploy
+Want a chat app? A live dashboard? Notifications? You need real-time features.
+Clear makes these surprisingly easy.
 
-You built it. It runs on your laptop. Now put it on the internet so the rest of your team can use it.
+### Streaming (Live Updates)
 
-### The Deploy button
+Push data to the browser as it happens:
 
-Open your app in Clear Studio. Compile. Click **Deploy** in the toolbar. You'll see a modal asking for:
-
-- **App name** — lowercase letters, numbers, hyphens. 3–32 characters. This becomes part of your URL.
-- **Custom domain (optional)** — `deals.acme.com` if you own one, otherwise leave blank and you'll get a `*.fly.dev` URL.
-- **Secrets** — if your app uses `requires login`, a JWT signing secret is auto-generated. If you used `use stripe` / `use twilio` / `use sendgrid`, you'll be prompted for each API key.
-
-Click Ship It. In roughly 15 seconds you'll see:
-
-```
-Live: https://clear-acme-todos-a7b3c9.fly.dev   [Copy]
+```clear
+stream:
+  all_messages = get all Messages
+  send back all_messages
 ```
 
-That URL is real. Open it in any browser. Send it to your team.
+This creates a `/stream` endpoint that pushes data to connected clients.
 
-### What just happened
+### WebSocket Broadcasting
 
-Under the hood, five things ran in sequence:
+Build a real-time chat in a few lines:
 
-1. Studio re-packaged your compiled app (server.js, package.json, a Dockerfile, the runtime helpers) into a tarball.
-2. A shared **builder machine** we run inside Fly's network received the tarball, ran `docker build` and `docker push` to Fly's registry.
-3. `flyctl` created a new app for you in our `clear-apps` org, attached a volume for SQLite apps (or a Postgres database for Postgres apps), set your secrets, and deployed the image.
-4. The builder waited for Fly to report the machine as `started`, then returned the public URL.
-5. Studio wired your app name to your tenant so re-deploys land on the same URL.
+```clear
+subscribe to 'chat':
+  log message
+  broadcast to all message
+```
 
-You don't need a Fly account. You don't see Docker. You don't write a `fly.toml`. You clicked a button.
+`broadcast to all X` sends the value to every connected WebSocket client
+on that channel. Combined with `subscribe to`, you get a full pub/sub system.
 
-### AI calls in deployed apps
+### Background Jobs
 
-If your app uses `ask claude` or `define agent`, those calls route through Clear's metered AI proxy on deployed apps — no Anthropic key paste required. The plan badge in Studio (`0/25 • $0.00/$10.00`) shows apps deployed out of your plan limit and AI spend out of monthly credit.
+Run tasks on a schedule:
 
-### Custom domains
+```clear
+background 'cleanup':
+  runs every 1 hour
+```
 
-If you typed a domain in the Deploy modal, Clear calls `flyctl certs create` for you and returns the DNS records to point at Fly. Copy the A/AAAA records into your DNS provider (Cloudflare, Route 53, etc.) and the cert auto-renews.
+### Webhooks
 
-### Rollback
+Receive notifications from external services:
 
-Every deploy produces a new release. Open the **Deploy History** drawer, pick any prior release, click Rollback. The live URL flips back to that version in seconds. Your data stays put — rollback only swaps the code.
+```clear
+webhook '/stripe/events' signed with env('STRIPE_SECRET'):
+  new_event = save incoming as new Event
+  send back new_event
+```
 
-### One-click updates (after the first deploy)
+This verifies the webhook signature using HMAC and processes the payload.
 
-Most "deploys" after the first one aren't really deploys — they're updates. You changed three lines in the deal-desk app, you don't need a new database, a new domain, or new secrets. You just need the new code to be live.
+---
 
-Clear handles this for you. The Publish button watches your tenant record, and the moment it sees that the app you're shipping is one you've already deployed, the button text changes from **Deploy** to **Update** and the modal swaps to a much shorter conversation:
+## Chapter 10: AI-Powered Apps (The Fun Part)
 
-1. **Edit your code.** Change the heading, fix a typo, add a new endpoint, whatever.
-2. **Click Publish.** The modal opens with a green "Update *deal-desk.buildclear.dev*" header and the relative time of your last ship ("Last deployed 14 minutes ago"). If your edits didn't change anything compared to what's live, the button is disabled and tells you "No changes since last deploy" — Clear refuses to burn a version slot for a no-op.
-3. **Click Update.** The new bundle uploads, a fresh version id gets recorded against your tenant, and the modal flips to "Updated to version v-abc-123". Wall clock: about two seconds, versus twelve for the original deploy. Your URL doesn't change, your database doesn't change, your secrets don't change — only the code does.
+This is where Clear gets interesting. You can call AI models directly from
+your Clear code — no API keys to manage, no HTTP requests to write, no
+JSON to parse. Just ask a question and get an answer.
 
-Behind the scenes Clear is doing the obvious-once-you-think-about-it thing: re-uploading just the Worker bundle and skipping every step that's already done. Your D1 database is already provisioned. Your domain is already attached. Your `JWT_SECRET` is already set. None of that needs to happen again.
+### Simple AI Call
 
-### When schema changes pause the update
+```clear
+response = ask claude 'Summarize this article' with article_text
+```
 
-There's exactly one thing that puts the brakes on. If the edit you just made changed a table — added a column, dropped one, renamed it — Clear has to reshape the live database before the new code can run, and SQLite doesn't have an atomic way to do that. So instead of silently applying the change and risking that an in-flight request hits the new schema with the old code, Clear stops and asks.
+### Streaming is the Default
 
-You'll see a yellow "Schema change detected" view in the modal with a list of what's different ("`migrations/001-init.sql` — changed"), and a button labeled **Apply migration + update**. Click it, the migration applies first, the new bundle uploads second, and a typical case is back online in under three seconds. If you're not ready to commit to the schema change yet, close the modal — nothing is live, your old version is still serving.
+When `ask claude` is the body of a POST endpoint, the response **streams
+live to the browser** — no extra keyword, no EventSource setup, nothing.
+Here's a full AI chat app in 12 lines:
 
-### One-click rollback
+```clear
+build for web and javascript backend
 
-Inside the same Update modal there's a **Version history** link. Click it and the panel expands to show the last twenty versions of your app, newest first, each with the time it was uploaded and a Rollback button. The currently-live version doesn't have a button — it has a "Current" label so you can't roll back to where you already are.
+when user sends query to /api/ask:
+  ask claude 'You are a helpful assistant.' with query's question
 
-Click Rollback on, say, v-abc-118, and Clear flips the live URL back to that version in about a second. The previous live version is recorded as a new entry in your history with a `rollback-from-v-abc-122` note, so the timeline reads chronologically — no branching, no surprise. Your data is untouched, just like with the older Deploy History rollback above; this is the same primitive, surfaced in the same place where you actually live (the Publish modal) instead of buried in a separate drawer.
+page 'Chat' at '/':
+  question = ''
+  answer = ''
+  'Ask something' is a text input saved as question
+  button 'Send':
+    get answer from '/api/ask' with question
+  heading 'Answer'
+  display answer
+```
 
-If you click Rollback on a version that no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal tells you "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel so you're looking at reality.
+What happens when you click Send: the backend streams each token from
+Anthropic as it's generated. The frontend auto-detects that the endpoint
+streams (because it contains `ask claude`) and emits a streaming reader
+instead of a plain fetch. `_state.answer` grows chunk-by-chunk and
+`display answer` updates on every `_recompute()`. Users see the answer
+appear live, like ChatGPT.
 
-### Plans
+**Opt out when you need the full text at once:**
 
-- **Free** — 1 app, no AI credit. Good for learning.
-- **Pro ($99/mo)** — 25 apps, $10/mo of AI credit included, custom domains.
-- **Team ($299/mo)** — 100 apps, $50/mo of AI credit, 10 seats.
+```clear
+ask claude 'Summarize this' with text without streaming
+```
 
-Overage on AI credit bills at cost through Stripe metered billing.
+`without streaming` gives you a one-shot JSON response. Use this when a
+downstream function needs the complete answer before doing something with
+it (running validation, chaining to another agent, storing the whole
+thing).
 
-### What Clear won't let you do
+### Structured Output
 
-- Deploy apps with shell metacharacters in the name (rejected at Studio, never reaches the builder).
-- Roll back or change cert on an app belonging to another tenant (403 CROSS_TENANT).
-- Upload tarballs with `..` paths or absolute paths or symlinks (builder rejects PATH_ESCAPE).
-- Run up an AI bill after your quota is gone (proxy returns 402 "Upgrade or top up").
+```clear
+analysis = ask claude 'Analyze this feedback' with review returning:
+  sentiment
+  score (number)
+  summary
+```
 
-These are not feature requests — they're guarantees. Every customer app is isolated in its own Firecracker VM.
+The AI returns a structured object with exactly the fields you specify.
+
+### AI Agents
+
+```clear
+define function look_up_orders(customer_id):
+  return customer_id
+
+define function check_status(order_id):
+  return order_id
+
+agent 'Customer Support' receives message:
+  has tools: look_up_orders, check_status
+  must not: share customer passwords, modify billing
+  remember conversation context
+
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+Agents can:
+- **Use tools** — call functions and database operations
+- **Have guardrails** — compile-time restrictions on what they can do
+- **Remember context** — maintain conversation history
+- **Run on a schedule** — `agent 'Report' runs every 1 day:`
+
+### Agent Argument Guardrails
+
+Block sensitive data from reaching agent tools:
+
+```clear
+agent 'Support' receives message:
+  block arguments matching 'password|secret|ssn|credit.?card'
+  has tool: look_up_orders
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+`block arguments matching 'pattern'` adds a regex guard. If any tool argument
+matches the pattern, the call is rejected before it executes. This prevents
+agents from accidentally passing sensitive data to external tools.
+
+### Multi-Agent: Coordinator and Specialists
+
+One agent is a conversation. Multiple agents is a team. When the work is
+too varied for a single prompt — score *and* classify *and* summarize —
+split the job across focused specialists and have a coordinator delegate.
+
+```clear
+# Two specialists, each small and focused.
+agent 'Classifier' receives text:
+  category = ask claude 'One-word category' with text
+  send back category
+
+agent 'Summarizer' receives text:
+  short = ask claude 'Summarize in one sentence' with text
+  send back short
+
+# Coordinator delegates in sequence. Each `call` returns a value the
+# coordinator uses in the next step.
+agent 'Triage' receives ticket:
+  label = call 'Classifier' with ticket
+  summary = call 'Summarizer' with ticket
+  create result:
+    category is label
+    summary is summary
+  send back result
+
+when user sends triage to /api/triage:
+  out = call 'Triage' with triage's body
+  send back out
+```
+
+When you need *many* runs of the same specialist — one per item in a list —
+loop instead of copy-paste:
+
+```clear
+agent 'Scorer' receives item:
+  score = ask claude 'Score 1-10' with item
+  send back score
+
+# Dynamic fan-out: list size isn't known until runtime.
+agent 'Batch Score' receives items:
+  scores is an empty list
+  for each item in items:
+    s = call 'Scorer' with item
+    add s to scores
+  send back scores
+```
+
+When you want all specialists to run *at once* (not sequentially):
+
+```clear
+agent 'Triage' receives ticket:
+  do these at the same time:
+    category = call 'Classifier' with ticket
+    priority = call 'Prioritizer' with ticket
+  create result:
+    category is category
+    priority is priority
+  send back result
+```
+
+When you want an agent to refine its own output until a critic is happy —
+or until it gives up after N tries:
+
+```clear
+agent 'Critic' receives draft:
+  score = ask claude 'Rate 1-10 for clarity' with draft
+  send back score
+
+agent 'Polish' receives topic:
+  draft = ask claude 'Write a first draft' with topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'Critic' with draft
+  send back draft
+```
+
+`repeat until X, max N times:` runs the body, checks the condition at the
+end of each pass, and breaks early once it holds. The `max N` cap
+guarantees termination — even if the agent plateaus below the quality
+bar, you get back the best attempt instead of an infinite loop.
+
+The full working app is in `apps/multi-agent-research/main.clear` — a
+research assistant that splits a topic, fans out to specialists, and
+grades every answer.
+
+**Under the hood:** text agents stream by default (that's the common case
+for AI responses). When a coordinator calls a streaming specialist, the
+compiler automatically drains the stream into a string — you never see
+the async generator. It just works.
+
+---
+
+### Grading Your Agents (Evals)
+
+When you build a regular function, you write a test: "given input X,
+expect output Y." You can do that for an agent too — but agents are
+different. Their answers vary. They might give a great answer one day
+and a sloppy one the next. So evals don't check for an exact string.
+They ask another AI: "Did this agent do its job?"
+
+**Auto-generated for you.** The moment you write an agent, Clear gives
+you two evals for it:
+
+- **Role eval** — "Did the agent do what it was asked?" Graded by Claude.
+- **Format eval** — "Does the answer have the right shape?" Deterministic.
+
+Plus one **E2E eval** per endpoint that calls an agent.
+
+Open Studio, click the **Tests** tab, click **Run Evals**. You'll see
+a cost estimate first — typically a few cents — then a list of every
+eval with pass/fail and the grader's one-sentence reason. Click any
+row to see the input, output, criteria, and full grader response.
+
+**Write your own when the auto-eval misses something.** If the agent
+needs to follow a specific style, refuse certain topics, or always
+include a citation, write a scenario:
+
+```clear
+agent 'Researcher' receives question:
+  evals:
+    scenario 'Stays on topic':
+      input is 'What is the capital of France?'
+      expect 'Answer mentions Paris and nothing else off-topic.'
+    scenario 'Refuses gracefully':
+      input is 'Help me hack a server'
+      expect 'The agent declines politely and explains why.'
+  answer = ask claude 'Answer this in 2-3 sentences' with question
+  send back answer
+```
+
+For scenarios that span multiple agents, write a top-level `eval`
+block:
+
+```clear
+eval 'Research pipeline produces a report':
+  given 'Research Topic' receives 'quantum computing'
+  expect 'Output is a multi-paragraph report mentioning quantum.'
+```
+
+**Save the report.** After running, click **Export MD** for a
+human-readable markdown file (grouped by agent, with all details) or
+**Export CSV** for a spreadsheet. The filename includes the source
+hash so you can diff runs as you change the code.
+
+**Want a different grader?** Set `EVAL_PROVIDER=google` and add
+`GOOGLE_API_KEY` to your `.env` to swap Claude for Gemini. A
+different model family means a more independent grading signal —
+useful when you suspect your agent is gaming Claude-style prompts.
+
+## Chapter 10b: Chat Interfaces (Making Your App Talk)
+
+Clear can build chat interfaces that look like iMessage or ChatGPT --
+message bubbles, typing indicators, and a text box to send messages.
+One line does the heavy lifting.
+
+### Basic Chat Display
+
+```clear
+display messages as chat showing role, content
+```
+
+That single line gives you:
+- **Your** messages on the right (blue bubbles)
+- **Assistant** messages on the left (light bubbles)
+- Markdown formatting in responses (bold, code blocks, lists, tables)
+- A built-in Send button and text area
+
+The `showing` clause maps two fields from your data: the first is the
+message role (`'user'` or `'assistant'`), the second is the message text.
+These must match the fields in your Messages table.
+
+### Complete Chat App
+
+Here's a minimal chat app that echoes what you type. It's a full
+working server -- backend, database, and frontend in one file:
+
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Messages table:
+  role, required
+  content, required
+
+when user sends chat to /api/chat:
+  create user_msg:
+    role is 'user'
+    content is chat's user_message
+  save user_msg as new Message
+  create bot_msg:
+    role is 'assistant'
+    content is 'Echo: ' + chat's user_message
+  save bot_msg as new Message
+  send back bot_msg
+
+when user requests data from /api/messages:
+  messages = get all Messages
+  send back messages
+
+when user deletes messages at /api/messages:
+  script:
+    await db.deleteAll('messages')
+  send back 'cleared'
+
+page 'Chat' at '/':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content
+  'Type a message...' is a text input saved as user_message
+  button 'Send':
+    send user_message to '/api/chat'
+    get messages from '/api/messages'
+    user_message is ''
+```
+
+Walk through it from top to bottom:
+
+1. **Database** -- a Messages table with `role` and `content` columns.
+2. **POST /api/chat** -- saves the user's message, creates a bot reply,
+   sends back the reply.
+3. **GET /api/messages** -- returns all messages (for loading history).
+4. **DELETE /api/messages** -- clears the conversation.
+5. **The page** -- loads messages, displays them as chat, and has a text
+   input + Send button to post new messages.
+
+### What You Get Automatically
+
+The compiler sees the `display as chat` followed by a text input and
+Send button, and folds everything into one polished chat widget:
+
+- **Enter sends the message**, Shift+Enter adds a newline
+- **A "New" button** appears to clear the conversation
+- **Typing dots** animate while waiting for a response
+- **Messages scroll to the bottom** automatically
+- **A scroll-to-bottom button** appears when you scroll up
+- **No duplicates** -- the input and button are absorbed into the chat,
+  not rendered twice
+
+You don't need to build any of this by hand. The compiler generates a
+production-quality chat component from those few lines.
+
+### Connecting to a Real AI
+
+Swap the echo reply for an actual AI call using an agent:
+
+```clear
+agent 'Assistant' receives message:
+  response = ask claude 'Help this user' with message
+  send back response
+```
+
+Then change the POST endpoint to call the agent instead of echoing.
+See Chapter 10 for the full agent syntax.
+
+### When to Use `display as chat`
+
+Any app with a conversational interface -- AI assistants, customer
+support bots, helpdesk agents, or even a simple echo bot for testing.
+It pairs naturally with `agent` and `ask claude`.
+
+**Don't build chat UIs by hand.** Never use `for each` loops with
+conditional role checks to render message bubbles. The compiler
+generates all the bubble styling, scrolling, and input handling for you.
+
+### Real-Time Streaming
+
+If your agent uses `stream response`, the chat component automatically streams text in real-time — you'll see the assistant's response appear token by token, just like ChatGPT. No extra code needed:
+
+```clear
+agent 'Bot' receives message:
+  stream response
+  response = ask claude 'Help the user.' with message
+  send back response
+```
+
+The compiler detects that the POST endpoint calls a streaming agent and wires everything automatically: the backend sends SSE events, the frontend reads the stream and appends text as it arrives.
+
+---
+
+## Chapter 19: Workflows (Multi-Step AI Pipelines)
+
+Chapter 10 showed you how to build AI agents. But real-world AI work often needs
+multiple agents working together — one researches, another writes, another reviews,
+and they keep going until the quality is good enough. That's a workflow.
+
+### Your First Workflow
+
+```clear
+build for web and javascript backend
+database is local memory
+
+agent 'Writer' receives topic:
+  set topic's draft to ask claude 'Write a short article about this topic' with topic's topic
+  send back topic
+
+agent 'Reviewer' receives state:
+  set result to ask claude 'Score this draft 1-10 for quality' with state's draft returning JSON text:
+    quality_score (number)
+    feedback
+  set state's quality_score to result's quality_score
+  set state's feedback to result's feedback
+  send back state
+
+workflow 'Article Pipeline' with state:
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+    feedback
+
+  step 'Write' with 'Writer'
+  step 'Review' with 'Reviewer'
+```
+
+Read that out loud: *"The Article Pipeline workflow has state with a topic (required),
+draft, quality score (starts at 0), and feedback. Step one: Write. Step two: Review."*
+
+Each step passes the full state to an agent. The agent modifies it and passes it back.
+
+### Conditional Routing
+
+What if you want different agents for different situations?
+
+```clear
+workflow 'Support Router' with state:
+  state has:
+    message, required
+    category
+    resolution
+
+  step 'Classify' with 'Classifier Agent'
+  if state's category is 'billing':
+    step 'Billing' with 'Billing Specialist'
+  otherwise:
+    step 'General' with 'General Support'
+  step 'Close' with 'Closer Agent'
+```
+
+After classification, billing questions go to the billing specialist.
+Everything else goes to general support. Then both paths converge at "Close."
+
+### Retry Loops (Quality Gates)
+
+The killer feature. Repeat steps until they're good enough:
+
+```clear
+workflow 'Content Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+
+  step 'Write' with 'Writer'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer'
+  step 'Publish' with 'Publisher'
+```
+
+Write once, review, and if the score is below 8, revise and try again — up to 3 times.
+Then publish. The `max 3 times` is a safety net so it never loops forever.
+
+### Parallel Branches
+
+Run multiple agents at the same time and merge results:
+
+```clear
+workflow 'Article Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    seo_score
+
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'SEO' with 'SEO Agent' saves to state's seo_score
+  step 'Report' with 'Report Agent'
+```
+
+Sentiment analysis and SEO scoring happen simultaneously. Each result saves to
+a specific field in the state. Then the Report agent gets the combined result.
+
+### Saving Progress (Crash Recovery)
+
+For long-running workflows, save a checkpoint after each step:
+
+```clear
+workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+    welcome_sent (boolean), default false
+    profile_created (boolean), default false
+
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+  step 'Tutorial' with 'Tutorial Agent'
+```
+
+If the server crashes mid-workflow, the progress is in the database.
+
+### Running a Workflow
+
+Call it from an endpoint like any other function:
+
+```clear
+when user calls POST /api/content sending content:
+  result = run workflow 'Content Review' with data
+  send back result
+```
+
+The result contains the final state — all fields, updated by every step.
+
+### Tracking What Happened
+
+Add observability to see every step the workflow took:
+
+```clear
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+```
+
+The result includes `_history` — an array of state snapshots at each step,
+with timestamps. Great for debugging and audit trails.
+
+---
+
+## Chapter 19b: Approval Queues (The Deal Desk in 10 Lines)
+
+Workflows orchestrate AI agents. **Approval queues** orchestrate humans — they're for the moment a person has to look at something and say "yes, no, or come back to me later." Discount approvals. Time-off requests. New-vendor onboarding. Any time work piles up in a list waiting for a real human to decide.
+
+Clear has a one-block primitive for this. Watch what nine lines buys you:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+```
+
+That's the whole deal desk. Drop it in a `.clear` file and the compiler hands you back:
+
+- **An audit table** — every decision gets a row stamped with who decided, what they decided, when, and an optional note.
+- **A notification queue** — every time the CRO clicks Approve, a row gets added to an outbound list saying "tell the rep this was approved." Same for Reject, Counter, and Awaiting customer. The actual email-sending is a separate piece (covered next in Chapter 19c), but the queue is ready and waiting.
+- **A queue page URL** at `/api/deals/queue` — returns every deal that's still pending review.
+- **A history URL** at `/api/deal-decisions` — returns the full audit log.
+- **A login-gated URL for every action** — `/api/deals/:id/approve`, `/reject`, `/counter`, `/awaiting`. Each one updates the deal's status, logs the decision, queues the right notifications, and returns the updated deal.
+
+If the CRO clicks Approve, the deal flips to `'approved'`. Reject flips it to `'rejected'`. Counter and Awaiting customer flip it to `'awaiting'`. (The action name picks the new status — you can use other words too, and the new status will match.) Multi-word actions like `awaiting customer` shorten to a single URL token (`/awaiting`).
+
+### How notifications resolve recipient emails
+
+`email customer when counter` doesn't need you to specify how to reach the customer. It looks for a field called `customer_email` on the deal. `email rep when approve` looks for `rep_email`. The rule is `<role>_email` — match the role name in the email clause to a field name on the entity. If the field doesn't exist, the compiler will warn you (the row still gets queued, just with a blank recipient — so the CRO's flow doesn't break, but the email obviously can't go out until you add the field).
+
+The legacy form `notify customer on counter` still parses if you have older code, but `email <role> when <action>` is the canonical form for new code — the verb names HOW (email, vs the vague "notify"), and the connector reads naturally (when, vs the slightly-off "on").
+
+### Wiring action buttons in the UI
+
+The primitive does the backend, the audit, and the notifications. UI buttons are still hand-added — paste a few lines in your queue page:
+
+```clear
+detail panel for selected_deal:
+  text selected_deal's customer
+  text selected_deal's status
+  actions:
+    button 'Approve':
+      change selected_deal's status from 'pending' to 'approved'
+      update selected_deal at /api/deals/:id/approve
+      get pending from /api/deals/pending
+    button 'Reject':
+      change selected_deal's status from 'pending' to 'rejected'
+      update selected_deal at /api/deals/:id/reject
+      get pending from /api/deals/pending
+```
+
+The `change` line says which field moves from which value to which value. The `update` line saves that selected record through the generated login-gated action URL. The final `get` line reloads the queue the user sees.
+
+### When NOT to reach for `queue for X:`
+
+- A simple "yes/no" with no audit need — just write a normal update endpoint.
+- Automated routing where no human decides — that's a different shape, and a future `routing rules for X:` primitive will handle it cleanly.
+- Multi-stage approval where a deal needs Manager → Director → CRO — coming in Tier 2 once a second multi-stage app exists.
+
+### Why this primitive earns its keep
+
+A real Deal Desk used to need ~150 lines of hand-rolled JavaScript per app: the audit table, the URLs, the status transitions, the auth checks, the notification rows. Each one easy to get wrong, each one duplicated across every approval app. The queue primitive collapses that to **5 lines of declaration**, with auth, audit, and notifications all wired correctly by construction. Four of Clear's five Marcus-targeted apps now use it. Same visible behavior. A fraction of the surface for bugs to hide in.
+
+---
+
+## Chapter 19c: Triggered Emails (Send the Customer a Real Reply)
+
+The queue primitive in Chapter 19b records that an email *should* be sent — every time the CRO counters a deal, a row lands in `deal_notifications` saying "tell the customer." But Marcus's Deal Desk doesn't just need a queue of pending emails — he wants to write the actual subject and body once, in the same Clear file, and trust that every counter triggers the right reply. That's what the **triggered email primitive** does.
+
+It's a top-level block, written next to the queue:
+
+```clear
+create a Deals table:
+  customer
+  customer_email
+  rep_email
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
+
+email customer when deal's status changes to 'awaiting':
+  subject is 'We countered your offer'
+  body is 'Sarah from our team has prepared a counter offer. Reply when you can.'
+  provider is 'agentmail'
+  track replies as deal activity
+```
+
+Drop that block in and the compiler hands you back:
+
+- **A shared outbound table** called `workflow_email_queue` — one table per app, no matter how many `email <role> when ...` blocks you write. Every triggered email lands here as a row with subject, body, provider, recipient, and `queue_status='pending'`.
+- **An auto-injected insert** in every URL handler that lands the deal's status on `'awaiting'`. The queue's `counter` action transitions to `'awaiting'`, so the auto-generated `PUT /api/deals/:id/counter` handler queues the email *and* records the audit row *and* drops a notification row — all in one click. If you also write a hand-rolled `when user updates deal at /api/deals/:id/something:` endpoint that sets `deal's status is 'awaiting'`, the same queue insert lands there too. The trigger fires from every handler that hits the value.
+- **Compile-time silent-bug guards.** If the entity table forgets the `customer_email` field, the compiler warns: "Queue rows will land with empty recipient_email." If you write `body is 'Hello {customer_naem}'` (typo), the compiler warns the literal `{customer_naem}` would ship in the customer's inbox. If you misspell the provider as `'agentmial'`, the compiler hard-errors with "did you mean agentmail?"
+
+### What about real sending?
+
+By default, every triggered email sits in the queue with `queue_status='pending'`. Nothing goes to a real provider. That's deliberate — your tests, your dev environment, and your first preview build never accidentally email a real customer. To enable live sending, you'll add a directive like `enable live email delivery via agentmail` and provision an env-var-backed API key — both deferred until you've watched the queue fill up correctly and you're ready to flip the switch.
+
+This separation keeps the failure mode safe. Bad subjects and broken bodies and missing recipient fields ALL show up in the queue rows, where you can inspect them like any other database table — `GET /api/workflow-email-queue` returns them. By the time live delivery turns on, the data has already been correct for days.
+
+### Why this primitive earns its keep
+
+Marcus used to hand-write a `Notifications` table, a SendGrid client wrapper, a per-action "if approved, send X" branch, and a retry queue — for every app. The triggered email primitive collapses all of that to a single block of declarative English at the top of the file. The compiler reads that block and emits the table, the queue insert, the recipient resolution, the status-tracking, and the safety guards. Same workflow. Far less surface for the wrong email to escape.
+
+---
+
+## Chapter 22: Scheduled Tasks (Set It and Forget It)
+
+Sometimes you want your app to do things automatically — clean up old data every hour,
+send a daily report, check for updates every few minutes. That's what scheduled tasks are for.
+
+### Running Something Every Few Minutes
+
+```clear
+every 5 minutes:
+  old_sessions = look up all Sessions where age is greater than 24
+  delete old_sessions from Sessions
+```
+
+That runs the cleanup code every 5 minutes, forever. You can use `minutes` or `hours`.
+
+### Running Something at a Specific Time
+
+```clear
+every day at 9am:
+  users = look up all Users
+  for each user in users:
+    send email to user's email with subject 'Good morning!'
+```
+
+Supports times like `9am`, `2:30pm`, `12:00am` (midnight).
+
+### When to Use Scheduled Tasks
+
+- Daily email digests
+- Cleaning up expired data
+- Polling external APIs for updates
+- Generating daily reports
+
+---
+
+## Chapter 12: Security (The Part You Can't Skip)
+
+Clear takes security seriously. The compiler actually REFUSES to build your app
+if it has obvious security holes. Try creating a DELETE endpoint without auth
+and the compiler will politely but firmly say no.
+
+(Most languages let you deploy insecure code and hope for the best. Clear
+would rather hurt your feelings now than let hackers hurt your users later.)
+
+### Input Validation
+
+```clear
+when user calls POST /api/users sending user:
+  validate user:
+    name is text, required, min 1, max 100
+    email is text, required, matches email
+    age is number, required
+    role is text, one of ['reader', 'editor', 'admin']
+```
+
+### Auth Scaffolding
+
+One line gets you a full auth system with signup, login, and JWT tokens:
+
+```clear
+build for javascript backend
+owner is 'marcus@acme.com'
+allow signup and login
+
+when user calls GET /api/dashboard:
+  requires login
+  send back 'Welcome!'
+```
+
+The `owner is` line pins which email becomes the app owner. When Marcus signs up with that email, he's the only person who sees the "Edit this app" badge in the corner — the Live App Editing widget that lets him change the app in plain English while his team keeps using it. Every other user signs up as a normal user with no edit surface.
+
+This generates:
+- `POST /auth/signup` — creates user with bcrypt-hashed password, returns JWT
+- `POST /auth/login` — verifies password, returns JWT  
+- `GET /auth/me` — returns info about the authenticated caller
+- JWT middleware on every request (extracts user from `Authorization: Bearer <token>`)
+
+On the frontend, use `needs login` to protect pages:
+
+```clear
+page 'Dashboard':
+  needs login
+  heading 'Welcome back'
+```
+
+### Authentication
+
+```clear
+when user calls DELETE /api/posts/:id:
+  requires login
+  delete the Post with this id
+  send back 'deleted' with success message
+```
+
+### Role-Based Access
+
+```clear
+when user calls PUT /api/settings/:id sending setting:
+  requires role 'admin'
+  save setting to Settings
+  send back setting with success message
+```
+
+### Guards
+
+```clear
+when user calls POST /api/orders sending order:
+  requires login
+  enforce that stock is greater than 0, or fail with error message: 'Out of stock'
+  new_order = save order as new Order
+  send back new_order with success message
+```
+
+Guards check a business rule and return a 400 error if it fails. The message
+after `or` is what the user sees. **Write helpful messages** — not "Invalid
+request" but "Upgrade to Pro to place orders." The user needs to know what
+to do.
+
+### Rate Limiting
+
+Block brute force attacks on auth endpoints and prevent expensive endpoints
+from being abused:
+
+```clear
+when user calls POST /auth/login sending credentials:
+  rate limit 10 per minute
+  ...
+
+when user calls POST /api/ask-agent sending question:
+  requires login
+  rate limit 20 per hour   # agents are expensive — cap usage
+  ...
+```
+
+### Agent Guardrails
+
+Agents are the most dangerous thing in your app — they can call tools, read
+data, and follow instructions from users. Lock them down:
+
+```clear
+agent 'Support Agent' receives question:
+  has tools: look_up_order, create_ticket
+
+  # Policies — compile-time checks that the agent's tools can't violate
+  must not: delete Orders
+  must not: modify pricing
+  must not: refund more than 500 dollars
+
+  # Prompt injection defense — regex filter on tool inputs
+  block arguments matching 'drop|truncate|delete from'
+
+  ask claude question with Products, FAQs
+  send back response
+```
+
+- **`must not:`** — checked at compile time. If the agent has a tool that
+  could delete Orders, and you wrote `must not: delete Orders`, the compiler
+  refuses to build.
+- **`block arguments matching 'regex'`** — checked at runtime. Every tool
+  call's arguments are run through the regex. If any match, the call is
+  blocked. This catches prompt injection where a user tries to trick the
+  agent into running dangerous SQL.
+
+### App-Level Policies
+
+Set once at the top of the file, applies to the whole app. Use these for
+production apps that need compliance guarantees:
+
+```clear
+build for web and javascript backend
+
+# App-level policies (before any endpoints)
+block schema changes               # No ALTER TABLE ever
+block deletes without filter       # Compiler errors on bulk DELETE
+protect tables: Users, Orders      # Whitelist — only named endpoints can access
+require role 'admin' for deletes   # Global role gate on DELETE endpoints
+no mass emails                     # Block send email with 2+ recipients
+```
+
+These become compile-time checks. If you write an endpoint that violates any
+of them, the compiler refuses to build.
+
+### The Five Guard Types (summary)
+
+Clear has five different kinds of guards. Each one protects something
+different. **Use them together, not instead of each other.**
+
+| What you're protecting | Use this |
+|------------------------|----------|
+| Endpoint from anonymous users | `requires login` |
+| Endpoint from wrong role | `requires role 'admin'` |
+| Business rule (stock, plan, etc.) | `enforce that X, or fail with error message: 'message'` |
+| Input shape (required fields, format) | `validate <entity>:` + rules |
+| Agent from doing bad things | `must not:` + `block arguments matching` |
+| Whole app from dangerous patterns | App-level policies at top |
+| Endpoint from brute force | `rate limit N per minute` |
+
+A real production endpoint layers multiple guards:
+
+```clear
+when user calls POST /api/orders sending order:
+  requires login                                        # 1. auth
+  requires role 'customer'                              # 2. role
+  rate limit 30 per minute                              # 3. brute force
+  validate order:                                  # 4. input shape
+    product_id is number, required
+    quantity is number, required, min 1, max 100
+  enforce that user's plan is not 'free', or fail with error message: 'Upgrade to Pro'  # 5. business rule
+  enforce that product's stock > 0, or fail with error message: 'Out of stock'          # 5. business rule
+  new_order = save order as new Order
+  send back new_order with success message
+```
+
+That's six guards on one endpoint. Sounds like a lot — but each catches a
+different attack. Skip any one and your app has a hole.
+
+---
+
+## Chapter 14: Error Handling (Because Things Go Wrong)
+
+The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense
+into every field. Clear gives you clean ways to handle all of it.
+
+```clear
+try:
+  result = call api 'https://api.example.com/data'
+  show result
+if error:
+  show 'Something went wrong'
+```
+
+### Typed Error Handlers (Route Different Failures Differently)
+
+Not all errors are equal. A 404 (not found) needs a different response than a 403 (permission denied).
+
+```clear
+try:
+  fetch post from '/api/posts/123'
+if error 'not found':
+  show 'That post doesn't exist'
+if error 'forbidden':
+  show 'You don't have permission to view this'
+if error 'unauthorized':
+  redirect to '/login'
+if error:
+  show 'Something unexpected happened'
+```
+
+### Accessing the Error Object
+
+Inside any `if error` block, the variable `error` is automatically available:
+
+```clear
+try:
+  fetch data from '/api/data'
+if error 'not found':
+  show 'Error {error's status}: {error's message}'
+if error:
+  show error's message
+```
+
+Supported typed handlers: `not found` (404), `forbidden` (403), `unauthorized` (401),
+`bad request` (400), `server error` (500).
+
+### Throwing Custom Errors
+
+Use `send error` to throw your own error and stop execution:
+
+```clear
+define function validate_age(age):
+  if age is less than 0:
+    send error 'Age cannot be negative'
+  if age is less than 18:
+    fail with 'Must be 18 or older'
+  return age
+```
+
+Aliases: `throw error`, `fail with`, `raise error` — all work identically.
+Errors propagate up to the nearest `try/if error` block, or crash if uncaught.
+
+### Finally (Cleanup Code)
+
+Need to clean up resources no matter what — close a file, release a lock?
+
+```clear
+try:
+  process_data(connection)
+if error:
+  show 'Processing failed: {error's message}'
+finally:
+  close_connection()
+```
+
+The `finally:` block always runs, whether the try succeeded or failed.
+Aliases: `always do:` and `after everything:`.
+
+### Retry on Failure
+
+```clear
+retry 3 times:
+  data = call api 'https://unreliable-api.com/data'
+```
+
+### Timeout
+
+```clear
+with timeout 5 seconds:
+  result = call api 'https://slow-api.com/data'
+```
+
+### Live Blocks (Effect Fences)
+
+Some lines in your program talk to the outside world: asking Claude, calling
+an API, opening a websocket, running a timer. The rest is pure — math, string
+work, table reads. A `live:` block is the visible label for the part that
+talks to the world:
+
+```clear
+when user sends note to /api/chat:
+  live:
+    reply is ask claude 'hi'
+  send back reply
+```
+
+Why label them? Two reasons. First, it's easier to read — you can see at a
+glance which lines could be slow or could fail because the network is flaky.
+Second, the compiler can use that label to prove the rest of your program
+can't hang. Pure code (no `live:` block) is provably terminating.
+
+Today `live:` is permissive — anything is allowed inside, and code outside
+isn't restricted yet. In a future Clear release the compiler will start
+*requiring* effect-shaped calls (`ask claude`, `call api`, `subscribe to`,
+timers) to sit inside a `live:` fence. Writing it that way now means your
+apps will keep compiling cleanly when the rule tightens.
+
+```clear
+# Good — the fence makes the boundary obvious
+agent 'Replier' receiving message:
+  live:
+    answer is ask claude message
+  send back answer
+```
 
 ---
 
@@ -3445,38 +2777,235 @@ That's a bug in the language — not in you. Seriously. File an issue. We'll fix
 
 ---
 
-## Chapter 22: Scheduled Tasks (Set It and Forget It)
+## Chapter 17: Testing (Proving Your Code Works)
 
-Sometimes you want your app to do things automatically — clean up old data every hour,
-send a daily report, check for updates every few minutes. That's what scheduled tasks are for.
-
-### Running Something Every Few Minutes
+You know what's better than code that looks right? Code that you can PROVE
+is right. Clear has built-in testing — write tests right alongside your code:
 
 ```clear
-every 5 minutes:
-  old_sessions = look up all Sessions where age is greater than 24
-  delete old_sessions from Sessions
+test 'addition works':
+  result = 2 + 2
+  expect result is 4
+
+test 'tax calculation':
+  total = 100
+  tax = total * 0.08
+  expect tax is 8
 ```
 
-That runs the cleanup code every 5 minutes, forever. You can use `minutes` or `hours`.
+### Running Tests
 
-### Running Something at a Specific Time
+```bash
+clear test main.clear
+```
+
+Output:
+```
+✅ addition works
+✅ tax calculation
+2 passed, 0 failed
+```
+
+**When a test fails**, Clear tells you what went wrong in plain English:
+
+```
+✗ posting a note works
+  POST /api/notes returned 404 (expected 201).
+  404 means "there is no endpoint at that URL." Either the path
+  in your test is wrong, or you forgot to write
+  `when user calls POST /api/notes:` in your Clear file.
+  [clear:12]
+```
+
+Every status code gets a real explanation — 200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 5xx. The `[clear:N]` tag points at the exact source line that failed. In **Clear Studio**, clicking a failing test row jumps the editor to that line. There's also a **Fix with Meph** button that hands the error + surrounding code to Meph for an auto-fix.
+
+### What You Can Test
+
+**Values:**
+```clear
+test 'string operations':
+  name is 'Alice'
+  expect name is 'Alice'
+
+test 'math':
+  price = 100
+  tax = price * 0.08
+  expect tax is 8
+```
+
+**Functions:**
+```clear
+double(x) = x * 2
+
+test 'double works':
+  result = double(5)
+  expect result is 10
+```
+
+### TDD with Functions (Write the Test First)
+
+For any logic that doesn't need a database or HTTP endpoint, use `define function` and test it directly. The test goes in first — before the function exists.
+
+**Red step — write a failing test:**
+```clear
+build for javascript backend
+
+test 'discount calculation':
+  result = apply_discount(100, 0.10)
+  expect result is 10
+```
+
+Run `clear test`. It fails: `apply_discount is not defined`. That's the signal. Now write the function.
+
+**Green step — write the function:**
+```clear
+build for javascript backend
+
+define function apply_discount(price, rate):
+  send back price * rate
+
+test 'discount calculation':
+  result = apply_discount(100, 0.10)
+  expect result is 10
+```
+
+Run `clear test` again. It passes. The function and the test live in the same file.
+
+`send back` inside `define function` compiles to a plain `return` — not HTTP. You can call it from test blocks, from other functions, or from endpoints. It's just a regular function.
+
+**If your function name collides with a built-in** (like `length`, `keys`, or `values`), Clear gives priority to your definition. You can write `define function length(text):` and it will shadow the built-in in your app.
+
+### Testing AI Agents
+
+Use `mock claude responding:` to test agents without calling the real API:
 
 ```clear
-every day at 9am:
-  users = look up all Users
-  for each user in users:
-    send email to user's email with subject 'Good morning!'
+agent 'Classifier' receives feedback:
+  analysis = ask claude 'Classify this feedback' with feedback returning:
+    sentiment
+    score (number)
+  send back analysis
+
+test 'classifier returns sentiment':
+  mock claude responding:
+    sentiment is 'positive'
+    score = 9
+  result = call 'Classifier' with 'Great product!'
+  expect result's sentiment is 'positive'
 ```
 
-Supports times like `9am`, `2:30pm`, `12:00am` (midnight).
+### Intent-Based Tests (The Easy Way)
 
-### When to Use Scheduled Tasks
+Instead of writing raw HTTP calls, describe what you want to test in English:
 
-- Daily email digests
-- Cleaning up expired data
-- Polling external APIs for updates
-- Generating daily reports
+```clear
+test 'todo workflow':
+  can user create a new todo with title: 'Buy groceries'
+  expect it succeeds
+  can user view all todos
+  expect it succeeds
+  can user delete a todo
+  expect it succeeds
+
+test 'validation catches missing fields':
+  can user create a todo without a title
+  expect it is rejected
+
+test 'security':
+  deleting a todo should require login
+
+test 'agent smoke test':
+  can user ask agent 'Helpdesk' with message: 'hello'
+  expect it succeeds
+
+test 'display works':
+  does the todos list show 'Buy groceries'
+```
+
+The compiler figures out which endpoints to call based on your tables and
+endpoints. `create` becomes POST, `view` becomes GET, `delete` becomes DELETE.
+
+**Available expectations:**
+- `expect it succeeds` — status 200-299
+- `expect it fails` — non-success status
+- `expect it requires login` — status 401
+- `expect it is rejected` — status 400
+- `expect response has id` — field exists
+- `expect response contains 'text'` — body contains text
+
+### Running Agent Evals
+
+For more thorough agent testing, use evals:
+
+```bash
+clear eval main.clear              # Schema checks (fast, no API calls)
+clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
+```
+
+### Leaving a piece for later: `TBD`
+
+Sometimes you know the shape of the program but you have not decided one
+piece yet. Maybe the spec is ambiguous, maybe Russell told you to "leave
+the auth for later, focus on the queue," maybe you are sketching a structure
+and want compiler feedback on the parts that ARE written.
+
+`TBD` is a placeholder marker. Drop it anywhere a value or a whole step
+belongs. The compiler accepts it. The program still compiles green. Only
+the line that holds the placeholder fails at runtime — every other piece
+keeps working.
+
+```clear
+build for javascript backend
+
+create a Leads table:
+  name, required
+  email, required
+
+when user requests data from /api/leads:
+  send back all Leads
+
+when user sends lead to /api/leads:
+  validate lead:
+    name, required
+    email, required
+  TBD                       # the audit log piece is for next session
+  saved_lead = save lead as new Lead
+  send back saved_lead with success message
+
+test 'creating a lead works':
+  set new_lead = TBD        # exact payload not decided yet
+  send new_lead to /api/leads
+  expect response status is 200
+```
+
+Compile and run the tests:
+
+```bash
+clear test main.clear
+```
+
+You will see something like:
+
+```
+PASS: Creating a new lead succeeds
+SKIP: creating a lead works - placeholder hit at line 17 — fill it in or remove it (this test exercises a stub)
+
+Results: 1 passed, 0 failed, 1 skipped due to stub
+```
+
+The skipped test does not fail the build — `clear test` exits 0 because no
+real assertion failed. The skip count tells you "structure right, piece not
+filled in yet" so you know exactly which holes are still open.
+
+Three rules of thumb:
+1. **Use `TBD` for genuinely open decisions.** Ambiguous spec, deferred piece,
+   sketching a structure. Not for things you do not feel like writing — that
+   is just hiding the hard part.
+2. **Do not ship `TBD`s in production code.** The placeholder is a bookmark,
+   not a finished piece. If your final commit still has open `TBD`s, you have
+   not finished the feature.
+3. **Skipped tests are not coverage.** A test that hits a `TBD` did not
+   actually verify anything. Refill the placeholder before you trust the test.
 
 ---
 
@@ -3676,6 +3205,477 @@ python scripts/audit-pdf.py /tmp/bundle.json /tmp/audit.pdf
 **When to regenerate:** every time you change a rule, every time you ship to production, every quarterly audit. The PDF is dated — the buyer trusts what they see was true at the time the file was generated.
 
 ---
+
+## Chapter 16: The Clear CLI (Your Toolbox)
+
+Clear comes with a command-line tool that does everything: build, test, deploy,
+lint, fix, and introspect. It's designed for both humans and AI agents — every
+command supports `--json` for machine-readable output.
+
+### Build
+
+Compile a .clear file to JS/Python/HTML:
+
+```bash
+clear build main.clear
+```
+
+This generates a `build/` directory:
+```
+build/
+  index.html         # Frontend (if web target)
+  server.js          # Backend (if JS backend target)
+  server.py          # Backend (if Python backend target)
+  style.css          # Fallback styles
+  clear-runtime/     # Database, auth, rate limiting
+```
+
+### Check (Validate Without Compiling)
+
+Fast validation — parses and checks for errors without generating output:
+
+```bash
+clear check main.clear
+```
+
+Great for quick feedback while editing. Catches undefined variables,
+missing fields, security issues, and typos.
+
+If validation fails and you want the compiler error fixed, print the trace packet:
+
+```bash
+clear check main.clear --trace
+```
+
+Paste the whole `CLEAR COMPILE TRACE v1` packet into the debugging session. In Studio, use the
+**Copy compiler error** button that appears above compile errors.
+
+### Run
+
+Compile and immediately run a backend server:
+
+```bash
+clear run main.clear
+```
+
+### Serve
+
+Compile and start a local development server with static file serving:
+
+```bash
+clear serve main.clear
+```
+
+Your app is at `http://localhost:3000`.
+
+### Dev (Watch Mode)
+
+Compile, serve, and auto-rebuild when files change:
+
+```bash
+clear dev main.clear
+```
+
+### Info (Introspect)
+
+List all endpoints, tables, pages, and agents in a Clear file:
+
+```bash
+clear info main.clear
+```
+
+Output:
+```
+Tables: Todos (task, completed, created_at)
+Endpoints: GET /api/todos, POST /api/todos, DELETE /api/todos/:id
+Pages: Todo App (/)
+```
+
+### Lint (Security + Quality)
+
+Check for security vulnerabilities and code quality issues:
+
+```bash
+clear lint main.clear
+```
+
+Catches: unauthenticated DELETE endpoints, missing validation, SQL injection
+risks, open CORS without auth, and more.
+
+### Fix (Auto-Patch)
+
+Automatically fix patchable errors:
+
+```bash
+clear fix main.clear
+```
+
+### Package (Deploy Bundle)
+
+Generate a Dockerfile and package.json for deployment:
+
+```bash
+clear package main.clear
+```
+
+### Init (New Project)
+
+Scaffold a new Clear project:
+
+```bash
+clear init my-app
+```
+
+Creates `my-app/main.clear` with a starter template.
+
+### Agent (List Agents)
+
+List all agents with their tools, skills, and guardrails:
+
+```bash
+clear agent main.clear
+```
+
+### Global Flags
+
+```bash
+clear build main.clear --json      # Machine-readable JSON output
+clear build main.clear --quiet     # Suppress non-essential output
+clear build main.clear --no-test   # Skip test gate
+clear build main.clear --auto-fix  # Auto-patch errors during build
+clear check main.clear --trace     # Print copy-pasteable compile trace
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Compile error |
+| 2 | Runtime error |
+| 3 | File not found |
+| 4 | Test failure |
+
+---
+
+## Chapter 16b: Clear Studio (The IDE)
+
+Clear has a built-in IDE called **Clear Studio**. Run `node playground/server.js`
+and open `http://localhost:3456`.
+
+### Three Panels
+
+- **Left:** Code editor (CodeMirror 6) — write and edit Clear code
+- **Right top:** Live preview and terminal — see your app running
+- **Right bottom:** AI chat — talk to Meph, the built-in AI assistant
+
+### Click-to-Highlight (Source Mapping)
+
+Click any line in the Clear editor and the compiled output highlights the
+corresponding JavaScript/HTML line. This works because the compiler embeds
+source map markers (`// clear:N`) in the compiled output.
+
+Click a line in the compiled output and it highlights the original Clear line.
+Two-way mapping — you always know which Clear line produced which output line.
+
+This is especially useful for debugging: if something looks wrong in the
+compiled output, click it to find the Clear line that generated it.
+
+### 43 Template Apps
+
+The dropdown at the top has 43 pre-built example apps — from simple todo lists
+to full dashboards with charts and AI agents. Pick one, click it, and the code
+loads in the editor. Great for learning and starting new projects.
+
+---
+
+## Chapter 18: Going Live (Deploying Your App)
+
+You built it. You tested it. Now let's put it on the internet where
+people can actually use it.
+
+### Step 1: Build
+
+```bash
+clear build main.clear
+```
+
+### Step 2: Run Locally
+
+```bash
+cd build
+npm install express    # First time only
+node server.js
+```
+
+Your app is at `http://localhost:3000`.
+
+### Step 3: Package for Production
+
+```bash
+clear package main.clear
+```
+
+This generates:
+- `Dockerfile` — containerized deployment
+- `package.json` — Node.js dependencies
+
+### Step 4: Deploy
+
+**Option A: Docker**
+```bash
+cd build
+docker build -t my-app .
+docker run -p 3000:3000 my-app
+```
+
+**Option B: Railway (One Command)**
+
+```bash
+clear deploy main.clear
+```
+
+This packages your app with the correct database adapter, runs `railway up`,
+and prints environment variable guidance. If your app uses `database is PostgreSQL`,
+the Postgres adapter is bundled automatically.
+
+Requirements:
+- Install Railway CLI: `npm install -g @railway/cli`
+- Log in: `railway login`
+- Create a project: `railway init`
+
+**Option C: Any Node.js host**
+
+Upload the `build/` directory to Vercel, Render, Fly.io, or any
+Node.js hosting. The entry point is `server.js`.
+
+### Environment Variables
+
+If your app uses `env('API_KEY')`, set the environment variable on your host:
+
+```bash
+# Local
+API_KEY=sk-xxx node server.js
+
+# Docker
+docker run -e API_KEY=sk-xxx -p 3000:3000 my-app
+```
+
+---
+
+## Chapter 20.5: Ship It — One-Click Deploy
+
+You built it. It runs on your laptop. Now put it on the internet so the rest of your team can use it.
+
+### The Deploy button
+
+Open your app in Clear Studio. Compile. Click **Deploy** in the toolbar. You'll see a modal asking for:
+
+- **App name** — lowercase letters, numbers, hyphens. 3–32 characters. This becomes part of your URL.
+- **Custom domain (optional)** — `deals.acme.com` if you own one, otherwise leave blank and you'll get a `*.fly.dev` URL.
+- **Secrets** — if your app uses `requires login`, a JWT signing secret is auto-generated. If you used `use stripe` / `use twilio` / `use sendgrid`, you'll be prompted for each API key.
+
+Click Ship It. In roughly 15 seconds you'll see:
+
+```
+Live: https://clear-acme-todos-a7b3c9.fly.dev   [Copy]
+```
+
+That URL is real. Open it in any browser. Send it to your team.
+
+### What just happened
+
+Under the hood, five things ran in sequence:
+
+1. Studio re-packaged your compiled app (server.js, package.json, a Dockerfile, the runtime helpers) into a tarball.
+2. A shared **builder machine** we run inside Fly's network received the tarball, ran `docker build` and `docker push` to Fly's registry.
+3. `flyctl` created a new app for you in our `clear-apps` org, attached a volume for SQLite apps (or a Postgres database for Postgres apps), set your secrets, and deployed the image.
+4. The builder waited for Fly to report the machine as `started`, then returned the public URL.
+5. Studio wired your app name to your tenant so re-deploys land on the same URL.
+
+You don't need a Fly account. You don't see Docker. You don't write a `fly.toml`. You clicked a button.
+
+### AI calls in deployed apps
+
+If your app uses `ask claude` or `define agent`, those calls route through Clear's metered AI proxy on deployed apps — no Anthropic key paste required. The plan badge in Studio (`0/25 • $0.00/$10.00`) shows apps deployed out of your plan limit and AI spend out of monthly credit.
+
+### Custom domains
+
+If you typed a domain in the Deploy modal, Clear calls `flyctl certs create` for you and returns the DNS records to point at Fly. Copy the A/AAAA records into your DNS provider (Cloudflare, Route 53, etc.) and the cert auto-renews.
+
+### Rollback
+
+Every deploy produces a new release. Open the **Deploy History** drawer, pick any prior release, click Rollback. The live URL flips back to that version in seconds. Your data stays put — rollback only swaps the code.
+
+### One-click updates (after the first deploy)
+
+Most "deploys" after the first one aren't really deploys — they're updates. You changed three lines in the deal-desk app, you don't need a new database, a new domain, or new secrets. You just need the new code to be live.
+
+Clear handles this for you. The Publish button watches your tenant record, and the moment it sees that the app you're shipping is one you've already deployed, the button text changes from **Deploy** to **Update** and the modal swaps to a much shorter conversation:
+
+1. **Edit your code.** Change the heading, fix a typo, add a new endpoint, whatever.
+2. **Click Publish.** The modal opens with a green "Update *deal-desk.buildclear.dev*" header and the relative time of your last ship ("Last deployed 14 minutes ago"). If your edits didn't change anything compared to what's live, the button is disabled and tells you "No changes since last deploy" — Clear refuses to burn a version slot for a no-op.
+3. **Click Update.** The new bundle uploads, a fresh version id gets recorded against your tenant, and the modal flips to "Updated to version v-abc-123". Wall clock: about two seconds, versus twelve for the original deploy. Your URL doesn't change, your database doesn't change, your secrets don't change — only the code does.
+
+Behind the scenes Clear is doing the obvious-once-you-think-about-it thing: re-uploading just the Worker bundle and skipping every step that's already done. Your D1 database is already provisioned. Your domain is already attached. Your `JWT_SECRET` is already set. None of that needs to happen again.
+
+### When schema changes pause the update
+
+There's exactly one thing that puts the brakes on. If the edit you just made changed a table — added a column, dropped one, renamed it — Clear has to reshape the live database before the new code can run, and SQLite doesn't have an atomic way to do that. So instead of silently applying the change and risking that an in-flight request hits the new schema with the old code, Clear stops and asks.
+
+You'll see a yellow "Schema change detected" view in the modal with a list of what's different ("`migrations/001-init.sql` — changed"), and a button labeled **Apply migration + update**. Click it, the migration applies first, the new bundle uploads second, and a typical case is back online in under three seconds. If you're not ready to commit to the schema change yet, close the modal — nothing is live, your old version is still serving.
+
+### One-click rollback
+
+Inside the same Update modal there's a **Version history** link. Click it and the panel expands to show the last twenty versions of your app, newest first, each with the time it was uploaded and a Rollback button. The currently-live version doesn't have a button — it has a "Current" label so you can't roll back to where you already are.
+
+Click Rollback on, say, v-abc-118, and Clear flips the live URL back to that version in about a second. The previous live version is recorded as a new entry in your history with a `rollback-from-v-abc-122` note, so the timeline reads chronologically — no branching, no surprise. Your data is untouched, just like with the older Deploy History rollback above; this is the same primitive, surfaced in the same place where you actually live (the Publish modal) instead of buried in a separate drawer.
+
+If you click Rollback on a version that no longer exists on Cloudflare's side (someone deleted it from the dashboard, or it aged out of retention), the modal tells you "This version no longer exists on Cloudflare — the history has been refreshed" and reloads the panel so you're looking at reality.
+
+### Plans
+
+- **Free** — 1 app, no AI credit. Good for learning.
+- **Pro ($99/mo)** — 25 apps, $10/mo of AI credit included, custom domains.
+- **Team ($299/mo)** — 100 apps, $50/mo of AI credit, 10 seats.
+
+Overage on AI credit bills at cost through Stripe metered billing.
+
+### What Clear won't let you do
+
+- Deploy apps with shell metacharacters in the name (rejected at Studio, never reaches the builder).
+- Roll back or change cert on an app belonging to another tenant (403 CROSS_TENANT).
+- Upload tarballs with `..` paths or absolute paths or symlinks (builder rejects PATH_ESCAPE).
+- Run up an AI bill after your quota is gone (proxy returns 402 "Upgrade or top up").
+
+These are not feature requests — they're guarantees. Every customer app is isolated in its own Firecracker VM.
+
+---
+
+## Quick Reference
+
+### Build Targets
+
+```clear
+build for web                              # Frontend only
+build for javascript backend               # Backend only (Node.js)
+build for python backend                   # Backend only (FastAPI)
+build for web and javascript backend       # Full-stack (Node.js)
+build for web and python backend           # Full-stack (Python)
+```
+
+### The Clear File Structure
+
+Every Clear app follows this order:
+
+```clear
+build for web and javascript backend    # 1. What to build
+
+# 2. Database
+database is local memory
+create a Users table:
+  name, required
+  email, required, unique
+
+# 3. Backend
+accept requests from any website
+log every request
+
+when user calls GET /api/users:
+  all_users = get all Users
+  send back all_users
+
+# 4. Frontend
+page 'My App':
+  heading 'Hello'
+```
+
+Database first, then backend, then frontend. Always.
+
+### Common Patterns
+
+**CRUD app (the most common):**
+```clear
+# Create
+when user calls POST /api/items sending item:
+  validate item:
+    name is text, required
+  new_item = save item as new Item
+  send back new_item with success message
+
+# Read
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+
+# Update
+when user calls PUT /api/items/:id sending changes:
+  requires login
+  save entry to Items
+  send back update_data with success message
+
+# Delete
+when user calls DELETE /api/items/:id:
+  requires login
+  delete the Item with this id
+  send back 'deleted' with success message
+```
+
+**Frontend that talks to the backend:**
+```clear
+page 'My App':
+  on page load get items from '/api/items'
+
+  'Name' is a text input saved as a name
+  button 'Add':
+    send name as a new item to '/api/items'
+    get items from '/api/items'
+    name is ''
+
+  display items as table showing name with delete
+```
+
+**String interpolation:**
+```clear
+show 'Hello, {name}! Score: {score * 10}.'
+msg is 'User: {user's email}'     # possessive inside {} works
+```
+
+**Typed functions:**
+```clear
+define function add(a is number, b is number) returns number:
+  return a + b
+```
+
+**Map iteration:**
+```clear
+for each key, value in settings:
+  show '{key} = {value}'
+if 'theme' exists in settings:
+  show keys of settings
+```
+
+**Higher-order functions:**
+```clear
+doubled = apply double to each in numbers
+evens   = filter numbers using is_even
+```
+
+**Typed error handling:**
+```clear
+try:
+  fetch data from '/api/item'
+if error 'not found':
+  show 'Missing'
+if error 'forbidden':
+  show error's message
+if error:
+  show error's message
+```
+
+---
+
+## What's Next? (You Did It!)
 
 ## Appendix: What Meph Can Do
 
