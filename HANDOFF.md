@@ -35,14 +35,14 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-02 late-evening)
+## Current State (rewritten 2026-05-03 evening)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
 **Where the product is:**
 - All 5 canonical Marcus apps (Deal Desk, Approval Queue, Lead Router, Onboarding Tracker, Internal Request Queue) compile clean and pass 74 of 74 automated browser checks.
-- The proof system shipped AND its verdict surface is now hardened: the business-rules eval (35 cases across 21 groups) passes 35 of 35. Four wrong-verdict gaps closed earlier today — equality-on-constants folds correctly, empty rule bodies report UNVERIFIABLE instead of vanishing, impure expressions hidden inside assignments are detected. These were exactly the cases where the prover would have lied to a CRO during a demo.
-- Runtime witness wired: every PROVED rule is now independently verified at runtime. The harness compiles each rule shape, spawns the compiled app on a free port, sends 20 violating inputs, asserts every one comes back as a 403 with the rule name in the body. 60 measured rejections across 3 rule shapes, all green. The prover's structural-proof claim is now corroborated by measurable runtime evidence — the "trust but verify" bridge for the regulated-tier pitch.
+- The proof system shipped AND its verdict surface is now hardened: the business-rules eval (35 cases across 21 groups) passes 35 of 35. The prover's "How it was proved formally" output no longer leaks math-engine internals — every PROVED rule's audit PDF now says "this rule is enforced by construction of the program" in plain English, quotes the original Clear source line, and shows the actual compiled JavaScript rejection block side-by-side. Auditors see the runtime check with their own eyes; the math claim has the receipt next to it. The runtime-witness side also got the same cleanup — missing-dependency stack traces no longer leak into the PDF; auditors get a one-line plain-English message instead.
+- Runtime witness wired: every PROVED rule is independently verified at runtime. The harness compiles each rule shape, spawns the compiled app on a free port, sends 20 violating inputs, asserts every one comes back as a 403 with the rule name in the body. 60 measured rejections across 3 rule shapes, all green.
 - Compiler emit hardened: every rule rejection now carries `{ "error": "<msg>", "rule": "<rule-name>" }` in the response body so the audit trail can attribute every 403 to its named policy.
 - Studio has a fullscreen toggle for demo recording.
 
@@ -59,16 +59,7 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work (branches not yet merged to main)
 
-| Branch | What it ships | Status |
-|---|---|---|
-| `feature/prover-business-rules-eval` | Test harness exercising the proof system against 16 rule shapes; 14 prove correctly, 2 surface real proof-system gaps. Includes a stub for the runtime-witness harness (Russell's "how do we know the prover tells the truth" question). | 3 commits, pushed, ready to merge. |
-
-When merging this branch, the standard pattern works:
-```
-git fetch origin
-git merge --ff-only origin/feature/prover-business-rules-eval
-git push origin main --no-verify
-```
+_None right now — `feature/audit-pdf-prose-fix` shipped clean tonight. The earlier `feature/prover-business-rules-eval` branch was already merged in yesterday's run; the row was stale carry-over._
 
 ---
 
@@ -83,56 +74,27 @@ git push origin main --no-verify
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Fix the audit PDF's "How it was proved formally" prose — strip prover-internals jargon, show the actual runtime check the compiler emitted.** The current text reads like a stack trace ("symbolic engine couldn't decode the guard expression: Symbolic limit: unsupported node 'member_access'"). Auditors don't care about prover internals; they want to know WHY they should trust the verdict. Two coupled changes:
+1. **Add chapters and a clickable Table of Contents to USER-GUIDE.md.** The guide is now ~3700 lines — readers can't navigate. Add a TOC at the top with anchor links to each chapter heading. Also: audit chapter ordering — some chapters are old, some are recent; group them so the tutorial reads in a natural arc (start with "your first app", then data, then UI, then auth, then rules, then deploy). Don't add new content; just structure what's there. ~1 hour.
 
-   **(a) Math-checker emits a clean tag, not prose.** In `lib/prover/index.js`'s `proveRule`, replace the long natural-language `enforcedReasons.push(...)` strings with a structured tag — `{ kind: 'tautology' }` or `{ kind: 'structural-enforcement', line: N, expression: '<expr>' }`. The PDF writer picks the human-readable paragraph based on the tag. Prose stays out of the prover.
+2. **Row-level security / tenant isolation.** Marcus apps deployed on Clear Cloud share a Postgres instance — every customer's data lives in the same database. Without row-level filters, customer A could query customer B's records by guessing IDs. This is the hard regulated-tier requirement: every CRUD operation must be scoped by tenant ID, and the compiler must EMIT that scoping automatically (not rely on the author remembering). Design needed: how does the source declare a tenant boundary? Likely `database is shared with tenant scope` or similar, and every `look up` / `save` / `delete` auto-injects `WHERE tenant_id = caller's tenant_id`. Plan + implement in same session — multi-day work.
 
-   **(b) Show the actual compiled check.** The PDF section "How it was proved formally" should include the snippet of compiled JavaScript that does the rejection — line number from the source, then the actual `if (!(...)) { return res.status(403)... }` block. The auditor sees with their own eyes that the program literally rejects bad inputs. The math claim ("no path through this program reaches the next line with a violating input") then has the receipt right next to it.
+3. **Concurrency Phase 2 — actually prevent the race conditions Phase 1 detects.** Phase 1 (shipped 2026-05-02) FLAGS every endpoint where a read-modify-write race can happen. Phase 2 RUNS the runtime that prevents those races: optimistic locking with a `version` column on every mutable table, automatic retry on version mismatch, `safe to retry` modifier for endpoints where idempotency is provable, hard-fail when concurrent edits would corrupt state. The honest pitch sentence after Phase 2 is "we prove no races," not "we flag every endpoint where a race can happen." Multi-day work.
 
-   **What the new output should look like for `price-floor-positive`:**
-
-   > **How it was proved formally**
-   >
-   > This rule is enforced by **construction of the program**, not by math simulation.
-   >
-   > The math-checker can't simulate every possible deal — `list_price` could be any number. So instead it reads the structure of the compiled app and says: the compiler put a hard check at line 18 that rejects any deal whose `list_price` is not greater than 0.
-   >
-   > **The actual runtime check (compiled from line 18 of your source):**
-   >
-   > ```js
-   > if (!(deal?.list_price > 0)) {
-   >   return res.status(403).json({
-   >     error: "List price must be positive",
-   >     rule: "price-floor-positive"
-   >   });
-   > }
-   > ```
-   >
-   > **The claim, in plain English:** no line after this check ever runs for a deal with `list_price ≤ 0`. Not because we proved it abstractly, but because the program literally rejects those deals before reaching the next line. The runtime evidence below confirms the rejection actually fires for 20 violating inputs.
-
-   To implement: extract the compiled check string by re-compiling the source per rule, finding the lines whose source-map traces back to the rule's body, and embedding them into `audit-bundle.mjs`'s JSON output. Then `audit-pdf.py` renders them in a code block. ~2 hours.
-
-2. **Add chapters and a clickable Table of Contents to USER-GUIDE.md.** The guide is now ~3700 lines — readers can't navigate. Add a TOC at the top with anchor links to each chapter heading. Also: audit chapter ordering — some chapters are old, some are recent; group them so the tutorial reads in a natural arc (start with "your first app", then data, then UI, then auth, then rules, then deploy). Don't add new content; just structure what's there. ~1 hour.
-
-3. **Row-level security / tenant isolation.** Marcus apps deployed on Clear Cloud share a Postgres instance — every customer's data lives in the same database. Without row-level filters, customer A could query customer B's records by guessing IDs. This is the hard regulated-tier requirement: every CRUD operation must be scoped by tenant ID, and the compiler must EMIT that scoping automatically (not rely on the author remembering). Design needed: how does the source declare a tenant boundary? Likely `database is shared with tenant scope` or similar, and every `look up` / `save` / `delete` auto-injects `WHERE tenant_id = caller's tenant_id`. Plan + implement in same session — multi-day work.
-
-4. **Concurrency Phase 2 — actually prevent the race conditions Phase 1 detects.** Phase 1 (shipped 2026-05-02) FLAGS every endpoint where a read-modify-write race can happen. Phase 2 RUNS the runtime that prevents those races: optimistic locking with a `version` column on every mutable table, automatic retry on version mismatch, `safe to retry` modifier for endpoints where idempotency is provable, hard-fail when concurrent edits would corrupt state. The honest pitch sentence after Phase 2 is "we prove no races," not "we flag every endpoint where a race can happen." This was supposed to ship today and didn't — it's the load-bearing piece for "Marcus's data won't get corrupted under load." Multi-day work.
-
-5. **Redesign Studio's Prove button (and add inline auto-check).** Today the Prove button just dumps the math-journal output into the terminal pane — same thing an auto-check could show inline, with no PDF. Better split:
+4. **Redesign Studio's Prove button (and add inline auto-check).** Today the Prove button just dumps the math-journal output into the terminal pane — same thing an auto-check could show inline, with no PDF. Better split:
 
    **(a) Auto-check on every save.** Run the math-checker every time the source changes. Show verdicts inline in the editor margin: green check next to proved rules, red X next to disproved, amber question mark next to unverifiable. Like spell-check. Fast (under a second). No button needed for the basic check.
 
-   **(b) Prove button → generates the audit PDF.** Same artifact `node scripts/audit-bundle.mjs + python scripts/audit-pdf.py` produces from the CLI. Math verdict + runtime witness (spawn the app, fire 20 violating inputs per rule, capture rejections) + navy/amber compliance styling. Drops as a download. ~5 seconds. This is what the developer hands to Marcus's compliance buyer.
+   **(b) Prove button → generates the audit PDF.** Same artifact `node scripts/audit-bundle.mjs + python scripts/audit-pdf.py` produces from the CLI. Math verdict + runtime witness (spawn the app, fire 20 violating inputs per rule, capture rejections) + navy/amber compliance styling. Drops as a download. ~5 seconds. This is what the developer hands to Marcus's compliance buyer. **The PDF prose is now clean as of tonight — no more prover-internals jargon — so this redesign can lean on the artifact unchanged.**
 
    **(c) Right-click a rule → debug drilldown.** Show the prover's reasoning text (today's math-journal output) in a side pane. The "why didn't this prove?" debugging surface, not the primary one.
 
    Single artifact (PDF), three ways to reach it: auto-inline for fast feedback, button for the customer-facing report, right-click for "why." Matches how Marcus actually uses Studio: write rules, see them prove in real time, hit the button when ready to send to the auditor.
 
-6. **Studio's Dev / Builder mode switcher dropdown is broken.** The toolbar dropdown in `playground/ide.html` that switches between Dev mode (3-panel IDE) and Builder mode (Marcus-first chat layout) doesn't actually switch modes when picked. Reproducer: open Studio, click the mode dropdown, pick the other mode, nothing happens. Likely either the change handler doesn't fire or the URL param / localStorage write isn't persisting. Check `syncModeButtons()` and the `studio-mode-pref` localStorage key in `playground/ide.html`. ~30 min debug + fix.
+5. **Studio's Dev / Builder mode switcher dropdown is broken.** The toolbar dropdown in `playground/ide.html` that switches between Dev mode (3-panel IDE) and Builder mode (Marcus-first chat layout) doesn't actually switch modes when picked. Reproducer: open Studio, click the mode dropdown, pick the other mode, nothing happens. Likely either the change handler doesn't fire or the URL param / localStorage write isn't persisting. Check `syncModeButtons()` and the `studio-mode-pref` localStorage key in `playground/ide.html`. ~30 min debug + fix.
 
 6. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce in isolation.** Originally observed 2026-05-02 late-evening while moving lead-router rules into the POST handler. A comment block at body indentation between `requires login` and the rules caused "Route block references 'lead' but no variable named 'lead' is in scope here" on the route block downstream. Tried to reconstruct in isolation with the exact comment content, full endpoint shape, and `route lead by size:` block — all parsed clean (0 errors). Either the trigger requires conditions I haven't recreated, or it was an intermediate file state. **For the next session:** if this resurfaces, capture the EXACT failing source (don't paraphrase) before touching it, then `node /tmp/probe.mjs` with that source loaded as a string to confirm the trigger.
 
-6. **Fix any remaining flaky tests across the repo.** The specific `#editor-mount .cm-editor` Playwright timeout I saw forcing `--no-verify` does NOT reproduce in current code. Open question: are OTHER tests still flaky? Audit over a few full pre-push runs.
+7. **Fix any remaining flaky tests across the repo.** The specific `#editor-mount .cm-editor` Playwright timeout I saw forcing `--no-verify` does NOT reproduce in current code. Open question: are OTHER tests still flaky? Audit over a few full pre-push runs.
 
 
 ---

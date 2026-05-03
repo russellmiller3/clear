@@ -69,7 +69,20 @@ def build_styles():
     s.add(ParagraphStyle(name='Mono', fontName='Courier', fontSize=8.5, textColor=DARK_GRAY, leading=11, spaceAfter=4))
     s.add(ParagraphStyle(name='Verdict', fontName='Helvetica-Bold', fontSize=10, textColor=GREEN, spaceAfter=4, leading=12))
     s.add(ParagraphStyle(name='VerdictBad', fontName='Helvetica-Bold', fontSize=10, textColor=RED, spaceAfter=4, leading=12))
+    s.add(ParagraphStyle(name='CodeBlock', fontName='Courier', fontSize=8, textColor=DARK_GRAY, leading=10, spaceAfter=6,
+                        leftIndent=8, rightIndent=8, borderColor=LT_GRAY, borderWidth=0.5, borderPadding=6,
+                        backColor=PALE))
     return s
+
+
+def code_block_html(code_text):
+    """Escape a JS string for ReportLab's mini-HTML, preserving spacing.
+
+    ReportLab paragraphs collapse whitespace, so we replace leading
+    indentation with non-breaking spaces and use <br/> for hard wraps.
+    """
+    safe = (code_text or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return safe
 
 
 def amber_underline(width=60):
@@ -117,6 +130,88 @@ def summary_metric_row(rule_counts, witness_passed, witness_total):
     return t
 
 
+def article_for(noun):
+    """Pick 'a' or 'an' for a noun. Approximate but right for the
+    business-domain words the prover surfaces (deal, lead, input,
+    expense, ticket, booking, user, etc.)."""
+    if not noun:
+        return 'a'
+    return 'an' if noun[0].lower() in 'aeiou' else 'a'
+
+
+def render_enforcement_tag(tag, entity_noun, rule_name, styles):
+    """Turn one structured enforcement tag into a list of platypus elements.
+
+    The prover emits a small set of tag kinds; each maps to a different
+    auditor-facing paragraph. No prover internals leak into the PDF —
+    this function owns all the human-readable framing.
+    """
+    out = []
+    kind = tag.get('kind')
+    line = tag.get('line') or '?'
+    source_line = (tag.get('sourceLine') or '').strip()
+    compiled = tag.get('compiledCheck') or {}
+    code_text = compiled.get('code') or ''
+    art = article_for(entity_noun)
+
+    if kind == 'tautology':
+        # Vacuous guard — the condition is universally true on constants.
+        out.append(Paragraph(
+            f'<b>This guard is a constant tautology.</b> The math-checker simplified the '
+            f'expression on line {line} to <i>true</i>. No input can violate this rule because '
+            f'the condition does not depend on input — it is true for every possible value.',
+            styles['Body']))
+        if source_line:
+            out.append(Paragraph(f'<b>Source (line {line}):</b>', styles['Body']))
+            out.append(Paragraph(
+                f'<font name="Courier" size="8">{code_block_html(source_line)}</font>',
+                styles['CodeBlock']))
+        return out
+
+    if kind == 'structural-enforcement':
+        # Proof by construction. The math-checker can't simulate every
+        # possible input, but the runtime guard makes "no execution past
+        # this line satisfies the failing condition" a structural fact
+        # about the program.
+        out.append(Paragraph(
+            f'<b>This rule is enforced by construction of the program</b>, not by math '
+            f'simulation. The math-checker can\'t simulate every possible {code_block_html(entity_noun)} — '
+            f'the values are not bounded. So instead it reads the structure of the compiled '
+            f'application and confirms that the compiler put a hard check at line {line} that '
+            f'rejects any {code_block_html(entity_noun)} that fails the condition.',
+            styles['Body']))
+
+        if source_line:
+            out.append(Paragraph(f'<b>Your source (line {line}):</b>', styles['Body']))
+            out.append(Paragraph(
+                f'<font name="Courier" size="8">{code_block_html(source_line)}</font>',
+                styles['CodeBlock']))
+
+        if code_text:
+            out.append(Paragraph(
+                f'<b>The actual runtime check (compiled from line {line}):</b>',
+                styles['Body']))
+            out.append(Paragraph(
+                f'<font name="Courier" size="8">{code_block_html(code_text)}</font>',
+                styles['CodeBlock']))
+
+        out.append(Paragraph(
+            f'<b>The claim, in plain English:</b> no line of compiled code after this check '
+            f'ever runs for {art} {code_block_html(entity_noun)} that fails the condition. Not because the '
+            f'math-checker proved it abstractly, but because the program literally rejects '
+            f'those inputs before reaching the next line. The runtime evidence below '
+            f'corroborates that the rejection actually fires.',
+            styles['Body']))
+        return out
+
+    # Unknown tag kind — fall back to a neutral statement so the PDF
+    # never silently drops content.
+    out.append(Paragraph(
+        f'<i>(Enforcement tag of kind {kind!r} at line {line} — renderer pending update.)</i>',
+        styles['Body']))
+    return out
+
+
 def build_rule_section(rule, styles):
     """One rule's full audit entry: math verdict + witness data + samples."""
     parts = []
@@ -132,9 +227,17 @@ def build_rule_section(rule, styles):
     else:
         parts.append(Paragraph(f'VERDICT: {verdict.upper()}', styles['VerdictBad']))
 
-    # Math verdict
+    # Math verdict — render based on the structured enforcement tags from
+    # the prover. Each guard contributes one explanation block. Falls back
+    # to the legacy `reason` field for older bundles or for verdicts that
+    # don't carry enforcement tags (DISPROVED, UNVERIFIABLE).
     parts.append(Paragraph('How it was proved formally', styles['H2']))
-    if rule.get('reason'):
+    enforcement = rule.get('enforcement') or []
+    entity_noun = rule.get('entity') or 'incoming input'
+    if verdict == 'proved' and enforcement:
+        for tag in enforcement:
+            parts.extend(render_enforcement_tag(tag, entity_noun, rule['name'], styles))
+    elif rule.get('reason'):
         parts.append(Paragraph(rule['reason'], styles['Body']))
     elif verdict == 'proved':
         parts.append(Paragraph(

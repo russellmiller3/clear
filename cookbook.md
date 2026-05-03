@@ -139,7 +139,7 @@ Eight hooks in this repo as of 2026-05-03. Each fires automatically on a specifi
 
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
-_Last refresh: 2026-04-28_
+_Last refresh: 2026-05-03_
 
 ### CLAUDE.md rules (project-level, this repo)
 
@@ -166,6 +166,7 @@ _Last refresh: 2026-04-28_
 
 ### `.claude/hooks/` — event-driven enforcement
 
+- **before-rebuild-check.mjs** — .claude/hooks/before-rebuild-check.mjs
 - **clear-cheatsheet-on-write.mjs** — .claude/hooks/clear-cheatsheet-on-write.mjs
 - **cookbook-updater.mjs** — .claude/hooks/cookbook-updater.mjs
 - **doc-cascade.mjs** — .claude/hooks/doc-cascade.mjs
@@ -176,10 +177,14 @@ _Last refresh: 2026-04-28_
 - **periodic-introspect.mjs** — UserPromptSubmit hook — nudges Claude to invoke /introspect every 20 user
 - **propose-new-hooks.mjs** — .claude/hooks/propose-new-hooks.mjs
 - **propose-new-tools.mjs** — .claude/hooks/propose-new-tools.mjs
-- **require-branch-work.mjs** — Block edit tools on main.
+- **require-branch-work.mjs** — Block file-changing work on main.
+- **require-branch-work.test.mjs** — (no top-comment description in require-branch-work.test.mjs)
 - **require-plan-read.mjs** — .claude/hooks/require-plan-read.mjs
 - **screenshot-ui-work.mjs** — Match UI surfaces.
+- **starting-protocol.mjs** — .claude/hooks/starting-protocol.mjs
 - **validator-friction.mjs** — .claude/hooks/validator-friction.mjs
+- **verify-real-remote.mjs** — Block any git push or git commit when origin points at a sandbox-local
+- **verify-real-remote.test.mjs** — Tests for verify-real-remote hook.
 
 ### `.claude/skills/` — user-invocable slash commands
 
@@ -202,17 +207,33 @@ _Last refresh: 2026-04-28_
 
 ### `scripts/` — helper utilities (safe to run on demand)
 
+- **audit-bundle.mjs** — scripts/audit-bundle.mjs
+- **build-playground-bundle.mjs** — Build script for the in-browser playground compiler bundle.
 - **check-doc-drift.cjs** — Files we care about — the canonical docs that must agree with each other.
 - **cross-target-smoke.mjs** — scripts/cross-target-smoke.mjs
 - **decidable-core-replay.mjs** — scripts/decidable-core-replay.mjs
 - **doc-drift.mjs** — scripts/doc-drift.mjs
 - **doc-drift.test.mjs** — scripts/doc-drift.test.mjs
+- **factor-db-summary-helpers.mjs** — (no top-comment description in factor-db-summary-helpers.mjs)
 - **factor-db-summary.mjs** — Quick read-only summary of the Factor DB.
+- **factor-db-summary.test.mjs** — (no top-comment description in factor-db-summary.test.mjs)
+- **hint-effect-report-helpers.mjs** — (no top-comment description in hint-effect-report-helpers.mjs)
+- **hint-effect-report.mjs** — Read-only A/B artifact analyzer for the Meph hint flywheel.
+- **hint-effect-report.test.mjs** — (no top-comment description in hint-effect-report.test.mjs)
+- **interaction-doc-hygiene.mjs** — Fails when Meph-facing docs teach interactive controls without visible effects.
+- **interaction-doc-hygiene.test.mjs** — Unit tests for scripts/interaction-doc-hygiene.mjs.
+- **landing-pricing.test.mjs** — (no top-comment description in landing-pricing.test.mjs)
+- **lead-router-launch-verification.mjs** — (no top-comment description in lead-router-launch-verification.mjs)
 - **log-compiler-edits.mjs** — Post-commit hook: scan the last commit's diff for error-message-shaped
 - **log-compiler-edits.test.mjs** — Unit tests for the compiler-edit diff parser.
+- **marcus-landing.test.mjs** — (no top-comment description in marcus-landing.test.mjs)
 - **match-shape.mjs** — Shape-search retrieval over canonical-examples.md.
 - **match-shape.test.mjs** — Tests for shape-search retrieval (Lean Lesson 2).
+- **merge-keep-both.mjs** — Resolves merge conflicts in doc files by keeping BOTH sides.
 - **reconcile-wfp.js** — Weekly reconcile job.
+- **rename-guard-to-enforce.cjs** — One-shot script to rename `guard` keyword → `enforce that` in test files
+- **rewrite-enforce-that-msg.mjs** — One-shot rewrite: `enforce that X or 'msg'` → `enforce that X, or fail with error message: 'msg'`
+- **run-marcus-uat.mjs** — The 5 Marcus apps per the canonical list
 - **score-winning-runs.mjs** — score-winning-runs — rank every test_pass=1 row in the Factor DB by an
 - **score-winning-runs.test.mjs** — Tests for scripts/score-winning-runs.mjs — the winner-harvest scorer.
 - **smoke-cf-target.mjs** — Spot-check the --target cloudflare emission end-to-end for a representative

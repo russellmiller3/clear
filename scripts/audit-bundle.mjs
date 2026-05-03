@@ -246,6 +246,99 @@ function collectSafeDefaults(ast) {
   return defaults;
 }
 
+// ---- Extract the compiled rejection code for a guard at a given source line.
+//
+// The compiler emits `// clear:N` source-map markers before each statement,
+// so we can find the compiled JS line that came from any source line.
+// The rejection itself looks like:
+//
+//     // rule: <name> (line <ruleDefLine>)
+//     // clear:<guardLine>
+//     if (!(<cond>)) { return res.status(403).json({ error: "<msg>", rule: "<name>" }); }
+//
+// Strategy: scan the compiled JS line by line; for every `if (!` statement
+// that carries `rule: "<name>"` in its 403 body, walk backwards to the most
+// recent `// clear:N` marker to learn which source line it came from.
+// Match on (ruleName, sourceLine) and return the JS code + JS line number.
+//
+// Returns null when no match is found (rare — usually only for tautology
+// rules whose guard simplifies away in compilation, in which case there
+// is no runtime check to show).
+function extractCompiledCheck(serverJS, ruleName, sourceLine) {
+  if (!serverJS || !ruleName) return null;
+  const lines = serverJS.split('\n');
+  // Build a quick reverse index: for each line index, what `// clear:N`
+  // marker came most recently before it. One linear pass.
+  const traceFor = new Array(lines.length).fill(null);
+  let lastTrace = null;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/\/\/\s*clear:(\d+)/);
+    if (m) lastTrace = parseInt(m[1], 10);
+    traceFor[i] = lastTrace;
+  }
+  const ruleNeedle = `rule: "${ruleName}"`;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    if (!ln.includes(ruleNeedle)) continue;
+    if (!/^\s*if\s*\(!/.test(ln)) continue;
+    const trace = traceFor[i];
+    // Match if the source-line tag matches OR if no source line was
+    // requested (return first matching check for the rule).
+    if (sourceLine == null || trace === sourceLine) {
+      return {
+        sourceLine: trace,
+        codeLine: i + 1,
+        code: ln.trim(),
+      };
+    }
+  }
+  return null;
+}
+
+// ---- Pull the original Clear source text for a given line (1-indexed). ----
+function sourceLineText(source, lineNum) {
+  if (!source || !lineNum || lineNum < 1) return null;
+  const all = source.split('\n');
+  const idx = lineNum - 1;
+  if (idx >= all.length) return null;
+  return all[idx];
+}
+
+// ---- Translate a witness-spawn error into auditor-safe plain English. ----
+//
+// The compiled-app spawn can fail in several ways — a missing npm module,
+// a port collision, a syntax error in the emit, a slow boot. The raw
+// `err.message` carries node stack traces and require-stack details that
+// belong in a developer log, not in the auditor's PDF. This function
+// pattern-matches the common failure shapes and returns a one-line
+// human-readable explanation. The math claim still stands; only the
+// runtime corroboration is missing, and the audit reader needs to know
+// that without parsing a 30-line stack trace.
+function sanitizeWitnessError(rawMessage) {
+  const msg = String(rawMessage || '');
+  if (!msg) return 'runtime witness was not gathered';
+  if (/MODULE_NOT_FOUND|Cannot find module/i.test(msg)) {
+    const m = msg.match(/Cannot find module '([^']+)'/);
+    const dep = m ? m[1] : 'a runtime dependency';
+    return `runtime witness skipped: the compiled application needs \`${dep}\` installed to boot. The math proof still stands; install dependencies and re-run the audit for runtime corroboration.`;
+  }
+  if (/EADDRINUSE|address already in use/i.test(msg)) {
+    return 'runtime witness skipped: no free port was available to spawn the compiled application. Re-run in a moment.';
+  }
+  if (/SyntaxError|Unexpected token|Unexpected identifier/i.test(msg)) {
+    return 'runtime witness skipped: the compiled JavaScript did not parse. The math proof still stands; this points at a compiler emit issue worth reporting.';
+  }
+  if (/timeout/i.test(msg)) {
+    return 'runtime witness skipped: the compiled application did not finish booting in time. Re-run, possibly with a larger timeout.';
+  }
+  if (/process exited with code/i.test(msg)) {
+    return 'runtime witness skipped: the compiled application exited before it was ready. The math proof still stands; check that all runtime dependencies are installed.';
+  }
+  // Generic fallback — keep the first line only, truncate hard.
+  const firstLine = msg.split(/\n|\r/)[0].slice(0, 240);
+  return `runtime witness skipped: ${firstLine}`;
+}
+
 // ---- Find the rule_def AST node by name (recursive walk) ----
 function findRuleNode(nodes, name) {
   if (!Array.isArray(nodes)) return null;
@@ -360,21 +453,44 @@ async function main() {
   const proofBundle = prove(source);
   const compiled = compileProgram(source);
   const ast = compiled.ast;
+  const serverJS = compiled.serverJS || compiled.javascript || '';
 
   const rules = [];
   for (const rule of (proofBundle.rules || [])) {
+    // Forward the structured enforcement tags from the prover and
+    // enrich each one with (a) the original Clear source line text and
+    // (b) the compiled JS rejection block that came from that line.
+    // The PDF writer renders human-readable paragraphs based on
+    // `kind`, then quotes both the source line and the compiled JS so
+    // an auditor can see the runtime check with their own eyes.
+    const enforcement = (rule.enforcement || []).map(tag => {
+      const sourceLine = sourceLineText(source, tag.line);
+      const compiledCheck = extractCompiledCheck(serverJS, rule.name, tag.line);
+      return {
+        ...tag,
+        sourceLine: sourceLine,
+        compiledCheck: compiledCheck,
+      };
+    });
     const entry = {
       name: rule.name,
       line: rule.line,
       verdict: rule.verdict,
       reason: rule.reason || null,
       entity: rule.entity || null,
+      enforcement,
     };
     if (rule.verdict === 'proved') {
       try {
         entry.witness = await gatherWitnessFor(rule, ast, source);
       } catch (err) {
-        entry.witness = { automated: false, reason: `error during witness gather: ${err.message}` };
+        // Translate the raw spawn error into a one-line auditor-safe
+        // message. Without this, missing-dependency stack traces leak
+        // straight into the PDF.
+        entry.witness = {
+          automated: false,
+          reason: sanitizeWitnessError(err.message),
+        };
       }
     } else {
       entry.witness = null;

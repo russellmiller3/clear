@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-03 evening (later) - Audit PDF prose stops reading like a stack trace
+
+The audit PDF that goes to a compliance buyer used to leak math-engine internals straight into the auditor's hands — a section literally read "the symbolic engine couldn't decode the guard expression: Symbolic limit: unsupported node 'member_access'." Auditors don't care about prover internals; they want to know WHY they should trust the verdict. Tonight that section reads in plain English instead, and now also shows the actual compiled JavaScript rejection block right next to the math claim.
+
+**What shipped:**
+- **Structured enforcement tags from the math-checker.** `lib/prover/index.js` no longer pushes long natural-language strings into rule verdicts. It emits structured tags like `{ kind: 'tautology', line }` or `{ kind: 'structural-enforcement', line, opaqueExpression: true }`. Prose is now the renderer's job, not the prover's. A regression test asserts the prover's prose never mentions "symbolic engine" / "Symbolic limit" / "unsupported node" again.
+- **Compiled-check extraction in the audit bundle.** `scripts/audit-bundle.mjs` walks the compiled JavaScript output, finds every `if (!(...)) { return res.status(403).json({ ..., rule: "<name>" }); }` block, traces it back to its source line via the `// clear:N` source-map markers, and embeds both the original Clear source line and the compiled JS rejection block into each rule's bundle entry.
+- **PDF renders the structured tags as auditor-readable paragraphs.** `scripts/audit-pdf.py` now writes "This rule is enforced by construction of the program, not by math simulation. The math-checker can't simulate every possible deal — the values are not bounded. So instead it reads the structure of the compiled application and confirms that the compiler put a hard check at line 120 that rejects any deal that fails the condition." It then quotes the original Clear source line, shows the actual compiled JS rejection block in a code-styled box, and closes with the plain-English claim "no line of compiled code after this check ever runs for a deal that fails the condition." A small `article_for(noun)` helper picks "a deal" / "an expense" correctly.
+- **Witness-side stack-trace cleanup.** When the compiled app fails to spawn for runtime corroboration (e.g. a missing npm dependency like `jsonwebtoken`), the bundle used to dump the full Node `MODULE_NOT_FOUND` stack into the auditor's PDF. Now the bundle layer translates the spawn error into a one-line plain-English message: "runtime witness skipped: the compiled application needs `jsonwebtoken` installed to boot. The math proof still stands; install dependencies and re-run the audit for runtime corroboration."
+
+**Why for launch:** the audit PDF is the credibility surface for the regulated-tier pitch. If a compliance buyer reads stack-trace gibberish, the deal walks. Now they read a clean two-page-per-rule narrative with the actual runtime check quoted next to the math claim — receipts for the trust statement.
+
+**Tests:** prover unit suite 21/21 (5 new tests pin the structured-tag shape, including a regression guard that the symbolic-engine internals never leak again); business-rules eval 35/35; full compiler suite 2899/2899; runtime-witness 4/4. Sample PDF for `apps/deal-desk/main.clear` (3 rules) generates clean and reads in plain English from start to finish.
+
+---
+
 ## 2026-05-03 evening - Human-readable audit PDF — the regulated-tier deliverable
 
 A compliance buyer asks "how do you know your business rules actually hold?" and you hand them a navy/amber-styled PDF with math verdicts and measured runtime evidence per rule. That's what shipped tonight.
