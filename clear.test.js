@@ -29636,6 +29636,39 @@ when user requests data from /api/deals:
     const js = r.javascript || r.serverJS || '';
     expect(js).not.toMatch(/tenant_id\s*:\s*req\.user\.tenant_id/);
   });
+
+  it('insert under tenant scope auto-sets tenant_id from req.user', () => {
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  status
+
+when user sends deal to /api/deals:
+  requires login
+  saved = save deal as new Deal
+  send back saved`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // The insert must include tenant_id from req.user; without this a
+    // request body could omit tenant_id and the row would be tenantless.
+    expect(js).toMatch(/tenant_id\s*:\s*req\.user(\s*&&\s*req\.user)?\.tenant_id/);
+  });
+
+  it('insert WITHOUT tenant scope does NOT inject tenant_id', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  status
+
+when user sends deal to /api/deals:
+  requires login
+  saved = save deal as new Deal
+  send back saved`;
+    const r = compileProgram(src);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).not.toMatch(/tenant_id\s*:\s*req\.user\.tenant_id/);
+  });
 });
 
 // ---------------------------------------------------------------------------

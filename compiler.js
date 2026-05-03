@@ -4888,6 +4888,20 @@ function compileCrud(node, ctx, pad) {
       const spreads = node.overrides.map(o => `${sanitizeName(o.field)}: ${sanitizeName(o.value)}`).join(', ');
       insertArg = `{ ...${picked}, ${spreads} }`;
     }
+    // Tenant isolation Phase 2: under shared scope, every insert auto-
+    // sets tenant_id from the caller. The author writes `save deal as
+    // new Deal` and the compiler emits an insert that ALSO carries
+    // `tenant_id: req.user.tenant_id`. Without this, a malicious or
+    // mistaken caller could create rows that leak across tenants.
+    // Spread comes after `picked` so the tenant_id always wins over a
+    // body-supplied tenant_id (server-side override).
+    if (ctx.tenantScope) {
+      insertArg = `{ ...${insertArg.startsWith('{') ? insertArg.slice(1, -1) : `..._pick(${varCode}, ${schemaName})`}, tenant_id: req.user && req.user.tenant_id }`;
+      // Simpler form when no overrides — just spread picked + tenant_id.
+      if (!node.overrides || node.overrides.length === 0) {
+        insertArg = `{ ...${picked}, tenant_id: req.user && req.user.tenant_id }`;
+      }
+    }
     if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
     // `save X as new T` (no result variable). Write the inserted row back into
     // X so the freshly-assigned id is available to anything downstream
