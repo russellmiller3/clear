@@ -61,17 +61,19 @@ export function buildReminder(filePath) {
 
 If this edit ADDED or CHANGED user-visible syntax, a node type, a synonym, a runtime helper, or a compiler behavior, the project CLAUDE.md "Documentation Rule (MANDATORY)" requires updating ALL of these in the same commit:
 
-  1. intent.md            — node-type row in the spec table (authoritative)
-  2. SYNTAX.md            — complete syntax reference with example
-  3. AI-INSTRUCTIONS.md   — conventions, when-to-use, gotchas (so Meph knows)
-  4. USER-GUIDE.md        — tutorial coverage with worked example
-  5. ROADMAP.md           — mark phase complete, update counts
-  6. landing/*.html       — when the feature is user-facing, sync marketing examples
-  7. playground/system-prompt.md — Meph reads this every session
-  8. FAQ.md               — "Where does X live?" / "How do I Y?" entries
-  9. RESEARCH.md          — when it touches the training-signal architecture
- 10. FEATURES.md          — add a row to the capability table (today's reference)
+  1. **FEATURES.md**            — REQUIRED. Add a row to the capability table; Russell reads this to answer "can Clear do X?" Skipping this means the feature is invisible.
+  2. **playground/system-prompt.md** — REQUIRED. Meph reads this every Studio session. If the new feature isn't here, every Meph user gets stale guidance.
+  3. intent.md            — node-type row in the spec table (authoritative)
+  4. SYNTAX.md            — complete syntax reference with example
+  5. AI-INSTRUCTIONS.md   — conventions, when-to-use, gotchas (so Meph knows)
+  6. USER-GUIDE.md        — tutorial coverage with worked example
+  7. ROADMAP.md           — mark phase complete, update counts
+  8. landing/*.html       — when the feature is user-facing, sync marketing examples
+  9. FAQ.md               — "Where does X live?" / "How do I Y?" entries
+ 10. RESEARCH.md          — when it touches the training-signal architecture
  11. CHANGELOG.md         — session-dated entry describing what shipped
+
+The two REQUIRED surfaces (FEATURES.md + Meph's system prompt) reach end users directly. Russell reads FEATURES.md to know what Clear can do; Meph users read his system prompt every session. Skipping either means the feature ships invisible to the people who matter most.
 
 If this edit was ONLY a bug fix, refactor, comment, or rename (no user-visible delta), skip the cascade — but do consider whether requests.md has a stale entry that should now be marked DONE.
 
