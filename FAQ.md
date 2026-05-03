@@ -206,9 +206,9 @@ Two surfaces. The runtime helpers live in `runtime/db-postgres.js`: `withTenantS
 
 The compile-emit lives in `compiler.js`. When source declares both `database is postgres` AND `database is shared with tenant scope` (`tenantScopeWithRLS = tenantScope && isPostgres`), the compiled server emits a per-request middleware (`app.use((req, res, next) => req.user && req.user.tenant_id ? db.withTenantScope(req.user.tenant_id, () => next()) : next())`) right after the auth middleware, plus a startup hook that calls `db.enableRowLevelSecurity(tableName)` once per data shape at boot. Fire-and-forget so a slow Postgres doesn't gate `app.listen()` — the application-layer tenant filter remains active during the small window before policies create.
 
-Tests: `runtime/db-postgres-rls.test.js` (22 cases on the runtime — AsyncLocalStorage propagation, BEGIN/SET LOCAL/COMMIT ordering, idempotency, table-name validation) plus `lib/postgres-rls-compile.test.js` (28 cases on the compile-emit gating across all 4 backend × scope combinations).
+Tests: `runtime/db-postgres-rls.test.js` (22 cases on the runtime — AsyncLocalStorage propagation, BEGIN/SET LOCAL/COMMIT ordering, idempotency, table-name validation) plus `lib/postgres-rls-compile.test.js` (28 cases on the compile-emit gating across all 4 backend × scope combinations) plus `runtime/db-postgres-rls-real.test.js` — the real-Postgres witness. Set `DATABASE_URL` pointing at any Postgres (Railway, Neon, local docker, etc.) and the test runs end-to-end: enables RLS on a fresh table, inserts under two tenant scopes, fires a forged WHERE-less SELECT inside each scope and asserts isolation, fires a cross-tenant INSERT and asserts the WITH CHECK clause refuses, fires a SELECT outside any scope and asserts zero rows. Without `DATABASE_URL` the test gracefully skips (pg-mem can't help — verified by probe; pg-mem rejects ENABLE ROW LEVEL SECURITY, CREATE POLICY, SET LOCAL, and current_setting).
 
-The CRO sentence: tenant separation is enforced by the application AND by Postgres itself — two independent layers.
+The CRO sentence: tenant separation is enforced by the application AND by Postgres itself — two independent layers, with a real-engine witness file Marcus's compliance buyer can run against any production Postgres.
 
 ### Where does the Studio Run-Prove button live?
 

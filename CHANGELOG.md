@@ -6,7 +6,20 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 night (latest) - Multi-user-per-tenant via single-use invite tokens
+## 2026-05-03 night (latest) - Real-Postgres witness for the RLS layer
+
+The earlier RLS commits tonight ship a runtime layer (FakePool unit tests prove the SQL shape is right) plus a compile-emit (28-case test proves the gating is right). Neither verifies that a real Postgres engine actually enforces the policy — that's the trust gap this commit closes.
+
+**What shipped:**
+- **`runtime/db-postgres-rls-real.test.js`:** end-to-end witness gated on `DATABASE_URL`. Connects to whatever Postgres the env var points at (Railway, Neon, local docker — no provider lock-in), drops/recreates a fresh test table, calls `enableRowLevelSecurity` against the live database, inserts rows under `withTenantScope(1)` and `withTenantScope(2)`, fires a forged WHERE-less SELECT inside each scope and asserts the OTHER tenant's row is hidden, fires a cross-tenant INSERT and asserts the policy's `WITH CHECK` clause rejects it, fires a SELECT with no scope set and asserts zero rows visible. Idempotency check at the end (re-running `enableRowLevelSecurity` is a no-op).
+- **Skip path:** without `DATABASE_URL`, the test prints one line ("DATABASE_URL not set — set it pointing at any Postgres to run the real-engine RLS proof") and exits 0. Same shape as the existing tenant-isolation-witness skip on missing auth deps.
+- **Why pg-mem isn't enough:** verified by probe — pg-mem rejects `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, `CREATE POLICY`, `SET LOCAL`, and `current_setting`. The in-memory engine doesn't implement any of those, so the witness needs a real Postgres or it's not actually testing anything.
+
+**Why for launch:** the CRO sentence is now backed by a runnable proof — "we removed the application filter on a test branch, fired a forged cross-tenant query against a real Postgres, and the database returned zero rows." Before tonight, this was a math claim. After tonight, Marcus's compliance buyer can point the test at their own Postgres and watch it pass.
+
+---
+
+## 2026-05-03 night - Multi-user-per-tenant via single-use invite tokens
 
 The default tenant-isolation behavior had every signup create a brand-new tenant_id, which meant teammates landed in separate silos and couldn't see each other's records. That blocked any team trial of a Marcus app — "everyone at Acme Corp who clicks signup gets their own private workspace" is the wrong default for collaboration.
 
