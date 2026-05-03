@@ -211,6 +211,12 @@ function createTable(name, schema) {
   // updateWithVersion runtime helper bumps it on every successful
   // save and refuses saves where the expected version has moved.
   cols.push('_version INTEGER DEFAULT 0');
+  // Tenant isolation Phase 2: every table gets an auto-managed
+  // `tenant_id` column. Apps that declare `database is shared with
+  // tenant scope` use it for row-level isolation; apps that don't
+  // simply ignore it. Cost is one INTEGER per row, far cheaper than
+  // making auto-injection a per-table decision.
+  cols.push('tenant_id INTEGER');
   _db.prepare('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')').run();
 
   // Schema evolution: add columns present in schema but missing from the table
@@ -225,6 +231,11 @@ function createTable(name, schema) {
   if (!existing.has('_version')) {
     _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN _version INTEGER DEFAULT 0').run();
     existing.add('_version');
+  }
+  // Backfill tenant_id on tables that were created before tenant isolation.
+  if (!existing.has('tenant_id')) {
+    _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN tenant_id INTEGER').run();
+    existing.add('tenant_id');
   }
   backfillRenamedFields(tableName, schema, existing);
 }
