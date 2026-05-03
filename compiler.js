@@ -14324,7 +14324,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // _c of agent_X(...))` — which would throw at runtime because agent_X
   // compiled as `async function` not `async function*`. Classic shape
   // mismatch bug surfaced on multi-agent-research's Polished Report.
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions, uploadUrls };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions, uploadUrls, tenantScope };
 
   // Implicit tables for agent-memory features. Agents declared with
   // `remember conversation context` call db.findAll/insert/update on a
