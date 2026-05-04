@@ -133,6 +133,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .prev-tab.active::after { display: none; }
 #preview-content { flex: 1; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #preview-content iframe { width: 100%; height: 100%; border: none; background: var(--iframe-bg); border-radius: 0; }
+/* Direct Edit toggle — parent-side cursor cue. The bridge inside the
+   iframe already sets `document.body.style.cursor = 'crosshair'` when
+   toggled on, but the iframe boundary swallows that on hover near its
+   border. This rule covers the gap so the user always sees a crosshair
+   in Direct Edit mode regardless of where on the preview pane they hover. */
+body.direct-edit-mode #preview-content,
+body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 #preview-content pre { padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--tx2); white-space: pre-wrap; }
 /* Newest event at the TOP. Scrolling down walks backward in time.
    We reverse the array in JS (renderTerminal) so DOM[0] is the newest,
