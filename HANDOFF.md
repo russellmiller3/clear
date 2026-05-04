@@ -35,9 +35,11 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-03 night, late session)
+## Current State (rewritten 2026-05-04, GTM lock added)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
+
+**GTM direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Russell hates customer service and 1-on-1 problem-solving. Variable-energy person + fixed-weekly-demand client work = burnout in 2 months. Path: ship buildclear.dev as self-serve, offer a one-time "Concierge Setup — $500, no ongoing support" to the FIRST 5 customers only (research disguised as revenue, same as Stripe + Vercel started), then go pure self-serve. **Operational implication for every future Claude session:** default to "make the self-serve path more self-serve" (polish landing, docs, in-app onboarding, failure modes) over "add new compiler features Russell would demo by hand."
 
 **Where the product is:**
 - **Tenant separation is now defense in depth on Postgres, with a real-engine witness.** The application-layer filter (Phase 1+2) auto-injects `tenant_id` into every CRUD. The new RLS layer adds Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id`. The new real-PG witness (`runtime/db-postgres-rls-real.test.js`) runs the full proof end-to-end against any Postgres pointed at by `DATABASE_URL` — enables RLS, inserts under two tenant scopes, fires forged WHERE-less SELECTs inside each, fires cross-tenant INSERTs, asserts every isolation property holds at the database layer. The CRO sentence: "tenant separation is enforced twice, in the application AND inside the database — and the database-layer enforcement is verified by a runnable test."
