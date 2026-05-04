@@ -17,6 +17,13 @@
       "autoPort": false
     },
     {
+      "name": "landing-pages",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--input-type=module", "--eval", "import http from'http';import fs from'fs';import path from'path';const root=path.resolve('landing');const types={'.html':'text/html','.css':'text/css','.js':'application/javascript','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon'};const s=http.createServer((req,res)=>{let p=req.url.split('?')[0];if(p==='/'||p==='')p='/index.html';const fp=path.join(root,p);if(!fp.startsWith(root)){res.writeHead(403);return res.end();}fs.readFile(fp,(err,d)=>{if(err){res.writeHead(404);return res.end('Not found: '+p);}const ext=path.extname(fp);res.writeHead(200,{'Content-Type':types[ext]||'text/plain'});res.end(d);});});s.listen(5009,()=>console.log('ready on 5009'));"],
+      "port": 5009,
+      "autoPort": false
+    },
+    {
       "name": "startup-landing",
       "runtimeExecutable": "node",
       "runtimeArgs": ["--input-type=module", "--eval", "import{compileProgram}from'./index.js';import fs from'fs';import http from'http';const r=compileProgram(fs.readFileSync('apps/startup-landing/main.clear','utf8'));const s=http.createServer((_,res)=>{res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(r.html||'');});s.listen(5001,()=>console.log('ready'));"],
