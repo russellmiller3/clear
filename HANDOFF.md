@@ -95,33 +95,67 @@ them. If you find yourself violating them, stop and re-read.
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Merge the six in-flight branches in stacking order.** All pushed to GitHub. Bottom-up merge order: concurrency → postgres-rls → multi-user → user-guide-reorder → real-pg-witness → audit-trail-attribution → main. Or squash-merge each independently. WIP cap is 3 in-flight epics; current count is 6+ from tonight's session. Merging unlocks the launch path.
+1. **Build the new ranger + RevOps landing page.** Russell decided (2026-05-04) that the ideal customer is the "D&D ranger" — product / marketing / RevOps people who can read code but aren't engineers. They've all hit the same wall: AI tools wrote code they can't fix; Retool seats are IT-blocked; Webflow is brochure-only; Bubble is a mess. Clear's pitch lands here. The existing `landing/marcus.html` and `landing/business-agents.html` target the wrong audience for the GTM lock; this new page should be the homepage replacement candidate.
 
-2. **Durable storage for `_users` and `_invites` in the auth scaffold.** Tonight's audit-trail work moved `_audit_log` from in-memory to a real `audit_log` SQL table. The same upgrade is needed for `_users = []` and `_invites = []`. Why deferred tonight: the user-id/tenant-id init order matters (tenant_id defaults to user.id, but user.id isn't known until after db.insert returns the row). Cleanest pattern is two queries per signup: insert without tenant_id, then UPDATE to set tenant_id = id. ~30-45 min of focused work. Not blocking the launch path because the demo doesn't restart mid-flight.
+   **File:** `landing/builders.html` (or replace `landing/index.html` after review). Use the existing pricing.html visual system: indigo accent, Inter font, Lucide icons, tier-card-style cards.
 
-3. **Validator friction-driven error rewrites.** Friction script (`scripts/top-friction-errors.mjs --top=10 --min-count=3`) showed historical rows but the top items already have curated INTENT_HINTS as of Sessions 44-45. Fresh sweep data needed to find new actionable items. Probably wait until next sweep batch generates fresh failure rows.
+   **ASCII wireframe (already designed — turn this into HTML directly):**
 
-4. **Concurrency Phase 2 — actually prevent the race conditions Phase 1 detects.** Phase 1 FLAGS every endpoint where a read-modify-write race can happen. Phase 2 RUNS the runtime that prevents those races. (Note: this work LANDED in `feature/concurrency-phase2-optimistic-lock` which is ready to merge — verify on merge.)
+   - **Hero.** Headline: "The AI built your app. It broke at 11pm. You can't fix it." Sub: "Clear writes the same kind of app — but in plain English. You can read every line. You can fix every line." Primary CTA: "Open Studio →". Secondary CTA: "Watch 90s demo ▸". Inline screenshot: editor on left, running app on right.
+   - **The wall you keep hitting** (4 cards). Lovable/Bolt (wrote React you can't read). Bubble (drag-and-drop chaos). Retool (per-seat pricing, IT-blocked, no source code) — RevOps wedge. Cursor (assumes you can architect Postgres) — negative space, "use Cursor if you ARE the dev."
+   - **What's different** (side-by-side before/after). Left: ~30 lines of unreadable React from Lovable. Right: 8 lines of Clear that does the same thing. Caption: "Bug? Read the sentence."
+   - **Who this is for.** PMs filing tickets engineering won't get to. Marketers needing internal tools nobody will build. **RevOps people whose Retool seat takes 6 weeks of IT tickets to provision.** Founders who aren't the CTO. Negative space: "Not for you if you're a senior dev who'd rather use Cursor."
+   - **What you can ship today** (3 case-cards with screenshots). Deal Desk (50 lines, 8 minutes). Lead Router (38 lines, 5 minutes — RevOps-friendly). Internal Request Queue (42 lines, 6 minutes).
+   - **NEW SECTION — Build AI assistants, not just apps.** A lot of AI-app builders only do forms + tables. Clear also does agents: `ask claude '...' with input` is one line. An agent with tools (calls your functions), memory (across sessions), and a knowledge base (read your tables / files / URLs) is ~10 lines. Stream responses word-by-word by default. Multi-step workflows with parallel branches. Schedule an agent to run hourly. Show a tiny code sample of a customer-support agent + a "this is the helpdesk-agent template" link. Two example apps already built and reusable: helpdesk-agent (4 lines of agent + tools), ecom-agent (intent routing + RAG over products). The AI stack is built in, not bolted on.
+   - **NEW SECTION — Built secure by default.** Most AI-tool output ships with bugs. Clear blocks 30+ classes at compile time: SQL injection (every database call uses safe parameters), auth bypass (every change-the-data URL needs a login line — compiler refuses without it), mass-assignment (the compiler picks safe fields, ignores anything else the request sent), XSS (every screen-display is auto-escaped), missing rate limits (one keyword), error-message leaks (validation messages stay in plain English; server crashes show "something went wrong"). Plus tenant isolation in TWO layers — the app filters by customer AND the database itself refuses cross-customer reads (Postgres row-level security, shipped 2026-05-03). Plus a durable change log: every edit recorded with who, when, what URL, what was changed, with passwords automatically redacted. Plus accounts that survive a restart (durable user storage). The CRO/compliance buyer sentence: "we don't ask you to trust us — every guarantee is proved by the compiler refusing to ship code that breaks it."
+   - **NEW SECTION — You can PROVE your rules actually work.** Every business rule (`enforce that deal's discount < 30`) gets a math verdict from the prover (proved / disproved / unverifiable). Every PROVED rule is independently verified at runtime: the harness spawns the compiled app, fires 20 violating inputs, asserts every one rejects with a 403 carrying the rule's name. Click the Prove button → download a navy/amber audit PDF you can hand to your compliance buyer. The CRO sentence: "we proved every rule with math AND we sent twenty bad inputs at every PROVED rule and watched them all bounce." Two-witness verification, both green on every push. Show a screenshot of the audit PDF.
+   - **How it works** (3 numbered steps). 1) Type what you want in plain English. 2) AI writes the Clear version, you read it, tweak it. 3) One click → live on yourapp.buildclear.dev.
+   - **Pricing teaser.** "Free for 1 app. $99/mo when your team uses it. First 5 customers get a $500 one-time Concierge Setup." → link to /pricing.html (the Concierge card lands at the bottom of pricing tonight).
+   - **Final CTA.** "Type your idea. See it run in 30 seconds. [Open Studio]"
 
-4. **Redesign Studio's Prove button (and add inline auto-check).** Today the Prove button just dumps the math-journal output into the terminal pane — same thing an auto-check could show inline, with no PDF. Better split:
+   **Russell's three calls before I write copy** (already asked tonight, not yet answered):
+   - The hero pain line ("It broke at 11pm. You can't fix it.") — too aggressive or right?
+   - Naming Lovable / Bubble / Retool / Cursor by name in the wall list — fine, or risky?
+   - Drop "Marcus" entirely on this page (the regulated-tier compliance pitch is wrong audience here)?
 
-   **(a) Auto-check on every save.** Run the math-checker every time the source changes. Show verdicts inline in the editor margin: green check next to proved rules, red X next to disproved, amber question mark next to unverifiable. Like spell-check. Fast (under a second). No button needed for the basic check.
+   **Constraints:** no emoji (use Lucide SVG); one accent color (indigo, matching pricing.html); 8-pt grid spacing; one btn-primary per section; cards bg OR border not both. Use the `landing-pages` launch entry to preview at `localhost:5009/builders.html`.
 
-   **(b) Prove button → generates the audit PDF.** Same artifact `node scripts/audit-bundle.mjs + python scripts/audit-pdf.py` produces from the CLI. Math verdict + runtime witness (spawn the app, fire 20 violating inputs per rule, capture rejections) + navy/amber compliance styling. Drops as a download. ~5 seconds. This is what the developer hands to Marcus's compliance buyer. **The PDF prose is now clean as of tonight — no more prover-internals jargon — so this redesign can lean on the artifact unchanged.**
+2. **Studio "Direct Edit" feature — click a piece of the running app, edit the corresponding Clear line.** New toggle button above the preview pane in Studio. Press it; it stays pressed (toggle state). Click anywhere in the running preview app. Studio: (a) jumps the editor cursor to the matching Clear source line and highlights it, (b) auto-drafts a message into Meph chat: "help me edit this:" + the Clear source snippet starting at that line. The user reviews + sends.
 
-   **(c) Right-click a rule → debug drilldown.** Show the prover's reasoning text (today's math-journal output) in a side pane. The "why didn't this prove?" debugging surface, not the primary one.
+   **Why it matters for launch:** the ranger audience can read English Clear but stalls on "where in the source did this button come from?" This feature collapses that gap to one click. It's the load-bearing UX for "non-developers can iterate on AI-generated apps."
 
-   Single artifact (PDF), three ways to reach it: auto-inline for fast feedback, button for the customer-facing report, right-click for "why." Matches how Marcus actually uses Studio: write rules, see them prove in real time, hit the button when ready to send to the auditor.
+   **User flow:**
+   - User has compiled + running app in preview pane.
+   - New button labeled "Direct Edit" above preview, in toolbar row next to existing tab switcher.
+   - Click → button turns indigo / pressed-state, cursor over preview iframe becomes crosshair.
+   - User clicks a piece of the rendered app (heading, button, table cell, form input).
+   - Bridge captures the click, walks up the DOM finding nearest element with `data-clear-line="N"`, posts the line number to the parent (Studio).
+   - Studio: scrolls editor to line N, places cursor there, briefly highlights the line. Composes a Meph chat draft: ```Help me edit this:\n\n<clear source from line N + 5 lines>``` and either auto-sends or fills the chat input for user to send.
 
-5. **Discount field shows "2800.0%" in deal-desk detail panel.** The `as percent` formatter multiplies by 100 (correct for decimal-fraction inputs like 0.28), but deal-desk stores `discount_percent` as already-percent integers (28). Multiple acceptable fix paths each with tradeoffs; needs a design call. Options: (a) change deal-desk seeds + rules to use 0.28 form, (b) add `as integer percent` formatter that doesn't multiply, (c) make `as percent` smart with a heuristic.
+   **Files to touch:**
+   - `compiler.js` — UI element emit needs `data-clear-line="N"` on every interactive DOM element it generates. The compiler ALREADY emits `// clear:N` markers on compiled JS lines; extend the same map to HTML attributes. Probably ~5-10 emit sites (`heading`, `button`, `input`, `table`, `link`, `nav item`, etc.).
+   - `playground/ide.html` — add the "Direct Edit" toggle button above the preview-pane toolbar. Wire its state via localStorage (so it persists across reloads). Listen for postMessage events from the bridge with `{ type: 'clear-edit-click', line: N }`. Jump the editor: `editor.dispatch({ selection: { anchor: lineStart } })` then scroll. Compose Meph message: read N lines from editor, format as code-fenced block, set chat input value.
+   - The Studio Bridge script (in `compiler.js` near "shared iframe between user and Meph" — see learnings.md TOC) — it already captures clicks for the iframe-to-parent flow. Extend its click handler to honor a "directEdit" mode flag (sent by parent via postMessage on toggle), and when active, walk up the DOM looking for `data-clear-line` and post the line number.
+   - `playground/system-prompt.md` — add a paragraph telling Meph that when he sees a "Help me edit this:" message with code-fence, the user is asking for a focused edit on that specific snippet. Don't refactor the whole file; tweak that block.
 
-6. **Studio's Dev / Builder mode switcher dropdown is broken.** The toolbar dropdown in `playground/ide.html` that switches between Dev mode (3-panel IDE) and Builder mode (Marcus-first chat layout) doesn't actually switch modes when picked. Reproducer: open Studio, click the mode dropdown, pick the other mode, nothing happens. Check `syncModeButtons()` and the `studio-mode-pref` localStorage key in `playground/ide.html`. ~30 min debug + fix.
+   **Existing infra to lean on:**
+   - Source-line markers: compiler already emits `// clear:N` on every JS line for source-map purposes. The HTML attribute extension is parallel work, not a rebuild.
+   - Studio Bridge: already injects ~90 lines of click-capture into compiled apps (per learnings.md). Adding a "directEdit" mode is one new event handler, not a new architecture.
+   - Meph already has read access to the source file and accepts code-fenced edit requests.
 
-7. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce in isolation.** Originally observed 2026-05-02 late-evening. If this resurfaces, capture the EXACT failing source (don't paraphrase) before touching it.
+   **Test:** spawn a tiny app (build for web + page + heading + button), turn on Direct Edit, click the heading, assert (a) editor cursor jumps to the heading's Clear line, (b) chat input gets a "Help me edit this:" + the heading line + 4 lines of context.
 
-8. **Audit flaky tests across the repo.** Needs multi-run signal accumulated across real pushes. The `#editor-mount .cm-editor` flake we hit twice tonight is the most-observed candidate; document any others as they show up.
+   **Estimated scope:** half a day of focused work — a few-line emit change in `compiler.js`, ~30 lines added to `ide.html`, ~10 lines to the bridge. Test harness re-uses the existing `playground/ide.test.js` Playwright pattern.
 
-9. **Finish the rest of the provable-correctness workstream + clean up ROADMAP and FEATURES.** Outstanding pieces (excluding the verified-compiler track, its own multi-month epic): row-level security (item 2), concurrency Phase 2 (item 3), audit-trail attribution beyond rules (which API call, which user, what was changed), any remaining proof-system gaps surfaced by the eval. After that lands, sweep ROADMAP.md and FEATURES.md so the file reads as one regulated-tier-completeness arc rather than a list of partial wins.
+3. **Studio Prove redesign — auto-check inline (4a) + right-click drilldown (4c).** Tonight shipped 4(b): clicking Prove now downloads the audit PDF. The two remaining modes:
+   - **(a) Auto-check on every save.** Run the prover every time the source changes. Show verdicts inline in the editor gutter: green check next to proved rules, red X next to disproved, amber question mark next to unverifiable. Like spell-check. Sub-second. CodeMirror gutter integration.
+   - **(c) Right-click a rule → debug drilldown.** Side pane showing the prover's reasoning (the math journal text that USED to dump to terminal under the old Prove button). The "why didn't this prove?" debug surface.
+
+   Both need CodeMirror gutter / context-menu integration — fresh-head work, not late-session fix-it.
+
+4. **Validator friction-driven error rewrites.** Friction script's top items are historical noise (already covered by INTENT_HINTS). Defer until a fresh sweep batch generates new actionable failure rows.
+
+5. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce.** If this resurfaces, capture the EXACT failing source verbatim before touching it.
 
 
 ---
