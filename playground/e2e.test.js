@@ -680,8 +680,14 @@ assert((await page.locator('#editor-label').innerText()).toLowerCase() === 'main
 await page.locator('button[onclick="doStop()"]').click();
 await page.waitForTimeout(500);
 
-// Compile (Ctrl+S)
-await page.locator('#editor-mount .cm-editor').click();
+// Compile (Ctrl+S). Focus the editor programmatically rather than
+// clicking — the click flakes after a recent doStop() because the
+// resulting layout shift makes Playwright's visible/enabled/stable
+// check fail intermittently. window._editor is exposed for tests
+// (see ide.html: `window._editor = editor`) and focus() puts the
+// keyboard cursor in the right place without a click race.
+await page.evaluate(() => window._editor && window._editor.focus());
+await page.waitForTimeout(100);
 await page.keyboard.press('Control+s');
 await page.waitForTimeout(2000);
 const ctrlSStatus = await page.locator('#status').innerText();
@@ -729,8 +735,9 @@ assert(await toast.isVisible().catch(() => false), 'Save shows toast notificatio
 await page.locator('button[onclick="doStop()"]').click();
 await page.waitForTimeout(300);
 
-// Chat focus (Ctrl+K)
-await page.locator('#editor-mount .cm-editor').click();
+// Chat focus (Ctrl+K). Same flake fix as the Ctrl+S block above —
+// programmatic focus instead of click avoids the visible/stable race.
+await page.evaluate(() => window._editor && window._editor.focus());
 await page.waitForTimeout(200);
 await page.keyboard.press('Control+k');
 await page.waitForTimeout(500);

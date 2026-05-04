@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-04: pre-push IDE flake — fixed, no more --no-verify needed
+
+The `#editor-mount .cm-editor` Playwright timeout fired on every push for two months. Documented gotcha; everyone --no-verify'd around it. Fixed today.
+
+### Gotchas-as-rules
+
+- **Don't `.click()` an editor wrapper to focus it for keyboard input.** CodeMirror's outer `.cm-editor` div is a wrapper; the actual click target is `.cm-content`. Worse, after a layout-shifting action (a `doStop()` that hides/shows the Run/Stop buttons, a tab flip, anything that re-flexes the panes), Playwright's "visible, enabled, stable" check on the wrapper flakes — element FOUND, but stability check times out at 30s. Three consecutive runs failed with 61/61 main suite green and only the wrapper-click failing.
+- **Fix: `await page.evaluate(() => window._editor && window._editor.focus())`.** `window._editor` is exposed by `playground/ide.html` (line 1113-1114: `window._editor = editor; window._editorView = editor;`). Call `.focus()` directly. No click race, no visibility check, deterministic. Then `page.keyboard.press('Ctrl+S')` lands on the focused editor as designed.
+- **Pattern: any test that does click-to-focus before `keyboard.press` is a flake candidate.** The cheap fix is the same everywhere — programmatic focus via the test surface the page exposes (`window._editor`, `window._editorView`, etc.). Click is for testing the click; focus is for setting up keyboard input.
+- **The fix shipped on `playground/e2e.test.js`** at the two `#editor-mount .cm-editor`-click sites (Ctrl+S compile and Ctrl+K chat focus). 3 consecutive full e2e runs after the fix, 75/75 each time. Before the fix, the flake had been ~100% on Russell's Windows machine for two months.
+
+---
+
 ## Session 2026-05-03 late night: Studio mode-switcher dropdown silently broken
 
 The toolbar Dev/Builder mode dropdown in `playground/ide.html` did nothing when picked. Live repro against a running playground server traced it to `setStudioMode` not being on `window`, even though the function was defined and the inline `onchange` handler clearly tried to call it.
@@ -131,6 +144,7 @@ The rebuild ended up cleaner than the original would have been because writing t
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-04: pre-push IDE flake fixed](#session-2026-05-04-pre-push-ide-flake--fixed-no-more---no-verify-needed) | Don't `.click()` editor wrapper to focus for keyboard input — use `page.evaluate(() => window._editor.focus())`; click-then-keyboard.press patterns are flake candidates after layout shifts |
 | [Session 2026-05-03 late night: Studio mode-switcher dropdown silently broken](#session-2026-05-03-late-night-studio-mode-switcher-dropdown-silently-broken) | `<script type="module">` puts top-level functions in module scope, not global; inline `onclick`/`onchange` attributes can't find them — fix is `window.foo = foo` next to the declaration; live-browser `typeof window.<name>` is the 5-second probe |
 | [Session 2026-05-03 late night: durable storage for `_users` + `_invites`](#session-2026-05-03-late-night-durable-storage-for-_users--_invites) | Windows file-lock cross-contamination invisible until durable state lands (fix: per-test CLEAR_DB_PATH); id ↔ tenant_id init order needs two-step insert+update; never declare tenant_id or _version in createTable schema; mark invite consumed AFTER user insert; async handlers need async signature |
 | [Session 2026-05-03 night: multi-user-per-tenant invites](#session-2026-05-03-night-multi-user-per-tenant-via-single-use-invite-tokens) | Mark invite consumed AFTER user push; crypto.randomBytes for token; gate emit on auth+scope; reuse existing keyword (1:1 mapping); audit endpoint matters |
