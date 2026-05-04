@@ -6,7 +6,24 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-03 late night (latest) - Audit log captures WHAT was changed (sanitized body_summary)
+## 2026-05-04 (latest) — Builders landing page + Studio Direct Edit
+
+Two top-priority next-moves from HANDOFF shipped on `feature/landing-builders-page`. Both serve the GTM lock from earlier the same day: self-serve product, ranger / RevOps audience, not compliance buyers.
+
+**What shipped:**
+- **`landing/builders.html`** (1174 lines, new file). The new ranger / RevOps homepage candidate. Hero with "The AI built your app. It broke at 11pm. You can't fix it." + dual CTA + inline editor/app-frame illustration. "Wall you keep hitting" cards naming Lovable/Bolt, Bubble, Retool (the wedge), Cursor (negative space). Side-by-side React-vs-Clear comparison. Audience cards for PMs, Marketers, RevOps, Founders. Three case-card screenshots (Deal Desk, Lead Router, Internal Request Queue). Build-AI-assistants section with helpdesk-agent code sample. Built-secure-by-default with terminal-mock REFUSED output. Prove-your-rules section with audit-PDF mock showing PROVED + VERIFIED rows. How-it-works, pricing teaser, dark-indigo final CTA. Mirrors `landing/pricing.html` visual system: Inter font, indigo accent, inline SVG icons (no emoji per the rule), 8-pt grid, hero mesh gradient. Verified end-to-end via preview server — hero h1 at 58px, code panes preserve line breaks, no console errors.
+- **Studio Direct Edit toggle** (`playground/ide.html`, +62 lines). New toolbar button next to Run/Stop. When toggled on, clicking any element in the preview iframe (a) jumps the editor cursor to that element's Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with a fenced snippet of the line + 4 lines of context. The compiler-side work was already done — every interactive HTML element carries `data-clear-line="N"` via `clAttr(node)` in `buildHTML`. This commit drops the Alt-key requirement on the existing source-line capture under a toggleable mode. End-to-end live verified: clicked rendered "Click me" button on line 6 → chat input filled with `Help me edit this:\n\n\`\`\`clear\n  button 'Click me' that shows a toast 'hi'\n\`\`\``.
+- **Studio Bridge extension** (`compiler.js`, +31 lines). Same logic as ide.html's `sourceMapCapture` but inside the compiled-app-side bridge so Direct Edit also fires for full-stack apps (running-server iframes loaded with `?clear-bridge=1`), not just srcdoc. New `__directEditMode` flag toggled by parent message; click handler walks up to find `data-clear-line`, posts `clear-source-line` with `directEdit: true`. Outline highlight on the clicked element matches srcdoc behavior. Pre-commit tests 2912/0.
+
+**Why for launch:** the ranger audience is the bullseye for the self-serve direction Russell locked yesterday. The landing page replaces the compliance-buyer-shaped Marcus framing with copy that names the actual pain (Lovable/Bubble/Retool/Cursor each break somewhere different). Direct Edit collapses the "where in the source did this button come from?" gap to one click — the load-bearing UX for "non-developers can iterate on AI-generated apps."
+
+**Defaults shipped on the landing page** (Russell flagged 3 calls before copy; chose ship-as-designed by default, easy to soften later): hero pain line stays as written; Lovable / Bubble / Retool / Cursor named explicitly; Marcus framing dropped (kept the secure + prove sections, reframed for ranger audience).
+
+**Limitation called out for Direct Edit:** the iframe sets its own body cursor when toggled on, but the iframe boundary may swallow it on hover — a CSS rule on the parent (`body.direct-edit-mode #preview-content iframe { cursor: crosshair; }`) is a small follow-up. Meph's `playground/system-prompt.md` is updated to recognize the "Help me edit this:" + fenced clear pattern.
+
+---
+
+## 2026-05-03 late night - Audit log captures WHAT was changed (sanitized body_summary)
 
 The audit trail shipped earlier tonight answered who/when/where for every state-changing request. The third compliance question — "show me what was modified" — needed the request body in each row. This commit adds it, with sensitive-field redaction so the audit log isn't its own attack surface.
 

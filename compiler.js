@@ -13583,6 +13583,7 @@ ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on r
     var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
     if (!__hasQuery && !__hasMeta) return;
     var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    var __directEditMode = false; // Studio Direct Edit toggle (parent posts on/off)
     function __selectorFor(el) {
       if (!el || el === document) return null;
       if (el.id) return '#' + el.id;
@@ -13595,8 +13596,38 @@ ${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on r
     function __post(msg) {
       try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
     }
+    function __postPlain(msg) {
+      // Plain postMessage without the 'source: clear-bridge' wrapper — used for
+      // clear-source-line which the parent's existing handler matches by type alone.
+      try { window.parent.postMessage(msg, __clearOrigin); } catch(e) {}
+    }
+    function __findClearLine(el) {
+      while (el && el !== document.body) {
+        if (el.dataset && el.dataset.clearLine) return parseInt(el.dataset.clearLine);
+        el = el.parentElement;
+      }
+      return null;
+    }
     // Capture user actions and forward to Studio
     document.addEventListener('click', function(e) {
+      // Direct Edit mode (full-stack app path — parallel to srcdoc's sourceMapCapture):
+      // intercept the click, walk up to find data-clear-line, post a clear-source-line
+      // event with directEdit flag so Studio jumps the cursor + drafts a Meph edit.
+      if (__directEditMode) {
+        var line = __findClearLine(e.target);
+        if (line !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          __postPlain({ type: 'clear-source-line', line: line, directEdit: true });
+          var hit = e.target;
+          while (hit && !(hit.dataset && hit.dataset.clearLine)) hit = hit.parentElement;
+          if (hit) {
+            hit.style.outline = '2px solid #6c8cff';
+            setTimeout(function() { hit.style.outline = ''; }, 800);
+          }
+          return;
+        }
+      }
       __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
     }, true);
     document.addEventListener('input', function(e) {

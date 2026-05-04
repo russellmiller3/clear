@@ -434,7 +434,8 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | Save to Desktop | Download .clear file |
 | Compile + run + test | All from browser |
 | Copy compiler error | Compile errors show a "Copy compiler error" button with source context, diagnostics, and repair instructions |
-| Source maps | Click preview element -> jumps to Clear source line |
+| Source maps | Click preview element -> jumps to Clear source line (Alt+click in normal mode) |
+| Direct Edit toggle | Toolbar button next to Run/Stop. When on, ANY click in the preview (no Alt key) (a) jumps the editor cursor to that element's Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with the line + 4 lines of context fenced as `clear`. Works for both srcdoc previews (web-only apps) and full-stack-app iframes (running on a separate port via `?clear-bridge=1`). Compiler-side: `data-clear-line="N"` is on every interactive HTML element via `clAttr(node)` in `buildHTML` — the Direct Edit feature uses that attribute. Click highlights the element with a 2px indigo outline so users see what was picked. |
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |
 | Builder Mode (v0.3) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. v0.2 added a Marcus-first tile gallery on empty preview (5 featured apps + "See more"). v0.3 added a 3-ship counter (source pane defaults visible for first 3 successful Publishes, hidden after) + click-to-edit (clicking an iframe element prefills the chat input with `Change the "<text>" button/link — `). |
 | First-visit onboarding | localStorage `clear-onboarding-seen` | Studio shows a one-time welcome card prepended to the chat on first load + auto-focuses chat input. Per-mode copy. Dismissed on first keystroke or × click. |

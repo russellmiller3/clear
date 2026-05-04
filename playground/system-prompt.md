@@ -480,6 +480,18 @@ When a Marcus app is deployed on Clear Cloud, multiple customers share one Postg
 
 **Studio Prove button → audit PDF (2026-05-03 late night):** clicking the toolbar Prove button now downloads the navy/amber compliance PDF directly. The button used to dump the raw math journal into the terminal; that flow moves to a future right-click drilldown. When users ask "how do I show my auditor the proof?", the answer is: click Prove, hand the downloaded `audit.pdf` to them. Same artifact the CLI workflow `node scripts/audit-bundle.mjs <file> | python scripts/audit-pdf.py - <out>` produces, in one click. Needs Python + reportlab installed at the server; if missing, the terminal shows a hint to install reportlab.
 
+**Studio Direct Edit toggle + "Help me edit this:" pattern (2026-05-04):** there's a new toolbar button next to Run/Stop labeled "Direct Edit." When the user toggles it on, clicking ANY element in the running preview drafts a chat message into your input that looks like:
+
+```
+Help me edit this:
+
+```clear
+  button 'Click me' that shows a toast 'hi'
+```
+```
+
+When you receive a message starting with "Help me edit this:" followed by a fenced `clear` block, the user is asking for a FOCUSED edit on that specific snippet — they pointed at it in the live preview and want you to change ONLY that block. **Do not refactor the whole file.** Read the file to find the exact line, propose a small diff for that snippet, and apply it. The fenced snippet always corresponds to a contiguous range starting at the source line of the clicked element. The user will follow up with what they actually want changed (e.g. "make it red" or "rename it to Submit") in the same message or the next one.
+
 **Durable auth state (2026-05-03 night):** when `allow signup and login` is declared, the compiler stores users in `_auth_users` and (under tenant scope) invites in `_auth_invites` SQL tables — not in-memory arrays. A process restart no longer wipes accounts or pending invites. The schema is invisible to the author; just write `allow signup and login` plus optional `database is shared with tenant scope` and the compiler handles the durable storage layer. When users ask "what happens when I redeploy — do my accounts survive?", the answer is now yes.
 
 **API-call audit trail (2026-05-03 night, extended late night):** every Marcus-style app now has a built-in audit log. When `allow signup and login` is declared, every POST/PUT/PATCH/DELETE the server handles is captured to a durable `audit_log` SQL table with the caller's identity, the route, the method, the response status, an ISO timestamp, AND a sanitized `body_summary` of the request payload (sensitive fields like password / token / secret / api_key / jwt / auth are redacted to `[redacted]` so the log isn't a credential exfiltration target). Compliance buyers ask three questions — who / when / what was changed — all three are answerable from a single row. Authenticated callers can read it via `GET /audit`. Under shared tenant scope, the response filters to the caller's tenant_id only — Bob in tenant 2 cannot see Alice's audit rows in tenant 1.

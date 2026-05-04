@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-04 (later): CodeMirror bundle export gap + branch-base divergence
+
+Two costly half-hour detours this session that future Claude can avoid by reading these.
+
+### Gotchas-as-rules
+
+- **Check the CodeMirror bundle's exports BEFORE designing a feature against them.** I designed Studio Prove 4(a) around CodeMirror's `gutter` / `GutterMarker` / `StateField` / `StateEffect` for inline editor-margin verdicts (the originally-spec'd UX). All four are CodeMirror 6 standard exports. But `playground/codemirror.bundle.js` is a vendored pre-built bundle — `package.json` has zero `@codemirror/*` devDependencies. The bundle exports only `EditorView`, `EditorState`, `keymap`, `lineNumbers`, `highlightActiveLineGutter`, `highlightActiveLine`, `drawSelection`, `syntaxHighlighting`, `StreamLanguage`, `HighlightStyle`, `defaultHighlightStyle`, `defaultKeymap`, `history`, `historyKeymap`, `indentWithTab`, `javascript`, `tags`. Anything beyond that needs a bundle rebuild — adding `@codemirror/*` devDependencies, writing a new build entry, running esbuild, verifying size doesn't balloon. Multi-hour investment, NOT a one-commit feature.
+- **The fix: grep for the symbols in `import {...} from './codemirror.bundle.js'` lines BEFORE writing the feature.** Five seconds of `grep -E "import.*codemirror"` would have shown the available exports immediately. Or `grep -oE "(gutter|GutterMarker|StateField)" playground/codemirror.bundle.js | sort -u` — minified bundles still contain the export names somewhere.
+- **The pragmatic pivot: build the v0 against existing exports, file the v1 as a bundle-rebuild follow-up.** Auto-prove badge in the toolbar with a click-to-expand popover delivers ~80% of the value of a full inline gutter, with zero new infra. Ship it, document the gap, bundle-rebuild later when the strategy decision (which packages, which build tool, what size budget) is owned by the human.
+- **Branch-base divergence: when you cut a new branch off main mid-session, the doc files on that branch are an OLDER snapshot than what you've edited on a previous in-session branch.** I cut `feature/audit-log-csv-export` off main while `feature/landing-builders-page` was unmerged. `HANDOFF.md` on the new branch didn't have my landing-page entries; `CHANGELOG.md` didn't have my dated section; `FEATURES.md` didn't have my Direct Edit row. My Edit calls targeting "the existing text" failed three times in a row with the linter-modified-the-file error before I figured out the bases differed. The fix: when cutting a new branch, immediately `grep` the doc files for the keywords I expect to find, and adjust my Edit's `old_string` to match what's ACTUALLY on this branch — not what I wrote on the other branch ten minutes ago.
+
+---
+
 ## Session 2026-05-04: pre-push IDE flake — fixed, no more --no-verify needed
 
 The `#editor-mount .cm-editor` Playwright timeout fired on every push for two months. Documented gotcha; everyone --no-verify'd around it. Fixed today.
@@ -144,6 +157,7 @@ The rebuild ended up cleaner than the original would have been because writing t
 
 | Section | Key Gotchas |
 |---------|-------------|
+| [Session 2026-05-04 (later): CodeMirror bundle export gap + branch-base divergence](#session-2026-05-04-later-codemirror-bundle-export-gap--branch-base-divergence) | Check the `playground/codemirror.bundle.js` exports BEFORE designing features against `gutter` / `GutterMarker` / `StateField` / `StateEffect` — the bundle is vendored, not built locally; building against missing exports forces a multi-hour bundle rebuild as a follow-up. Cutting a branch off main mid-session means the doc files are an OLDER snapshot than what you've edited on a previous in-session branch — `grep` the actual on-branch content before re-using `old_string` text from a prior edit. |
 | [Session 2026-05-04: pre-push IDE flake fixed](#session-2026-05-04-pre-push-ide-flake--fixed-no-more---no-verify-needed) | Don't `.click()` editor wrapper to focus for keyboard input — use `page.evaluate(() => window._editor.focus())`; click-then-keyboard.press patterns are flake candidates after layout shifts |
 | [Session 2026-05-03 late night: Studio mode-switcher dropdown silently broken](#session-2026-05-03-late-night-studio-mode-switcher-dropdown-silently-broken) | `<script type="module">` puts top-level functions in module scope, not global; inline `onclick`/`onchange` attributes can't find them — fix is `window.foo = foo` next to the declaration; live-browser `typeof window.<name>` is the 5-second probe |
 | [Session 2026-05-03 late night: durable storage for `_users` + `_invites`](#session-2026-05-03-late-night-durable-storage-for-_users--_invites) | Windows file-lock cross-contamination invisible until durable state lands (fix: per-test CLEAR_DB_PATH); id ↔ tenant_id init order needs two-step insert+update; never declare tenant_id or _version in createTable schema; mark invite consumed AFTER user insert; async handlers need async signature |

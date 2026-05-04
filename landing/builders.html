@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clear — The AI built your app. It broke at 11pm. You can't fix it.</title>
+<meta name="description" content="The AI tools wrote code you can't read. Retool needs an IT ticket. Bubble is a mess. Clear writes the same kind of app — but in plain English. You can read every line. You can fix every line.">
+<link rel="stylesheet" href="tailwind.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #fafbfd; color: #0f172a; -webkit-font-smoothing: antialiased; margin: 0; }
+
+/* Hero mesh gradient (matches pricing.html / marcus.html) */
+.hero-bg {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fafbfd 40%, #f5f0ff 70%, #fafbfd 100%);
+}
+.hero-bg::before {
+  content: '';
+  position: absolute;
+  top: -40%; right: -20%;
+  width: 80%; height: 120%;
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  bottom: -30%; left: -10%;
+  width: 60%; height: 80%;
+  background: radial-gradient(ellipse at center, rgba(67,97,238,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Buttons (shared with pricing.html) */
+.btn-hero {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 16px rgba(67,97,238,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  letter-spacing: -0.01em;
+}
+.btn-hero:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 8px 32px rgba(67,97,238,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #3730a3 0%, #4f46e5 50%, #6366f1 100%);
+}
+.btn-secondary {
+  background: #fff;
+  color: #1e1b4b;
+  border: 1px solid rgba(15,23,42,0.12);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  letter-spacing: -0.01em;
+}
+.btn-secondary:hover { border-color: #4f46e5; color: #4f46e5; }
+.btn-white {
+  background: #fff;
+  color: #1e1b4b;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.1);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.btn-white:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1), 0 16px 40px rgba(0,0,0,0.15); }
+
+/* Editor + app frame (hero illustration) */
+.app-frame {
+  background: #0f172a;
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(15,23,42,0.08), 0 24px 60px rgba(15,23,42,0.12);
+  border: 1px solid rgba(15,23,42,0.08);
+}
+.app-frame-titlebar {
+  background: #1e293b;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.app-frame-dot { width: 11px; height: 11px; border-radius: 999px; }
+.app-frame-dot.r { background: #ef4444; }
+.app-frame-dot.y { background: #eab308; }
+.app-frame-dot.g { background: #22c55e; }
+.app-frame-tab {
+  margin-left: 14px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.app-frame-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #0f172a;
+}
+@media (max-width: 768px) { .app-frame-body { grid-template-columns: 1fr; } }
+.code-pane {
+  background: #0f172a;
+  padding: 18px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #cbd5e1;
+  border-right: 1px solid rgba(255,255,255,0.04);
+  white-space: pre;
+  margin: 0;
+  overflow-x: auto;
+}
+
+/* Explicit headline sizing — arbitrary-value Tailwind classes (text-[44px] etc.)
+   aren't in the precompiled tailwind.css, so set sizes here. */
+.hero-h1 {
+  font-size: 44px;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+}
+@media (min-width: 768px) { .hero-h1 { font-size: 58px; } }
+
+.section-h2 {
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+@media (min-width: 768px) { .section-h2 { font-size: 42px; } }
+
+.cta-h2 {
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+@media (min-width: 768px) { .cta-h2 { font-size: 44px; } }
+
+.hero-sub {
+  font-size: 18px;
+  line-height: 1.6;
+  font-weight: 300;
+}
+@media (min-width: 768px) { .hero-sub { font-size: 19px; } }
+
+.pricing-h3 {
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+@media (min-width: 768px) { .pricing-h3 { font-size: 28px; } }
+.code-pane .kw { color: #c4b5fd; }
+.code-pane .str { color: #86efac; }
+.code-pane .num { color: #fcd34d; }
+.code-pane .com { color: #64748b; font-style: italic; }
+.code-pane .acc { color: #93c5fd; }
+.app-pane {
+  background: #fff;
+  padding: 22px 26px;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Wall cards */
+.wall-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1024px) { .wall-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .wall-grid { grid-template-columns: 1fr; } }
+.wall-card {
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,0.05);
+  padding: 26px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.wall-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.05); }
+.wall-card.dim { background: #fafbfd; border-color: rgba(0,0,0,0.04); }
+.wall-card-name { font-size: 12px; font-weight: 700; color: #4361ee; letter-spacing: 0.1em; text-transform: uppercase; }
+.wall-card.dim .wall-card-name { color: #94a3b8; }
+.wall-card-headline { font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; line-height: 1.35; }
+.wall-card.dim .wall-card-headline { color: #475569; }
+.wall-card-body { font-size: 13.5px; color: #475569; line-height: 1.6; flex: 1; }
+
+/* Side-by-side comparison */
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
+@media (max-width: 880px) { .compare-grid { grid-template-columns: 1fr; } }
+.code-card {
+  background: #0f172a;
+  border-radius: 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(15,23,42,0.08);
+}
+.code-card-header {
+  background: #1e293b;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.code-card-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; }
+.code-card-tag.bad { color: #fca5a5; }
+.code-card-tag.good { color: #86efac; }
+.code-card-meta { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #64748b; }
+.code-card-body {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  padding: 22px 24px;
+  color: #cbd5e1;
+  overflow-x: auto;
+  flex: 1;
+}
+.code-card-body .kw { color: #c4b5fd; }
+.code-card-body .str { color: #86efac; }
+.code-card-body .num { color: #fcd34d; }
+.code-card-body .com { color: #64748b; font-style: italic; }
+.code-card-body .acc { color: #93c5fd; }
+.code-card-body .pun { color: #94a3b8; }
+.code-card-body .fn { color: #fbbf24; }
+.code-card-body .var { color: #f8fafc; }
+
+/* Audience grid */
+.audience-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1024px) { .audience-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .audience-grid { grid-template-columns: 1fr; } }
+.audience-card {
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,0.05);
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.audience-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(67,97,238,0.06); }
+.audience-icon-wrap {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(67,97,238,0.12), rgba(99,102,241,0.06));
+  color: #4338ca;
+  margin-bottom: 4px;
+}
+.audience-name { font-size: 14px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+.audience-pain { font-size: 13px; color: #64748b; line-height: 1.55; }
+
+/* What-you-ship grid */
+.case-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 1024px) { .case-grid { grid-template-columns: 1fr; } }
+.case-card {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,0.05);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.case-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.06); }
+.case-card-screenshot {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  padding: 22px 20px 0;
+  height: 180px;
+  position: relative;
+  overflow: hidden;
+}
+.case-card-screenshot.lr { background: linear-gradient(135deg, #134e4a 0%, #0f766e 100%); }
+.case-card-screenshot.ir { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); }
+.case-card-mock {
+  background: #fff;
+  border-radius: 8px 8px 0 0;
+  padding: 12px 14px;
+  position: absolute;
+  inset: 32px 18px 0 18px;
+  font-size: 10px;
+  color: #475569;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.case-card-body {
+  padding: 22px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.case-card-name { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+.case-card-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 4px;
+}
+.case-card-meta .pip { width: 4px; height: 4px; border-radius: 999px; background: #cbd5e1; }
+.case-card-tagline { font-size: 13px; color: #475569; line-height: 1.55; }
+
+/* AI / secure / prove sections — feature blocks */
+.feature-section { padding: 100px 0; position: relative; }
+.feature-section.alt { background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+.feature-section.dark {
+  background: linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%);
+  color: #e2e8f0;
+}
+.feature-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4361ee;
+  margin-bottom: 16px;
+}
+.feature-section.dark .feature-eyebrow { color: #a5b4fc; }
+.feature-headline {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #0f172a;
+  margin-bottom: 16px;
+  max-width: 720px;
+}
+.feature-section.dark .feature-headline { color: #f8fafc; }
+.feature-sub {
+  font-size: 17px;
+  line-height: 1.65;
+  color: #475569;
+  max-width: 680px;
+  font-weight: 400;
+  margin-bottom: 36px;
+}
+.feature-section.dark .feature-sub { color: #cbd5e1; }
+
+/* Capability list (security + AI) */
+.cap-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 36px; }
+@media (max-width: 768px) { .cap-list { grid-template-columns: 1fr; } }
+.cap-item { display: flex; gap: 14px; align-items: flex-start; padding: 6px 0; }
+.cap-item-icon {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: rgba(67,97,238,0.08);
+  color: #4338ca;
+  display: flex; align-items: center; justify-content: center;
+}
+.feature-section.dark .cap-item-icon { background: rgba(165,180,252,0.12); color: #a5b4fc; }
+.cap-item-text { font-size: 14.5px; line-height: 1.6; color: #334155; }
+.feature-section.dark .cap-item-text { color: #cbd5e1; }
+.cap-item-text b { color: #0f172a; font-weight: 700; }
+.feature-section.dark .cap-item-text b { color: #f8fafc; }
+
+/* Audit-PDF mock card */
+.pdf-mock {
+  background: #fff;
+  border-radius: 12px;
+  padding: 22px 24px;
+  font-family: 'Inter', sans-serif;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06), 0 16px 60px rgba(0,0,0,0.08);
+  max-width: 360px;
+  font-size: 12.5px;
+  color: #1e293b;
+  line-height: 1.55;
+}
+.pdf-mock-band {
+  background: #1e1b4b;
+  color: #fbbf24;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 14px;
+}
+.pdf-mock-headline { font-size: 16px; font-weight: 800; color: #0f172a; letter-spacing: -0.01em; margin-bottom: 6px; }
+.pdf-mock-row {
+  display: flex; justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.pdf-mock-row:last-child { border-bottom: 0; }
+.pdf-mock-rule { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #475569; }
+.pdf-mock-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.pdf-mock-status.proved { background: #d1fae5; color: #047857; }
+.pdf-mock-status.runtime { background: #dbeafe; color: #1d4ed8; }
+
+/* How-it-works */
+.steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+@media (max-width: 1024px) { .steps-grid { grid-template-columns: 1fr; } }
+.step-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 28px 26px;
+  border: 1px solid rgba(0,0,0,0.05);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.step-num {
+  width: 36px; height: 36px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4338ca, #6366f1);
+  color: #fff;
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  letter-spacing: -0.02em;
+}
+.step-name { font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+.step-body { font-size: 14px; color: #475569; line-height: 1.65; }
+.step-body code { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: rgba(0,0,0,0.04); padding: 1px 6px; border-radius: 4px; color: #0f172a; }
+
+/* CTA section */
+.cta-section {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #3730a3 100%);
+  position: relative;
+  overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: -50%; right: -30%;
+  width: 80%; height: 200%;
+  background: radial-gradient(ellipse, rgba(129,140,248,0.15) 0%, transparent 60%);
+}
+.cta-section::after {
+  content: '';
+  position: absolute;
+  bottom: -50%; left: -20%;
+  width: 60%; height: 150%;
+  background: radial-gradient(ellipse, rgba(167,139,250,0.1) 0%, transparent 60%);
+}
+
+/* Pricing teaser */
+.pricing-teaser {
+  background: linear-gradient(135deg, #fafbfd 0%, #f0f4ff 100%);
+  border: 1px solid rgba(99,102,241,0.1);
+  border-radius: 20px;
+  padding: 32px 36px;
+}
+
+/* Nav */
+nav { background: rgba(250,251,253,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+
+/* Fade */
+.fade-up { animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both; }
+.fade-d1 { animation-delay: 0.08s; }
+.fade-d2 { animation-delay: 0.18s; }
+.fade-d3 { animation-delay: 0.32s; }
+.fade-d4 { animation-delay: 0.46s; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="sticky top-0 z-50 border-b border-black/[0.04] px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <a href="builders.html" class="text-[18px] font-bold tracking-tight text-slate-900">Clear</a>
+      <div class="hidden md:flex items-center gap-7 text-[13px] font-medium text-slate-400">
+        <a href="builders.html" class="text-slate-900 font-semibold">For builders</a>
+        <a href="for-developers.html" class="hover:text-slate-600 transition">For developers</a>
+        <a href="pricing.html" class="hover:text-slate-600 transition">Pricing</a>
+        <a href="#" class="hover:text-slate-600 transition">Docs</a>
+        <a href="#" class="hover:text-slate-600 transition">Changelog</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="/studio" class="text-[13px] font-medium text-slate-500 hover:text-slate-700 transition hidden md:block">Sign in</a>
+      <a href="/studio" class="btn-hero text-white text-[13px] px-5 py-2.5 rounded-xl font-semibold">Open Studio</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-bg">
+  <div class="max-w-6xl mx-auto px-6 pt-20 pb-16 relative z-10">
+    <div class="grid lg:grid-cols-[1.1fr_1fr] gap-14 items-center">
+
+      <div>
+        <div class="fade-up inline-flex items-center gap-2 text-[12px] font-semibold text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-full px-3.5 py-1.5 mb-6">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          For people who can read code, but aren't engineers
+        </div>
+        <h1 class="fade-up fade-d1 hero-h1 mb-6">
+          The AI built your app.<br>
+          It broke at 11pm.<br>
+          <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">You can't fix it.</span>
+        </h1>
+        <p class="fade-up fade-d2 text-lg md:text-[19px] text-slate-500 mb-9 leading-relaxed font-light max-w-xl">
+          Clear writes the same kind of app — but in plain English.
+          You can read every line. You can fix every line.
+          The AI is your assistant, not the only person who understands the code.
+        </p>
+        <div class="fade-up fade-d3 flex flex-wrap items-center gap-3">
+          <a href="/studio" class="btn-hero text-white text-[15px] px-6 py-3.5 rounded-xl font-semibold inline-flex items-center gap-2">
+            Open Studio
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </a>
+          <a href="#how" class="btn-secondary text-[15px] px-6 py-3.5 rounded-xl font-semibold inline-flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Watch 90s demo
+          </a>
+        </div>
+        <p class="fade-up fade-d4 text-[13px] text-slate-400 mt-5">Free for 1 app. No credit card. Browser-based.</p>
+      </div>
+
+      <!-- App frame illustration -->
+      <div class="fade-up fade-d3">
+        <div class="app-frame">
+          <div class="app-frame-titlebar">
+            <span class="app-frame-dot r"></span>
+            <span class="app-frame-dot y"></span>
+            <span class="app-frame-dot g"></span>
+            <span class="app-frame-tab">deal-desk.clear</span>
+          </div>
+          <div class="app-frame-body">
+            <div class="code-pane">
+<span class="com"># What the deal is</span>
+<span class="kw">a</span> Deal <span class="kw">has</span>:
+  amount <span class="kw">is</span> <span class="kw">a</span> number
+  discount_percent <span class="kw">is</span> <span class="kw">a</span> number
+  status <span class="kw">is</span> <span class="kw">a</span> word
+
+<span class="com"># Rules anyone can read</span>
+<span class="kw">rule</span> <span class="str">'discount cap thirty'</span>:
+  <span class="kw">enforce that</span> deal<span class="acc">'s</span> discount_percent &lt; <span class="num">30</span>
+
+<span class="com"># What happens when you reject</span>
+<span class="kw">when user sends</span> POST <span class="kw">to</span> <span class="str">'/deals/:id/reject'</span>:
+  <span class="kw">requires login</span>
+  <span class="kw">change</span> deal<span class="acc">'s</span> status <span class="kw">to</span> <span class="str">'rejected'</span>
+  <span class="kw">send back</span> deal
+            </div>
+            <div class="app-pane">
+              <div style="font-size: 10px; font-weight: 700; color: #4361ee; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px;">Live preview</div>
+              <div style="font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; margin-bottom: 14px;">Deal #4821</div>
+              <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span style="background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px;">Pending</span>
+                <span style="background: #f1f5f9; color: #475569; font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 999px;">$240k</span>
+              </div>
+              <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">Discount</div>
+              <div style="font-size: 24px; font-weight: 800; color: #dc2626; letter-spacing: -0.02em; margin-bottom: 18px;">32%</div>
+              <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 11.5px; color: #991b1b; line-height: 1.5; margin-bottom: 18px;">
+                <b style="font-weight: 700;">Rejected by rule:</b> discount cap thirty.<br>
+                <span style="opacity: 0.85;">Discount must stay under 30%.</span>
+              </div>
+              <button style="width: 100%; background: linear-gradient(135deg, #4338ca, #4f46e5); color: #fff; font-size: 12.5px; font-weight: 600; padding: 9px; border-radius: 8px; border: 0; cursor: pointer;">Reject deal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- The wall you keep hitting -->
+<section class="py-24" id="wall">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="max-w-3xl mb-12">
+      <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg> The wall you keep hitting</div>
+      <h2 class="text-3xl md:text-[42px] font-extrabold tracking-[-0.03em] leading-tight text-slate-900 mb-4">
+        You've tried every tool. Each one breaks somewhere different.
+      </h2>
+      <p class="text-slate-500 text-[16px] leading-relaxed max-w-2xl">
+        The "no-code" wave promised you wouldn't need engineers. None of the tools delivered. Here's where each one stops working.
+      </p>
+    </div>
+
+    <div class="wall-grid">
+
+      <div class="wall-card">
+        <div class="wall-card-name">Lovable / Bolt / v0</div>
+        <div class="wall-card-headline">Wrote React you can't read.</div>
+        <div class="wall-card-body">
+          You shipped fast. Then a customer hit a bug. The AI's fix made it worse, then worse again. The codebase is now <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#f1f5f9;padding:1px 5px;border-radius:3px">useEffect</code> on top of <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#f1f5f9;padding:1px 5px;border-radius:3px">useState</code> on top of three TanStack hooks. You can't tell what's wrong. The AI can't either.
+        </div>
+      </div>
+
+      <div class="wall-card">
+        <div class="wall-card-name">Bubble / Webflow logic</div>
+        <div class="wall-card-headline">Drag-and-drop chaos.</div>
+        <div class="wall-card-body">
+          The visual workflow editor looked great in the demo. Six months in, your "logic flow" is 200 boxes connected by purple lines, half of them dead, none of them searchable. Hiring help means hiring someone who already knows Bubble.
+        </div>
+      </div>
+
+      <div class="wall-card">
+        <div class="wall-card-name">Retool</div>
+        <div class="wall-card-headline">Per-seat pricing. IT-blocked. No source.</div>
+        <div class="wall-card-body">
+          A six-week IT ticket to provision your seat. $50 per developer per month, escalating fast. The query lives in a SaaS UI, not in a file you can grep. If RevOps wants to ship a tool today, Retool says "ask IT first." This is the wedge — Clear is what you'd use instead.
+        </div>
+      </div>
+
+      <div class="wall-card dim">
+        <div class="wall-card-name">Cursor / Copilot</div>
+        <div class="wall-card-headline">Assumes you can architect Postgres.</div>
+        <div class="wall-card-body">
+          Great if you ARE the developer. The AI suggests; you decide between three patterns. If you don't already know what a JOIN does, the suggestions land in a codebase that's 80% intimidating and 20% useful. Use Cursor when the gap you're filling is "I'm a senior dev, type faster" — not "I've never deployed anything."
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- What's different — side by side -->
+<section class="py-24 bg-white border-y border-black/[0.04]">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="max-w-3xl mb-12">
+      <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Bug? Read the sentence.</h3></div>
+      <h2 class="text-3xl md:text-[42px] font-extrabold tracking-[-0.03em] leading-tight text-slate-900 mb-4">
+        The same app. Two different worlds.
+      </h2>
+      <p class="text-slate-500 text-[16px] leading-relaxed max-w-2xl">
+        Both blocks reject a deal. Both call the API. Both update the UI. One you can hand to a junior dev. The other you stare at, wondering which <code style="font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(0,0,0,0.05);padding:1px 5px;border-radius:3px">useState</code> is the bug.
+      </p>
+    </div>
+
+    <div class="compare-grid">
+
+      <!-- Bad: React from an AI -->
+      <div class="code-card">
+        <div class="code-card-header">
+          <span class="code-card-tag bad">Generated React — 32 lines</span>
+          <span class="code-card-meta">RejectDealForm.tsx</span>
+        </div>
+        <pre class="code-card-body"><span class="kw">import</span> <span class="pun">{</span> <span class="var">useState</span> <span class="pun">}</span> <span class="kw">from</span> <span class="str">'react'</span><span class="pun">;</span>
+<span class="kw">import</span> <span class="pun">{</span> <span class="var">useMutation</span><span class="pun">,</span> <span class="var">useQueryClient</span> <span class="pun">}</span> <span class="kw">from</span> <span class="str">'@tanstack/react-query'</span><span class="pun">;</span>
+<span class="kw">import</span> <span class="pun">{</span> <span class="var">z</span> <span class="pun">}</span> <span class="kw">from</span> <span class="str">'zod'</span><span class="pun">;</span>
+
+<span class="kw">const</span> <span class="var">RejectSchema</span> <span class="pun">=</span> <span class="var">z</span><span class="pun">.</span><span class="fn">object</span><span class="pun">({</span>
+  <span class="var">reason</span><span class="pun">:</span> <span class="var">z</span><span class="pun">.</span><span class="fn">string</span><span class="pun">().</span><span class="fn">min</span><span class="pun">(</span><span class="num">10</span><span class="pun">).</span><span class="fn">max</span><span class="pun">(</span><span class="num">500</span><span class="pun">),</span>
+  <span class="var">notify</span><span class="pun">:</span> <span class="var">z</span><span class="pun">.</span><span class="fn">boolean</span><span class="pun">().</span><span class="fn">default</span><span class="pun">(</span><span class="kw">true</span><span class="pun">),</span>
+<span class="pun">});</span>
+
+<span class="kw">export function</span> <span class="fn">RejectDealForm</span><span class="pun">({</span> <span class="var">dealId</span> <span class="pun">})</span> <span class="pun">{</span>
+  <span class="kw">const</span> <span class="var">qc</span> <span class="pun">=</span> <span class="fn">useQueryClient</span><span class="pun">();</span>
+  <span class="kw">const</span> <span class="pun">[</span><span class="var">reason</span><span class="pun">,</span> <span class="var">setReason</span><span class="pun">]</span> <span class="pun">=</span> <span class="fn">useState</span><span class="pun">(</span><span class="str">''</span><span class="pun">);</span>
+  <span class="kw">const</span> <span class="pun">[</span><span class="var">notify</span><span class="pun">,</span> <span class="var">setNotify</span><span class="pun">]</span> <span class="pun">=</span> <span class="fn">useState</span><span class="pun">(</span><span class="kw">true</span><span class="pun">);</span>
+  <span class="kw">const</span> <span class="var">mut</span> <span class="pun">=</span> <span class="fn">useMutation</span><span class="pun">({</span>
+    <span class="var">mutationFn</span><span class="pun">:</span> <span class="kw">async</span> <span class="pun">(</span><span class="var">payload</span><span class="pun">) =&gt; {</span>
+      <span class="kw">const</span> <span class="var">r</span> <span class="pun">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="pun">(</span><span class="str">`/api/deals/</span><span class="pun">${</span><span class="var">dealId</span><span class="pun">}</span><span class="str">/reject`</span><span class="pun">, {</span>
+        <span class="var">method</span><span class="pun">:</span> <span class="str">'POST'</span><span class="pun">,</span>
+        <span class="var">headers</span><span class="pun">: {</span> <span class="str">'Content-Type'</span><span class="pun">:</span> <span class="str">'application/json'</span> <span class="pun">},</span>
+        <span class="var">body</span><span class="pun">:</span> <span class="var">JSON</span><span class="pun">.</span><span class="fn">stringify</span><span class="pun">(</span><span class="var">payload</span><span class="pun">),</span>
+      <span class="pun">});</span>
+      <span class="kw">if</span> <span class="pun">(!</span><span class="var">r</span><span class="pun">.</span><span class="var">ok</span><span class="pun">)</span> <span class="kw">throw new</span> <span class="fn">Error</span><span class="pun">(</span><span class="kw">await</span> <span class="var">r</span><span class="pun">.</span><span class="fn">text</span><span class="pun">());</span>
+      <span class="kw">return</span> <span class="var">r</span><span class="pun">.</span><span class="fn">json</span><span class="pun">();</span>
+    <span class="pun">},</span>
+    <span class="var">onSuccess</span><span class="pun">: () =&gt;</span> <span class="var">qc</span><span class="pun">.</span><span class="fn">invalidateQueries</span><span class="pun">([</span><span class="str">'deals'</span><span class="pun">]),</span>
+  <span class="pun">});</span>
+  <span class="com">// ... 9 more lines of form/submit/JSX wiring</span>
+<span class="pun">}</span></pre>
+      </div>
+
+      <!-- Good: Clear -->
+      <div class="code-card">
+        <div class="code-card-header">
+          <span class="code-card-tag good">Clear — 8 lines</span>
+          <span class="code-card-meta">deal-desk.clear</span>
+        </div>
+        <pre class="code-card-body"><span class="com"># Reject a deal — the whole flow.</span>
+
+<span class="kw">when user sends</span> POST <span class="kw">to</span> <span class="str">'/deals/:id/reject'</span>:
+  <span class="kw">requires login</span>
+  <span class="var">deal</span> <span class="kw">is</span> <span class="kw">find</span> <span class="var">Deal</span> <span class="kw">where</span> <span class="var">id</span> <span class="kw">is</span> <span class="var">params</span><span class="acc">'s</span> <span class="var">id</span>
+  <span class="kw">change</span> <span class="var">deal</span><span class="acc">'s</span> <span class="var">status</span> <span class="kw">to</span> <span class="str">'rejected'</span>
+  <span class="kw">send email to</span> <span class="var">deal</span><span class="acc">'s</span> <span class="var">rep_email</span>
+  <span class="kw">send back</span> <span class="var">deal</span></pre>
+      </div>
+
+    </div>
+
+    <p class="text-center text-[14px] text-slate-500 mt-8 max-w-2xl mx-auto leading-relaxed">
+      Both compile. Both work. The Clear version takes 8 lines because <b class="text-slate-900">English isn't a layer over the code — it IS the code.</b>
+      Read it. Edit it. Show it to your boss without flinching.
+    </p>
+  </div>
+</section>
+
+<!-- Who this is for -->
+<section class="py-24 bg-[#fafbfd]">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="max-w-3xl mb-12">
+      <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Who this is for</div>
+      <h2 class="text-3xl md:text-[42px] font-extrabold tracking-[-0.03em] leading-tight text-slate-900 mb-4">
+        Built for the people engineering doesn't have time for.
+      </h2>
+      <p class="text-slate-500 text-[16px] leading-relaxed max-w-2xl">
+        You can read code. You can write SQL after a Google. You file tickets that come back six weeks later. Clear is for you.
+      </p>
+    </div>
+
+    <div class="audience-grid">
+
+      <div class="audience-card">
+        <div class="audience-icon-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="audience-name">Product managers</div>
+        <div class="audience-pain">Filing tickets engineering won't get to until next quarter. The dashboard you sketched in Figma. The internal admin tool your team's been asking for. Ship it yourself, hand the source to engineering when they're free.</div>
+      </div>
+
+      <div class="audience-card">
+        <div class="audience-icon-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div class="audience-name">Marketers</div>
+        <div class="audience-pain">Lead capture forms with custom routing. Campaign trackers no SaaS sells. Drip-email logic engineering deprioritized. The tools nobody will build for you because each one earns 15 minutes of attention.</div>
+      </div>
+
+      <div class="audience-card">
+        <div class="audience-icon-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="audience-name">RevOps</div>
+        <div class="audience-pain">Your Retool seat takes 6 weeks of IT tickets. Deal-desk approval flows. Quote-to-cash routing. Lead-to-rep mapping. Stuff IT will never prioritize because it's "Sales, not engineering."</div>
+      </div>
+
+      <div class="audience-card">
+        <div class="audience-icon-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </div>
+        <div class="audience-name">Founders who aren't the CTO</div>
+        <div class="audience-pain">Your CTO is buried in the core product. You have a hundred small internal apps that need to exist. Ship them yourself without waiting for a sprint slot.</div>
+      </div>
+
+    </div>
+
+    <p class="text-center text-[14px] text-slate-400 mt-12 max-w-2xl mx-auto leading-relaxed italic">
+      Not for you if you're a senior dev who'd rather use Cursor or Copilot — Clear's competition there isn't even close.
+    </p>
+  </div>
+</section>
+
+<!-- What you can ship today -->
+<section class="py-24" id="cases">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="max-w-3xl mb-12">
+      <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> What you can ship today</div>
+      <h2 class="text-3xl md:text-[42px] font-extrabold tracking-[-0.03em] leading-tight text-slate-900 mb-4">
+        These are real apps. Templates included.
+      </h2>
+      <p class="text-slate-500 text-[16px] leading-relaxed max-w-2xl">
+        Open Studio, pick a template, edit it in plain English, deploy. Numbers below are honest measurements — Clear lines and minutes-from-empty-file to live URL.
+      </p>
+    </div>
+
+    <div class="case-grid">
+
+      <div class="case-card">
+        <div class="case-card-screenshot">
+          <div class="case-card-mock">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Deal Desk</div>
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+              <span style="background: #fef3c7; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Pending 12</span>
+              <span style="background: #dbeafe; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Approved 47</span>
+              <span style="background: #fee2e2; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Rejected 8</span>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 9px; color: #64748b;">
+              <div style="padding: 3px 0;">— Acme Corp · $240k · 32% disc</div>
+              <div style="padding: 3px 0;">— BetaCo · $84k · 12% disc</div>
+              <div style="padding: 3px 0;">— Gamma Inc · $51k · 8% disc</div>
+            </div>
+          </div>
+        </div>
+        <div class="case-card-body">
+          <div class="case-card-meta">
+            <span>50 lines</span><span class="pip"></span><span>8 minutes</span>
+          </div>
+          <div class="case-card-name">Deal Desk</div>
+          <div class="case-card-tagline">Approve, reject, or escalate. Discount cap rule enforced before the deal lands. CRO sees only what they need to.</div>
+        </div>
+      </div>
+
+      <div class="case-card">
+        <div class="case-card-screenshot lr">
+          <div class="case-card-mock">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Lead Router</div>
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+              <span style="background: #d1fae5; padding: 2px 6px; border-radius: 3px; font-size: 8px;">SMB → Alex</span>
+              <span style="background: #dbeafe; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Mid → Sam</span>
+              <span style="background: #f3e8ff; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Ent → Drew</span>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 9px; color: #64748b;">
+              <div style="padding: 3px 0;">— Webform → Acme → Drew</div>
+              <div style="padding: 3px 0;">— Marketo → Beta → Sam</div>
+              <div style="padding: 3px 0;">— Inbound → Echo → Alex</div>
+            </div>
+          </div>
+        </div>
+        <div class="case-card-body">
+          <div class="case-card-meta">
+            <span>38 lines</span><span class="pip"></span><span>5 minutes</span>
+          </div>
+          <div class="case-card-name">Lead Router</div>
+          <div class="case-card-tagline">Inbound webform → matched to a rep by territory + size. Round-robin within each segment. RevOps' favorite — no IT involved.</div>
+        </div>
+      </div>
+
+      <div class="case-card">
+        <div class="case-card-screenshot ir">
+          <div class="case-card-mock">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Internal Request Queue</div>
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+              <span style="background: #fee2e2; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Urgent 3</span>
+              <span style="background: #fef3c7; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Normal 24</span>
+              <span style="background: #d1fae5; padding: 2px 6px; border-radius: 3px; font-size: 8px;">Done 91</span>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 9px; color: #64748b;">
+              <div style="padding: 3px 0;">— Add SSO for client X</div>
+              <div style="padding: 3px 0;">— Comp model Q3 spreadsheet</div>
+              <div style="padding: 3px 0;">— Onboard new vendor</div>
+            </div>
+          </div>
+        </div>
+        <div class="case-card-body">
+          <div class="case-card-meta">
+            <span>42 lines</span><span class="pip"></span><span>6 minutes</span>
+          </div>
+          <div class="case-card-name">Internal Request Queue</div>
+          <div class="case-card-tagline">Anyone files a request, you triage and assign. Slack notification when it lands. Audit trail of every status change for free.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Build AI assistants -->
+<section class="feature-section dark">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="grid lg:grid-cols-[1.1fr_1fr] gap-14 items-start">
+      <div>
+        <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> AI assistants, not just apps</div>
+        <h2 class="feature-headline">Most AI-app builders only do forms and tables.<br>Clear writes the agent too.</h2>
+        <p class="feature-sub">
+          A customer-support helper. A document reader. An intent-routing chat for your store. Other tools make you bolt these on through APIs. Clear has them as first-class language features — same plain English, one file.
+        </p>
+        <div class="cap-list">
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+            <div class="cap-item-text"><b>One line of agent code</b> — <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(165,180,252,0.12);color:#a5b4fc;padding:1px 6px;border-radius:4px">ask claude '...' with input</code> calls Claude with your prompt + the user's input.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+            <div class="cap-item-text"><b>Tools the agent can call</b> — list functions in your file, agent invokes them when asked. Same one-line shape.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            <div class="cap-item-text"><b>Memory across sessions</b> — agent remembers the user it's talking to. <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(165,180,252,0.12);color:#a5b4fc;padding:1px 6px;border-radius:4px">remember conversation</code> is one keyword.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+            <div class="cap-item-text"><b>Knows about your data</b> — point an agent at a table, a file, or a URL and it reads from there before answering.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+            <div class="cap-item-text"><b>Streams word-by-word by default</b> — answers feel alive, not "loading…" then a wall.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="cap-item-text"><b>Schedule it</b> — <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(165,180,252,0.12);color:#a5b4fc;padding:1px 6px;border-radius:4px">runs every hour</code> on an agent fires it on a cron.</div>
+          </div>
+        </div>
+
+        <p class="text-[13px] text-slate-400 mt-9 leading-relaxed">
+          Two examples already built and reusable: <b style="color: #cbd5e1">helpdesk-agent</b> (4 lines of agent + tools), <b style="color: #cbd5e1">ecom-agent</b> (intent routing + searchable products). The AI stack is built in, not bolted on.
+        </p>
+      </div>
+
+      <div>
+        <div class="code-card" style="background: #0f172a;">
+          <div class="code-card-header">
+            <span class="code-card-tag good">helpdesk-agent.clear</span>
+            <span class="code-card-meta">~ 12 lines</span>
+          </div>
+<pre class="code-card-body"><span class="com"># A customer-support agent.</span>
+
+<span class="kw">an agent</span> <span class="str">'helpdesk'</span>:
+  knows about: Tickets, Customers
+  has tools: search_tickets, escalate
+  remember conversation
+  block arguments matching: refund, billing
+  prompt: <span class="str">'Help the user with their issue.</span>
+<span class="str">           Search past tickets first.</span>
+<span class="str">           Escalate to a human if blocked.'</span>
+
+<span class="kw">when user sends</span> POST <span class="kw">to</span> <span class="str">'/chat'</span>:
+  reply <span class="kw">is</span> <span class="kw">ask</span> <span class="var">helpdesk</span> <span class="kw">with</span> <span class="var">message</span>
+  <span class="kw">send back</span> reply</pre>
+        </div>
+        <p class="text-[12.5px] text-slate-400 mt-4 leading-relaxed">
+          Twelve lines. Real agent. Tools, memory, refusal rules, knowledge base, streaming chat endpoint. Try it: <code style="font-family:'JetBrains Mono',monospace;font-size:12px;background:rgba(165,180,252,0.12);color:#a5b4fc;padding:1px 6px;border-radius:4px">helpdesk-agent</code> in the template dropdown.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Built secure by default -->
+<section class="feature-section alt">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="grid lg:grid-cols-[1fr_1.05fr] gap-14 items-start">
+      <div>
+        <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Built secure by default</div>
+        <h2 class="feature-headline">Most AI-tool output ships with bugs.<br>Clear refuses to compile if you've written one.</h2>
+        <p class="feature-sub">
+          Bolt and Lovable will happily ship code with a SQL injection in it. They've got better things to do than read your queries. Clear's compiler does. It refuses to ship code that breaks any of these:
+        </p>
+        <div class="cap-list">
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="cap-item-text"><b>SQL injection blocked</b> — every database call uses safe parameters. Compiler refuses raw SQL strings.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+            <div class="cap-item-text"><b>No auth bypass</b> — every URL that changes data needs a <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(0,0,0,0.05);padding:1px 6px;border-radius:4px">requires login</code> line. Compiler refuses without one.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+            <div class="cap-item-text"><b>No mass-assignment</b> — compiler picks safe fields, ignores anything else the request tries to send.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H1l4 4 4-4z" transform="rotate(0 5 11)"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+            <div class="cap-item-text"><b>XSS-safe</b> — every screen value is escaped automatically. No <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(0,0,0,0.05);padding:1px 6px;border-radius:4px">dangerouslySetInnerHTML</code>.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div>
+            <div class="cap-item-text"><b>Rate limits, one keyword</b> — <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(0,0,0,0.05);padding:1px 6px;border-radius:4px">limit to 100 per hour</code> on any endpoint.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+            <div class="cap-item-text"><b>No leaked stack traces</b> — server crashes show "something went wrong"; validation messages stay readable.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="cap-item-text"><b>Tenant isolation, two layers</b> — the app filters by customer, AND the database itself refuses cross-customer reads.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+            <div class="cap-item-text"><b>Durable change log</b> — every edit recorded with who, when, what URL, what changed. Passwords automatically redacted.</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="bg-slate-900 rounded-2xl overflow-hidden shadow-xl border border-slate-800">
+          <div style="background: #1e293b; padding: 13px 18px; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="app-frame-dot r"></span>
+              <span class="app-frame-dot y"></span>
+              <span class="app-frame-dot g"></span>
+              <span class="app-frame-tab" style="margin-left: 14px;">terminal</span>
+            </div>
+            <span style="font-size: 10.5px; color: #64748b; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.06em;">$ clear build app.clear</span>
+          </div>
+          <pre style="padding: 22px 24px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.75; color: #cbd5e1; margin: 0; overflow-x: auto;"><span style="color: #fbbf24">!</span> <span style="color: #f87171">SECURITY</span>  POST /api/orders/:id/cancel
+  <span style="color: #94a3b8">at line 47:</span>
+  <span style="color: #f87171">REFUSED:</span> endpoint changes data but has no <span style="color: #c4b5fd">'requires login'</span> line.
+  <span style="color: #94a3b8">Add this:</span>
+  <span style="color: #94a3b8">  when user sends POST to '/api/orders/:id/cancel':</span>
+  <span style="color: #86efac">+   requires login</span>
+  <span style="color: #94a3b8">    change order's status to 'cancelled'</span>
+
+<span style="color: #fbbf24">!</span> <span style="color: #f87171">SECURITY</span>  search query
+  <span style="color: #94a3b8">at line 92:</span>
+  <span style="color: #f87171">REFUSED:</span> SQL string built by concatenation. Use a parameter.
+  <span style="color: #94a3b8">Replace:</span>
+  <span style="color: #94a3b8">  raw "SELECT * FROM users WHERE id = " + caller's id</span>
+  <span style="color: #86efac">  find User where id is caller's id</span>
+
+<span style="color: #f87171">build failed</span> — fix the 2 security issues above and try again.</pre>
+        </div>
+        <p class="text-[13px] text-slate-500 mt-4 leading-relaxed">
+          Real compiler output. Real refusals. The compiler reads English so it can also <em>refuse</em> in English when something's wrong.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- You can PROVE your rules -->
+<section class="feature-section">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="grid lg:grid-cols-[1fr_1fr] gap-14 items-start">
+
+      <div>
+        <div class="feature-eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Prove your rules actually work</div>
+        <h2 class="feature-headline">Every business rule comes with a math verdict.<br>And a runtime witness that proves it.</h2>
+        <p class="feature-sub">
+          Tell Clear "discount must stay under 30." The compiler proves it with math: <b>PROVED</b>, <b>DISPROVED</b>, or <b>UNVERIFIABLE</b>. Then a separate test fires twenty bad inputs at the live server and watches every one bounce — with the rule's name in the rejection message.
+        </p>
+        <div class="cap-list" style="grid-template-columns: 1fr;">
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="cap-item-text"><b>The math witness.</b> Compiler walks every rule, simplifies the condition, and reports a verdict. <code style="font-family:'JetBrains Mono',monospace;font-size:12.5px;background:rgba(0,0,0,0.05);padding:1px 6px;border-radius:4px">discount &lt; 30</code> with no execution path that violates it → <b>PROVED</b>.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="cap-item-text"><b>The runtime witness.</b> A test harness compiles your app, runs it on a real port, fires 20 inputs that violate each PROVED rule, asserts every one rejects with HTTP 403 and the rule's name in the body. Two-witness verification, on every push.</div>
+          </div>
+          <div class="cap-item">
+            <div class="cap-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="cap-item-text"><b>Click <em>Prove</em> in Studio.</b> You get a navy / amber audit PDF — every rule, its verdict, the original sentence, and the actual rejection block. Hand it to anyone who asks "how do you know?"</div>
+          </div>
+        </div>
+
+        <a href="/studio" class="btn-hero text-white text-[14px] px-5 py-3 rounded-xl font-semibold inline-flex items-center gap-2 mt-9">
+          Try Prove in Studio
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+      <div class="flex justify-center">
+        <div class="pdf-mock">
+          <div class="pdf-mock-band">Audit Report — Confidential</div>
+          <div class="pdf-mock-headline">Deal Desk · 2026-05-04</div>
+          <div style="font-size: 11.5px; color: #64748b; margin-bottom: 16px; line-height: 1.55;">
+            5 rules · 4 PROVED · 1 UNVERIFIABLE · 80 runtime rejections measured
+          </div>
+
+          <div style="font-size: 9.5px; font-weight: 700; color: #4361ee; letter-spacing: 0.12em; text-transform: uppercase; padding: 10px 0 6px; border-bottom: 1px solid rgba(0,0,0,0.05);">Rule verdicts</div>
+
+          <div class="pdf-mock-row">
+            <span class="pdf-mock-rule">discount-cap-thirty</span>
+            <span class="pdf-mock-status proved">PROVED</span>
+          </div>
+          <div class="pdf-mock-row">
+            <span class="pdf-mock-rule">amount-positive</span>
+            <span class="pdf-mock-status proved">PROVED</span>
+          </div>
+          <div class="pdf-mock-row">
+            <span class="pdf-mock-rule">approver-not-creator</span>
+            <span class="pdf-mock-status proved">PROVED</span>
+          </div>
+          <div class="pdf-mock-row">
+            <span class="pdf-mock-rule">no-double-approval</span>
+            <span class="pdf-mock-status proved">PROVED</span>
+          </div>
+
+          <div style="font-size: 9.5px; font-weight: 700; color: #4361ee; letter-spacing: 0.12em; text-transform: uppercase; padding: 14px 0 6px; border-top: 1px solid rgba(0,0,0,0.05); margin-top: 10px;">Runtime witness</div>
+
+          <div class="pdf-mock-row">
+            <span class="pdf-mock-rule">discount-cap-thirty · 20/20 rejected</span>
+            <span class="pdf-mock-status runtime">VERIFIED</span>
+          </div>
+          <div class="pdf-mock-row">
+            <span class="pdf-mock-rule">amount-positive · 20/20 rejected</span>
+            <span class="pdf-mock-status runtime">VERIFIED</span>
+          </div>
+
+          <div style="font-size: 10px; color: #64748b; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.05); line-height: 1.6;">
+            Every PROVED rule independently verified at runtime. 80 violating inputs, 80 rejections, every one carrying the rule's name.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="py-24 bg-[#fafbfd]" id="how">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="max-w-3xl mb-12 text-center mx-auto">
+      <div class="feature-eyebrow" style="justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> How it works</div>
+      <h2 class="text-3xl md:text-[42px] font-extrabold tracking-[-0.03em] leading-tight text-slate-900 mb-4">
+        From idea to live URL in 30 seconds.
+      </h2>
+    </div>
+
+    <div class="steps-grid">
+
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <div class="step-name">Type what you want</div>
+        <div class="step-body">In plain English. <em>"A deal-approval app where any deal over $100k needs CRO sign-off."</em> Pick a template if you don't know where to start.</div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <div class="step-name">Read the Clear it wrote</div>
+        <div class="step-body">The AI hands you English you can read. Tweak any line. Ask Meph (Studio's assistant) to refine it. Loop until it matches what you meant.</div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <div class="step-name">One click → live</div>
+        <div class="step-body">Hit deploy. Your app lives at <code>yourapp.buildclear.dev</code>. Custom domain on Team and up. Source code stays yours forever.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Pricing teaser -->
+<section class="py-20">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="pricing-teaser">
+      <div class="grid md:grid-cols-[1.4fr_1fr] gap-8 items-center">
+        <div>
+          <div class="feature-eyebrow" style="margin-bottom: 10px;">Pricing</div>
+          <h3 class="text-2xl md:text-[28px] font-extrabold tracking-[-0.02em] text-slate-900 mb-3">
+            Free for 1 app. $99/mo when your team uses it.
+          </h3>
+          <p class="text-[14.5px] text-slate-500 leading-relaxed mb-2">
+            Real per-month numbers. No per-seat math. Custom domain on Team and up.
+          </p>
+          <p class="text-[13px] text-indigo-600 font-semibold leading-relaxed">
+            First 5 customers get a one-time $500 Concierge Setup. After that, it disappears.
+          </p>
+        </div>
+        <div class="flex md:justify-end">
+          <a href="pricing.html" class="btn-secondary text-[14px] px-5 py-3 rounded-xl font-semibold inline-flex items-center gap-2">
+            See pricing
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Final CTA -->
+<section class="cta-section py-24 relative">
+  <div class="max-w-3xl mx-auto px-6 text-center relative z-10">
+    <h2 class="text-3xl md:text-[44px] font-extrabold text-white tracking-[-0.03em] leading-tight mb-5">
+      Type your idea.<br>See it run in 30 seconds.
+    </h2>
+    <p class="text-indigo-200/70 text-lg mb-10 font-light">
+      Free for 1 app. No credit card. Browser-based. Source you own forever.
+    </p>
+    <a href="/studio" class="btn-white text-[16px] px-10 py-4 rounded-2xl font-semibold inline-flex items-center gap-2">Open Studio <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+    <p class="text-indigo-300/50 text-[13px] mt-5">
+      Or <a href="pricing.html" class="text-indigo-200 hover:text-white underline underline-offset-4">see pricing</a> if you're ready to put it in front of your team.
+    </p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-black/[0.04] py-10 bg-white">
+  <div class="max-w-5xl mx-auto px-6 flex items-center justify-between">
+    <a href="builders.html" class="text-[14px] font-semibold text-slate-800 hover:text-slate-900">Clear</a>
+    <div class="flex gap-8 text-[13px] text-slate-400 font-medium">
+      <a href="builders.html" class="hover:text-slate-500 transition">For builders</a>
+      <a href="for-developers.html" class="hover:text-slate-500 transition">For developers</a>
+      <a href="pricing.html" class="hover:text-slate-500 transition">Pricing</a>
+      <a href="#" class="hover:text-slate-500 transition">Docs</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
