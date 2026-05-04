@@ -376,6 +376,25 @@ export function tokenize(source) {
   let blockCommentType = null; // '###' or '/*/'
   let blockCommentLines = [];
   let blockCommentStartLine = 0;
+  // Indent of the line that OPENED the block comment. Comments emit with the
+  // SAME indent as the opener so the parser treats them as part of whatever
+  // body they appear inside (endpoint, action, page, function, etc.). Without
+  // this, a `/* note */` inside an endpoint body emitted at indent 0, and
+  // the parser saw the body as empty — exact bug from session 2026-05-04.
+  let blockCommentIndent = 0;
+
+  // Helper: measure leading-space indent (tab = 2 spaces) for a raw line.
+  // Used both for normal lines and for comment opener lines so comments
+  // inherit the indent of where they sit in the source.
+  function measureIndent(rawLine) {
+    let n = 0;
+    for (let j = 0; j < rawLine.length; j++) {
+      if (rawLine[j] === ' ') n++;
+      else if (rawLine[j] === '\t') n += 2;
+      else break;
+    }
+    return n;
+  }
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -388,7 +407,7 @@ export function tokenize(source) {
         const commentText = blockCommentLines.join('\n');
         result.push({
           tokens: [{ type: TokenType.COMMENT, value: commentText, line: blockCommentStartLine, column: 1 }],
-          indent: 0,
+          indent: blockCommentIndent,
         });
         inBlockComment = false;
         blockCommentType = null;
@@ -398,6 +417,7 @@ export function tokenize(source) {
         inBlockComment = true;
         blockCommentType = '###';
         blockCommentStartLine = i + 1;
+        blockCommentIndent = measureIndent(raw);
         blockCommentLines = [];
       }
       continue;
@@ -405,11 +425,12 @@ export function tokenize(source) {
 
     // Multi-line comment: /* ... */ (also handles single-line /* ... */)
     if (!inBlockComment && trimmed.startsWith('/*')) {
+      const openerIndent = measureIndent(raw);
       // Single-line: /* comment */ on one line
       if (trimmed.endsWith('*/') && trimmed.length > 4) {
         result.push({
           tokens: [{ type: TokenType.COMMENT, value: trimmed.slice(2, -2).trim(), line: i + 1, column: 1 }],
-          indent: 0,
+          indent: openerIndent,
         });
         continue;
       }
@@ -417,6 +438,7 @@ export function tokenize(source) {
       inBlockComment = true;
       blockCommentType = '/*/';
       blockCommentStartLine = i + 1;
+      blockCommentIndent = openerIndent;
       blockCommentLines = [];
       const afterOpen = trimmed.slice(2).trim();
       if (afterOpen) blockCommentLines.push(afterOpen);
@@ -431,7 +453,7 @@ export function tokenize(source) {
         const commentText = blockCommentLines.join('\n');
         result.push({
           tokens: [{ type: TokenType.COMMENT, value: commentText, line: blockCommentStartLine, column: 1 }],
-          indent: 0,
+          indent: blockCommentIndent,
         });
         inBlockComment = false;
         blockCommentType = null;

@@ -223,20 +223,22 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 
 ---
 
-## P0 — Marcus GTM (Q2 2026)
+## P0 — Self-serve GTM (Q2 2026, direction locked 2026-05-04)
 
-**2026-05-01 branch status:** Marcus page, pricing page, Meph-first onboarding, publish progress UX, and Studio telemetry all have feature branches. The next forward-looking task is integration plus final demo-recording prep.
+**Direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Russell hates customer service and 1-on-1 problem-solving — variable-energy person + fixed-weekly-demand client work = burnout in 2 months. The compliance-buyer Marcus framing is the wrong audience for self-serve; the real audience is the **"ranger"** — product managers, marketers, RevOps, founders-not-CTOs who can read code but aren't engineers. They've all hit the same wall (AI tools wrote unreadable code; Retool needs IT tickets; Bubble is messy; Cursor assumes Postgres knowledge). Path: ship `buildclear.dev` self-serve, offer one-time **Concierge Setup ($500, no ongoing support)** to FIRST 5 customers only as research-disguised-as-revenue (same as Stripe + Vercel started), then go pure self-serve.
+
+**What shipped (today, 2026-05-04):** new ranger / RevOps homepage at `landing/builders.html` — names Lovable / Bubble / Retool / Cursor by the wall each one stops at, side-by-side React-vs-Clear, audience cards, Build-AI-assistants section, secure-by-default with terminal mock, prove-your-rules section. See `FAQ.md` → "What's the GTM direction?" for the decision rationale.
 
 | # | Item | Status | Scope |
 |---|---|---|---|
-| GTM-2 | `landing/marcus.html` — GAN against ASCII mock, "ship the first one this Friday" headline | Open | 1 session |
-| GTM-4 | Find 5 real Marcuses on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
+| GTM-2 | `landing/builders.html` — ranger-audience homepage candidate | **Shipped 2026-05-04**, see FEATURES.md | — |
+| GTM-2b | Promote `builders.html` to `landing/index.html` (default homepage) — currently no default exists | Open | 1 commit |
+| GTM-4 | Find 5 real rangers (PMs / RevOps / marketers) on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
 | GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | Open | 2 days |
 | GTM-7 | Studio instrumentation — first-click tracking, time-to-first-app, where signups bounce | Open | 3 days |
-| GTM-7 | Studio instrumentation — first-click tracking, time-to-first-app, where signups bounce | Open | 3 days |
-| GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | Open | 2 days |
+| GTM-8 | Soften / tweak the live `builders.html` page (Russell's three flagged calls — hero pain line, named competitors, dropped Marcus framing — all shipped as designed; easy to revisit) | Open | 1 commit |
 
-**Pitch + pricing locked Session 35** (Marcus over Sara, Vercel pattern, $99/$499/$Enterprise tiers). Full positioning + competitive analysis: `FAQ.md` → "Why does Clear Cloud beat Retool and Lovable?".
+**Pitch + pricing locked Session 35** (Vercel pattern, $99/$499/$Enterprise tiers). The prior Marcus-over-Sara framing predates the 2026-05-04 GTM lock — see `FAQ.md` → "What's the GTM direction?" for current. Full competitive analysis: `FAQ.md` → "Why does Clear Cloud beat Retool and Lovable?".
 
 ---
 

@@ -787,6 +787,7 @@ body.builder-mode.show-source #editor-pane {
       <button class="prev-tab" onclick="showTab('tests')">Tests</button>
       <button class="prev-tab" onclick="showTab('flywheel')" title="Factor DB training signal — rows accumulated from every Meph session">Flywheel</button>
       <button class="prev-tab" onclick="showTab('supervisor')" title="Run sweeps, browse past sessions, drill into trajectories">Supervisor</button>
+      <button class="prev-tab" onclick="copyTerminal()" title="Copy the full terminal output (with the .clear source attached) to the clipboard so you can paste it to Claude/Meph for help" style="font-size:10px;padding:2px 6px;opacity:0.85;">Copy Terminal</button>
       <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
       <button class="prev-tab" id="fullscreen-toggle-btn" onclick="togglePreviewFullscreen()" title="Hide editor + chat — preview takes the whole window. Press Esc or click again to restore." style="margin-left:auto;font-size:11px;">⛶ Fullscreen</button>
     </div>
@@ -2060,6 +2061,48 @@ window.clearTerminal = function() {
   if (activeTab === 'terminal') {
     const el = document.getElementById('terminal');
     if (el) renderTerminal(el);
+  }
+};
+
+// Copy the full terminal output (stripped of HTML markup) plus the current
+// .clear source onto the clipboard, formatted as markdown so it pastes cleanly
+// into a chat message to Claude or Meph. Russell's rule (2026-05-04): users
+// need a one-click way to grab a runtime/test error and hand it to me — the
+// existing "Copy compiler error" button only fires for COMPILE-time errors,
+// not the terminal output from a running app or a failing test.
+window.copyTerminal = async function() {
+  // Strip HTML markup from each entry — clipboard wants plain text.
+  const stripHtml = (h) => {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = h;
+    return (tmp.textContent || tmp.innerText || '').trim();
+  };
+  const lines = terminalEntries.map(stripHtml).filter(Boolean);
+  const source = (window._editor && window._editor.state.doc.toString()) || '';
+  const parts = [];
+  parts.push('## Terminal output (Clear Studio)');
+  parts.push('');
+  if (lines.length === 0) {
+    parts.push('_(empty)_');
+  } else {
+    parts.push('```');
+    parts.push(lines.join('\n'));
+    parts.push('```');
+  }
+  if (source.trim()) {
+    parts.push('');
+    parts.push('## Source (.clear)');
+    parts.push('');
+    parts.push('```clear');
+    parts.push(source);
+    parts.push('```');
+  }
+  const text = parts.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    appendTerminalText('Copied terminal output (' + lines.length + ' line(s)) plus source to clipboard. Paste it into a chat to ask for help.', 'term-ok');
+  } catch (err) {
+    appendTerminalText('Could not copy terminal: ' + (err.message || String(err)), 'term-err');
   }
 };
 

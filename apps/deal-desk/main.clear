@@ -93,7 +93,7 @@ define function draft_approval(deal_data):
 when user requests data from /api/deals/pending:
   send back all Deals where status is 'pending'
 
-// Filter URLs feeding the sidebar pages.
+/* Filter URLs feeding the sidebar pages. */
 when user requests data from /api/deals/approved:
   send back all Deals where status is 'approved'
 
@@ -353,9 +353,9 @@ page 'Deal Desk' at '/':
           section 'Pending Queue' with style app_table, fills remaining space:
             display pending as table showing customer, account_segment, rep_name, list_price, discount_percent, status, submitted_label with actions:
               'Review' is secondary
-                // Selects the row as selected_deal so the detail panel can show the live record.
+                /* Selects the row as selected_deal so the detail panel can show the live record. */
               'Approve' is primary
-                // Updates the selected deal to approved, records the decision, and refreshes pending deals.
+                /* Updates the selected deal to approved, records the decision, and refreshes pending deals. */
 
           detail panel for selected_deal:
             heading 'Deal details'

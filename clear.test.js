@@ -231,6 +231,56 @@ describe('Parser - Basic Structure', () => {
     expect(comments).toHaveLength(1);
   });
 
+  // Regression: pre-2026-05-04 the tokenizer hard-coded indent: 0 for every
+  // /* */ and ### comment, so any comment inside an indented body (endpoint
+  // body, action body, page body, etc.) appeared at the top level — and the
+  // parser saw the body as empty. This bit deal-desk + ecom-agent during the
+  // doc/faq-and-gtm-cascade ship. The fix preserves the indent of the line
+  // that opened the comment, so the comment is correctly nested.
+  it('/* */ comment inside an endpoint body does not empty the body', () => {
+    const src = `build for web
+
+create a Things table:
+  name
+
+when user requests data from /api/things:
+  /* aggregate stays correct past 50 rows */
+  count = count of id from Things
+  send back count
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('/* */ comment inside a function body does not empty the body', () => {
+    const src = `build for javascript backend
+
+define function double(n):
+  /* trivial helper, exercised by tests */
+  doubled = n * 2
+  return doubled
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('### comment inside an endpoint body does not empty the body', () => {
+    const src = `build for web
+
+create a Things table:
+  name
+
+when user requests data from /api/things:
+  ###
+  multi-line note explaining the aggregate choice
+  ###
+  count = count of id from Things
+  send back count
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
   it('parses a target declaration', () => {
     const ast = parse('target: web');
     expect(ast.target).toBe('web');

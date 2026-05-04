@@ -6,7 +6,29 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — Auto-prove badge in Studio toolbar (Prove redesign 4(a) v0)
+## 2026-05-04 (latest) — Doc-cascade gate hook + Copy Terminal button + template polish
+
+Russell-driven correction pass after the prior ship missed FAQ. Three structural fixes plus four small ones, all on `docs/faq-and-gtm-cascade`:
+
+**Structural:**
+- **`.claude/hooks/ship-docs-cascade-gate.mjs`** — new PreToolUse hook. Blocks `git push origin main`, `git merge ... ` to main, and `git commit` while on main when the diff includes substantive code changes (compiler.js, parser.js, runtime, ide.html, .clear apps, etc.) WITHOUT corresponding entries in CHANGELOG.md, FEATURES.md, AND FAQ.md. Each operation reads the right diff source (push: `origin/main..HEAD`; merge: `main..<source>`; commit: staged files), so the gate fires at every "ship to main" moment, not just the remote push. Fail-open if git query fails. Override via `SHIP_DOCS_CASCADE_OVERRIDE=1` env for genuinely doc-free pushes (CI yaml, .gitignore tweaks). Wired in `.claude/settings.json` PreToolUse for Bash. Russell's quote: *"no bullshit 'i was in a rush'"* — this is the structural fix that makes the rule unable to be skipped.
+- **`landing/builders.html` Copy Terminal button** — preview-tabs row in `playground/ide.html` now has a "Copy Terminal" button (next to "Clear Terminal") that strips HTML from the terminal entries, appends the current `.clear` source as a fenced block, and copies the markdown bundle to clipboard so users can paste it into a chat message asking for help. Distinct from the existing "Copy compiler error" (compile-time only); this one captures runtime/test output. Verified live: `typeof window.copyTerminal === 'function'`, button visible in tab row, function runs without throwing.
+- **ROADMAP P0 — Self-serve GTM (renamed from "Marcus GTM")** — reflects the GTM direction lock from earlier on 2026-05-04. Old framing was "5 Marcuses on LinkedIn"; new framing is "rangers" (PMs / RevOps / marketers / founders-not-CTOs) with `landing/builders.html` as the homepage candidate. Concierge Setup ($500, first 5 only) is the bridge to pure self-serve. Removes the duplicate row that had GTM-7 listed twice.
+
+**Parser fix (root cause, not workaround):**
+- **`tokenizer.js`: `/* */` and `### ###` comments now inherit the indent of the line that opens them.** Previously the tokenizer hard-coded `indent: 0` for every block-comment token, so a `/* note */` placed inside an indented body (endpoint, function, action block, page) was emitted at the top level — and the parser saw the body as empty. That bug was the "couldn't reproduce" entry in HANDOFF Next Move #5; it resurfaced when this branch's template-polish step tried to convert in-body `//` comments to `/* */` and got "endpoint is empty" errors. Three regression tests added to `clear.test.js` (`/* */` inside endpoint body, `/* */` inside function body, `### ###` inside endpoint body — all must compile clean). Tests now 2915/0.
+
+**Template polish (now possible thanks to the parser fix):**
+- `apps/deal-desk/main.clear` — three `// comment` lines converted to `/* comment */`, including the two inside `with actions:` blocks at lines 357-358.
+- `apps/ecom-agent/main.clear` — three `// comment` lines converted to `/* comment */`, including the one inside `when user requests data from /api/stats:` at line 194.
+- `apps/product-landing/main.clear` line 79 — code-block string showing the example invoice send flow updated from deprecated `guard X or 'msg'` syntax to canonical `enforce that X, or fail with error message: 'msg'`.
+- `landing/bug-categories.html` lines 112-113 — same `guard` → `enforce that` rename in the customer-facing example. Quotes also normalized to single per the canonical form.
+
+**Why this matters:** the prior ship landed three epics but skipped FAQ updates, leaving feature discovery broken for future Claude sessions and end users. The hook makes that skip impossible going forward — it won't ship to main without all three required doc surfaces (CHANGELOG, FEATURES, FAQ) updated. The template polish removes the last places where deprecated syntax (`guard`, `// comments` in .clear) was bleeding through to customer-facing examples and Meph's training surface.
+
+---
+
+## 2026-05-04 — Auto-prove badge in Studio toolbar (Prove redesign 4(a) v0)
 
 Auto-runs the prover after every compile and shows per-rule verdict counts in the toolbar with a click-to-expand popover. The "spell-check feel" version of the original 4(a) spec.
 

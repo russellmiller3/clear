@@ -643,6 +643,19 @@ Update `learnings.md` during the work, not at some vague end-of-session moment. 
 
 Launch-facing features are not done until automated browser coverage drives the real UI path. If a customer can click, type, navigate, publish, edit, or inspect it, the browser test suite must exercise it and fail on regression. Compiler tests are necessary, not sufficient.
 
+## Never Work Around A Known Compiler Bug (MANDATORY — LEARNED EXPENSIVELY 2026-05-04)
+
+**When you hit a compiler / parser / tokenizer / validator bug, fix it at the root. NEVER work around it at the call site.**
+
+- "Working around" means: changing the user-facing code (a `.clear` template, a doc example, a test fixture) to dodge the bug instead of fixing the bug. Examples: moving a `/* */` comment outside an endpoint body because it breaks the parser; reverting a canonical syntax change because the validator complains; using `// comment` instead of `/* */` because the latter empties the body.
+- "Fixing at the root" means: tracing the bug into the tokenizer / parser / validator / compiler, finding the broken assumption (often a hardcoded value, a missing case, or a pattern that doesn't compose), patching the source, adding a regression test that locks the fix, then ALSO restoring the user-facing code that originally hit the bug to its intended canonical form.
+- **The cost of working around** is paid forever. Customers hit the bug. Meph hits it during sessions and gets stuck. Future Claude rediscovers it and wastes another session. Marketing examples ship with the workaround embedded so prospects see suboptimal Clear. Each ship multiplies the tax.
+- **The cost of fixing at the root** is usually 5-10 lines + one regression test + 5 minutes of grep — once. Compounds the OTHER way: every future ship benefits.
+- **The only legit reason to work around:** *I genuinely cannot reproduce the bug after 30 minutes of investigation.* In that case, file a `learnings.md` entry with the EXACT failing source so the next session has a head start, and add the smallest plausible regression test even if it doesn't currently fire — the next time the bug shape lands, the test will catch it.
+- **The hook check before "working around"**: am I about to revert a canonical syntax / remove a feature usage / move code to a different place because the compiler complains? If yes — STOP. The compiler is wrong. Fix the compiler.
+
+**Why this rule exists:** 2026-05-04 — Russell asked for `// → /* */` comment conversions across templates. The conversions broke compilation in two places (deal-desk action bodies, ecom-agent endpoint body). I almost shipped with `//` reverted on the broken cases, calling it a "parser limitation" and filing a follow-up. Russell pushed back: *"WHAT THE ACTUAL FUCK. NEVER skip pre-existing errors. fucking fix them."* The actual fix took 5 minutes once I looked: the tokenizer hard-coded `indent: 0` for every block-comment token, so any indented comment was emitted at top level and the parser saw the body as empty. Three regression tests + a 4-line tokenizer change made every previously-broken case work. Working around would have left customers, Meph, and every future template hitting the same bug.
+
 ## Verify Remote Before Claiming Anything Shipped (MANDATORY — LEARNED EXPENSIVELY 2026-05-02)
 
 **Never claim work is "shipped" or "pushed" without verifying the remote is real.** First action in every coding session: run `git remote -v` and read the URL. If origin points at `127.0.0.1`, `localhost`, `local_proxy`, `0.0.0.0`, or any sandbox-local proxy, the session is a DRAFT — pushes will NOT reach Russell's real GitHub remote. Tell Russell explicitly that pushes will not reach his real remote, and either (a) generate a patch with `git format-patch` that he can apply, or (b) abort and pivot to read-only work. Never let him believe work shipped to GitHub when it didn't.

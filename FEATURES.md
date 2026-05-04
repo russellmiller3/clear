@@ -435,6 +435,7 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | Save to Desktop | Download .clear file |
 | Compile + run + test | All from browser |
 | Copy compiler error | Compile errors show a "Copy compiler error" button with source context, diagnostics, and repair instructions |
+| Copy Terminal button | Preview-tabs row in Studio. One click strips HTML markup from the terminal entries, appends the current `.clear` source as a fenced block, and copies the result to the clipboard formatted as markdown so it pastes cleanly into a chat message to Claude or Meph. Distinct from "Copy compiler error" (compile-time only); this one captures runtime / test / prove output from a running app. Added 2026-05-04. |
 | Source maps | Click preview element -> jumps to Clear source line (Alt+click in normal mode) |
 | Direct Edit toggle | Toolbar button next to Run/Stop. When on, ANY click in the preview (no Alt key) (a) jumps the editor cursor to that element's Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with the line + 4 lines of context fenced as `clear`. Works for both srcdoc previews (web-only apps) and full-stack-app iframes (running on a separate port via `?clear-bridge=1`). Compiler-side: `data-clear-line="N"` is on every interactive HTML element via `clAttr(node)` in `buildHTML` — the Direct Edit feature uses that attribute. Click highlights the element with a 2px indigo outline so users see what was picked. |
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |

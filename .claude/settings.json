@@ -82,6 +82,12 @@
             "command": "node .claude/hooks/before-rebuild-check.mjs",
             "timeout": 5,
             "statusMessage": "Checking whether the new feature already exists in FEATURES.md / parser..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/ship-docs-cascade-gate.mjs",
+            "timeout": 10,
+            "statusMessage": "Verifying CHANGELOG / FEATURES / FAQ are all updated before shipping to main..."
           }
         ]
       },

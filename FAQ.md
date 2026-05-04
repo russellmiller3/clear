@@ -7,6 +7,50 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## What's the GTM direction? (locked 2026-05-04)
+
+**Self-serve product (Vercel model), NOT consulting.** Russell hates customer service and 1-on-1 problem-solving — variable-energy person + fixed-weekly-demand client work = burnout in 2 months. The compliance-buyer Marcus framing was the wrong audience for self-serve; the real audience is the **"ranger"** — product managers, marketers, RevOps, founders-not-CTOs who can read code but aren't engineers. They've all hit the same wall: AI tools (Lovable / Bolt / v0) wrote unreadable code; Retool needs IT tickets; Bubble is messy; Cursor assumes Postgres knowledge.
+
+**Path to first paying customer:** ship `buildclear.dev` as self-serve. Offer a one-time **Concierge Setup ($500, no ongoing support)** to the FIRST 5 customers ONLY as research-disguised-as-revenue (same model Stripe + Vercel started with). After 5 the offer disappears — no exceptions, otherwise Russell slides into consulting by accident. The early hand-on touches feed product fixes; once the docs/onboarding catch up, the product runs itself.
+
+**Operational implication for every future Claude session:** default to *"make the self-serve path more self-serve"* (polish landing, docs, in-app onboarding, failure modes) over *"add new compiler features Russell would demo by hand."* If a feature only matters when Russell is in the demo with the customer, it's the wrong feature.
+
+**Pages that reflect this:** `landing/builders.html` (the new ranger-targeted homepage shipped 2026-05-04), `landing/pricing.html` with the Concierge Setup card at the bottom, `ROADMAP.md` → "P0 — Self-serve GTM (Q2 2026)". The older `landing/marcus.html` and `landing/business-agents.html` predate the lock and target the wrong audience for the new direction.
+
+---
+
+## Where does the Studio Direct Edit toggle live? (2026-05-04)
+
+**Path:** the toggle button is in `playground/ide.html`'s toolbar (next to Run/Stop). When the user toggles it on, clicking any element in the running preview iframe (a) jumps the editor cursor to that element's matching Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with a fenced snippet of the line + 4 lines of context. Compiler-side, every interactive HTML element carries a `data-clear-line="N"` attribute via `clAttr(node)` in `compiler.js` → `buildHTML`.
+
+**Two paths supported:** srcdoc iframes (web-only Clear apps — handled via `sourceMapCapture` in ide.html) and full-stack apps (running-server iframes loaded with `?clear-bridge=1` — handled via the Studio Bridge in `compiler.js`). Both honour the same `clear-direct-edit-mode` postMessage from the parent.
+
+**Why it matters for launch:** the ranger audience can read English Clear but stalls on "where in the source did this button come from?" Direct Edit collapses that gap to one click — the load-bearing UX for *non-developers iterating on AI-generated apps*.
+
+---
+
+## Where does the auto-prove badge live? (2026-05-04)
+
+**Path:** `playground/ide.html`'s toolbar — the `#prove-stats-badge` next to the existing compile / tests stats badges. Format: `Prove: N ok · M bad · K ?`. It auto-runs the prover after every compile attempt by POSTing the source to the existing `/api/prove` endpoint, then renders the per-rule verdict counts and color-codes by worst verdict (green when every rule PROVED, red when any DISPROVED, amber when any UNVERIFIABLE). Click the badge to expand `#prove-popover` listing each rule with its verdict mark and source line; click a row to jump the editor cursor to that line.
+
+**Limitation:** this is the v0 — counts + popover, not the full inline editor-gutter integration. The CodeMirror bundle (`playground/codemirror.bundle.js`) doesn't export `gutter` / `GutterMarker` / `StateField` / `StateEffect` — only `lineNumbers` and a few others. The full gutter integration (and the right-click drilldown for HANDOFF item 4c) need a bundle rebuild; filed as a follow-up. This v0 ships the spell-check feel against existing exports.
+
+---
+
+## Where do `GET /audit` and `GET /audit.csv` come from? (2026-05-04 extension)
+
+**Compiler emit, gated on `allow signup and login`.** In `compiler.js`, when the source declares the auth scaffold, the compiler emits an `audit_log` durable SQL table + state-change-capture middleware + two read endpoints. `GET /audit` returns JSON; `GET /audit.csv` returns the same data as RFC-4180 CSV with a `Content-Disposition: attachment; filename="audit.csv"` header so SOC 2 evidence collectors and other compliance tools that prefer CSV ingest it natively. Both routes filter by tenant under shared scope (`database is shared with tenant scope`), use the same `_csvEscape` helper for body_summary text containing commas / quotes / newlines.
+
+**When to point users at JSON vs CSV:** SOC 2 evidence collectors, GRC tools, or any compliance pipeline that prefers CSV → CSV. Any custom dashboard or Webhook receiver → JSON.
+
+---
+
+## Where is the "Copy Terminal" button? (2026-05-04)
+
+**Path:** the preview-tabs row in `playground/ide.html`, between "Supervisor" and "Clear Terminal". It calls `window.copyTerminal()` — strips HTML markup from the terminal entries, appends the current `.clear` source as a fenced block, and copies the result to the clipboard formatted as markdown so it pastes cleanly into a chat message to Claude or Meph. Distinct from "Copy compiler error" (which only fires on COMPILE errors); this one captures runtime/test output from a running app.
+
+---
+
 ## Where does Studio funnel instrumentation live? (GTM-7, 2026-05-01)
 
 **Browser path:** `playground/ide.html` records coarse Studio milestones: page loaded, first click, time to first app, and bounce before first app. It sends only event names, timing numbers, mode, and allow-listed targets like `chat_send` or `template_picker`.

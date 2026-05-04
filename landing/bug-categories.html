@@ -109,8 +109,8 @@
       <pre class="code-block"><code>when user calls PUT /api/invoices/:id/send:
   requires auth
   define invoice as: look up the Invoice with this id
-  guard invoice is not nothing or "Invoice not found"
-  guard invoice's status is "draft" or "Only drafts can be sent"
+  enforce that invoice is not nothing, or fail with error message: 'Invoice not found'
+  enforce that invoice's status is 'draft', or fail with error message: 'Only drafts can be sent'
   invoice's status is "sent"
   save invoice to Invoices
   send back "sent" with success message</code></pre>

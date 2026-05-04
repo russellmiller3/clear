@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-04 (latest): tokenizer indent-zero on block comments — root-cause fix, not workaround
+
+The HANDOFF entry that read *"Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce. If this resurfaces, capture the EXACT failing source verbatim before touching it"* did resurface this session. I had the failing source (deal-desk + ecom-agent template polish) and almost punted by leaving `//` comments where `/* */` broke things. Russell pushed back hard: *"WHAT THE ACTUAL FUCK. NEVER skip pre-existing errors. fucking fix them."* The fix took five minutes once I actually looked at the tokenizer.
+
+### Gotchas-as-rules
+
+- **Block comments MUST inherit the indent of their opening line.** `tokenizer.js` was emitting every `/* */` and `### ###` token at `indent: 0` regardless of where the opener actually sat. The parser computes body extents by indent (everything indented deeper than the parent header is part of the body); a comment emitted at indent 0 looks OUTSIDE the body, so the parser sees the body as empty. The fix preserves `measureIndent(rawLine)` on the line that starts the comment and emits the COMMENT token at that indent. Three regression tests in `clear.test.js` lock the behaviour: `/* */` inside endpoint body, `/* */` inside function body, `### ###` inside endpoint body — all must compile clean.
+- **"Couldn't reproduce" in a HANDOFF is a future-Claude tax.** When a prior session can't reproduce a bug, the right move is either (a) add a regression test that exercises the suspected pattern (so the next CI run reproduces it) OR (b) add diagnostic logging that makes the failure mode visible next time. Closing the entry with "couldn't reproduce" leaves a known-broken state with no tripwire — and the next Claude wastes time rediscovering it. Apply this rule to every "couldn't reproduce" item: write the smallest failing test you can imagine, even if it doesn't currently fail; if the bug is real, the test will catch it the moment the right shape lands.
+- **Never work around a known compiler bug at the call site if you can fix it at the root.** Russell's framing: working around (e.g. moving the comment outside the body, or reverting `/* */` to `//`) leaves the bug in place, with a "fix" that customers and Meph sessions will keep hitting. Root-cause fixes are usually 5-10 lines in the tokenizer / parser / validator and one regression test. The tax of NOT fixing them compounds across every future ship. The only legit reason to work around is *I cannot reproduce in 30 minutes* — and even then, file a `learnings.md` entry with the exact failing source so the next session has a head start.
+- **The right grep before designing comment-related changes:** `grep -nE "indent.*[:=].*0" tokenizer.js` would have surfaced this in 5 seconds. Hard-coded `indent: 0` literals in a tokenizer that otherwise computes indent dynamically are the thing to look for.
+
+---
+
 ## Session 2026-05-04 (later): CodeMirror bundle export gap + branch-base divergence
 
 Two costly half-hour detours this session that future Claude can avoid by reading these.
