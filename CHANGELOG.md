@@ -6,7 +6,25 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — Builders landing page + Studio Direct Edit
+## 2026-05-04 (latest) — Auto-prove badge in Studio toolbar (Prove redesign 4(a) v0)
+
+Auto-runs the prover after every compile and shows per-rule verdict counts in the toolbar with a click-to-expand popover. The "spell-check feel" version of the original 4(a) spec.
+
+**What shipped (`feature/prove-auto-check-gutter`, 1 commit, pushed):**
+- New `#prove-stats-badge` next to the existing compile / tests stats badges. Format: `Prove: N ok · M bad · K ?`. Colour ramp: green when every rule PROVED, red when any DISPROVED, amber when any UNVERIFIABLE (no disproved). Hidden when source has no rules.
+- New `#prove-popover` floating below the toolbar. One row per rule with verdict mark (✓ / ✗ / ?), name, and source line. Click a row → editor cursor jumps to that line, popover hides.
+- `runAutoProve(source)` debounces via AbortController (last-write-wins; piggybacks on compile cadence). POSTs to existing `/api/prove`, caches the bundle, updates the badge + popover.
+- Wired into `autoCompile()` immediately after `lastCompiled` is set, **outside** the validator-error gate. The prover walks the AST directly and produces verdicts even when other parts of the source don't validate, so users see rule status mid-edit.
+
+**Why for launch:** the regulated-tier pitch hinges on "every business rule has a math verdict." Today the path was "click Prove → wait → read terminal." The auto-prove badge collapses that to zero clicks — verdicts appear inline as you type. The CRO-facing sentence becomes "watch your discount rule turn green the moment it's provable."
+
+**Limitation called out:** this is the v0 — counts + popover, not the full inline editor-gutter integration originally specified. The CodeMirror bundle (`playground/codemirror.bundle.js`) doesn't export `gutter` / `GutterMarker` / `StateField` / `StateEffect` — only `lineNumbers`, `EditorView`, etc. The full gutter integration (and the right-click drilldown for 4(c)) need that bundle rebuild; filed as a follow-up. This v0 ships the spell-check feel against the existing bundle.
+
+**Verified end-to-end against running Studio:** loaded a 3-rule source, compiled, verified the badge auto-shows with text `Prove: 3 ok · 0 bad · 0 ?` (green class), click → popover with 3 rows including `✓ discount-cap-thirty line 8`, click second row → cursor jumped to position 169 (line 11), popover hid. Both `runAutoProve` and `toggleProvePopover` confirmed `function` on `window` (the module-scope vs global trap from session 2026-05-03).
+
+---
+
+## 2026-05-04 — Builders landing page + Studio Direct Edit
 
 Two top-priority next-moves from HANDOFF shipped on `feature/landing-builders-page`. Both serve the GTM lock from earlier the same day: self-serve product, ranger / RevOps audience, not compliance buyers.
 
