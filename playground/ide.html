@@ -67,6 +67,24 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .compile-stats-badge.visible { display: inline-flex; align-items: center; gap: 6px; animation: stats-pop .3s ease-out; }
 .tests-stats-badge { color: var(--green); background: color-mix(in oklch, var(--green) 12%, transparent); border-color: color-mix(in oklch, var(--green) 25%, transparent); cursor: pointer; }
 .tests-stats-badge.has-failures { color: var(--red); background: color-mix(in oklch, var(--red) 12%, transparent); border-color: color-mix(in oklch, var(--red) 25%, transparent); }
+/* Prove stats badge — auto-runs the prover after every compile so users see
+   per-rule verdicts inline. Click to open a popover listing each rule with
+   its verdict; click a rule row to jump to that source line. Three colour
+   states: green when every rule PROVED, red when any DISPROVED, amber when
+   any UNVERIFIABLE (and none disproved). Hidden when source has no rules. */
+.prove-stats-badge { color: var(--green); background: color-mix(in oklch, var(--green) 12%, transparent); border-color: color-mix(in oklch, var(--green) 25%, transparent); cursor: pointer; }
+.prove-stats-badge.has-disproved { color: var(--red); background: color-mix(in oklch, var(--red) 12%, transparent); border-color: color-mix(in oklch, var(--red) 25%, transparent); }
+.prove-stats-badge.has-unverifiable { color: var(--yellow, #d29922); background: color-mix(in oklch, var(--yellow, #d29922) 12%, transparent); border-color: color-mix(in oklch, var(--yellow, #d29922) 25%, transparent); }
+#prove-popover { position: absolute; top: 48px; right: 16px; z-index: 100; background: var(--bg2); border: 1px solid var(--bd); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); padding: 6px; min-width: 280px; max-width: 460px; max-height: 50vh; overflow-y: auto; display: none; }
+#prove-popover.visible { display: block; }
+#prove-popover .prove-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-family: var(--mono); color: var(--tx2); }
+#prove-popover .prove-row:hover { background: var(--bg3); color: var(--tx); }
+#prove-popover .prove-mark { flex-shrink: 0; width: 14px; text-align: center; font-weight: 700; }
+#prove-popover .prove-mark.proved { color: var(--green); }
+#prove-popover .prove-mark.disproved { color: var(--red); }
+#prove-popover .prove-mark.unverifiable { color: var(--yellow, #d29922); }
+#prove-popover .prove-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#prove-popover .prove-line { flex-shrink: 0; color: var(--tx4); font-size: 11px; }
 @keyframes stats-pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 #chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; order: -10; margin-right: 8px; }
 #chat-toggle-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
@@ -681,6 +699,8 @@ body.builder-mode.show-source #editor-pane {
     <span id="plan-badge" class="plan-badge" style="display:none" onclick="window.location='/billing'" title="Click to manage billing"></span>
     <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <span id="tests-stats-badge" class="compile-stats-badge tests-stats-badge"></span>
+    <span id="prove-stats-badge" class="compile-stats-badge prove-stats-badge" onclick="toggleProvePopover()" title="Per-rule proof verdicts. Click to expand."></span>
+    <div id="prove-popover"></div>
     <span id="status" class="status-ok">Ready</span>
     <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Meph panel">Hide Chat ▶</button>
     <div id="compile-bar"></div>
@@ -1459,6 +1479,13 @@ async function autoCompile() {
     });
     const elapsed = Math.round(performance.now() - t0);
     lastCompiled = await r.json();
+    // Auto-prove: fire-and-forget on every compile attempt, regardless of
+    // validator errors. The prover walks the AST directly and produces
+    // verdicts even when other parts of the source don't validate, so the
+    // user gets per-rule feedback as they type. The badge updates async.
+    if (typeof window.runAutoProve === 'function') {
+      window.runAutoProve(source);
+    }
     // BM-6: first successful compile means the user has chosen something — hide the tile gallery
     if (lastCompiled && (!lastCompiled.errors || lastCompiled.errors.length === 0)) {
       document.body.classList.add('has-compiled');
@@ -3288,6 +3315,115 @@ window.sendApiRequest = async function(idx, method, pathTemplate) {
 // reasoning text; under HANDOFF item 4 it moves to a right-click drilldown
 // (separate cycle). This button now produces the audit artifact directly.
 // ==========================================================================
+// ==========================================================================
+// AUTO-PROVE — runs after every successful compile so users see per-rule
+// verdicts inline. The badge in the toolbar shows counts (✓ / ✗ / ?) with
+// a colour cue: green when every rule PROVED, red when any DISPROVED, amber
+// when any UNVERIFIABLE (and none disproved). Click the badge → popover
+// listing each rule with its verdict; click a rule row → jumps the editor
+// cursor to that source line. The full inline-gutter integration (HANDOFF
+// item 4a) needs CodeMirror's `gutter` / `GutterMarker` / `StateField` /
+// `StateEffect` exports which aren't in the current bundle — that bundle
+// rebuild is filed as a follow-up. This v0 ships the spell-check feel with
+// the existing bundle exports.
+// ==========================================================================
+let _proveBundleCache = null;
+let _proveAbortController = null;
+let _provePopoverOpen = false;
+async function runAutoProve(source) {
+  if (!source || !source.trim()) {
+    _hideProveBadge();
+    return;
+  }
+  // Abort any in-flight prove call so the latest compile wins (debounce by
+  // last-write-wins rather than timer — the autoCompile call site already
+  // debounces compile, so we're piggybacking on its cadence).
+  if (_proveAbortController) _proveAbortController.abort();
+  _proveAbortController = new AbortController();
+  try {
+    const r = await fetch('/api/prove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+      signal: _proveAbortController.signal,
+    });
+    if (!r.ok) { _hideProveBadge(); return; }
+    const data = await r.json();
+    const bundle = data.bundle || {};
+    _proveBundleCache = bundle;
+    _renderProveBadge(bundle);
+    if (_provePopoverOpen) _renderProvePopover(bundle);
+  } catch (err) {
+    // AbortError is normal under rapid edits — silent.
+    if (err.name !== 'AbortError') _hideProveBadge();
+  }
+}
+function _hideProveBadge() {
+  const b = document.getElementById('prove-stats-badge');
+  if (b) b.classList.remove('visible');
+  const p = document.getElementById('prove-popover');
+  if (p) p.classList.remove('visible');
+  _provePopoverOpen = false;
+}
+function _renderProveBadge(bundle) {
+  const badge = document.getElementById('prove-stats-badge');
+  if (!badge) return;
+  const rules = (bundle && bundle.rules) || [];
+  if (rules.length === 0) { _hideProveBadge(); return; }
+  let proved = 0, disproved = 0, unverifiable = 0;
+  for (const r of rules) {
+    if (r.verdict === 'proved') proved++;
+    else if (r.verdict === 'disproved') disproved++;
+    else unverifiable++;
+  }
+  badge.classList.remove('has-disproved', 'has-unverifiable');
+  if (disproved > 0) badge.classList.add('has-disproved');
+  else if (unverifiable > 0) badge.classList.add('has-unverifiable');
+  badge.textContent = `Prove: ${proved} ok · ${disproved} bad · ${unverifiable} ?`;
+  badge.title = `${proved} proved, ${disproved} disproved, ${unverifiable} unverifiable. Click to expand.`;
+  badge.classList.remove('visible');
+  void badge.offsetWidth;
+  badge.classList.add('visible');
+}
+function _renderProvePopover(bundle) {
+  const pop = document.getElementById('prove-popover');
+  if (!pop) return;
+  const rules = (bundle && bundle.rules) || [];
+  if (rules.length === 0) { pop.classList.remove('visible'); return; }
+  const html = rules.map(r => {
+    const v = r.verdict || 'unverifiable';
+    const mark = v === 'proved' ? '✓' : v === 'disproved' ? '✗' : '?';
+    const name = r.name || `(line ${r.line || '?'})`;
+    const line = r.line ? `line ${r.line}` : '';
+    return `<div class="prove-row" data-line="${r.line || ''}" onclick="jumpToLine(${r.line || 1});hideProvePopover()">
+      <span class="prove-mark ${v}">${mark}</span>
+      <span class="prove-name" title="${(r.reason || v).replace(/"/g, '&quot;')}">${name}</span>
+      <span class="prove-line">${line}</span>
+    </div>`;
+  }).join('');
+  pop.innerHTML = html;
+  pop.classList.add('visible');
+}
+function toggleProvePopover() {
+  const pop = document.getElementById('prove-popover');
+  if (!pop) return;
+  if (_provePopoverOpen) {
+    pop.classList.remove('visible');
+    _provePopoverOpen = false;
+  } else if (_proveBundleCache) {
+    _renderProvePopover(_proveBundleCache);
+    _provePopoverOpen = true;
+  }
+}
+function hideProvePopover() {
+  const pop = document.getElementById('prove-popover');
+  if (pop) pop.classList.remove('visible');
+  _provePopoverOpen = false;
+}
+window.runAutoProve = runAutoProve;
+window.toggleProvePopover = toggleProvePopover;
+window.hideProvePopover = hideProvePopover;
+
 window.doProve = async function() {
   const source = editor.state.doc.toString();
   showTab('terminal');
