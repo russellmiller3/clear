@@ -1144,6 +1144,17 @@ window._editorView = editor;  // For tests
 window._sourceMapData = () => sourceMapData; // For debugging/tests
 window._debug = () => ({ compileAnimRunning, sourceMapTab, compiledTab, hasCompiledView: !!compiledView, hasSourceMap: !!sourceMapData, activeTab });
 
+// Russell's startup-freshness rule (2026-05-04): if the editor is showing a
+// previously-picked template (deal-desk, helpdesk-agent, etc.), refresh from
+// disk on every Studio start. The function below is defined later in this
+// file (after loadTemplateByName); fire it as soon as the editor exists so
+// the user sees the latest disk content before they touch anything.
+queueMicrotask(() => {
+  if (typeof window.refreshLoadedTemplateFromDisk === 'function') {
+    window.refreshLoadedTemplateFromDisk();
+  }
+});
+
 // ==========================================================================
 // ROTATING QUOTES
 // ==========================================================================
@@ -2077,10 +2088,16 @@ window.copyTerminal = async function() {
     tmp.innerHTML = h;
     return (tmp.textContent || tmp.innerText || '').trim();
   };
-  const lines = terminalEntries.map(stripHtml).filter(Boolean);
+  // Match the on-screen render order — newest entry first (renderTerminal()
+  // calls entries.reverse() before injecting them), so what the user SEES
+  // at the top of the pane is what they GET at the top of the clipboard.
+  // Without this reverse, the pasted text reads in chronological order
+  // while the screen reads anti-chronological — confusing when you're
+  // trying to share the most recent error.
+  const lines = terminalEntries.slice().reverse().map(stripHtml).filter(Boolean);
   const source = (window._editor && window._editor.state.doc.toString()) || '';
   const parts = [];
-  parts.push('## Terminal output (Clear Studio)');
+  parts.push('## Terminal output (Clear Studio, newest first)');
   parts.push('');
   if (lines.length === 0) {
     parts.push('_(empty)_');
@@ -5585,11 +5602,61 @@ async function loadTemplateByName(name) {
     const label = document.getElementById('editor-label');
     if (label) label.textContent = name + '/main.clear';
     lastCompiled = null;
+    // Remember which template the editor is showing so the next Studio start
+    // can refresh the source from disk (see refreshLoadedTemplateFromDisk
+    // below). Without this, edits to the on-disk template never propagate
+    // back into the editor — localStorage wins forever, and Studio shows
+    // stale source for whoever picks up the workspace next.
+    try { localStorage.setItem('clear_editor_loaded_template', name); } catch (_) {}
     // BM-6: once a template loads, the gallery becomes irrelevant —
     // autoCompile() will replace #preview-content with the iframe.
     autoCompile();
   } catch {}
 }
+
+// Refresh the editor from disk on startup.
+//
+// Russell's recurring pain (2026-05-04): pick a template (e.g. deal-desk),
+// edit it, reload Studio — Studio shows the localStorage version. If the
+// on-disk template has changed (someone pushed a fix, the canonical syntax
+// rolled forward, etc.), those changes never reach the editor. The CRO
+// pitch shows the OLD source; the runtime crashes against the OLD compiled
+// output that's now incompatible with the new source.
+//
+// Fix: every time `loadTemplateByName` runs, remember the template name in
+// localStorage. On startup, if that name is set, fetch the current disk
+// content and replace the editor doc IF it differs from what's stored.
+// localStorage stays useful for crash-recovery on un-templated scratch work.
+//
+// Toast in the terminal (not a modal — non-blocking) reports whether the
+// refresh changed anything, so users see the drift correction happen.
+async function refreshLoadedTemplateFromDisk() {
+  let loadedName = null;
+  try { loadedName = localStorage.getItem('clear_editor_loaded_template'); } catch (_) {}
+  if (!loadedName) return; // no template tracked — leave the editor alone
+  try {
+    const r = await fetch('/api/template/' + loadedName);
+    if (!r.ok) return;
+    const diskSource = await r.text();
+    if (!diskSource) return;
+    const editorSource = (window._editor && window._editor.state.doc.toString()) || '';
+    if (diskSource === editorSource) return; // already in sync
+    // Replace editor content with the disk version. autoCompile fires next.
+    suppressAutoCompile = true;
+    window._editor.dispatch({
+      changes: { from: 0, to: window._editor.state.doc.length, insert: diskSource },
+    });
+    suppressAutoCompile = false;
+    try { localStorage.setItem('clear_editor_content', diskSource); } catch (_) {}
+    appendTerminalText('Refreshed ' + loadedName + '/main.clear from disk (was an older version in your editor).', 'term-ok');
+    // Recompile against the new source so the running app, prove badge,
+    // and tests all reflect what's on disk now.
+    if (typeof autoCompile === 'function') autoCompile();
+  } catch (_) {
+    // Silent — disk fetch failed, leave the localStorage copy in place.
+  }
+}
+window.refreshLoadedTemplateFromDisk = refreshLoadedTemplateFromDisk;
 window.loadTemplateByName = loadTemplateByName;
 
 document.getElementById('template-picker').addEventListener('change', function() {

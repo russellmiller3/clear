@@ -7,6 +7,35 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Why does my Studio editor show stale source after a template was updated on disk? (2026-05-04)
+
+**It doesn't anymore — fresh-from-disk on startup is now wired in.**
+
+Old failure mode: pick a template (e.g. `deal-desk`) from the Studio dropdown, edit it, reload Studio. Studio loaded the editor content from `localStorage.clear_editor_content`, which was the old edited version. If the on-disk template had changed since (someone shipped a fix, the canonical syntax rolled forward, etc.), those changes never reached the editor. The CRO pitch showed the old source; the runtime crashed against an old compiled output that's now incompatible with the new source.
+
+How it works now (`playground/ide.html`):
+1. `loadTemplateByName(name)` saves the picked template name to `localStorage.clear_editor_loaded_template`.
+2. On every Studio start, after the editor mounts, a `queueMicrotask` calls `refreshLoadedTemplateFromDisk()`.
+3. That function fetches `/api/template/<name>` from disk and compares to the editor's current content.
+4. If they differ, the editor doc is replaced with the disk version, `localStorage.clear_editor_content` is overwritten, the change shows up in the terminal as "Refreshed `<name>`/main.clear from disk", and `autoCompile()` runs against the fresh source.
+
+Edge cases:
+- **No template loaded** (fresh Studio, scratch work): no refresh fires; localStorage is still the source of truth.
+- **Disk fetch fails** (offline, server down): silent fallback — editor keeps the localStorage content.
+- **User wants their stale version anyway**: open the dev console and `delete localStorage.clear_editor_loaded_template; location.reload()`.
+
+---
+
+## Where is the Copy Terminal button — and what order does it copy? (2026-05-04)
+
+The Copy Terminal button is in the preview-tabs row in Studio (next to "Clear Terminal"). One click copies all the terminal entries plus the current `.clear` source to your clipboard, formatted as markdown for pasting into a chat.
+
+**Order: newest first.** Matches the on-screen render order — the terminal pane shows the most recent entry at the top (`renderTerminal()` reverses entries before rendering). The Copy Terminal function reverses `terminalEntries.slice()` before stripping HTML and joining, so the clipboard text reads top-to-bottom in the same order you see on screen. The header in the pasted text reads "Terminal output (Clear Studio, newest first)" so the order is explicit.
+
+If the bottom of your terminal pane is the FIRST event (oldest), and the top is the most recent error, the clipboard will paste the most recent error FIRST so whoever you're asking for help reads the live problem before the lead-up.
+
+---
+
 ## What's the GTM direction? (locked 2026-05-04)
 
 **Self-serve product (Vercel model), NOT consulting.** Russell hates customer service and 1-on-1 problem-solving — variable-energy person + fixed-weekly-demand client work = burnout in 2 months. The compliance-buyer Marcus framing was the wrong audience for self-serve; the real audience is the **"ranger"** — product managers, marketers, RevOps, founders-not-CTOs who can read code but aren't engineers. They've all hit the same wall: AI tools (Lovable / Bolt / v0) wrote unreadable code; Retool needs IT tickets; Bubble is messy; Cursor assumes Postgres knowledge.

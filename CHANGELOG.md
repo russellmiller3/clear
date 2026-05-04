@@ -6,7 +6,19 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — Doc-cascade gate hook + Copy Terminal button + template polish
+## 2026-05-04 (latest) — Studio fresh-from-disk on startup + Copy Terminal newest-first
+
+Two recurring user pain points fixed in one branch.
+
+**Fresh-from-disk on Studio start (`playground/ide.html`).** When a template is loaded via the dropdown (`loadTemplateByName`), Studio now records the template's name in `localStorage` under `clear_editor_loaded_template`. On every Studio start, a `queueMicrotask` after editor mount fires `refreshLoadedTemplateFromDisk()` — fetches `/api/template/<name>` from disk, compares against the editor's current content, and if they differ, replaces the editor doc with the disk version and shows a one-line confirmation in the terminal: *"Refreshed deal-desk/main.clear from disk (was an older version in your editor)."* Recompiles automatically. localStorage stays useful for un-templated scratch work; templated content always tracks disk. Verified live: seeded a stale `guard 30 is less than 100` source under `clear_editor_loaded_template = 'deal-desk'`, reloaded — editor doc replaced with the 19,502-char fresh `enforce that`-using version from disk, no stale `guard` line remained.
+
+**Copy Terminal — newest-first order matches the on-screen pane (`playground/ide.html`).** The terminal pane renders entries newest-first (`renderTerminal()` calls `entries.reverse()`). The Copy Terminal button shipped earlier today copied entries in storage order (oldest-first), so what users SAW at the top of the pane (most recent error) ended up at the BOTTOM of the clipboard text. Fixed by reversing `terminalEntries.slice()` before stripping HTML and joining. Header now reads "Terminal output (Clear Studio, newest first)" so the order is explicit when pasted into a chat. Verified live with three seeded entries: THIRD@53, SECOND@74, FIRST@87 in the captured clipboard text.
+
+**Why for launch:** every "I picked a template, now Studio is showing me a stale crash" moment costs Russell 5 minutes of confusion. The disk-refresh removes that drift entirely. The Copy Terminal order fix means any time he pastes terminal output into a chat asking for help, the most recent error is at the top — so I see the bug first, not last.
+
+---
+
+## 2026-05-04 — Doc-cascade gate hook + Copy Terminal button + template polish
 
 Russell-driven correction pass after the prior ship missed FAQ. Three structural fixes plus four small ones, all on `docs/faq-and-gtm-cascade`:
 
