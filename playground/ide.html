@@ -663,6 +663,7 @@ body.builder-mode.show-source #editor-pane {
     <select id="builder-theme-picker" title="Preview theme" style="display:none"></select>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
+    <button id="direct-edit-btn" class="toolbar-btn" onclick="toggleDirectEdit()" title="Click any piece of the running app to jump to its Clear source line and draft a Meph edit" style="display:none;white-space:nowrap;flex-shrink:0;">Direct Edit</button>
     <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
@@ -1500,6 +1501,7 @@ async function autoCompile() {
       // Show Run/Stop now that we have a compiled result
       document.getElementById('run-btn').style.display = '';
       document.getElementById('stop-btn').style.display = '';
+      document.getElementById('direct-edit-btn').style.display = '';
       // Deploy button is visible on compile success when the customer has an active plan
       (async () => {
         try {
@@ -1641,17 +1643,29 @@ function showOutput() {
   window.onunhandledrejection = function(e){ _post('unhandledrejection', [e.reason]); };
 })();
 <\/script>`;
-    // Source map: Alt+click element in preview → jump to Clear source line
+    // Source map: Alt+click element in preview → jump to Clear source line.
     // Regular clicks interact with the UI normally. Alt+click inspects.
+    // Direct Edit toggle (parent posts {type:'clear-direct-edit-mode', enabled:true})
+    // makes ALL clicks fire the source-line jump (no Alt key required) AND
+    // signals parent to also draft a Meph chat message with the source snippet.
     const sourceMapCapture = `<script>
+var __directEditMode = false;
+window.addEventListener('message', function(ev) {
+  if (ev.data && ev.data.type === 'clear-direct-edit-mode') {
+    __directEditMode = !!ev.data.enabled;
+    document.body.style.cursor = __directEditMode ? 'crosshair' : '';
+  }
+});
 document.addEventListener('click', function(e) {
-  if (!e.altKey) return; // Regular click = interact. Alt+click = inspect source.
+  if (!e.altKey && !__directEditMode) return; // Regular click = interact. Alt+click or Direct Edit = jump.
   e.preventDefault();
   e.stopPropagation();
   var el = e.target;
   while (el && el !== document.body) {
     if (el.dataset && el.dataset.clearLine) {
-      window.parent.postMessage({ type: 'clear-source-line', line: parseInt(el.dataset.clearLine) }, '*');
+      var msg = { type: 'clear-source-line', line: parseInt(el.dataset.clearLine) };
+      if (__directEditMode) msg.directEdit = true;
+      window.parent.postMessage(msg, '*');
       el.style.outline = '2px solid #6c8cff';
       setTimeout(function() { el.style.outline = ''; }, 800);
       return;
@@ -1816,12 +1830,57 @@ function handleCompiledClick(e) {
   }
 }
 
+// Direct Edit toggle. When ON, clicks in the preview iframe are intercepted
+// (no Alt key required) and posted back as `clear-source-line` with a
+// `directEdit: true` flag so the parent also drafts a Meph chat message
+// targeting the clicked element's Clear source line + 4 lines of context.
+let __directEditMode = false;
+function toggleDirectEdit() {
+  __directEditMode = !__directEditMode;
+  const btn = document.getElementById('direct-edit-btn');
+  if (btn) {
+    btn.classList.toggle('primary', __directEditMode);
+    btn.textContent = __directEditMode ? 'Direct Edit ●' : 'Direct Edit';
+    btn.title = __directEditMode
+      ? 'Direct Edit ON — click any element in the preview to edit it. Click this button again to turn off.'
+      : 'Click any piece of the running app to jump to its Clear source line and draft a Meph edit';
+  }
+  document.body.classList.toggle('direct-edit-mode', __directEditMode);
+  // Tell the iframe to capture clicks
+  const iframe = document.querySelector('#preview-content iframe');
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage({ type: 'clear-direct-edit-mode', enabled: __directEditMode }, '*');
+  }
+  if (__directEditMode) {
+    showToast('Direct Edit on — click any element in the preview');
+  }
+}
+window.toggleDirectEdit = toggleDirectEdit;
+
 // Preview iframe click → jump to source line
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'clear-source-line' && typeof e.data.line === 'number') {
     jumpToLine(e.data.line);
     // Switch to editor panel if needed
     if (activeTab !== 'output') showTab('output');
+    // Direct Edit: also draft a Meph chat message with the source snippet
+    if (e.data.directEdit && window._editor) {
+      try {
+        const doc = window._editor.state.doc;
+        const startLine = Math.max(1, e.data.line);
+        const endLine = Math.min(startLine + 4, doc.lines);
+        const snippet = [];
+        for (let i = startLine; i <= endLine; i++) {
+          snippet.push(doc.line(i).text);
+        }
+        const input = document.getElementById('chat-input');
+        if (input) {
+          input.value = 'Help me edit this:\n\n```clear\n' + snippet.join('\n') + '\n```\n\n';
+          input.focus();
+          try { input.selectionStart = input.selectionEnd = input.value.length; } catch (e2) {}
+        }
+      } catch (e2) { /* editor not ready — drop silently */ }
+    }
   }
 
   // Studio bridge — relay user actions to /api/meph-actions so Meph can read them
