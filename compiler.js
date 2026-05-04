@@ -14411,6 +14411,34 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("  } catch(e) { res.status(500).json({ error: e.message }); }");
     lines.push('});');
     lines.push('');
+    lines.push('// GET /audit.csv — same data as /audit but in CSV format. SOC 2');
+    lines.push('// evidence collectors and most compliance tools ingest CSV more');
+    lines.push('// naturally than JSON. Same auth + tenant scoping as /audit.');
+    lines.push('// Quote-escape every value to handle body_summary text that may');
+    lines.push('// contain commas, quotes, or newlines.');
+    lines.push("function _csvEscape(value) {");
+    lines.push("  if (value === null || value === undefined) return '';");
+    lines.push('  const str = String(value);');
+    lines.push('  if (/[",\\n\\r]/.test(str)) return \'"\' + str.replace(/"/g, \'""\') + \'"\';');
+    lines.push('  return str;');
+    lines.push('}');
+    lines.push("app.get('/audit.csv', async (req, res) => {");
+    lines.push("  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+    lines.push('  try {');
+    if (tenantScope) {
+      lines.push("    const rows = await db.findAll('audit_log', { tenant_id: req.user.tenant_id });");
+    } else {
+      lines.push("    const rows = await db.findAll('audit_log');");
+    }
+    lines.push("    const cols = ['id', 'ts', 'user_id', 'user_email', 'tenant_id', 'method', 'path', 'status', 'body_summary'];");
+    lines.push("    const header = cols.join(',');");
+    lines.push("    const body = rows.map(r => cols.map(c => _csvEscape(r[c])).join(',')).join('\\n');");
+    lines.push("    res.set('Content-Type', 'text/csv; charset=utf-8');");
+    lines.push("    res.set('Content-Disposition', 'attachment; filename=\"audit.csv\"');");
+    lines.push("    res.send(header + '\\n' + body + (body ? '\\n' : ''));");
+    lines.push("  } catch(e) { res.status(500).json({ error: e.message }); }");
+    lines.push('});');
+    lines.push('');
     lines.push('// POST /auth/signup — create new user');
     lines.push("app.post('/auth/signup', async (req, res) => {");
     lines.push('  try {');
