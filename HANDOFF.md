@@ -62,10 +62,16 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work
 
-**`fix/marcus-uat-and-preview-default`** — local branch, **8 commits ahead of `origin/main`**, **NOT pushed**. Russell said "don't push until I tell you we're all done."
+**`fix/marcus-uat-and-preview-default`** — local branch, **14 commits ahead of `origin/main`**, **NOT pushed**. Russell said "don't push until I tell you we're all done."
 
 Commits on the branch (newest first):
-1. `869fced` — fix(layout+studio): real workbench grid + 32px section gap + Stop button works mid-stream + softer chat bubble. Workbench `1fr / 380px` (was 50/50 squish), vertical 32px section gap (was 0px because rule fired at wrong depth), Submit Request panels capped 720px, Studio resizers 22px hit area (was 5px-impossible-to-grab), user chat bubble 9% accent tint with normal text (was bright blue / white), server-side `req.on('close')` aborts in-flight fetch + SIGTERM/SIGKILL spawned subprocess so Stop button works mid-Meph-iteration.
+1. `51c4bf6` — fix(cc-agent): Stop button now actually kills the AI subprocess + fix stale path. AbortSignal threaded through `fetchViaBackend → chatViaClaudeCode → chatViaClaudeCodeWithTools → runClaudeCliStreamJson` so Stop on cc-agent path also kills the spawned claude. Plus stale `playground/sessions` path fixed in test (95/0 green).
+2. `de04d1c` — fix(cc-agent): bump subprocess cap 180s→600s + show stderr tail on timeout. Complex builds (lead-routing) routinely take 4-6 min; old 180s killed them mid-run. Timeout error now carries last 5 stderr + 200 chars of stdout for diagnostic visibility.
+3. `86e5de0` — fix(validator+meph): warn on top-level keywords used as variable names + Meph cheat sheet. `rule`, `agent`, `skill`, `database`, `frontend`, `backend`, `table`, `queue` now warn when used as receiving vars; Meph's brain prompt opens with 12 canonical-syntax rules covering ~80% of avoidable mistakes.
+4. `1d11670` — fix(studio): soft pearl Send button + full Meph session transcripts. Send button now matches the soft theme; per-session transcript file written alongside the skeletal record so debugging has full back-and-forth.
+5. `c9aaffd` — docs: audit-log retention entry in FEATURES + FAQ.
+6. `6320492` — docs: HANDOFF + CHANGELOG + learnings for the layout sweep.
+7. `869fced` — fix(layout+studio): real workbench grid + 32px section gap + Stop button works mid-stream + softer chat bubble. Workbench `1fr / 380px` (was 50/50 squish), vertical 32px section gap (was 0px because rule fired at wrong depth), Submit Request panels capped 720px, Studio resizers 22px hit area (was 5px-impossible-to-grab), user chat bubble 9% accent tint with normal text (was bright blue / white), server-side `req.on('close')` aborts in-flight fetch + SIGTERM/SIGKILL spawned subprocess so Stop button works mid-Meph-iteration.
 2. `ef4c291` — fix(studio): no opal sweep on grayed-out toolbar buttons (`.toolbar-btn:disabled`, `[aria-disabled]`, `.disabled`, `.is-disabled` plus `.primary` combos all re-assert flat values + `transition: none`)
 3. `4fc7942` — fix(layout): cap stat cards + form fields at the BASE rule, not as override. Stat cards 280-320px (was stretched), form fields 480px (was 1223px), stat number 22px (was 28px), disabled-button hover guard for compiled apps. Plus rides-along: audit-log retention helper + `POST /audit/cleanup` endpoint (90-day default, env override).
 4. `4d0e40f` — refactor: rename `playground/` → `studio/`, `ide.html` → `studio.html`, update all references (175+ file renames + path updates)

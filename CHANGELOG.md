@@ -6,7 +6,25 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — Marcus app layout sweep + Studio mid-stream Stop + soft chat bubble
+## 2026-05-05 (latest) — Stop button now actually stops Meph + cc-agent timeout bumped + Send button pearled + Meph cheat sheet + reserved-word warnings + full transcripts
+
+Carry-over from the layout sweep: a stack of structural fixes for Studio + Meph that all came out of one Russell ask ("how do the 3 docs work together, why does Meph misuse syntax, fix the empty-response issue, why does Stop not work").
+
+**Stop button kills the AI subprocess (studio/server.js + studio/ghost-meph/router.js + studio/ghost-meph/cc-agent.js):** the client-side abort already worked but the server kept iterating Meph's tool loop after disconnect. Added `req.on('close')` at `/api/chat` that aborts the in-flight AI request controller and SIGTERMs the spawned child. Threaded an AbortSignal through `fetchViaBackend → chatViaClaudeCode → chatViaClaudeCodeWithTools → runClaudeCliStreamJson` so the cc-agent path (which bypasses fetch) also kills its claude subprocess on Stop. SIGTERM first, SIGKILL after 2s.
+
+**cc-agent subprocess timeout 180s → 600s (studio/ghost-meph/cc-agent.js):** complex builds (lead-routing with admin-editable rules) routinely take 4-6 minutes; the old 180s cap was killing them mid-run and the timeout error wasn't always reaching the client cleanly. Plus the timeout error message now carries the last 5 stderr lines + last 200 chars of stdout so a future hang shows a real diagnostic instead of a silent empty stream. Override via `CC_AGENT_TIMEOUT_MS` env var.
+
+**Send button pearled (studio/studio.html):** was bright `--accent2` (#3b5bdb) with white text — read shouty next to the new soft chat bubble + pearl toolbar. Now: subtle pearl gradient (14-22% accent on bg2), normal text color, 1px subtle accent border. Verified live via preview_inspect: backgroundImage = soft oklch gradient, color = rgb(26,32,44).
+
+**Meph canonical-syntax cheat sheet (studio/system-prompt.md):** the 1358-line brain prompt told Meph to "use read_file when stuck" but never inlined the canonical forms — so Meph wrote from training-data prior, hit compile errors, then maybe consulted the docs. Now opens with 12 rules covering ~80% of avoidable mistakes: `=` vs `is`, single quotes, no self-assignment, possessive access, the full reserved-words list (including the new `rule`/`agent`/`skill`/`database` etc.), section headers, endpoint shapes, table declarations, `expect` not `check`, CRUD shapes, mandatory diagram, plain-English comments.
+
+**Validator warns on top-level keywords used as variable names (validator.js):** Russell flagged Meph reaching for `rule` as a variable name. The collision table had warnings for `post`, `put`, `get`, `payment`, `page` — but not for top-level block keywords. Added `rule`, `agent`, `skill`, `database`, `frontend`, `backend`, `table`, `queue` with concrete `try:` suggestions for each. Eight new regression tests in `clear.test.js`.
+
+**Full Meph session transcripts (studio/server.js):** the per-session capture file was skeletal (id / task / start / end / source). Now writes a second file `<sessionId>.transcript.json` alongside with the full messages array (every user turn, every Meph reply with tool calls embedded, every tool result), model + backend identifier, session test calls, last compile errors / warnings. Russell's debugging workflow: hand the transcript to a fresh Claude session, get a root cause without replaying the whole interaction live.
+
+---
+
+## 2026-05-04 — Marcus app layout sweep + Studio mid-stream Stop + soft chat bubble
 
 Russell sent two screenshots showing the cramped layout was still broken even after the earlier stat-card cap. Three real bugs hiding under "looks bad":
 
