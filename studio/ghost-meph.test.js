@@ -523,7 +523,7 @@ function parseSSE(text) {
   const { readFileSync: _rfs11, unlinkSync: _rm11, existsSync: _exists11, mkdirSync: _mkdir11 } = await import('fs');
   const { join: _join11 } = await import('path');
   const _repoRoot11 = _join11(process.cwd());
-  const _sessDir11 = _join11(_repoRoot11, 'playground', 'sessions');
+  const _sessDir11 = _join11(_repoRoot11, 'studio', 'sessions');
   try { _mkdir11(_sessDir11, { recursive: true }); } catch {}
 
   const _testSid = `test-transcript-${Date.now()}-${process.pid}`;

@@ -220,7 +220,7 @@ export function _resetClaudeBinaryCache() {
  * Mirrors the Anthropic-shaped Response contract:
  *   { ok: boolean, status: number, body: ReadableStream<Uint8Array>, text(): Promise<string> }
  */
-export async function chatViaClaudeCode(payload) {
+export async function chatViaClaudeCode(payload, abortSignal) {
   const userPrompt = extractUserPrompt(payload);
   if (!userPrompt) {
     return wrapAsTextResponse('[cc-agent: no user message in payload — nothing to send to Claude Code]');
@@ -232,7 +232,10 @@ export async function chatViaClaudeCode(payload) {
     // ~48KB system prompt via --system-prompt-file (avoids Windows 32KB
     // argv ceiling) and the ~1-2KB user prompt as a positional arg
     // (avoids the claude.exe stdin-race on Windows pipes).
-    return chatViaClaudeCodeWithTools(userPrompt, systemPrompt);
+    // abortSignal flows from /api/chat's req.on('close') so when the user
+    // clicks Stop, the spawned claude process gets killed instead of
+    // running to completion and burning tokens after the client gave up.
+    return chatViaClaudeCodeWithTools(userPrompt, systemPrompt, abortSignal);
   }
   // Text-only fallback path (original MVP).
   const fullPrompt = systemPrompt
@@ -251,7 +254,7 @@ export async function chatViaClaudeCode(payload) {
  * TOOL MODE: spawn claude with MCP + stream-json, translate events
  * to Anthropic SSE, stream back.
  */
-async function chatViaClaudeCodeWithTools(userPrompt, systemPrompt) {
+async function chatViaClaudeCodeWithTools(userPrompt, systemPrompt, abortSignal) {
   const configPath = writeMcpConfigOrNull();
   if (!configPath) {
     return wrapAsTextResponse('[cc-agent tool mode: failed to write temp MCP config — falling back to text mode message. Check /tmp permissions.]');
@@ -276,7 +279,7 @@ async function chatViaClaudeCodeWithTools(userPrompt, systemPrompt) {
   }
   let ndjson;
   try {
-    ndjson = await runClaudeCliStreamJson(userPrompt, configPath, systemPromptPath);
+    ndjson = await runClaudeCliStreamJson(userPrompt, configPath, systemPromptPath, abortSignal);
   } catch (err) {
     // Surface the error as a text-only SSE so /api/chat's loop terminates
     // cleanly rather than hanging on an incomplete stream.
@@ -528,12 +531,18 @@ export function buildClaudeStreamJsonSpawnArgs(configPath, prompt, systemPromptP
   return args;
 }
 
-export function runClaudeCliStreamJson(prompt, configPath, systemPromptPath) {
+export function runClaudeCliStreamJson(prompt, configPath, systemPromptPath, abortSignal) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
     let settled = false;
     const finish = (fn, val) => { if (!settled) { settled = true; fn(val); } };
+
+    // Honor abort fired BEFORE we even spawn — the client may have
+    // disconnected during fetchViaBackend's async work.
+    if (abortSignal && abortSignal.aborted) {
+      return reject(new Error('client disconnected before claude spawn'));
+    }
 
     const claudeBin = resolveClaudeBinary();
     if (!claudeBin) {
@@ -556,6 +565,21 @@ export function runClaudeCliStreamJson(prompt, configPath, systemPromptPath) {
       );
     } catch (err) {
       return reject(new Error('failed to spawn `claude` CLI: ' + err.message));
+    }
+
+    // Listen for client-disconnect aborts. When the user clicks Stop in
+    // Studio chat, /api/chat's req.on('close') fires and aborts this
+    // signal. Without this listener the spawned claude process kept
+    // running to completion and burned tokens after the client gave up.
+    // SIGTERM first, SIGKILL after 2s if it didn't take.
+    let abortHandler = null;
+    if (abortSignal) {
+      abortHandler = () => {
+        try { child.kill('SIGTERM'); } catch {}
+        setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 2000);
+        finish(reject, new Error('client disconnected, claude subprocess killed'));
+      };
+      try { abortSignal.addEventListener('abort', abortHandler, { once: true }); } catch {}
     }
 
     const timer = setTimeout(() => {

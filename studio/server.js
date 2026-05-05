@@ -3478,7 +3478,7 @@ app.post('/api/chat', async (req, res) => {
           // so the rest of this loop is unchanged.
           if (isGhostMephActive()) {
             console.log(`[chat] routing via Ghost Meph (MEPH_BRAIN=${getBackendId()})`);
-            r = await fetchViaBackend(payload, headers);
+            r = await fetchViaBackend(payload, headers, { signal: ctrl.signal });
           } else if (useOpenRouterPicker) {
             console.log(`[chat] routing via OpenRouter picker (${selectedModel.id}/${selectedModel.openRouterModel})`);
             const { chatViaOpenRouter } = await import('./ghost-meph/openrouter.js');

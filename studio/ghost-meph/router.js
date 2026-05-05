@@ -44,14 +44,18 @@ export function getBackendId() {
  * Returns a Response-like object with a streaming SSE body that the existing
  * /api/chat reader loop can consume unchanged.
  */
-export async function fetchViaBackend(payload, headers) {
+export async function fetchViaBackend(payload, headers, opts = {}) {
   const brain = getBackendId();
+  // opts.signal — optional AbortSignal. When the client disconnects mid-
+  // stream (Stop button in Studio chat), /api/chat passes its abort signal
+  // here so the local Claude Code subprocess can be killed instead of
+  // running to completion (and burning tokens) after the user gave up.
   // Dynamic imports keep slightly heavier modules out of the hot path when
   // their backend isn't selected, and avoid a circular import — cc-agent /
   // ollama / openrouter all depend on buildSSEEvents from this file.
   if (brain === 'cc-agent') {
     const { chatViaClaudeCode } = await import('./cc-agent.js');
-    return chatViaClaudeCode(payload);
+    return chatViaClaudeCode(payload, opts.signal);
   }
   if (brain && brain.startsWith('ollama:')) {
     const { chatViaOllama } = await import('./ollama.js');
