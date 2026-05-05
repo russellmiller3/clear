@@ -62,21 +62,31 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work
 
-**`fix/marcus-uat-and-preview-default`** — local branch, **4 commits ahead of `origin/main`**, **NOT pushed**. Russell explicitly said "don't push until I tell you we're all done."
+**`fix/marcus-uat-and-preview-default`** — local branch, **8 commits ahead of `origin/main`**, **NOT pushed**. Russell said "don't push until I tell you we're all done."
 
 Commits on the branch (newest first):
-1. `5750a0f` — pearl buttons + opal sweep + layout rules + Marcus per-page nav + audit-PDF + UAT doc + start-clear rebuild
-2. `c81d65b` — block comments render as italic gray
-3. `ed90df8` — FEATURES + FAQ entries for the syntax-highlight fix (doc cascade)
-4. `c756cdc` — editor highlighting (multi-line strings, hyphenated names, possessive, keyword tier)
+1. `869fced` — fix(layout+studio): real workbench grid + 32px section gap + Stop button works mid-stream + softer chat bubble. Workbench `1fr / 380px` (was 50/50 squish), vertical 32px section gap (was 0px because rule fired at wrong depth), Submit Request panels capped 720px, Studio resizers 22px hit area (was 5px-impossible-to-grab), user chat bubble 9% accent tint with normal text (was bright blue / white), server-side `req.on('close')` aborts in-flight fetch + SIGTERM/SIGKILL spawned subprocess so Stop button works mid-Meph-iteration.
+2. `ef4c291` — fix(studio): no opal sweep on grayed-out toolbar buttons (`.toolbar-btn:disabled`, `[aria-disabled]`, `.disabled`, `.is-disabled` plus `.primary` combos all re-assert flat values + `transition: none`)
+3. `4fc7942` — fix(layout): cap stat cards + form fields at the BASE rule, not as override. Stat cards 280-320px (was stretched), form fields 480px (was 1223px), stat number 22px (was 28px), disabled-button hover guard for compiled apps. Plus rides-along: audit-log retention helper + `POST /audit/cleanup` endpoint (90-day default, env override).
+4. `4d0e40f` — refactor: rename `playground/` → `studio/`, `ide.html` → `studio.html`, update all references (175+ file renames + path updates)
+5. `5750a0f` — pearl buttons + opal sweep + layout rules + Marcus per-page nav + audit-PDF + UAT doc + start-clear rebuild
+6. `c81d65b` — block comments render as italic gray
+7. `ed90df8` — FEATURES + FAQ entries for the syntax-highlight fix (doc cascade)
+8. `c756cdc` — editor highlighting (multi-line strings, hyphenated names, possessive, keyword tier)
 
-**Plus a HUGE staged-but-not-committed rename: `playground/` → `studio/` and `playground/ide.html` → `studio/studio.html`.** Around 175 file renames are already in the git index. Working tree also has ~100 modified files that update path references inside the renamed code (`studio/server.js` and friends now refer to `studio/...` instead of `playground/...`). Plus `start-clear.bat` was already updated to call `node studio\server.js`. The rename is real on disk — `playground/` is gone, `studio/` exists — just not yet committed.
+**Layout sweep verified live (2026-05-04 evening) via preview tools — ALL 5 Marcus apps:**
 
-**Why the rename matters:** the desktop shortcut (`start-clear.bat`) already references `studio\server.js`. Until the rename commits, anyone re-cloning fresh would have a half-broken shortcut. Anyone working on this branch is fine because the rename IS done in working tree.
+| App | Workbench | Card vertical gap | Stat card |
+|---|---|---|---|
+| deal-desk | 899px table + 340px detail (flex) | 32px × 5 | 320px |
+| lead-router | 861px table + 380px detail (grid) | 32px × 4 | 320px |
+| approval-queue | 861px table + 380px detail (grid) | 32px × 3, Submit 720px | 320px |
+| onboarding-tracker | 861px table + 380px detail (grid) | 32px × 5 | 320px |
+| internal-request-queue | 861px table + 380px detail (grid) | 32px × 3 | 320px |
 
-**Next move on this branch (when Russell says go):**
-- Commit the rename as one logical unit: "refactor: rename playground/ to studio/, ide.html to studio.html, update all references."
-- Then either merge to main locally (`git merge --ff-only`) and push main, or push the branch if Russell wants a PR.
+Studio: setting `aria-disabled="true"` on a toolbar button immediately yields flat gradient + cursor not-allowed + opacity 0.65 + transition none (verified live).
+
+**When Russell says ship:** local merge into main (`git checkout main && git merge --ff-only fix/marcus-uat-and-preview-default && git push origin main && git branch -d fix/marcus-uat-and-preview-default`). The `ship-docs-cascade-gate` hook will fire on the merge — CHANGELOG / FEATURES / FAQ entries already landed earlier on the branch, so the gate should pass.
 
 ---
 
@@ -105,19 +115,14 @@ Russell ran the latest `start-clear.bat`, expecting to see the new pearl buttons
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Diagnose the cramped-layout report (above).** Walk Russell through the 3 suspects in order; the fix is almost certainly suspect 1.
+1. **Walk Russell through the cramped-layout diagnosis.** The 3 suspects are listed above. The compiler emits `.clear-shell-outlet` correctly (verified: every Marcus app has it in both HTML and CSS). The fix is almost certainly suspect 1 (Chrome cache — DevTools "Disable cache" + hard refresh).
 
-2. **Commit the playground→studio rename** as one focused commit on the in-flight branch. Then push the whole branch when Russell green-lights.
-
-3. **Studio Prove redesign — auto-check inline (4a) + right-click drilldown (4c).** 4(b) shipped previously: clicking Prove downloads the audit PDF. The two remaining modes:
-   - **(a) Auto-check on every save.** Run the prover every time the source changes. Show verdicts inline in the editor gutter: green check next to proved rules, red X next to disproved, amber question mark next to unverifiable. CodeMirror gutter integration.
+2. **Studio Prove redesign — auto-check inline (4a) + right-click drilldown (4c).** 4(b) shipped previously: clicking Prove downloads the audit PDF. The two remaining modes:
+   - **(a) Auto-check on every save.** Run the prover every time the source changes. Show verdicts in the editor — ideally inline in the gutter, fall back to a toolbar badge with click-to-expand popover.
    - **(c) Right-click a rule → debug drilldown.** Side pane showing the prover's reasoning. The "why didn't this prove?" debug surface.
+   - **⚠️ Bundle-rebuild gotcha (read FIRST):** the inline-gutter UX needs CodeMirror's `gutter` / `GutterMarker` / `StateField` / `StateEffect`. None are in the vendored `studio/codemirror.bundle.js` — only `EditorView`, `EditorState`, `keymap`, `lineNumbers`, `highlightActiveLineGutter`, `highlightActiveLine`, `drawSelection`, `syntaxHighlighting`, `StreamLanguage`, `HighlightStyle`, `defaultHighlightStyle`, `defaultKeymap`, `history`, `historyKeymap`, `indentWithTab`, `javascript`, `tags`. Adding the missing exports means: install `@codemirror/*` devDependencies, update `scripts/build-codemirror-bundle.mjs` + `scripts/codemirror-entry.mjs`, run esbuild, verify bundle size doesn't balloon. Multi-hour. **Pragmatic pivot:** build v0 as a toolbar auto-prove badge + click-to-expand popover (uses only existing exports — already shipped earlier per CHANGELOG). File the v1 inline gutter as a follow-up that requires the bundle rebuild.
 
-4. **Audit log CSV export endpoint.** Compliance tools ingest CSV more naturally than JSON. A `GET /audit.csv` adjacent to `GET /audit` would close that gap. Small (~20 min). Already shipped on `22c5166`; verify it's reachable end-to-end.
-
-5. **Audit log retention / archive.** As `audit_log` grows, queries slow. Need a retention policy (e.g. 90 days) or an archive table. Compliance buyers often ask "how long do you retain audit data?"
-
-6. **Update Meph's `studio/system-prompt.md`** so he knows that "Help me edit this:" + a fenced clear block means a focused edit on that snippet — don't refactor the whole file.
+3. **Audit log retention / archive.** As `audit_log` grows, queries slow. Need a retention policy (e.g. 90 days) or an archive table. Compliance buyers often ask "how long do you retain audit data?" Concrete shape: emit a daily cleanup endpoint (`POST /audit/cleanup`) or a one-shot startup task that deletes rows older than `audit_retention_days` (default 90). Document the knob in FAQ + FEATURES.
 
 ---
 
