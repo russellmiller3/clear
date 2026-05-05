@@ -7038,6 +7038,46 @@ when user sends data to /api/todos:
     expect(matched.length).toBeGreaterThan(0);
   });
 
+  // Top-level block keywords used as receiving-var names confuse the
+  // tokenizer (it sees the keyword first, tries to parse the line as a
+  // block header). Russell flagged this 2026-05-04 after watching Meph
+  // reach for `rule` as a variable name in a lead-routing build.
+  it('warns when receiving var is `rule` (top-level block keyword)', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user sends rule to /api/policies:
+  send back rule
+    `);
+    const warns = warnStrs(result);
+    const matched = warns.filter(w => w.includes("'rule'") && w.includes('top-level block keyword'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('warns when receiving var is `agent`', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user sends agent to /api/agents:
+  send back agent
+    `);
+    const warns = warnStrs(result);
+    const matched = warns.filter(w => w.includes("'agent'") && w.includes('top-level block keyword'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('warns when receiving var is `skill`, `database`, `frontend`, `backend`, `table`, or `queue`', () => {
+    const cases = ['skill', 'database', 'frontend', 'backend', 'table', 'queue'];
+    for (const name of cases) {
+      const result = compileProgram(`
+build for javascript backend
+when user sends ${name} to /api/items:
+  send back ${name}
+      `);
+      const warns = warnStrs(result);
+      const matched = warns.filter(w => w.includes(`'${name}'`));
+      expect(matched.length, `${name} should trip a collision warning`).toBeGreaterThan(0);
+    }
+  });
+
   // Phase 0.29: `user` as a receiving var no longer warns — it's the Users
   // entity name, unambiguous with `caller` (the new canonical magic-var name).
   // Back-compat with `current user` means old code still parses, but the

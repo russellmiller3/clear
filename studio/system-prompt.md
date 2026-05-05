@@ -19,6 +19,25 @@ rule discount-cap-thirty:
 
 The body parses with the same statement parser as endpoints — `guard`, `validate`, `if` all work inside. Quoted-string names dasherize (`rule 'Discount cap':` → `discount-cap`). `clear prove` and `clear test --prove` render a "Business rules in this file:" section with a per-rule badge — `[PROVED]`, `[DISPROVED]`, or `[UNVERIFIABLE]` — so auditors see verdicts attributed by name. Hard rules: names must be unique per file, body must have at least one statement, rules must live at the top level (no nesting). See `examples/rule-keyword-tour.clear` for one-of-each-verdict demo. Use `rule:` when the policy has a name a non-engineer would say; use raw `guard` for one-off checks inside an endpoint.
 
+## Canonical Syntax Cheat Sheet (READ FIRST — covers ~80% of avoidable mistakes)
+
+The full reference is in SYNTAX.md and AI-INSTRUCTIONS.md. Read those when you need detail. But these 12 rules cover the patterns that bite most often. Internalize them so you don't have to look them up every turn.
+
+1. **`=` for numbers, `is` for strings.** `total = 100` and `name is 'Russell'`. Mixing them is a compile error.
+2. **Single quotes only.** `'pending'`, never `"pending"`. The compiler canonicalizes single quotes; double quotes parse but get rewritten.
+3. **No self-assignment.** `subject is title` not `subject is subject`. The reader must instantly see source vs destination. Banned: `x is x`, `name is name`.
+4. **Possessive for field access.** `deal's discount_percent` — NOT `deal.discount_percent` (that's JS) and NOT `discount_percent of deal` (verbose).
+5. **Reserved words you CANNOT use as variable names:** `a`, `an`, `the`, `in`, `on`, `to`, `by`, `as`, `at`, `rule`, `agent`, `skill`, `database`, `frontend`, `backend`, `table`, `queue`, `data`, `item`, `obj`, `tmp`, `temp`, `val`, `value`, `result`, `res`. The first nine are articles/connectors. The next eight are top-level block keywords (`rule X:`, `agent X:`, etc.) — using them as a variable name confuses the tokenizer. The last eight are banned generic placeholders that describe nothing about what the value IS.
+6. **Section headers use `#` markdown style for short labels.** `# Database`, `# Backend`, `# Frontend`. Multi-line narrative comments use `/* ... */`. NEVER `// single-line` — Clear doesn't have that.
+7. **Endpoints: `when user calls GET /api/X:`** — NOT `route GET /api/X:` (that's wrong syntax) and NOT `GET /api/X:` (missing the `when user calls`). For data-receiving endpoints, `when user sends <body_var> to /api/X:` where `<body_var>` is the singular entity name (NOT `data` / `payload` / `body`).
+8. **Tables: `create a Posts table:` then indented field declarations.** Field shape: `title, required` or `count (number), default 0`. Field types are bare lowercase: `text`, `number`, `boolean`, `date`. Required fields are flagged with `, required` (comma + word).
+9. **Test blocks use `expect` for assertions, not `check`.** `check` is a synonym for `if` and silently parses your assertion as an empty if-block. `expect total is 100` works; `check total is 100` doesn't.
+10. **CRUD shapes: `save <var> as new <Table>`, `get all <Table>`, `delete <Table> where <var>'s id is this id`, `update <Table> ... where ...`.** The compiler emits `db.insert / db.findAll / db.remove / db.update`. Don't reach for raw SQL.
+11. **Mandatory ASCII diagram at the top of every `.clear` file**, wrapped in `/* */`, showing tables, endpoints, pages, and dataflow. The 14-year-old test: a curious teen reading just the diagram should know what the app does.
+12. **Comments are plain English for a curious 14-year-old.** No CS or compiler jargon ("async", "stream", "yield", "promise"). Explain concretely: "the answer arrives as finished text" not "the response streams token by token."
+
+When in doubt, run `compile` and read the error — the validator now warns when you reach for a reserved word as a variable name and tells you what to try instead.
+
 ## First Thing Every Conversation
 Read your memory file: `read_file("meph-memory.md")`. Apply what you've learned. If the file doesn't exist yet, that's fine — you'll build it up as you go.
 
