@@ -6944,6 +6944,68 @@ when user calls GET /api/health:
   });
 });
 
+// Audit-log retention (2026-05-04). Compliance buyers ask "how long do
+// you retain audit data?"; SOC 2 evidence collectors expect a documented
+// policy. The compiler emits a 90-day default cleanup helper and a
+// POST /audit/cleanup route alongside the existing audit_log table.
+// Override via AUDIT_RETENTION_DAYS env var (0 disables cleanup).
+describe('Compiler - audit log retention', () => {
+  const authSrc = `build for web and javascript backend
+database is local memory
+
+# Database
+create a Users table:
+  email
+  password_hash
+
+# Backend
+allow signup and login
+`;
+
+  it('emits the retention env knob with a 90-day default', () => {
+    const result = compileProgram(authSrc);
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS).toContain('_AUDIT_RETENTION_DAYS = Number(process.env.AUDIT_RETENTION_DAYS)');
+    expect(result.serverJS).toContain('_AUDIT_RETENTION_DAYS_EFFECTIVE = Number.isFinite(_AUDIT_RETENTION_DAYS) ? _AUDIT_RETENTION_DAYS : 90');
+  });
+
+  it('emits the cleanup helper with a retention=0 disable branch', () => {
+    const result = compileProgram(authSrc);
+    expect(result.serverJS).toContain('async function _cleanupAuditLog()');
+    expect(result.serverJS).toContain("skipped: 'retention disabled'");
+  });
+
+  it('fires cleanup once at server boot (fire-and-forget)', () => {
+    const result = compileProgram(authSrc);
+    expect(result.serverJS).toContain('_cleanupAuditLog().catch(() => {});');
+  });
+
+  it('emits POST /audit/cleanup route, auth-gated', () => {
+    const result = compileProgram(authSrc);
+    expect(result.serverJS).toContain("app.post('/audit/cleanup'");
+    // Same auth check as the GET /audit and /audit.csv routes.
+    const cleanupIdx = result.serverJS.indexOf("app.post('/audit/cleanup'");
+    const slice = result.serverJS.slice(cleanupIdx, cleanupIdx + 400);
+    expect(slice).toContain("if (!req.user) return res.status(401)");
+    expect(slice).toContain('await _cleanupAuditLog()');
+  });
+
+  it('does not leak retention helper into apps without auth', () => {
+    // A toy app with no auth has no audit_log table to clean up;
+    // the helper would be dead code. Guard against compiler accidentally
+    // emitting it anyway. Uses a minimal `when user calls` shape that's
+    // known to compile clean without `allow signup and login`.
+    const noAuthSrc = `build for javascript backend
+when user calls GET /api/health:
+  send back 'ok'
+`;
+    const result = compileProgram(noAuthSrc);
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS).not.toContain('_cleanupAuditLog');
+    expect(result.serverJS).not.toContain('_AUDIT_RETENTION_DAYS');
+  });
+});
+
 describe('Validator - receiving var in scope', () => {
   it('allows receiving var to be used in endpoint body', () => {
     const result = compileProgram(`

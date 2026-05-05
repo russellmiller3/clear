@@ -14343,6 +14343,36 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // 1KB cap on the column to bound storage cost per audit row.
     lines.push("db.createTable('audit_log', { ts: { type: 'text' }, user_id: { type: 'number' }, user_email: { type: 'text' }, method: { type: 'text' }, path: { type: 'text' }, status: { type: 'number' }, body_summary: { type: 'text' } });");
     lines.push('');
+    // Audit-log retention. Compliance buyers ask "how long do you retain
+    // audit data?" and SOC 2 evidence collectors expect a documented
+    // policy. Default 90 days; override via the AUDIT_RETENTION_DAYS env
+    // var (set to 0 to keep audit data forever — disables cleanup).
+    // Cleanup deletes rows whose ISO timestamp is older than the cutoff.
+    // ISO 8601 timestamps sort correctly as text, so simple < works.
+    // The runtime helper loops db.remove because the current db API has
+    // no parameterized bulk-delete primitive — fine for daily cleanups
+    // at typical audit-log scale (tens of thousands of rows take seconds).
+    lines.push("const _AUDIT_RETENTION_DAYS = Number(process.env.AUDIT_RETENTION_DAYS);");
+    lines.push("const _AUDIT_RETENTION_DAYS_EFFECTIVE = Number.isFinite(_AUDIT_RETENTION_DAYS) ? _AUDIT_RETENTION_DAYS : 90;");
+    lines.push("async function _cleanupAuditLog() {");
+    lines.push("  const days = _AUDIT_RETENTION_DAYS_EFFECTIVE;");
+    lines.push("  if (days <= 0) return { deleted: 0, retention_days: days, cutoff: null, skipped: 'retention disabled' };");
+    lines.push("  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();");
+    lines.push("  try {");
+    lines.push("    const all = await db.findAll('audit_log');");
+    lines.push("    const old = all.filter(r => r.ts && r.ts < cutoff);");
+    lines.push("    for (const r of old) await db.remove('audit_log', { id: r.id });");
+    lines.push("    return { deleted: old.length, retention_days: days, cutoff };");
+    lines.push("  } catch (e) {");
+    lines.push("    console.error('[clear:audit-cleanup]', e.message);");
+    lines.push("    return { deleted: 0, retention_days: days, cutoff, error: e.message };");
+    lines.push("  }");
+    lines.push("}");
+    // Fire-and-forget cleanup at server boot so freshly-restarted apps
+    // immediately respect the policy. Errors are swallowed inside the
+    // helper so a cleanup failure can't crash the boot path.
+    lines.push("_cleanupAuditLog().catch(() => {});");
+    lines.push('');
     lines.push('// JWT middleware — extracts user from token on every request');
     lines.push('app.use((req, res, next) => {');
     lines.push("  const authHeader = req.headers.authorization || '';");
@@ -14448,6 +14478,23 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("    res.send(header + '\\n' + body + (body ? '\\n' : ''));");
     lines.push("  } catch(e) { res.status(500).json({ error: e.message }); }");
     lines.push('});');
+    lines.push('');
+    // On-demand cleanup endpoint. Triggers the same retention policy the
+    // boot path runs, useful for tests and for compliance officers who
+    // want to confirm the policy applies after a config change. Returns
+    // {deleted, retention_days, cutoff} so callers can verify what
+    // happened. Auth required to keep the endpoint off the public surface.
+    lines.push("// POST /audit/cleanup — apply the retention policy on demand.");
+    lines.push("// Returns {deleted, retention_days, cutoff}. Boot already runs this");
+    lines.push("// once per process; this endpoint lets compliance tooling confirm");
+    lines.push("// the policy fired after a config change without restarting the app.");
+    lines.push("app.post('/audit/cleanup', async (req, res) => {");
+    lines.push("  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+    lines.push("  try {");
+    lines.push("    const result = await _cleanupAuditLog();");
+    lines.push("    res.json(result);");
+    lines.push("  } catch(e) { res.status(500).json({ error: e.message }); }");
+    lines.push("});");
     lines.push('');
     lines.push('// POST /auth/signup — create new user');
     lines.push("app.post('/auth/signup', async (req, res) => {");
@@ -16528,16 +16575,21 @@ const CSS_COMPONENTS = [
 }` },
   { class: 'clear-stat-strip', css: `.clear-stat-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  /* Cap each card at 280px so 3-up doesn't stretch into banner ads on
+     wide screens. minmax(220px, 280px) + auto-fit gives 3 same-size
+     cards on desktop, wraps cleanly under 1024px. justify-content:start
+     leaves leftover space on the right instead of stretching cards. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 280px));
+  gap: 20px;
+  justify-content: start;
 }
 .clear-stat-card {
-  min-height: 132px;
-  padding: 14px;
+  min-height: 116px;
+  padding: 18px 20px;
   border: 1px solid var(--clear-line);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--clear-bg-panel);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+  box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
 }
 .clear-stat-card-top {
   display: flex;
@@ -16560,9 +16612,11 @@ const CSS_COMPONENTS = [
   flex: 0 0 auto;
 }
 .clear-stat-value {
+  /* 22px is dashboard-card scale (Linear, Stripe). 28px reads as banner
+     hero numbers — too loud for a row of three. */
   margin-top: 10px;
   color: var(--clear-ink);
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
@@ -16864,8 +16918,16 @@ const BUTTON_PEARL_CSS = `
     inset 0 1px 0 0 oklch(78% 0.14 25 / 0.7),
     0 6px 16px 0 oklch(40% 0.18 28 / 0.30);
 }
+/* Disabled / inactive buttons — flat surface, NO opal sweep on hover.
+   The pearl + opal animation reads as "live and clickable"; firing it
+   on a disabled button confuses the user. We override the hover state
+   AND the transition so the button stays static. Covers DaisyUI's
+   .btn-disabled, the native :disabled state, and the ARIA pattern
+   used by buttons that are visually disabled but still focusable
+   (.btn[aria-disabled="true"]). */
 .btn-disabled,
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
   background-position: 0 0;
   color: oklch(60% 0.02 240);
@@ -16873,6 +16935,29 @@ const BUTTON_PEARL_CSS = `
   box-shadow: none;
   cursor: not-allowed;
   opacity: 0.65;
+  transition: none;
+}
+.btn-disabled:hover,
+.btn:disabled:hover,
+.btn[aria-disabled="true"]:hover,
+.btn-primary.btn-disabled:hover,
+.btn-primary:disabled:hover,
+.btn-primary[aria-disabled="true"]:hover,
+.btn-error.btn-disabled:hover,
+.btn-error:disabled:hover,
+.btn-error[aria-disabled="true"]:hover,
+.btn-outline.btn-disabled:hover,
+.btn-outline:disabled:hover,
+.btn-outline[aria-disabled="true"]:hover,
+.btn-ghost.btn-disabled:hover,
+.btn-ghost:disabled:hover,
+.btn-ghost[aria-disabled="true"]:hover {
+  background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
+  background-position: 0 0;
+  color: oklch(60% 0.02 240);
+  border-color: oklch(85% 0.01 240);
+  box-shadow: none;
+  transform: none;
 }
 .btn-sm { font-size: 13px; padding: 6px 12px; min-height: 32px; }
 .btn-lg { font-size: 16px; padding: 12px 22px; min-height: 48px; }
@@ -16924,10 +17009,22 @@ const BUTTON_PEARL_CSS = `
 
 /* Form fields — cap input width so a single form field doesn't
    stretch to 1300px on a wide screen. Forms read better in a column
-   that's 480-640px wide, mirroring iOS and Stripe's checkout patterns. */
+   that's 480-640px wide, mirroring iOS and Stripe's checkout patterns.
+   Targets DaisyUI's fieldset class (the actual emitted class) plus
+   clear-form-field for any explicitly-tagged fields. The w-full
+   utility on the input inside the fieldset is fine — it expands to fill
+   the fieldset, which we have now capped. */
+.clear-shell-outlet fieldset.fieldset,
 .clear-shell-outlet fieldset.clear-form-field,
 .clear-shell-outlet .clear-form-field {
-  max-width: 640px;
+  max-width: 480px;
+}
+/* Submit Request style cards (a single form panel) — when a single
+   bordered card holds a stacked form, cap that card too so the form
+   doesn't bleed across the full content area. */
+.clear-shell-outlet .card:has(fieldset.fieldset),
+.clear-shell-outlet section:has(fieldset.fieldset) {
+  max-width: 720px;
 }
 
 /* "as 2 columns" grid: real gap between the table and the detail panel. */
