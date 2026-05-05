@@ -865,50 +865,104 @@ import { tags } from './codemirror.bundle.js';
 // ==========================================================================
 // CLEAR SYNTAX HIGHLIGHTING
 // ==========================================================================
+// Two-tier model: structural keywords get the bold blue keyword color so
+// the SHAPE of the program pops; English connector words (is, with, the,
+// less, than, greater, or, fail, error, message, etc.) DON'T highlight —
+// they read as natural English and lighting them up turns every line into
+// a wall of blue. Numeric literals (amber), strings (green), and slate-gray
+// variables carry most of the meaning; the keyword color is reserved for
+// the words that anchor the code's structure.
 const clearKeywords = new Set([
-  'build','for','web','and','javascript','python','backend',
-  'database','is','local','memory','create','table','required','default','auto',
-  'when','user','calls','GET','POST','PUT','DELETE','sending','receiving','receives',
-  'send','back','with','success','message',
-  'requires','auth','role',
-  'page','at','section','style','heading','subheading','text','bold','italic','link','divider',
-  'button','display','as','input','saved','checkbox','dropdown','number','text',
-  'on','load','get','from','to',
-  'if','then','otherwise','true','false',
-  'set','define','function','return','show',
-  'for','each','in','repeat','times','while','less','than','greater','equal',
-  'increase','decrease','by',
-  'agent','ask','claude','ai','returning','JSON',
-  'can','use','must','not','remember','conversation','context','knows','about',
-  'workflow','state','has','step','track','progress','save',
-  'pipeline','call','run','do','these','the','same','time',
-  'policy','block','schema','changes','deletes','without','filter','protect','tables',
-  'prompt','injection','mass','emails',
-  'try','error','an','empty','list',
-  'test','expect','mock','responding',
-  'validate','log','every','request','allow','cross-origin','requests',
-  'nothing','null','missing','checked',
-  'look','up','all','where','remove','update','using','this','id',
-  'navigate',
-  'store','restore',
+  // Top-level / directives
+  'build','target','web','javascript','python','backend','database',
+  'allow','log','navigate','store','restore',
+  // Schema / data
+  'create','table','tables','required','default','auto','schema','seed',
+  // Auth / scope
+  'requires','auth','role','user',
+  // Endpoints / routing
+  'when','calls','sends','receives','sending','receiving','send','validate',
+  'GET','POST','PUT','DELETE',
+  // UI structure
+  'page','section','heading','subheading','divider','link','button','display',
+  'input','checkbox','dropdown','text','bold','italic','style','load','navigate',
+  // Control flow
+  'if','then','otherwise','for','each','repeat','times','while','set','define',
+  'function','return','show','increase','decrease',
+  // Math literals (treated as keywords for highlighting consistency)
+  'true','false',
+  // AI / agents
+  'agent','ask','claude','ai','knows','tools','memory','workflow','state',
+  'has','step','pipeline','call','run','responding',
+  // Security / policy
+  'policy','block','protect','filter','injection','mock',
+  // Tests + provable rules
+  'test','expect','rule','enforce','that',
+  // CRUD + data ops
+  'look','update','remove','save','get',
+  // Workflow lifecycle
+  'try','track','progress',
 ]);
 
 const clearLang = StreamLanguage.define({
-  startState: () => ({ inComment: false }),
+  // inString: null | "'" | '"' — when a string literal opens on one line
+  // but doesn't close before the wrap, every subsequent line stays inside
+  // the string until we see the matching close quote. Without this,
+  // wrapped error messages like
+  //   'Discounts of 30% or more require VP approval — submit
+  //   through the VP escalation queue, not the standard CRO desk'
+  // tokenized the second line as code, lighting up `the`, `not`, `the`
+  // as keywords inside what's actually still string content.
+  startState: () => ({ inComment: false, inString: null }),
   token(stream, state) {
+    // Continue an unterminated string from a previous line.
+    if (state.inString) {
+      const quote = state.inString;
+      while (!stream.eol()) {
+        const ch = stream.next();
+        if (ch === quote) {
+          state.inString = null;
+          return 'string';
+        }
+      }
+      return 'string';
+    }
     if (stream.match(/^#.*/)) return 'comment';
-    if (stream.match(/^'[^']*'/)) return 'string';
-    if (stream.match(/^"[^"]*"/)) return 'string';
+    // Identifier (with optional possessive) — must come BEFORE the string
+    // matcher, otherwise `deal's discount` opens a string at the
+    // apostrophe and swallows the rest of the line. The identifier regex
+    // allows kebab-case (rule names like `discount-not-over-cap`) plus an
+    // optional possessive suffix (`'s` or `\`s`). Hyphens require a letter
+    // after them so arithmetic on bare numbers (`5 - 3`) still tokenizes
+    // the minus as an operator (handled below).
+    if (stream.match(/^[a-zA-Z_][a-zA-Z0-9_]*(?:-[a-zA-Z][a-zA-Z0-9_]*)*(?:['`]s\b)?/)) {
+      const w = stream.current();
+      // Strip the possessive suffix before checking against keywords —
+      // `deal's` should be a variable, not a keyword lookup on "deal's".
+      const head = w.replace(/['`]s$/, '');
+      if (clearKeywords.has(head)) return 'keyword';
+      if (head === head.toUpperCase() && head.length > 1) return 'typeName';
+      return 'variableName';
+    }
+    // String — consume to the closing quote OR the end of the line. If we
+    // hit EOL first, mark the state so the next line continues the string.
+    if (stream.peek() === "'" || stream.peek() === '"') {
+      const quote = stream.next();
+      while (!stream.eol()) {
+        const ch = stream.next();
+        if (ch === quote) return 'string';
+      }
+      // EOL inside string — stay in-string for next line
+      state.inString = quote;
+      return 'string';
+    }
     if (stream.match(/^\d+(\.\d+)?/)) return 'number';
     if (stream.match(/^\/api\/[a-zA-Z0-9_/:.-]*/)) return 'string';
     if (stream.match(/^\/[a-z][a-zA-Z0-9_/-]*/)) return 'string';
-    if (stream.match(/^[=+\-*/<>!]+/)) return 'operator';
-    if (stream.match(/^[a-zA-Z_][a-zA-Z0-9_]*/)) {
-      const w = stream.current();
-      if (clearKeywords.has(w)) return 'keyword';
-      if (w === w.toUpperCase() && w.length > 1) return 'typeName';
-      return 'variableName';
-    }
+    if (stream.match(/^[=+*/<>!]+/)) return 'operator';
+    // Bare minus (binary operator on numbers / spaces). The identifier
+    // matcher above already grabbed the kebab-case case before this fires.
+    if (stream.match(/^-/)) return 'operator';
     stream.next();
     return null;
   },

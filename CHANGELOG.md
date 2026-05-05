@@ -6,7 +6,21 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — PC-2: conditional rules now prove + PC-5 doc cascade closed
+## 2026-05-04 (latest) — Studio editor highlighting: three silent tokenizer bugs fixed
+
+Russell flagged "weird highlighting" on deal-desk in Studio. Looking at the screenshot showed three real bugs in `playground/ide.html`'s Clear language definition that all hit the same kind of source — long error messages and named rules:
+
+1. **Multi-line strings broke at the wrap.** The string regex was `/^'[^']*'/` (single-line only). Long error messages that wrapped to a second source line had no closing quote on the opener line, so the regex failed and every word on the next line — `the`, `not`, `the` — got tokenized as code. The wrapped second line lit up like Christmas with fake keyword colors. Fix: track an `inString` quote in the tokenizer state. When EOL hits inside a string, set the state; on the next line, consume until the matching close quote arrives. Wrapped strings now stay one continuous green-colored string token.
+2. **Hyphenated rule names tokenized in pieces.** `discount-not-over-cap` got split as `discount` (variable), `-` (operator), `not` (keyword!), `-`, `over`, `-`, `cap`. The `not` lit blue inside the rule name. Fix: identifier regex now allows kebab-case (`(?:-[a-zA-Z][a-zA-Z0-9_]*)*`) — the hyphen-letter sequence binds into the identifier, but bare arithmetic minus on numbers/spaces still falls through to the operator branch.
+3. **Possessive `deal's` opened a string.** The string matcher saw the apostrophe in `deal's discount_percent` as a string opener, swallowed everything until the next `'` (often the opener of the actual error message), and the rest of the line de-synced. Fix: identifier regex absorbs `(?:['`]s\b)?` as part of the same token, so `deal's` tokenizes as one variable. The string matcher now runs AFTER the identifier matcher, so the apostrophe-after-letter case never reaches it.
+
+**Verified live in Studio:** loaded the deal-desk-shaped source with all three trigger patterns; the rule name `discount-not-over-cap` is one slate-gray variable, `deal's` is one slate-gray variable, the wrapped error message stays one green string blob across the line break — `the`, `not`, `the` no longer light up as keywords inside it. Compiler tests 2915/0 unaffected (the language def is browser-only, isolated from the compiler).
+
+Plain English: in your screenshot the long error message ran across two lines and the second line lit up like code instead of staying gray-green like a quoted message. Same with the hyphenated rule names — `not` showed as a keyword in the middle of a name. Both gone.
+
+---
+
+## 2026-05-04 — PC-2: conditional rules now prove + PC-5 doc cascade closed
 
 Two prover-roadmap items shipped in one branch.
 
