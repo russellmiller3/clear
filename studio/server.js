@@ -3887,6 +3887,32 @@ app.post('/api/chat', async (req, res) => {
         final_source: currentSource.slice(0, 10000),
       };
       writeFileSync(join(SESSIONS_DIR, `${sessionId}.json`), JSON.stringify(record, null, 2));
+
+      // Full transcript for debugging — includes every user turn, every
+      // Meph reply (with tool calls embedded as content blocks), and
+      // every tool result (compile output, run results, test results).
+      // Russell's debugging workflow: hand the transcript to a fresh
+      // Claude session, point at the failure, get a root cause without
+      // having to replay the whole interaction live. The skeletal record
+      // above is for telemetry / training; this one is for human review.
+      const transcript = {
+        id: sessionId,
+        started_at: sessionStartedAt,
+        ended_at: Math.floor(Date.now() / 1000),
+        model: typeof MEPH_MODEL !== 'undefined' ? MEPH_MODEL : (selectedModel?.id || 'unknown'),
+        backend: ghostActive ? `gm:${getBackendId?.()}` : (useOpenRouterPicker ? 'openrouter' : 'anthropic'),
+        task: (messages[0]?.content || '').slice(0, 1000),
+        message_count: Array.isArray(currentMessages) ? currentMessages.length : 0,
+        final_source: currentSource,
+        messages: Array.isArray(currentMessages) ? currentMessages : [],
+        session_test_calls: sessionTestCalls,
+        last_compile_errors: lastCompileResult?.errors || [],
+        last_compile_warnings: lastCompileResult?.warnings || [],
+      };
+      writeFileSync(
+        join(SESSIONS_DIR, `${sessionId}.transcript.json`),
+        JSON.stringify(transcript, null, 2)
+      );
     } catch { /* non-fatal — don't crash the session */ }
   }
 });
