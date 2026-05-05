@@ -546,7 +546,48 @@ body {
   width: 100%;
   box-sizing: border-box;
 }
-.clear-shell-outlet > * + * { margin-top: 24px; }
+/* Vertical rhythm — fires at TWO depths because the compiled output
+   sometimes wraps cards in an empty-class div between the outlet and
+   the cards. Without the second selector, all cards have margin-top:0
+   and stack against each other. The rule fires at both depths so
+   whichever level the compiler emits, the gap fires.
+   32px is Atlassian's space.400 — the "major content spacing" rung,
+   used between distinct sections (stat strip → workbench → submit form).
+   Refactoring UI's 8pt grid agrees: 32 is the section-break value. */
+.clear-shell-outlet > * + *,
+.clear-shell-outlet > div > * + * {
+  margin-top: 32px;
+}
+/* Workbench grid override — when the 2-column grid contains a detail
+   panel, give the table column flex space and pin the detail panel to
+   380px. Tailwind's grid-cols-2 is symmetric (50/50) which squishes
+   the table column on a 4-column table layout, causing horizontal
+   scroll inside the card and a cut-off filter input. Microsoft's
+   master-detail spec says 360-400px for the detail pane with the list
+   pane fluid. We pick 380px (mid-range). 24px gap is Atlassian's
+   space.300 for "container/larger components". */
+.clear-shell-outlet .grid.grid-cols-2:has(> .clear-detail-panel) {
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+}
+@media (max-width: 768px) {
+  /* Below 768px the 2-column workbench can't fit comfortably side by
+     side per the master-detail collapse breakpoint. Stack vertically. */
+  .clear-shell-outlet .grid.grid-cols-2:has(> .clear-detail-panel) {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+/* Form-only card sitting BELOW the workbench (Submit Request style)
+   should NOT bleed across the full content area. Cap at 720px — the
+   form-readable width Linear uses for issue-create surfaces. Any card
+   that contains a fieldset directly OR is the last child of the wrapper
+   AND contains form inputs gets the cap. */
+.clear-shell-outlet .bg-base-100:has(> .clear-form-field),
+.clear-shell-outlet .bg-base-100:has(form),
+.clear-shell-outlet .bg-base-100.rounded-xl:has(fieldset.fieldset) {
+  max-width: 720px;
+}
 
 /* Workbench detail panel — used to share a hairline border with the
    table next to it. Now they sit 24px apart with a soft border + rounded

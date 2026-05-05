@@ -3127,7 +3127,31 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  function send(obj) { res.write(`data: ${JSON.stringify(obj)}\n\n`); }
+  function send(obj) {
+    if (clientClosed) return; // don't write after client disconnect
+    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+  }
+
+  // Mid-stream stop support — when the user clicks Stop in Studio, the
+  // client aborts its fetch which fires `req.on('close')` here. Without
+  // this handler, the per-attempt watchdog AbortController INSIDE the
+  // retry loop kept running, the cc-agent subprocess kept spawning new
+  // tool calls, and Meph appeared to ignore the Stop button until his
+  // current iteration completed. Now: client disconnect flips a flag,
+  // the active fetch's controller is aborted, and the tool-iteration
+  // loop bails out at the top of the next iteration.
+  let clientClosed = false;
+  let activeAbortCtrl = null;        // mirrored from per-attempt ctrl below
+  let activeChildProcess = null;     // mirrored from cc-agent / OpenRouter spawn
+  req.on('close', () => {
+    clientClosed = true;
+    try { activeAbortCtrl && activeAbortCtrl.abort(new Error('client disconnected')); } catch {}
+    try { activeChildProcess && activeChildProcess.kill && activeChildProcess.kill('SIGTERM'); } catch {}
+    // Hard kill 2s later if SIGTERM didn't take.
+    setTimeout(() => {
+      try { activeChildProcess && activeChildProcess.kill && activeChildProcess.kill('SIGKILL'); } catch {}
+    }, 2000);
+  });
 
   const headers = {
     'Content-Type': 'application/json',
@@ -3371,6 +3395,15 @@ app.post('/api/chat', async (req, res) => {
     let snapRetryCount = 0;
 
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
+      // Bail out the moment the user clicks Stop. The req.on('close')
+      // handler set this flag and already aborted the in-flight fetch;
+      // checking here ensures we don't fire ANOTHER tool iteration after
+      // the client gave up.
+      if (clientClosed) {
+        console.log('[chat] client disconnected mid-loop, stopping iteration');
+        try { res.end(); } catch {}
+        return;
+      }
       // Prompt-caching strategy (added Session 38):
       //   1. System array has cache_control on the stable block → caches tools
       //      + stable system together (tools render before system; a breakpoint
@@ -3431,6 +3464,7 @@ app.post('/api/chat', async (req, res) => {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
           const ctrl = new AbortController();
+          activeAbortCtrl = ctrl; // mirror so req.on('close') can abort us
           let firstByteSeen = false;
           let watchdog = setTimeout(() => ctrl.abort(new Error('first-token timeout')), FIRST_TOKEN_TIMEOUT_MS);
           // Resetting helper used by the read loop below
