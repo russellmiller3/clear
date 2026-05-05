@@ -144,9 +144,17 @@ Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fai
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
 - **Compiled output is self-documenting.** Every compiled file starts with an auto-generated ASCII architecture diagram (tables, endpoints, pages, data flow). Regenerates on every build. The diagram IS the intent file for that app.
 
-## Core 8 Templates
-These are the showcase apps — each archetype exercises a different feature slice.
-Playwright-tested. If a template breaks, the compiler has a regression.
+## 13 Canonical Apps (HARD RULE — Studio dropdown shows EXACTLY these 13)
+
+Two nets of apps that exercise the language end-to-end. Studio's app-picker
+dropdown shows EXACTLY these 13 — nothing else. If a new app proves out, it
+joins one of these nets explicitly. Random apps belong outside the dropdown
+(direct file open, not the picker).
+
+### The 8 core templates — feature-breadth net
+
+Each exercises a different slice of the language. Playwright-tested. If a
+template breaks, the compiler has a regression.
 
 | # | Template | Archetype | Features Showcased |
 |---|----------|-----------|-------------------|
@@ -158,6 +166,27 @@ Playwright-tested. If a template breaks, the compiler has a regression.
 | 6 | `booking` | Workflow | Multi-step logic, validation, relationships, scheduling |
 | 7 | `expense-tracker` | Personal app | CRUD, aggregates, charts, CSV export, categories |
 | 8 | `ecom-agent` | E-commerce | Agent + chat UI, intent routing, skills, dashboard, RAG over products |
+
+### The 5 Marcus apps — regulated-tier business pitch net
+
+Each is something Marcus's RevOps team actually builds. These are what the
+Marcus demo + first paying customer pitch lean on.
+
+| # | Template | What It Does |
+|---|----------|---------------|
+| 1 | `deal-desk` | Discount approval with provable rules — the headline app for the regulated-tier pitch |
+| 2 | `approval-queue` | Generic approval workflow |
+| 3 | `internal-request-queue` | IT / ops request queue |
+| 4 | `onboarding-tracker` | New-hire / customer onboarding |
+| 5 | `lead-router` | Lead routing logic |
+
+### Studio dropdown rule
+
+The app-picker UI must list ONLY these 13. Anything else (scratch apps,
+work-in-progress, demos for one-off testing) lives outside the dropdown —
+accessible via direct file open, not the picker. When adding a new entry to
+either net, update this table AND the Studio picker implementation in the
+same commit.
 
 ## No Self-Assignment Rule
 Never write `x is x` in Clear code. When building records from function arguments, the argument names must differ from the field names: `subject is title` not `subject is subject`. The reader must instantly see which side is the source and which is the destination. See AI-INSTRUCTIONS.md for full examples.
