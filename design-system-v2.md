@@ -57,6 +57,58 @@ These are compiler-enforced constraints, not suggestions.
 
 ---
 
+## Pearlescent Button Palette (Russell, 2026-05-04)
+
+DaisyUI's flat default buttons read "bootstrappy." Every Marcus app + landing page replaces them with a two-tier pearlescent system. The compiler emits this CSS into every compiled HTML's `<style>` block (`BUTTON_PEARL_CSS` in `compiler.js`); Studio's IDE inherits the same look via duplicated CSS in `playground/ide.html` (or `studio.html` once renamed).
+
+**Visual spec:**
+- **Default `.btn`** — light gray-blue base. Vertical gradient `oklch(96.5% → 89% 235-240)`. 1px border at `oklch(83% 0.025 235)`. Inner top highlight + soft drop shadow. 8px corner radius.
+- **`.btn-primary`** — deeper navy-leaning pearl. Vertical gradient `oklch(58% → 46% 246-254)`. White text. Used for the single primary action per section (per Rule 2).
+- **`.btn-ghost`** — transparent, no border. On hover, becomes the pearlescent gray-blue.
+- **`.btn-outline`** — pale gray-blue base + always-visible border.
+- **`.btn-error`** — red gradient, same shape rules.
+
+**Hover animation — right-to-left opal sweep:**
+- Buttons stack TWO background-image layers: a pearl base (always visible) + an opal multi-stop gradient (cyan → blue → violet → rose → gold) sized to 220% of the button width and parked off-screen-right at `background-position: 110% 0`.
+- On `:hover`, `background-position` animates to `-10% 0` over 720ms with `cubic-bezier(0.4, 0, 0.2, 1)`. The opal layer drags right-to-left across the button surface, then exits past the left edge.
+- Box-shadow simultaneously deepens to `0 4-6px 12-16px oklch(60-70% 0.10-0.18 240-280)` so the button reads "lifted" during the sweep.
+- `:active` adds `translateY(1px)` + an inset shadow for tactile press feedback.
+- `:focus-visible` adds a 2px outline at `oklch(60% 0.16 240)` with 2px offset.
+
+**Reference:** `BUTTON_PEARL_CSS` constant in `compiler.js`. Don't fork the values — change the constant, recompile, verify the sweep still feels smooth (under 1 second) on a real Marcus app.
+
+---
+
+## App Layout Rules (Russell, 2026-05-04)
+
+Modern dashboards (Linear, Stripe, Vercel, Notion) cap content at 1280–1440px and center it. Edge-to-edge content on a 27-inch screen reads as broken UI. The compiler emits these layout rules in every compiled app's `<style>` block.
+
+**Constraints (every Marcus app inherits these):**
+
+| Surface | Rule |
+|---|---|
+| Main content area (`[data-clear-shell-outlet]`) | `max-width: 1440px`, centered (`margin: 0 auto`), padding `32px 40px` |
+| Vertical rhythm between sections | `> * + * { margin-top: 24px }` (24px gap between every direct child) |
+| Stat strip cards (`.clear-stat-card`) | Capped at `320px` max width; 3 cards in a 1440px content area read as compact KPI tiles, not stretched banners |
+| Stat strip grid (`.clear-stat-strip`) | `grid-template-columns: repeat(auto-fit, minmax(220px, 320px))`; gap `16px`; `justify-content: start` so cards don't stretch when there's only 2-3 |
+| Workbench 2-column grid (`as 2 columns`) | `gap: 24px` between columns; the table and detail panel never touch |
+| Detail panel (`.clear-detail-panel`) | `margin-left: 24px`, `border-radius: 16px`, full border + soft shadow; was a hairline-bordered slab pressed against the table |
+| Form fields (`fieldset.clear-form-field`) | `max-width: 640px`; mirrors iOS / Stripe checkout — forms read better in a column, not stretched edge-to-edge |
+| Cards (`.bg-base-100.rounded-xl`, `.rounded-box`) | Bumped to `border-radius: 16px` for a softer dashboard feel |
+
+**Sidebar:** 240px fixed width (set inline in compiled output). Sidebar items at 36px height (Linear/Stripe convention — desktop pattern, not the 44px mobile touch target).
+
+**Why these specific numbers:**
+- 1440px max content width — fits 3 stat cards (320px each) + 2 panels in a workbench (table 720px + detail 340px + 24px gap + 36px slack) without scroll.
+- 32px/40px gutters — generous on wide screens; the 32px vertical padding gives breathing room above/below the page header.
+- 24px vertical rhythm — large enough to read as separate sections, small enough that two stat strips fit on the same fold.
+- 16px stat-strip gap — tight enough that 3 cards read as one row of KPIs; loose enough they don't stick together.
+- 24px workbench gap — exactly twice the standard 12px. Two distinct panels, not "table with extra panel."
+
+**Reference:** the layout rules live in `BUTTON_PEARL_CSS` (same constant — naming is sticky, the constant covers buttons + layout). Recompile any Marcus app to see the rules apply.
+
+---
+
 ## Theme CSS Variables
 
 Place inside `<style>` before DaisyUI loads, or in your compiled CSS. Set `data-theme` on `<html>`.

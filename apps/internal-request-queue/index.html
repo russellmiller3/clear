@@ -288,57 +288,62 @@ body {
   position: sticky;
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 14px;
   border-top: 1px solid var(--clear-line);
   background: var(--clear-bg-panel);
+}
+.clear-detail-actions .btn {
+  flex: 0 1 auto;
+  min-width: 0;
 }</style>
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
 <div id="page_Request_Queue" data-clear-page-id="Request_Queue" data-clear-page-route="/" data-clear-page-title="Request Queue">
-    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="131">
-    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="133">
-    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="134"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="133">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="135">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="136"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
     <nav class="flex-1 overflow-y-auto py-4 px-4">
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Queues</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_137_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="137"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span><span class="clear-nav-count num" data-clear-tpl="{new_count}">{new_count}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_138_All_requests" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="138"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span><span class="clear-nav-count num" data-clear-tpl="{all_count}">{all_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_139_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="139"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span><span class="clear-nav-count num" data-clear-tpl="{new_count}">{new_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_140_All_requests" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="140"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span><span class="clear-nav-count num" data-clear-tpl="{all_count}">{all_count}</span></a></li>
         <li class="clear-nav-section-label">Teams</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_141_IT" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="141"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_142_HR" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="142"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_143_Facilities" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="143"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_144_Finance" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="144"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_143_IT" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="143"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_144_HR" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="144"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_145_Facilities" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="145"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_146_Finance" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="146"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
       </ul>
     </nav>
     </aside>
-    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="146">
-    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="148">
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="148">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="150">
       <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
-    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="149">Internal Request Queue</h1>
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="151">Internal Request Queue</h1>
       </div>
       <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="150">Operations / Employee intake</p>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="152">Operations / Employee intake</p>
       </nav>
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
-    <button class="btn btn-primary btn-sm" id="btn_Refresh" data-clear-uat-id="button_151_Refresh" data-clear-control-kind="button" data-clear-line="151">Refresh</button>
+    <button class="btn btn-primary btn-sm" id="btn_Refresh" data-clear-uat-id="button_153_Refresh" data-clear-control-kind="button" data-clear-line="153">Refresh</button>
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="155">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="157">
       <div data-clear-routed-content="Request_Queue" data-clear-routed-route="/">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="157">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="159">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">New Request Triage</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{new_count} requests awaiting owner assignment">{new_count} requests awaiting owner assignment</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
-    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_160_Refresh" data-clear-control-kind="button" data-clear-line="160">Refresh</button>
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_162_Refresh" data-clear-control-kind="button" data-clear-line="162">Refresh</button>
       </div>
     </div>
-    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="164">
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="165">
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="166">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="167">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">New</div>
           <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
@@ -347,7 +352,7 @@ body {
         <div class="clear-stat-delta clear-stat-delta-positive">Needs first response</div>
         <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,14.0 48.0,24.0 71.0,4.0 94.0,24.0"></polyline></svg>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="170">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="172">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">All Requests</div>
           <i class="clear-stat-icon" data-lucide="list-checks" aria-hidden="true"></i>
@@ -356,7 +361,7 @@ body {
         <div class="clear-stat-delta clear-stat-delta-positive">Across open and resolved work</div>
         <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,14.0 48.0,4.0 71.0,4.0 94.0,14.0"></polyline></svg>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="175">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="177">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Teams</div>
           <i class="clear-stat-icon" data-lucide="users" aria-hidden="true"></i>
@@ -366,9 +371,9 @@ body {
         <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,24.0 48.0,24.0 71.0,24.0 94.0,24.0"></polyline></svg>
       </div>
     </div>
-    <div class="grid grid-cols-2 gap-5" data-clear-line="181">
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="182">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_New_Requests" data-clear-line="183">
+    <div class="grid grid-cols-2 gap-5" data-clear-line="183">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="184">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_New_Requests" data-clear-line="185">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">New Requests</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_New_Requests_table">
@@ -381,10 +386,10 @@ body {
       </div>
     </div>
     </div>
-    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_request" data-clear-line="185">
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_request" data-clear-line="187">
       <div class="clear-detail-empty">Select a row to inspect it.</div>
       <div class="clear-detail-body">
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="186">Select a request to inspect the triage facts.</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="188">Select a request to inspect the triage facts.</span>
     <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
@@ -393,22 +398,22 @@ body {
     <p id="show_5" class="text-sm font-medium text-base-content/90 leading-snug"></p>
       </div>
       <div class="clear-detail-actions" data-detail-actions="true">
-    <button class="btn btn-primary" id="btn_Assign" data-clear-uat-id="button_194_Assign" data-clear-control-kind="button" data-action="assign" data-clear-line="194">Assign</button>
-    <button class="btn btn-primary" id="btn_Resolve" data-clear-uat-id="button_199_Resolve" data-clear-control-kind="button" data-action="resolve" data-clear-line="199">Resolve</button>
+    <button class="btn btn-primary" id="btn_Assign" data-clear-uat-id="button_196_Assign" data-clear-control-kind="button" data-action="assign" data-clear-line="196">Assign</button>
+    <button class="btn btn-primary" id="btn_Resolve" data-clear-uat-id="button_201_Resolve" data-clear-control-kind="button" data-action="resolve" data-clear-line="201">Resolve</button>
       </div>
     </aside>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="205">
-    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="206">Submit Request</p>
-    <fieldset class="fieldset mb-4" data-clear-line="207">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="207">
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="208">Submit Request</p>
+    <fieldset class="fieldset mb-4" data-clear-line="209">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Title</legend>
       <input id="input_title" class="input input-bordered w-full" type="text" placeholder="Title">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="208">
+    <fieldset class="fieldset mb-4" data-clear-line="210">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Description</legend>
       <input id="input_description" class="input input-bordered w-full" type="text" placeholder="Description">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="209">
+    <fieldset class="fieldset mb-4" data-clear-line="211">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Category</legend>
       <select id="input_category" class="select select-bordered w-full">
         <option value="IT">IT</option>
@@ -417,7 +422,7 @@ body {
         <option value="Finance">Finance</option>
       </select>
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="210">
+    <fieldset class="fieldset mb-4" data-clear-line="212">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Priority</legend>
       <select id="input_priority" class="select select-bordered w-full">
         <option value="Urgent">Urgent</option>
@@ -426,11 +431,11 @@ body {
         <option value="Low">Low</option>
       </select>
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="211">
+    <fieldset class="fieldset mb-4" data-clear-line="213">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your name</legend>
       <input id="input_submitter" class="input input-bordered w-full" type="text" placeholder="Your name">
     </fieldset>
-    <button class="btn btn-primary" id="btn_Submit" data-clear-uat-id="button_212_Submit" data-clear-control-kind="button" data-clear-line="212">Submit</button>
+    <button class="btn btn-primary" id="btn_Submit" data-clear-uat-id="button_214_Submit" data-clear-control-kind="button" data-clear-line="214">Submit</button>
     </div>
       </div>
     </div>
@@ -447,15 +452,15 @@ body {
    Requests: title*, description, category, priority, submitter*, assigned_to, status, resolution, created_at_date (line 25)
 
  ENDPOINTS:
-   GET /api/requests (line 54)
-   GET /api/requests/new (line 57)
-   GET /api/requests/my (line 60)
-   POST /api/requests [auth] (line 63)
-   PUT /api/requests/:id [auth] (line 71)
-   POST /api/seed (line 78)
+   GET /api/requests (line 56)
+   GET /api/requests/new (line 59)
+   GET /api/requests/my (line 62)
+   POST /api/requests [auth] (line 65)
+   PUT /api/requests/:id [auth] (line 73)
+   POST /api/seed (line 80)
 
  PAGES:
-   'Request Queue' at / (line 118)
+   'Request Queue' at / (line 120)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -700,7 +705,7 @@ let _state = {
 function _recompute() {
   // clear:21
   // Database: local memory (JSON file backup)
-  // clear:18
+  // clear:17
   // Auto-generated audit table for queue 'request'
   const RequestDecisionsSchema = {
     request_id: { type: "text", required: true },
@@ -711,21 +716,21 @@ function _recompute() {
     decided_at: { type: "timestamp", auto: true }
   };
 
-  // clear:127
+  // clear:129
   let new_count = _clear_len(_state.new_requests);
-  // clear:128
+  // clear:130
   let all_count = _clear_len(_state.all_requests);
-  // clear:187
-  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_request?.title; }
-  // clear:188
-  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_request?.description; }
   // clear:189
-  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_request?.category; }
+  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_request?.title; }
   // clear:190
-  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_request?.priority; }
+  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_request?.description; }
   // clear:191
-  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_request?.submitter; }
+  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_request?.category; }
   // clear:192
+  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_request?.priority; }
+  // clear:193
+  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_request?.submitter; }
+  // clear:194
   { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_request?.status; }
   _clear_render_table(
     document.getElementById('output_New_Requests_table'),
@@ -734,11 +739,11 @@ function _recompute() {
     function(row, rowIndex) { var _keys = ["title","category","priority","submitter"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_New_Requests_table'), 'selected_request');
-  document.getElementById('input_title').value = _state.title;
-  document.getElementById('input_description').value = _state.description;
-  document.getElementById('input_category').value = _state.category;
-  document.getElementById('input_priority').value = _state.priority;
-  document.getElementById('input_submitter').value = _state.submitter;
+  { const _el = document.getElementById('input_title'); if (_el) _el.value = _state.title; }
+  { const _el = document.getElementById('input_description'); if (_el) _el.value = _state.description; }
+  { const _el = document.getElementById('input_category'); if (_el) _el.value = _state.category; }
+  { const _el = document.getElementById('input_priority'); if (_el) _el.value = _state.priority; }
+  { const _el = document.getElementById('input_submitter'); if (_el) _el.value = _state.submitter; }
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof new_count !== 'undefined') _tplCtx["new_count"] = new_count;
@@ -783,8 +788,8 @@ document.getElementById('btn_Refresh').addEventListener('click', async function(
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:152]', e.message); return _state.new_requests; });
-    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:153]', e.message); return _state.all_requests; });
+    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:154]', e.message); return _state.new_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:155]', e.message); return _state.all_requests; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -796,8 +801,8 @@ document.getElementById('btn_Refresh').addEventListener('click', async function(
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:161]', e.message); return _state.new_requests; });
-    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:162]', e.message); return _state.all_requests; });
+    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:163]', e.message); return _state.new_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:164]', e.message); return _state.all_requests; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -821,8 +826,8 @@ document.getElementById('btn_Assign').addEventListener('click', async function()
       const _r = await fetch("/api/requests/" + _id + "/assign", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/requests/:id/assign]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
     }
-    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:197]', e.message); return _state.new_requests; });
-    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:198]', e.message); return _state.all_requests; });
+    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:199]', e.message); return _state.new_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:200]', e.message); return _state.all_requests; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -846,8 +851,8 @@ document.getElementById('btn_Resolve').addEventListener('click', async function(
       const _r = await fetch("/api/requests/" + _id + "/resolve", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/requests/:id/resolve]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
     }
-    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:202]', e.message); return _state.new_requests; });
-    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:203]', e.message); return _state.all_requests; });
+    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:204]', e.message); return _state.new_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:205]', e.message); return _state.all_requests; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -865,9 +870,9 @@ document.getElementById('btn_Submit').addEventListener('click', async function()
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/requests", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ title: _state.title, description: _state.description, category: _state.category, priority: _state.priority, submitter: _state.submitter }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/requests] [clear:213]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:214]', e.message); return _state.new_requests; });
-    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:215]', e.message); return _state.all_requests; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/requests] [clear:215]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:216]', e.message); return _state.new_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:217]', e.message); return _state.all_requests; });
     _state.title = "";
     _state.description = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
@@ -881,9 +886,9 @@ _recompute(); // initial render with default state
 (async () => {
   try {
     { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:123]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:124]', e.message); return _state.new_requests; });
-    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:125]', e.message); return _state.all_requests; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:125]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:126]', e.message); return _state.new_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:127]', e.message); return _state.all_requests; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
@@ -937,6 +942,7 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
     var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
     if (!__hasQuery && !__hasMeta) return;
     var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    var __directEditMode = false; // Studio Direct Edit toggle (parent posts on/off)
     function __selectorFor(el) {
       if (!el || el === document) return null;
       if (el.id) return '#' + el.id;
@@ -949,8 +955,38 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
     function __post(msg) {
       try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
     }
+    function __postPlain(msg) {
+      // Plain postMessage without the 'source: clear-bridge' wrapper — used for
+      // clear-source-line which the parent's existing handler matches by type alone.
+      try { window.parent.postMessage(msg, __clearOrigin); } catch(e) {}
+    }
+    function __findClearLine(el) {
+      while (el && el !== document.body) {
+        if (el.dataset && el.dataset.clearLine) return parseInt(el.dataset.clearLine);
+        el = el.parentElement;
+      }
+      return null;
+    }
     // Capture user actions and forward to Studio
     document.addEventListener('click', function(e) {
+      // Direct Edit mode (full-stack app path — parallel to srcdoc's sourceMapCapture):
+      // intercept the click, walk up to find data-clear-line, post a clear-source-line
+      // event with directEdit flag so Studio jumps the cursor + drafts a Meph edit.
+      if (__directEditMode) {
+        var line = __findClearLine(e.target);
+        if (line !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          __postPlain({ type: 'clear-source-line', line: line, directEdit: true });
+          var hit = e.target;
+          while (hit && !(hit.dataset && hit.dataset.clearLine)) hit = hit.parentElement;
+          if (hit) {
+            hit.style.outline = '2px solid #6c8cff';
+            setTimeout(function() { hit.style.outline = ''; }, 800);
+          }
+          return;
+        }
+      }
       __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
     }, true);
     document.addEventListener('input', function(e) {

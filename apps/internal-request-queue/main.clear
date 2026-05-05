@@ -137,13 +137,13 @@ page 'Request Queue' at '/':
 
       nav section 'Queues':
         nav item 'New' to '/' with count new_count with icon 'inbox'
-        nav item 'All requests' to '/' with count all_count with icon 'list-checks'
+        nav item 'All requests' to '/all' with count all_count with icon 'list-checks'
 
       nav section 'Teams':
-        nav item 'IT' to '/' with icon 'monitor'
-        nav item 'HR' to '/' with icon 'users'
-        nav item 'Facilities' to '/' with icon 'building-2'
-        nav item 'Finance' to '/' with icon 'receipt'
+        nav item 'IT' to '/team/it' with icon 'monitor'
+        nav item 'HR' to '/team/hr' with icon 'users'
+        nav item 'Facilities' to '/team/facilities' with icon 'building-2'
+        nav item 'Finance' to '/team/finance' with icon 'receipt'
 
     section 'Main' with style app_main:
 
@@ -217,6 +217,162 @@ page 'Request Queue' at '/':
             get all_requests from '/api/requests'
             title is ''
             description is ''
+
+page 'All requests' at '/all':
+  on page load:
+    get all_requests from '/api/requests'
+
+  all_count = count of all_requests
+  new_count = count of all_requests where status is 'new'
+  resolved_count = count of all_requests where status is 'resolved'
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Requests'
+      nav section 'Queues':
+        nav item 'New' to '/' with icon 'inbox'
+        nav item 'All requests' to '/all' with count all_count with icon 'list-checks'
+      nav section 'Teams':
+        nav item 'IT' to '/team/it' with icon 'monitor'
+        nav item 'HR' to '/team/hr' with icon 'users'
+        nav item 'Facilities' to '/team/facilities' with icon 'building-2'
+        nav item 'Finance' to '/team/finance' with icon 'receipt'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'All requests'
+        text 'Operations / All requests'
+
+      section 'Body' with style app_content:
+        page header 'Every internal request':
+          subtitle '{all_count} total — {new_count} new, {resolved_count} resolved.'
+
+        section 'All Requests' with style app_table:
+          display all_requests as table showing title, category, priority, submitter, status
+
+page 'IT requests' at '/team/it':
+  on page load:
+    get all_requests from '/api/requests'
+
+  it_requests = all_requests where category is 'IT'
+  it_count = count of it_requests
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Requests'
+      nav section 'Queues':
+        nav item 'New' to '/' with icon 'inbox'
+        nav item 'All requests' to '/all' with icon 'list-checks'
+      nav section 'Teams':
+        nav item 'IT' to '/team/it' with count it_count with icon 'monitor'
+        nav item 'HR' to '/team/hr' with icon 'users'
+        nav item 'Facilities' to '/team/facilities' with icon 'building-2'
+        nav item 'Finance' to '/team/finance' with icon 'receipt'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'IT requests'
+        text 'Operations / IT'
+
+      section 'Body' with style app_content:
+        page header 'IT team queue':
+          subtitle '{it_count} requests routed to IT.'
+
+        section 'IT Requests' with style app_table:
+          display it_requests as table showing title, priority, submitter, status
+
+page 'HR requests' at '/team/hr':
+  on page load:
+    get all_requests from '/api/requests'
+
+  hr_requests = all_requests where category is 'HR'
+  hr_count = count of hr_requests
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Requests'
+      nav section 'Queues':
+        nav item 'New' to '/' with icon 'inbox'
+        nav item 'All requests' to '/all' with icon 'list-checks'
+      nav section 'Teams':
+        nav item 'IT' to '/team/it' with icon 'monitor'
+        nav item 'HR' to '/team/hr' with count hr_count with icon 'users'
+        nav item 'Facilities' to '/team/facilities' with icon 'building-2'
+        nav item 'Finance' to '/team/finance' with icon 'receipt'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'HR requests'
+        text 'Operations / HR'
+
+      section 'Body' with style app_content:
+        page header 'HR team queue':
+          subtitle '{hr_count} requests routed to HR.'
+
+        section 'HR Requests' with style app_table:
+          display hr_requests as table showing title, priority, submitter, status
+
+page 'Facilities requests' at '/team/facilities':
+  on page load:
+    get all_requests from '/api/requests'
+
+  facilities_requests = all_requests where category is 'Facilities'
+  facilities_count = count of facilities_requests
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Requests'
+      nav section 'Queues':
+        nav item 'New' to '/' with icon 'inbox'
+        nav item 'All requests' to '/all' with icon 'list-checks'
+      nav section 'Teams':
+        nav item 'IT' to '/team/it' with icon 'monitor'
+        nav item 'HR' to '/team/hr' with icon 'users'
+        nav item 'Facilities' to '/team/facilities' with count facilities_count with icon 'building-2'
+        nav item 'Finance' to '/team/finance' with icon 'receipt'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Facilities requests'
+        text 'Operations / Facilities'
+
+      section 'Body' with style app_content:
+        page header 'Facilities team queue':
+          subtitle '{facilities_count} requests routed to Facilities.'
+
+        section 'Facilities Requests' with style app_table:
+          display facilities_requests as table showing title, priority, submitter, status
+
+page 'Finance requests' at '/team/finance':
+  on page load:
+    get all_requests from '/api/requests'
+
+  finance_requests = all_requests where category is 'Finance'
+  finance_count = count of finance_requests
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Requests'
+      nav section 'Queues':
+        nav item 'New' to '/' with icon 'inbox'
+        nav item 'All requests' to '/all' with icon 'list-checks'
+      nav section 'Teams':
+        nav item 'IT' to '/team/it' with icon 'monitor'
+        nav item 'HR' to '/team/hr' with icon 'users'
+        nav item 'Facilities' to '/team/facilities' with icon 'building-2'
+        nav item 'Finance' to '/team/finance' with count finance_count with icon 'receipt'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Finance requests'
+        text 'Operations / Finance'
+
+      section 'Body' with style app_content:
+        page header 'Finance team queue':
+          subtitle '{finance_count} requests routed to Finance.'
+
+        section 'Finance Requests' with style app_table:
+          display finance_requests as table showing title, priority, submitter, status
 
 # Tests
 

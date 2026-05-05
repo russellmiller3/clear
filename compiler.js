@@ -12290,7 +12290,13 @@ ${bodyHTML}
             } else if (node.styleName === 'app_content' && currentPage && shellPage === currentPage) {
               shellAttr = ' data-clear-shell-outlet="true"';
             }
-            parts.push(`    <${shellTag} class="${cls}"${inlineStyleAttr}${shellAttr}${clAttr(node)}>`);
+            // Also add a class on the shell-outlet so CSS can target this
+            // surface without putting the data-attribute name into the
+            // stylesheet (where regression tests substring-match it).
+            const finalCls = (node.styleName === 'app_content' && currentPage && shellPage === currentPage)
+              ? (cls ? cls + ' clear-shell-outlet' : 'clear-shell-outlet')
+              : cls;
+            parts.push(`    <${shellTag} class="${finalCls}"${inlineStyleAttr}${shellAttr}${clAttr(node)}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -13430,13 +13436,17 @@ _router();`;
   const usesPagePresets = htmlBody.includes('style-page_');
   const hasStyledSections = usesAppPresets || usesPagePresets || (userCSS.length > 0 && htmlBody.includes('clear-section style-'));
 
-  // Tree-shake CSS based on what's actually in the HTML
-  const css = _buildCSS(htmlBody, userCSS, { fullWidth: hasStyledSections, theme: themeName });
+  // Tree-shake CSS based on what's actually in the HTML.
+  // Build TWICE: once without the universal pearl/layout block (so the
+  // hasFullLayout heuristic only sees user-driven layout signals), then
+  // append the pearl/layout block to the final css that lands in <style>.
+  const cssCore = _buildCSS(htmlBody, userCSS, { fullWidth: hasStyledSections, theme: themeName, skipPearl: true });
 
   // Detect if page uses full-width layout (app presets, grids, flex row, or side-by-side)
   const hasFullLayout = usesAppPresets || htmlBody.includes('style-app_layout') ||
-    css.includes('full_height') || css.includes('column_layout') || css.includes('grid') ||
-    css.includes('flex-direction: row') || css.includes('side_by_side');
+    cssCore.includes('full_height') || cssCore.includes('column_layout') || cssCore.includes('grid') ||
+    cssCore.includes('flex-direction: row') || cssCore.includes('side_by_side');
+  const css = cssCore + '\n\n' + BUTTON_PEARL_CSS;
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
   // The default page wrapper used to be `max-w-2xl mx-auto p-8` — a 600px column
   // that made every Marcus app look like a 2018 single-column-form site. Widen
@@ -16675,8 +16685,256 @@ function _buildCSS(htmlBody, customCSS, opts = {}) {
     }
   }
   if (customCSS) parts.push(customCSS);
+  // Pearlescent button palette + layout rules — Russell, 2026-05-04.
+  // Appended LAST so the universal rules don't pollute upstream layout
+  // heuristics like `hasFullLayout` (which substring-checks the css blob
+  // for "grid" / "flex-direction: row"). Caller can post-strip if needed.
+  if (!opts.skipPearl) parts.push(BUTTON_PEARL_CSS);
   return parts.join('\n\n');
 }
+
+// =====================================================================
+// PEARLESCENT BUTTON PALETTE + LAYOUT RULES (Russell, 2026-05-04)
+//
+// Buttons: light gray-blue pearlescent base; on hover, an opal-coloured
+// gradient sweeps right-to-left across the button (animated background-
+// position on a 200%-wide gradient).
+//
+// Layout: max-width 1440px on the main content area, 32px padding,
+// proper gaps between workbench panels, stat-card caps so 3 cards in a
+// row don't stretch to 1/3 of a 14-inch screen.
+// =====================================================================
+const BUTTON_PEARL_CSS = `
+/* ---------- Pearlescent buttons ---------- */
+.btn {
+  /* Two layers stacked: base pearl gradient (always visible) + opal sweep
+     gradient sized 200% wide and parked off-screen-right.  On hover we
+     animate the opal sweep's background-position from 100% → 0% to drag
+     it across the button right-to-left.  */
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.55) 35%,
+      oklch(91% 0.038 280 / 0.70) 50%,
+      oklch(92% 0.032 320 / 0.55) 65%,
+      oklch(94% 0.026 25 / 0)     100%
+    ),
+    linear-gradient(180deg,
+      oklch(96.5% 0.012 235) 0%,
+      oklch(93% 0.018 238) 48%,
+      oklch(89% 0.024 240) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(28% 0.04 240);
+  border: 1px solid oklch(83% 0.025 235);
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.005 235 / 0.9),
+    inset 0 -1px 0 0 oklch(82% 0.02 240 / 0.4),
+    0 1px 2px 0 oklch(28% 0.03 240 / 0.06),
+    0 1px 3px 0 oklch(28% 0.03 240 / 0.04);
+  transition: background-position 720ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 120ms ease;
+}
+.btn:hover {
+  /* Drag the opal layer from its parked position (110% off the right) all
+     the way past the left edge (-10%) — gives the sweep a clean exit. */
+  background-position: -10% 0, 0 0;
+  border-color: oklch(76% 0.05 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.95),
+    0 4px 12px 0 oklch(60% 0.10 240 / 0.18),
+    0 0 0 1px oklch(70% 0.05 240 / 0.25),
+    0 0 24px -8px oklch(75% 0.08 280 / 0.4);
+}
+.btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 3px 0 oklch(82% 0.025 240 / 0.5),
+    0 1px 1px 0 oklch(28% 0.03 240 / 0.05);
+}
+.btn:focus-visible {
+  outline: 2px solid oklch(60% 0.16 240);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background-image:
+    linear-gradient(110deg,
+      oklch(64% 0.20 220 / 0)   0%,
+      oklch(60% 0.22 248 / 0.6) 35%,
+      oklch(58% 0.24 280 / 0.7) 50%,
+      oklch(62% 0.20 320 / 0.6) 65%,
+      oklch(66% 0.18 25 / 0)    100%
+    ),
+    linear-gradient(180deg,
+      oklch(58% 0.16 246) 0%,
+      oklch(52% 0.18 250) 50%,
+      oklch(46% 0.20 254) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(99% 0.005 250);
+  border: 1px solid oklch(42% 0.18 254);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.12 248 / 0.6),
+    inset 0 -1px 0 0 oklch(36% 0.18 254 / 0.4),
+    0 1px 2px 0 oklch(22% 0.10 250 / 0.18),
+    0 2px 4px 0 oklch(22% 0.10 250 / 0.10);
+}
+.btn-primary:hover {
+  background-position: -10% 0, 0 0;
+  border-color: oklch(46% 0.20 250);
+  color: oklch(100% 0 0);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 248 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 250 / 0.30),
+    0 0 0 1px oklch(60% 0.16 248 / 0.4),
+    0 0 28px -6px oklch(60% 0.18 280 / 0.5);
+}
+.btn-ghost {
+  background-image: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: oklch(38% 0.04 240);
+  box-shadow: none;
+}
+.btn-ghost:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%
+    );
+  background-size: 220% 100%;
+  background-position: -10% 0;
+  background-repeat: no-repeat;
+  border-color: oklch(82% 0.04 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.9),
+    0 2px 8px 0 oklch(60% 0.10 240 / 0.12);
+}
+.btn-outline {
+  background-image: linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 100% 100%;
+  background-position: 0 0;
+  color: oklch(35% 0.05 240);
+  border: 1px solid oklch(78% 0.03 240);
+  box-shadow: inset 0 1px 0 0 oklch(99% 0.005 240 / 0.6);
+  transition: background 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-outline:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%),
+    linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 220% 100%, 100% 100%;
+  background-position: -10% 0, 0 0;
+  border-color: oklch(70% 0.05 240);
+  color: oklch(28% 0.06 240);
+}
+.btn-error {
+  background-image: linear-gradient(180deg,
+    oklch(62% 0.20 25) 0%,
+    oklch(56% 0.22 28) 50%,
+    oklch(50% 0.24 30) 100%);
+  color: oklch(99% 0.005 25);
+  border-color: oklch(46% 0.22 28);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.6),
+    0 1px 2px 0 oklch(28% 0.10 25 / 0.18);
+}
+.btn-error:hover {
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 28 / 0.30);
+}
+.btn-disabled,
+.btn:disabled {
+  background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
+  background-position: 0 0;
+  color: oklch(60% 0.02 240);
+  border-color: oklch(85% 0.01 240);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.btn-sm { font-size: 13px; padding: 6px 12px; min-height: 32px; }
+.btn-lg { font-size: 16px; padding: 12px 22px; min-height: 48px; }
+
+/* ---------- App layout: max-width + gutters + panel gaps ---------- */
+/* The main content area used to stretch edge-to-edge on wide screens.
+   Every modern dashboard (Linear, Stripe, Vercel, Notion) caps content at
+   ~1280-1440px and centers it. We do the same. */
+.clear-shell-outlet {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 40px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.clear-shell-outlet > * + * { margin-top: 24px; }
+
+/* Workbench detail panel — used to share a hairline border with the
+   table next to it. Now they sit 24px apart with a soft border + rounded
+   corners on the panel, matching the surrounding cards. */
+.clear-detail-panel {
+  margin-left: 24px;
+  border-left: 1px solid var(--clear-line);
+  border-radius: 16px;
+  background: var(--clear-bg-panel);
+  border: 1px solid var(--clear-line);
+  box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
+}
+
+/* Stat strip: cap card width so 3 cards in a 1440px content area look
+   like dashboard cards, not banner ads. Wraps cleanly under 1024px. */
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 320px));
+  gap: 16px;
+  justify-content: start;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 18px 20px;
+}
+
+/* Cards (display panels, app_card, generic bordered surfaces) — give
+   them rounded-2xl visual weight and consistent vertical rhythm. */
+.clear-shell-outlet .bg-base-100.rounded-xl,
+.clear-shell-outlet .bg-base-100.rounded-box {
+  border-radius: 16px;
+}
+
+/* Form fields — cap input width so a single form field doesn't
+   stretch to 1300px on a wide screen. Forms read better in a column
+   that's 480-640px wide, mirroring iOS and Stripe's checkout patterns. */
+.clear-shell-outlet fieldset.clear-form-field,
+.clear-shell-outlet .clear-form-field {
+  max-width: 640px;
+}
+
+/* "as 2 columns" grid: real gap between the table and the detail panel. */
+.clear-shell-outlet .grid.grid-cols-2 {
+  gap: 24px;
+}
+`;
 
 const RUNTIME_JS = `function _clear_sum(arr) {
   if (!Array.isArray(arr)) return 0;

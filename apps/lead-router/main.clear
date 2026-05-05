@@ -141,8 +141,8 @@ page 'Lead Router' at '/':
       nav section 'Queues':
         nav item 'New leads' to '/' with count total with icon 'inbox'
       nav section 'Operations':
-        nav item 'Routing rules' to '/' with count rules with icon 'route'
-        nav item 'Owners' to '/' with count owners with icon 'users'
+        nav item 'Routing rules' to '/routing-rules' with count rules with icon 'route'
+        nav item 'Owners' to '/owners' with count owners with icon 'users'
 
     section 'Main' with style app_main:
       section 'Top' with style app_header:
@@ -198,6 +198,82 @@ page 'Lead Router' at '/':
             text selected_lead's company
             text selected_lead's source
             text selected_lead's assigned_to
+
+page 'Routing rules' at '/routing-rules':
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Lead Router'
+      nav section 'Queues':
+        nav item 'New leads' to '/' with icon 'inbox'
+      nav section 'Operations':
+        nav item 'Routing rules' to '/routing-rules' with icon 'route'
+        nav item 'Owners' to '/owners' with icon 'users'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Routing rules'
+        text 'Sales ops / routing'
+
+      section 'Content' with style app_content:
+        page header 'How leads are routed':
+          subtitle 'Each new lead lands with one owner based on company size — and two named rules guard intake quality.'
+
+        section 'Size-based routing' with style app_card:
+          subheading 'Owner assignment by company size'
+          text 'When a lead is submitted, its size field decides who picks it up.'
+          text 'SMB leads → alice'
+          text 'Mid-market leads → bob'
+          text 'Enterprise leads → charlie'
+          text 'No size set → alice (default)'
+
+        section 'Intake guard rules' with style app_card:
+          subheading 'Named rules the prover verifies on every push'
+          text 'lead-must-have-name — every lead needs a name field; blanks reject with HTTP 403.'
+          text 'lead-must-have-email — every lead needs an email; blanks reject with HTTP 403.'
+          text 'Both rules carry their name in the rejection body so the audit log attributes refusals by policy, not by line number.'
+
+page 'Owners' at '/owners':
+  on page load:
+    get all_leads from '/api/leads'
+
+  alice_count = count of all_leads where assigned_to is 'alice'
+  bob_count = count of all_leads where assigned_to is 'bob'
+  charlie_count = count of all_leads where assigned_to is 'charlie'
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Lead Router'
+      nav section 'Queues':
+        nav item 'New leads' to '/' with icon 'inbox'
+      nav section 'Operations':
+        nav item 'Routing rules' to '/routing-rules' with icon 'route'
+        nav item 'Owners' to '/owners' with icon 'users'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Owners'
+        text 'Sales ops / owners'
+
+      section 'Content' with style app_content:
+        page header 'Lead owners':
+          subtitle 'Three owners pick up new leads. Counts include leads in every status, not just new.'
+
+        stat strip:
+          stat card 'Alice':
+            value alice_count
+            delta 'SMB owner'
+            icon 'user'
+          stat card 'Bob':
+            value bob_count
+            delta 'Mid-market owner'
+            icon 'user'
+          stat card 'Charlie':
+            value charlie_count
+            delta 'Enterprise owner'
+            icon 'user'
+
+        section 'Lead distribution by owner' with style app_table:
+          display all_leads as table showing name, company, size, assigned_to, status
 
 # Tests
 

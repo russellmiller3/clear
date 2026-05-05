@@ -158,11 +158,11 @@ page 'Onboarding Tracker' at '/':
 
       nav section 'Queue':
         nav item 'Dashboard' to '/' with count total with icon 'layout-dashboard'
-        nav item 'Customers' to '/' with count total with icon 'users'
-        nav item 'Steps' to '/' with count step_total with icon 'list-checks'
+        nav item 'Customers' to '/customers' with count total with icon 'users'
+        nav item 'Steps' to '/steps' with count step_total with icon 'list-checks'
 
       nav section 'Team':
-        nav item 'Managers' to '/' with icon 'user-check'
+        nav item 'Managers' to '/managers' with icon 'user-check'
 
     section 'Main' with style app_main:
 
@@ -236,6 +236,111 @@ page 'Onboarding Tracker' at '/':
 
         section 'All Steps' with style app_table:
           display steps as table showing customer_id, step_name, completed
+
+page 'Customers' at '/customers':
+  on page load:
+    get customers from '/api/customers/onboarding'
+
+  total = count of customers
+
+  section 'Layout' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Onboarding'
+      nav section 'Queue':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Customers' to '/customers' with count total with icon 'users'
+        nav item 'Steps' to '/steps' with icon 'list-checks'
+      nav section 'Team':
+        nav item 'Managers' to '/managers' with icon 'user-check'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Customers'
+        text 'Onboarding / Customers'
+
+      section 'Content' with style app_content:
+        page header 'All onboarding customers':
+          subtitle '{total} customers in the onboarding queue'
+
+        section 'Customers' with style app_table:
+          display customers as table showing company, name, email, account_manager, status
+
+page 'Steps' at '/steps':
+  on page load:
+    get steps from '/api/steps'
+
+  step_total = count of steps
+  open_steps = count of steps where completed is false
+  done_steps = count of steps where completed is true
+
+  section 'Layout' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Onboarding'
+      nav section 'Queue':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Customers' to '/customers' with icon 'users'
+        nav item 'Steps' to '/steps' with count step_total with icon 'list-checks'
+      nav section 'Team':
+        nav item 'Managers' to '/managers' with icon 'user-check'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Steps'
+        text 'Onboarding / Steps'
+
+      section 'Content' with style app_content:
+        page header 'Onboarding steps':
+          subtitle '{step_total} steps total — {open_steps} open, {done_steps} completed'
+
+        stat strip:
+          stat card 'Open':
+            value open_steps
+            icon 'circle-dashed'
+          stat card 'Done':
+            value done_steps
+            icon 'check-circle-2'
+
+        section 'All steps' with style app_table:
+          display steps as table showing customer_id, step_name, completed
+
+page 'Managers' at '/managers':
+  on page load:
+    get customers from '/api/customers/onboarding'
+
+  sarah_customers = count of customers where account_manager is 'Sarah'
+  mike_customers = count of customers where account_manager is 'Mike'
+
+  section 'Layout' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Onboarding'
+      nav section 'Queue':
+        nav item 'Dashboard' to '/' with icon 'layout-dashboard'
+        nav item 'Customers' to '/customers' with icon 'users'
+        nav item 'Steps' to '/steps' with icon 'list-checks'
+      nav section 'Team':
+        nav item 'Managers' to '/managers' with icon 'user-check'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Managers'
+        text 'Onboarding / Team'
+
+      section 'Content' with style app_content:
+        page header 'Account managers':
+          subtitle 'Two managers split the onboarding queue.'
+
+        stat strip:
+          stat card 'Sarah':
+            value sarah_customers
+            delta 'Active customers'
+            icon 'user-check'
+          stat card 'Mike':
+            value mike_customers
+            delta 'Active customers'
+            icon 'user-check'
+
+        section 'Customers by manager' with style app_table:
+          display customers as table showing account_manager, company, name, status
 
 # Tests
 

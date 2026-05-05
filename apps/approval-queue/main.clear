@@ -132,7 +132,7 @@ page 'Approval Queue' at '/':
 
       nav section 'Queues':
         nav item 'Pending' to '/' with count pending_count with icon 'inbox'
-        nav item 'All requests' to '/' with count all_count with icon 'list-checks'
+        nav item 'All requests' to '/all' with count all_count with icon 'list-checks'
 
     section 'Main' with style app_main:
 
@@ -205,6 +205,45 @@ page 'Approval Queue' at '/':
             title is ''
             description is ''
             amount is 0
+
+page 'All requests' at '/all':
+  on page load:
+    get all_requests from '/api/requests'
+
+  all_count = count of all_requests
+  approved_count = count of all_requests where status is 'approved'
+  rejected_count = count of all_requests where status is 'rejected'
+  pending_count = count of all_requests where status is 'pending'
+
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Approvals'
+      nav section 'Queues':
+        nav item 'Pending' to '/' with icon 'inbox'
+        nav item 'All requests' to '/all' with count all_count with icon 'list-checks'
+
+    section 'Main' with style app_main:
+      section 'Top' with style app_header:
+        heading 'All requests'
+        text 'Operations / Request history'
+
+      section 'Body' with style app_content:
+        page header 'Every request, every status':
+          subtitle '{all_count} total — {pending_count} pending, {approved_count} approved, {rejected_count} rejected.'
+
+        stat strip:
+          stat card 'Pending':
+            value pending_count
+            icon 'clock'
+          stat card 'Approved':
+            value approved_count
+            icon 'check-circle-2'
+          stat card 'Rejected':
+            value rejected_count
+            icon 'x-circle'
+
+        section 'All Requests' with style app_table:
+          display all_requests as table showing title, requester, amount, status
 
 # Tests
 

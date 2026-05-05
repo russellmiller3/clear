@@ -16,7 +16,7 @@ const CONTRACT = {
       "id": "Request_Queue",
       "title": "Request Queue",
       "route": "/",
-      "line": 118,
+      "line": 120,
       "expectedText": [
         "Request Queue",
         "Requests",
@@ -41,12 +41,12 @@ const CONTRACT = {
   ],
   "controls": [
     {
-      "id": "nav_item_137_New",
+      "id": "nav_item_139_New",
       "kind": "nav-item",
       "label": "New",
-      "line": 137,
+      "line": 139,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_137_New\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_139_New\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -59,12 +59,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_138_All_requests",
+      "id": "nav_item_140_All_requests",
       "kind": "nav-item",
       "label": "All requests",
-      "line": 138,
+      "line": 140,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_138_All_requests\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_140_All_requests\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -77,48 +77,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_141_IT",
+      "id": "nav_item_143_IT",
       "kind": "nav-item",
       "label": "IT",
-      "line": 141,
-      "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_141_IT\"]",
-      "action": {
-        "type": "navigate",
-        "targetRoute": "/"
-      },
-      "expected": {
-        "route": "/",
-        "visiblePageId": "Request_Queue",
-        "visibleText": "Requests"
-      },
-      "dataEffect": "navigates to /"
-    },
-    {
-      "id": "nav_item_142_HR",
-      "kind": "nav-item",
-      "label": "HR",
-      "line": 142,
-      "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_142_HR\"]",
-      "action": {
-        "type": "navigate",
-        "targetRoute": "/"
-      },
-      "expected": {
-        "route": "/",
-        "visiblePageId": "Request_Queue",
-        "visibleText": "Requests"
-      },
-      "dataEffect": "navigates to /"
-    },
-    {
-      "id": "nav_item_143_Facilities",
-      "kind": "nav-item",
-      "label": "Facilities",
       "line": 143,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_143_Facilities\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_143_IT\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -131,12 +95,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_144_Finance",
+      "id": "nav_item_144_HR",
       "kind": "nav-item",
-      "label": "Finance",
+      "label": "HR",
       "line": 144,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_144_Finance\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_144_HR\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -149,12 +113,48 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "button_151_Refresh",
+      "id": "nav_item_145_Facilities",
+      "kind": "nav-item",
+      "label": "Facilities",
+      "line": 145,
+      "sourcePageRoute": "/",
+      "selector": "[data-clear-uat-id=\"nav_item_145_Facilities\"]",
+      "action": {
+        "type": "navigate",
+        "targetRoute": "/"
+      },
+      "expected": {
+        "route": "/",
+        "visiblePageId": "Request_Queue",
+        "visibleText": "Requests"
+      },
+      "dataEffect": "navigates to /"
+    },
+    {
+      "id": "nav_item_146_Finance",
+      "kind": "nav-item",
+      "label": "Finance",
+      "line": 146,
+      "sourcePageRoute": "/",
+      "selector": "[data-clear-uat-id=\"nav_item_146_Finance\"]",
+      "action": {
+        "type": "navigate",
+        "targetRoute": "/"
+      },
+      "expected": {
+        "route": "/",
+        "visiblePageId": "Request_Queue",
+        "visibleText": "Requests"
+      },
+      "dataEffect": "navigates to /"
+    },
+    {
+      "id": "button_153_Refresh",
       "kind": "button",
       "label": "Refresh",
-      "line": 151,
+      "line": 153,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_151_Refresh\"]",
+      "selector": "[data-clear-uat-id=\"button_153_Refresh\"]",
       "action": {
         "type": "api-call",
         "method": "GET",
@@ -163,12 +163,12 @@ const CONTRACT = {
       "dataEffect": "calls GET /api/requests/new"
     },
     {
-      "id": "button_160_Refresh",
+      "id": "button_162_Refresh",
       "kind": "button",
       "label": "Refresh",
-      "line": 160,
+      "line": 162,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_160_Refresh\"]",
+      "selector": "[data-clear-uat-id=\"button_162_Refresh\"]",
       "action": {
         "type": "api-call",
         "method": "GET",
@@ -177,10 +177,10 @@ const CONTRACT = {
       "dataEffect": "calls GET /api/requests/new"
     },
     {
-      "id": "table_interaction_183_New_Requests",
+      "id": "table_interaction_185_New_Requests",
       "kind": "table-interaction",
       "label": "New Requests",
-      "line": 183,
+      "line": 185,
       "sourcePageRoute": "/",
       "selector": "#output_New_Requests_table",
       "action": {
@@ -191,10 +191,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts New Requests"
     },
     {
-      "id": "table_drilldown_183_New_Requests",
+      "id": "table_drilldown_185_New_Requests",
       "kind": "table-drilldown",
       "label": "New Requests",
-      "line": 183,
+      "line": 185,
       "sourcePageRoute": "/",
       "selector": "#output_New_Requests_table button[data-row-select=\"true\"]",
       "action": {
@@ -207,12 +207,12 @@ const CONTRACT = {
       "dataEffect": "selects a New Requests row for detail state"
     },
     {
-      "id": "button_194_Assign",
+      "id": "button_196_Assign",
       "kind": "button",
       "label": "Assign",
-      "line": 194,
+      "line": 196,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_194_Assign\"]",
+      "selector": "[data-clear-uat-id=\"button_196_Assign\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -221,12 +221,12 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/requests/:id/assign"
     },
     {
-      "id": "button_199_Resolve",
+      "id": "button_201_Resolve",
       "kind": "button",
       "label": "Resolve",
-      "line": 199,
+      "line": 201,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_199_Resolve\"]",
+      "selector": "[data-clear-uat-id=\"button_201_Resolve\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -235,10 +235,10 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/requests/:id/resolve"
     },
     {
-      "id": "input_control_207_Title",
+      "id": "input_control_209_Title",
       "kind": "input-control",
       "label": "Title",
-      "line": 207,
+      "line": 209,
       "sourcePageRoute": "/",
       "selector": "#input_title",
       "action": {
@@ -252,10 +252,10 @@ const CONTRACT = {
       "dataEffect": "updates title"
     },
     {
-      "id": "input_control_208_Description",
+      "id": "input_control_210_Description",
       "kind": "input-control",
       "label": "Description",
-      "line": 208,
+      "line": 210,
       "sourcePageRoute": "/",
       "selector": "#input_description",
       "action": {
@@ -269,10 +269,10 @@ const CONTRACT = {
       "dataEffect": "updates description"
     },
     {
-      "id": "input_control_209_Category",
+      "id": "input_control_211_Category",
       "kind": "input-control",
       "label": "Category",
-      "line": 209,
+      "line": 211,
       "sourcePageRoute": "/",
       "selector": "#input_category",
       "action": {
@@ -291,10 +291,10 @@ const CONTRACT = {
       "dataEffect": "updates category"
     },
     {
-      "id": "input_control_210_Priority",
+      "id": "input_control_212_Priority",
       "kind": "input-control",
       "label": "Priority",
-      "line": 210,
+      "line": 212,
       "sourcePageRoute": "/",
       "selector": "#input_priority",
       "action": {
@@ -313,10 +313,10 @@ const CONTRACT = {
       "dataEffect": "updates priority"
     },
     {
-      "id": "input_control_211_Your_name",
+      "id": "input_control_213_Your_name",
       "kind": "input-control",
       "label": "Your name",
-      "line": 211,
+      "line": 213,
       "sourcePageRoute": "/",
       "selector": "#input_submitter",
       "action": {
@@ -330,12 +330,12 @@ const CONTRACT = {
       "dataEffect": "updates submitter"
     },
     {
-      "id": "button_212_Submit",
+      "id": "button_214_Submit",
       "kind": "button",
       "label": "Submit",
-      "line": 212,
+      "line": 214,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_212_Submit\"]",
+      "selector": "[data-clear-uat-id=\"button_214_Submit\"]",
       "action": {
         "type": "api-call",
         "method": "POST",
@@ -348,58 +348,58 @@ const CONTRACT = {
     {
       "method": "GET",
       "path": "/api/requests",
-      "line": 54,
+      "line": 56,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/requests/new",
-      "line": 57,
+      "line": 59,
       "usedByControlIds": [
-        "button_151_Refresh",
-        "button_160_Refresh"
+        "button_153_Refresh",
+        "button_162_Refresh"
       ]
     },
     {
       "method": "GET",
       "path": "/api/requests/my",
-      "line": 60,
+      "line": 62,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/requests",
-      "line": 63,
+      "line": 65,
       "usedByControlIds": [
-        "button_212_Submit"
+        "button_214_Submit"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/requests/:id",
-      "line": 71,
+      "line": 73,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/seed",
-      "line": 78,
+      "line": 80,
       "usedByControlIds": []
     },
     {
       "method": "PUT",
       "path": "/api/requests/:id/assign",
-      "line": 196,
+      "line": 198,
       "usedByControlIds": [
-        "button_194_Assign"
+        "button_196_Assign"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/requests/:id/resolve",
-      "line": 201,
+      "line": 203,
       "usedByControlIds": [
-        "button_199_Resolve"
+        "button_201_Resolve"
       ]
     }
   ],

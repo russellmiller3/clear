@@ -16,7 +16,7 @@ const CONTRACT = {
       "id": "Onboarding_Tracker",
       "title": "Onboarding Tracker",
       "route": "/",
-      "line": 143,
+      "line": 145,
       "expectedText": [
         "Onboarding Tracker",
         "Onboarding",
@@ -42,48 +42,12 @@ const CONTRACT = {
   ],
   "controls": [
     {
-      "id": "nav_item_158_Dashboard",
+      "id": "nav_item_160_Dashboard",
       "kind": "nav-item",
       "label": "Dashboard",
-      "line": 158,
-      "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_158_Dashboard\"]",
-      "action": {
-        "type": "navigate",
-        "targetRoute": "/"
-      },
-      "expected": {
-        "route": "/",
-        "visiblePageId": "Onboarding_Tracker",
-        "visibleText": "Onboarding"
-      },
-      "dataEffect": "navigates to /"
-    },
-    {
-      "id": "nav_item_159_Customers",
-      "kind": "nav-item",
-      "label": "Customers",
-      "line": 159,
-      "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_159_Customers\"]",
-      "action": {
-        "type": "navigate",
-        "targetRoute": "/"
-      },
-      "expected": {
-        "route": "/",
-        "visiblePageId": "Onboarding_Tracker",
-        "visibleText": "Onboarding"
-      },
-      "dataEffect": "navigates to /"
-    },
-    {
-      "id": "nav_item_160_Steps",
-      "kind": "nav-item",
-      "label": "Steps",
       "line": 160,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_160_Steps\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_160_Dashboard\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -96,12 +60,48 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "nav_item_163_Managers",
+      "id": "nav_item_161_Customers",
+      "kind": "nav-item",
+      "label": "Customers",
+      "line": 161,
+      "sourcePageRoute": "/",
+      "selector": "[data-clear-uat-id=\"nav_item_161_Customers\"]",
+      "action": {
+        "type": "navigate",
+        "targetRoute": "/"
+      },
+      "expected": {
+        "route": "/",
+        "visiblePageId": "Onboarding_Tracker",
+        "visibleText": "Onboarding"
+      },
+      "dataEffect": "navigates to /"
+    },
+    {
+      "id": "nav_item_162_Steps",
+      "kind": "nav-item",
+      "label": "Steps",
+      "line": 162,
+      "sourcePageRoute": "/",
+      "selector": "[data-clear-uat-id=\"nav_item_162_Steps\"]",
+      "action": {
+        "type": "navigate",
+        "targetRoute": "/"
+      },
+      "expected": {
+        "route": "/",
+        "visiblePageId": "Onboarding_Tracker",
+        "visibleText": "Onboarding"
+      },
+      "dataEffect": "navigates to /"
+    },
+    {
+      "id": "nav_item_165_Managers",
       "kind": "nav-item",
       "label": "Managers",
-      "line": 163,
+      "line": 165,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"nav_item_163_Managers\"]",
+      "selector": "[data-clear-uat-id=\"nav_item_165_Managers\"]",
       "action": {
         "type": "navigate",
         "targetRoute": "/"
@@ -114,12 +114,12 @@ const CONTRACT = {
       "dataEffect": "navigates to /"
     },
     {
-      "id": "button_176_Refresh",
+      "id": "button_178_Refresh",
       "kind": "button",
       "label": "Refresh",
-      "line": 176,
+      "line": 178,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_176_Refresh\"]",
+      "selector": "[data-clear-uat-id=\"button_178_Refresh\"]",
       "action": {
         "type": "api-call",
         "method": "GET",
@@ -128,10 +128,10 @@ const CONTRACT = {
       "dataEffect": "calls GET /api/customers/onboarding"
     },
     {
-      "id": "table_interaction_201_Customers",
+      "id": "table_interaction_203_Customers",
       "kind": "table-interaction",
       "label": "Customers",
-      "line": 201,
+      "line": 203,
       "sourcePageRoute": "/",
       "selector": "#output_Customers_table",
       "action": {
@@ -142,10 +142,10 @@ const CONTRACT = {
       "dataEffect": "filters and sorts Customers"
     },
     {
-      "id": "table_drilldown_201_Customers",
+      "id": "table_drilldown_203_Customers",
       "kind": "table-drilldown",
       "label": "Customers",
-      "line": 201,
+      "line": 203,
       "sourcePageRoute": "/",
       "selector": "#output_Customers_table button[data-row-select=\"true\"]",
       "action": {
@@ -158,12 +158,12 @@ const CONTRACT = {
       "dataEffect": "selects a Customers row for detail state"
     },
     {
-      "id": "button_210_Mark_Active",
+      "id": "button_212_Mark_Active",
       "kind": "button",
       "label": "Mark Active",
-      "line": 210,
+      "line": 212,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_210_Mark_Active\"]",
+      "selector": "[data-clear-uat-id=\"button_212_Mark_Active\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -172,12 +172,12 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/customers/:id/mark-active"
     },
     {
-      "id": "button_214_Escalate",
+      "id": "button_216_Escalate",
       "kind": "button",
       "label": "Escalate",
-      "line": 214,
+      "line": 216,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_214_Escalate\"]",
+      "selector": "[data-clear-uat-id=\"button_216_Escalate\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -186,12 +186,12 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/customers/:id/escalate"
     },
     {
-      "id": "button_218_Email",
+      "id": "button_220_Email",
       "kind": "button",
       "label": "Email",
-      "line": 218,
+      "line": 220,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_218_Email\"]",
+      "selector": "[data-clear-uat-id=\"button_220_Email\"]",
       "action": {
         "type": "api-call",
         "method": "PUT",
@@ -200,10 +200,10 @@ const CONTRACT = {
       "dataEffect": "calls PUT /api/customers/:id/email"
     },
     {
-      "id": "input_control_225_Customer_name",
+      "id": "input_control_227_Customer_name",
       "kind": "input-control",
       "label": "Customer name",
-      "line": 225,
+      "line": 227,
       "sourcePageRoute": "/",
       "selector": "#input_name",
       "action": {
@@ -217,10 +217,10 @@ const CONTRACT = {
       "dataEffect": "updates name"
     },
     {
-      "id": "input_control_226_Company",
+      "id": "input_control_228_Company",
       "kind": "input-control",
       "label": "Company",
-      "line": 226,
+      "line": 228,
       "sourcePageRoute": "/",
       "selector": "#input_company",
       "action": {
@@ -234,10 +234,10 @@ const CONTRACT = {
       "dataEffect": "updates company"
     },
     {
-      "id": "input_control_227_Email",
+      "id": "input_control_229_Email",
       "kind": "input-control",
       "label": "Email",
-      "line": 227,
+      "line": 229,
       "sourcePageRoute": "/",
       "selector": "#input_email",
       "action": {
@@ -251,10 +251,10 @@ const CONTRACT = {
       "dataEffect": "updates email"
     },
     {
-      "id": "input_control_228_Account_manager",
+      "id": "input_control_230_Account_manager",
       "kind": "input-control",
       "label": "Account manager",
-      "line": 228,
+      "line": 230,
       "sourcePageRoute": "/",
       "selector": "#input_account_manager",
       "action": {
@@ -268,12 +268,12 @@ const CONTRACT = {
       "dataEffect": "updates account manager"
     },
     {
-      "id": "button_229_Add_Customer",
+      "id": "button_231_Add_Customer",
       "kind": "button",
       "label": "Add Customer",
-      "line": 229,
+      "line": 231,
       "sourcePageRoute": "/",
-      "selector": "[data-clear-uat-id=\"button_229_Add_Customer\"]",
+      "selector": "[data-clear-uat-id=\"button_231_Add_Customer\"]",
       "action": {
         "type": "api-call",
         "method": "POST",
@@ -282,10 +282,10 @@ const CONTRACT = {
       "dataEffect": "calls POST /api/customers"
     },
     {
-      "id": "table_interaction_236_Steps",
+      "id": "table_interaction_238_Steps",
       "kind": "table-interaction",
       "label": "Steps",
-      "line": 236,
+      "line": 238,
       "sourcePageRoute": "/",
       "selector": "#output_Steps_table",
       "action": {
@@ -300,77 +300,77 @@ const CONTRACT = {
     {
       "method": "GET",
       "path": "/api/customers",
-      "line": 58,
+      "line": 60,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/customers/onboarding",
-      "line": 61,
+      "line": 63,
       "usedByControlIds": [
-        "button_176_Refresh"
+        "button_178_Refresh"
       ]
     },
     {
       "method": "POST",
       "path": "/api/customers",
-      "line": 64,
+      "line": 66,
       "usedByControlIds": [
-        "button_229_Add_Customer"
+        "button_231_Add_Customer"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/customers/:id",
-      "line": 72,
+      "line": 74,
       "usedByControlIds": []
     },
     {
       "method": "GET",
       "path": "/api/steps",
-      "line": 77,
+      "line": 79,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/steps",
-      "line": 80,
+      "line": 82,
       "usedByControlIds": []
     },
     {
       "method": "PUT",
       "path": "/api/steps/:id",
-      "line": 85,
+      "line": 87,
       "usedByControlIds": []
     },
     {
       "method": "POST",
       "path": "/api/seed",
-      "line": 92,
+      "line": 94,
       "usedByControlIds": []
     },
     {
       "method": "PUT",
       "path": "/api/customers/:id/mark-active",
-      "line": 212,
+      "line": 214,
       "usedByControlIds": [
-        "button_210_Mark_Active"
+        "button_212_Mark_Active"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/customers/:id/escalate",
-      "line": 216,
+      "line": 218,
       "usedByControlIds": [
-        "button_214_Escalate"
+        "button_216_Escalate"
       ]
     },
     {
       "method": "PUT",
       "path": "/api/customers/:id/email",
-      "line": 220,
+      "line": 222,
       "usedByControlIds": [
-        "button_218_Email"
+        "button_220_Email"
       ]
     }
   ],

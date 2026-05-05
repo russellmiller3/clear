@@ -322,11 +322,16 @@ body {
   position: sticky;
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 14px;
   border-top: 1px solid var(--clear-line);
   background: var(--clear-bg-panel);
+}
+.clear-detail-actions .btn {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 
@@ -340,72 +345,72 @@ body {
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
 <div id="page_Deal_Desk" data-clear-page-id="Deal_Desk" data-clear-page-route="/" data-clear-page-title="Deal Desk">
-    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="298">
-    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="299">
-    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="300"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">D</div><span class="text-base font-bold text-base-content tracking-tight">Deal Desk</span></div>
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="307">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="308">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="309"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">D</div><span class="text-base font-bold text-base-content tracking-tight">Deal Desk</span></div>
     <nav class="flex-1 overflow-y-auto py-4 px-4">
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Approvals</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_303_Pending" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="303"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Pending</span><span class="clear-nav-count num" data-clear-tpl="{pending_count}">{pending_count}</span></a></li>
-    <li><a href="/approved" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_304_Approved_today" data-clear-control-kind="nav-item" data-nav-path="/approved" data-clear-line="304"><i data-lucide="check-circle-2" aria-hidden="true"></i><span class="clear-nav-label">Approved today</span><span class="clear-nav-count num" data-clear-tpl="{approved_today_count}">{approved_today_count}</span></a></li>
-    <li><a href="/rejected" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_305_Rejected" data-clear-control-kind="nav-item" data-nav-path="/rejected" data-clear-line="305"><i data-lucide="x-circle" aria-hidden="true"></i><span class="clear-nav-label">Rejected</span><span class="clear-nav-count num" data-clear-tpl="{rejected_count}">{rejected_count}</span></a></li>
-    <li><a href="/awaiting" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_306_Awaiting_customer" data-clear-control-kind="nav-item" data-nav-path="/awaiting" data-clear-line="306"><i data-lucide="clock" aria-hidden="true"></i><span class="clear-nav-label">Awaiting customer</span><span class="clear-nav-count num" data-clear-tpl="{awaiting_count}">{awaiting_count}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_312_Pending" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="312"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">Pending</span><span class="clear-nav-count num" data-clear-tpl="{pending_count}">{pending_count}</span></a></li>
+    <li><a href="/approved" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_313_Approved_today" data-clear-control-kind="nav-item" data-nav-path="/approved" data-clear-line="313"><i data-lucide="check-circle-2" aria-hidden="true"></i><span class="clear-nav-label">Approved today</span><span class="clear-nav-count num" data-clear-tpl="{approved_today_count}">{approved_today_count}</span></a></li>
+    <li><a href="/rejected" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_314_Rejected" data-clear-control-kind="nav-item" data-nav-path="/rejected" data-clear-line="314"><i data-lucide="x-circle" aria-hidden="true"></i><span class="clear-nav-label">Rejected</span><span class="clear-nav-count num" data-clear-tpl="{rejected_count}">{rejected_count}</span></a></li>
+    <li><a href="/awaiting" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_315_Awaiting_customer" data-clear-control-kind="nav-item" data-nav-path="/awaiting" data-clear-line="315"><i data-lucide="clock" aria-hidden="true"></i><span class="clear-nav-label">Awaiting customer</span><span class="clear-nav-count num" data-clear-tpl="{awaiting_count}">{awaiting_count}</span></a></li>
         <li class="clear-nav-section-label">Pipeline</li>
-    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_309_All_deals" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="309"><i data-lucide="layers" aria-hidden="true"></i><span class="clear-nav-label">All deals</span><span class="clear-nav-count num" data-clear-tpl="{total_deals_count}">{total_deals_count}</span></a></li>
-    <li><a href="/reports" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_310_Reports" data-clear-control-kind="nav-item" data-nav-path="/reports" data-clear-line="310"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span class="clear-nav-label">Reports</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_318_All_deals" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="318"><i data-lucide="layers" aria-hidden="true"></i><span class="clear-nav-label">All deals</span><span class="clear-nav-count num" data-clear-tpl="{total_deals_count}">{total_deals_count}</span></a></li>
+    <li><a href="/reports" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_319_Reports" data-clear-control-kind="nav-item" data-nav-path="/reports" data-clear-line="319"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span class="clear-nav-label">Reports</span></a></li>
       </ul>
     </nav>
     </aside>
-    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="312">
-    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="313">
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="321">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="322">
       <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
-    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="314">Clear</h1>
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="323">Clear</h1>
       </div>
       <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="315">Workspace / Deal Desk / Pending Queue</p>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="324">Workspace / Deal Desk / Pending Queue</p>
       </nav>
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="317">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="326">
       <div data-clear-routed-content="Deal_Desk" data-clear-routed-route="/">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="318">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="327">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Pending CRO approval</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{pending_count} deals waiting on you.">{pending_count} deals waiting on you.</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
-    <a class="link link-primary text-sm" href="#/new" data-clear-line="321">New deal</a>
+    <a class="link link-primary text-sm" href="#/new" data-clear-line="330">New deal</a>
       </div>
     </div>
-    <nav class="clear-tab-strip" data-tab-strip="true" data-clear-line="323">
-      <a href="/" class="clear-route-tab is-active" data-route-tab="true" data-clear-uat-id="route_tab_325_Pending" data-clear-control-kind="route-tab" data-tab-path="/">Pending</a>
-      <a href="/approved" class="clear-route-tab" data-route-tab="true" data-clear-uat-id="route_tab_326_My_approvals" data-clear-control-kind="route-tab" data-tab-path="/approved">My approvals</a>
-      <a href="/all" class="clear-route-tab" data-route-tab="true" data-clear-uat-id="route_tab_327_All" data-clear-control-kind="route-tab" data-tab-path="/all">All</a>
+    <nav class="clear-tab-strip" data-tab-strip="true" data-clear-line="332">
+      <a href="/" class="clear-route-tab is-active" data-route-tab="true" data-clear-uat-id="route_tab_334_Pending" data-clear-control-kind="route-tab" data-tab-path="/">Pending</a>
+      <a href="/approved" class="clear-route-tab" data-route-tab="true" data-clear-uat-id="route_tab_335_My_approvals" data-clear-control-kind="route-tab" data-tab-path="/approved">My approvals</a>
+      <a href="/all" class="clear-route-tab" data-route-tab="true" data-clear-uat-id="route_tab_336_All" data-clear-control-kind="route-tab" data-tab-path="/all">All</a>
     </nav>
-    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="329">
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="330">
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="338">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="339">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Pending count</div>
           <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
         </div>
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{pending_count}">{pending_count}</span></div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="333">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="342">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Approved today</div>
           <i class="clear-stat-icon" data-lucide="check-circle-2" aria-hidden="true"></i>
         </div>
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{approved_today_count}">{approved_today_count}</span></div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="336">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="345">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Awaiting customer</div>
           <i class="clear-stat-icon" data-lucide="clock" aria-hidden="true"></i>
         </div>
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{awaiting_count}">{awaiting_count}</span></div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="339">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="348">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Total deals</div>
           <i class="clear-stat-icon" data-lucide="layers" aria-hidden="true"></i>
@@ -413,9 +418,9 @@ body {
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{total_deals_count}">{total_deals_count}</span></div>
       </div>
     </div>
-    <div class="section-queue_workbench" data-clear-line="343">
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden section-pending_queue" data-clear-line="344">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="345">
+    <div class="section-queue_workbench" data-clear-line="352">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden section-pending_queue" data-clear-line="353">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Pending" data-clear-line="354">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Pending</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Pending_table">
@@ -428,16 +433,16 @@ body {
       </div>
     </div>
     </div>
-    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_deal" data-clear-line="351">
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_deal" data-clear-line="360">
       <div class="clear-detail-empty">Select a row to inspect it.</div>
       <div class="clear-detail-body">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="352">Deal details</h1>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="361">Deal details</h1>
     <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_List_price_value"></p>
     <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">List price</p>
-    <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Discount_value"></p>
-    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Discount</p>
+    <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Discount___value"></p>
+    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Discount %</p>
     <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="output_Risk_score_value"></p>
     <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">Risk score</p>
     <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
@@ -447,16 +452,16 @@ body {
     <p id="show_6" class="text-sm font-medium text-base-content/90 leading-snug"></p>
       </div>
       <div class="clear-detail-actions" data-detail-actions="true">
-    <button class="btn btn-primary" id="btn_Draft_AI_summary" data-clear-uat-id="button_364_Draft_AI_summary" data-clear-control-kind="button" data-action="draft-ai-summary" data-clear-line="364">Draft AI summary</button>
-    <button class="btn btn-primary" id="btn_Reject" data-clear-uat-id="button_366_Reject" data-clear-control-kind="button" data-action="reject" data-clear-line="366">Reject</button>
-    <button class="btn btn-primary" id="btn_Counter" data-clear-uat-id="button_370_Counter" data-clear-control-kind="button" data-action="counter" data-clear-line="370">Counter</button>
-    <button class="btn btn-primary" id="btn_Approve" data-clear-uat-id="button_374_Approve" data-clear-control-kind="button" data-action="approve" data-clear-line="374">Approve</button>
+    <button class="btn btn-primary" id="btn_Draft_AI_summary" data-clear-uat-id="button_373_Draft_AI_summary" data-clear-control-kind="button" data-action="draft-ai-summary" data-clear-line="373">Draft AI summary</button>
+    <button class="btn btn-primary" id="btn_Reject" data-clear-uat-id="button_375_Reject" data-clear-control-kind="button" data-action="reject" data-clear-line="375">Reject</button>
+    <button class="btn btn-primary" id="btn_Counter" data-clear-uat-id="button_379_Counter" data-clear-control-kind="button" data-action="counter" data-clear-line="379">Counter</button>
+    <button class="btn btn-primary" id="btn_Approve" data-clear-uat-id="button_383_Approve" data-clear-control-kind="button" data-action="approve" data-clear-line="383">Approve</button>
       </div>
     </aside>
     </div>
-    <div class="flex flex-row items-center gap-4" data-clear-line="379">
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{pending_count} pending" data-clear-line="380">{pending_count} pending</span>
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="381">Clear Cloud</span>
+    <div class="flex flex-row items-center gap-4" data-clear-line="388">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{pending_count} pending" data-clear-line="389">{pending_count} pending</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="390">Clear Cloud</span>
     </div>
       </div>
     </div>
@@ -464,14 +469,14 @@ body {
     </div>
 </div>
 <div id="page_Approved_today" data-clear-page-id="Approved_today" data-clear-page-route="/approved" data-clear-page-title="Approved today" data-clear-routed-content="Approved_today" style="display:none">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="387">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="396">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Approved today</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Approved requests cleared today and ready for audit.</p>
       </div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="390">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Approved_Deals" data-clear-line="391">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="399">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Approved_Deals" data-clear-line="400">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Approved Deals</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Approved_Deals_table">
@@ -486,14 +491,14 @@ body {
     </div>
 </div>
 <div id="page_Rejected" data-clear-page-id="Rejected" data-clear-page-route="/rejected" data-clear-page-title="Rejected" data-clear-routed-content="Rejected" style="display:none">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="397">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="406">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Rejected deals</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Requests rejected after CRO review.</p>
       </div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="400">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Rejected_Deals" data-clear-line="401">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="409">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Rejected_Deals" data-clear-line="410">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Rejected Deals</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Rejected_Deals_table">
@@ -508,14 +513,14 @@ body {
     </div>
 </div>
 <div id="page_Awaiting_customer" data-clear-page-id="Awaiting_customer" data-clear-page-route="/awaiting" data-clear-page-title="Awaiting customer" data-clear-routed-content="Awaiting_customer" style="display:none">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="407">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="416">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Awaiting customer</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Counters, signatures, and procurement follow-ups needing customer action.</p>
       </div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="410">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Awaiting_Deals" data-clear-line="411">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="419">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Awaiting_Deals" data-clear-line="420">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">Awaiting Deals</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Awaiting_Deals_table">
@@ -530,7 +535,7 @@ body {
     </div>
 </div>
 <div id="page_All_deals" data-clear-page-id="All_deals" data-clear-page-route="/all" data-clear-page-title="All deals" data-clear-routed-content="All_deals" style="display:none">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="417">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="426">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">All deals</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Total deal-desk requests across every status.</p>
@@ -544,8 +549,8 @@ body {
       <h3 class="text-base font-semibold text-base-content mb-4">Segment pressure</h3>
       <div id="chart_Segment_pressure_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="423">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Deals" data-clear-line="424">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="432">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Deals" data-clear-line="433">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">All Deals</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_All_Deals_table">
@@ -560,7 +565,7 @@ body {
     </div>
 </div>
 <div id="page_Reports" data-clear-page-id="Reports" data-clear-page-route="/reports" data-clear-page-title="Reports" data-clear-routed-content="Reports" style="display:none">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="430">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="439">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">Reports</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Approval velocity, discount pressure, and value-at-stake reporting.</p>
@@ -578,8 +583,8 @@ body {
       <h3 class="text-base font-semibold text-base-content mb-4">Deal types</h3>
       <div id="chart_Deal_types_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="437">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Deals_2" data-clear-line="438">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="446">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Deals_2" data-clear-line="447">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">All Deals</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_All_Deals_2_table">
@@ -594,30 +599,30 @@ body {
     </div>
 </div>
 <div id="page_New_discount_request" data-clear-page-id="New_discount_request" data-clear-page-route="/new" data-clear-page-title="New discount request" data-clear-routed-content="New_discount_request" style="display:none">
-    <div class="section-header" data-clear-line="441">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="442">New discount request</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="443">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
+    <div class="section-header" data-clear-line="450">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="451">New discount request</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="452">Submit a discount request. Over 20 percent goes to the CRO queue.</p>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5" data-clear-line="445">
-    <fieldset class="fieldset" data-clear-line="446">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5" data-clear-line="454">
+    <fieldset class="fieldset" data-clear-line="455">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Your name</legend>
       <input id="input_rep_name" class="input input-bordered w-full" type="text" placeholder="Your name">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="447">
+    <fieldset class="fieldset" data-clear-line="456">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Customer</legend>
       <input id="input_customer" class="input input-bordered w-full" type="text" placeholder="Customer">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="448">
+    <fieldset class="fieldset" data-clear-line="457">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">List price ($)</legend>
       <input id="input_list_price" class="input input-bordered w-full" type="number" step="any" placeholder="List price ($)">
     </fieldset>
-    <fieldset class="fieldset" data-clear-line="449">
+    <fieldset class="fieldset" data-clear-line="458">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Discount %</legend>
       <input id="input_discount_percent" class="input input-bordered w-full" type="number" step="any" placeholder="Discount %">
     </fieldset>
-    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-uat-id="button_450_Submit_for_approval" data-clear-control-kind="button" data-clear-line="450">Submit for approval</button>
+    <button class="btn btn-primary w-full" id="btn_Submit_for_approval" data-clear-uat-id="button_459_Submit_for_approval" data-clear-control-kind="button" data-clear-line="459">Submit for approval</button>
     </div>
-    <a class="link link-primary text-sm" href="#/" data-clear-line="457">Back to queue</a>
+    <a class="link link-primary text-sm" href="#/" data-clear-line="466">Back to queue</a>
 </div>
 <div id="page_Sign_in" data-clear-page-id="Sign_in" data-clear-page-route="/login" data-clear-page-title="Sign in" data-clear-routed-content="Sign_in" style="display:none">
     <div class="max-w-md mx-auto w-full px-6 py-12 flex flex-col gap-8">
@@ -730,9 +735,9 @@ body {
       });
     })();
     </script>
-    <div class="section-sign_in" data-clear-line="460">
-    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="461">Sign in to the CRO console</h1>
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="462">Use the signup or login form above. After signing in, head to /cro.</p>
+    <div class="section-sign_in" data-clear-line="469">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4" data-clear-line="470">Sign in to the CRO console</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="471">Use the signup or login form above. After signing in, head to /cro.</p>
     </div>
 </div>
   </main>
@@ -745,25 +750,25 @@ body {
    Deals: rep_name*, rep_email, customer*, customer_email, account_segment, deal_type, list_price, discount_percent, status, summary, recommendation, risk_score, submitted_label, approval_rule, term, effective_date, health_signal, precedent_note, created_at_date (line 20)
 
  ENDPOINTS:
-   GET /api/deals/pending (line 88)
-   GET /api/deals/approved (line 92)
-   GET /api/deals/rejected (line 95)
-   GET /api/deals/awaiting (line 98)
-   GET /api/deals/all (line 101)
-   POST /api/deals [auth] (line 111)
-   POST /api/deals/draft [auth] (line 136)
-   PUT /api/deals/:id [auth] (line 141)
-   POST /api/seed (line 154)
+   GET /api/deals/pending (line 93)
+   GET /api/deals/approved (line 97)
+   GET /api/deals/rejected (line 100)
+   GET /api/deals/awaiting (line 103)
+   GET /api/deals/all (line 106)
+   POST /api/deals [auth] (line 118)
+   POST /api/deals/draft [auth] (line 143)
+   PUT /api/deals/:id [auth] (line 148)
+   POST /api/seed (line 163)
 
  PAGES:
-   'Deal Desk' at / (line 283)
-   'Approved today' at /approved (line 383)
-   'Rejected' at /rejected (line 393)
-   'Awaiting customer' at /awaiting (line 403)
-   'All deals' at /all (line 413)
-   'Reports' at /reports (line 426)
-   'New discount request' at /new (line 440)
-   'Sign in' at /login (line 459)
+   'Deal Desk' at / (line 292)
+   'Approved today' at /approved (line 392)
+   'Rejected' at /rejected (line 402)
+   'Awaiting customer' at /awaiting (line 412)
+   'All deals' at /all (line 422)
+   'Reports' at /reports (line 435)
+   'New discount request' at /new (line 449)
+   'Sign in' at /login (line 468)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -1060,11 +1065,11 @@ let _state = {
   selected_deal: null
 };
 
-// clear:79
+// clear:84
 async function draft_approval(deal_data) {
-  // clear:80
+  // clear:85
   let drafted = await _askAI("You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.", deal_data, [{"name":"summary","type":"text"},{"name":"recommendation","type":"text"},{"name":"risk_score","type":"number"}], null);
-  // clear:84
+  // clear:89
   return drafted;
 }
 
@@ -1072,7 +1077,7 @@ async function draft_approval(deal_data) {
 function _recompute() {
   // clear:16
   // Database: local memory (JSON file backup)
-  // clear:32
+  // clear:27
   // Auto-generated audit table for queue 'deal'
   const DealDecisionsSchema = {
     deal_id: { type: "text", required: true },
@@ -1093,7 +1098,7 @@ function _recompute() {
     queued_at: { type: "timestamp", auto: true }
   };
 
-  // clear:40
+  // clear:33
   // Auto-generated outbound email queue (every email trigger in this app shares this table)
   const WorkflowEmailQueueSchema = {
     entity_type: { type: "text", required: true },
@@ -1112,34 +1117,34 @@ function _recompute() {
     replied_at: { type: "timestamp" }
   };
   // Email trigger: customer when deal.status === "awaiting" (subject="We countered your offer", provider="agentmail")
-  // clear:79
+  // clear:84
   async function draft_approval(deal_data) {
     let drafted = await _askAI("You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.", deal_data, [{"name":"summary","type":"text"},{"name":"recommendation","type":"text"},{"name":"risk_score","type":"number"}], null);
     return drafted;
   }
-  // clear:292
+  // clear:301
   let pending_count = _clear_len(_state.pending);
-  // clear:293
+  // clear:302
   let approved_today_count = _clear_len(_state.approved_today_deals);
-  // clear:294
+  // clear:303
   let rejected_count = _clear_len(_state.rejected_deals);
-  // clear:295
+  // clear:304
   let awaiting_count = _clear_len(_state.awaiting_deals);
-  // clear:296
+  // clear:305
   let total_deals_count = _clear_len(_state.all_deals);
-  // clear:353
-  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer; }
-  // clear:354
-  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_deal?.summary; }
-  // clear:358
-  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_deal?.recommendation; }
-  // clear:359
-  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_deal?.approval_rule; }
-  // clear:360
-  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_deal?.term; }
-  // clear:361
-  { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_deal?.health_signal; }
   // clear:362
+  { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_deal?.customer; }
+  // clear:363
+  { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_deal?.summary; }
+  // clear:367
+  { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_deal?.recommendation; }
+  // clear:368
+  { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_deal?.approval_rule; }
+  // clear:369
+  { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_deal?.term; }
+  // clear:370
+  { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_deal?.health_signal; }
+  // clear:371
   { const _el = document.getElementById('show_6'); if (_el) _el.textContent = _state.selected_deal?.precedent_note; }
   _clear_render_table(
     document.getElementById('output_Pending_table'),
@@ -1149,7 +1154,7 @@ function _recompute() {
   );
   _clear_table_init(document.getElementById('output_Pending_table'), 'selected_deal');
   document.getElementById('output_List_price_value').textContent = ((_state.selected_deal?.list_price) == null ? '' : Number(_state.selected_deal?.list_price).toLocaleString('en-US', { style: 'currency', currency: 'USD' }));
-  document.getElementById('output_Discount_value').textContent = ((_state.selected_deal?.discount_percent) == null ? '' : (Number(_state.selected_deal?.discount_percent) * 100).toFixed(1) + '%');
+  document.getElementById('output_Discount___value').textContent = ((_state.selected_deal?.discount_percent) == null ? '' : String(_state.selected_deal?.discount_percent));
   document.getElementById('output_Risk_score_value').textContent = ((_state.selected_deal?.risk_score) == null ? '' : String(_state.selected_deal?.risk_score));
   _clear_render_table(
     document.getElementById('output_Approved_Deals_table'),
@@ -1255,10 +1260,10 @@ function _recompute() {
       _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: { orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#4b5563', fontSize: 12 } }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, minShowLabelAngle: 1, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: true, formatter: '{b}: {c}', color: '#374151', fontSize: 12, fontWeight: 600, lineHeight: 16 }, labelLine: { show: true, length: 16, length2: 18, lineStyle: { width: 1.5 } }, data: _pieData, emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);
     }
   }
-  document.getElementById('input_rep_name').value = _state.rep_name;
-  document.getElementById('input_customer').value = _state.customer;
-  document.getElementById('input_list_price').value = _state.list_price;
-  document.getElementById('input_discount_percent').value = _state.discount_percent;
+  { const _el = document.getElementById('input_rep_name'); if (_el) _el.value = _state.rep_name; }
+  { const _el = document.getElementById('input_customer'); if (_el) _el.value = _state.customer; }
+  { const _el = document.getElementById('input_list_price'); if (_el) _el.value = _state.list_price; }
+  { const _el = document.getElementById('input_discount_percent'); if (_el) _el.value = _state.discount_percent; }
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof pending_count !== 'undefined') _tplCtx["pending_count"] = pending_count;
@@ -1303,7 +1308,7 @@ document.getElementById('btn_Draft_AI_summary').addEventListener('click', async 
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/deals/draft", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ selected_deal: _state.selected_deal }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals/draft] [clear:365]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals/draft] [clear:374]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -1327,7 +1332,7 @@ document.getElementById('btn_Reject').addEventListener('click', async function()
       const _r = await fetch("/api/deals/" + _id + "/reject", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/deals/:id/reject]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
     }
-    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:369]', e.message); return _state.pending; });
+    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:378]', e.message); return _state.pending; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -1351,7 +1356,7 @@ document.getElementById('btn_Counter').addEventListener('click', async function(
       const _r = await fetch("/api/deals/" + _id + "/counter", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/deals/:id/counter]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
     }
-    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:373]', e.message); return _state.pending; });
+    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:382]', e.message); return _state.pending; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -1375,7 +1380,7 @@ document.getElementById('btn_Approve').addEventListener('click', async function(
       const _r = await fetch("/api/deals/" + _id + "/approve", { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_record || {}) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/deals/:id/approve]', _e.error || 'update failed'); throw new Error(_e.error || _e.message || 'update failed'); }
     }
-    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:377]', e.message); return _state.pending; });
+    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:386]', e.message); return _state.pending; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -1392,7 +1397,7 @@ document.getElementById('btn_Submit_for_approval').addEventListener('click', asy
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/deals", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ rep_name: _state.rep_name, customer: _state.customer, list_price: _state.list_price, discount_percent: _state.discount_percent }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:451]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/deals] [clear:460]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
     _state.rep_name = "";
     _state.customer = "";
     _state.list_price = 0;
@@ -1408,17 +1413,17 @@ _recompute(); // initial render with default state
 (async () => {
   try {
     { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:285]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:286]', e.message); return _state.pending; });
-    _state.approved_today_deals = await fetch("/api/deals/approved").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/approved] [clear:287]', e.message); return _state.approved_today_deals; });
-    _state.rejected_deals = await fetch("/api/deals/rejected").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/rejected] [clear:288]', e.message); return _state.rejected_deals; });
-    _state.awaiting_deals = await fetch("/api/deals/awaiting").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/awaiting] [clear:289]', e.message); return _state.awaiting_deals; });
-    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:290]', e.message); return _state.all_deals; });
-    _state.approved_deals = await fetch("/api/deals/approved").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/approved] [clear:385]', e.message); return _state.approved_deals; });
-    _state.rejected_deals = await fetch("/api/deals/rejected").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/rejected] [clear:395]', e.message); return _state.rejected_deals; });
-    _state.awaiting_deals = await fetch("/api/deals/awaiting").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/awaiting] [clear:405]', e.message); return _state.awaiting_deals; });
-    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:415]', e.message); return _state.all_deals; });
-    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:428]', e.message); return _state.all_deals; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:294]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.pending = await fetch("/api/deals/pending").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/pending] [clear:295]', e.message); return _state.pending; });
+    _state.approved_today_deals = await fetch("/api/deals/approved").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/approved] [clear:296]', e.message); return _state.approved_today_deals; });
+    _state.rejected_deals = await fetch("/api/deals/rejected").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/rejected] [clear:297]', e.message); return _state.rejected_deals; });
+    _state.awaiting_deals = await fetch("/api/deals/awaiting").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/awaiting] [clear:298]', e.message); return _state.awaiting_deals; });
+    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:299]', e.message); return _state.all_deals; });
+    _state.approved_deals = await fetch("/api/deals/approved").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/approved] [clear:394]', e.message); return _state.approved_deals; });
+    _state.rejected_deals = await fetch("/api/deals/rejected").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/rejected] [clear:404]', e.message); return _state.rejected_deals; });
+    _state.awaiting_deals = await fetch("/api/deals/awaiting").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/awaiting] [clear:414]', e.message); return _state.awaiting_deals; });
+    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:424]', e.message); return _state.all_deals; });
+    _state.all_deals = await fetch("/api/deals/all").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals/all] [clear:437]', e.message); return _state.all_deals; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
@@ -1594,6 +1599,7 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
     var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
     if (!__hasQuery && !__hasMeta) return;
     var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    var __directEditMode = false; // Studio Direct Edit toggle (parent posts on/off)
     function __selectorFor(el) {
       if (!el || el === document) return null;
       if (el.id) return '#' + el.id;
@@ -1606,8 +1612,38 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
     function __post(msg) {
       try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
     }
+    function __postPlain(msg) {
+      // Plain postMessage without the 'source: clear-bridge' wrapper — used for
+      // clear-source-line which the parent's existing handler matches by type alone.
+      try { window.parent.postMessage(msg, __clearOrigin); } catch(e) {}
+    }
+    function __findClearLine(el) {
+      while (el && el !== document.body) {
+        if (el.dataset && el.dataset.clearLine) return parseInt(el.dataset.clearLine);
+        el = el.parentElement;
+      }
+      return null;
+    }
     // Capture user actions and forward to Studio
     document.addEventListener('click', function(e) {
+      // Direct Edit mode (full-stack app path — parallel to srcdoc's sourceMapCapture):
+      // intercept the click, walk up to find data-clear-line, post a clear-source-line
+      // event with directEdit flag so Studio jumps the cursor + drafts a Meph edit.
+      if (__directEditMode) {
+        var line = __findClearLine(e.target);
+        if (line !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          __postPlain({ type: 'clear-source-line', line: line, directEdit: true });
+          var hit = e.target;
+          while (hit && !(hit.dataset && hit.dataset.clearLine)) hit = hit.parentElement;
+          if (hit) {
+            hit.style.outline = '2px solid #6c8cff';
+            setTimeout(function() { hit.style.outline = ''; }, 800);
+          }
+          return;
+        }
+      }
       __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
     }, true);
     document.addEventListener('input', function(e) {

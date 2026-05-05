@@ -270,9 +270,14 @@ body {
   position: sticky;
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 14px;
   border-top: 1px solid var(--clear-line);
   background: var(--clear-bg-panel);
+}
+.clear-detail-actions .btn {
+  flex: 0 1 auto;
+  min-width: 0;
 }
