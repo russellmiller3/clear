@@ -20,6 +20,12 @@
     "pg": "^8.20.0"
   },
   "devDependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.1",
+    "@lezer/highlight": "^1.2.3",
     "esbuild": "^0.28.0",
     "husky": "^9.1.7",
     "pg-mem": "^3.0.14",

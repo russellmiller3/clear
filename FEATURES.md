@@ -430,6 +430,7 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | Feature | Notes |
 |---------|-------|
 | Three-panel layout | CodeMirror editor + preview/terminal + Claude agent chat |
+| CodeMirror bundle (rebuildable) | `playground/codemirror.bundle.js` — vendored ESM bundle that ships with the repo (no `@codemirror/*` in node_modules at runtime). Now rebuildable via `node scripts/build-codemirror-bundle.mjs`. Single source of truth for which CodeMirror symbols are exported is `scripts/codemirror-entry.mjs` — adding a new editor extension means adding the symbol there + running the build script. Bundle is currently 402 KB; build warns if it balloons past 600 KB. Adding `gutter` / `GutterMarker` / `StateField` / `StateEffect` / `RangeSet` to the bundle (2026-05-04) unlocks the inline editor-margin Prove verdicts feature (Studio Prove redesign 4(a) v1) and the right-click drilldown (4(c)). |
 | 43 template apps | Dropdown selector |
 | Light/dark theme | Toggle |
 | Save to Desktop | Download .clear file |

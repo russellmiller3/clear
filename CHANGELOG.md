@@ -6,7 +6,29 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — Studio fresh-from-disk on startup + Copy Terminal newest-first
+## 2026-05-04 (latest) — CodeMirror bundle rebuild — gutter/StateField unlocked
+
+The playground's vendored `playground/codemirror.bundle.js` was originally a one-off `npm install + esbuild` pass that wasn't checked in. Editor features needing exports beyond what was bundled (e.g. inline editor-margin marks for proved/disproved/unverifiable rules — Studio Prove redesign 4(a) v1) had no way to land. This commit makes the rebuild reproducible and adds the four exports the Prove inline-gutter feature needs.
+
+**What shipped:**
+- **`scripts/codemirror-entry.mjs`** (new) — single source of truth for which CodeMirror symbols the playground bundle exports. Re-exports from `@codemirror/view`, `@codemirror/state`, `@codemirror/language`, `@codemirror/commands`, `@codemirror/lang-javascript`, `@lezer/highlight`. Adds `gutter`, `GutterMarker`, `StateField`, `StateEffect`, `RangeSet`, `RangeSetBuilder` on top of the previously-bundled symbols. The list inline-comments WHY each new export is needed so the next person who edits this file knows when to drop one.
+- **`scripts/build-codemirror-bundle.mjs`** (new) — esbuild driver. Reads the entry file, builds minified ESM for the browser target, writes `playground/codemirror.bundle.js`, reports size delta vs the previous bundle, and runs a SANITY CHECK: scans `playground/ide.html` for every `import { ... } from './codemirror.bundle.js'` line and verifies every named symbol resolves in the new bundle. Fails the build with a clear error if any import would 404 at runtime. Warns if the bundle balloons past 600 KB.
+- **`package.json` + `package-lock.json`** — six new devDependencies (`@codemirror/view`, `@codemirror/state`, `@codemirror/language`, `@codemirror/commands`, `@codemirror/lang-javascript`, `@lezer/highlight`). DevDeps only — never reach compiled customer apps. The compiler runtime stays pure-ESM-no-npm as before.
+- **`playground/codemirror.bundle.js`** — regenerated. **443 KB → 402.6 KB (-40.4 KB)**, smaller than before despite four new exports, because the old vendored bundle had stale unused code. All 17 symbols `playground/ide.html` imports now resolve. Verified live: editor mounts on Studio reload, welcome screen renders, `gutter / GutterMarker / StateField / StateEffect` all `typeof === 'function'` from the new bundle.
+
+**Why for launch:** unblocks the next pitch demo moment — Studio Prove redesign 4(a) v1 (green check / red X / amber question mark next to each `rule:` line in the editor margin, updating as you type, like spell-check) and 4(c) (right-click drilldown to the prover's reasoning). Both are "watch your discount rule turn green" theatre that closes a regulated-tier conversation. Without the rebuilt bundle, neither could land. With it, both are now small UI features.
+
+**To regenerate when adding new editor extensions:**
+1. Add the missing symbol's `export` line to `scripts/codemirror-entry.mjs`.
+2. If a new package is needed, `npm install --save-dev <pkg>`.
+3. `node scripts/build-codemirror-bundle.mjs`
+4. Commit the regenerated bundle + entry + package files.
+
+Tests 2915/0 green.
+
+---
+
+## 2026-05-04 — Studio fresh-from-disk on startup + Copy Terminal newest-first
 
 Two recurring user pain points fixed in one branch.
 

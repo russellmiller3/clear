@@ -7,6 +7,23 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## How do I add a new editor extension to Studio that needs a CodeMirror export not in the bundle? (2026-05-04)
+
+The playground's CodeMirror is shipped as one pre-built file: `playground/codemirror.bundle.js`. Browsers can't `import` from npm packages, so every CodeMirror symbol used in `playground/ide.html` has to be pre-bundled.
+
+**To add a new symbol** (e.g. `gutter`, `StateField`, `Decoration`, etc.):
+
+1. Add an `export` line for it in `scripts/codemirror-entry.mjs` — that's the single source of truth for what's in the bundle.
+2. If the symbol comes from a package not yet installed, run `npm install --save-dev @codemirror/<package>` (or the relevant `@lezer/<package>`).
+3. Run `node scripts/build-codemirror-bundle.mjs` — rebuilds `playground/codemirror.bundle.js`, prints the size delta vs the previous version, and runs a sanity check (scans `playground/ide.html` for every `import { ... } from './codemirror.bundle.js'` line and fails the build if any symbol would 404 at runtime).
+4. Commit the regenerated bundle plus `scripts/codemirror-entry.mjs`, `package.json`, and `package-lock.json` together.
+
+**Why the bundle is vendored, not built at runtime:** browsers don't have npm. The pre-built file is the only way to get CodeMirror into a no-build playground that loads from `localhost:3456`. The original bundle was a one-off install that wasn't checked in; the rebuild script + entry file (added 2026-05-04) make it reproducible.
+
+**Size budget:** the build script warns if the bundle balloons past 600 KB. As of 2026-05-04, the bundle is 402 KB with `gutter`, `GutterMarker`, `StateField`, `StateEffect`, `RangeSet`, `RangeSetBuilder` plus all prior exports. If a new package brings in heavy transitive deps and pushes past 600 KB, run `npx esbuild --bundle --analyze --metafile=meta.json` against the entry file and inspect the metafile for the largest contributors.
+
+---
+
 ## Why does my Studio editor show stale source after a template was updated on disk? (2026-05-04)
 
 **It doesn't anymore — fresh-from-disk on startup is now wired in.**
