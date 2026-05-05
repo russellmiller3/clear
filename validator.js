@@ -1789,6 +1789,28 @@ function validateSecurity(body, errors, warnings) {
           schemasWithOwner.add(name);
           schemasWithOwner.add(name + (name.endsWith('s') ? '' : 's'));
         }
+        // OWASP Piece 1, cycle 2a — warn when a table has no access rules.
+        // The next cycle (2b) will flip this to a hard error after the 8
+        // core templates declare rules and the test fixtures get a sweep
+        // update. The example phrases mirror what the eventual error will
+        // suggest, so apps written against this warning are already in the
+        // canonical shape when strict mode lands.
+        if (Array.isArray(node.policies) && node.policies.length === 0) {
+          const irregulars = { people: 'person', children: 'child', men: 'man', women: 'woman', mice: 'mouse', geese: 'goose' };
+          const entity = irregulars[name]
+            ? irregulars[name]
+            : name.endsWith('ies')
+              ? name.slice(0, -3) + 'y'
+              : name.endsWith('s')
+                ? name.slice(0, -1)
+                : name;
+          warnings.push(
+            `Line ${node.line}: ${node.name} table has no access rules. Add at least one line saying who can read, change, or delete it. Examples:\n` +
+            `  - the ${entity}'s creator can read, change, or delete  (most common — only whoever made the row)\n` +
+            `  - anyone can read  (public data)\n` +
+            `  - any admin can read  (admin override)`
+          );
+        }
       }
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) collectSchemas(node.body);
     }

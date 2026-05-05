@@ -4889,6 +4889,59 @@ describe('Parser - access rule new English phrases (OWASP Piece 1)', () => {
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 2a — mandatory at-least-one-rule per table (WARN)
+// =============================================================================
+// Cycle 2a ships as a warning so existing fixtures + templates keep building
+// while the canonical examples reach end users. Cycle 2b flips warn -> error
+// after the 8 core templates declare rules and the test fixtures get a sweep.
+// Legacy "anyone can read", "owner can ...", "role 'X' can ..." still count
+// as rules for this check.
+describe('Validator - mandatory access rules per table (OWASP Piece 1, cycle 2a, warn)', () => {
+  it('warns when a table has no access rules — names the table in the message', () => {
+    const result = compileProgram("table Deals:\n  amount, number\n  user_id, text");
+    const combined = (result.warnings || []).join(' | ');
+    expect(combined).toContain('access rule');
+    expect(combined).toContain('Deals');
+  });
+
+  it('warning message includes plain-English examples of valid rule lines', () => {
+    const result = compileProgram("table Posts:\n  title, text");
+    const combined = (result.warnings || []).join(' | ');
+    expect(/the [a-z]+'s creator can|anyone can read|any \w+ can/.test(combined)).toBe(true);
+  });
+
+  it('warning message singularizes the table name for the creator-rule example', () => {
+    const result = compileProgram("table Deals:\n  amount, number");
+    const combined = (result.warnings || []).join(' | ');
+    expect(combined).toContain("the deal's creator");
+  });
+
+  it('does NOT warn when a table has at least one new-style creator rule', () => {
+    const result = compileProgram("table Deals:\n  amount, number\n  user_id, text\n  the deal's creator can read, change, or delete");
+    const accessRuleWarnings = (result.warnings || []).filter(w => /access rule/i.test(w));
+    expect(accessRuleWarnings.length).toBe(0);
+  });
+
+  it('does NOT warn on legacy "anyone can read" — that still counts as a rule', () => {
+    const result = compileProgram("table Posts:\n  title, text\n  anyone can read");
+    const accessRuleWarnings = (result.warnings || []).filter(w => /access rule/i.test(w));
+    expect(accessRuleWarnings.length).toBe(0);
+  });
+
+  it('does NOT warn on legacy "owner can read, update, delete"', () => {
+    const result = compileProgram("table Deals:\n  user_id, text\n  owner can read, update, delete");
+    const accessRuleWarnings = (result.warnings || []).filter(w => /access rule/i.test(w));
+    expect(accessRuleWarnings.length).toBe(0);
+  });
+
+  it('handles -ies plural correctly: Categories -> category in the example', () => {
+    const result = compileProgram("table Categories:\n  name, text");
+    const combined = (result.warnings || []).join(' | ');
+    expect(combined).toContain("the category's creator");
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");
