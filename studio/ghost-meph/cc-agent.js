@@ -54,7 +54,17 @@ const MCP_SERVER_PATH = join(__dirname, 'mcp-server', 'index.js');
 // 3 minute hard cap — same order of magnitude as a typical Meph turn against
 // real Anthropic. If `claude` hangs we surface a helpful error rather than
 // leaking a subprocess.
-const SUBPROCESS_TIMEOUT_MS = 180_000;
+// Hard cap on how long the local Claude Code subprocess is allowed to
+// run for one chat turn. Was 180s, which proved too tight: a complex
+// multi-step build (e.g. "build a lead-routing system with admin
+// editable rules") routinely takes 4-6 minutes when Claude makes
+// multiple tool calls + retries. At the 180s cap the subprocess got
+// SIGTERM'd mid-turn and the user saw an empty SSE stream because the
+// timeout error message wasn't always reaching the client cleanly.
+// 600s (10 min) gives complex turns headroom while still bounding
+// runaway processes. Override via CC_AGENT_TIMEOUT_MS env var if you
+// need shorter for testing or longer for very large builds.
+const SUBPROCESS_TIMEOUT_MS = Number(process.env.CC_AGENT_TIMEOUT_MS) || 600_000;
 
 /** Tool mode is opt-in while the stream-json parser is being battle-tested. */
 function toolModeEnabled() {
@@ -413,7 +423,14 @@ export function runClaudeCli(prompt) {
 
     const timer = setTimeout(() => {
       try { child.kill('SIGTERM'); } catch {}
-      finish(reject, new Error(`subprocess timed out after ${SUBPROCESS_TIMEOUT_MS / 1000}s`));
+      // Surface the last 5 stderr lines + last 200 chars of stdout so the
+      // user actually sees what Claude was doing when we killed it. Without
+      // this tail, a hung subprocess looks like an empty SSE stream — the
+      // user can't tell auth failed vs MCP hung vs Claude was just slow.
+      const stderrTail = (stderr || '').split('\n').filter(l => !/no stdin data received/i.test(l)).slice(-5).join(' | ').slice(0, 400);
+      const stdoutTail = (stdout || '').slice(-200).replace(/\n/g, ' ');
+      const reason = `subprocess timed out after ${SUBPROCESS_TIMEOUT_MS / 1000}s. stderr-tail: ${stderrTail || '(empty)'}. stdout-tail: ${stdoutTail || '(empty)'}`;
+      finish(reject, new Error(reason));
     }, SUBPROCESS_TIMEOUT_MS);
 
     child.stdout.on('data', d => { stdout += d.toString('utf8'); });
@@ -543,7 +560,14 @@ export function runClaudeCliStreamJson(prompt, configPath, systemPromptPath) {
 
     const timer = setTimeout(() => {
       try { child.kill('SIGTERM'); } catch {}
-      finish(reject, new Error(`subprocess timed out after ${SUBPROCESS_TIMEOUT_MS / 1000}s`));
+      // Surface the last 5 stderr lines + last 200 chars of stdout so the
+      // user actually sees what Claude was doing when we killed it. Without
+      // this tail, a hung subprocess looks like an empty SSE stream — the
+      // user can't tell auth failed vs MCP hung vs Claude was just slow.
+      const stderrTail = (stderr || '').split('\n').filter(l => !/no stdin data received/i.test(l)).slice(-5).join(' | ').slice(0, 400);
+      const stdoutTail = (stdout || '').slice(-200).replace(/\n/g, ' ');
+      const reason = `subprocess timed out after ${SUBPROCESS_TIMEOUT_MS / 1000}s. stderr-tail: ${stderrTail || '(empty)'}. stdout-tail: ${stdoutTail || '(empty)'}`;
+      finish(reject, new Error(reason));
     }, SUBPROCESS_TIMEOUT_MS);
 
     child.stdout.on('data', d => { stdout += d.toString('utf8'); });
