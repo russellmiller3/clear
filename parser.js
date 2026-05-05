@@ -6793,11 +6793,18 @@ function parseMedia(tokens, line, mediaType) {
  *   anyone can read where published == true
  */
 function parseRLSPolicy(tokens, line) {
-  let subject = tokens[0].canonical || tokens[0].value.toLowerCase();
+  // Helper: safely lower-case a token value (might be number / boolean for
+  // some token types — guard against `.toLowerCase is not a function`).
+  const lower = (t) => typeof t?.value === 'string' ? t.value.toLowerCase() : '';
+
+  let subject = tokens[0].canonical || lower(tokens[0]);
   let role = null;
+  let entity = null;     // OWASP Piece 1 — for `the <entity>'s ...` rules
+  let roleField = null;  // OWASP Piece 1 — for `the <entity>'s <reviewer> ...` rules
   let pos = 1;
 
-  // Handle "role 'admin'" — subject is 'role', next token is the role name
+  // Legacy: "role 'admin' can ..." — subject is 'role', next token is the
+  // role name as a quoted string.
   if (subject === 'role' && pos < tokens.length && tokens[pos].type === TokenType.STRING) {
     role = tokens[pos].value;
     pos++;
@@ -6806,12 +6813,70 @@ function parseRLSPolicy(tokens, line) {
   // Normalize subject
   if (subject === 'same_org') subject = 'same_org';
 
+  // OWASP Piece 1 — new English phrases. The body-line detection at
+  // parseDataShape lets these reach us; here we decode the structured shape.
+  //
+  //   "the <entity>'s creator can ..."        -> subject='creator', entity=<entity>
+  //   "the <entity>'s <field> can ..."        -> subject='row_role', entity=<entity>,
+  //                                              roleField='<field>_id'
+  //   "any <role> can ..."                    -> subject='any_role', role=<role>
+  //   "anyone logged in can ..."              -> subject='anyone_logged_in'
+  //
+  // The "anyone logged in" check has to land here BEFORE the legacy
+  // 'anyone' path consumes only the first token, otherwise the multi-word
+  // form silently degrades to plain 'anyone'.
+  if (subject === 'the') {
+    // Expect: <entity-ident> POSSESSIVE <role-or-creator>
+    if (pos < tokens.length &&
+        (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
+      entity = lower(tokens[pos]);
+      pos++;
+      // Skip the possessive 's token if present
+      if (pos < tokens.length && tokens[pos].type === TokenType.POSSESSIVE) {
+        pos++;
+      }
+      // The next token names the role (creator / reviewer / approver / ...)
+      if (pos < tokens.length) {
+        const word = lower(tokens[pos]);
+        if (word === 'creator') {
+          subject = 'creator';
+        } else {
+          // Any other word = a role-on-the-row. Implies a `<word>_id` field
+          // on the table — validator (cycle 4) will check that the field
+          // actually exists.
+          subject = 'row_role';
+          roleField = word + '_id';
+        }
+        pos++;
+      }
+    }
+  } else if (subject === 'any') {
+    // "any admin can ..." — role from the users-table role field.
+    if (pos < tokens.length &&
+        (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
+      role = lower(tokens[pos]);
+      subject = 'any_role';
+      pos++;
+    }
+  } else if (subject === 'anyone') {
+    // Multi-word "anyone logged in" — peek ahead for the modifier.
+    if (pos + 1 < tokens.length &&
+        lower(tokens[pos]) === 'logged' &&
+        lower(tokens[pos + 1]) === 'in') {
+      subject = 'anyone_logged_in';
+      pos += 2;
+    }
+  }
+
   // Skip "can" keyword
-  if (pos < tokens.length && (tokens[pos].canonical === 'can' || tokens[pos].value.toLowerCase() === 'can')) {
+  if (pos < tokens.length && (tokens[pos].canonical === 'can' || lower(tokens[pos]) === 'can')) {
     pos++;
   }
 
-  // Parse actions (read, update, delete) — comma-separated
+  // Parse actions — comma-separated, with `or` as a connector word.
+  // OWASP Piece 1 adds `change` as a synonym for `update` so the natural
+  // English form "read, change, or delete" works alongside legacy
+  // "read, update, delete".
   const actions = [];
   let condition = null;
 
@@ -6819,12 +6884,11 @@ function parseRLSPolicy(tokens, line) {
     if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
     if (tokens[pos].type === TokenType.COMMENT) break;
 
-    const val = tokens[pos].value.toLowerCase();
+    const val = lower(tokens[pos]);
 
     // "where" starts the condition clause
     if (val === 'where') {
       pos++;
-      // Collect remaining tokens as condition text
       const condParts = [];
       while (pos < tokens.length && tokens[pos].type !== TokenType.COMMENT) {
         condParts.push(tokens[pos].value);
@@ -6834,14 +6898,17 @@ function parseRLSPolicy(tokens, line) {
       break;
     }
 
-    if (['read', 'select', 'update', 'insert', 'delete', 'create', 'write'].includes(val)) {
-      // Normalize: read/select -> SELECT, update -> UPDATE, etc.
-      actions.push(val);
+    if (['read', 'select', 'update', 'change', 'insert', 'delete', 'create', 'write'].includes(val)) {
+      // Normalize "change" to "update" so downstream consumers (validator,
+      // compileRLSPolicy, the per-row filter injection) see a single
+      // canonical action set.
+      const normalized = val === 'change' ? 'update' : val;
+      actions.push(normalized);
     }
     pos++;
   }
 
-  return { subject, role, actions, condition, line };
+  return { subject, role, entity, roleField, actions, condition, line };
 }
 
 function parseDataShape(lines, startIdx, blockIndent, errors) {
@@ -6884,10 +6951,16 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
     if (fieldTokens.length === 0) { j++; continue; }
     if (fieldTokens[0].type === TokenType.COMMENT) { j++; continue; }
 
-    // Check if this is an RLS policy line (anyone/owner/role/same org ... can ...)
-    const firstCanonical = fieldTokens[0].canonical || fieldTokens[0].value.toLowerCase();
+    // Check if this is an RLS policy line. Legacy shapes — `anyone can ...`,
+    // `owner can ...`, `same org can ...`, `role 'X' can ...`. OWASP Piece 1
+    // adds two more leads: `the <entity>'s ...` and `any <role> ...`. Both
+    // require a `can` keyword somewhere on the line so a stray English
+    // sentence like "the deal is rejected" can never accidentally trigger
+    // policy parsing.
+    const firstCanonical = fieldTokens[0].canonical || (typeof fieldTokens[0].value === 'string' ? fieldTokens[0].value.toLowerCase() : '');
     const hasCanKeyword = fieldTokens.some(t => (t.canonical || (typeof t.value === 'string' ? t.value.toLowerCase() : '')) === 'can');
-    if ((firstCanonical === 'anyone' || firstCanonical === 'owner' || firstCanonical === 'same_org') && hasCanKeyword ||
+    if ((firstCanonical === 'anyone' || firstCanonical === 'owner' || firstCanonical === 'same_org' ||
+         firstCanonical === 'the' || firstCanonical === 'any') && hasCanKeyword ||
         (firstCanonical === 'role' && fieldTokens.length > 1 && fieldTokens[1].type === TokenType.STRING)) {
       const policy = parseRLSPolicy(fieldTokens, fieldLine);
       if (policy) policies.push(policy);

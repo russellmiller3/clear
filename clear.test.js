@@ -4803,6 +4803,92 @@ describe('Parser - RLS policies inside data shape', () => {
   });
 });
 
+// =============================================================================
+// OWASP Piece 1 — mandatory per-line access rules, new English phrases
+// =============================================================================
+// The revised spec uses richer English on top of the existing parseRLSPolicy
+// infrastructure. Every table must declare at least one rule line in the
+// body (cycle 2). Cycle 1 just extends the rule parser with new phrases:
+//   - the deal's creator can read, change, or delete   (entity-scoped to user_id)
+//   - the deal's reviewer can read or change           (role-from-field-on-row)
+//   - any admin can read                                (role-from-users-table)
+//   - anyone logged in can read                         (any authenticated user)
+//   - 'change' as a synonym for 'update' in the action list
+// Legacy forms (`anyone can`, `owner can`, `role 'X' can`) keep working.
+describe('Parser - access rule new English phrases (OWASP Piece 1)', () => {
+  it("parses \"the deal's creator can read, change, or delete\"", () => {
+    const ast = parse("table Deals:\n  amount, number\n  user_id, text\n  the deal's creator can read, change, or delete");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies.length).toBe(1);
+    expect(shape.policies[0].subject).toBe('creator');
+    expect(shape.policies[0].entity).toBe('deal');
+    expect(shape.policies[0].actions).toContain('read');
+    expect(shape.policies[0].actions).toContain('update');
+    expect(shape.policies[0].actions).toContain('delete');
+  });
+
+  it("parses \"the deal's reviewer can read or change\" — role from a field on the row", () => {
+    const ast = parse("table Deals:\n  amount, number\n  reviewer_id, text\n  the deal's reviewer can read or change");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies.length).toBe(1);
+    expect(shape.policies[0].subject).toBe('row_role');
+    expect(shape.policies[0].entity).toBe('deal');
+    expect(shape.policies[0].roleField).toBe('reviewer_id');
+    expect(shape.policies[0].actions).toContain('read');
+    expect(shape.policies[0].actions).toContain('update');
+  });
+
+  it("parses \"any admin can read\" — role matched from users-table role field", () => {
+    const ast = parse("table Posts:\n  title, text\n  any admin can read");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies.length).toBe(1);
+    expect(shape.policies[0].subject).toBe('any_role');
+    expect(shape.policies[0].role).toBe('admin');
+    expect(shape.policies[0].actions).toContain('read');
+  });
+
+  it("parses \"anyone logged in can read\" — any authenticated user", () => {
+    const ast = parse("table Notes:\n  body, text\n  anyone logged in can read");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies.length).toBe(1);
+    expect(shape.policies[0].subject).toBe('anyone_logged_in');
+    expect(shape.policies[0].actions).toContain('read');
+  });
+
+  it("'change' is treated as a synonym for 'update' in the action list", () => {
+    const ast = parse("table Deals:\n  user_id, text\n  owner can change");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies.length).toBe(1);
+    expect(shape.policies[0].actions).toContain('update');
+  });
+
+  it('still parses legacy "anyone can read" unchanged', () => {
+    const ast = parse("table Posts:\n  title, text\n  anyone can read");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies[0].subject).toBe('anyone');
+    expect(shape.policies[0].actions).toContain('read');
+  });
+
+  it('still parses legacy "owner can read, update, delete" unchanged', () => {
+    const ast = parse("table Deals:\n  user_id, text\n  owner can read, update, delete");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies[0].subject).toBe('owner');
+    expect(shape.policies[0].actions).toContain('read');
+    expect(shape.policies[0].actions).toContain('update');
+    expect(shape.policies[0].actions).toContain('delete');
+  });
+
+  it("supports multiple new-style rules on one table — creator + reviewer + any admin", () => {
+    const ast = parse("table Deals:\n  amount, number\n  user_id, text\n  reviewer_id, text\n  the deal's creator can read, change, or delete\n  the deal's reviewer can read or change\n  any admin can read");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape.policies.length).toBe(3);
+    const subjects = shape.policies.map(p => p.subject);
+    expect(subjects).toContain('creator');
+    expect(subjects).toContain('row_role');
+    expect(subjects).toContain('any_role');
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");
