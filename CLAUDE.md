@@ -663,3 +663,18 @@ Launch-facing features are not done until automated browser coverage drives the 
 **Hook backstop.** `.claude/hooks/verify-real-remote.mjs` blocks any `git push` / `git commit` / `git cherry-pick` against a localhost / 127.0.0.1 / private-network origin. 21 tests passing. Override only when you have verified the URL is intentional: `SANDBOX_REMOTE_OVERRIDE=<url>` in env.
 
 **Why this rule exists:** 2026-05-02 — a remote Claude session ran in a sandbox where `origin` pointed at a localhost git proxy. Every push "succeeded" with a normal-looking output. None reached the real GitHub remote. 30+ commits including the `rule:` keyword + per-rule prover verdicts ended up stranded inside the sandbox. The session believed it had shipped; it had not. Hours of work lost. The hook + this rule are the only reliable belt-and-suspenders that prevent recurrence.
+
+## No Tautologies In Rule Examples (MANDATORY — added 2026-05-04)
+
+**Never write tautological conditions in rule examples, test fixtures, or doc snippets.** Constants-only rules like `enforce that 5 is less than 7`, `1 is greater than 0`, `10 is less than 11` are meaningless to a reader — no real customer would ever write that as a business rule. They read as broken examples that just happen to compile.
+
+**Always use field-referencing rules** that name the entity and field the policy actually constrains:
+
+```
+rule discount-cap-thirty:
+  enforce that deal's discount_percent is less than 30, or fail with error message: 'Discounts of 30% or more require VP approval'
+```
+
+The one exception is `examples/rule-keyword-tour.clear`, where two intentional tautologies show PROVED / DISPROVED verdicts side-by-side as a teaching device. Those are explicitly labeled and should NOT be changed. Anywhere else — `.clear` app sources, `clear.test.js` fixtures, doc snippets, `playground/system-prompt.md` examples, landing-page code samples, FAQ entries, USER-GUIDE worked examples — tautologies are forbidden.
+
+**Why:** 2026-05-04 — every regulated-tier pitch surface that ships a tautology to a reader looks broken. The audit PDF reads "PROVED for every possible deal" against `5 < 7` and the CRO immediately wonders what happened to the discount cap. Tautologies in tests are also non-evidence — they pass by construction, so they prove nothing about the rule shape. Field-referencing rules cost the same to write and actually demonstrate provability against the entity that matters.

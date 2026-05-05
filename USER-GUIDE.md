@@ -3123,14 +3123,11 @@ The prover walks every `rule:` block and produces one of three verdicts:
 - **DISPROVED** — at least one guard always fires. The rule rejects every input — that's a bug.
 - **UNVERIFIABLE** — the body has a database lookup, an AI call, an HTTP request, or some other "talks to the world" operation. The prover refuses to claim more than its math engine can see.
 
-A small file with one of each:
+**A small file with PROVED and UNVERIFIABLE side-by-side:**
 
 ```clear
 rule discount-cap-thirty:
-  enforce that 30 is less than 100, or fail with error message: 'Discounts over 30% need VP approval'
-
-rule impossible-rule:
-  enforce that 1 is greater than 2, or fail with error message: 'This rule rejects every input'
+  enforce that deal's discount_percent is less than 30, or fail with error message: 'Discounts of 30% or more require VP approval'
 
 rule reads-the-database:
   found = look up Deal where status is 'pending'
@@ -3140,13 +3137,18 @@ rule reads-the-database:
 Output:
 ```
 Business rules in this file:
-  [PROVED]       discount-cap-thirty (line 1)
-  [DISPROVED]    impossible-rule (line 4) — guard rejects every input
-  [UNVERIFIABLE] reads-the-database (line 7) — body calls the database
-  1 of 3 rules proved. 1 unverifiable. 1 disproved.
+  [PROVED]       discount-cap-thirty (line 1) — for every possible deal
+  [UNVERIFIABLE] reads-the-database (line 4) — body calls the database
+  1 of 2 rules proved. 1 unverifiable.
 ```
 
-That's the regulated-tier audit trail right there.
+The first rule is **PROVED** because the compiler emits a runtime check that rejects any input where `discount_percent` is 30 or more. No execution past that check has discount ≥ 30 — that's a structural proof.
+
+The second is **UNVERIFIABLE** because the rule body looks up data from the database. The prover refuses to claim universal correctness for code that talks to the world — the lookup result depends on what's in the database at runtime, which the math engine can't see.
+
+**DISPROVED** is the third verdict. It fires when the prover can prove a rule's condition is false for every possible input — the rule rejects everything, which is almost always a bug. You won't normally write a DISPROVED rule on purpose; it shows up when an operator gets flipped or a constant is wrong. See `examples/rule-keyword-tour.clear` for a side-by-side demo of all three verdicts including a deliberately-DISPROVED rule for teaching.
+
+That's the regulated-tier audit trail: every named rule gets a verdict the CRO can read.
 
 ### When to use `rule:` vs raw `guard`
 

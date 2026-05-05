@@ -83,6 +83,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #prove-popover .prove-mark.proved { color: var(--green); }
 #prove-popover .prove-mark.disproved { color: var(--red); }
 #prove-popover .prove-mark.unverifiable { color: var(--yellow, #d29922); }
+
+/* Inline rule-verdict gutter — green check / red X / amber question mark
+   next to each `rule:` line in the editor margin (Studio Prove redesign
+   4(a) v1, 2026-05-04). Reads from proveVerdictsField, populated after
+   each /api/prove call by runAutoProve. */
+.cm-prove-gutter { width: 18px; padding: 0 2px; border-right: 0; background: transparent; }
+.cm-prove-marker { display: inline-block; width: 14px; text-align: center; font-family: var(--mono); font-size: 13px; font-weight: 700; line-height: 1.4; cursor: default; }
+.cm-prove-proved { color: var(--green); }
+.cm-prove-disproved { color: var(--red); }
+.cm-prove-unverifiable { color: var(--yellow, #d29922); }
 #prove-popover .prove-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #prove-popover .prove-line { flex-shrink: 0; color: var(--tx4); font-size: 11px; }
 @keyframes stats-pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
@@ -845,8 +855,8 @@ body.builder-mode.show-source #editor-pane {
 </div>
 
 <script type="module">
-import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection } from './codemirror.bundle.js';
-import { EditorState } from './codemirror.bundle.js';
+import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection, gutter, GutterMarker } from './codemirror.bundle.js';
+import { EditorState, StateField, StateEffect } from './codemirror.bundle.js';
 import { syntaxHighlighting, StreamLanguage, HighlightStyle, defaultHighlightStyle } from './codemirror.bundle.js';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from './codemirror.bundle.js';
 import { javascript } from './codemirror.bundle.js';
@@ -1009,6 +1019,86 @@ function buildSourceMap(compiledCode) {
     : null;
 }
 
+// ==========================================================================
+// PROVE INLINE GUTTER — green check / red X / amber question mark next to
+// each `rule:` line in the editor margin, updating live as the user types.
+// Studio Prove redesign 4(a) v1 (2026-05-04). The v0 was the toolbar badge
+// + popover; this v1 adds the inline-margin marks like spell-check.
+//
+// Wiring:
+//   1. setProveVerdictsEffect carries the latest verdict map from the
+//      runAutoProve callback into the editor state.
+//   2. proveVerdictsField holds Map<lineNumber, verdict> — the gutter
+//      reads this on every render.
+//   3. ProveVerdictMarker is a GutterMarker subclass that renders the
+//      glyph (✓ / ✗ / ?) for one rule line.
+//   4. proveGutterExt is the gutter() extension wired into the editor.
+//   5. runAutoProve, after a successful /api/prove call, dispatches the
+//      StateEffect with the bundle's rules array.
+// ==========================================================================
+const setProveVerdictsEffect = StateEffect.define();
+
+const proveVerdictsField = StateField.define({
+  create() { return new Map(); },
+  update(verdicts, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setProveVerdictsEffect)) return e.value;
+    }
+    return verdicts;
+  },
+});
+
+class ProveVerdictMarker extends GutterMarker {
+  constructor(verdict, name) {
+    super();
+    this.verdict = verdict; // 'proved' | 'disproved' | 'unverifiable'
+    this.name = name;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-prove-marker cm-prove-' + this.verdict;
+    if (this.verdict === 'proved') span.textContent = '✓';
+    else if (this.verdict === 'disproved') span.textContent = '✗';
+    else span.textContent = '?';
+    span.title = this.name + ' — ' + this.verdict;
+    return span;
+  }
+}
+
+const proveGutterExt = gutter({
+  class: 'cm-prove-gutter',
+  lineMarker(view, line) {
+    const verdicts = view.state.field(proveVerdictsField, false);
+    if (!verdicts || verdicts.size === 0) return null;
+    const lineNum = view.state.doc.lineAt(line.from).number;
+    const v = verdicts.get(lineNum);
+    if (!v) return null;
+    return new ProveVerdictMarker(v.verdict, v.name);
+  },
+  // Without this, the strip caches markers and ignores verdict updates —
+  // so rules show NO mark even after the prover returns. Tell it to
+  // redraw whenever a setProveVerdictsEffect fires.
+  lineMarkerChange(update) {
+    return update.transactions.some(tr =>
+      tr.effects.some(e => e.is(setProveVerdictsEffect))
+    );
+  },
+  // The initialSpacer is the placeholder used to measure cell width.
+  // CodeMirror normally hides it, but if any rendering quirk leaks it
+  // through, return a width-only marker (no glyph, no color) so it
+  // can't be confused with a real verdict.
+  initialSpacer() {
+    return new (class extends GutterMarker {
+      toDOM() {
+        const span = document.createElement('span');
+        span.className = 'cm-prove-marker';
+        span.textContent = ' '; // nbsp — width without glyph
+        return span;
+      }
+    })();
+  },
+});
+
 const _savedEditor = localStorage.getItem('clear_editor_content');
 const editor = new EditorView({
   doc: _savedEditor || `# Welcome to Clear Studio
@@ -1024,6 +1114,8 @@ show 'Hello, Clear!'
     history(),
     clearLang,
     syntaxHighlighting(clearHighlight),
+    proveVerdictsField,
+    proveGutterExt,
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
     // Wrap long lines so the editor reflows to the panel width — no horizontal
     // scroll on a narrow Dev pane. Reflows automatically as the column resizes.
@@ -3413,6 +3505,22 @@ async function runAutoProve(source) {
     _proveBundleCache = bundle;
     _renderProveBadge(bundle);
     if (_provePopoverOpen) _renderProvePopover(bundle);
+    // Push the verdict map into the editor's state so the inline-margin
+    // gutter can render ✓ / ✗ / ? next to each rule line. Indexed by
+    // line number; the gutter looks up `verdicts.get(lineNum)` per line.
+    if (window._editor) {
+      const map = new Map();
+      for (const rule of (bundle.rules || [])) {
+        if (rule && typeof rule.line === 'number') {
+          map.set(rule.line, { verdict: rule.verdict, name: rule.name });
+        }
+      }
+      try {
+        window._editor.dispatch({ effects: setProveVerdictsEffect.of(map) });
+      } catch (_) {
+        // StateField may not be wired yet on first call — ignore.
+      }
+    }
   } catch (err) {
     // AbortError is normal under rapid edits — silent.
     if (err.name !== 'AbortError') _hideProveBadge();

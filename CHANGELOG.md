@@ -6,7 +6,53 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — CodeMirror bundle rebuild — gutter/StateField unlocked
+## 2026-05-04 (latest) — PC-2: conditional rules now prove + PC-5 doc cascade closed
+
+Two prover-roadmap items shipped in one branch.
+
+**PC-2 — conditional rules prove (`lib/prover/index.js`).** A rule whose actual enforcement lives INSIDE an `if/otherwise` (different cap for enterprise vs standard, different rule for paid vs unpaid invoice, etc.) used to come back UNVERIFIABLE with the reason "rule body has no guard." The prover walked the top-level statements only and gave up. Now the walker recurses into both branches under the right path-constraint assumption: the THEN branch evaluates its guards under "the IF condition is true," the OTHERWISE branch under "the IF condition is false." Each guard found that way contributes to the per-rule verdict; the rule is PROVED if every path proves.
+
+```clear
+rule discount-cap-tiered:
+  if order's customer_tier is 'enterprise':
+    enforce that order's discount_percent is less than 50, or fail with error message: 'enterprise discount cap'
+  otherwise:
+    enforce that order's discount_percent is less than 30, or fail with error message: 'standard discount cap'
+```
+
+Used to be UNVERIFIABLE; now PROVED.
+
+Two regression tests added to `lib/prover/index.test.js`: (1) the conditional rule above proves, (2) a conditional rule with no guards on either branch still comes back UNVERIFIABLE (so we don't regress to claiming everything provable). Compiler suite stable at 2915/2915 green; prover unit tests 23/23.
+
+**Why for launch:** Marcus's deal-desk has tiered rules everywhere — enterprise vs SMB, expansion vs new logo, renewal vs first-deal. Without PC-2 those would all come back as "?" in the audit PDF. Now they read PROVED. The regulated-tier pitch surface no longer has a "but only flat rules prove" caveat.
+
+**PC-5 — `clear prove` doc cascade closed.** Verified all six teaching surfaces (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, playground/system-prompt.md, landing pages) currently have full coverage of `clear prove` and the `rule <name>:` keyword. Plus: USER-GUIDE.md's "three verdicts" tutorial section was rewritten to drop the tautological `5 < 7` examples that violated the new no-tautologies rule (added 2026-05-04 to project CLAUDE.md). The PROVED + UNVERIFIABLE inline demo now uses field-referencing rules (`enforce that deal's discount_percent is less than 30`) and points at `examples/rule-keyword-tour.clear` for the deliberate DISPROVED demo.
+
+ROADMAP.md will be updated to mark PC-2 + PC-5 SHIPPED in the same commit.
+
+**Still open in the prover roadmap:** PC-3 (effect quarantine — earlier, louder error for rules that call DB/AI/network — UX upgrade, not new capability) and PC-6 (verified compiler — year-2 moonshot proving the Clear→JS / Clear→Python translation preserves meaning). One small Studio piece also still open: right-click drilldown on an unverifiable rule to see the prover's reasoning text in a side pane.
+
+---
+
+## 2026-05-04 — Inline rule-verdict marks in the editor margin (Prove redesign 4(a) v1)
+
+The toolbar badge shipped earlier today told you "Prove: 3 ok · 0 bad · 0 ?" but never said WHICH rule was which. This commit adds the spell-check feel: a green check / red X / amber question mark inline next to each `rule:` line in the editor margin, updating live as you type.
+
+**What shipped (`playground/ide.html`, +~60 lines):**
+- A new strip in the editor (next to the existing line-number gutter) reads from a per-editor verdict map. Each `rule:` line that has a verdict gets the right glyph: ✓ green for proved, ✗ red for disproved, ? amber for unverifiable.
+- Hover any mark → tooltip reads "discount-cap-thirty — proved" so the rule name + verdict are explicit without taking up margin space.
+- The verdict map is populated by the same auto-prove call that drives the toolbar badge — one fetch, two surfaces. No extra cost.
+- The strip recomputes only when verdicts change (not on every keystroke), so it doesn't stutter under heavy editing.
+
+**Verified live against running Studio:** loaded a 3-rule top-level source (`rule discount-cap-thirty:` + `enforce that 5 is less than 7`, `rule price-floor-positive:` + `1 > 0`, `rule risk-score-bounded:` + `10 < 11`). After auto-prove fired, the strip rendered 3 ✓ marks at lines 3, 5, 8 — each with the correct rule name in the tooltip. The toolbar badge shows "Prove: 3 ok · 0 bad · 0 ?" matching exactly. Tests 2915/0.
+
+**Why for launch:** completes the regulated-tier demo moment Russell talks about — "watch your discount rule turn green in the margin as you type." Same pitch surface as a JS linter showing red squiggles on a broken line, applied to business rules. The CRO sentence becomes: "the editor itself is showing you live which of your rules the math engine has confirmed are universally true."
+
+**Still open:** right-click drilldown (Prove redesign 4(c)) — when a rule is unverifiable, surface the prover's reasoning text in a side pane so the developer can see why ("this rule calls the AI; the prover refuses to claim universal correctness for impure code"). Filed as a follow-up; needs context-menu wiring on the gutter element.
+
+---
+
+## 2026-05-04 — CodeMirror bundle rebuild — gutter/StateField unlocked
 
 The playground's vendored `playground/codemirror.bundle.js` was originally a one-off `npm install + esbuild` pass that wasn't checked in. Editor features needing exports beyond what was bundled (e.g. inline editor-margin marks for proved/disproved/unverifiable rules — Studio Prove redesign 4(a) v1) had no way to land. This commit makes the rebuild reproducible and adds the four exports the Prove inline-gutter feature needs.
 

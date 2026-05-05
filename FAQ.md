@@ -7,6 +7,52 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Why does my conditional rule (with if/otherwise) read UNVERIFIABLE when the inner enforces should prove? (fixed 2026-05-04)
+
+**It shouldn't anymore — PC-2 fix shipped 2026-05-04.**
+
+Old behavior: a rule structured as
+```clear
+rule discount-cap-tiered:
+  if order's customer_tier is 'enterprise':
+    enforce that order's discount_percent is less than 50, or fail with error message: 'enterprise cap'
+  otherwise:
+    enforce that order's discount_percent is less than 30, or fail with error message: 'standard cap'
+```
+came back UNVERIFIABLE with reason "rule body has no guard." The prover walked only the top-level statements of the rule body and saw zero `enforce that` (because the enforces were nested inside the `if`).
+
+New behavior: the rule walker recurses into both branches of any `if/otherwise` it encounters, evaluating each branch's guards under the right path-constraint assumption (the THEN branch under "the IF condition is true," the OTHERWISE branch under "the IF condition is false"). Each guard found that way contributes to the rule's verdict. The example above now reads PROVED — both branches structurally enforce their respective caps.
+
+**Where the code lives:** `lib/prover/index.js`, the `processStatements()` helper inside `proveRule()`. The `if_then` case at the top of the loop clones the env, pushes the path-constraint assumption, and recurses into both branches. Two regression tests in `lib/prover/index.test.js` (proves a conditional rule; still marks an empty-body conditional UNVERIFIABLE).
+
+**What still doesn't prove inside conditionals:**
+- Mutations to the same variable in both branches with different shapes (the symbolic engine throws SymbolicLimit and the rule reads UNVERIFIABLE).
+- Loops (no case-splitting on iteration count yet).
+- Effects (DB / network / AI calls) — those mark the whole rule UNVERIFIABLE before walking begins.
+
+---
+
+## Where do the inline rule-verdict marks in the editor margin come from? (2026-05-04)
+
+When Studio's editor shows a green ✓, red ✗, or amber ? next to a `rule:` line, that's the inline-marks feature (Studio Prove redesign 4(a) v1).
+
+**The flow:**
+1. Source changes (or a save fires) → `autoCompile()` runs.
+2. After a successful compile, `runAutoProve(source)` posts the source to `/api/prove`.
+3. The response is a verdict bundle: `{ rules: [{ name, line, verdict, ... }, ...] }`.
+4. `runAutoProve` builds a Map keyed by line number and dispatches it via `setProveVerdictsEffect` into `proveVerdictsField` (a CodeMirror StateField on the editor's state).
+5. The strip extension (`proveGutterExt`) reads the field, asks for each visible line "is there a verdict for line N?", and renders a glyph if so. The strip's `lineMarkerChange` callback returns true on any transaction that fires `setProveVerdictsEffect`, so the strip redraws when verdicts arrive.
+
+**Where to look in the code:** `playground/ide.html`, search for `proveVerdictsField` (the StateField), `ProveVerdictMarker` (the GutterMarker subclass that renders the glyph), and `proveGutterExt` (the gutter() extension wired into the editor's extensions array).
+
+**Why it took two ships:**
+- v0 (toolbar badge + click-to-expand popover) shipped first against the existing CodeMirror bundle.
+- v1 (inline marks in the margin) needed `gutter`, `GutterMarker`, `StateField`, `StateEffect` exports — none of which were in the original vendored bundle. The CodeMirror bundle rebuild (also 2026-05-04) added them, and v1 followed.
+
+**Right-click drilldown (v2 / Prove 4(c))** is still open: when a rule is unverifiable, surface the prover's reasoning text in a side pane. Filed as a follow-up.
+
+---
+
 ## How do I add a new editor extension to Studio that needs a CodeMirror export not in the bundle? (2026-05-04)
 
 The playground's CodeMirror is shipped as one pre-built file: `playground/codemirror.bundle.js`. Browsers can't `import` from npm packages, so every CodeMirror symbol used in `playground/ide.html` has to be pre-bundled.
