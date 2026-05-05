@@ -905,16 +905,30 @@ const clearKeywords = new Set([
 ]);
 
 const clearLang = StreamLanguage.define({
-  // inString: null | "'" | '"' — when a string literal opens on one line
-  // but doesn't close before the wrap, every subsequent line stays inside
-  // the string until we see the matching close quote. Without this,
-  // wrapped error messages like
-  //   'Discounts of 30% or more require VP approval — submit
-  //   through the VP escalation queue, not the standard CRO desk'
-  // tokenized the second line as code, lighting up `the`, `not`, `the`
-  // as keywords inside what's actually still string content.
-  startState: () => ({ inComment: false, inString: null }),
+  // State carries across lines for two cases:
+  //   inString: null | "'" | '"' — open string literal that wrapped past EOL
+  //   inBlockComment: null | '*/' | '###' — open block comment that hasn't closed
+  // Both used to tokenize as code on the second+ line, lighting up English
+  // words inside as fake keywords. Both fixed below.
+  startState: () => ({ inString: null, inBlockComment: null }),
   token(stream, state) {
+    // Continue an unterminated block comment from a previous line.
+    if (state.inBlockComment) {
+      const closer = state.inBlockComment;
+      if (closer === '*/') {
+        while (!stream.eol()) {
+          if (stream.match('*/')) { state.inBlockComment = null; return 'comment'; }
+          stream.next();
+        }
+        return 'comment';
+      }
+      if (closer === '###') {
+        const rest = stream.string.slice(stream.pos).trim();
+        stream.skipToEnd();
+        if (rest === '###') state.inBlockComment = null;
+        return 'comment';
+      }
+    }
     // Continue an unterminated string from a previous line.
     if (state.inString) {
       const quote = state.inString;
@@ -926,6 +940,21 @@ const clearLang = StreamLanguage.define({
         }
       }
       return 'string';
+    }
+    // Block comment opener `/* ... */` (single or multi-line).
+    if (stream.match('/*')) {
+      while (!stream.eol()) {
+        if (stream.match('*/')) return 'comment';
+        stream.next();
+      }
+      state.inBlockComment = '*/';
+      return 'comment';
+    }
+    // Block comment opener `###` on its own line — multi-line comment until
+    // the next `###` line.
+    if (stream.sol() && stream.match(/^\s*###\s*$/)) {
+      state.inBlockComment = '###';
+      return 'comment';
     }
     if (stream.match(/^#.*/)) return 'comment';
     // Identifier (with optional possessive) — must come BEFORE the string

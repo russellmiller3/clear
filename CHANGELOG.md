@@ -6,7 +6,21 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-04 (latest) — Studio editor highlighting: three silent tokenizer bugs fixed
+## 2026-05-04 (latest) — Studio editor highlighting: block comments + sweep follow-up
+
+After the four-bug fix earlier today, a comprehensive sweep against every tricky pattern in a Clear source surfaced one more silent bug: `/* ... */` and `### ... ###` block comments were never recognized by the syntax highlighter. Words inside them tokenized as code (slate gray, structural words even lit blue), which read as broken styling.
+
+**Fix (`playground/ide.html`, `clearLang`):**
+- New `inBlockComment` state value (`null | '*/' | '###'`) carries across lines, mirroring the `inString` pattern from earlier today.
+- `/*` opener: try to close on the same line; if not, set `inBlockComment = '*/'` and consume the rest of the line as comment. Subsequent lines stay in comment state until `*/` arrives.
+- `### ... ###` opener: a line that's `### ` alone (whitespace tolerated) sets `inBlockComment = '###'`. Following lines all comment-color until another `###`-only line closes the block.
+- Verified live: all words inside both block-comment forms render at the comment color (`#94a3b8`, italic gray); structural keywords like `rule` and `enforce` still blue when they appear outside comments.
+
+**Why:** every Clear template uses `/* */` for multi-line architecture comments at the top of the file (the ASCII diagram + dataflow note convention). Without this fix, those preamble blocks rendered as random keyword-coloured noise — first thing a CRO sees in a live demo. Now they read as comments.
+
+---
+
+## 2026-05-04 — Studio editor highlighting: three silent tokenizer bugs fixed
 
 Russell flagged "weird highlighting" on deal-desk in Studio. Looking at the screenshot showed three real bugs in `playground/ide.html`'s Clear language definition that all hit the same kind of source — long error messages and named rules:
 
