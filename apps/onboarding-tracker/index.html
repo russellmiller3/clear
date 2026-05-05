@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Onboarding Tracker</title>
+  <title>Managers</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 
@@ -298,7 +298,239 @@ body {
 .clear-detail-actions .btn {
   flex: 0 1 auto;
   min-width: 0;
-}</style>
+}
+
+
+/* ---------- Pearlescent buttons ---------- */
+.btn {
+  /* Two layers stacked: base pearl gradient (always visible) + opal sweep
+     gradient sized 200% wide and parked off-screen-right.  On hover we
+     animate the opal sweep's background-position from 100% → 0% to drag
+     it across the button right-to-left.  */
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.55) 35%,
+      oklch(91% 0.038 280 / 0.70) 50%,
+      oklch(92% 0.032 320 / 0.55) 65%,
+      oklch(94% 0.026 25 / 0)     100%
+    ),
+    linear-gradient(180deg,
+      oklch(96.5% 0.012 235) 0%,
+      oklch(93% 0.018 238) 48%,
+      oklch(89% 0.024 240) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(28% 0.04 240);
+  border: 1px solid oklch(83% 0.025 235);
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.005 235 / 0.9),
+    inset 0 -1px 0 0 oklch(82% 0.02 240 / 0.4),
+    0 1px 2px 0 oklch(28% 0.03 240 / 0.06),
+    0 1px 3px 0 oklch(28% 0.03 240 / 0.04);
+  transition: background-position 720ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 120ms ease;
+}
+.btn:hover {
+  /* Drag the opal layer from its parked position (110% off the right) all
+     the way past the left edge (-10%) — gives the sweep a clean exit. */
+  background-position: -10% 0, 0 0;
+  border-color: oklch(76% 0.05 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.95),
+    0 4px 12px 0 oklch(60% 0.10 240 / 0.18),
+    0 0 0 1px oklch(70% 0.05 240 / 0.25),
+    0 0 24px -8px oklch(75% 0.08 280 / 0.4);
+}
+.btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 3px 0 oklch(82% 0.025 240 / 0.5),
+    0 1px 1px 0 oklch(28% 0.03 240 / 0.05);
+}
+.btn:focus-visible {
+  outline: 2px solid oklch(60% 0.16 240);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background-image:
+    linear-gradient(110deg,
+      oklch(64% 0.20 220 / 0)   0%,
+      oklch(60% 0.22 248 / 0.6) 35%,
+      oklch(58% 0.24 280 / 0.7) 50%,
+      oklch(62% 0.20 320 / 0.6) 65%,
+      oklch(66% 0.18 25 / 0)    100%
+    ),
+    linear-gradient(180deg,
+      oklch(58% 0.16 246) 0%,
+      oklch(52% 0.18 250) 50%,
+      oklch(46% 0.20 254) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(99% 0.005 250);
+  border: 1px solid oklch(42% 0.18 254);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.12 248 / 0.6),
+    inset 0 -1px 0 0 oklch(36% 0.18 254 / 0.4),
+    0 1px 2px 0 oklch(22% 0.10 250 / 0.18),
+    0 2px 4px 0 oklch(22% 0.10 250 / 0.10);
+}
+.btn-primary:hover {
+  background-position: -10% 0, 0 0;
+  border-color: oklch(46% 0.20 250);
+  color: oklch(100% 0 0);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 248 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 250 / 0.30),
+    0 0 0 1px oklch(60% 0.16 248 / 0.4),
+    0 0 28px -6px oklch(60% 0.18 280 / 0.5);
+}
+.btn-ghost {
+  background-image: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: oklch(38% 0.04 240);
+  box-shadow: none;
+}
+.btn-ghost:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%
+    );
+  background-size: 220% 100%;
+  background-position: -10% 0;
+  background-repeat: no-repeat;
+  border-color: oklch(82% 0.04 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.9),
+    0 2px 8px 0 oklch(60% 0.10 240 / 0.12);
+}
+.btn-outline {
+  background-image: linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 100% 100%;
+  background-position: 0 0;
+  color: oklch(35% 0.05 240);
+  border: 1px solid oklch(78% 0.03 240);
+  box-shadow: inset 0 1px 0 0 oklch(99% 0.005 240 / 0.6);
+  transition: background 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-outline:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%),
+    linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 220% 100%, 100% 100%;
+  background-position: -10% 0, 0 0;
+  border-color: oklch(70% 0.05 240);
+  color: oklch(28% 0.06 240);
+}
+.btn-error {
+  background-image: linear-gradient(180deg,
+    oklch(62% 0.20 25) 0%,
+    oklch(56% 0.22 28) 50%,
+    oklch(50% 0.24 30) 100%);
+  color: oklch(99% 0.005 25);
+  border-color: oklch(46% 0.22 28);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.6),
+    0 1px 2px 0 oklch(28% 0.10 25 / 0.18);
+}
+.btn-error:hover {
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 28 / 0.30);
+}
+.btn-disabled,
+.btn:disabled {
+  background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
+  background-position: 0 0;
+  color: oklch(60% 0.02 240);
+  border-color: oklch(85% 0.01 240);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.btn-sm { font-size: 13px; padding: 6px 12px; min-height: 32px; }
+.btn-lg { font-size: 16px; padding: 12px 22px; min-height: 48px; }
+
+/* ---------- App layout: max-width + gutters + panel gaps ---------- */
+/* The main content area used to stretch edge-to-edge on wide screens.
+   Every modern dashboard (Linear, Stripe, Vercel, Notion) caps content at
+   ~1280-1440px and centers it. We do the same. */
+.clear-shell-outlet {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 40px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.clear-shell-outlet > * + * { margin-top: 24px; }
+
+/* Workbench detail panel — used to share a hairline border with the
+   table next to it. Now they sit 24px apart with a soft border + rounded
+   corners on the panel, matching the surrounding cards. */
+.clear-detail-panel {
+  margin-left: 24px;
+  border-left: 1px solid var(--clear-line);
+  border-radius: 16px;
+  background: var(--clear-bg-panel);
+  border: 1px solid var(--clear-line);
+  box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
+}
+
+/* Stat strip: cap card width so 3 cards in a 1440px content area look
+   like dashboard cards, not banner ads. Wraps cleanly under 1024px. */
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 320px));
+  gap: 16px;
+  justify-content: start;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 18px 20px;
+}
+
+/* Cards (display panels, app_card, generic bordered surfaces) — give
+   them rounded-2xl visual weight and consistent vertical rhythm. */
+.clear-shell-outlet .bg-base-100.rounded-xl,
+.clear-shell-outlet .bg-base-100.rounded-box {
+  border-radius: 16px;
+}
+
+/* Form fields — cap input width so a single form field doesn't
+   stretch to 1300px on a wide screen. Forms read better in a column
+   that's 480-640px wide, mirroring iOS and Stripe's checkout patterns. */
+.clear-shell-outlet fieldset.clear-form-field,
+.clear-shell-outlet .clear-form-field {
+  max-width: 640px;
+}
+
+/* "as 2 columns" grid: real gap between the table and the detail panel. */
+.clear-shell-outlet .grid.grid-cols-2 {
+  gap: 24px;
+}
+</style>
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
@@ -310,10 +542,10 @@ body {
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Queue</li>
     <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_160_Dashboard" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="160"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span class="clear-nav-label">Dashboard</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_161_Customers" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="161"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Customers</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_162_Steps" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="162"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">Steps</span><span class="clear-nav-count num" data-clear-tpl="{step_total}">{step_total}</span></a></li>
+    <li><a href="/customers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_161_Customers" data-clear-control-kind="nav-item" data-nav-path="/customers" data-clear-line="161"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Customers</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/steps" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_162_Steps" data-clear-control-kind="nav-item" data-nav-path="/steps" data-clear-line="162"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">Steps</span><span class="clear-nav-count num" data-clear-tpl="{step_total}">{step_total}</span></a></li>
         <li class="clear-nav-section-label">Team</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_165_Managers" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="165"><i data-lucide="user-check" aria-hidden="true"></i><span class="clear-nav-label">Managers</span></a></li>
+    <li><a href="/managers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_165_Managers" data-clear-control-kind="nav-item" data-nav-path="/managers" data-clear-line="165"><i data-lucide="user-check" aria-hidden="true"></i><span class="clear-nav-label">Managers</span></a></li>
       </ul>
     </nav>
     </aside>
@@ -328,7 +560,7 @@ body {
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="173">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6 clear-shell-outlet" data-clear-shell-outlet="true" data-clear-line="173">
       <div data-clear-routed-content="Onboarding_Tracker" data-clear-routed-route="/">
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="175">
       <div class="min-w-0">
@@ -439,6 +671,193 @@ body {
     </main>
     </div>
 </div>
+<div id="page_Customers" data-clear-page-id="Customers" data-clear-page-route="/customers" data-clear-page-title="Customers" data-clear-routed-content="Customers" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="246">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="247">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="248"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">O</div><span class="text-base font-bold text-base-content tracking-tight">Onboarding</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queue</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_250_Dashboard" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="250"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span class="clear-nav-label">Dashboard</span></a></li>
+    <li><a href="/customers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_251_Customers" data-clear-control-kind="nav-item" data-nav-path="/customers" data-clear-line="251"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Customers</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/steps" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_252_Steps" data-clear-control-kind="nav-item" data-nav-path="/steps" data-clear-line="252"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">Steps</span></a></li>
+        <li class="clear-nav-section-label">Team</li>
+    <li><a href="/managers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_254_Managers" data-clear-control-kind="nav-item" data-nav-path="/managers" data-clear-line="254"><i data-lucide="user-check" aria-hidden="true"></i><span class="clear-nav-label">Managers</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="256">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="257">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="258">Customers</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="259">Onboarding / Customers</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="261">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="262">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">All onboarding customers</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{total} customers in the onboarding queue">{total} customers in the onboarding queue</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="265">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Customers_2" data-clear-line="266">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Customers</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Customers_2_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Customers_2_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_Steps" data-clear-page-id="Steps" data-clear-page-route="/steps" data-clear-page-title="Steps" data-clear-routed-content="Steps" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="276">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="277">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="278"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">O</div><span class="text-base font-bold text-base-content tracking-tight">Onboarding</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queue</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_280_Dashboard" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="280"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span class="clear-nav-label">Dashboard</span></a></li>
+    <li><a href="/customers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_281_Customers" data-clear-control-kind="nav-item" data-nav-path="/customers" data-clear-line="281"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Customers</span></a></li>
+    <li><a href="/steps" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_282_Steps" data-clear-control-kind="nav-item" data-nav-path="/steps" data-clear-line="282"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">Steps</span><span class="clear-nav-count num" data-clear-tpl="{step_total}">{step_total}</span></a></li>
+        <li class="clear-nav-section-label">Team</li>
+    <li><a href="/managers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_284_Managers" data-clear-control-kind="nav-item" data-nav-path="/managers" data-clear-line="284"><i data-lucide="user-check" aria-hidden="true"></i><span class="clear-nav-label">Managers</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="286">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="287">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="288">Steps</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="289">Onboarding / Steps</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="291">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="292">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Onboarding steps</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{step&lt;em>total} steps total — {open&lt;/em>steps} open, {done_steps} completed">{step<em>total} steps total — {open</em>steps} open, {done_steps} completed</p>
+      </div>
+    </div>
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="295">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="296">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Open</div>
+          <i class="clear-stat-icon" data-lucide="circle-dashed" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{open_steps}">{open_steps}</span></div>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="299">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Done</div>
+          <i class="clear-stat-icon" data-lucide="check-circle-2" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{done_steps}">{done_steps}</span></div>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="303">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Steps_2" data-clear-line="304">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Steps</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Steps_2_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Steps_2_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_Managers" data-clear-page-id="Managers" data-clear-page-route="/managers" data-clear-page-title="Managers" data-clear-routed-content="Managers" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="313">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="314">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="315"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">O</div><span class="text-base font-bold text-base-content tracking-tight">Onboarding</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queue</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_317_Dashboard" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="317"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span class="clear-nav-label">Dashboard</span></a></li>
+    <li><a href="/customers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_318_Customers" data-clear-control-kind="nav-item" data-nav-path="/customers" data-clear-line="318"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Customers</span></a></li>
+    <li><a href="/steps" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_319_Steps" data-clear-control-kind="nav-item" data-nav-path="/steps" data-clear-line="319"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">Steps</span></a></li>
+        <li class="clear-nav-section-label">Team</li>
+    <li><a href="/managers" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_321_Managers" data-clear-control-kind="nav-item" data-nav-path="/managers" data-clear-line="321"><i data-lucide="user-check" aria-hidden="true"></i><span class="clear-nav-label">Managers</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="323">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="324">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="325">Managers</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="326">Onboarding / Team</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="328">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="329">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Account managers</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Two managers split the onboarding queue.</p>
+      </div>
+    </div>
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="332">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="333">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Sarah</div>
+          <i class="clear-stat-icon" data-lucide="user-check" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{sarah_customers}">{sarah_customers}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Active customers</div>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="337">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Mike</div>
+          <i class="clear-stat-icon" data-lucide="user-check" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{mike_customers}">{mike_customers}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Active customers</div>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="342">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Customers_3" data-clear-line="343">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Customers</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Customers_3_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Customers_3_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
   </main>
 
   <!-- ┌─────────────────────────────────────────────┐
@@ -461,6 +880,9 @@ body {
 
  PAGES:
    'Onboarding Tracker' at / (line 145)
+   'Customers' at /customers (line 240)
+   'Steps' at /steps (line 268)
+   'Managers' at /managers (line 306)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -738,6 +1160,18 @@ function _recompute() {
   { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_customer?.account_manager; }
   // clear:210
   { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_customer?.status; }
+  // clear:244
+  total = _clear_len(_state.customers);
+  // clear:272
+  step_total = _clear_len(_state.steps);
+  // clear:273
+  let open_steps = _clear_len(_state.steps);
+  // clear:274
+  let done_steps = _clear_len(_state.steps);
+  // clear:310
+  let sarah_customers = _clear_len(_state.customers);
+  // clear:311
+  let mike_customers = _clear_len(_state.customers);
   _clear_render_table(
     document.getElementById('output_Customers_table'),
     _state.customers,
@@ -752,6 +1186,27 @@ function _recompute() {
     function(row, rowIndex) { var _keys = ["customer_id","step_name","completed"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_Steps_table'));
+  _clear_render_table(
+    document.getElementById('output_Customers_2_table'),
+    _state.customers,
+    function(d) { var _keys = ["company","name","email","account_manager","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["company","name","email","account_manager","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Customers_2_table'));
+  _clear_render_table(
+    document.getElementById('output_Steps_2_table'),
+    _state.steps,
+    function(d) { var _keys = ["customer_id","step_name","completed"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["customer_id","step_name","completed"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Steps_2_table'));
+  _clear_render_table(
+    document.getElementById('output_Customers_3_table'),
+    _state.customers,
+    function(d) { var _keys = ["account_manager","company","name","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["account_manager","company","name","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Customers_3_table'));
   { const _el = document.getElementById('input_name'); if (_el) _el.value = _state.name; }
   { const _el = document.getElementById('input_company'); if (_el) _el.value = _state.company; }
   { const _el = document.getElementById('input_email'); if (_el) _el.value = _state.email; }
@@ -760,6 +1215,10 @@ function _recompute() {
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof total !== 'undefined') _tplCtx["total"] = total;
   if (typeof step_total !== 'undefined') _tplCtx["step_total"] = step_total;
+  if (typeof open_steps !== 'undefined') _tplCtx["open_steps"] = open_steps;
+  if (typeof done_steps !== 'undefined') _tplCtx["done_steps"] = done_steps;
+  if (typeof sarah_customers !== 'undefined') _tplCtx["sarah_customers"] = sarah_customers;
+  if (typeof mike_customers !== 'undefined') _tplCtx["mike_customers"] = mike_customers;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
@@ -903,10 +1362,107 @@ _recompute(); // initial render with default state
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:147]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
     _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:148]', e.message); return _state.customers; });
     _state.steps = await fetch("/api/steps").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/steps] [clear:149]', e.message); return _state.steps; });
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:242]', e.message); return _state.customers; });
+    _state.steps = await fetch("/api/steps").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/steps] [clear:270]', e.message); return _state.steps; });
+    _state.customers = await fetch("/api/customers/onboarding").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/customers/onboarding] [clear:308]', e.message); return _state.customers; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
 
+// --- Router ---
+// Reads both location.pathname (server-side navigation, direct URLs, route
+// selector) and location.hash (in-iframe clicks). Pathname wins when set,
+// hash is the fallback so hash-style links keep working. Also intercepts
+// <a href> clicks to same-origin routes so we don't hit the server on each
+// click (SPA feel while still supporting refresh/direct-URL).
+const _routes = {
+  '/': 'Onboarding_Tracker',
+  '/customers': 'Customers',
+  '/steps': 'Steps',
+  '/managers': 'Managers'
+};
+
+const _shellRoute = '/';
+const _shellPageId = 'Onboarding_Tracker';
+const _standaloneRoutes = { '/login': true, '/signup': true };
+function _clearTemplateHost() {
+  let host = document.getElementById('clear-route-templates');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'clear-route-templates';
+    host.hidden = true;
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function _clearParkMountedRoutes(outlet) {
+  const host = _clearTemplateHost();
+  Array.from(outlet.children).forEach(function(child) {
+    if (!child || !child.getAttribute) return;
+    if (!child.hasAttribute('data-clear-page-route')) return;
+    if (child.id === 'page_' + _shellPageId) return;
+    if (child.getAttribute('data-clear-routed-content') === _shellPageId) return;
+    child.style.display = 'none';
+    host.appendChild(child);
+  });
+}
+function _clearRenderRouteIntoShell(current) {
+  if (_standaloneRoutes[current]) return false;
+  const shellPage = document.getElementById('page_' + _shellPageId);
+  const outlet = document.querySelector('[data-clear-shell-outlet="true"]');
+  if (!shellPage || !outlet) return false;
+  const shellDefault = outlet.querySelector('[data-clear-routed-content="' + _shellPageId + '"]');
+  shellPage.style.display = 'block';
+  _clearParkMountedRoutes(outlet);
+  if (current === _shellRoute) {
+    if (shellDefault) shellDefault.style.display = '';
+    return true;
+  }
+  if (shellDefault) shellDefault.style.display = 'none';
+  const pageId = _routes[current];
+  const target = pageId ? document.getElementById('page_' + pageId) : null;
+  if (!target) return true;
+  target.style.display = 'block';
+  outlet.appendChild(target);
+  return true;
+}
+
+function _currentRoute() {
+  const p = (location.pathname || '/').replace(/\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
+  const h = (location.hash || '').slice(1);
+  if (h && _routes.hasOwnProperty(h)) return h;
+  return Object.keys(_routes)[0]; // first declared route (usually '/')
+}
+function _router() {
+  const current = _currentRoute();
+  const _shellRendered = _clearRenderRouteIntoShell(current);
+  if (_shellRendered) {
+    document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+    if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+    return;
+  }
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (route === current) ? 'block' : 'none';
+  }
+  document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+  if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+}
+window.addEventListener('popstate', _router);
+window.addEventListener('hashchange', _router);
+document.addEventListener('click', function(e) {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
+  if (_routes.hasOwnProperty(href)) {
+    e.preventDefault();
+    history.pushState({}, '', href);
+    _router();
+  }
+});
+_router();
 if (window.lucide && lucide.createIcons) lucide.createIcons();
 
 

@@ -1,4 +1,4 @@
-// One-shot script: render the Clear crystal SVG (extracted from ide.html
+// One-shot script: render the Clear crystal SVG (extracted from studio.html
 // toolbar) to a 256x256 PNG suitable for wrapping into a Windows ICO. Uses
 // the playwright dep already in package.json; no new install needed.
 import { chromium } from 'playwright';

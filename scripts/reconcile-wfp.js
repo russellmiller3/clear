@@ -31,7 +31,7 @@
 //       treats this as "human should review")
 //   2 — couldn't run (missing env, CF API auth, store unreachable)
 
-import { WfpApi } from '../playground/wfp-api.js';
+import { WfpApi } from '../studio/wfp-api.js';
 
 function parseArgs(argv) {
 	const out = { json: false, d1Prefix: 'clear-' };
@@ -75,7 +75,7 @@ async function main() {
 	let known = { scripts: new Set(), databases: new Set(), storeReachable: false };
 	try {
 		if (process.env.CLEAR_TENANTS_DB_URL) {
-			const { loadKnownApps } = await import('../playground/tenants.js');
+			const { loadKnownApps } = await import('../studio/tenants.js');
 			const k = await loadKnownApps({ url: process.env.CLEAR_TENANTS_DB_URL });
 			known.scripts = new Set(k?.scripts || []);
 			known.databases = new Set(k?.databases || []);

@@ -31,7 +31,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { parse } from '../parser.js';
-import { computeShape, shapeSimilarity } from '../playground/supervisor/program-shape.js';
+import { computeShape, shapeSimilarity } from '../studio/supervisor/program-shape.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');

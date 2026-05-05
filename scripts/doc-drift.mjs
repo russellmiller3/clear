@@ -147,7 +147,7 @@ export function buildReport({ nodeTypes = [], synonyms = [] }) {
 	sections.push('');
 	sections.push('Per CLAUDE.md "Documentation Rule (MANDATORY)", new features need entries in:');
 	sections.push('  intent.md • SYNTAX.md • AI-INSTRUCTIONS.md • USER-GUIDE.md');
-	sections.push('  FEATURES.md • CHANGELOG.md • ROADMAP.md • playground/system-prompt.md');
+	sections.push('  FEATURES.md • CHANGELOG.md • ROADMAP.md • studio/system-prompt.md');
 	sections.push('  + landing/*.html when user-facing');
 	sections.push('');
 	sections.push('This is a warning, not a block. Push proceeds.');

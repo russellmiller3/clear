@@ -477,14 +477,14 @@ body {
 /* The main content area used to stretch edge-to-edge on wide screens.
    Every modern dashboard (Linear, Stripe, Vercel, Notion) caps content at
    ~1280-1440px and centers it. We do the same. */
-[data-clear-shell-outlet] {
+.clear-shell-outlet {
   max-width: 1440px;
   margin: 0 auto;
   padding: 32px 40px;
   width: 100%;
   box-sizing: border-box;
 }
-[data-clear-shell-outlet] > * + * { margin-top: 24px; }
+.clear-shell-outlet > * + * { margin-top: 24px; }
 
 /* Workbench detail panel — used to share a hairline border with the
    table next to it. Now they sit 24px apart with a soft border + rounded
@@ -513,21 +513,21 @@ body {
 
 /* Cards (display panels, app_card, generic bordered surfaces) — give
    them rounded-2xl visual weight and consistent vertical rhythm. */
-[data-clear-shell-outlet] .bg-base-100.rounded-xl,
-[data-clear-shell-outlet] .bg-base-100.rounded-box {
+.clear-shell-outlet .bg-base-100.rounded-xl,
+.clear-shell-outlet .bg-base-100.rounded-box {
   border-radius: 16px;
 }
 
 /* Form fields — cap input width so a single form field doesn't
    stretch to 1300px on a wide screen. Forms read better in a column
    that's 480-640px wide, mirroring iOS and Stripe's checkout patterns. */
-[data-clear-shell-outlet] fieldset.clear-form-field,
-[data-clear-shell-outlet] .clear-form-field {
+.clear-shell-outlet fieldset.clear-form-field,
+.clear-shell-outlet .clear-form-field {
   max-width: 640px;
 }
 
 /* "as 2 columns" grid: real gap between the table and the detail panel. */
-[data-clear-shell-outlet] .grid.grid-cols-2 {
+.clear-shell-outlet .grid.grid-cols-2 {
   gap: 24px;
 }
 </style>
@@ -559,7 +559,7 @@ body {
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="152">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6 clear-shell-outlet" data-clear-shell-outlet="true" data-clear-line="152">
       <div data-clear-routed-content="Lead_Router" data-clear-routed-route="/">
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="153">
       <div class="min-w-0">

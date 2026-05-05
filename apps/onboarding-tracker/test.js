@@ -161,26 +161,44 @@ async function run() {
     assert(html.includes("Onboarding Tracker"), "Page should contain title 'Onboarding Tracker'");
   });
 
+  await test("The Customers page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("Customers"), "Page should contain title 'Customers'");
+  });
+
+  await test("The Steps page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("Steps"), "Page should contain title 'Steps'");
+  });
+
+  await test("The Managers page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("Managers"), "Page should contain title 'Managers'");
+  });
+
   // --- User-Written Tests (from test blocks in .clear source) ---
   const _baseUrl = BASE;
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user create a customer with name is 'Test' , company is 'TestCo'", async () => {
-      // clear:243
+      // clear:348
       _response = await fetch(_baseUrl + "/api/customers", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "name": "Test", "company": "TestCo" })
       });
       _responseBody = await _response.json().catch(() => null);
   
-      // clear:244
+      // clear:349
       _expectSuccess(_response);
-      // clear:245
+      // clear:350
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("creating a customer should require login", async () => {
-      // clear:248
+      // clear:353
       _response = await fetch(_baseUrl + "/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

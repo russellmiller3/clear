@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Request Queue</title>
+  <title>Finance requests</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 
@@ -298,7 +298,239 @@ body {
 .clear-detail-actions .btn {
   flex: 0 1 auto;
   min-width: 0;
-}</style>
+}
+
+
+/* ---------- Pearlescent buttons ---------- */
+.btn {
+  /* Two layers stacked: base pearl gradient (always visible) + opal sweep
+     gradient sized 200% wide and parked off-screen-right.  On hover we
+     animate the opal sweep's background-position from 100% → 0% to drag
+     it across the button right-to-left.  */
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.55) 35%,
+      oklch(91% 0.038 280 / 0.70) 50%,
+      oklch(92% 0.032 320 / 0.55) 65%,
+      oklch(94% 0.026 25 / 0)     100%
+    ),
+    linear-gradient(180deg,
+      oklch(96.5% 0.012 235) 0%,
+      oklch(93% 0.018 238) 48%,
+      oklch(89% 0.024 240) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(28% 0.04 240);
+  border: 1px solid oklch(83% 0.025 235);
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.005 235 / 0.9),
+    inset 0 -1px 0 0 oklch(82% 0.02 240 / 0.4),
+    0 1px 2px 0 oklch(28% 0.03 240 / 0.06),
+    0 1px 3px 0 oklch(28% 0.03 240 / 0.04);
+  transition: background-position 720ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 120ms ease;
+}
+.btn:hover {
+  /* Drag the opal layer from its parked position (110% off the right) all
+     the way past the left edge (-10%) — gives the sweep a clean exit. */
+  background-position: -10% 0, 0 0;
+  border-color: oklch(76% 0.05 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.95),
+    0 4px 12px 0 oklch(60% 0.10 240 / 0.18),
+    0 0 0 1px oklch(70% 0.05 240 / 0.25),
+    0 0 24px -8px oklch(75% 0.08 280 / 0.4);
+}
+.btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 3px 0 oklch(82% 0.025 240 / 0.5),
+    0 1px 1px 0 oklch(28% 0.03 240 / 0.05);
+}
+.btn:focus-visible {
+  outline: 2px solid oklch(60% 0.16 240);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background-image:
+    linear-gradient(110deg,
+      oklch(64% 0.20 220 / 0)   0%,
+      oklch(60% 0.22 248 / 0.6) 35%,
+      oklch(58% 0.24 280 / 0.7) 50%,
+      oklch(62% 0.20 320 / 0.6) 65%,
+      oklch(66% 0.18 25 / 0)    100%
+    ),
+    linear-gradient(180deg,
+      oklch(58% 0.16 246) 0%,
+      oklch(52% 0.18 250) 50%,
+      oklch(46% 0.20 254) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(99% 0.005 250);
+  border: 1px solid oklch(42% 0.18 254);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.12 248 / 0.6),
+    inset 0 -1px 0 0 oklch(36% 0.18 254 / 0.4),
+    0 1px 2px 0 oklch(22% 0.10 250 / 0.18),
+    0 2px 4px 0 oklch(22% 0.10 250 / 0.10);
+}
+.btn-primary:hover {
+  background-position: -10% 0, 0 0;
+  border-color: oklch(46% 0.20 250);
+  color: oklch(100% 0 0);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 248 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 250 / 0.30),
+    0 0 0 1px oklch(60% 0.16 248 / 0.4),
+    0 0 28px -6px oklch(60% 0.18 280 / 0.5);
+}
+.btn-ghost {
+  background-image: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: oklch(38% 0.04 240);
+  box-shadow: none;
+}
+.btn-ghost:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%
+    );
+  background-size: 220% 100%;
+  background-position: -10% 0;
+  background-repeat: no-repeat;
+  border-color: oklch(82% 0.04 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.9),
+    0 2px 8px 0 oklch(60% 0.10 240 / 0.12);
+}
+.btn-outline {
+  background-image: linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 100% 100%;
+  background-position: 0 0;
+  color: oklch(35% 0.05 240);
+  border: 1px solid oklch(78% 0.03 240);
+  box-shadow: inset 0 1px 0 0 oklch(99% 0.005 240 / 0.6);
+  transition: background 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-outline:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%),
+    linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 220% 100%, 100% 100%;
+  background-position: -10% 0, 0 0;
+  border-color: oklch(70% 0.05 240);
+  color: oklch(28% 0.06 240);
+}
+.btn-error {
+  background-image: linear-gradient(180deg,
+    oklch(62% 0.20 25) 0%,
+    oklch(56% 0.22 28) 50%,
+    oklch(50% 0.24 30) 100%);
+  color: oklch(99% 0.005 25);
+  border-color: oklch(46% 0.22 28);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.6),
+    0 1px 2px 0 oklch(28% 0.10 25 / 0.18);
+}
+.btn-error:hover {
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 28 / 0.30);
+}
+.btn-disabled,
+.btn:disabled {
+  background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
+  background-position: 0 0;
+  color: oklch(60% 0.02 240);
+  border-color: oklch(85% 0.01 240);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.btn-sm { font-size: 13px; padding: 6px 12px; min-height: 32px; }
+.btn-lg { font-size: 16px; padding: 12px 22px; min-height: 48px; }
+
+/* ---------- App layout: max-width + gutters + panel gaps ---------- */
+/* The main content area used to stretch edge-to-edge on wide screens.
+   Every modern dashboard (Linear, Stripe, Vercel, Notion) caps content at
+   ~1280-1440px and centers it. We do the same. */
+.clear-shell-outlet {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 40px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.clear-shell-outlet > * + * { margin-top: 24px; }
+
+/* Workbench detail panel — used to share a hairline border with the
+   table next to it. Now they sit 24px apart with a soft border + rounded
+   corners on the panel, matching the surrounding cards. */
+.clear-detail-panel {
+  margin-left: 24px;
+  border-left: 1px solid var(--clear-line);
+  border-radius: 16px;
+  background: var(--clear-bg-panel);
+  border: 1px solid var(--clear-line);
+  box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
+}
+
+/* Stat strip: cap card width so 3 cards in a 1440px content area look
+   like dashboard cards, not banner ads. Wraps cleanly under 1024px. */
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 320px));
+  gap: 16px;
+  justify-content: start;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 18px 20px;
+}
+
+/* Cards (display panels, app_card, generic bordered surfaces) — give
+   them rounded-2xl visual weight and consistent vertical rhythm. */
+.clear-shell-outlet .bg-base-100.rounded-xl,
+.clear-shell-outlet .bg-base-100.rounded-box {
+  border-radius: 16px;
+}
+
+/* Form fields — cap input width so a single form field doesn't
+   stretch to 1300px on a wide screen. Forms read better in a column
+   that's 480-640px wide, mirroring iOS and Stripe's checkout patterns. */
+.clear-shell-outlet fieldset.clear-form-field,
+.clear-shell-outlet .clear-form-field {
+  max-width: 640px;
+}
+
+/* "as 2 columns" grid: real gap between the table and the detail panel. */
+.clear-shell-outlet .grid.grid-cols-2 {
+  gap: 24px;
+}
+</style>
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
@@ -310,12 +542,12 @@ body {
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Queues</li>
     <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_139_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="139"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span><span class="clear-nav-count num" data-clear-tpl="{new_count}">{new_count}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_140_All_requests" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="140"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span><span class="clear-nav-count num" data-clear-tpl="{all_count}">{all_count}</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_140_All_requests" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="140"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span><span class="clear-nav-count num" data-clear-tpl="{all_count}">{all_count}</span></a></li>
         <li class="clear-nav-section-label">Teams</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_143_IT" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="143"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_144_HR" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="144"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_145_Facilities" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="145"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_146_Finance" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="146"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
+    <li><a href="/team/it" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_143_IT" data-clear-control-kind="nav-item" data-nav-path="/team/it" data-clear-line="143"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
+    <li><a href="/team/hr" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_144_HR" data-clear-control-kind="nav-item" data-nav-path="/team/hr" data-clear-line="144"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
+    <li><a href="/team/facilities" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_145_Facilities" data-clear-control-kind="nav-item" data-nav-path="/team/facilities" data-clear-line="145"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
+    <li><a href="/team/finance" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_146_Finance" data-clear-control-kind="nav-item" data-nav-path="/team/finance" data-clear-line="146"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
       </ul>
     </nav>
     </aside>
@@ -331,7 +563,7 @@ body {
     <button class="btn btn-primary btn-sm" id="btn_Refresh" data-clear-uat-id="button_153_Refresh" data-clear-control-kind="button" data-clear-line="153">Refresh</button>
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="157">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6 clear-shell-outlet" data-clear-shell-outlet="true" data-clear-line="157">
       <div data-clear-routed-content="Request_Queue" data-clear-routed-route="/">
     <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="159">
       <div class="min-w-0">
@@ -442,6 +674,271 @@ body {
     </main>
     </div>
 </div>
+<div id="page_All_requests" data-clear-page-id="All_requests" data-clear-page-route="/all" data-clear-page-title="All requests" data-clear-routed-content="All_requests" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="229">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="230">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="231"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_233_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="233"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_234_All_requests" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="234"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span><span class="clear-nav-count num" data-clear-tpl="{all_count}">{all_count}</span></a></li>
+        <li class="clear-nav-section-label">Teams</li>
+    <li><a href="/team/it" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_236_IT" data-clear-control-kind="nav-item" data-nav-path="/team/it" data-clear-line="236"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
+    <li><a href="/team/hr" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_237_HR" data-clear-control-kind="nav-item" data-nav-path="/team/hr" data-clear-line="237"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
+    <li><a href="/team/facilities" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_238_Facilities" data-clear-control-kind="nav-item" data-nav-path="/team/facilities" data-clear-line="238"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
+    <li><a href="/team/finance" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_239_Finance" data-clear-control-kind="nav-item" data-nav-path="/team/finance" data-clear-line="239"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="241">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="242">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="243">All requests</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="244">Operations / All requests</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="246">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="247">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Every internal request</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{all&lt;em>count} total — {new&lt;/em>count} new, {resolved_count} resolved.">{all<em>count} total — {new</em>count} new, {resolved_count} resolved.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="250">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Requests" data-clear-line="251">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">All Requests</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_All_Requests_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_All_Requests_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_IT_requests" data-clear-page-id="IT_requests" data-clear-page-route="/team/it" data-clear-page-title="IT requests" data-clear-routed-content="IT_requests" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="260">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="261">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="262"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_264_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="264"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_265_All_requests" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="265"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span></a></li>
+        <li class="clear-nav-section-label">Teams</li>
+    <li><a href="/team/it" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_267_IT" data-clear-control-kind="nav-item" data-nav-path="/team/it" data-clear-line="267"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span><span class="clear-nav-count num" data-clear-tpl="{it_count}">{it_count}</span></a></li>
+    <li><a href="/team/hr" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_268_HR" data-clear-control-kind="nav-item" data-nav-path="/team/hr" data-clear-line="268"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
+    <li><a href="/team/facilities" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_269_Facilities" data-clear-control-kind="nav-item" data-nav-path="/team/facilities" data-clear-line="269"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
+    <li><a href="/team/finance" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_270_Finance" data-clear-control-kind="nav-item" data-nav-path="/team/finance" data-clear-line="270"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="272">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="273">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="274">IT requests</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="275">Operations / IT</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="277">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="278">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">IT team queue</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{it_count} requests routed to IT.">{it_count} requests routed to IT.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="281">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_It_Requests" data-clear-line="282">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">It Requests</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_It_Requests_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_It_Requests_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_HR_requests" data-clear-page-id="HR_requests" data-clear-page-route="/team/hr" data-clear-page-title="HR requests" data-clear-routed-content="HR_requests" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="291">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="292">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="293"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_295_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="295"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_296_All_requests" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="296"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span></a></li>
+        <li class="clear-nav-section-label">Teams</li>
+    <li><a href="/team/it" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_298_IT" data-clear-control-kind="nav-item" data-nav-path="/team/it" data-clear-line="298"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
+    <li><a href="/team/hr" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_299_HR" data-clear-control-kind="nav-item" data-nav-path="/team/hr" data-clear-line="299"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span><span class="clear-nav-count num" data-clear-tpl="{hr_count}">{hr_count}</span></a></li>
+    <li><a href="/team/facilities" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_300_Facilities" data-clear-control-kind="nav-item" data-nav-path="/team/facilities" data-clear-line="300"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
+    <li><a href="/team/finance" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_301_Finance" data-clear-control-kind="nav-item" data-nav-path="/team/finance" data-clear-line="301"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="303">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="304">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="305">HR requests</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="306">Operations / HR</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="308">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="309">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">HR team queue</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{hr_count} requests routed to HR.">{hr_count} requests routed to HR.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="312">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Hr_Requests" data-clear-line="313">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Hr Requests</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Hr_Requests_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Hr_Requests_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_Facilities_requests" data-clear-page-id="Facilities_requests" data-clear-page-route="/team/facilities" data-clear-page-title="Facilities requests" data-clear-routed-content="Facilities_requests" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="322">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="323">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="324"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_326_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="326"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_327_All_requests" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="327"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span></a></li>
+        <li class="clear-nav-section-label">Teams</li>
+    <li><a href="/team/it" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_329_IT" data-clear-control-kind="nav-item" data-nav-path="/team/it" data-clear-line="329"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
+    <li><a href="/team/hr" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_330_HR" data-clear-control-kind="nav-item" data-nav-path="/team/hr" data-clear-line="330"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
+    <li><a href="/team/facilities" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_331_Facilities" data-clear-control-kind="nav-item" data-nav-path="/team/facilities" data-clear-line="331"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span><span class="clear-nav-count num" data-clear-tpl="{facilities_count}">{facilities_count}</span></a></li>
+    <li><a href="/team/finance" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_332_Finance" data-clear-control-kind="nav-item" data-nav-path="/team/finance" data-clear-line="332"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="334">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="335">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="336">Facilities requests</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="337">Operations / Facilities</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="339">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="340">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Facilities team queue</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{facilities_count} requests routed to Facilities.">{facilities_count} requests routed to Facilities.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="343">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Facilities_Requests" data-clear-line="344">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Facilities Requests</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Facilities_Requests_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Facilities_Requests_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_Finance_requests" data-clear-page-id="Finance_requests" data-clear-page-route="/team/finance" data-clear-page-title="Finance requests" data-clear-routed-content="Finance_requests" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="353">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="354">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="355"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">R</div><span class="text-base font-bold text-base-content tracking-tight">Requests</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_357_New" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="357"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New</span></a></li>
+    <li><a href="/all" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_358_All_requests" data-clear-control-kind="nav-item" data-nav-path="/all" data-clear-line="358"><i data-lucide="list-checks" aria-hidden="true"></i><span class="clear-nav-label">All requests</span></a></li>
+        <li class="clear-nav-section-label">Teams</li>
+    <li><a href="/team/it" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_360_IT" data-clear-control-kind="nav-item" data-nav-path="/team/it" data-clear-line="360"><i data-lucide="monitor" aria-hidden="true"></i><span class="clear-nav-label">IT</span></a></li>
+    <li><a href="/team/hr" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_361_HR" data-clear-control-kind="nav-item" data-nav-path="/team/hr" data-clear-line="361"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">HR</span></a></li>
+    <li><a href="/team/facilities" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_362_Facilities" data-clear-control-kind="nav-item" data-nav-path="/team/facilities" data-clear-line="362"><i data-lucide="building-2" aria-hidden="true"></i><span class="clear-nav-label">Facilities</span></a></li>
+    <li><a href="/team/finance" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_363_Finance" data-clear-control-kind="nav-item" data-nav-path="/team/finance" data-clear-line="363"><i data-lucide="receipt" aria-hidden="true"></i><span class="clear-nav-label">Finance</span><span class="clear-nav-count num" data-clear-tpl="{finance_count}">{finance_count}</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="365">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="366">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="367">Finance requests</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="368">Operations / Finance</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="370">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="371">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Finance team queue</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{finance_count} requests routed to Finance.">{finance_count} requests routed to Finance.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="374">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Finance_Requests" data-clear-line="375">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">Finance Requests</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_Finance_Requests_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Finance_Requests_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
   </main>
 
   <!-- ┌─────────────────────────────────────────────┐
@@ -461,6 +958,11 @@ body {
 
  PAGES:
    'Request Queue' at / (line 120)
+   'All requests' at /all (line 221)
+   'IT requests' at /team/it (line 253)
+   'HR requests' at /team/hr (line 284)
+   'Facilities requests' at /team/facilities (line 315)
+   'Finance requests' at /team/finance (line 346)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -732,6 +1234,28 @@ function _recompute() {
   { const _el = document.getElementById('show_4'); if (_el) _el.textContent = _state.selected_request?.submitter; }
   // clear:194
   { const _el = document.getElementById('show_5'); if (_el) _el.textContent = _state.selected_request?.status; }
+  // clear:225
+  all_count = _clear_len(_state.all_requests);
+  // clear:226
+  new_count = _clear_len(_state.all_requests);
+  // clear:227
+  let resolved_count = _clear_len(_state.all_requests);
+  // clear:257
+  let it_requests = _state.all_requests;
+  // clear:258
+  let it_count = _clear_len(it_requests);
+  // clear:288
+  let hr_requests = _state.all_requests;
+  // clear:289
+  let hr_count = _clear_len(hr_requests);
+  // clear:319
+  let facilities_requests = _state.all_requests;
+  // clear:320
+  let facilities_count = _clear_len(facilities_requests);
+  // clear:350
+  let finance_requests = _state.all_requests;
+  // clear:351
+  let finance_count = _clear_len(finance_requests);
   _clear_render_table(
     document.getElementById('output_New_Requests_table'),
     _state.new_requests,
@@ -739,6 +1263,41 @@ function _recompute() {
     function(row, rowIndex) { var _keys = ["title","category","priority","submitter"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_New_Requests_table'), 'selected_request');
+  _clear_render_table(
+    document.getElementById('output_All_Requests_table'),
+    _state.all_requests,
+    function(d) { var _keys = ["title","category","priority","submitter","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["title","category","priority","submitter","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_All_Requests_table'));
+  _clear_render_table(
+    document.getElementById('output_It_Requests_table'),
+    it_requests,
+    function(d) { var _keys = ["title","priority","submitter","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["title","priority","submitter","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_It_Requests_table'));
+  _clear_render_table(
+    document.getElementById('output_Hr_Requests_table'),
+    hr_requests,
+    function(d) { var _keys = ["title","priority","submitter","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["title","priority","submitter","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Hr_Requests_table'));
+  _clear_render_table(
+    document.getElementById('output_Facilities_Requests_table'),
+    facilities_requests,
+    function(d) { var _keys = ["title","priority","submitter","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["title","priority","submitter","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Facilities_Requests_table'));
+  _clear_render_table(
+    document.getElementById('output_Finance_Requests_table'),
+    finance_requests,
+    function(d) { var _keys = ["title","priority","submitter","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["title","priority","submitter","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_Finance_Requests_table'));
   { const _el = document.getElementById('input_title'); if (_el) _el.value = _state.title; }
   { const _el = document.getElementById('input_description'); if (_el) _el.value = _state.description; }
   { const _el = document.getElementById('input_category'); if (_el) _el.value = _state.category; }
@@ -749,6 +1308,10 @@ function _recompute() {
   if (typeof new_count !== 'undefined') _tplCtx["new_count"] = new_count;
   if (typeof all_count !== 'undefined') _tplCtx["all_count"] = all_count;
   if (typeof team_count !== 'undefined') _tplCtx["team_count"] = team_count;
+  if (typeof it_count !== 'undefined') _tplCtx["it_count"] = it_count;
+  if (typeof hr_count !== 'undefined') _tplCtx["hr_count"] = hr_count;
+  if (typeof facilities_count !== 'undefined') _tplCtx["facilities_count"] = facilities_count;
+  if (typeof finance_count !== 'undefined') _tplCtx["finance_count"] = finance_count;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
@@ -889,10 +1452,111 @@ _recompute(); // initial render with default state
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:125]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
     _state.new_requests = await fetch("/api/requests/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests/new] [clear:126]', e.message); return _state.new_requests; });
     _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:127]', e.message); return _state.all_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:223]', e.message); return _state.all_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:255]', e.message); return _state.all_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:286]', e.message); return _state.all_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:317]', e.message); return _state.all_requests; });
+    _state.all_requests = await fetch("/api/requests").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/requests] [clear:348]', e.message); return _state.all_requests; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
 
+// --- Router ---
+// Reads both location.pathname (server-side navigation, direct URLs, route
+// selector) and location.hash (in-iframe clicks). Pathname wins when set,
+// hash is the fallback so hash-style links keep working. Also intercepts
+// <a href> clicks to same-origin routes so we don't hit the server on each
+// click (SPA feel while still supporting refresh/direct-URL).
+const _routes = {
+  '/': 'Request_Queue',
+  '/all': 'All_requests',
+  '/team/it': 'IT_requests',
+  '/team/hr': 'HR_requests',
+  '/team/facilities': 'Facilities_requests',
+  '/team/finance': 'Finance_requests'
+};
+
+const _shellRoute = '/';
+const _shellPageId = 'Request_Queue';
+const _standaloneRoutes = { '/login': true, '/signup': true };
+function _clearTemplateHost() {
+  let host = document.getElementById('clear-route-templates');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'clear-route-templates';
+    host.hidden = true;
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function _clearParkMountedRoutes(outlet) {
+  const host = _clearTemplateHost();
+  Array.from(outlet.children).forEach(function(child) {
+    if (!child || !child.getAttribute) return;
+    if (!child.hasAttribute('data-clear-page-route')) return;
+    if (child.id === 'page_' + _shellPageId) return;
+    if (child.getAttribute('data-clear-routed-content') === _shellPageId) return;
+    child.style.display = 'none';
+    host.appendChild(child);
+  });
+}
+function _clearRenderRouteIntoShell(current) {
+  if (_standaloneRoutes[current]) return false;
+  const shellPage = document.getElementById('page_' + _shellPageId);
+  const outlet = document.querySelector('[data-clear-shell-outlet="true"]');
+  if (!shellPage || !outlet) return false;
+  const shellDefault = outlet.querySelector('[data-clear-routed-content="' + _shellPageId + '"]');
+  shellPage.style.display = 'block';
+  _clearParkMountedRoutes(outlet);
+  if (current === _shellRoute) {
+    if (shellDefault) shellDefault.style.display = '';
+    return true;
+  }
+  if (shellDefault) shellDefault.style.display = 'none';
+  const pageId = _routes[current];
+  const target = pageId ? document.getElementById('page_' + pageId) : null;
+  if (!target) return true;
+  target.style.display = 'block';
+  outlet.appendChild(target);
+  return true;
+}
+
+function _currentRoute() {
+  const p = (location.pathname || '/').replace(/\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
+  const h = (location.hash || '').slice(1);
+  if (h && _routes.hasOwnProperty(h)) return h;
+  return Object.keys(_routes)[0]; // first declared route (usually '/')
+}
+function _router() {
+  const current = _currentRoute();
+  const _shellRendered = _clearRenderRouteIntoShell(current);
+  if (_shellRendered) {
+    document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+    if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+    return;
+  }
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (route === current) ? 'block' : 'none';
+  }
+  document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+  if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+}
+window.addEventListener('popstate', _router);
+window.addEventListener('hashchange', _router);
+document.addEventListener('click', function(e) {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
+  if (_routes.hasOwnProperty(href)) {
+    e.preventDefault();
+    history.pushState({}, '', href);
+    _router();
+  }
+});
+_router();
 if (window.lucide && lucide.createIcons) lucide.createIcons();
 
 

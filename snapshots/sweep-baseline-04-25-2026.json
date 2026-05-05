@@ -1,6 +1,6 @@
 {
   "date": "2026-04-25",
-  "command": "node playground/supervisor/curriculum-sweep.js --workers=3",
+  "command": "node studio/supervisor/curriculum-sweep.js --workers=3",
   "backend": "gm (cc-agent)",
   "wallClockSeconds": 1595.5,
   "totalTasks": 38,

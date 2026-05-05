@@ -9,7 +9,7 @@
  * the user-visible outcome is the spec. This hook nudges every UI edit.
  *
  * Trigger surface (PostToolUse, Write|Edit):
- *   - .html files (landing pages, ide.html, compiled output mocks)
+ *   - .html files (landing pages, studio.html, compiled output mocks)
  *   - .clear files (apps that compile to a UI)
  *   - .css files (style work)
  *   - compiler.js, parser.js (when they emit UI)
@@ -43,7 +43,7 @@ function main() {
     /\.(html?|clear|css|svelte|tsx|jsx)$/i.test(path) ||
     /compiler\.js$/i.test(path) ||
     /\/landing\//i.test(path) ||
-    /\/playground\/(ide|index)\.html$/i.test(path);
+    /\/studio\/(ide|index)\.html$/i.test(path);
   if (!isUI) process.exit(0);
   if (/\.test\.(js|mjs|ts)$/i.test(path)) process.exit(0);
   if (/\/snap-layer|\/uat-contract/i.test(path)) process.exit(0); // pure logic modules

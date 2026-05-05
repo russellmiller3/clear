@@ -161,26 +161,32 @@ async function run() {
     assert(html.includes("Approval Queue"), "Page should contain title 'Approval Queue'");
   });
 
+  await test("The All requests page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("All requests"), "Page should contain title 'All requests'");
+  });
+
   // --- User-Written Tests (from test blocks in .clear source) ---
   const _baseUrl = BASE;
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a request with title is 'Budget approval' , amount is 500", async () => {
-      // clear:212
+      // clear:251
       _response = await fetch(_baseUrl + "/api/requests", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "title": "Budget approval", "amount": 500 })
       });
       _responseBody = await _response.json().catch(() => null);
   
-      // clear:213
+      // clear:252
       _expectSuccess(_response);
-      // clear:214
+      // clear:253
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("updating a request should require login", async () => {
-      // clear:217
+      // clear:256
       // Could not find PUT endpoint for request
   });
 

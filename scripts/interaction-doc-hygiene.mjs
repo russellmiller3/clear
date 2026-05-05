@@ -13,7 +13,7 @@ export const DOC_FILES = [
   'AI-INSTRUCTIONS.md',
   'SYNTAX.md',
   'USER-GUIDE.md',
-  'playground/system-prompt.md',
+  'studio/system-prompt.md',
   'intent.md',
   'PHILOSOPHY.md',
   'FEATURES.md',

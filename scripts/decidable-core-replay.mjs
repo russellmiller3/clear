@@ -6,7 +6,7 @@
 // what would the new compiler's termination bounds + retry logic change?"
 //
 // This is the deterministic replay step from the plan (Session 46):
-//   - Open playground/factor-db.sqlite
+//   - Open studio/factor-db.sqlite
 //   - Read every `code_actions` row with a non-empty source_before
 //   - Recompile against the CURRENT compiler (already has the bounds landed)
 //   - Count: warnings fired, retry markers emitted, transient-error sigs
@@ -28,7 +28,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-const DB_PATH = 'playground/factor-db.sqlite';
+const DB_PATH = 'studio/factor-db.sqlite';
 if (!fs.existsSync(DB_PATH)) {
   console.error(`missing ${DB_PATH} — nothing to replay`);
   process.exit(2);
@@ -208,5 +208,5 @@ console.log('');
 console.log('=== NEXT STEPS ===');
 console.log('  - Real Phase 7 measurement (A/B on 5 curriculum tasks) needs');
 console.log('    ANTHROPIC_API_KEY + Russell approval (~$2-5, capped $10).');
-console.log('  - See playground/eval-meph.js for the harness shape the A/B');
+console.log('  - See studio/eval-meph.js for the harness shape the A/B');
 console.log('    would reuse.');

@@ -20,7 +20,7 @@ import {
   HARD_HINT_TASKS,
   buildHardHintSweepEnv,
   buildHardHintSweepOptions,
-} from './playground/supervisor/ab-hint-hard-sweep.js';
+} from './studio/supervisor/ab-hint-hard-sweep.js';
 
 const REPO_ROOT = pathDirname(fileURLToPath(import.meta.url));
 
@@ -28152,16 +28152,16 @@ await import('./lib/packaging-cloudflare-cron.test.js');
 await import('./lib/packaging-cloudflare-workflows.test.js');
 
 // Cloudflare Workers for Platforms target — Phase 7 (WFP REST API wrapper)
-await import('./playground/wfp-api.test.js');
+await import('./studio/wfp-api.test.js');
 
 // Cloudflare Workers for Platforms target — Phase 7.7 (deploy orchestration + lock)
-await import('./playground/deploy-cloudflare.test.js');
+await import('./studio/deploy-cloudflare.test.js');
 
 // LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
 await import('./runtime/meph-widget.test.mjs');
 await import('./scripts/factor-db-summary.test.mjs');
 await import('./scripts/hint-effect-report.test.mjs');
-await import('./playground/supervisor/verify-hint-flow-helpers.test.js');
+await import('./studio/supervisor/verify-hint-flow-helpers.test.js');
 
 // =============================================================================
 // SHELL-5: Data tables emit upgrade — pills, avatars, money, actions, sort, select

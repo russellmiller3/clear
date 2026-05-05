@@ -36,9 +36,9 @@ const LEARNINGS_PATH = join(REPO_ROOT, 'learnings.md');
 // the corresponding keywords get boosted-match scoring.
 const DIR_KEYWORDS = {
 	playground: ['studio', 'playground', 'meph', 'ide'],
-	'playground/supervisor': ['supervisor', 'sweep', 'curriculum', 'factor-db', 'reranker'],
-	'playground/ghost-meph': ['cc-agent', 'ghost', 'mcp', 'stream-json'],
-	'playground/ghost-meph/mcp-server': ['mcp', 'mcp-server'],
+	'studio/supervisor': ['supervisor', 'sweep', 'curriculum', 'factor-db', 'reranker'],
+	'studio/ghost-meph': ['cc-agent', 'ghost', 'mcp', 'stream-json'],
+	'studio/ghost-meph/mcp-server': ['mcp', 'mcp-server'],
 	lib: ['compiler', 'library', 'lib'],
 	runtime: ['runtime', 'generated', 'db.js', 'auth'],
 	curriculum: ['curriculum', 'task'],

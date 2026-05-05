@@ -11,7 +11,7 @@
 //   node scripts/log-compiler-edits.mjs
 //
 // Env overrides (for tests):
-//   CLEAR_FLYWHEEL_DB   — path to factor-db.sqlite (default: playground/factor-db.sqlite)
+//   CLEAR_FLYWHEEL_DB   — path to factor-db.sqlite (default: studio/factor-db.sqlite)
 //   CLEAR_EDIT_DIFF_REF — git ref to diff against HEAD (default: HEAD~1)
 
 import { execSync } from 'child_process';
@@ -114,7 +114,7 @@ export function parseDiffStringChanges(diff) {
 
 async function main() {
   const dbPath = process.env.CLEAR_FLYWHEEL_DB
-    || resolve(REPO_ROOT, 'playground/factor-db.sqlite');
+    || resolve(REPO_ROOT, 'studio/factor-db.sqlite');
   if (!existsSync(dbPath)) {
     // No DB present — common on fresh clones, totally fine, just skip.
     return;
@@ -127,7 +127,7 @@ async function main() {
 
   let FactorDB;
   try {
-    ({ FactorDB } = await import('../playground/supervisor/factor-db.js'));
+    ({ FactorDB } = await import('../studio/supervisor/factor-db.js'));
   } catch (e) {
     console.error('  (compiler-edit log skipped — could not import FactorDB: ' + e.message + ')');
     return;

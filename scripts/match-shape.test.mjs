@@ -16,7 +16,7 @@ import { describe, it, expect } from '../lib/testUtils.js';
 import { loadCanonicalExamples, matchShape } from './match-shape.mjs';
 import {
   computeShape, shapeTokens, shapeSimilarity, jaccard,
-} from '../playground/supervisor/program-shape.js';
+} from '../studio/supervisor/program-shape.js';
 import { parse } from '../parser.js';
 
 describe('program-shape — computeShape', () => {

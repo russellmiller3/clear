@@ -61,7 +61,7 @@ REM or capped. GHOST_MEPH_CC_TOOLS=1 turns on the tool-dispatch mode (28 Meph
 REM tools auto-routed through the MCP server) — text-only mode is the older
 REM fallback.
 echo [4/5] Starting Studio server with latest code (Meph via Claude Code)...
-start "Clear Studio Server" /min cmd /c "set MEPH_BRAIN=cc-agent && set GHOST_MEPH_CC_TOOLS=1 && node playground\server.js"
+start "Clear Studio Server" /min cmd /c "set MEPH_BRAIN=cc-agent && set GHOST_MEPH_CC_TOOLS=1 && node studio\server.js"
 
 REM Wait up to 30 seconds for the port to come alive
 set /a WAIT_TRIES=0

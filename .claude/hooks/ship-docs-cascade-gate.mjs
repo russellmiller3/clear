@@ -12,7 +12,7 @@
  *   When `git push origin main` (any form) is about to fire, the hook
  *   computes the set of files changed in HEAD relative to origin/main.
  *   If that diff includes substantive code (compiler.js, parser.js,
- *   synonyms.js, runtime/*, playground/{server,ide,system-prompt}.* ,
+ *   synonyms.js, runtime/*, studio/{server,ide,system-prompt}.* ,
  *   any new files, or any other .js / .clear / .py changes), then ALL
  *   three of these doc files MUST have changes too:
  *     - CHANGELOG.md  (the "what shipped" dated entry)
@@ -68,9 +68,9 @@ const SUBSTANTIVE_PATTERNS = [
   /^runtime\//,
   /^lib\//,
   /^cli\//,
-  /^playground\/server\.js$/,
-  /^playground\/ide\.html$/,
-  /^playground\/system-prompt\.md$/,  // counts as both code AND a doc surface
+  /^studio\/server\.js$/,
+  /^studio\/ide\.html$/,
+  /^studio\/system-prompt\.md$/,  // counts as both code AND a doc surface
   /^apps\/[^/]+\/main\.clear$/,
   /^scripts\/[^/]+\.(mjs|js)$/,
   // Any new .clear / .js / .py / .ts file anywhere is substantive

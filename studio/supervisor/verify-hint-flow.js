@@ -1,0 +1,310 @@
+// Hint-flow verification across 5 archetypes. Spawns a server, feeds Meph
+// intentionally-broken Clear code for each scenario, and asks him to BOTH
+// announce hint tier + reflect on usefulness. Cross-checks his self-report
+// against the [hints] server log so we can spot silent disagreements.
+//
+// Usage:
+//   ANTHROPIC_API_KEY=sk-ant-... node studio/supervisor/verify-hint-flow.js
+//
+// Cost: ~$0.25-0.35 on Haiku 4.5. Time: ~3-5 min.
+
+import { spawn } from 'child_process';
+import { appendFileSync, writeFileSync, readFileSync } from 'fs';
+import { serverHintTier, serverInjectedHints } from './verify-hint-flow-helpers.js';
+
+const PORT = 3489;
+const BASE = `http://localhost:${PORT}`;
+const LOG = '/tmp/verify-hint-flow.log';
+
+// Scenarios: each aims at a specific archetype with a realistic compile error.
+// We don't require an exact classifier match — we capture whatever tier fires
+// and let Meph report on what he saw.
+const SCENARIOS = [
+  {
+    name: 'api_service: missing body decl',
+    source: `build for javascript backend
+
+when user calls POST /api/todo:
+  create a todo:
+    title is body's title
+  send back 'saved'
+`,
+  },
+  {
+    name: 'crud_app: bad field access',
+    source: `build for javascript backend with html frontend
+
+table Notes:
+  title is text
+  body is text
+
+when user calls GET /api/notes:
+  list = all Notes
+  send back list
+
+when user sends note to /api/notes:
+  save note to Notes
+  send back note
+
+page Home:
+  show Notes's titles for every row
+`,
+  },
+  {
+    name: 'agent_workflow: undefined skill',
+    source: `build for javascript backend
+
+agent Helper:
+  can use weather_tool
+  remember conversation
+
+when user calls POST /api/ask:
+  question is the request data
+  answer = ask Helper question
+  send back answer
+`,
+  },
+  {
+    name: 'dashboard: aggregate without table',
+    source: `build for javascript backend with html frontend
+
+table Sales:
+  amount is number
+  region is text
+
+page Overview:
+  show bar chart of Sales grouped by region as revenue_chart
+  show pie chart of Sales grouped by region as region_chart
+  total_rev = sum of amounts where amount > 100
+  show total_rev
+`,
+  },
+  {
+    name: 'queue_workflow: bad subscribe target',
+    source: `build for javascript backend
+
+when user calls POST /api/broadcast:
+  message is the request data
+  broadcast message to all
+  send back 'sent'
+
+when user subscribes to updates:
+  send last 10 messages from undefined_log
+`,
+  },
+];
+
+// Short prompt — the system prompt (studio/system-prompt.md) already
+// mandates the HINT_APPLIED tag. We just ask for a fix and let Meph's
+// default behavior emit the machine-parseable announcement.
+const PROMPT_TEMPLATE = (source) => `This Clear code has a compile error. Please call compile, read any hints in the result, then fix the code. Follow your normal hint-announcement protocol.
+
+Code:
+\`\`\`clear
+${source}
+\`\`\`
+`;
+
+async function waitForServer(maxMs = 15000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxMs) {
+    try {
+      const r = await fetch(`${BASE}/api/templates`, { signal: AbortSignal.timeout(800) });
+      if (r.ok) return;
+    } catch {}
+    await new Promise(r => setTimeout(r, 300));
+  }
+  throw new Error('Server did not come up in 15s');
+}
+
+async function askMeph(userPrompt, editorContent) {
+  const body = JSON.stringify({
+    messages: [{ role: 'user', content: userPrompt }],
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    personality: '',
+    editorContent,
+    errors: [],
+    webTools: false,
+  });
+  const r = await fetch(`${BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    signal: AbortSignal.timeout(180_000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+
+  let finalText = '';
+  const toolCalls = [];
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      let ev;
+      try { ev = JSON.parse(payload); } catch { continue; }
+      if (ev.type === 'tool_start' && ev.name) {
+        toolCalls.push(ev.name);
+      } else if (ev.type === 'text' && typeof ev.delta === 'string') {
+        finalText += ev.delta;
+      } else if (ev.type === 'text' && typeof ev.text === 'string') {
+        finalText += ev.text;
+      }
+    }
+  }
+  return { finalText, toolCalls };
+}
+
+// Parse Meph's HINT_APPLIED tag — the machine-readable line mandated by the
+// system prompt. Returns { applied: bool, tier: str|null, helpful: str|null,
+// reason: str|null, raw: str|null }.
+function parseSelfReport(text) {
+  const line = text.match(/HINT_APPLIED:\s*([^\n]+)/i);
+  if (!line) {
+    return { applied: null, tier: null, helpful: null, reason: null, raw: null, sawHintsSelf: false };
+  }
+  const body = line[1].trim();
+  const appliedWord = body.match(/^(yes|no)/i);
+  const tier = body.match(/tier=([a-z_]+)/i);
+  const helpful = body.match(/helpful=([a-z]+)/i);
+  const reason = body.match(/reason=([^,\n]+)/i);
+  const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
+  return {
+    applied,
+    tier: tier ? tier[1] : null,
+    helpful: helpful ? helpful[1].toLowerCase() : null,
+    reason: reason ? reason[1].trim() : null,
+    raw: body,
+    // Meph "saw" hints if he emitted the tag AT ALL — whether he applied them
+    // or rejected them. The only real mismatch is emitting the tag when no
+    // hints were injected (hallucinated) or failing to emit it when they were.
+    sawHintsSelf: applied !== null,
+  };
+}
+
+// Read the LAST [hints] log line emitted during this scenario.
+// Each scenario is serial, so after its turn completes the newest [hints]
+// entry (if any) belongs to it.
+function readLastHintsLine(logContentAtScenarioStart, fullLog) {
+  const delta = fullLog.slice(logContentAtScenarioStart.length);
+  const hintLines = delta.split('\n').filter(l => l.includes('[hints]'));
+  return hintLines.length > 0 ? hintLines[hintLines.length - 1].trim() : null;
+}
+
+async function main() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error('ANTHROPIC_API_KEY not set');
+    process.exit(1);
+  }
+  try { writeFileSync(LOG, ''); } catch {}
+  console.log(`Starting server on :${PORT}...`);
+  const server = spawn('node', ['studio/server.js'], {
+    env: { ...process.env, PORT: String(PORT) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout.on('data', d => { try { appendFileSync(LOG, d); } catch {} });
+  server.stderr.on('data', d => { try { appendFileSync(LOG, d); } catch {} });
+
+  const results = [];
+  let anyWeirdness = false;
+
+  try {
+    await waitForServer();
+    console.log('Server ready.\n');
+
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      const scn = SCENARIOS[i];
+      console.log(`[${i + 1}/${SCENARIOS.length}] ${scn.name}`);
+      const logBefore = readFileSync(LOG, 'utf8');
+      const t0 = Date.now();
+      let outcome;
+      try {
+        const { finalText, toolCalls } = await askMeph(PROMPT_TEMPLATE(scn.source), scn.source);
+        const dur = ((Date.now() - t0) / 1000).toFixed(1);
+
+        // Let server flush
+        await new Promise(r => setTimeout(r, 400));
+        const logNow = readFileSync(LOG, 'utf8');
+        const hintLine = readLastHintsLine(logBefore, logNow);
+        const selfReport = parseSelfReport(finalText);
+
+        // Compute agreement: did Meph self-report hints iff server actually injected them?
+        // A log line with retrieved=0 is NOT injection — nothing reaches Meph's tool result.
+        const serverInjected = serverInjectedHints(hintLine);
+        const agreement = serverInjected === selfReport.sawHintsSelf ? 'ok' : 'MISMATCH';
+        const weird = serverInjected !== selfReport.sawHintsSelf;
+        if (weird) anyWeirdness = true;
+
+        outcome = {
+          name: scn.name,
+          dur,
+          serverHint: hintLine || '(no hints injected)',
+          tagRaw: selfReport.raw || '(no HINT_APPLIED tag emitted)',
+          applied: selfReport.applied,
+          tier: selfReport.tier,
+          helpful: selfReport.helpful,
+          reason: selfReport.reason,
+          agreement,
+          toolCalls: toolCalls.join(', ') || '(none)',
+          responseSample: finalText.slice(0, 300).replace(/\n/g, ' '),
+          errorBail: null,
+        };
+        console.log(`   server says: ${outcome.serverHint}`);
+        console.log(`   meph tag:    HINT_APPLIED: ${outcome.tagRaw}`);
+        const summary = outcome.applied === true
+          ? `applied=yes tier=${outcome.tier || '?'} helpful=${outcome.helpful || '?'}`
+          : outcome.applied === false
+            ? `applied=no reason=${outcome.reason || '(unset)'}`
+            : '(no tag)';
+        console.log(`   meph says:   ${summary}`);
+        console.log(`   consistency: ${outcome.agreement}  (${dur}s, tools=[${outcome.toolCalls}])`);
+      } catch (err) {
+        anyWeirdness = true;
+        outcome = { name: scn.name, errorBail: err.message };
+        console.log(`   threw: ${err.message}`);
+      }
+      results.push(outcome);
+      console.log('');
+    }
+
+    // Summary
+    console.log('═'.repeat(72));
+    console.log('SUMMARY');
+    console.log('═'.repeat(72));
+    for (const r of results) {
+      const serverTier = r.errorBail ? 'bail' : serverHintTier(r.serverHint);
+      const appliedStr = r.applied === true ? 'yes' : r.applied === false ? 'no' : '?';
+      console.log(`  ${r.name.padEnd(38)} server_tier=${serverTier.padEnd(26)} [${r.agreement}]`);
+      console.log(`    applied=${appliedStr} tier=${r.tier || '-'} helpful=${r.helpful || '-'}${r.reason ? ' reason="' + r.reason.slice(0, 50) + '"' : ''}`);
+    }
+    console.log('═'.repeat(72));
+
+    // Cache hit rate during this broader run
+    const fullLog = readFileSync(LOG, 'utf8');
+    const cacheLines = fullLog.split('\n').filter(l => l.includes('[cache]'));
+    let totalRead = 0, totalWrite = 0, totalFresh = 0;
+    for (const line of cacheLines) {
+      const m = line.match(/read=(\d+) write=(\d+) fresh=(\d+)/);
+      if (m) { totalRead += +m[1]; totalWrite += +m[2]; totalFresh += +m[3]; }
+    }
+    const totalInput = totalRead + totalWrite + totalFresh;
+    console.log(`\nCache across ${cacheLines.length} turns: ${totalRead.toLocaleString()} read, ${totalWrite.toLocaleString()} write, ${totalFresh.toLocaleString()} fresh. Hit rate: ${totalInput ? ((totalRead / totalInput) * 100).toFixed(1) : 0}%`);
+
+    console.log(`\nAny weirdness: ${anyWeirdness ? 'YES — review per-scenario above' : 'none'}`);
+  } finally {
+    try { server.kill('SIGTERM'); } catch {}
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  process.exit(anyWeirdness ? 1 : 0);
+}
+
+main().catch(err => { console.error(err); process.exit(1); });

@@ -169,26 +169,56 @@ async function run() {
     assert(html.includes("Request Queue"), "Page should contain title 'Request Queue'");
   });
 
+  await test("The All requests page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("All requests"), "Page should contain title 'All requests'");
+  });
+
+  await test("The IT requests page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("IT requests"), "Page should contain title 'IT requests'");
+  });
+
+  await test("The HR requests page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("HR requests"), "Page should contain title 'HR requests'");
+  });
+
+  await test("The Facilities requests page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("Facilities requests"), "Page should contain title 'Facilities requests'");
+  });
+
+  await test("The Finance requests page renders", async () => {
+    const r = await fetch(BASE + "/");
+    const html = await r.text();
+    assert(html.includes("Finance requests"), "Page should contain title 'Finance requests'");
+  });
+
   // --- User-Written Tests (from test blocks in .clear source) ---
   const _baseUrl = BASE;
   // _response / _responseBody are globals (declared at top) so helpers can see them
 
   await test("can user submit a request with title is 'Test' , submitter is 'tester'", async () => {
-      // clear:224
+      // clear:380
       _response = await fetch(_baseUrl + "/api/requests", {
         method: "POST", headers: AUTH_HEADERS,
         body: JSON.stringify({ "title": "Test", "submitter": "tester" })
       });
       _responseBody = await _response.json().catch(() => null);
   
-      // clear:225
+      // clear:381
       _expectSuccess(_response);
-      // clear:226
+      // clear:382
       _expectBodyHas(_responseBody, "id");
   });
 
   await test("updating a request should require login", async () => {
-      // clear:229
+      // clear:385
       // Could not find PUT endpoint for request
   });
 

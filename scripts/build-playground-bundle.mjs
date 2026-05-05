@@ -1,7 +1,7 @@
 // Build script for the in-browser playground compiler bundle.
 //
-// Why this script exists: the Studio playground (`playground/ide.html`)
-// loads `playground/clear-compiler.min.js` to compile Clear source to
+// Why this script exists: the Studio (`studio/studio.html`)
+// loads `studio/clear-compiler.min.js` to compile Clear source to
 // JavaScript / HTML / CSS in the browser, with no server round-trip. The
 // bundle starts at `index.js` and walks the import graph to gather
 // everything the compiler needs.
@@ -22,7 +22,7 @@
 // code never reaches those functions; if it ever did, the stub throws a
 // clear error explaining "this is a server-only path."
 //
-// Server-side Node code (`playground/server.js`, the CLI, the test suite)
+// Server-side Node code (`studio/server.js`, the CLI, the test suite)
 // continues to import the REAL `lib/packaging-cloudflare.js` directly —
 // only the browser bundle gets the swap.
 //
@@ -60,4 +60,4 @@ await build({
   plugins: [cloudPackagingStubPlugin],
 });
 
-console.log('Built playground/clear-compiler.min.js');
+console.log('Built studio/clear-compiler.min.js');

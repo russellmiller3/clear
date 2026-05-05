@@ -1,0 +1,1355 @@
+// =============================================================================
+// PLAYGROUND SERVER — TEST SUITE
+// =============================================================================
+// Run: node studio/server.test.js
+// Starts the server, runs all tests, kills server, reports results.
+// =============================================================================
+
+import { spawn } from 'child_process';
+import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = join(__dirname, '..');
+let passed = 0, failed = 0, total = 0;
+const PORT = process.env.CLEAR_SERVER_TEST_PORT || '3462';
+const BASE = `http://localhost:${PORT}`; // Different port so it doesn't collide
+
+function assert(condition, msg) {
+  total++;
+  if (condition) { passed++; console.log(`  ✅ ${msg}`); }
+  else { failed++; console.log(`  ❌ ${msg}`); }
+}
+
+function templateHygieneFindings(source) {
+  const findings = [];
+  const lines = source.split(/\r?\n/);
+
+  function nextMeaningfulLine(index) {
+    let j = index + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+    const nextLine = lines[j] || '';
+    const nextIndent = (nextLine.match(/^\s*/) || [''])[0].length;
+    return { line: nextLine, indent: nextIndent, trimmed: nextLine.trim() };
+  }
+
+  function isFeedbackEffect(text) {
+    return /^(?:show|shows|display|displays)\b.*\b(?:toast|alert|notification)\b/i.test(text.trim());
+  }
+
+  function namesDataEffect(text) {
+    const effectText = text.trim().replace(/^\/\/\s*/, '');
+    return /\b(saves?\s+to|saved\s+as|gets?|loads?|refreshes?|sends?|posts?|puts?|patches?|deletes?|removes?|updates?|sets?|creates?|adds?|calls?|records?|queues?|filters?|sorts?|selects?|copies?|downloads?|uploads?|exports?|stores?|toggles?|clears?|resets?|go(?:es)?\s+to|navigates?(?:\s+to)?)\b/i.test(effectText) ||
+      isFeedbackEffect(effectText) ||
+      /\bto\s+['"][^'"]+['"]/i.test(effectText) ||
+      /^[a-zA-Z_]\w*(?:'s\s+\w+)?\s*(?:=|\bis\b)\s+/.test(effectText);
+  }
+
+  function namesNonFeedbackDataEffect(text) {
+    const effectText = text.trim().replace(/^\/\/\s*/, '');
+    return namesDataEffect(effectText) && !isFeedbackEffect(effectText);
+  }
+
+  function isDomainActionLabel(label) {
+    return /\b(approve|reject|assign|resolve|close|escalate|submit|save|delete|remove|archive|restore|publish|unpublish|send|route|mark|counter)\b/i.test(label);
+  }
+
+  function nextIndentedLineNamesDataEffect(index, baseIndent) {
+    const next = nextMeaningfulLine(index);
+    return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
+      namesDataEffect(next.trimmed);
+  }
+
+  function nextIndentedLineNamesNonFeedbackDataEffect(index, baseIndent) {
+    const next = nextMeaningfulLine(index);
+    return next.indent > baseIndent && !next.trimmed.startsWith('#') &&
+      namesNonFeedbackDataEffect(next.trimmed);
+  }
+
+  function isInputLikeLine(trimmed) {
+    return /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:text|number|file)\s+input\b/i.test(trimmed) ||
+      /^['"][^'"]+['"]\s+(?:is\s+(?:a|an|the)\s+|as\s+)(?:dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor|slider|range\s+slider|menu|dropdown\s+menu|select\s+menu|toggle|switch|segmented\s+control|tabs?)\b/i.test(trimmed) ||
+      /^(?:(?:text|number|file)\s+input|dropdown|select|checkbox|text\s+area|textarea|rich\s+text|text\s+editor|slider|range\s+slider|menu|dropdown\s+menu|select\s+menu|toggle|switch|segmented\s+control|tabs?)\s+['"][^'"]+['"]/i.test(trimmed);
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const navComment = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (navComment) {
+      const text = navComment[1].trim();
+      const looksLikeNarrative = text.length > 36 || /[.,;:]|\s--\s|\s—\s/.test(text) || /^[a-z]/.test(text);
+      if (looksLikeNarrative) findings.push(`${i + 1}: use // or /* */ for non-nav comment: ${trimmed}`);
+    }
+
+    const button = line.match(/^(\s*)(?:add\s+)?button\s+(['"])([^'"]+)\2(?:\s*(:)\s*|\s+(that|for)\s+(.+))?$/i);
+    if (button) {
+      const baseIndent = button[1].length;
+      const label = button[3];
+      const connector = (button[5] || '').toLowerCase();
+      const inlineAction = button[6] || '';
+      if (connector === 'that') {
+        const agreement = checkInlineInteractionVerbAgreement(inlineAction, 'button');
+        if (agreement) findings.push(`${i + 1}: ${agreement.message}`);
+      }
+      if (!namesDataEffect(inlineAction) && (button[4] !== ':' || !nextIndentedLineNamesDataEffect(i, baseIndent))) {
+        findings.push(`${i + 1}: button must immediately declare what it does with data`);
+      }
+      if (isDomainActionLabel(label) && !namesNonFeedbackDataEffect(inlineAction) && (button[4] !== ':' || !nextIndentedLineNamesNonFeedbackDataEffect(i, baseIndent))) {
+        findings.push(`${i + 1}: domain action button must name the record, endpoint, queue, or audit row it changes`);
+      }
+    }
+
+    if (isInputLikeLine(trimmed) && !namesDataEffect(trimmed)) {
+      const baseIndent = (line.match(/^\s*/) || [''])[0].length;
+      if (!nextIndentedLineNamesDataEffect(i, baseIndent)) {
+        findings.push(`${i + 1}: interactive control must immediately name its data effect`);
+      }
+    }
+
+    const actionShortcut = line.match(/^(\s*)['"][^'"]+['"]\s+is\s+(primary|secondary|danger|ghost)\s*$/);
+    if (actionShortcut) {
+      const baseIndent = actionShortcut[1].length;
+      const next = nextMeaningfulLine(i);
+      if (!(next.indent > baseIndent && next.trimmed.startsWith('//'))) {
+        findings.push(`${i + 1}: row action shortcut needs an immediate // data-action note`);
+      }
+    }
+  }
+  return findings;
+}
+
+async function post(path, body) {
+  const r = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  // SSE responses (text/event-stream) happen on successful /api/chat.
+  // Validation errors return JSON 400s. Detect and handle both.
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('text/event-stream')) {
+    const text = await r.text();
+    const m = text.match(/^data:\s*(\{[\s\S]*?\})\s*$/m);
+    return { status: r.status, data: m ? JSON.parse(m[1]) : { raw: text } };
+  }
+  const text = await r.text();
+  try { return { status: r.status, data: JSON.parse(text) }; }
+  catch { return { status: r.status, data: { raw: text } }; }
+}
+
+async function get(path) {
+  const r = await fetch(BASE + path);
+  return { status: r.status, text: await r.text() };
+}
+
+async function getJson(path) {
+  const r = await fetch(BASE + path);
+  return { status: r.status, data: await r.json() };
+}
+
+// =============================================================================
+// START SERVER
+// =============================================================================
+console.log(`Starting playground server on port ${PORT}...`);
+const server = spawn(process.execPath, ['studio/server.js'], {
+  cwd: join(__dirname, '..'),
+  // CC-4 cycle 5 — CLEAR_ALLOW_SEED unlocks the test-only seed/inject/lookup
+  // endpoints (gated behind NODE_ENV !== 'test' && !CLEAR_ALLOW_SEED). The
+  // smoke test below seeds a tenant, injects a fake CF api wrapper, ships the
+  // deal-desk source, and verifies the multi-tenant subdomain binding landed.
+  // CLEAR_CLOUD_ROOT_DOMAIN pins the deploy URL so we can assert it exactly.
+  env: { ...process.env, PORT, CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
+  stdio: 'pipe',
+});
+
+let serverReady = false;
+server.stdout.on('data', (d) => {
+  if (d.toString().includes('localhost:')) serverReady = true;
+});
+server.stderr.on('data', (d) => process.stderr.write(d));
+
+async function waitForHttpReady(timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (!serverReady) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      continue;
+    }
+    try {
+      const r = await fetch(BASE + '/api/templates');
+      if (r.status > 0) return true;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+// Wait for server
+await waitForHttpReady();
+
+console.log('Server ready. Running tests...\n');
+
+try {
+  // =========================================================================
+  // COMPILE ENDPOINT
+  // =========================================================================
+  console.log('📦 POST /api/compile');
+
+  {
+    const { status, data } = await post('/api/compile', { source: "show 42" });
+    assert(status === 200, 'compiles simple program');
+    assert(data.errors.length === 0, 'no errors on valid source');
+    assert(data.javascript !== null, 'returns javascript');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "build for web\npage 'App' at '/':\n  heading 'Hello'" });
+    assert(data.errors.length === 0, 'compiles web app');
+    assert(data.html !== null, 'returns html for web target');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "build for javascript backend\nwhen user calls GET /api/test:\n  send back 'ok'" });
+    assert(data.errors.length === 0, 'compiles backend app');
+    assert(data.serverJS !== null || data.javascript !== null, 'returns server JS');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "" });
+    assert(status === 200, 'handles empty source without crash');
+    assert(Array.isArray(data.errors), 'returns errors array for empty source');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', {});
+    assert(status === 400, 'rejects missing source');
+    assert(data.error === 'Missing source', 'correct error message');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "this is not valid clear at all !!!!" });
+    assert(status === 200, 'does not crash on invalid syntax');
+    assert(Array.isArray(data.errors), 'returns errors array');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "target: foobar\nshow 42" });
+    assert(status === 200, 'returns compile response for invalid target');
+    assert(data.compileTrace && data.compileTrace.ok === false, 'returns compile trace on failed compile');
+    assert(data.compileTrace.pasteText.includes('CLEAR COMPILE TRACE v1'), 'compile trace has pasteable header');
+    assert(data.compileTrace.pasteText.includes('target: foobar'), 'compile trace includes source context');
+    assert(data.compileTrace.pasteText.includes('Repair instructions:'), 'compile trace includes repair instructions');
+    assert(data.compileTrace.pasteText.includes('Full Clear source:'), 'compile trace includes full source');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "show '<script>alert(1)</script>'" });
+    assert(data.errors.length === 0, 'compiles XSS attempt without error');
+  }
+
+  {
+    const { status, data } = await post('/api/compile', { source: "build for web and javascript backend\ndatabase is local memory\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  users = get all Users\n  send back users\nwhen user calls POST /api/users sending signup:\n  requires auth\n  saved = save signup to Users\n  send back saved\npage 'App' at '/':\n  on page load get users from '/api/users'\n  display users as table" });
+    assert(data.errors.length === 0, 'compiles full-stack app');
+    assert(data.html !== null, 'full-stack has html');
+    assert(data.serverJS !== null, 'full-stack has serverJS');
+    assert(data.browserServer !== null, 'full-stack has browserServer');
+  }
+
+  // =========================================================================
+  // TEMPLATES ENDPOINT
+  // =========================================================================
+  console.log('\n📦 GET /api/templates');
+
+  {
+    const { status, data } = await getJson('/api/templates');
+    assert(status === 200, 'returns 200');
+    assert(Array.isArray(data), 'returns array');
+    // FEATURED_TEMPLATES in server.js: 6 Marcus apps + Core 8 = 14.
+    // Not every dir has a main.clear so the live count may be lower than
+    // the list; the test tolerates a window that tracks the FEATURED list.
+    assert(data.length >= 8, `has ${data.length} templates (expected 8+ for the Core showcase)`);
+    assert(data[0].name !== undefined, 'templates have name');
+
+    const findings = [];
+    for (const { name } of data) {
+      const source = readFileSync(join(ROOT_DIR, 'apps', name, 'main.clear'), 'utf8');
+      for (const finding of templateHygieneFindings(source)) findings.push(`${name}:${finding}`);
+    }
+    assert(findings.length === 0, `featured templates use nav-only # comments and explicit interaction bodies (${findings.slice(0, 5).join('; ')})`);
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  'Stage' as dropdown with ['Open', 'Won']
+  checkbox 'Only mine'
+  slider 'Budget'
+  menu 'Sort by'
+  button 'Refresh'`);
+    assert(findings.some(f => f.includes('interactive control must immediately name its data effect')), 'template hygiene catches input-like controls without data effects');
+    assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene still catches empty buttons');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  'Stage' as dropdown with ['Open', 'Won'] saves to stage_filter
+  checkbox 'Only mine' saves to only_mine
+  slider 'Budget' saves to budget
+  menu 'Sort by' saves to sort_order
+  button 'Open Details' that goes to '/details'
+  button 'Refresh':
+    get deals from '/api/deals'`);
+    assert(findings.length === 0, 'template hygiene accepts interactive controls that name their data effects');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Filters' at '/':
+  button 'Refresh' that get deals from '/api/deals'
+  button 'Save' that send form to '/api/save'
+  button 'Next' that increase step by 1`);
+    assert(findings.some(f => f.includes('Use "gets deals"')), 'template hygiene catches get/gets agreement');
+    assert(findings.some(f => f.includes('Use "sends form"')), 'template hygiene catches send/sends agreement');
+    assert(findings.some(f => f.includes('Use "increases step"')), 'template hygiene catches increase/increases agreement');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Mystery' at '/':
+  button 'Do it' that make magic happen`);
+    assert(findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene rejects vague button actions a 14-year-old could not trace to data');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Approvals' at '/':
+  button 'Approve':
+    show toast 'Sign in to approve this request'`);
+    assert(!findings.some(f => f.includes('button must immediately declare what it does with data')), 'template hygiene counts toast as notification data');
+    assert(findings.some(f => f.includes('domain action button must name')), 'template hygiene rejects domain-action buttons that only name notification data');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Approvals' at '/':
+  button 'Approve':
+    // Shows a notification after login.`);
+    assert(findings.some(f => f.includes('domain action button must name')), 'template hygiene rejects vague domain-action comments that only describe feedback');
+  }
+
+  {
+    const findings = templateHygieneFindings(`page 'Notice' at '/':
+  button 'Notify':
+    show toast 'Saved'`);
+    assert(findings.length === 0, 'template hygiene accepts toast-only buttons when the button is only a notification control');
+  }
+
+  // =========================================================================
+  // TEMPLATE FILE ENDPOINT
+  // =========================================================================
+  console.log('\n📦 GET /api/template/:name');
+
+  {
+    const { status, text } = await get('/api/template/todo-fullstack');
+    assert(status === 200, 'loads todo-fullstack template');
+    assert(text.includes('build for'), 'template has build target');
+  }
+
+  {
+    const { status } = await get('/api/template/nonexistent-app');
+    assert(status === 404, 'returns 404 for missing template');
+  }
+
+  {
+    const { status } = await get('/api/template/../../etc/passwd');
+    assert(status === 404 || status === 400 || status === 200, 'path traversal does not crash server');
+  }
+
+  // =========================================================================
+  // EXEC ENDPOINT — SECURITY
+  // =========================================================================
+  console.log('\n📦 POST /api/exec — security');
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'rm -rf /' });
+    assert(status === 403, 'blocks rm command');
+    assert(data.error.includes('not allowed'), 'correct rejection message');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'node -e "1" && rm -rf /' });
+    assert(status === 403, 'blocks command chaining with &&');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'node -e "1" ; rm -rf /' });
+    assert(status === 403, 'blocks command chaining with ;');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'node -e "1" | cat /etc/passwd' });
+    assert(status === 403, 'blocks pipe injection');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'node -e "$(cat /etc/passwd)"' });
+    assert(status === 403, 'blocks $() injection');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'python3 -c "import os; os.system(\'rm -rf /\')"' });
+    assert(status === 403, 'blocks python command');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', {});
+    assert(status === 400, 'rejects missing command');
+  }
+
+  // =========================================================================
+  // EXEC ENDPOINT — ALLOWED COMMANDS
+  // =========================================================================
+  console.log('\n📦 POST /api/exec — allowed commands');
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'node -e "console.log(42)"' });
+    assert(status === 200, 'allows node command');
+    assert(data.stdout.includes('42'), 'node produces output');
+    assert(data.exitCode === 0, 'node exits cleanly');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'ls studio/' });
+    assert(status === 200, 'allows ls command');
+    assert(data.stdout.includes('studio.html'), 'ls shows studio.html');
+  }
+
+  {
+    const { status, data } = await post('/api/exec', { command: 'node cli/clear.js check apps/todo-fullstack/main.clear --json' });
+    assert(status === 200, 'allows clear CLI check');
+    assert(data.exitCode === 0, 'CLI check succeeds');
+  }
+
+  // =========================================================================
+  // RUN / STOP ENDPOINTS
+  // =========================================================================
+  console.log('\n📦 POST /api/run + /api/stop');
+
+  {
+    const { status, data } = await post('/api/run', {});
+    assert(status === 400, 'rejects run with no serverJS');
+    assert(data.error.includes('No server code'), 'correct error');
+  }
+
+  {
+    const { status, data } = await post('/api/stop', {});
+    assert(status === 200, 'stop succeeds when nothing running');
+    assert(data.stopped === true, 'returns stopped: true');
+  }
+
+  // Compile a real app and run it
+  {
+    const compileResult = await post('/api/compile', {
+      source: "build for web and javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\nwhen user calls GET /api/health:\n  send back 'ok'\npage 'App' at '/':\n  heading 'Test'"
+    });
+    const serverCode = compileResult.data.serverJS || compileResult.data.javascript;
+    assert(!!serverCode, 'compiled app has server code');
+
+    const { status, data } = await post('/api/run', {
+      serverJS: serverCode,
+      html: compileResult.data.html,
+      css: compileResult.data.css,
+    });
+    assert(status === 200, 'starts compiled app');
+    assert(data.port !== undefined, 'returns port number');
+
+    // Wait for server to be ready
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Test fetch proxy
+    const fetchResult = await post('/api/fetch', { method: 'GET', path: '/api/health' });
+    assert(fetchResult.status === 200, 'fetch proxy reaches running app');
+    assert(fetchResult.data.data === 'ok' || JSON.stringify(fetchResult.data.data || '').includes('ok'), 'app responds correctly');
+
+    // Test POST
+    const postResult = await post('/api/fetch', { method: 'POST', path: '/api/items', body: { name: 'test item' } });
+    assert(postResult.status === 200, 'POST to running app works');
+
+    // Stop
+    const stopResult = await post('/api/stop', {});
+    assert(stopResult.data.stopped === true, 'stops running app');
+
+    // Verify app is stopped
+    const fetchAfterStop = await post('/api/fetch', { method: 'GET', path: '/api/health' });
+    assert(fetchAfterStop.status === 400 || fetchAfterStop.status === 500, 'fetch fails after stop');
+  }
+
+  // =========================================================================
+  // FETCH ENDPOINT
+  // =========================================================================
+  console.log('\n📦 POST /api/fetch');
+
+  {
+    const { status, data } = await post('/api/fetch', { method: 'GET', path: '/api/test' });
+    assert(status === 400, 'rejects fetch when no app running');
+    assert(data.error.includes('No app running'), 'correct error');
+  }
+
+  // =========================================================================
+  // CHAT ENDPOINT
+  // =========================================================================
+  console.log('\n📦 POST /api/chat — validation');
+
+  // If the test env has ANTHROPIC_API_KEY set, the server uses it and the
+  // "no API key" case doesn't apply. Only test validation when no key is set.
+  {
+    const { status, data } = await post('/api/chat', { apiKey: 'sk-test' });
+    // Either 400 (missing messages) or streams — both are valid responses
+    assert(status === 400 || status === 200, 'chat with no messages returns 400 or streams');
+    if (status === 400) assert((data.error || '').includes('No messages'), 'correct error when missing messages');
+  }
+
+  {
+    const { status } = await post('/api/chat', { apiKey: 'sk-test', messages: [] });
+    assert(status === 400 || status === 200, 'chat with empty messages returns 400 or streams');
+  }
+
+  // =========================================================================
+  // SAVE ENDPOINT
+  // =========================================================================
+  console.log('\n📦 POST /api/save');
+
+  {
+    const { status, data } = await post('/api/save', { source: "show 'hello'", filename: 'test-save' });
+    assert(status === 200, 'saves Clear source');
+    assert(data.saved === true, 'returns saved: true');
+    assert(data.path.includes('test-save'), 'returns path with filename');
+  }
+
+  {
+    const { status, data } = await post('/api/save', {
+      source: "build for web\npage 'App' at '/':\n  heading 'Test'",
+      filename: 'test-save-compiled',
+      compiled: { html: '<html>test</html>', css: 'body{}' },
+    });
+    assert(status === 200, 'saves with compiled output');
+    assert(data.saved === true, 'saves compiled files');
+  }
+
+  {
+    const { status, data } = await post('/api/save', {});
+    assert(status === 400, 'rejects save with no source');
+  }
+
+  // =========================================================================
+  // COMPILE ERROR PATHS
+  // =========================================================================
+  console.log('\n📦 Compile error scenarios');
+
+  {
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nresult = call 'NonExistent' with data" });
+    assert(data.errors.length > 0, 'catches undefined agent call');
+    assert(data.errors.some(e => e.message.includes('not defined')), 'error says agent not defined');
+  }
+
+  {
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nallow signup and login\nwhen user calls DELETE /api/items/:id:\n  delete the Item with this id\n  send back 'deleted'" });
+    assert(data.errors.length > 0, 'catches DELETE without auth');
+    // Compiler's actual error string says "requires login" (clearer than
+    // "auth" — Meph sees the exact keyword he needs to add). Match on
+    // either so the test tolerates both the old and new phrasing.
+    assert(data.errors.some(e => /auth|requires login/i.test(e.message)),
+      'error mentions auth or requires-login');
+  }
+
+  {
+    const { data } = await post('/api/compile', { source: "build for web and javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\npage 'App' at '/':\n  button 'Go':\n    send data to '/api/missing'" });
+    assert(data.errors.length > 0, 'catches orphan endpoint URL');
+    assert(data.errors.some(e => e.message && e.message.includes('no backend endpoint')), 'error says no endpoint');
+  }
+
+  {
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nprice = 9.99\nname = price's label" });
+    assert(data.warnings.length > 0, 'warns on field access on number');
+  }
+
+  // =========================================================================
+  // EXEC — CLI INTEGRATION
+  // =========================================================================
+  console.log('\n📦 CLI integration via exec');
+
+  {
+    const { data } = await post('/api/exec', { command: "node cli/clear.js build apps/todo-fullstack/main.clear --stdout" });
+    assert(data.exitCode === 0, 'clear build succeeds');
+    assert(data.stdout.length > 100, 'build produces output');
+  }
+
+  {
+    const { data } = await post('/api/exec', { command: "node cli/clear.js lint apps/content-pipeline/main.clear --json" });
+    assert(data.exitCode === 0, 'clear lint succeeds');
+  }
+
+  // =========================================================================
+  // SYNTAX ENDPOINT
+  // =========================================================================
+  console.log('\n📦 GET /api/syntax/:topic');
+
+  {
+    const { status, text } = await get('/api/syntax/workflows');
+    assert(status === 200, 'finds workflows section');
+    assert(text.includes('workflow'), 'contains workflow content');
+  }
+
+  {
+    const { status, text } = await get('/api/syntax/agents');
+    assert(status === 200, 'finds agents section');
+  }
+
+  {
+    const { status } = await get('/api/syntax/nonexistent-topic-xyz');
+    assert(status === 404, 'returns 404 for unknown topic');
+  }
+
+  // =========================================================================
+  // STATIC FILES
+  // =========================================================================
+  console.log('\n📦 Static files');
+
+  {
+    const { status, text } = await get('/');
+    assert(status === 200, 'serves studio.html at /');
+    assert(text.includes('Clear'), 'studio.html contains Clear');
+    assert(text.includes('CodeMirror') || text.includes('codemirror'), 'studio.html references CodeMirror');
+    assert(text.includes('Copy compiler error'), 'studio.html labels trace button as Copy compiler error');
+    assert(!text.includes('Copy trace for Codex'), 'studio.html does not use Codex-specific trace label');
+  }
+
+  {
+    const { status } = await get('/codemirror.bundle.js');
+    assert(status === 200, 'serves CodeMirror bundle');
+  }
+
+  {
+    const { status } = await get('/system-prompt.md');
+    assert(status === 200, 'serves system prompt');
+  }
+
+  // =========================================================================
+  // CONTEXT METER — must not vanish
+  // =========================================================================
+  console.log('\n🔋 Context meter');
+
+  {
+    // Frontend: studio.html must have the context-meter element + JS function
+    const { text } = await get('/');
+    assert(text.includes('id="context-meter"'), 'studio.html has context-meter element');
+    assert(text.includes('id="context-bar"'), 'studio.html has context-bar progress bar');
+    assert(text.includes('id="context-label"'), 'studio.html has context-label span');
+    assert(text.includes('updateContextMeter'), 'studio.html has updateContextMeter function');
+    assert(text.includes("'context_usage'"), 'studio.html handles context_usage event');
+
+    // Verify the CSS bug fix: context-meter should NOT have duplicate display properties
+    const meterMatch = text.match(/id="context-meter"[^>]*style="([^"]*)"/);
+    if (meterMatch) {
+      const styleStr = meterMatch[1];
+      const displayCount = (styleStr.match(/display\s*:/g) || []).length;
+      assert(displayCount === 1, 'context-meter has exactly one display property (no duplicate)');
+    }
+  }
+
+  {
+    // Backend: server.js must have estimateContextUsage function
+    const fs = await import('fs');
+    const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes('estimateContextUsage'), 'server.js has estimateContextUsage function');
+    assert(serverSrc.includes("type: 'context_usage'"), 'server.js sends context_usage event');
+  }
+
+  // =========================================================================
+  // SOURCE MAP — click-to-highlight infrastructure
+  // =========================================================================
+  console.log('\n🗺️  Source map');
+
+  {
+    const { text } = await get('/');
+    assert(text.includes('function buildSourceMap'), 'studio.html has buildSourceMap function');
+    assert(text.includes('sourceMapData'), 'studio.html has sourceMapData variable');
+    assert(text.includes('sourceMapData = buildSourceMap'), 'autoCompile wires buildSourceMap');
+    assert(text.includes('handleEditorClick'), 'studio.html has editor click handler');
+    assert(text.includes('highlightCompiledLines'), 'studio.html has highlightCompiledLines function');
+    assert(text.includes('handleCompiledClick'), 'studio.html has compiled view click handler');
+    assert(text.includes('cm-source-map-highlight'), 'studio.html has source map highlight CSS');
+    assert(text.includes('cm-source-map-active'), 'studio.html has source map active CSS');
+  }
+
+  {
+    const fs = await import('fs');
+    const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes("name: 'source_map'"), 'server.js has source_map tool definition');
+    assert(serverSrc.includes('sourceMap: true'), 'server.js passes sourceMap option to compiler');
+    assert(serverSrc.includes("case 'source_map'"), 'server.js has source_map dispatch handler');
+  }
+
+  {
+    // Verify backend compile has markers
+    const { data } = await post('/api/compile', {
+      source: "build for javascript backend\n\nwhen user calls GET /test:\n  send back 'ok'"
+    });
+    const output = data.serverJS || data.javascript;
+    assert(output && output.includes('// clear:'), 'compiled backend has source map markers');
+  }
+
+  {
+    // Verify HTML compile has data-clear-line attributes
+    const { data } = await post('/api/compile', {
+      source: "build for web\n\npage 'Test' at '/':\n  section 'Hero':\n    heading 'Hello'\n  button 'Click':\n    show 'hi'"
+    });
+    assert(data.html && data.html.includes('data-clear-line='), 'compiled HTML has data-clear-line markers');
+    assert(data.html.includes('data-clear-line="4"'), 'section on line 4 is marked');
+  }
+
+  {
+    // Verify IDE has preview→source message listener
+    const { text } = await get('/');
+    assert(text.includes('clear-source-line'), 'studio.html handles clear-source-line messages from preview');
+    assert(text.includes('Compiler boilerplate'), 'studio.html shows boilerplate toast for unmapped compiled lines');
+  }
+
+  // =========================================================================
+  // BROWSE TEMPLATES — Meph can read template library
+  // =========================================================================
+  console.log('\n📚 Browse templates');
+
+  {
+    const fs = await import('fs');
+    const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes("name: 'browse_templates'"), 'server.js has browse_templates tool');
+    assert(serverSrc.includes("case 'browse_templates'"), 'server.js has browse_templates dispatch');
+  }
+
+  // =============================================================================
+  // TEST RUNNER ENDPOINT
+  // =============================================================================
+  console.log('\n--- Test Runner ---');
+
+  // Test: run-tests with no source
+  {
+    const { data } = await post('/api/run-tests', {});
+    assert(data.ok === false && data.error, 'run-tests with no source returns error');
+  }
+
+  // Test: run-tests with source that has test blocks
+  {
+    const source = "build for web\nx = 5\ntest 'x is five':\n  expect x is 5\n";
+    const { data } = await post('/api/run-tests', { source });
+    assert(typeof data.passed === 'number', 'app tests with test blocks return passed count');
+    assert(typeof data.duration === 'number', 'app tests return duration');
+  }
+
+  // Test: run-tests with source that has no test blocks
+  {
+    const source = "build for web\nx = 5\n";
+    const { data } = await post('/api/run-tests', { source });
+    assert(data.passed === 0 && data.failed === 0, 'app tests with no test blocks returns 0/0');
+  }
+
+  // =========================================================================
+  // STUDIO BRIDGE — shared iframe session with Meph
+  // =========================================================================
+  console.log('\n--- Studio Bridge ---');
+
+  // Compiled HTML includes the bridge script
+  {
+    const { data } = await post('/api/compile', { source: "build for web\npage 'App' at '/':\n  heading 'Hello'" });
+    assert(data.html.includes('CLEAR STUDIO BRIDGE'), 'compiled HTML includes bridge marker');
+    assert(data.html.includes('clear-bridge=1'), 'bridge gated on query param');
+    assert(data.html.includes("'user-action'"), 'bridge captures user actions');
+    assert(data.html.includes("'bridge-ready'"), 'bridge posts ready signal');
+  }
+
+  // Bridge is inert without iframe + query param — check early returns exist
+  {
+    const { data } = await post('/api/compile', { source: "build for web\npage 'X' at '/':\n  heading 'Hi'" });
+    assert(data.html.includes('window === window.parent'), 'bridge early-returns outside iframe');
+  }
+
+  // Action recorder endpoint accepts actions
+  {
+    const { status, data } = await post('/api/meph-actions', { action: 'click', selector: '#save-btn', ts: Date.now() });
+    assert(status === 200, 'POST /api/meph-actions returns 200');
+    assert(data.ok === true, 'action recorded');
+  }
+
+  // GET /api/meph-actions returns buffer
+  {
+    await post('/api/meph-actions', { action: 'input', selector: '#title', value: 'Buy milk', ts: Date.now() });
+    const { status, data } = await getJson('/api/meph-actions');
+    assert(status === 200, 'GET /api/meph-actions returns 200');
+    assert(Array.isArray(data.actions), 'returns actions array');
+    assert(data.actions.length >= 1, 'buffer contains recorded actions');
+  }
+
+  // Clear actions buffer
+  {
+    const { data } = await post('/api/meph-actions/clear', {});
+    assert(data.ok === true, 'clear endpoint works');
+    const { data: after } = await getJson('/api/meph-actions');
+    assert(after.actions.length === 0, 'buffer empty after clear');
+  }
+
+  // ----- Eval suite endpoint --------------------------------------------
+  // /api/eval-suite returns the structured eval list for a Clear source.
+  // Does NOT spin up any child — pure compile + extract. Fast test.
+  console.log('\n🧪 Eval suite endpoint');
+  const agentSrc = [
+    "build for javascript backend",
+    "agent 'Rater' receives item:",
+    "  n = ask claude 'Rate 1-10' with item",
+    "  send back n",
+    "agent 'Top' receives input:",
+    "  x = call 'Rater' with input",
+    "  send back x",
+    "when user calls POST /api/run sending query:",
+    "  out = call 'Top' with query's input",
+    "  send back out",
+  ].join('\n');
+  {
+    const { status, data } = await post('/api/eval-suite', { source: agentSrc });
+    assert(status === 200, 'POST /api/eval-suite returns 200');
+    assert(data.ok === true, 'returns ok:true');
+    assert(Array.isArray(data.suite), 'returns a suite array');
+    const kinds = data.suite.map(e => e.kind).sort();
+    assert(kinds.includes('e2e'), 'suite includes at least one E2E eval');
+    assert(kinds.filter(k => k === 'role').length === 2, 'suite has role eval per agent (2)');
+    assert(kinds.filter(k => k === 'format').length === 2, 'suite has format eval per agent (2)');
+    const raterRole = data.suite.find(e => e.id === 'role-rater');
+    assert(raterRole && raterRole.synthetic === true, 'internal agent (Rater) uses synthetic endpoint');
+    assert(raterRole && raterRole.endpointPath === '/_eval/agent_rater', 'synthetic endpoint path is /_eval/agent_<name>');
+    const topRole = data.suite.find(e => e.id === 'role-top');
+    assert(topRole && topRole.synthetic === false, 'endpoint-exposed agent (Top) uses real endpoint');
+    assert(topRole && topRole.endpointPath === '/api/run', 'real endpoint path matches source');
+    assert(typeof raterRole.rubric === 'string' && raterRole.rubric.includes('Rate 1-10'), 'rubric quotes the agent\'s ask-claude prompt');
+  }
+
+  {
+    // No agents in source → empty suite
+    const { status, data } = await post('/api/eval-suite', { source: 'build for javascript backend\nwhen user requests data from /api/ping:\n  send back \'pong\'' });
+    assert(status === 200, 'empty-agent source returns 200');
+    assert(data.ok === true && Array.isArray(data.suite) && data.suite.length === 0, 'no agents → empty suite');
+  }
+
+  {
+    // Compile-error source → ok:false with errors
+    const { status, data } = await post('/api/eval-suite', { source: 'totally not valid clear code %%%' });
+    assert(status === 200, 'bad source returns 200 (with ok:false body)');
+    assert(data.ok === false, 'bad source returns ok:false');
+    assert(typeof data.error === 'string', 'includes error message');
+  }
+
+  // ----- Unknown-id handling on /api/run-eval ---------------------------
+  // Doesn't require the eval child to start — guard fires first.
+  {
+    const { status, data } = await post('/api/run-eval', { source: agentSrc, id: 'definitely-not-an-eval' });
+    assert(status === 200, 'unknown id returns 200');
+    assert(data.ok === false, 'unknown id returns ok:false');
+    assert(/Unknown eval id/.test(data.error || ''), 'error message mentions unknown id');
+  }
+
+  // ----- Concurrent run-eval calls serialize via the mutex --------------
+  // Two unknown-id calls fired at once should both complete (not crash,
+  // not interleave). The mutex serializes them. This also verifies the
+  // mutex chain handles the "previous promise rejected" case cleanly.
+  console.log('\n🔒 Eval runner mutex');
+  {
+    const p1 = post('/api/run-eval', { source: agentSrc, id: 'nope-1' });
+    const p2 = post('/api/run-eval', { source: agentSrc, id: 'nope-2' });
+    const [r1, r2] = await Promise.all([p1, p2]);
+    assert(r1.status === 200 && r2.status === 200, 'both concurrent calls return 200');
+    assert(r1.data.ok === false && r2.data.ok === false, 'both get ok:false (unknown ids)');
+    // Order and atomicity — mutex should have serialized them; both should have proper errors
+    assert(/Unknown eval id/.test(r1.data.error || ''), 'first call has unknown-id error');
+    assert(/Unknown eval id/.test(r2.data.error || ''), 'second call has unknown-id error');
+  }
+
+  // ----- SSE streaming endpoint -----------------------------------------
+  // /api/run-eval-stream wraps runEvalSuite and streams per-spec progress
+  // as `eval_row` SSE frames so the Tests pane can update each row live
+  // instead of freezing the UI for 60-90s on a multi-agent suite. The
+  // final frame is `eval_results` with the full aggregate (same shape as
+  // the JSON that /api/run-eval returns). Verified here with a no-agent
+  // source so no child-process spawn is needed.
+  console.log('\n📡 /api/run-eval-stream');
+  {
+    const noAgentSrc = 'build for javascript backend\nwhen user requests data from /api/ping:\n  send back \'pong\'';
+    const r = await fetch(BASE + '/api/run-eval-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: noAgentSrc }),
+    });
+    assert(r.status === 200, 'stream endpoint returns 200');
+    const ct = r.headers.get('content-type') || '';
+    assert(ct.includes('text/event-stream'), 'Content-Type is text/event-stream');
+
+    // Drain the stream and collect frames.
+    const body = await r.text();
+    const frames = [];
+    for (const line of body.split('\n')) {
+      if (!line.startsWith('data: ')) continue;
+      try { frames.push(JSON.parse(line.slice(6).trim())); } catch {}
+    }
+    assert(frames.length >= 1, 'stream emits at least one SSE frame');
+    const suites = frames.filter(f => f.type === 'suite');
+    const rows = frames.filter(f => f.type === 'eval_row');
+    const results = frames.filter(f => f.type === 'eval_results');
+    // Suite frame must fire BEFORE any eval_row so the UI can render skeleton
+    // rows upfront instead of staying blank during the 60-90s run.
+    assert(suites.length === 1, 'emits exactly one suite frame at the start');
+    // Guard: only inspect suites[0] when it exists — prevents a cascading
+    // crash of the whole test runner if the previous assertion fails.
+    assert(suites[0] && Array.isArray(suites[0].suite) && suites[0].suite.length === 0, 'empty suite for no-agent source');
+    assert(rows.length === 0, 'no-agent source produces zero eval_row frames (no specs to run)');
+    assert(results.length === 1, 'emits exactly one eval_results frame at the end');
+    assert(results[0].ok === true && results[0].empty === true, 'eval_results marks the empty suite');
+  }
+
+  // ----- Cost estimate endpoint -----------------------------------------
+  // /api/eval-suite-estimate compiles source and returns a pre-run estimate
+  // so the UI can show a modal like "This run calls Claude N times (~$X)".
+  console.log('\n💰 Cost estimate endpoint');
+  {
+    const { status, data } = await post('/api/eval-suite-estimate', { source: agentSrc });
+    assert(status === 200, 'POST /api/eval-suite-estimate returns 200');
+    assert(data.ok === true, 'returns ok:true for valid source');
+    assert(typeof data.suite_size === 'number' && data.suite_size > 0, 'returns suite_size');
+    assert(typeof data.evals_to_grade === 'number', 'returns evals_to_grade count');
+    assert(typeof data.estimated_cost_usd === 'number' && data.estimated_cost_usd >= 0, 'returns estimated_cost_usd');
+    assert(typeof data.estimated_duration_seconds === 'number', 'returns estimated_duration_seconds');
+    // Sanity — role + e2e specs grade; format specs don't. For this source:
+    // 1 E2E + 2 role + 2 format = 5 total, 3 gradeable (e2e + 2 role).
+    assert(data.evals_to_grade === 3, `expected 3 gradeable specs, got ${data.evals_to_grade}`);
+    // Cost is per-gradeable × ~0.003 USD — should be well under a dollar
+    assert(data.estimated_cost_usd < 1, 'estimated cost is under $1 for a small suite');
+    // Provider + model surfaced
+    assert(typeof data.provider === 'string', 'returns provider name');
+    assert(typeof data.model === 'string', 'returns model id');
+  }
+
+  {
+    // Source with no agents → 0 suite, 0 to grade, 0 cost
+    const { data } = await post('/api/eval-suite-estimate', { source: 'build for javascript backend\nwhen user requests data from /api/p:\n  send back \'ok\'' });
+    assert(data.ok === true && data.suite_size === 0, 'empty-agent source: suite_size=0');
+    assert(data.evals_to_grade === 0 && data.estimated_cost_usd === 0, 'no gradeable evals, zero cost');
+  }
+
+  {
+    // Bad source — surfaces the compile error
+    const { data } = await post('/api/eval-suite-estimate', { source: 'not valid %%%' });
+    assert(data.ok === false, 'bad source returns ok:false');
+  }
+
+  // ----- Export eval report ---------------------------------------------
+  // /api/export-eval-report takes current suite + results and returns
+  // downloadable markdown or CSV. Used by the Tests pane's Export ▾ menu.
+  console.log('\n📄 Export eval report');
+  const fakeSuite = [
+    { id: 'e2e-_api_x', kind: 'e2e', label: 'E2E happy path — POST /api/x', agentName: 'Top', endpointPath: '/api/x', input: { input: 'hi' }, rubric: 'Should return a non-empty response.' },
+    { id: 'role-top',   kind: 'role', label: 'Top — does its job', agentName: 'Top', endpointPath: '/api/x', input: { input: 'hi' }, rubric: 'Top must greet the user warmly.' },
+    { id: 'format-top', kind: 'format', label: 'Top — output format is correct', agentName: 'Top', endpointPath: '/api/x', input: { input: 'hi' }, expected: { kind: 'non-empty' } },
+  ];
+  const fakeResults = [
+    { id: 'e2e-_api_x', status: 'pass', duration: 1200, score: 8, feedback: 'Response looks on-topic.', output: 'Hi! How can I help?', usage: { inTok: 420, outTok: 95, costUSD: 0.002685, provider: 'anthropic', model: 'claude-sonnet-4-20250514' } },
+    { id: 'role-top',   status: 'fail', duration: 1350, score: 4, feedback: 'Output was curt and did not greet.', output: 'hi', usage: { inTok: 310, outTok: 70, costUSD: 0.00198, provider: 'anthropic', model: 'claude-sonnet-4-20250514' } },
+    { id: 'format-top', status: 'pass', duration: 180, feedback: 'Non-empty response.', output: 'hi' },
+  ];
+  {
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: agentSrc,
+        format: 'md',
+        suite: fakeSuite,
+        results: fakeResults,
+        meta: { total_cost_usd: 0.004665, passed: 2, failed: 1, skipped: 0, duration: 2730 },
+      }),
+    });
+    assert(r.status === 200, 'POST /api/export-eval-report (md) returns 200');
+    const ct = r.headers.get('content-type') || '';
+    assert(ct.includes('text/markdown') || ct.includes('markdown'), `content-type is markdown, got ${ct}`);
+    const cd = r.headers.get('content-disposition') || '';
+    assert(cd.includes('attachment'), 'content-disposition is attachment');
+    assert(/\.md/.test(cd), `filename ends in .md, got ${cd}`);
+    const body = await r.text();
+    // Must contain grouped headings, status, feedback, cost, source hash
+    assert(body.includes('# Eval Report'), 'markdown starts with title');
+    assert(body.includes('## Top'), 'agents grouped with ## heading');
+    assert(body.includes('**Status:**'), 'status rendered per row');
+    assert(body.includes('Output was curt'), 'failure feedback included verbatim');
+    assert(body.includes('$0.004665') || body.includes('$0.00'), 'total cost shown');
+    assert(body.includes('Source hash'), 'source hash shown');
+  }
+  {
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: agentSrc,
+        format: 'csv',
+        suite: fakeSuite,
+        results: fakeResults,
+        meta: { total_cost_usd: 0.004665 },
+      }),
+    });
+    assert(r.status === 200, 'POST /api/export-eval-report (csv) returns 200');
+    const ct = r.headers.get('content-type') || '';
+    assert(ct.includes('text/csv') || ct.includes('csv'), `content-type is csv, got ${ct}`);
+    const body = await r.text();
+    // CSV: header row + one data row per result
+    const rows = body.trim().split('\n');
+    assert(rows.length === 4, `csv has 4 rows (1 header + 3 data), got ${rows.length}`);
+    assert(rows[0].includes('id,kind,agent_name,status'), 'header row has expected columns');
+    assert(rows[1].includes('e2e-_api_x') && rows[1].includes('pass'), 'first data row is e2e pass');
+    assert(rows[2].includes('role-top') && rows[2].includes('fail'), 'second data row is role fail');
+  }
+  {
+    // Export with empty results → 400 with actionable error
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: agentSrc, format: 'md', suite: [], results: [] }),
+    });
+    assert(r.status === 400, 'empty export returns 400');
+    const body = await r.json();
+    assert(/no results/i.test(body.error || ''), 'error message mentions no results');
+  }
+  {
+    // Unknown format → 400
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: agentSrc, format: 'pdf', suite: fakeSuite, results: fakeResults }),
+    });
+    assert(r.status === 400, 'unknown format returns 400');
+  }
+
+// =============================================================================
+// SESSION QUALITY — /api/session-quality endpoint
+// =============================================================================
+{
+  console.log('\n📦 Session quality endpoint');
+
+  // Must return 200 with an array
+  const r = await getJson('/api/session-quality');
+  assert(r.status === 200, 'GET /api/session-quality returns 200');
+  assert(Array.isArray(r.data), 'response is an array');
+
+  // After compiling a source with weak assertions via /api/compile,
+  // the session quality endpoint should reflect the latest quality data.
+  // (Full /api/chat session testing requires a live API key — skip here.)
+  // Just verify the endpoint shape is correct.
+  if (Array.isArray(r.data) && r.data.length > 0) {
+    const s = r.data[0];
+    assert(typeof s.id === 'string', 'session has id');
+    assert(typeof s.started_at === 'number', 'session has started_at');
+    assert(typeof s.weak_assertion_count === 'number', 'session has weak_assertion_count');
+    assert(typeof s.red_step_observed === 'boolean', 'session has red_step_observed');
+  }
+}
+
+// =============================================================================
+// STUDIO TELEMETRY — first click, first app, and bounce trail
+// =============================================================================
+{
+  console.log('\n📦 Studio telemetry endpoint');
+
+  const reset = await post('/api/studio-telemetry/clear', {});
+  assert(reset.status === 200, 'studio telemetry reset returns 200');
+
+  const payload = {
+    sessionId: 'test-session-1',
+    mode: 'builder',
+    events: [
+      { name: 'studio_loaded', atMs: 0, pageMs: 0 },
+      { name: 'first_click', atMs: 120, pageMs: 120, target: 'chat_send' },
+      { name: 'time_to_first_app', atMs: 620, pageMs: 620, ms: 620, via: 'template' },
+      { name: 'bounce', atMs: 900, pageMs: 900, reason: 'hidden_before_first_app' },
+    ],
+    source: "secret clear source should not be stored",
+    chat: 'secret chat should not be stored',
+    apiKey: 'sk-secret',
+  };
+
+  const recorded = await post('/api/studio-telemetry', payload);
+  assert(recorded.status === 200, 'studio telemetry accepts event batch');
+  assert(recorded.data.ok === true, 'studio telemetry returns ok:true');
+  assert(recorded.data.accepted === 4, 'studio telemetry accepts expected events');
+
+  const snapshot = await getJson('/api/studio-telemetry');
+  assert(snapshot.status === 200, 'studio telemetry snapshot returns 200');
+  assert(Array.isArray(snapshot.data.events), 'studio telemetry snapshot has events');
+  assert(snapshot.data.events.length === 4, 'studio telemetry stores four safe events');
+  assert(snapshot.data.summary.firstClickCount === 1, 'studio telemetry counts first-click events');
+  assert(snapshot.data.summary.timeToFirstAppCount === 1, 'studio telemetry counts first-app events');
+  assert(snapshot.data.summary.bounceCount === 1, 'studio telemetry counts bounce events');
+
+  const serialized = JSON.stringify(snapshot.data);
+  assert(!serialized.includes('secret clear source'), 'studio telemetry does not store source text');
+  assert(!serialized.includes('secret chat'), 'studio telemetry does not store chat text');
+  assert(!serialized.includes('sk-secret'), 'studio telemetry does not store secrets');
+}
+
+// =============================================================================
+// CC-4 cycle 5 — end-to-end smoke: deal-desk → /api/deploy → CF binding
+// =============================================================================
+// This is the load-bearing test for CC-4. Earlier cycles tested pieces in
+// isolation (orchestrator, modal, store). Cycle 5 wires it all up against
+// the real spawned server: seed a tenant, inject a fake CF api wrapper into
+// the running server's WfpApi singleton, POST the deal-desk source to the
+// real /api/deploy, then prove the multi-tenant subdomain binding landed by
+// looking up the deal-desk subdomain through a test-only admin endpoint.
+//
+// Two new test-only endpoints (gated like /api/_test/seed-tenant):
+//   POST /api/_test/inject-wfp-api  — installs the built-in fake into
+//     the server's _wfpApi singleton; body {reset:true} clears it back to
+//     the real lazy getter.
+//   GET  /api/_test/lookup-subdomain/:sub — returns store.lookupAppBySubdomain
+//     as JSON so the test can verify the binding without reaching into module
+//     state.
+{
+  console.log('\n☁️  CC-4 cycle 5 — Publish deal-desk via /api/deploy');
+
+  const fs = await import('fs');
+  const dealDeskSrc = fs.readFileSync(join(__dirname, '..', 'apps', 'deal-desk', 'main.clear'), 'utf8');
+
+  // 1. Seed a tenant. Server returns a Set-Cookie we have to carry on every
+  //    follow-up call (requireTenant reads clear_tenant from the cookie).
+  const seedRes = await fetch(BASE + '/api/_test/seed-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: 'clear-acme', plan: 'pro' }),
+  });
+  assert(seedRes.status === 200, 'seed-tenant returns 200');
+  const setCookie = seedRes.headers.get('set-cookie') || '';
+  const cookieMatch = setCookie.match(/clear_tenant=[^;]+/);
+  assert(!!cookieMatch, 'seed-tenant sets clear_tenant cookie');
+  const cookie = cookieMatch ? cookieMatch[0] : '';
+
+  // 2. Install the built-in fake WfpApi inside the running server. Without
+  //    this the deploy would try to hit real CF and fail (no API token).
+  const injectRes = await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(injectRes.status === 200, 'inject-wfp-api returns 200');
+  const injectBody = await injectRes.json();
+  assert(injectBody.ok === true, 'inject-wfp-api returns ok:true');
+
+  // 3. Ship deal-desk through /api/deploy with target=cloudflare. The fake
+  //    walks the orchestrator pipeline (provisionD1 → applyMigrations →
+  //    uploadScript → setSecrets → attachDomain → markAppDeployed) and
+  //    returns the same shape the real CF orchestrator does.
+  const deployRes = await fetch(BASE + '/api/deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ source: dealDeskSrc, appSlug: 'deal-desk', target: 'cloudflare' }),
+  });
+  const deployBody = await deployRes.json();
+  assert(deployRes.status === 200, `deploy returns 200 (got ${deployRes.status}: ${JSON.stringify(deployBody).slice(0, 200)})`);
+  assert(deployBody.ok === true, 'deploy returns ok:true');
+  assert(deployBody.url === 'https://deal-desk.buildclear.dev', `url is https://deal-desk.buildclear.dev (got ${deployBody.url})`);
+  assert(typeof deployBody.jobId === 'string' && deployBody.jobId.length > 0, 'deploy returns jobId');
+
+  // 4. Status polling — /api/deploy-status/:jobId?target=cloudflare reads
+  //    the same target from the query string the modal stamped on the URL.
+  const statusRes = await fetch(BASE + `/api/deploy-status/${encodeURIComponent(deployBody.jobId)}?target=cloudflare`, {
+    headers: { Cookie: cookie },
+  });
+  const statusBody = await statusRes.json();
+  assert(statusRes.status === 200, 'deploy-status returns 200');
+  assert(statusBody.ok === true, 'deploy-status returns ok:true');
+  assert(statusBody.status === 'ok', `deploy-status status is ok (got ${statusBody.status})`);
+  assert(statusBody.url === 'https://deal-desk.buildclear.dev', 'deploy-status url matches');
+
+  // 5. Multi-tenant subdomain binding — the load-bearing assertion. Without
+  //    this row, the dev-mode subdomain router can't resolve deal-desk to
+  //    the right tenant + script. CC-4's whole "click Publish, get a live
+  //    *.buildclear.dev URL" claim hinges on this lookup returning the row.
+  const lookupRes = await fetch(BASE + '/api/_test/lookup-subdomain/deal-desk');
+  const lookupBody = await lookupRes.json();
+  assert(lookupRes.status === 200, 'lookup-subdomain returns 200');
+  assert(lookupBody !== null, 'lookup-subdomain returns a row (not null)');
+  assert(lookupBody.tenantSlug === 'clear-acme', `binding has tenantSlug clear-acme (got ${lookupBody.tenantSlug})`);
+  assert(lookupBody.appSlug === 'deal-desk', `binding has appSlug deal-desk (got ${lookupBody.appSlug})`);
+  assert(lookupBody.scriptName === 'deal-desk', `binding has scriptName deal-desk (got ${lookupBody.scriptName})`);
+  assert(lookupBody.hostname === 'deal-desk.buildclear.dev', `binding hostname matches deploy URL (got ${lookupBody.hostname})`);
+
+  // 6. Sanity check — looking up a subdomain that was never deployed
+  //    returns null, not a stale or shared row from another tenant.
+  const missRes = await fetch(BASE + '/api/_test/lookup-subdomain/never-deployed-app');
+  const missBody = await missRes.json();
+  assert(missRes.status === 200, 'lookup-subdomain on missing slug returns 200');
+  assert(missBody === null, 'lookup-subdomain on missing slug returns null');
+}
+
+// =============================================================================
+// Live App Editing UAT - widget add-field ships through cloud bridge
+// =============================================================================
+{
+  console.log('\nLive App Editing UAT - widget add-field cloud update');
+
+  const WIDGET_SCHEMA_V1 = `build for javascript backend
+
+create a Items table:
+  name, required
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+  const WIDGET_SCHEMA_V2 = `build for javascript backend
+
+create a Items table:
+  name, required
+  price, number
+
+when user requests data from /api/items:
+  items = get all Items
+  send back items
+`;
+
+  const tenantSlug = 'clear-widget-uat';
+  const appSlug = 'widget-items';
+
+  const seedRes = await fetch(BASE + '/api/_test/seed-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: tenantSlug, plan: 'pro' }),
+  });
+  assert(seedRes.status === 200, 'widget UAT seed-tenant returns 200');
+  const setCookie = seedRes.headers.get('set-cookie') || '';
+  const cookieMatch = setCookie.match(/clear_tenant=[^;]+/);
+  assert(!!cookieMatch, 'widget UAT seed-tenant sets clear_tenant cookie');
+  const cookie = cookieMatch ? cookieMatch[0] : '';
+
+  await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset: true }),
+  });
+  const injectRes = await fetch(BASE + '/api/_test/inject-wfp-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(injectRes.status === 200, 'widget UAT inject-wfp-api returns 200');
+
+  const deployRes = await fetch(BASE + '/api/deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ source: WIDGET_SCHEMA_V1, appSlug, target: 'cloudflare' }),
+  });
+  const deployBody = await deployRes.json();
+  assert(deployRes.status === 200, `widget UAT v1 deploy returns 200 (got ${deployRes.status}: ${JSON.stringify(deployBody).slice(0, 200)})`);
+  assert(deployBody.ok === true, 'widget UAT v1 deploy returns ok:true');
+
+  const setupRes = await fetch(BASE + '/api/_test/live-edit-cloud-uat-setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenantSlug, appSlug }),
+  });
+  const setupBody = await setupRes.json();
+  assert(setupRes.status === 200, `widget UAT setup returns 200 (got ${setupRes.status}: ${JSON.stringify(setupBody).slice(0, 200)})`);
+  assert(setupBody.ok === true, 'widget UAT setup returns ok:true');
+  assert(typeof setupBody.ownerToken === 'string' && setupBody.ownerToken.length > 10, 'widget UAT setup returns owner token');
+
+  const beforeStateRes = await fetch(BASE + `/api/_test/live-edit-cloud-uat-state/${tenantSlug}/${appSlug}`);
+  const beforeState = await beforeStateRes.json();
+  const beforeCallCount = Array.isArray(beforeState.calls) ? beforeState.calls.length : 0;
+  assert(beforeState.record && beforeState.record.lastBundle && beforeState.record.lastBundle['migrations/001-init.sql'],
+    'widget UAT initial deploy stores lastBundle before setup hook runs');
+
+  const shipRes = await fetch(BASE + '/__meph__/api/ship', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${setupBody.ownerToken}`,
+    },
+    body: JSON.stringify({
+      newSource: WIDGET_SCHEMA_V2,
+      tenantSlug,
+      appSlug,
+      classification: {
+        type: 'additive',
+        changes: [{ kind: 'add_field', table: 'Items', field: 'price', fieldType: 'number' }],
+      },
+    }),
+  });
+  const shipBody = await shipRes.json();
+  assert(shipRes.status === 200, `widget UAT ship returns 200 (got ${shipRes.status}: ${JSON.stringify(shipBody).slice(0, 200)})`);
+  assert(shipBody.ok === true, 'widget UAT ship returns ok:true');
+  assert(shipBody.mode === 'update', `widget UAT ship uses update mode (got ${shipBody.mode})`);
+  assert(shipBody.versionId === 'script-id', `widget UAT ship returns uploaded version id (got ${shipBody.versionId})`);
+  assert(shipBody.url === 'https://widget-items.buildclear.dev', `widget UAT ship keeps cloud URL (got ${shipBody.url})`);
+
+  const stateRes = await fetch(BASE + `/api/_test/live-edit-cloud-uat-state/${tenantSlug}/${appSlug}`);
+  const stateBody = await stateRes.json();
+  assert(stateRes.status === 200, 'widget UAT state returns 200');
+  const updateCalls = Array.isArray(stateBody.calls) ? stateBody.calls.slice(beforeCallCount) : [];
+  const updateOps = updateCalls.map((c) => c.op);
+  assert(updateOps[0] === 'applyMigrations', `widget UAT applies migration before upload (ops: ${updateOps.join(',')})`);
+  assert(updateOps[1] === 'uploadScript', `widget UAT uploads script after migration (ops: ${updateOps.join(',')})`);
+  assert(stateBody.record && Array.isArray(stateBody.record.versions), 'widget UAT deployed record has versions array');
+  const lastVersion = stateBody.record && stateBody.record.versions && stateBody.record.versions[0];
+  assert(lastVersion && lastVersion.versionId === 'script-id', `widget UAT records uploaded version (got ${lastVersion && lastVersion.versionId})`);
+  assert(lastVersion && lastVersion.via === 'widget', `widget UAT records version via widget (got ${lastVersion && lastVersion.via})`);
+
+  const historyRes = await fetch(BASE + `/__meph__/api/deploy-history?tenantSlug=${encodeURIComponent(tenantSlug)}&appSlug=${encodeURIComponent(appSlug)}`, {
+    headers: { Authorization: `Bearer ${setupBody.ownerToken}` },
+  });
+  const historyBody = await historyRes.json();
+  assert(historyRes.status === 200, `widget UAT deploy-history returns 200 (got ${historyRes.status}: ${JSON.stringify(historyBody).slice(0, 200)})`);
+  assert(Array.isArray(historyBody.versions), 'widget UAT deploy-history returns versions array');
+  assert(historyBody.versions[0] && historyBody.versions[0].versionId === 'script-id', `widget UAT deploy-history exposes newest version (got ${historyBody.versions[0] && historyBody.versions[0].versionId})`);
+}
+
+// =============================================================================
+// /api/prove-pdf — bad-input rejection paths
+// =============================================================================
+// Full happy path needs Python + reportlab + node-resolved audit-bundle
+// pipeline; that's a heavy E2E covered by manual + CI runs. These checks
+// just lock in the request validation: empty body returns 400, missing
+// source returns 400. The endpoint must exist and reject bad input
+// without spawning the heavy stages.
+console.log('\n📑 /api/prove-pdf');
+{
+  const empty = await fetch(`${BASE}/api/prove-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert(empty.status === 400, `empty body → 400 (got ${empty.status})`);
+
+  const blank = await fetch(`${BASE}/api/prove-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: '   ' }),
+  });
+  assert(blank.status === 400, `whitespace-only source → 400 (got ${blank.status})`);
+}
+
+} catch (err) {
+  console.error('\n💥 Test crash:', err.message);
+  failed++;
+}
+
+// =============================================================================
+// CLEANUP
+// =============================================================================
+server.kill('SIGTERM');
+
+console.log(`\n========================================`);
+console.log(`✅ Passed: ${passed}`);
+if (failed > 0) console.log(`❌ Failed: ${failed}`);
+console.log(`========================================`);
+
+process.exit(failed > 0 ? 1 : 0);
