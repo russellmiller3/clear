@@ -7,6 +7,26 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Why is the Studio editor highlighting half the English words as keywords? (fixed 2026-05-04)
+
+It's not anymore — the highlighter was rewritten 2026-05-04.
+
+**The old behavior (4 bugs):**
+1. Multi-line error messages broke at the wrap. The string regex was single-line only, so a quoted message that wrapped to a second source line had no closing quote on the opener line. The rest of the line tokenized as code, lighting up `the`, `not`, `the` as keywords inside what was actually still string content.
+2. Hyphenated rule names like `discount-not-over-cap` got tokenized as `discount`, `-`, `not` (keyword!), `-`, `over`, `-`, `cap` — the `not` lit blue inside the rule name.
+3. The possessive `deal's discount_percent` opened a fake string at the apostrophe and swallowed everything until the next quote, de-syncing the line.
+4. English connector words (`is`, `less`, `than`, `with`, `or`, `fail`, `error`, `message`) were ALL flagged as keywords — every line lit up like a wall of blue.
+
+**The new behavior (`playground/ide.html`, `clearLang` + `clearKeywords`):**
+- The string tokenizer tracks an `inString` quote in tokenizer state. When EOL hits inside a string, the state carries; the next line consumes until the matching close quote arrives.
+- The identifier regex allows kebab-case (`(?:-[a-zA-Z][a-zA-Z0-9_]*)*`) so hyphenated rule names tokenize as one variable.
+- The identifier regex absorbs `(?:['`]s\b)?` as part of the same token, so `deal's` is one variable. Identifier matching runs BEFORE string matching, so apostrophe-after-letter never reaches the string branch.
+- The keyword set is now two-tier. Structural words (`rule`, `enforce`, `that`, `when`, `if`, `otherwise`, `requires`, `validate`, `define`, `function`, `agent`, `page`, `section`, `button`, `display`, `database`, `table`, `for`, `each`, `repeat`, `try`, `test`, `expect`, `look`, `update`, `remove`, `save`, `send`, `validate`, `policy`, etc.) keep the bold blue keyword color so the SHAPE of the program pops. Connector / English words (`is`, `not`, `less`, `than`, `greater`, `equal`, `with`, `or`, `fail`, `error`, `message`, `the`, `a`, `an`, `and`, `to`, `from`, `at`, `by`, `in`, `as`, `on`, `back`, etc.) drop out of the keyword set and fall through to the variableName color (slate gray).
+
+The audit PDF's "How it was proved formally" section pastes Clear source side-by-side with the compiled JavaScript. Clean highlighting matters for the regulated-tier pitch — the CRO sees the code during a live demo and a wall of blue ink reads as a broken tool.
+
+---
+
 ## Why does my conditional rule (with if/otherwise) read UNVERIFIABLE when the inner enforces should prove? (fixed 2026-05-04)
 
 **It shouldn't anymore — PC-2 fix shipped 2026-05-04.**
