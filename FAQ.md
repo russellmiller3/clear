@@ -158,6 +158,18 @@ If the bottom of your terminal pane is the FIRST event (oldest), and the top is 
 
 ---
 
+## How do I configure audit-log retention? (2026-05-04)
+
+**Default retention is 90 days. Override via the `AUDIT_RETENTION_DAYS` env var.** When `allow signup and login` is declared, the compiler emits a `_cleanupAuditLog()` helper that runs once at server boot (fire-and-forget) and deletes any `audit_log` row whose ISO timestamp is older than `now - retention_days`. Set `AUDIT_RETENTION_DAYS=180` to keep audit data for 180 days. Set `AUDIT_RETENTION_DAYS=0` to disable cleanup entirely (audit data kept forever). The helper is robust: errors are swallowed so a cleanup failure can't crash the boot path.
+
+**On-demand cleanup:** `POST /audit/cleanup` (authenticated) triggers the same retention policy without restarting the app. Returns `{deleted: <count>, retention_days: <N>, cutoff: <iso>}`. Useful for compliance tooling that wants to confirm the policy fired after a config change, or for a manual purge after a one-time policy change.
+
+**Why this exists:** SOC 2 evidence collectors and compliance buyers ask "how long do you retain audit data?" — there's now a documented policy and a runtime knob. Different orgs have different retention requirements (90 days is the SOC 2 minimum for most controls; some regulated industries require 1-7 years).
+
+**Where in the compiler:** the cleanup helper, env knob, and `POST /audit/cleanup` route are emitted alongside the `audit_log` table creation in `compiler.js` (search for `_AUDIT_RETENTION_DAYS`). Five regression tests in `clear.test.js` cover the env knob, the helper shape, the boot wiring, the cleanup route, and that nothing leaks into apps without auth.
+
+---
+
 ## Where is the "Copy Terminal" button? (2026-05-04)
 
 **Path:** the preview-tabs row in `playground/ide.html`, between "Supervisor" and "Clear Terminal". It calls `window.copyTerminal()` — strips HTML markup from the terminal entries, appends the current `.clear` source as a fenced block, and copies the result to the clipboard formatted as markdown so it pastes cleanly into a chat message to Claude or Meph. Distinct from "Copy compiler error" (which only fires on COMPILE errors); this one captures runtime/test output from a running app.
