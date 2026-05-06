@@ -40,8 +40,8 @@ Let's jump in.
 **Workflow apps — when humans approve, reject, and decide**
 - [Chapter 9: The CRO Approval Queue](#chapter-9-the-cro-approval-queue-from-crud-app-to-workflow-app)
 
-**Real-time and AI — when your app needs to think**
-- [Chapter 10: AI-Powered Apps](#chapter-10-ai-powered-apps-the-fun-part)
+**Triggered emails and AI — when your app needs to reach out or think**
+- [Chapter 10: Email the Rep When Approved](#chapter-10-email-the-rep-when-approved-from-outbox-row-to-real-email)
 - [Chapter 10b: Chat Interfaces](#chapter-10b-chat-interfaces-making-your-app-talk)
 - [Chapter 19: Workflows (Multi-Step AI Pipelines)](#chapter-19-workflows-multi-step-ai-pipelines)
 
@@ -2843,259 +2843,220 @@ The notifications table is full of rows that *should* go out the door, but nothi
 
 ---
 
-## Chapter 10: AI-Powered Apps (The Fun Part)
+## Chapter 10: Email the Rep When Approved (From Outbox Row to Real Email)
 
-This is where Clear gets interesting. You can call AI models directly from
-your Clear code — no API keys to manage, no HTTP requests to write, no
-JSON to parse. Just ask a question and get an answer.
+By the end of this chapter, deal-desk sends a real email. When Carol approves Alice's deal, Alice will get a message in her inbox — subject line, body text, the rep's name where the rep's name should be — and when Alice replies to it, the reply will land on the deal record itself, so the conversation and the record are one thing. **The email isn't a separate system bolted onto the app. It IS the app.**
 
-### Simple AI Call
+Remember the outbox row that landed in Chapter 9? Every time the CRO clicked Approve, a row dropped into `deal_notifications` saying *"an email needs to go to alice@acme.com about deal 1."* That row was the placeholder. Today we turn it into a real message going through a real provider, and we wire the customer's reply back into the deal record so nobody has to copy-paste from Gmail to your app ever again.
 
-```clear
-response = ask claude 'Summarize this article' with article_text
-```
+### What does "send an email" actually mean?
 
-### Streaming is the Default
+You write the word `email` in your code. The customer reads a message in their inbox. In between, a lot has to happen. Let's walk through it slowly.
 
-When `ask claude` is the body of a POST endpoint, the response **streams
-live to the browser** — no extra keyword, no EventSource setup, nothing.
-Here's a full AI chat app in 12 lines:
+Your computer can't just "send an email" the way it can write to a file. Your laptop is not on the internet's mail-delivery network. Email runs on dedicated mail servers — boxes that talk to other boxes using rules called SMTP, with reputation scores and spam filters and bounce-handling. If you tried to deliver mail directly from your app, half of it would land in spam and the other half would never arrive.
 
-```clear
-build for web and javascript backend
+So instead, your app talks to **a provider** — a service whose entire job is "you give me a message, I make it land in the customer's inbox." AgentMail. SendGrid. Resend. Postmark. Mailgun. They each run those mail servers on your behalf. You make one HTTP call to their service with the subject, the body, and the recipient address. They handle the rest. They give you back a tracking ID, retry on failure, and tell you when the customer opens the message.
 
-when user sends query to /api/ask:
-  ask claude 'You are a helpful assistant.' with query's question
+That's all a provider is: a small company that owns the mail-delivery problem so you don't have to. Pick one, give it your API key, and send.
 
-page 'Chat' at '/':
-  question = ''
-  answer = ''
-  'Ask something' is a text input saved as question
-  button 'Send':
-    get answer from '/api/ask' with question
-  heading 'Answer'
-  display answer
-```
+### Why the email isn't sent at the moment of approval
 
-What happens when you click Send: the backend streams each token from
-Anthropic as it's generated. The frontend auto-detects that the endpoint
-streams (because it contains `ask claude`) and emits a streaming reader
-instead of a plain fetch. `_state.answer` grows chunk-by-chunk and
-`display answer` updates on every `_recompute()`. Users see the answer
-appear live, like ChatGPT.
+Here's the part most beginners get wrong on their first try. When Carol clicks **Approve**, you might think the order of events is: *update the deal's status, send the email, return success to the browser.* That's wrong, and getting it wrong has bitten thousands of teams.
 
-**Opt out when you need the full text at once:**
+What actually happens in a well-built app is: *update the deal's status, write a row to an outbox table saying "send this email," return success to the browser.* The actual email send happens **a few seconds later**, in a separate step.
+
+Why? Because the email provider might be slow. Or down. Or rate-limiting you. Or the customer's mail server might take eight seconds to acknowledge the connection. If your "approve" button waited on all of that, every CRO click would feel sluggish, and every time the provider had a bad afternoon, deals would fail to approve. The CRO would think the app was broken when really it was the email plumbing.
+
+So we **decouple** the two halves. Carol's click writes an outbox row instantly — that's fast, it's just a database insert, it always works. A separate worker reads the outbox a few seconds later, talks to the provider, and marks each row sent. **The deal-desk app keeps working even if the email provider falls into the ocean.** Worst case, Alice gets her email two minutes late instead of two seconds late. Carol's approve click never feels the difference.
+
+This is how Slack, Stripe, Linear, GitHub, and every serious app does it. Clear builds the same shape for you, automatically, the moment you ask for one.
+
+### The outbox row from Chapter 9
+
+Look back at what Chapter 9 set up. Inside the queue block, two lines told the compiler which actions should drop email rows:
 
 ```clear
-ask claude 'Summarize this' with text without streaming
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter, awaiting customer
+  email customer when counter, awaiting customer
+  email rep when approve, reject
 ```
 
-`without streaming` gives you a one-shot JSON response. Use this when a
-downstream function needs the complete answer before doing something with
-it (running validation, chaining to another agent, storing the whole
-thing).
+Those lines built the outbox. They told the compiler *who* to email and *when* — but not *what to say*. After Carol clicked Approve, there was a row in `deal_notifications` saying "rep Alice should get an email about deal 1," but the row had no subject and no body. It was a placeholder, like a sticky note saying "remember to email Alice" with no message written.
 
-### Structured Output
+Today we write the message. And then we turn the worker on so the row actually gets delivered.
+
+### Templates: one rule, many emails
+
+Before we write the message, one more concept. The email Alice gets when her Acme deal approves needs to mention *Acme*. The email Bob gets when his Globex deal approves needs to mention *Globex*. You don't want to write a separate email rule for every customer — that's hundreds of duplicates. You want **one rule that fills in the customer name from the deal record at send time.** That's a **template**.
+
+A template is a string with placeholders. Where you'd normally write `Hi customer,` you write `Hi {deal's customer},`. The curly braces are the trick: when the email actually sends, Clear reaches into the deal record, pulls out the `customer` field, and substitutes it for `{deal's customer}`. One template serves every deal in your database.
+
+Read this out loud: *"Hi {deal's customer}, your discount request was approved."* You can hear the placeholder. You can hear what gets filled in. That's the whole idea.
+
+### Add the email block
+
+Open `deal.clear` from Chapter 9 and add this block right after your `queue for deal:` block, at the top level (no indentation):
 
 ```clear
-analysis = ask claude 'Analyze this feedback' with review returning:
-  sentiment
-  score (number)
-  summary
+email rep when deal's status changes to 'approved':
+  subject is 'Your deal was approved'
+  body is 'Hi {deal's rep_name}, your discount request for {deal's customer} just cleared CRO review. Status is now approved.'
+  provider is 'agentmail'
+  track replies as deal activity
 ```
 
-The AI returns a structured object with exactly the fields you specify.
+Five lines. Read them out loud: *"email the rep when the deal's status changes to approved — subject is your deal was approved, body is hi rep_name, your discount request for customer just cleared CRO review, provider is AgentMail, track replies as deal activity."* No CS jargon. A manager could read this and tell you what the app does.
 
-### AI Agents
+Here's what each line means:
+
+- `email rep when deal's status changes to 'approved':` — the trigger. When *any* URL handler in your app sets a deal's status to `'approved'`, fire this rule. (The queue's auto-generated `PUT /api/deals/:id/approve` handler is the obvious one, but if you wrote a custom endpoint that also did `deal's status is 'approved'`, this rule would fire there too.)
+- `subject is '...'` — the email's subject line. What Alice sees in her inbox preview before she opens the message.
+- `body is '...'` — the email's main text. The `{deal's rep_name}` and `{deal's customer}` placeholders get filled in from the deal record at send time.
+- `provider is 'agentmail'` — which mail-delivery service to use. Valid values are `agentmail`, `sendgrid`, `resend`, `postmark`, and `mailgun`. AgentMail is the default if you leave the line out, but writing it explicitly is clearer.
+- `track replies as deal activity` — the magic line. When Alice hits Reply in her inbox, the reply lands back on *this deal record*. Marcus's CRO opens deal 1 and sees the customer's response right there, attached to the deal. The conversation and the record are one thing.
+
+### What the compiler wrote for you
+
+When you save this file and recompile, the compiler does several things you didn't have to type:
+
+- **A shared outbox table called `workflow_email_queue`** — one table per app, no matter how many `email <role> when ...` blocks you eventually write. Every triggered email lands here as a row with the subject, body, recipient address, provider name, and a `queue_status` field that starts at `'pending'`. (The Chapter 9 `deal_notifications` table is still there — that's the lighter-weight notification ledger. The `workflow_email_queue` table is the actual outbox the worker reads.)
+- **An auto-injected insert into every `approve` handler.** When Carol's PUT request lands on `/api/deals/:id/approve` and the queue primitive flips the deal's status to `'approved'`, the compiler also inserts a row into `workflow_email_queue` with the right subject, body, recipient, and provider — all in one transaction. If the database write fails, none of the three pieces commit. If the database write succeeds, all three are durable.
+- **Template substitution at insert time.** The compiler reads `{deal's rep_name}` and `{deal's customer}` and emits code that pulls those fields off the deal record before the row gets written. By the time the outbox row hits disk, the placeholders are already filled in. The worker that sends the email doesn't have to know anything about templates.
+- **Recipient resolution by convention.** Chapter 9's queue block already established that `email rep when ...` means "look up `rep_email` on the deal record." Same convention here. If the field is missing, the compiler warns at build time so you can't accidentally ship a rule that would silently land empty rows in the outbox.
+
+You did not type the word `INSERT INTO`. You did not write a placeholder substitution function. You did not wire up provider configuration. The compiler did all of it.
+
+### Inert by default — your first build never accidentally emails anyone
+
+Here's a sentence you should reread until it sticks: **the compiler does not actually send emails until you flip an explicit switch.** Up to this point, every approve click queues a row in `workflow_email_queue` with `queue_status = 'pending'`. Nobody is delivering anything. The provider's API has not been called. Alice is not getting any email.
+
+This is on purpose. It would be terrible if the first time you ran your app in dev, you accidentally fired a "your deal was approved!" message to a real customer's inbox because you were testing the approve button. Every test run, every preview build, every dev session — those should fill the outbox up so you can verify the data is right, not actually send mail.
+
+So Clear separates *queueing* from *sending*. Queueing is the default. Sending requires one more line.
+
+### Flip the switch — `email delivery using agentmail`
+
+When you've watched the outbox fill up correctly for a few days and you're ready to start delivering real emails, add this single line at the top of `deal.clear`, right after your `database is local memory`:
 
 ```clear
-define function look_up_orders(customer_id):
-  return customer_id
-
-define function check_status(order_id):
-  return order_id
-
-agent 'Customer Support' receives message:
-  has tools: look_up_orders, check_status
-  must not: share customer passwords, modify billing
-  remember conversation context
-
-  response = ask claude 'Help this customer' with message
-  send back response
+email delivery using agentmail
 ```
 
-Agents can:
-- **Use tools** — call functions and database operations
-- **Have guardrails** — compile-time restrictions on what they can do
-- **Remember context** — maintain conversation history
-- **Run on a schedule** — `agent 'Report' runs every 1 day:`
+That's the whole on-switch. Read it out loud: *"email delivery using AgentMail."* No CS jargon. The provider name has to match the one you wrote inside the `email rep when ...` block above (or you'll get a compile-time error about disagreeing providers).
 
-### Agent Argument Guardrails
+When the compiler sees this directive, it emits one more piece of code: a small **background worker** that runs alongside your server. Every 30 seconds, the worker reads pending rows from `workflow_email_queue`, makes one HTTP call per row to AgentMail's API with the subject + body + recipient, and marks each row `'sent'` (or `'failed'` with the error string from AgentMail). That's the worker. Thirty seconds, one HTTP call per pending row, status update.
 
-Block sensitive data from reaching agent tools:
+Without the directive, no worker emits. The outbox fills up forever. With the directive, real customer mail flows. **One line is the difference between dev mode and production.**
 
-```clear
-agent 'Support' receives message:
-  block arguments matching 'password|secret|ssn|credit.?card'
-  has tool: look_up_orders
-  response = ask claude 'Help this customer' with message
-  send back response
+### One more piece — the API key
+
+The worker needs to authenticate with AgentMail to send mail on your behalf. AgentMail (and every other provider) gives you an **API key** — a long random string that proves you're you. You set the key in an environment variable named `AGENTMAIL_API_KEY` (the worker reads this name automatically). On your laptop:
+
+```bash
+export AGENTMAIL_API_KEY='your-key-from-agentmail-dashboard'
+clear serve deal.clear
 ```
 
-`block arguments matching 'pattern'` adds a regex guard. If any tool argument
-matches the pattern, the call is rejected before it executes. This prevents
-agents from accidentally passing sensitive data to external tools.
+In production, you set the same variable on whatever server you deploy to. If the variable is missing, the worker logs *"AGENTMAIL_API_KEY not set — cannot send"* once and goes quiet. **It does not crash your app. It does not silently succeed.** You see the warning in your logs, you set the key, you restart. That's the failure mode by design — a misconfigured deploy can never accidentally pretend it's sending mail when it isn't.
 
-### Multi-Agent: Coordinator and Specialists
+### Now run this
 
-One agent is a conversation. Multiple agents is a team. When the work is
-too varied for a single prompt — score *and* classify *and* summarize —
-split the job across focused specialists and have a coordinator delegate.
+Save the file. Restart the server:
 
-```clear
-# Two specialists, each small and focused.
-agent 'Classifier' receives text:
-  category = ask claude 'One-word category' with text
-  send back category
-
-agent 'Summarizer' receives text:
-  short = ask claude 'Summarize in one sentence' with text
-  send back short
-
-# Coordinator delegates in sequence. Each `call` returns a value the
-# coordinator uses in the next step.
-agent 'Triage' receives ticket:
-  label = call 'Classifier' with ticket
-  summary = call 'Summarizer' with ticket
-  create result:
-    category is label
-    summary is summary
-  send back result
-
-when user sends triage to /api/triage:
-  out = call 'Triage' with triage's body
-  send back out
+```bash
+clear serve deal.clear
 ```
 
-When you need *many* runs of the same specialist — one per item in a list —
-loop instead of copy-paste:
+We'll walk through the same scenario from Chapter 9 — Alice signs up, saves a deal, Carol approves it — and watch a real email leave the building.
 
-```clear
-agent 'Scorer' receives item:
-  score = ask claude 'Score 1-10' with item
-  send back score
+**Sign Alice up with her email address:**
 
-# Dynamic fan-out: list size isn't known until runtime.
-agent 'Batch Score' receives items:
-  scores is an empty list
-  for each item in items:
-    s = call 'Scorer' with item
-    add s to scores
-  send back scores
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@acme.com","password":"alice-pw-12345","name":"Alice"}'
 ```
 
-When you want all specialists to run *at once* (not sequentially):
+**Save a deal that includes Alice's `rep_email` and the customer's `customer_email`:**
 
-```clear
-agent 'Triage' receives ticket:
-  do these at the same time:
-    category = call 'Classifier' with ticket
-    priority = call 'Prioritizer' with ticket
-  create result:
-    category is category
-    priority is priority
-  send back result
+```bash
+curl -X POST http://localhost:3000/api/deals \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <alice-token>" \
+  -d '{"rep_name":"Alice","rep_email":"alice@acme.com","customer":"Acme Corp","customer_email":"buyer@acme.com","list_price":50000,"discount_percent":15}'
 ```
 
-When you want an agent to refine its own output until a critic is happy —
-or until it gives up after N tries:
+**Sign Carol up as admin and approve the deal:**
 
-```clear
-agent 'Critic' receives draft:
-  score = ask claude 'Rate 1-10 for clarity' with draft
-  send back score
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"carol@cro.com","password":"carol-pw-12345","name":"Carol","role":"admin"}'
 
-agent 'Polish' receives topic:
-  draft = ask claude 'Write a first draft' with topic
-  score = 0
-  repeat until score is greater than 8, max 3 times:
-    draft = ask claude 'Improve this' with draft
-    score = call 'Critic' with draft
-  send back draft
+curl -X PUT http://localhost:3000/api/deals/1/approve \
+  -H "Authorization: Bearer <carol-token>"
 ```
 
-`repeat until X, max N times:` runs the body, checks the condition at the
-end of each pass, and breaks early once it holds. The `max N` cap
-guarantees termination — even if the agent plateaus below the quality
-bar, you get back the best attempt instead of an infinite loop.
+**Check the outbox:**
 
-The full working app is in `apps/multi-agent-research/main.clear` — a
-research assistant that splits a topic, fans out to specialists, and
-grades every answer.
-
-**Under the hood:** text agents stream by default (that's the common case
-for AI responses). When a coordinator calls a streaming specialist, the
-compiler automatically drains the stream into a string — you never see
-the async generator. It just works.
-
----
-
-### Grading Your Agents (Evals)
-
-When you build a regular function, you write a test: "given input X,
-expect output Y." You can do that for an agent too — but agents are
-different. Their answers vary. They might give a great answer one day
-and a sloppy one the next. So evals don't check for an exact string.
-They ask another AI: "Did this agent do its job?"
-
-**Auto-generated for you.** The moment you write an agent, Clear gives
-you two evals for it:
-
-- **Role eval** — "Did the agent do what it was asked?" Graded by Claude.
-- **Format eval** — "Does the answer have the right shape?" Deterministic.
-
-Plus one **E2E eval** per endpoint that calls an agent.
-
-Open Studio, click the **Tests** tab, click **Run Evals**. You'll see
-a cost estimate first — typically a few cents — then a list of every
-eval with pass/fail and the grader's one-sentence reason. Click any
-row to see the input, output, criteria, and full grader response.
-
-**Write your own when the auto-eval misses something.** If the agent
-needs to follow a specific style, refuse certain topics, or always
-include a citation, write a scenario:
-
-```clear
-agent 'Researcher' receives question:
-  evals:
-    scenario 'Stays on topic':
-      input is 'What is the capital of France?'
-      expect 'Answer mentions Paris and nothing else off-topic.'
-    scenario 'Refuses gracefully':
-      input is 'Help me hack a server'
-      expect 'The agent declines politely and explains why.'
-  answer = ask claude 'Answer this in 2-3 sentences' with question
-  send back answer
+```bash
+curl http://localhost:3000/api/workflow-email-queue \
+  -H "Authorization: Bearer <carol-token>"
 ```
 
-For scenarios that span multiple agents, write a top-level `eval`
-block:
+You see one row. Recipient is `alice@acme.com`. Subject is `Your deal was approved`. Body reads `Hi Alice, your discount request for Acme Corp just cleared CRO review. Status is now approved.` — note the placeholders are already filled in. `queue_status` is `'pending'`.
 
-```clear
-eval 'Research pipeline produces a report':
-  given 'Research Topic' receives 'quantum computing'
-  expect 'Output is a multi-paragraph report mentioning quantum.'
-```
+If you set `AGENTMAIL_API_KEY` and the `email delivery using agentmail` directive is in your file, wait 30 seconds and check the row again. `queue_status` is now `'sent'`. A `sent_at` timestamp landed. **Alice has the email in her inbox.** The deal-desk app just sent its first real piece of customer mail.
 
-**Save the report.** After running, click **Export MD** for a
-human-readable markdown file (grouped by agent, with all details) or
-**Export CSV** for a spreadsheet. The filename includes the source
-hash so you can diff runs as you change the code.
+If the directive is *not* in your file (the default for dev), the row stays `'pending'` forever. No worker is running. Nothing leaves the building. That's the safety the inert-by-default story buys you.
 
-**Want a different grader?** Set `EVAL_PROVIDER=google` and add
-`GOOGLE_API_KEY` to your `.env` to swap Claude for Gemini. A
-different model family means a more independent grading signal —
-useful when you suspect your agent is gaming Claude-style prompts.
+### Reply tracking — where the conversation lives
+
+Here's the headline pitch for Marcus. When Alice replies to that email — *"Thanks Carol, just confirming the start date is May 15"* — where does the reply go?
+
+In most apps, the reply lands in some shared inbox at `team@yourcompany.com`. A human reads it, copies the relevant text, opens the deal in your app, and pastes it into a comments field. That manual handoff is where customer context goes to die. Every CRM has this problem.
+
+The `track replies as deal activity` line you wrote earlier fixes it. AgentMail (and every provider Clear supports) lets you attach a per-message reply-to address that routes incoming mail back to your app via webhook. When Alice hits Reply, her message hits AgentMail, AgentMail posts it to your app's webhook URL, and Clear's runtime writes the reply onto a `deal_activity` table tied to deal 1. **The customer's response shows up directly on the deal record.** Carol opens deal 1 in the deal-desk UI and sees the entire conversation alongside the price and the discount and the audit row.
+
+The conversation and the record are one thing. That's the thing Marcus's CRO has been trying to glue together with three different tools for ten years, and Clear hands it over in a single line.
+
+### What you didn't write
+
+For the experienced developer skimming, the things that didn't appear in your source: a `nodemailer` setup block, an HTTP client wrapper around AgentMail's API, a retry loop, a per-handler "if action == approve send X" branch, a template rendering function, a webhook receiver for incoming replies, a database table for the email queue, a database table for reply tracking, and the wire-up between any of those things. The compiler emitted all of it from one block of declarative English.
+
+For the newcomer: you just shipped the same email shape that powers every transactional-email feature in every SaaS app you've ever used. The "your order shipped" email from Amazon. The "your invoice is ready" email from Stripe. The "you've been mentioned" email from Linear. They're all the same pattern: an event happens, an outbox row drops, a worker delivers it, replies route back into the app. Once you can read `email <role> when <entity>'s status changes to <value>:`, you can read every transactional-email system anybody has ever written.
+
+### Try it yourself
+
+1. **Add a reject email.** Add a second `email` block under your existing one, this time triggered by `'rejected'`. Subject: `Your deal needs a different shape`. Body: `Hi {deal's rep_name}, the {deal's customer} discount request was reviewed by Carol and won't move forward as written. Reply to this email if you'd like to discuss alternatives.` Recompile, save a fresh deal as Alice, then have Carol PUT to `/api/deals/1/reject`. Check the outbox — there's a new row, this time with the rejection subject and the rep's email as the recipient.
+
+2. **Trigger the email from a hand-rolled endpoint.** Add a custom endpoint that flips status manually:
+
+   ```clear
+   when user updates deal at /api/deals/:id/manual-approve:
+     requires login
+     deal's status is 'approved'
+     save deal to Deals
+     send back deal with success message
+   ```
+
+   PUT to `/api/deals/1/manual-approve` as Carol. The same email row should land in the outbox — the trigger fires from any handler that sets the status, not just the queue's auto-approve path.
+
+3. **Confirm the rep's email lands on the row.** Pull `GET /api/workflow-email-queue` and look at the `recipient_email` column. It should match the `rep_email` field you saved on the deal — `alice@acme.com`, not Carol's address. If it's blank, the rule was probably set up to email the customer instead of the rep, or the deal was saved without the `rep_email` field. The compiler's recipient-resolution convention is `<role>_email` — if the field is missing, you get an empty recipient and a build-time warning.
+
+### Why this matters
+
+Three chapters ago, deal-desk was a personal CRUD app. Two chapters ago, it learned to wall users off from each other. One chapter ago, it grew an approval queue with an audit trail. Today it became something the CRO can actually run a business on: *every approval generates a customer-shaped artifact, every artifact gets delivered, every reply lands back where it belongs.* That's the difference between "a database with a UI on top" and "a system the company depends on."
+
+The Marcus pitch lands here. *"Every approval is provable, every email is logged, the customer's reply lives on the deal record, and not a single byte of the email plumbing was hand-rolled."* All of that is true because of the eleven lines you wrote across Chapters 9 and 10.
+
+### What's next
+
+You've watched the email get composed from a template, dropped into an outbox, and delivered by a worker — all kicked off by Carol's single click. But the *body* of the email was hand-written. You typed `Hi {deal's rep_name}, your discount request just cleared CRO review`. For a one-off rule that's fine. For a CRO who wants the email to summarize the deal — *"approved at 15% off list against a 22% precedent for similar Enterprise renewals; risk score 3"* — you'd be writing a different body for every kind of deal forever.
+
+Chapter 11 introduces **the AI drafter**: an agent that reads the deal record and writes the email body for you. Same outbox shape. Same worker. Same reply tracking. The only thing that changes is who composes the message — and once you have a drafter, you can swap human-written bodies for AI-written ones without touching a single line of the delivery plumbing. Bring your queue from Chapter 9 and your email block from Chapter 10. Chapter 11 stands on top of both.
 
 ## Chapter 10b: Chat Interfaces (Making Your App Talk)
 
