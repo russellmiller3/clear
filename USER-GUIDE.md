@@ -27,7 +27,7 @@ Let's jump in.
 
 **Full-stack basics — apps with a database and a real backend**
 - [Chapter 6: Save Deals to a Database](#chapter-6-save-deals-to-a-database-make-it-stick)
-- [Chapter 7: Expense Tracker](#chapter-7-expense-tracker-now-youre-cooking)
+- [Chapter 7: The Deal Desk Page](#chapter-7-the-deal-desk-page-from-curl-to-browser)
 - [Chapter 8: Multi-Page Apps](#chapter-8-multi-page-apps-because-one-page-is-never-enough)
 - [Chapter 13: Working with Data](#chapter-13-working-with-data)
 - [Chapter 15: Modules](#chapter-15-modules-when-one-file-isnt-enough)
@@ -1248,99 +1248,174 @@ This catches the "I accidentally pushed live keys to a public repo at
 
 ---
 
-## Chapter 7: Expense Tracker (Now You're Cooking)
+## Chapter 7: The Deal Desk Page (From curl to Browser)
 
-Let's level up. This app has dropdowns, computed totals, dollar formatting,
-and sections with card styling. It's the kind of thing a freelancer might
-actually use. (Or at least intend to use before going back to a spreadsheet.)
+By the end of this chapter, the deal-desk app finally has a *human face*. You'll open a browser, type `http://localhost:3000` into the address bar, and see the queue rendered as a real web page — sidebar on the left, workbench on the right, an empty table waiting for its first row. No curl. No JSON. Just a page that looks like an app you'd actually pay for.
+
+In Chapter 6 you taught your server how to *remember* deals — the Deals table is on disk, the POST endpoint validates and saves, the GET endpoint reads them back. Everything works, but only if you speak curl. A CRO doesn't speak curl. She opens her browser, looks at a queue, clicks Approve. This chapter wires up the part she sees.
+
+### What is a web page, really?
+
+A **web page** is text + structure + styling, served by your program when the browser asks for it. Every site you've ever visited works this way. The browser sends a request to an URL. Your program decides what to send back. If it sends back JSON (like Chapter 5 and 6 did), the browser sees raw data. If it sends back HTML, the browser turns that HTML into the visual page you actually see — headings, tables, buttons, the whole thing.
+
+The "structure" part is the load-bearing word. A page isn't a wall of text — it has *parts*. A title at the top. A list of links on the side. A table in the middle. A form at the bottom. The browser learns the parts from special tags in the HTML — `<h1>` for a heading, `<table>` for a table, `<button>` for a button. The styling — colors, fonts, spacing, the way the sidebar sits next to the main column — comes from CSS. Together, structure + styling = a real page.
+
+You don't write any of that. Clear writes it for you. What you write is the *intent*: "this page has a heading, a table of pending deals, and a sidebar with a Pending counter." The compiler turns your intent into the right HTML and CSS. You think about the queue; Clear thinks about the tags.
+
+### What does a `page` declaration do?
+
+Compare two lines you've seen so far:
 
 ```clear
-build for web and javascript backend
+when user requests data from /api/deals:
+  send back all_deals
+```
 
-# Database
-database is local memory
-create an Expenses table:
-  description, required
-  amount (number), required
-  category, default 'other'
-  created_at, auto
+That's the URL handler from Chapter 5 — when *code* asks for `/api/deals`, the server sends back JSON. Now read this:
 
-# Backend
-accept requests from any website
-log every request
+```clear
+page 'Deal Desk' at '/':
+  heading 'Pending CRO approval'
+  display pending as table showing customer, list_price, discount_percent
+```
 
-when user requests data from /api/expenses:
-  all_expenses = get all Expenses
-  send back all_expenses
+Same shape — an address followed by an indented body — but with one big difference. `when user calls` returns JSON for code. `page` returns *HTML for humans*. When a real person opens `http://localhost:3000/` in their browser, the server sends back a styled page with a heading and a table. Same server, same database underneath, two different audiences.
 
-when user sends expense to /api/expenses:
-  validate expense:
-    description is text, required, min 1, max 200
-    amount is number, required
-    category is text
-  new_expense = save expense as new Expense
-  send back new_expense with success message
+This is the leveling-up beat for full-stack apps. Chapter 5 made the server reachable. Chapter 6 made the data persistent. Chapter 7 makes the data *visible* — to someone who's never heard of curl.
 
-when user deletes expense at /api/expenses/:id:
-  requires login
-  delete the Expense with this id
-  send back 'deleted' with success message
+### What is a widget?
 
+You'll write one line — `display pending as table showing customer, list_price, discount_percent` — and the browser will render an actual `<table>` element with a header row, a body row per deal, alternating row colors, and some friendly styling. That single line is a **widget**: a high-level building block the compiler turns into the right HTML. You named the data, you named the columns; Clear figured out the rest.
+
+Widgets are how Clear keeps the file short. Without them you'd write twenty-plus lines of HTML for one table — `<table>`, `<thead>`, `<tr>`, `<th>` for every column, `<tbody>`, `<tr>` for every row, `<td>` for every cell. With widgets you write one line per *intent* and the compiler handles the rest. Same idea as the table declaration in Chapter 6: you said "here's the shape," not "here's the SQL."
+
+There are widgets for tables, charts, headings, buttons, forms, navigation, stat cards. We'll meet a few in this chapter; the rest live in later chapters as you need them.
+
+### What are app-shell presets?
+
+Most business apps look the same on the outside. Sidebar on the left with the navigation. Workbench in the middle with the main thing you're doing. Header bar across the top. A footer line at the bottom. The deal desk has that shape. The approval queue has that shape. Internal request queues, lead routers, onboarding trackers — all that shape.
+
+Rather than make you rebuild the shell every time, Clear ships **presets** — pre-styled section types you can ask for by name. Five of them carry the full app shell:
+
+- `app_layout` — the outermost wrapper. "This page is a full-screen app, not a marketing page."
+- `app_sidebar` — the 240-pixel left rail. "This holds navigation."
+- `app_main` — everything to the right of the sidebar. "This is the workbench."
+- `app_header` — the 56-pixel sticky top bar. "Brand goes here. Breadcrumbs too."
+- `app_content` — the scrollable main area inside `app_main`. "This is where the table goes."
+
+You ask for them with `section 'Anything' with style app_layout:`. The first word in quotes is your label (it ends up as a comment in the compiled HTML — pick anything readable). The `with style …` part is the load-bearing bit: it tells the compiler which preset to apply. The compiler emits the `<aside>`, the `<main>`, the right CSS classes, the responsive rules, the hairline borders, the slate-on-ivory chrome — all of it. You write three lines; you'd otherwise write fifty.
+
+If you skip the presets and just write `page 'Deal Desk' at '/':` with a bare heading and table, you'd get a working page — but it'd look like a Geocities reject. The presets are the difference between "renders" and "looks professional."
+
+### The deal-desk page
+
+Open `deal.clear` (the file you've been growing across Chapters 1–6) and add this section at the bottom, right after the last endpoint:
+
+```clear
 # Frontend
-page 'Expense Tracker':
-  on page load get expenses from '/api/expenses'
 
-  heading 'Expense Tracker'
-  subheading 'Track your spending'
+page 'Deal Desk' at '/':
+  on page load:
+    get pending from '/api/deals'
 
-  section 'Add Expense' with style card:
-    'Description' is a text input saved as a description
-    'Amount' is a number input saved as a amount
-    'Category' is a dropdown with ['Food', 'Transport', 'Entertainment', 'Bills', 'Other'] saved as a category
-    button 'Add Expense':
-      send description, amount and category as a new expense to '/api/expenses'
-      get expenses from '/api/expenses'
-      description is ''
-      amount is 0
+  pending_count = count of pending
 
-  section 'Summary':
-    define total_spent as: sum of expenses
-    display total_spent as dollars called 'Total Spent'
+  section 'App' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'Deal Desk'
 
-  section 'All Expenses':
-    display expenses as table showing description, amount, category with delete
+      nav section 'Approvals':
+        nav item 'Pending' to '/' with count pending_count with icon 'inbox'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Clear'
+        text 'Workspace / Deal Desk / Pending Queue'
+
+      section 'Content' with style app_content:
+        page header 'Pending CRO approval':
+          subtitle '{pending_count} deals waiting on you.'
+
+        section 'Pending Queue' with style app_table:
+          display pending as table showing customer, rep_name, list_price, discount_percent, status
 ```
 
-**New things in this app:**
-- `section 'Name' with style card:` — groups content in a styled card
-- `'Category' is a dropdown with [...]` — a dropdown menu with predefined options
-- `define total_spent as: sum of expenses` — computes the sum of all expense amounts
-- `display total_spent as dollars` — formats as currency ($123.45)
+That's a complete page. Twenty lines, give or take. Walk it from top to bottom.
 
-### A Note on Performance: Server-Side Aggregates
+**`page 'Deal Desk' at '/':`** declares the page. The string is the title (it ends up in the browser tab). The `at '/'` part says "this page lives at the root URL." When someone opens `http://localhost:3000/`, this is what they get. Skip the `at '/'` part and Clear auto-routes from the title — `'Deal Desk'` becomes `/deal-desk`. We want the deal desk to be the homepage, so we say so.
 
-The example above uses `sum of expenses` — that sums a list the app already has in memory. Works great for this demo (5 expenses). But imagine a real expense tracker with 50,000 expenses: fetching them all just to compute one number is wasteful.
+**`on page load:`** opens a small block that runs the moment the browser shows the page. The one line inside (`get pending from '/api/deals'`) is the same `get` verb you used in the form chapter — it hits your `/api/deals` endpoint, parses the JSON response, and stores it in a state variable called `pending`. That variable is now available everywhere on the page. Without `on page load`, the page would render with `pending` undefined (nothing in the table) and the CRO would see an empty queue.
 
-Clear has a faster form for that case:
+**`pending_count = count of pending`** is a computed line — same `count of` you used in Chapter 3. The result is a number that the sidebar can display. Notice the `=` (we're computing a number) instead of `is` (which would be for a string).
 
-```clear
-# In-memory: fetches everything, sums in JavaScript (good for small lists)
-expenses = get every Expense
-total = sum of amount in expenses
+**`section 'App' with style app_layout:`** opens the outermost shell. Everything inside this block — sidebar, header, content area — is part of the deal desk's chrome. Without `app_layout` the compiler defaults to a centered marketing-page layout (great for landing pages, wrong for an app).
 
-# Server-side: runs a single SQL query, never loads the list (good for real scale)
-total = sum of amount from Expenses
+**`section 'Sidebar' with style app_sidebar:`** opens the 240-pixel left rail. The `heading 'Deal Desk'` becomes the brand text at the top of the sidebar. The `nav section 'Approvals':` block underneath is a labeled group of navigation links. Inside it, `nav item 'Pending' to '/' with count pending_count with icon 'inbox'` is one link in the rail — it shows the word "Pending," the inbox icon, the live count, and clicking it goes to `/`. (We only have one nav item right now. In later chapters we'll add Approved, Rejected, Awaiting customer.)
+
+**`section 'Main' with style app_main:`** opens the workbench column — the big right-side area that fills the rest of the screen. Inside it:
+
+- `section 'Header' with style app_header:` becomes the 56-pixel sticky top bar. The `heading 'Clear'` lands in the brand slot on the left; the `text` line lands in the breadcrumb slot in the middle.
+- `section 'Content' with style app_content:` opens the scrollable main area where the queue actually lives.
+
+**`page header 'Pending CRO approval':`** is a workbench-page widget — the big title row at the top of the content area. The `subtitle '{pending_count} deals waiting on you.'` underneath shows the live count. The `{pending_count}` syntax is the same string interpolation from Chapter 1: whatever's in the curly braces gets substituted into the string at render time.
+
+**`section 'Pending Queue' with style app_table:`** wraps the table in a styled container — rounded corners, light border, subtle shadow. Inside it, `display pending as table showing customer, rep_name, list_price, discount_percent, status` is the table widget. The compiler reads the column list, looks at the rows in `pending`, and emits a real HTML table with a header row and one body row per deal.
+
+### Now run this
+
+Save the file. From the same folder, start the server:
+
+```bash
+clear serve deal.clear
 ```
 
-**Rule of thumb:** `in variable` reduces data you already have. `from Table` (capitalized) runs the aggregate in the database. Same works for `avg`, `count`, `min`, `max`, with optional filters:
+You'll see something like:
 
-```clear
-paid_total = sum of amount from Expenses where category is 'business'
-support_avg = avg of score from Tickets where team is 'support' and priority is 'high'
-ticket_count = count of id from Tickets
+```
+Compiling deal.clear...
+Compiled cleanly. Starting server.
+Listening on http://localhost:3000
 ```
 
-**`get all` vs `get every`:** `get all Contacts` returns at most 50 rows by default — a safety cap so your browser doesn't die on a big table. If you genuinely need every row, use `get every Contact`. For real list views with tons of records, use `get all Contacts page 2, 25 per page` — that compiles to SQL `LIMIT 25 OFFSET 25`, only 25 rows touch your server.
+Now — and this is the moment of truth — open your browser. Any browser. Type `http://localhost:3000` into the address bar and hit Enter.
+
+You should see a real, styled page. A 240-pixel sidebar runs down the left side with "Deal Desk" at the top and a Pending row showing the inbox icon and the count `0`. The big right column has "Clear" in the top bar, "Workspace / Deal Desk / Pending Queue" as a breadcrumb, the title "Pending CRO approval" below that, and the subtitle "0 deals waiting on you." Underneath is a table with column headers (Customer, Rep name, List price, Discount percent, Status) and one body row that just says *No rows yet.* in italics, centered, slightly muted.
+
+That last line — *No rows yet.* — is Clear being friendly. Empty tables used to render as a column-header row with a flat empty body, which looks broken. The compiler now drops in an italic placeholder row whenever the data is empty so the page doesn't look half-loaded. The moment you save your first deal through the form (Chapter 9), the placeholder vanishes and the deal appears.
+
+For the experienced developer skimming: notice what you didn't write. No `<html>`, no `<head>`, no `<body>`, no `<aside>`, no Tailwind classes, no media queries, no fetch-on-mount lifecycle hook, no JSX, no router config. Twenty lines of Clear gave you a fully styled, fully responsive single-page app that fetches its data on load. The compiled HTML is ~600 lines. You read 20.
+
+For the newcomer: you just built a real app. The CRO can open her browser, type the address, and see the queue. The page she sees is the same shape every full-stack app has — sidebar, workbench, table. Yours just happens to be empty until someone saves a deal.
+
+### Why presets matter (a small detour)
+
+A reasonable thing to wonder: "why bother with `app_layout`, `app_sidebar`, etc.? Couldn't I just use raw `section` blocks?" You can. But then *you* have to decide how wide the sidebar is, what color it sits on, where the hairline border goes, how the header sticks to the top, how the content area scrolls inside the main column without scrolling the sidebar, how it all falls back on a phone. That's a few hundred lines of CSS done correctly — and getting any one of them wrong makes the whole page feel cheap.
+
+Presets bake in the answer. The 240-pixel sidebar width matches what Linear and Notion use. The hairline borders match the Marcus design target. The sticky header behaves the same way in Chrome and Safari. The content area scrolls *inside* the main column without losing the header — a detail that's easy to break if you're rolling your own.
+
+You can also opt out and write raw styles when you need to (Chapter 11 covers it). For an internal-tools app with a sidebar and a workbench, the presets are exactly the right answer almost always. Reach for them first; only compose your own when you've outgrown what they offer.
+
+### What about the other status pages?
+
+The actual `apps/deal-desk/main.clear` reference app has five pages — Pending, Approved today, Rejected, Awaiting customer, All deals — each at its own URL, each backed by a different status filter. We're keeping it to one page in this chapter because the goal is to teach the *shape*, not the full app. The other four pages are exactly the same template — `page 'X' at '/X':`, fetch on load, same shell, different data variable. Once you've internalized the pattern, adding the other four is mechanical.
+
+We'll add them in Chapter 9 when the queue primitive shows up — that's the right moment, because the queue is what fills the other tabs with real data.
+
+### Why this matters
+
+You crossed the line from "the program answers requests" to "a human can use the program." Every chapter from here on assumes the deal desk has a visible page. Chapter 8 puts a login wall in front of it so each user sees only their own deals. Chapter 9 introduces the queue primitive that gives the table real action buttons (Approve, Reject, Counter). Chapter 10 wires up email notifications when a deal flips state. Chapter 11 adds the AI drafter to the right detail panel. Chapter 12 makes the discount cap a *provable* business rule. Each of those chapters reads from and writes to the page you just built.
+
+The other thing you just touched — without anyone calling it out — is **separation of concerns**. The same `/api/deals` URL serves two audiences: code (the JSON from Chapter 5 and 6) and humans (this page). If a third audience shows up later — a mobile app, an integration, a Slack bot — they can hit the JSON endpoint without rewriting anything. The page is one consumer. Adding more is free.
+
+### Try it yourself
+
+1. **Add a heading above the table.** Inside `section 'Pending Queue' …:`, before the `display pending as table …` line, add `heading 'Pending deals'`. Save, refresh the browser. The table now has its own internal title — useful when you've got multiple sections on the same page.
+2. **Change the page title.** Edit the first line from `page 'Deal Desk' at '/':` to `page 'CRO Approval Console' at '/':`. Save, refresh, look at the browser tab. The title in the tab updates to match. (The page itself doesn't change — the title is what shows up in the tab and in search-engine results.)
+3. **Show the count in the breadcrumb.** Change the header `text` line from `'Workspace / Deal Desk / Pending Queue'` to `'Workspace / Deal Desk / Pending Queue ({pending_count})'`. Save, refresh. The breadcrumb now reflects the live count — the same `{}` interpolation you used in Chapter 1, working anywhere a string can go.
+
+### What's next
+
+Right now anyone in the world who knows the URL can open your page and see your deals. Chapter 8 puts up the login wall — `allow signup and login` plus `the deal's creator can read, change, or delete` — so each user sees only the deals *they* saved. The page from this chapter doesn't change one bit. The compiler reads the access rules and threads the user-id filter through every read for you. Same `display pending as table …` line, dramatically different behavior underneath. That's how Clear handles security: declarative at the table, invisible at the call site.
 
 ---
 
