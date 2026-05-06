@@ -4942,6 +4942,27 @@ describe('Validator - mandatory access rules per table (OWASP Piece 1, cycle 2a,
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 5a — JS compiler auto-injects per-row creator filter
+// =============================================================================
+// When a table has `the X's creator can ...` rule, the compiler quietly wraps
+// every lookup filter with `user_id: req.user && req.user.id`. That's what
+// turns the rule from documentation into runtime enforcement.
+describe('Compiler - per-row creator filter auto-injection (OWASP Piece 1, cycle 5a)', () => {
+  it('injects user_id filter on lookup when table has a creator rule', () => {
+    const result = compileProgram("build for backend\ndatabase is local memory\n\ntable Deals:\n  amount, number\n  the deal's creator can read, change, or delete\n\nwhen user requests data from /api/deals:\n  deals = look up all Deals\n  send back deals");
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('user_id');
+    expect(/req\.user.*\.id/.test(result.javascript)).toBe(true);
+  });
+
+  it('does NOT inject user_id filter when table has only an anyone-can-read rule', () => {
+    const result = compileProgram("build for backend\ndatabase is local memory\n\ntable Posts:\n  title, text\n  anyone can read\n\nwhen user requests data from /api/posts:\n  posts = look up all Posts\n  send back posts");
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).not.toContain('user_id: req.user');
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");
