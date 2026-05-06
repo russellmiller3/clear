@@ -309,6 +309,12 @@ export const NodeType = Object.freeze({
   // Auth scaffolding
   AUTH_SCAFFOLD: 'auth_scaffold',
 
+  // OWASP Piece 2 — outgoing-requests allowlist (SSRF defense). Top-of-file
+  // declaration that names every host the app is allowed to call out to.
+  // The validator gates http_request and external_fetch URLs against the
+  // allowlist when this node is present in the AST.
+  OUTGOING_ALLOWLIST: 'outgoing_allowlist',
+
   // WebSocket broadcast
   BROADCAST: 'broadcast',
 
@@ -1039,6 +1045,23 @@ const CANONICAL_DISPATCH = new Map([
   ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
   ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
   ['auth_scaffold', (ctx) => { ctx.body.push({ type: NodeType.AUTH_SCAFFOLD, line: ctx.line }); return ctx.i + 1; }],
+  // OWASP Piece 2 — outgoing-requests allowlist. Body is the rest of the
+  // current line after the canonical: a comma-separated list of quoted host
+  // strings. With this declared, the validator requires every http_request /
+  // external_fetch URL to (a) be a string literal AND (b) target one of
+  // these hosts. Without it, only the existing private-IP block fires.
+  ['outgoing_allowlist', (ctx) => {
+    const tokens = ctx.tokens;
+    const hosts = [];
+    for (let p = 1; p < tokens.length; p++) {
+      if (tokens[p].type === TokenType.STRING) hosts.push(tokens[p].value);
+    }
+    if (hosts.length === 0) {
+      ctx.errors.push({ line: ctx.line, message: "allow outgoing requests to: needs at least one host. Example: allow outgoing requests to: 'api.stripe.com', 'api.openai.com'" });
+    }
+    ctx.body.push({ type: NodeType.OUTGOING_ALLOWLIST, hosts, line: ctx.line });
+    return ctx.i + 1;
+  }],
   ['break', (ctx) => { ctx.body.push(breakNode(ctx.line)); return ctx.i + 1; }],
   ['continue', (ctx) => { ctx.body.push(continueNode(ctx.line)); return ctx.i + 1; }],
   ['requires_auth', (ctx) => { ctx.body.push(requiresAuthNode(ctx.line)); return ctx.i + 1; }],

@@ -303,6 +303,11 @@ const SYNONYM_TABLE = Object.freeze({
   log_requests: Object.freeze(['log every request', 'log all requests']),
   allow_cors: Object.freeze(['allow server to accept requests from frontend', 'accept requests from any website', 'allow cross-origin requests', 'enable cors']),
   auth_scaffold: Object.freeze(['allow signup and login', 'allow login and signup', 'allow sign up and login', 'allow login and sign up']),
+  // OWASP Piece 2 — outgoing-requests allowlist. Top-of-file declaration that
+  // restricts where the app is allowed to call out to. Same shape as
+  // auth_scaffold — multi-word synonym maps to a single canonical that the
+  // dispatch table picks up below.
+  outgoing_allowlist: Object.freeze(['allow outgoing requests to', 'allow outbound requests to', 'allow http requests to', 'allow external requests to']),
 
   // Collection operations (Phase 21)
   sum_of: Object.freeze(['sum of', 'total of']),
@@ -499,6 +504,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.39.0';
+const SYNONYM_VERSION = '0.40.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

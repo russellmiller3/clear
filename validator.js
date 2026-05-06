@@ -137,7 +137,77 @@ export function validate(ast) {
   validateRuleBlocks(ast.body, errors, warnings);
   validateConcurrency(ast.body, warnings);
   validateTenantScope(ast.body, warnings);
+  validateOutgoingAllowlist(ast.body, errors);
   return { errors, warnings };
+}
+
+// =============================================================================
+// OWASP Piece 2 — outgoing-requests allowlist (SSRF defense, 2026-05-06).
+//
+// When the source declares `allow outgoing requests to: 'host1', 'host2'`,
+// every http_request / external_fetch URL must be (a) a string literal AND
+// (b) target a host in the allowlist. Without the declaration, the existing
+// private-IP block stays as the only check (back-compat).
+//
+// Why both checks: variable URLs (URL = req.body.url) are the classic SSRF
+// vector — a malicious caller controls where the server goes. String
+// literals can be audited at compile time; variables cannot. The allowlist
+// turns "where can this app call out to?" into a one-line answer the
+// security buyer can read.
+// =============================================================================
+function validateOutgoingAllowlist(body, errors) {
+  if (!Array.isArray(body)) return;
+  const allowlist = body.find(n => n && n.type === 'outgoing_allowlist');
+  if (!allowlist || !Array.isArray(allowlist.hosts) || allowlist.hosts.length === 0) return;
+  const allowed = new Set(allowlist.hosts.map(h => String(h).toLowerCase()));
+
+  function hostFromUrl(url) {
+    try {
+      const u = new URL(url);
+      return (u.hostname || '').toLowerCase();
+    } catch {
+      // Relative URL or malformed — not external, skip.
+      return null;
+    }
+  }
+
+  function checkOne(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'http_request' || node.type === 'external_fetch') {
+      // The URL field is either a string (literal) on EXTERNAL_FETCH or a
+      // node on HTTP_REQUEST. Treat both as "URL value" for the check.
+      const url = node.url;
+      let urlString = null;
+      if (typeof url === 'string') {
+        urlString = url;
+      } else if (url && typeof url === 'object' && url.type === 'literal_string' && typeof url.value === 'string') {
+        urlString = url.value;
+      } else {
+        // Variable ref, binary op (concat), or anything non-literal — fail closed.
+        errors.push({
+          line: node.line,
+          message: `Line ${node.line}: outgoing request URL must be a string literal so the compile-time allowlist can check it. Variable URLs are the classic SSRF vector — a malicious caller could redirect the request anywhere. Either inline the URL as a quoted string, or build a small wrapper endpoint per allowlisted target.`
+        });
+        return;
+      }
+      const host = hostFromUrl(urlString);
+      if (host && !allowed.has(host)) {
+        errors.push({
+          line: node.line,
+          message: `Line ${node.line}: outgoing request to ${urlString} is not allowed. The allowlist permits: ${[...allowed].join(', ')}. Either add the host to the top-of-file allowlist, or remove this call.`
+        });
+      }
+    }
+    // Walk children — bodies, branches, expression slots.
+    for (const k of ['body', 'thenBody', 'elseBody', 'actions', 'cards', 'steps']) {
+      if (Array.isArray(node[k])) for (const child of node[k]) checkOne(child);
+    }
+    if (node.expression) checkOne(node.expression);
+    if (node.condition) checkOne(node.condition);
+    if (node.target && typeof node.target === 'object') checkOne(node.target);
+  }
+
+  for (const node of body) checkOne(node);
 }
 
 // =============================================================================

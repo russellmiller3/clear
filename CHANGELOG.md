@@ -6,6 +6,39 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — OWASP Piece 2 (outgoing requests allowlist — SSRF defense)
+
+Closes the SSRF gap in the OWASP Top 10 pitch. Top-of-file declaration:
+
+```
+allow outgoing requests to: 'api.stripe.com', 'api.openai.com'
+```
+
+When this is in the AST, every `call api 'url'` and `data from 'url'` URL
+must be (a) a string literal AND (b) target a host in the allowlist. Variable
+URLs are the classic SSRF vector — a malicious caller controls where the
+server goes — so the validator fails closed with a friendly error pointing
+at both fixes (inline the URL, or wrap each allowlisted target in its own
+endpoint). Without the declaration, the existing private-IP block (localhost,
+127.0.0.1, 10.x, 192.168.x, 172.16-31.x) stays as the only check, so apps
+that don't declare the allowlist keep working unchanged.
+
+**What shipped:**
+- New synonym `allow outgoing requests to` + 3 aliases (`outbound requests`,
+  `http requests`, `external requests`) → canonical `outgoing_allowlist`
+- New `NodeType.OUTGOING_ALLOWLIST` with `hosts: string[]` field
+- Parser dispatch entry that captures comma-separated quoted hosts on the
+  same line
+- Validator pass `validateOutgoingAllowlist` that walks every HTTP_REQUEST
+  and EXTERNAL_FETCH, errors on non-literal URLs and on hosts not in the
+  allowlist
+- SYNONYM_VERSION 0.39.0 → 0.40.0
+- 5 new tests in clear.test.js
+
+Test suite: 2965 / 2965 green.
+
+---
+
 ## 2026-05-05 — OWASP Piece 1 (mandatory per-line access rules) — partial ship
 
 Closes the last access-control gap in the OWASP Top 10 pitch. After this branch
