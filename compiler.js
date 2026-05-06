@@ -6378,11 +6378,18 @@ function compilePolicyPython(node, ctx, pad) {
 }
 
 function compileAuthScaffoldPython(pad) {
+  // Python parity follow-up (2026-05-06): emit signup / login / auth-me
+  // routes that import from clear_runtime.auth (the Python port of
+  // runtime/auth.js). Uses stdlib HMAC + PBKDF2 (matches JS byte-for-byte)
+  // instead of passlib bcrypt + PyJWT — gives cross-runtime interop, so a
+  // password hashed by Node verifies under Python and vice-versa, same
+  // for tokens.
+  //
+  // User storage is still in-memory (_users list). Persistence via
+  // runtime/db.py is a follow-up — same shape as the JS scaffold's
+  // _auth_users SQL table. Tracked in plans/plan-python-parity.md.
   const lines = [];
-  lines.push(`${pad}from passlib.hash import bcrypt as _bcrypt`);
-  lines.push(`${pad}import jwt as _pyjwt`);
-  lines.push(`${pad}import os, secrets`);
-  lines.push(`${pad}_JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))`);
+  lines.push(`${pad}from clear_runtime.auth import hash_password, check_password, create_token, verify_token`);
   lines.push(`${pad}_users = []`);
   lines.push('');
   lines.push(`${pad}@app.post("/auth/signup")`);
@@ -6394,10 +6401,10 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
   lines.push(`${pad}    if any(u["email"] == email for u in _users):`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email already registered")`);
-  lines.push(`${pad}    password_hash = _bcrypt.hash(password)`);
+  lines.push(`${pad}    password_hash = hash_password(password)`);
   lines.push(`${pad}    user = {"id": len(_users) + 1, "email": email, "password_hash": password_hash, "role": "user"}`);
   lines.push(`${pad}    _users.append(user)`);
-  lines.push(`${pad}    token = _pyjwt.encode({"id": user["id"], "email": email, "role": "user"}, _JWT_SECRET, algorithm="HS256")`);
+  lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": "user"})`);
   lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": "user"}}`);
   lines.push('');
   lines.push(`${pad}@app.post("/auth/login")`);
@@ -6408,9 +6415,9 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}    if not email or not password:`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
   lines.push(`${pad}    user = next((u for u in _users if u["email"] == email), None)`);
-  lines.push(`${pad}    if not user or not _bcrypt.verify(password, user["password_hash"]):`);
+  lines.push(`${pad}    if not user or not check_password(password, user["password_hash"]):`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid email or password")`);
-  lines.push(`${pad}    token = _pyjwt.encode({"id": user["id"], "email": email, "role": user["role"]}, _JWT_SECRET, algorithm="HS256")`);
+  lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": user["role"]})`);
   lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": user["role"]}}`);
   lines.push('');
   lines.push(`${pad}@app.get("/auth/me")`);
@@ -6419,11 +6426,13 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
   lines.push(`${pad}    try:`);
-  lines.push(`${pad}        payload = _pyjwt.decode(auth_header[7:], _JWT_SECRET, algorithms=["HS256"])`);
+  lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
   lines.push(`${pad}        user = next((u for u in _users if u["id"] == payload["id"]), None)`);
   lines.push(`${pad}        if not user: raise HTTPException(status_code=404, detail="User not found")`);
   lines.push(`${pad}        return {"id": user["id"], "email": user["email"], "role": user["role"]}`);
-  lines.push(`${pad}    except _pyjwt.PyJWTError:`);
+  lines.push(`${pad}    except HTTPException:`);
+  lines.push(`${pad}        raise`);
+  lines.push(`${pad}    except Exception:`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
   return lines.join('\n');
 }

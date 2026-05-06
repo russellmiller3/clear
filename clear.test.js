@@ -7755,10 +7755,20 @@ describe('Auth scaffolding', () => {
     expect(r.javascript).toContain("require('jsonwebtoken')");
   });
 
-  it('Python emits auth endpoints with passlib', () => {
+  it('Python emits auth endpoints using clear_runtime.auth (cross-runtime interop)', () => {
+    // Python parity follow-up (2026-05-06): the auth scaffold now imports
+    // hash_password / check_password / create_token / verify_token from
+    // clear_runtime.auth (the Python port of runtime/auth.js using stdlib
+    // HMAC + PBKDF2). A password hashed by the JS runtime verifies under
+    // Python and vice-versa — same for tokens. Replaces the older passlib
+    // + PyJWT emission which broke cross-runtime interop.
     const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
     expect(r.python).toContain('/auth/signup');
-    expect(r.python).toContain('passlib');
+    expect(r.python).toContain('from clear_runtime.auth import');
+    expect(r.python).toContain('hash_password');
+    expect(r.python).toContain('create_token');
+    expect(r.python).not.toContain('passlib');
+    expect(r.python).not.toContain('import jwt as');
   });
 
   it('needs login still works (existing REQUIRES_AUTH)', () => {

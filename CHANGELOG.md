@@ -36,6 +36,8 @@ Each helper has a focused test suite (12 + 28 + 7 + 7 = 54 tests total today, al
 
 **Update 2026-05-06 evening — CLI runtime-copy for Python helpers shipped.** The companion change to the wiring above. `cli/clear.js` now detects when the Python emit imports `clear_runtime` and copies the matching `.py` files (`__init__.py`, `db.py`, `db_postgres.py`, `auth.py`, `rate_limit.py`, `sensitive_crypto.py`) into the compiled app's `clear-runtime/` directory next to `server.py`. Both the `clear build` and `clear test` commands handle this. Without this step the wiring's `from clear_runtime import db` line would fail at runtime; with it, Python apps actually USE the helpers in production. New file `runtime/__init__.py` makes the directory a proper Python package.
 
+**Update 2026-05-06 evening — Python auth scaffold uses runtime/auth.py (cross-runtime interop).** `compileAuthScaffoldPython` rewritten to import `hash_password / check_password / create_token / verify_token` from `clear_runtime.auth` instead of `passlib.hash.bcrypt` + `jwt` (PyJWT). Result: a password hashed by the JS runtime verifies under Python and vice versa, same for tokens — both runtimes use the same stdlib HMAC + PBKDF2 + custom 2-segment token format. Was a real interop hole; passlib's bcrypt format and standard JWT format are NOT what `runtime/auth.js` produces. Test "Python emits auth endpoints using clear_runtime.auth (cross-runtime interop)" locks the new shape; the old "with passlib" assertion was inverted. User storage is still in-memory `_users` list — durable storage via `runtime/db.py` is the next AUTH_SCAFFOLD follow-up. Compiled Python apps now have ZERO PyPI auth deps (matches the helper's own zero-dep story).
+
 ---
 
 ## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4
