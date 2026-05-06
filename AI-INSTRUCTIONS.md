@@ -607,6 +607,40 @@ If your app genuinely has no concept of user accounts — no `allow signup and l
 
 Never add a bare `requires login` to an endpoint in an app that has no auth scaffolding — it will fail to authenticate anything because there's no user system to check against.
 
+## Per-row Access Rules (OWASP Piece 1)
+
+When a table holds rows that belong to specific users — todos, deals, expenses, bookings — declare a per-row access rule in the table body. The compiler reads it and auto-injects the ownership check on every read, save, edit, and delete.
+
+```clear
+create a Todos table:
+  task, required
+  done (boolean), default false
+  created_at, auto
+  the todo's creator can read, change, or delete
+```
+
+That's the canonical pattern for "this row belongs to whoever made it." A stolen session token can no longer guess another user's row id and read, edit, or delete it — the compiler emits the ownership check on every CRUD operation.
+
+**When to use which subject:**
+
+| Situation | Use this rule | What the compiler injects |
+|-----------|--------------|---------------------------|
+| Per-user data (todos, expenses, bookings) | `the X's creator can read, change, or delete` | filter / stamp by `user_id = req.user.id` |
+| Row assigned to a specific user (deal reviewer, ticket assignee) | `the X's reviewer can read or change` (needs `reviewer_id` field on the table) | filter by `<role>_id = req.user.id` |
+| Admin override on top of creator | add `any admin can read, change, or delete` alongside | `req.user.role === 'admin'` short-circuit |
+| Public catalog (products, blog posts when published) | `anyone can read` | (no filter — public) |
+| Authenticated-only data (members area) | `anyone logged in can read` | `req.user` truthy |
+
+**Compose with tenant scope.** Marcus apps deployed multi-tenant declare both `database is shared with tenant scope` (cross-tenant) AND `the X's creator can ...` (intra-tenant per-user). The compiler stacks both filters on every CRUD — defense in depth at two granularities.
+
+**You don't write `user_id` anywhere in your source.** The runtime auto-adds `user_id INTEGER` to every SQLite table — same precedent as `tenant_id`. Just declare the rule and let the compiler + runtime handle the plumbing.
+
+**Compile-time guardrails:**
+
+- Validator warns if a table has no rules at all (will be a hard error after the fixture sweep ships).
+- Validator errors if a row-role rule names a missing field (e.g. `the deal's reviewer` but no `reviewer_id`).
+- Validator errors if a GET endpoint returns rows from a user-owned table without auth or filter (the IDOR catch-all, kept as a backstop in case raw SQL slips past the auto-inject path).
+
 ## Cookies (sessions, persisted state)
 
 Cookies are how you keep someone logged in or remember a tiny bit of state across page loads. Three forms:

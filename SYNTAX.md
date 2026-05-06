@@ -1600,6 +1600,61 @@ define role 'viewer':
 requires role 'editor'
 ```
 
+## Per-row Access Rules (OWASP Piece 1)
+
+Tables can declare per-row access rules in the body. The compiler reads them and auto-injects the right ownership check on every CRUD operation — read, save, update, delete — so a stolen session token cannot read, create-as-someone-else, update, or delete another user's rows.
+
+```clear
+create a Deals table:
+  amount, number
+  status, default 'pending'
+  reviewer_id, number
+  the deal's creator can read, change, or delete
+  the deal's reviewer can read or change
+  any admin can read, change, or delete
+```
+
+**Vocabulary for "who":**
+
+| Phrase | What it means | Where the row check looks |
+|--------|---------------|---------------------------|
+| `the <entity>'s creator` | The user who first inserted the row | `user_id` (auto-set on insert, auto-added to every SQLite table at runtime) |
+| `the <entity>'s <role>` | A user named on the row by id | `<role>_id` field on the row (must be declared above the rule) |
+| `any <role>` | Any user whose role on the Users table matches | `req.user.role === '<role>'` |
+| `anyone logged in` | Any authenticated request | `req.user` truthy |
+| `anyone` | Public, no login needed | (no check) |
+
+**Vocabulary for "what":**
+
+Chain actions with comma and `or`:
+
+```clear
+the post's creator can read, change, or delete
+the deal's reviewer can read or change
+any admin can read
+```
+
+`change` is a synonym for `update`. The natural English form `read, change, or delete` is canonical; the legacy form `read, update, delete` still compiles. Silence about an action means nobody can do that action — there's no implicit allow.
+
+**What the compiler emits:**
+
+When a creator rule is on a table, every CRUD operation auto-checks ownership:
+
+- `look up X where ...` — query also filters by `user_id = req.user.id`
+- `save X as new T` — inserted record gets `user_id` from `req.user.id` (server-side override; body cannot fake it)
+- `save X to T` (PUT /:id) — switches to a 3-arg `db.update(table, where, data)` form so the WHERE requires both id AND user_id; non-creators get a 404
+- `delete X` (DELETE /:id) — WHERE clause includes `user_id`
+
+The check composes with tenant scope (`database is shared with tenant scope`). A regulated app with both layers stacks both filters on every CRUD — defense in depth at two granularities (cross-tenant + intra-tenant per-user).
+
+**Compile errors and warnings:**
+
+- The validator warns when a table has no access rules and suggests three canonical examples.
+- The validator errors when a row-role rule names a missing field (e.g. `the deal's reviewer can read` but no `reviewer_id` on the table). The error names both fixes: add the field, or remove the rule.
+- The validator errors when a GET endpoint over a user-owned table has no auth and no where-clause (catches IDOR even if the auto-injection slipped via raw SQL).
+
+**You don't write `user_id` in your source.** The Node SQLite runtime auto-adds `user_id INTEGER` to every table — same precedent as `tenant_id`. Postgres apps still need to declare it explicitly (separate cycle). All 13 canonical apps declare creator rules per their real intent.
+
 ## Concurrency Declarations
 
 When an endpoint reads a record, mutates a field, and saves the record back, two simultaneous requests can overwrite each other. The validator flags every endpoint where that pattern shows up in plain sight and refuses to ignore the race. Authors choose how to handle it:
