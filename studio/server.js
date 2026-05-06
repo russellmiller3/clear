@@ -1158,7 +1158,10 @@ async function ensureEvalChild(serverJS) {
     try { unlinkSync(join(BUILD_DIR, f)); } catch {}
   }
   writeFileSync(join(BUILD_DIR, 'server.js'), fullJS);
-  const deps = { ws: '*' };
+  // Compiled JS-backend apps require Express. Other deps are conditional
+  // based on the source — auth → bcryptjs/jsonwebtoken, file upload →
+  // multer, send_email → nodemailer, websocket → ws.
+  const deps = { ws: '*', express: '*' };
   if (fullJS.includes("require('bcryptjs')")) deps.bcryptjs = '*';
   if (fullJS.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
   if (fullJS.includes("require('multer')")) deps.multer = '*';
@@ -2157,8 +2160,10 @@ app.post('/api/run', async (req, res) => {
     try { unlinkSync(join(BUILD_DIR, f)); } catch {}
   }
   writeFileSync(join(BUILD_DIR, 'server.js'), serverJS);
-  // Build deps based on what the compiled code needs
-  const deps = { ws: '*' };
+  // Build deps based on what the compiled code needs.
+  // express is always needed by JS-backend apps; ws is needed for any
+  // app that uses WebSocket subscribe/broadcast. Conditional deps follow.
+  const deps = { ws: '*', express: '*' };
   if (serverJS.includes("require('bcryptjs')")) deps.bcryptjs = '*';
   if (serverJS.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
   if (serverJS.includes("require('nodemailer')")) deps.nodemailer = '*';
