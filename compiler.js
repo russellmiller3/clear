@@ -4453,7 +4453,13 @@ function compileEndpoint(node, ctx, pad) {
   if (ctx.lang === 'python') {
     const pyPath = node.path.replace(/:(\w+)/g, '{$1}');
     const handlerName = `${node.method.toLowerCase()}_${sanitizeName(node.path.replace(/[/:]/g, '_'))}`;
-    const bodyCtx = { ...ctx, indent: ctx.indent + 2, endpointMethod: node.method, endpointHasId: node.path.includes(':id') };
+    // Concurrency Phase 2 parity (2026-05-06): thread the optimistic-lock
+    // flag through the Python body ctx so save-statements inside the body
+    // emit version-checked UPDATEs (db.update_with_version) when the
+    // endpoint declares `with optimistic lock`. JS path threads this at
+    // line 4495 below; Python was missing it.
+    const endpointHasOptimisticLockPy = (node.body || []).some(n => n && n.type === NodeType.WITH_OPTIMISTIC_LOCK);
+    const bodyCtx = { ...ctx, indent: ctx.indent + 2, endpointMethod: node.method, endpointHasId: node.path.includes(':id'), endpointHasOptimisticLock: endpointHasOptimisticLockPy };
     const bodyCode = node.body.map(n => compileNode(n, bodyCtx)).filter(Boolean).join('\n');
     let code = `${pad}@app.${node.method.toLowerCase()}("${pyPath}")\n${pad}async def ${handlerName}(request: Request):\n`;
     code += `${pad}    try:\n`;
@@ -4764,6 +4770,21 @@ function compileCrud(node, ctx, pad) {
         : '';
       if (node.resultVar) {
         return `${creatorStampLine}${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${varCode})`;
+      }
+      // Concurrency Phase 2 parity (Python, 2026-05-06): when the
+      // enclosing endpoint declares `with optimistic lock`, the save
+      // must run a version-checked UPDATE via the runtime helper
+      // db.update_with_version. Mirrors the JS path's branching at
+      // compiler.js:5021. The helper raises VersionConflict (status
+      // 409) when the row's _version moved since the caller read it,
+      // which the catch wrapper translates into a 409 Conflict
+      // response. Without this, two concurrent approvers can both
+      // succeed and clobber each other's audit row.
+      if (ctx.endpointHasOptimisticLock) {
+        if (ctx.endpointHasId) {
+          return `${pad}${varCode}["id"] = request.path_params["id"]\n${pad}db.update_with_version("${table}", ${varCode}, ${varCode}.get("_version"))`;
+        }
+        return `${pad}db.update_with_version("${table}", ${varCode}, ${varCode}.get("_version"))`;
       }
       // In PUT endpoints with :id, inject the URL param so db.update finds the right record.
       // OWASP Piece 1, cycle 6: under a creator policy switch to the

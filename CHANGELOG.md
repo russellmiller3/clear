@@ -44,6 +44,12 @@ Each helper has a focused test suite (12 + 28 + 7 + 7 = 54 tests total today, al
 
 **Update 2026-05-06 evening — `update_with_version` (optimistic lock) implemented on Python (closes 1 of 5 HIGH gaps).** Both `runtime/db.py` and `runtime/db_postgres.py` now have working `update_with_version(table, record, expected_version=None)` matching `runtime/db.js`'s contract: requires `record['id']`, defaults expected_version to 0 (first-write case), raises 404 on missing record, builds `UPDATE ... SET col = ?, ..., _version = _version + 1 WHERE id = ? AND _version = ?`, and raises `VersionConflict(status=409)` carrying the live `_version` when 0 rows matched (so the client can show "someone else changed this; here is the latest"). Also fixed a type-map bug in db.py — `'integer'` field type was falling through to TEXT instead of INTEGER, which broke `_version` arithmetic. 8 new tests across both files (4 round-trip / conflict / 404 / 400 in db.py, 2 offline + 2 live-skipped in db_postgres.py). Audit's HIGH gap count drops from 5 → 4 once the compiler emits `WITH_OPTIMISTIC_LOCK` against the new helper (compile-emit wiring is the next dent on this).
 
+**Update 2026-05-06 evening — Python compile-emit for `with optimistic lock` wired to `update_with_version` (closes WITH_OPTIMISTIC_LOCK end-to-end).** Endpoints declared `with optimistic lock` on Python now emit `db.update_with_version(table, record, record.get("_version"))` instead of plain `db.update(...)`. Two small compiler.js changes:
+- `compileEndpoint`'s Python branch (around line 4456) was missing `endpointHasOptimisticLock` in the bodyCtx — JS path threaded it at line 4495, Python wasn't. Threaded now.
+- `compileCrud`'s Python save branch (around line 4777) checks `ctx.endpointHasOptimisticLock` before falling through to plain `db.update`, mirroring the JS branching at line 5021.
+
+Smoke-tested end-to-end: a Python source declaring `when user updates deal at /api/deals/:id/approve: with optimistic lock` now compiles to `db.update_with_version("deals", saved_deal, saved_deal.get("_version"))`. Combined with the runtime helper landing earlier, the optimistic-lock primitive is fully closed on Python — concurrent approvers can't both succeed and clobber each other's audit row.
+
 ---
 
 ## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4
