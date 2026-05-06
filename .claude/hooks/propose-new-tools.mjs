@@ -179,7 +179,7 @@ function suggestScriptGaps(existing) {
 		{ keyword: 'session-recap', title: 'scripts/session-recap.mjs', does: 'summarizes what changed + what tests ran in the current session (for auto-handoff generation)' },
 		{ keyword: 'factor-db-query', title: 'scripts/factor-db-query.mjs', does: 'canned SQL queries over Factor DB (per-archetype pass rate, per-error counts, time-series)' },
 		{ keyword: 'diff-summary', title: 'scripts/diff-summary.mjs', does: 'generates plain-English summary of git diff for commit messages' },
-		{ keyword: 'archive-session', title: 'scripts/archive-session.mjs', does: 'snapshots playground/sessions/*.ndjson to a dated archive dir before cleanup' },
+		{ keyword: 'archive-session', title: 'scripts/archive-session.mjs', does: 'snapshots studio/sessions/*.ndjson to a dated archive dir before cleanup' },
 		{ keyword: 'tooling-inventory', title: 'scripts/tooling-inventory.mjs', does: 'dumps all installed hooks + skills + scripts + rules — for new-repo porting' },
 		{ keyword: 'doc-drift-check', title: 'scripts/doc-drift-check.mjs', does: 'verifies intent.md + SYNTAX.md + AI-INSTRUCTIONS.md + FEATURES.md all mention the latest node types the parser emits' },
 		{ keyword: 'template-smoke', title: 'scripts/template-smoke.mjs', does: 'one-shot compile-all-8-core-templates check (currently inlined in Bash rules)' },

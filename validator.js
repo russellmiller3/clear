@@ -919,6 +919,21 @@ const RECEIVING_VAR_COLLISIONS = Object.freeze({
   // `caller` now the canonical magic-var name, `user` is just the Users-table
   // entity — no reserved phrase it could shadow. Kept out of the list on purpose.
 
+  // Top-level keywords that ALSO start blocks at column 0 — using them as
+  // variable names confuses the tokenizer (it sees the keyword first, tries
+  // to parse the line as a block header) and produces error messages that
+  // don't point at the real problem. Russell flagged this 2026-05-04 after
+  // watching Meph reach for `rule` as a variable name in a lead-routing
+  // build. Same risk applies to every top-level keyword that opens a block.
+  rule:     { why: "'rule:' is a top-level block keyword that starts a named business rule — using 'rule' as a variable name confuses the tokenizer", try: "policy, threshold, or the specific thing the rule decides (route, owner, tier)" },
+  agent:    { why: "'agent X:' is a top-level block keyword that defines an AI agent — using 'agent' as a variable name confuses the tokenizer", try: "the role the agent plays (router, classifier, advisor) or the specific name the agent has" },
+  skill:    { why: "'skill X:' is a top-level block keyword that defines an agent skill", try: "the specific capability (classify_lead, route_to_owner, etc.)" },
+  database: { why: "'database is X' is a top-level declaration", try: "store, db_config, or the specific store the value represents" },
+  frontend: { why: "'Frontend' is a top-level section header", try: "ui, view, or the specific page/component name" },
+  backend:  { why: "'Backend' is a top-level section header", try: "server, api, or the specific endpoint group" },
+  table:    { why: "'create a X table:' is a top-level block keyword", try: "schema, definition, or the specific entity name" },
+  queue:    { why: "'queue for X:' is a top-level block keyword for the queue primitive", try: "the specific queue name (approvals, requests, etc.)" },
+
   // Banned placeholder names — generic words that describe nothing.
   // See the naming table in AI-INSTRUCTIONS.md.
   data:    { why: "generic placeholder on the banned-names list — describes nothing about what the value IS", try: "the singular entity name of the table you're saving to (bookmark, todo, order, etc.)" },

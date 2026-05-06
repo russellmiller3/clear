@@ -57,6 +57,73 @@ These are compiler-enforced constraints, not suggestions.
 
 ---
 
+## Pearlescent Button Palette (Russell, 2026-05-04)
+
+DaisyUI's flat default buttons read "bootstrappy." Every Marcus app + landing page replaces them with a two-tier pearlescent system. The compiler emits this CSS into every compiled HTML's `<style>` block (`BUTTON_PEARL_CSS` in `compiler.js`); Studio's IDE inherits the same look via duplicated CSS in `studio/studio.html`.
+
+**Visual spec:**
+- **Default `.btn`** — light gray-blue base. Vertical gradient `oklch(96.5% → 89% 235-240)`. 1px border at `oklch(83% 0.025 235)`. Inner top highlight + soft drop shadow. 8px corner radius.
+- **`.btn-primary`** — deeper navy-leaning pearl. Vertical gradient `oklch(58% → 46% 246-254)`. White text. Used for the single primary action per section (per Rule 2).
+- **`.btn-ghost`** — transparent, no border. On hover, becomes the pearlescent gray-blue.
+- **`.btn-outline`** — pale gray-blue base + always-visible border.
+- **`.btn-error`** — red gradient, same shape rules.
+
+**Hover animation — right-to-left opal sweep:**
+- Buttons stack TWO background-image layers: a pearl base (always visible) + an opal multi-stop gradient (cyan → blue → violet → rose → gold) sized to 220% of the button width and parked off-screen-right at `background-position: 110% 0`.
+- On `:hover`, `background-position` animates to `-10% 0` over 720ms with `cubic-bezier(0.4, 0, 0.2, 1)`. The opal layer drags right-to-left across the button surface, then exits past the left edge.
+- Box-shadow simultaneously deepens to `0 4-6px 12-16px oklch(60-70% 0.10-0.18 240-280)` so the button reads "lifted" during the sweep.
+- `:active` adds `translateY(1px)` + an inset shadow for tactile press feedback.
+- `:focus-visible` adds a 2px outline at `oklch(60% 0.16 240)` with 2px offset.
+
+**Disabled / inactive buttons — NEVER animate (Russell, 2026-05-04):**
+The pearl + opal sweep reads "live and clickable." Firing it on a disabled button confuses the user — they hover, see the shimmer, expect a click to do something, and nothing happens. The compiler emits a hard-flat override for every disabled state:
+- Selectors: `.btn-disabled`, `.btn:disabled`, `.btn[aria-disabled="true"]`, plus the same combos under every variant (`.btn-primary`, `.btn-error`, `.btn-outline`, `.btn-ghost`).
+- Background: flat `linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240))` — no opal layer, no animated `background-position`.
+- `transition: none` so even programmatically-toggled hover states don't animate. `cursor: not-allowed`. `opacity: 0.65`.
+- The hover state for these selectors re-asserts the same flat values + `transform: none` so a hover never lifts a disabled button or sweeps the opal across it.
+
+**Reference:** `BUTTON_PEARL_CSS` constant in `compiler.js`. Don't fork the values — change the constant, recompile, verify the sweep still feels smooth (under 1 second) on a live button and that disabled buttons stay flat on hover.
+
+---
+
+## App Layout Rules (Russell, 2026-05-04)
+
+Modern dashboards (Linear, Stripe, Vercel, Notion) cap content at 1280–1440px and center it. Edge-to-edge content on a 27-inch screen reads as broken UI. The compiler emits these layout rules in every compiled app's `<style>` block.
+
+**Constraints (every Marcus app inherits these):**
+
+| Surface | Rule |
+|---|---|
+| Main content area (`.clear-shell-outlet`) | `max-width: 1440px`, centered (`margin: 0 auto`), padding `32px 40px`. Class-selector form replaces the older data-attribute selector so substring tests don't false-positive against unrelated CSS. |
+| Vertical rhythm between sections | `> * + * { margin-top: 24px }` (24px gap between every direct child) |
+| Stat strip cards (`.clear-stat-card`) | Capped at `320px` max width; padding `18px 20px`; min-height `116px`; border `1px var(--clear-line)`; border-radius `12px`. Three cards in a 1440px area read as compact KPI tiles, not stretched banners. |
+| Stat strip grid (`.clear-stat-strip`) | `grid-template-columns: repeat(auto-fit, minmax(220px, 280px))` — caps each track at 280px so 3-up never stretches. `gap: 20px`; `justify-content: start` keeps cards left-aligned with leftover whitespace on the right. |
+| Stat number font (`.clear-stat-value`) | `22px` — dashboard-card scale. The previous `28px` read as banner-hero numbers; too loud for a row of three. |
+| Workbench 2-column grid (`as 2 columns`) | `gap: 24px` between columns; the table and detail panel never touch |
+| Detail panel (`.clear-detail-panel`) | `margin-left: 24px`, `border-radius: 16px`, full border + soft shadow; was a hairline-bordered slab pressed against the table |
+| Form fields — generic (`fieldset.fieldset`) | `max-width: 480px`; targets DaisyUI's actual emitted class. Caps the fieldset; the `w-full` input inside expands to fill the capped fieldset. Mirrors iOS / Stripe checkout — forms read better in a column, not stretched edge-to-edge. |
+| Form fields — explicit tag (`fieldset.clear-form-field`) | Same `max-width: 480px` for any field manually tagged with the dedicated class. |
+| Single-form panels (`.card:has(fieldset.fieldset)`) | `max-width: 720px` — when a single bordered card holds a stacked form (Submit Request style), cap the card too so the form doesn't bleed across the full content area. |
+| Cards (`.bg-base-100.rounded-xl`, `.rounded-box`) | Bumped to `border-radius: 16px` for a softer dashboard feel |
+
+**Sidebar:** 240px fixed width (set inline in compiled output). Sidebar items at 36px height (Linear/Stripe convention — desktop pattern, not the 44px mobile touch target).
+
+**Why these specific numbers:**
+- **1440px max content width** — fits 3 stat cards (280-320px each) + 2 panels in a workbench (table 720px + detail 340px + 24px gap + 36px slack) without scroll.
+- **32px/40px gutters** — generous on wide screens; the 32px vertical padding gives breathing room above/below the page header.
+- **24px vertical rhythm** — large enough to read as separate sections, small enough that two stat strips fit on the same fold.
+- **20px stat-strip gap, 280px max card** — explicitly tested against a 1600px viewport: 3 cards × 280px + 2 gaps × 20px = 880px content, leaves ~370px breathing room on the right. With wider 320px cards it was 1000px content, which felt like a banner.
+- **22px stat number** — Linear / Stripe / Vercel cap dashboard KPI numbers between 20-26px. 28px is hero-banner scale.
+- **480px form field, 720px form panel** — a single column of inputs reads at ~480px (iOS Settings, Stripe checkout). Wrapping that in a 720px panel gives label-side breathing room without bleeding to the page edge.
+- **24px workbench gap** — exactly twice the standard 12px. Two distinct panels, not "table with extra panel."
+
+**Why the cap rule fights stretchy children — important historical note:**
+The base design-system-v3 CSS (also in `compiler.js`) used to declare `.clear-stat-strip` with `minmax(180px, 1fr)` — `1fr` stretches each track to fill leftover space. The newer cap rule with `minmax(220px, 280px)` would have lost a CSS-cascade fight if both rules existed at the same selector specificity, even with source order on the cap's side, because some browsers process duplicate keyframes / declarations unpredictably. Fix: the BASE design-system-v3 rule was rewritten to the cap values directly, so there's only ONE source of truth. Don't reintroduce the 1fr version.
+
+**Reference:** the layout rules live in `BUTTON_PEARL_CSS` (same constant — naming is sticky, the constant covers buttons + layout) AND in the `clear-stat-strip` entry of the design-system-v3 base CSS map (around line 16576 of `compiler.js`). Recompile any Marcus app to see the rules apply. Verify with `preview_inspect` on `.clear-stat-card` (rendered width should be ≤320px) and on `fieldset.fieldset` (rendered width should be ≤480px).
+
+---
+
 ## Theme CSS Variables
 
 Place inside `<style>` before DaisyUI loads, or in your compiled CSS. Set `data-theme` on `<html>`.

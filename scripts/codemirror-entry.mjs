@@ -1,6 +1,6 @@
 // Entry file for the playground's CodeMirror bundle.
 //
-// Why this file exists: `playground/codemirror.bundle.js` is a pre-built
+// Why this file exists: `studio/codemirror.bundle.js` is a pre-built
 // bundle that ships with the repo (no @codemirror/* in node_modules at
 // runtime). It was vendored once long ago, and the exports it offers are
 // frozen at whatever was bundled then. Adding new editor features that
@@ -8,7 +8,7 @@
 // for proved/disproved/unverifiable rules — Studio Prove redesign 4(a)
 // v1) requires rebuilding the bundle from npm packages.
 //
-// This entry file re-exports every symbol `playground/ide.html` imports
+// This entry file re-exports every symbol `studio/studio.html` imports
 // plus the new ones needed for the Prove inline-gutter feature. It is
 // the single source of truth for "what's in the playground's CodeMirror
 // bundle." Adding a new editor feature that needs another CodeMirror

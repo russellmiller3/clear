@@ -97,34 +97,53 @@ def amber_underline(width=60):
 
 
 def summary_metric_row(rule_counts, witness_passed, witness_total):
-    """4-across KPI display row — proved / verified / total / file."""
+    """4-across KPI display row — proved / verified / total / file.
+
+    Each cell is one Paragraph with the big number, a line break, then the
+    small label. Combining into a single Paragraph (instead of stacking two
+    Paragraphs in a list inside the cell) lets ReportLab compute one
+    flowing layout per cell — the big number and the label center together
+    around the cell's middle, instead of each one centering independently
+    (which caused the big-number glyphs to overlap the first line of the
+    label, the bug Russell flagged 2026-05-04).
+    """
     proved = rule_counts.get('proved', 0)
     total = rule_counts.get('total', 0)
-    cells = [
-        [
-            Paragraph(f'<b><font size="22" color="#0A1628">{proved}/{total}</font></b>', getSampleStyleSheet()['Normal']),
-            Paragraph('<font size="8" color="#4A5568">RULES PROVED<br/>by structural enforcement</font>', getSampleStyleSheet()['Normal']),
-        ],
-        [
-            Paragraph(f'<b><font size="22" color="#0A1628">{witness_passed}/{witness_total}</font></b>', getSampleStyleSheet()['Normal']),
-            Paragraph('<font size="8" color="#4A5568">VIOLATING INPUTS<br/>rejected at runtime</font>', getSampleStyleSheet()['Normal']),
-        ],
-        [
-            Paragraph(f'<b><font size="22" color="#D4920B">{rule_counts.get("disproved", 0)}</font></b>', getSampleStyleSheet()['Normal']),
-            Paragraph('<font size="8" color="#4A5568">RULES DISPROVED<br/>(should be 0)</font>', getSampleStyleSheet()['Normal']),
-        ],
-        [
-            Paragraph(f'<b><font size="22" color="#0A1628">{rule_counts.get("unverifiable", 0)}</font></b>', getSampleStyleSheet()['Normal']),
-            Paragraph('<font size="8" color="#4A5568">UNVERIFIABLE<br/>(impure body)</font>', getSampleStyleSheet()['Normal']),
-        ],
-    ]
-    t = Table([cells], colWidths=[1.5 * inch] * 4, rowHeights=[1.0 * inch])
+    # Per-cell stylesheet: tight leading on the big-number line so the
+    # 22pt figure and the 8pt label sit cleanly above/below each other
+    # rather than colliding because of default 120% leading on 22pt.
+    cell_style = ParagraphStyle(
+        name='AuditMetricCell',
+        parent=getSampleStyleSheet()['Normal'],
+        alignment=1,  # CENTER
+        leading=14,   # tight overall leading; <br/> breaks honor this
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+    def cell(big_value, big_color, label_line1, label_line2):
+        # 30pt of vertical space for the big number's own line, then the
+        # label's two lines drop below it.
+        return Paragraph(
+            f'<font size="22" color="{big_color}"><b>{big_value}</b></font>'
+            f'<br/><font size="2" color="#FFFFFF"> </font>'  # spacer line at 2pt to push the label down a bit
+            f'<br/><font size="8" color="#4A5568">{label_line1}<br/>{label_line2}</font>',
+            cell_style,
+        )
+    cells = [[
+        cell(f'{proved}/{total}',                            '#0A1628', 'RULES PROVED',     'by structural enforcement'),
+        cell(f'{witness_passed}/{witness_total}',            '#0A1628', 'VIOLATING INPUTS', 'rejected at runtime'),
+        cell(f'{rule_counts.get("disproved", 0)}',           '#D4920B', 'RULES DISPROVED',  '(should be 0)'),
+        cell(f'{rule_counts.get("unverifiable", 0)}',        '#0A1628', 'UNVERIFIABLE',     '(impure body)'),
+    ]]
+    t = Table(cells, colWidths=[1.5 * inch] * 4, rowHeights=[1.1 * inch])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), PALE),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('LEFTPADDING', (0, 0), (-1, -1), 12),
         ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
         ('GRID', (0, 0), (-1, -1), 0.5, LT_GRAY),
     ]))
     return t

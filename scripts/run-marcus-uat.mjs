@@ -35,7 +35,7 @@ const NODE = process.execPath;
 
 // The 5 Marcus apps per the canonical list
 // (snapshots/marcus-primitives-decomposition-04-27-2026.md). If you change
-// this list, also update playground/ide.html MARCUS_FEATURED.
+// this list, also update studio/studio.html MARCUS_FEATURED.
 const MARCUS_APPS = [
   'deal-desk',
   'approval-queue',

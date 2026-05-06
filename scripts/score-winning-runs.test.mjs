@@ -2,7 +2,7 @@
 //
 // Pure-function tests: countLines, firstFeature, computeScore, rankRows.
 // We don't touch the live Factor DB here — that's covered by manually running
-// the CLI against playground/factor-db.sqlite. These tests exercise the
+// the CLI against studio/factor-db.sqlite. These tests exercise the
 // scoring math on synthetic rows so a future tweak to the weights can't
 // silently break the ranking shape.
 

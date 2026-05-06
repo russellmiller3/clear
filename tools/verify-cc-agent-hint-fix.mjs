@@ -18,10 +18,10 @@
 //   ✓ querySuggestions ran without throwing
 //   ✓ probe row cleaned up
 
-import { editCodeTool } from '../playground/meph-tools.js';
+import { editCodeTool } from '../studio/meph-tools.js';
 import { compileProgram } from '../index.js';
-import { FactorDB } from '../playground/supervisor/factor-db.js';
-import { MephContext } from '../playground/meph-context.js';
+import { FactorDB } from '../studio/supervisor/factor-db.js';
+import { MephContext } from '../studio/meph-context.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';

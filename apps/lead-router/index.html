@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lead Router</title>
+  <title>Owners</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 
@@ -185,16 +185,21 @@ body {
 
 .clear-stat-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  /* Cap each card at 280px so 3-up doesn't stretch into banner ads on
+     wide screens. minmax(220px, 280px) + auto-fit gives 3 same-size
+     cards on desktop, wraps cleanly under 1024px. justify-content:start
+     leaves leftover space on the right instead of stretching cards. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 280px));
+  gap: 20px;
+  justify-content: start;
 }
 .clear-stat-card {
-  min-height: 132px;
-  padding: 14px;
+  min-height: 116px;
+  padding: 18px 20px;
   border: 1px solid var(--clear-line);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--clear-bg-panel);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, .03);
+  box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
 }
 .clear-stat-card-top {
   display: flex;
@@ -217,9 +222,11 @@ body {
   flex: 0 0 auto;
 }
 .clear-stat-value {
+  /* 22px is dashboard-card scale (Linear, Stripe). 28px reads as banner
+     hero numbers — too loud for a row of three. */
   margin-top: 10px;
   color: var(--clear-ink);
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
@@ -288,54 +295,375 @@ body {
   position: sticky;
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 14px;
   border-top: 1px solid var(--clear-line);
   background: var(--clear-bg-panel);
-}</style>
+}
+.clear-detail-actions .btn {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+
+/* ---------- Pearlescent buttons ---------- */
+.btn {
+  /* Two layers stacked: base pearl gradient (always visible) + opal sweep
+     gradient sized 200% wide and parked off-screen-right.  On hover we
+     animate the opal sweep's background-position from 100% → 0% to drag
+     it across the button right-to-left.  */
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.55) 35%,
+      oklch(91% 0.038 280 / 0.70) 50%,
+      oklch(92% 0.032 320 / 0.55) 65%,
+      oklch(94% 0.026 25 / 0)     100%
+    ),
+    linear-gradient(180deg,
+      oklch(96.5% 0.012 235) 0%,
+      oklch(93% 0.018 238) 48%,
+      oklch(89% 0.024 240) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(28% 0.04 240);
+  border: 1px solid oklch(83% 0.025 235);
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.005 235 / 0.9),
+    inset 0 -1px 0 0 oklch(82% 0.02 240 / 0.4),
+    0 1px 2px 0 oklch(28% 0.03 240 / 0.06),
+    0 1px 3px 0 oklch(28% 0.03 240 / 0.04);
+  transition: background-position 720ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 120ms ease;
+}
+.btn:hover {
+  /* Drag the opal layer from its parked position (110% off the right) all
+     the way past the left edge (-10%) — gives the sweep a clean exit. */
+  background-position: -10% 0, 0 0;
+  border-color: oklch(76% 0.05 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.95),
+    0 4px 12px 0 oklch(60% 0.10 240 / 0.18),
+    0 0 0 1px oklch(70% 0.05 240 / 0.25),
+    0 0 24px -8px oklch(75% 0.08 280 / 0.4);
+}
+.btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 3px 0 oklch(82% 0.025 240 / 0.5),
+    0 1px 1px 0 oklch(28% 0.03 240 / 0.05);
+}
+.btn:focus-visible {
+  outline: 2px solid oklch(60% 0.16 240);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background-image:
+    linear-gradient(110deg,
+      oklch(64% 0.20 220 / 0)   0%,
+      oklch(60% 0.22 248 / 0.6) 35%,
+      oklch(58% 0.24 280 / 0.7) 50%,
+      oklch(62% 0.20 320 / 0.6) 65%,
+      oklch(66% 0.18 25 / 0)    100%
+    ),
+    linear-gradient(180deg,
+      oklch(58% 0.16 246) 0%,
+      oklch(52% 0.18 250) 50%,
+      oklch(46% 0.20 254) 100%
+    );
+  background-size: 220% 100%, 100% 100%;
+  background-position: 110% 0, 0 0;
+  background-repeat: no-repeat;
+  color: oklch(99% 0.005 250);
+  border: 1px solid oklch(42% 0.18 254);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.12 248 / 0.6),
+    inset 0 -1px 0 0 oklch(36% 0.18 254 / 0.4),
+    0 1px 2px 0 oklch(22% 0.10 250 / 0.18),
+    0 2px 4px 0 oklch(22% 0.10 250 / 0.10);
+}
+.btn-primary:hover {
+  background-position: -10% 0, 0 0;
+  border-color: oklch(46% 0.20 250);
+  color: oklch(100% 0 0);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 248 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 250 / 0.30),
+    0 0 0 1px oklch(60% 0.16 248 / 0.4),
+    0 0 28px -6px oklch(60% 0.18 280 / 0.5);
+}
+.btn-ghost {
+  background-image: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: oklch(38% 0.04 240);
+  box-shadow: none;
+}
+.btn-ghost:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%
+    );
+  background-size: 220% 100%;
+  background-position: -10% 0;
+  background-repeat: no-repeat;
+  border-color: oklch(82% 0.04 240);
+  box-shadow:
+    inset 0 1px 0 0 oklch(99% 0.01 235 / 0.9),
+    0 2px 8px 0 oklch(60% 0.10 240 / 0.12);
+}
+.btn-outline {
+  background-image: linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 100% 100%;
+  background-position: 0 0;
+  color: oklch(35% 0.05 240);
+  border: 1px solid oklch(78% 0.03 240);
+  box-shadow: inset 0 1px 0 0 oklch(99% 0.005 240 / 0.6);
+  transition: background 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-outline:hover {
+  background-image:
+    linear-gradient(110deg,
+      oklch(94% 0.030 195 / 0)    0%,
+      oklch(92% 0.034 235 / 0.5)  35%,
+      oklch(91% 0.038 280 / 0.6)  50%,
+      oklch(92% 0.032 320 / 0.5)  65%,
+      oklch(94% 0.026 25 / 0)     100%),
+    linear-gradient(180deg, oklch(98% 0.005 240), oklch(96% 0.01 240));
+  background-size: 220% 100%, 100% 100%;
+  background-position: -10% 0, 0 0;
+  border-color: oklch(70% 0.05 240);
+  color: oklch(28% 0.06 240);
+}
+.btn-error {
+  background-image: linear-gradient(180deg,
+    oklch(62% 0.20 25) 0%,
+    oklch(56% 0.22 28) 50%,
+    oklch(50% 0.24 30) 100%);
+  color: oklch(99% 0.005 25);
+  border-color: oklch(46% 0.22 28);
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.6),
+    0 1px 2px 0 oklch(28% 0.10 25 / 0.18);
+}
+.btn-error:hover {
+  box-shadow:
+    inset 0 1px 0 0 oklch(78% 0.14 25 / 0.7),
+    0 6px 16px 0 oklch(40% 0.18 28 / 0.30);
+}
+/* Disabled / inactive buttons — flat surface, NO opal sweep on hover.
+   The pearl + opal animation reads as "live and clickable"; firing it
+   on a disabled button confuses the user. We override the hover state
+   AND the transition so the button stays static. Covers DaisyUI's
+   .btn-disabled, the native :disabled state, and the ARIA pattern
+   used by buttons that are visually disabled but still focusable
+   (.btn[aria-disabled="true"]). */
+.btn-disabled,
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
+  background-position: 0 0;
+  color: oklch(60% 0.02 240);
+  border-color: oklch(85% 0.01 240);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.65;
+  transition: none;
+}
+.btn-disabled:hover,
+.btn:disabled:hover,
+.btn[aria-disabled="true"]:hover,
+.btn-primary.btn-disabled:hover,
+.btn-primary:disabled:hover,
+.btn-primary[aria-disabled="true"]:hover,
+.btn-error.btn-disabled:hover,
+.btn-error:disabled:hover,
+.btn-error[aria-disabled="true"]:hover,
+.btn-outline.btn-disabled:hover,
+.btn-outline:disabled:hover,
+.btn-outline[aria-disabled="true"]:hover,
+.btn-ghost.btn-disabled:hover,
+.btn-ghost:disabled:hover,
+.btn-ghost[aria-disabled="true"]:hover {
+  background-image: linear-gradient(180deg, oklch(95% 0.005 240), oklch(92% 0.008 240));
+  background-position: 0 0;
+  color: oklch(60% 0.02 240);
+  border-color: oklch(85% 0.01 240);
+  box-shadow: none;
+  transform: none;
+}
+.btn-sm { font-size: 13px; padding: 6px 12px; min-height: 32px; }
+.btn-lg { font-size: 16px; padding: 12px 22px; min-height: 48px; }
+
+/* ---------- App layout: max-width + gutters + panel gaps ---------- */
+/* The main content area used to stretch edge-to-edge on wide screens.
+   Every modern dashboard (Linear, Stripe, Vercel, Notion) caps content at
+   ~1280-1440px and centers it. We do the same. */
+.clear-shell-outlet {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 40px;
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Vertical rhythm — fires at TWO depths because the compiled output
+   sometimes wraps cards in an empty-class div between the outlet and
+   the cards. Without the second selector, all cards have margin-top:0
+   and stack against each other. The rule fires at both depths so
+   whichever level the compiler emits, the gap fires.
+   32px is Atlassian's space.400 — the "major content spacing" rung,
+   used between distinct sections (stat strip → workbench → submit form).
+   Refactoring UI's 8pt grid agrees: 32 is the section-break value. */
+.clear-shell-outlet > * + *,
+.clear-shell-outlet > div > * + * {
+  margin-top: 32px;
+}
+/* Workbench grid override — when the 2-column grid contains a detail
+   panel, give the table column flex space and pin the detail panel to
+   380px. Tailwind's grid-cols-2 is symmetric (50/50) which squishes
+   the table column on a 4-column table layout, causing horizontal
+   scroll inside the card and a cut-off filter input. Microsoft's
+   master-detail spec says 360-400px for the detail pane with the list
+   pane fluid. We pick 380px (mid-range). 24px gap is Atlassian's
+   space.300 for "container/larger components". */
+.clear-shell-outlet .grid.grid-cols-2:has(> .clear-detail-panel) {
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+}
+@media (max-width: 768px) {
+  /* Below 768px the 2-column workbench can't fit comfortably side by
+     side per the master-detail collapse breakpoint. Stack vertically. */
+  .clear-shell-outlet .grid.grid-cols-2:has(> .clear-detail-panel) {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+/* Form-only card sitting BELOW the workbench (Submit Request style)
+   should NOT bleed across the full content area. Cap at 720px — the
+   form-readable width Linear uses for issue-create surfaces. Any card
+   that contains a fieldset directly OR is the last child of the wrapper
+   AND contains form inputs gets the cap. */
+.clear-shell-outlet .bg-base-100:has(> .clear-form-field),
+.clear-shell-outlet .bg-base-100:has(form),
+.clear-shell-outlet .bg-base-100.rounded-xl:has(fieldset.fieldset) {
+  max-width: 720px;
+}
+
+/* Workbench detail panel — used to share a hairline border with the
+   table next to it. Now they sit 24px apart with a soft border + rounded
+   corners on the panel, matching the surrounding cards. */
+.clear-detail-panel {
+  margin-left: 24px;
+  border-left: 1px solid var(--clear-line);
+  border-radius: 16px;
+  background: var(--clear-bg-panel);
+  border: 1px solid var(--clear-line);
+  box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
+}
+
+/* Stat strip: cap card width so 3 cards in a 1440px content area look
+   like dashboard cards, not banner ads. Wraps cleanly under 1024px. */
+.clear-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 320px));
+  gap: 16px;
+  justify-content: start;
+}
+.clear-stat-card {
+  min-height: 132px;
+  padding: 18px 20px;
+}
+
+/* Cards (display panels, app_card, generic bordered surfaces) — give
+   them rounded-2xl visual weight and consistent vertical rhythm. */
+.clear-shell-outlet .bg-base-100.rounded-xl,
+.clear-shell-outlet .bg-base-100.rounded-box {
+  border-radius: 16px;
+}
+
+/* Form fields — cap input width so a single form field doesn't
+   stretch to 1300px on a wide screen. Forms read better in a column
+   that's 480-640px wide, mirroring iOS and Stripe's checkout patterns.
+   Targets DaisyUI's fieldset class (the actual emitted class) plus
+   clear-form-field for any explicitly-tagged fields. The w-full
+   utility on the input inside the fieldset is fine — it expands to fill
+   the fieldset, which we have now capped. */
+.clear-shell-outlet fieldset.fieldset,
+.clear-shell-outlet fieldset.clear-form-field,
+.clear-shell-outlet .clear-form-field {
+  max-width: 480px;
+}
+/* Submit Request style cards (a single form panel) — when a single
+   bordered card holds a stacked form, cap that card too so the form
+   doesn't bleed across the full content area. */
+.clear-shell-outlet .card:has(fieldset.fieldset),
+.clear-shell-outlet section:has(fieldset.fieldset) {
+  max-width: 720px;
+}
+
+/* "as 2 columns" grid: real gap between the table and the detail panel. */
+.clear-shell-outlet .grid.grid-cols-2 {
+  gap: 24px;
+}
+</style>
 </head>
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
 <div id="page_Lead_Router" data-clear-page-id="Lead_Router" data-clear-page-route="/" data-clear-page-title="Lead Router">
-    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="149">
-    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="150">
-    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="151"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">L</div><span class="text-base font-bold text-base-content tracking-tight">Lead Router</span></div>
+    <div class="flex min-h-screen" data-clear-shell-root="true" data-clear-line="138">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="139">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="140"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">L</div><span class="text-base font-bold text-base-content tracking-tight">Lead Router</span></div>
     <nav class="flex-1 overflow-y-auto py-4 px-4">
       <ul class="menu menu-md gap-0.5 p-0">
         <li class="clear-nav-section-label">Queues</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_153_New_leads" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="153"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New leads</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_142_New_leads" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="142"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New leads</span><span class="clear-nav-count num" data-clear-tpl="{total}">{total}</span></a></li>
         <li class="clear-nav-section-label">Operations</li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_155_Routing_rules" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="155"><i data-lucide="route" aria-hidden="true"></i><span class="clear-nav-label">Routing rules</span><span class="clear-nav-count num" data-clear-tpl="{rules}">{rules}</span></a></li>
-    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_156_Owners" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="156"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Owners</span><span class="clear-nav-count num" data-clear-tpl="{owners}">{owners}</span></a></li>
+    <li><a href="/routing-rules" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_144_Routing_rules" data-clear-control-kind="nav-item" data-nav-path="/routing-rules" data-clear-line="144"><i data-lucide="route" aria-hidden="true"></i><span class="clear-nav-label">Routing rules</span><span class="clear-nav-count num" data-clear-tpl="{rules}">{rules}</span></a></li>
+    <li><a href="/owners" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_145_Owners" data-clear-control-kind="nav-item" data-nav-path="/owners" data-clear-line="145"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Owners</span><span class="clear-nav-count num" data-clear-tpl="{owners}">{owners}</span></a></li>
       </ul>
     </nav>
     </aside>
-    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="158">
-    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="159">
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="147">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="148">
       <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
-    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="160">Lead Router</h1>
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="149">Lead Router</h1>
       </div>
       <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
-    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="161">Sales ops / intake</p>
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="150">Sales ops / intake</p>
       </nav>
       <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
       </div>
     </header>
-    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-shell-outlet="true" data-clear-line="163">
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6 clear-shell-outlet" data-clear-shell-outlet="true" data-clear-line="152">
       <div data-clear-routed-content="Lead_Router" data-clear-routed-route="/">
-    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="164">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="153">
       <div class="min-w-0">
         <h1 class="clear-page-title text-2xl">New lead queue</h1>
         <p class="clear-page-subtitle text-sm text-base-content/55 mt-1" data-clear-tpl="{total} leads awaiting follow-up">{total} leads awaiting follow-up</p>
       </div>
       <div class="clear-page-actions flex items-center gap-2" data-page-header-actions="true">
-    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_167_Refresh" data-clear-control-kind="button" data-clear-line="167">Refresh</button>
+    <button class="btn btn-primary" id="btn_Refresh" data-clear-uat-id="button_156_Refresh" data-clear-control-kind="button" data-clear-line="156">Refresh</button>
       </div>
     </div>
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{total} new leads, {owners} owners, and {rules} routing rules are live." data-clear-line="170">{total} new leads, {owners} owners, and {rules} routing rules are live.</span>
-    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="172">
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="173">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-tpl="{total} new leads, {owners} owners, and {rules} routing rules are live." data-clear-line="159">{total} new leads, {owners} owners, and {rules} routing rules are live.</span>
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="161">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="162">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">New Leads</div>
           <i class="clear-stat-icon" data-lucide="inbox" aria-hidden="true"></i>
@@ -344,7 +672,7 @@ body {
         <div class="clear-stat-delta clear-stat-delta-positive">Live intake queue</div>
         <svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="2.0,24.0 25.0,17.3 48.0,10.7 71.0,10.7 94.0,4.0"></polyline></svg>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="178">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="167">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Owners</div>
           <i class="clear-stat-icon" data-lucide="users" aria-hidden="true"></i>
@@ -352,7 +680,7 @@ body {
         <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{owners}">{owners}</span></div>
         <div class="clear-stat-delta clear-stat-delta-positive">Alice, Bob, Charlie</div>
       </div>
-      <div class="clear-stat-card" data-stat-card="true" data-clear-line="182">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="171">
         <div class="clear-stat-card-top">
           <div class="clear-stat-label">Routing Rules</div>
           <i class="clear-stat-icon" data-lucide="route" aria-hidden="true"></i>
@@ -361,21 +689,21 @@ body {
         <div class="clear-stat-delta clear-stat-delta-positive">Size based assignment</div>
       </div>
     </div>
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="187">
-    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="188">Add lead</p>
-    <fieldset class="fieldset mb-4" data-clear-line="189">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="176">
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="177">Add lead</p>
+    <fieldset class="fieldset mb-4" data-clear-line="178">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
       <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Name">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="190">
+    <fieldset class="fieldset mb-4" data-clear-line="179">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
       <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="191">
+    <fieldset class="fieldset mb-4" data-clear-line="180">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
       <input id="input_company" class="input input-bordered w-full" type="text" placeholder="Company">
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="192">
+    <fieldset class="fieldset mb-4" data-clear-line="181">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Size</legend>
       <select id="input_size" class="select select-bordered w-full">
         <option value="SMB">SMB</option>
@@ -383,15 +711,15 @@ body {
         <option value="Enterprise">Enterprise</option>
       </select>
     </fieldset>
-    <fieldset class="fieldset mb-4" data-clear-line="193">
+    <fieldset class="fieldset mb-4" data-clear-line="182">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Source</legend>
       <input id="input_source" class="input input-bordered w-full" type="text" placeholder="Source">
     </fieldset>
-    <button class="btn btn-primary" id="btn_Add_Lead" data-clear-uat-id="button_194_Add_Lead" data-clear-control-kind="button" data-clear-line="194">Add Lead</button>
+    <button class="btn btn-primary" id="btn_Add_Lead" data-clear-uat-id="button_183_Add_Lead" data-clear-control-kind="button" data-clear-line="183">Add Lead</button>
     </div>
-    <div class="grid grid-cols-2 gap-5" data-clear-line="202">
-    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="203">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_New_Leads" data-clear-line="204">
+    <div class="grid grid-cols-2 gap-5" data-clear-line="191">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="192">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_New_Leads" data-clear-line="193">
       <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
         <h3 class="text-sm font-semibold text-base-content">New Leads</h3>
         <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_New_Leads_table">
@@ -404,10 +732,10 @@ body {
       </div>
     </div>
     </div>
-    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_lead" data-clear-line="206">
+    <aside class="clear-detail-panel" data-detail-panel="true" data-detail-for="selected_lead" data-clear-line="195">
       <div class="clear-detail-empty">Select a row to inspect it.</div>
       <div class="clear-detail-body">
-    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="207">Select a lead to inspect the routing decision.</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2" data-clear-line="196">Select a lead to inspect the routing decision.</span>
     <p id="show_0" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_1" class="text-sm font-medium text-base-content/90 leading-snug"></p>
     <p id="show_2" class="text-sm font-medium text-base-content/90 leading-snug"></p>
@@ -416,6 +744,132 @@ body {
     </aside>
     </div>
       </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_Routing_rules" data-clear-page-id="Routing_rules" data-clear-page-route="/routing-rules" data-clear-page-title="Routing rules" data-clear-routed-content="Routing_rules" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="203">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="204">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="205"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">L</div><span class="text-base font-bold text-base-content tracking-tight">Lead Router</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_207_New_leads" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="207"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New leads</span></a></li>
+        <li class="clear-nav-section-label">Operations</li>
+    <li><a href="/routing-rules" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_209_Routing_rules" data-clear-control-kind="nav-item" data-nav-path="/routing-rules" data-clear-line="209"><i data-lucide="route" aria-hidden="true"></i><span class="clear-nav-label">Routing rules</span></a></li>
+    <li><a href="/owners" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_210_Owners" data-clear-control-kind="nav-item" data-nav-path="/owners" data-clear-line="210"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Owners</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="212">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="213">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="214">Routing rules</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="215">Sales ops / routing</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="217">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="218">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">How leads are routed</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Each new lead lands with one owner based on company size — and two named rules guard intake quality.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="221">
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="222">Owner assignment by company size</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="223">When a lead is submitted, its size field decides who picks it up.</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="224">SMB leads → alice</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="225">Mid-market leads → bob</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="226">Enterprise leads → charlie</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="227">No size set → alice (default)</p>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5" data-clear-line="229">
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3" data-clear-line="230">Named rules the prover verifies on every push</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="231">lead-must-have-name — every lead needs a name field; blanks reject with HTTP 403.</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="232">lead-must-have-email — every lead needs an email; blanks reject with HTTP 403.</p>
+    <p class="text-sm text-base-content/80 leading-relaxed" data-clear-line="233">Both rules carry their name in the rejection body so the audit log attributes refusals by policy, not by line number.</p>
+    </div>
+    </div>
+    </main>
+    </div>
+</div>
+<div id="page_Owners" data-clear-page-id="Owners" data-clear-page-route="/owners" data-clear-page-title="Owners" data-clear-routed-content="Owners" style="display:none">
+    <div class="flex min-h-screen" data-clear-line="243">
+    <aside class="hairline-r flex-shrink-0 flex flex-col scroll-y" style="width:240px;background:var(--clear-bg-rail);" data-clear-line="244">
+    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3" data-clear-line="245"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">L</div><span class="text-base font-bold text-base-content tracking-tight">Lead Router</span></div>
+    <nav class="flex-1 overflow-y-auto py-4 px-4">
+      <ul class="menu menu-md gap-0.5 p-0">
+        <li class="clear-nav-section-label">Queues</li>
+    <li><a href="/" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_247_New_leads" data-clear-control-kind="nav-item" data-nav-path="/" data-clear-line="247"><i data-lucide="inbox" aria-hidden="true"></i><span class="clear-nav-label">New leads</span></a></li>
+        <li class="clear-nav-section-label">Operations</li>
+    <li><a href="/routing-rules" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_249_Routing_rules" data-clear-control-kind="nav-item" data-nav-path="/routing-rules" data-clear-line="249"><i data-lucide="route" aria-hidden="true"></i><span class="clear-nav-label">Routing rules</span></a></li>
+    <li><a href="/owners" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="nav_item_250_Owners" data-clear-control-kind="nav-item" data-nav-path="/owners" data-clear-line="250"><i data-lucide="users" aria-hidden="true"></i><span class="clear-nav-label">Owners</span></a></li>
+      </ul>
+    </nav>
+    </aside>
+    <main class="flex-1 min-w-0 flex flex-col" data-clear-line="252">
+    <header class="hairline-b sticky top-0 z-30 flex items-center gap-4 px-5" style="height:56px;background:var(--clear-bg-canvas);" data-clear-line="253">
+      <div data-clear-slot="brand" class="flex items-center gap-2 pr-4">
+    <h1 class="font-display text-base font-semibold text-base-content" data-clear-line="254">Owners</h1>
+      </div>
+      <nav data-clear-slot="breadcrumb" class="flex items-center gap-1.5 text-sm" style="color:var(--clear-ink-muted);">
+    <p class="text-sm font-medium text-base-content/90 leading-snug" data-clear-line="255">Sales ops / owners</p>
+      </nav>
+      <div data-clear-slot="actions" class="ml-auto flex items-center gap-2">
+      </div>
+    </header>
+    <div class="flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6" data-clear-line="257">
+    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true" data-clear-line="258">
+      <div class="min-w-0">
+        <h1 class="clear-page-title text-2xl">Lead owners</h1>
+        <p class="clear-page-subtitle text-sm text-base-content/55 mt-1">Three owners pick up new leads. Counts include leads in every status, not just new.</p>
+      </div>
+    </div>
+    <div class="clear-stat-strip" data-stat-strip="true" data-clear-line="261">
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="262">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Alice</div>
+          <i class="clear-stat-icon" data-lucide="user" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{alice_count}">{alice_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">SMB owner</div>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="266">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Bob</div>
+          <i class="clear-stat-icon" data-lucide="user" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{bob_count}">{bob_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Mid-market owner</div>
+      </div>
+      <div class="clear-stat-card" data-stat-card="true" data-clear-line="270">
+        <div class="clear-stat-card-top">
+          <div class="clear-stat-label">Charlie</div>
+          <i class="clear-stat-icon" data-lucide="user" aria-hidden="true"></i>
+        </div>
+        <div class="clear-stat-value tabular-nums"><span data-clear-tpl="{charlie_count}">{charlie_count}</span></div>
+        <div class="clear-stat-delta clear-stat-delta-positive">Enterprise owner</div>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" data-clear-line="275">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_All_Leads" data-clear-line="276">
+      <div class="px-6 py-4 border-b border-base-300/40 clear-table-toolbar">
+        <h3 class="text-sm font-semibold text-base-content">All Leads</h3>
+        <input class="clear-table-filter" type="search" placeholder="Filter" data-clear-table-filter-for="output_All_Leads_table">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_All_Leads_table">
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
     </div>
     </main>
     </div>
@@ -430,14 +884,16 @@ body {
    Leads: name*, email*, company, size, source, assigned_to, status, created_at_date (line 37)
 
  ENDPOINTS:
-   GET /api/leads (line 72)
-   GET /api/leads/new (line 75)
-   POST /api/leads [auth] (line 78)
-   PUT /api/leads/:id [auth] (line 92)
-   POST /api/seed (line 99)
+   GET /api/leads (line 57)
+   GET /api/leads/new (line 60)
+   POST /api/leads [auth] (line 63)
+   PUT /api/leads/:id [auth] (line 81)
+   POST /api/seed (line 88)
 
  PAGES:
-   'Lead Router' at / (line 140)
+   'Lead Router' at / (line 129)
+   'Routing rules' at /routing-rules (line 202)
+   'Owners' at /owners (line 235)
 
  DATAFLOW: Frontend ──> API ──> Database -->
   <script>
@@ -673,6 +1129,7 @@ let _state = {
   size: "",
   source: "",
   new_leads: null,
+  all_leads: null,
   owners: 3,
   rules: 3,
   selected_lead: null
@@ -682,20 +1139,22 @@ let _state = {
 function _recompute() {
   // clear:33
   // Database: local memory (JSON file backup)
-  // clear:64
-  // rule: lead-must-have-name (line 64)
-  // clear:67
-  // rule: lead-must-have-email (line 67)
-  // clear:145
+  // clear:134
   let total = _clear_len(_state.new_leads);
-  // clear:208
+  // clear:197
   { const _el = document.getElementById('show_0'); if (_el) _el.textContent = _state.selected_lead?.name; }
-  // clear:209
+  // clear:198
   { const _el = document.getElementById('show_1'); if (_el) _el.textContent = _state.selected_lead?.company; }
-  // clear:210
+  // clear:199
   { const _el = document.getElementById('show_2'); if (_el) _el.textContent = _state.selected_lead?.source; }
-  // clear:211
+  // clear:200
   { const _el = document.getElementById('show_3'); if (_el) _el.textContent = _state.selected_lead?.assigned_to; }
+  // clear:239
+  let alice_count = _clear_len(_state.all_leads);
+  // clear:240
+  let bob_count = _clear_len(_state.all_leads);
+  // clear:241
+  let charlie_count = _clear_len(_state.all_leads);
   _clear_render_table(
     document.getElementById('output_New_Leads_table'),
     _state.new_leads,
@@ -703,16 +1162,26 @@ function _recompute() {
     function(row, rowIndex) { var _keys = ["name","company","size","source","assigned_to"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], idx === 0); }).join('') + '</tr>'; }
   );
   _clear_table_init(document.getElementById('output_New_Leads_table'), 'selected_lead');
-  document.getElementById('input_name').value = _state.name;
-  document.getElementById('input_email').value = _state.email;
-  document.getElementById('input_company').value = _state.company;
-  document.getElementById('input_size').value = _state.size;
-  document.getElementById('input_source').value = _state.source;
+  _clear_render_table(
+    document.getElementById('output_All_Leads_table'),
+    _state.all_leads,
+    function(d) { var _keys = ["name","company","size","assigned_to","status"]; return _keys.map(function(k) { return '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50" data-sortable="' + _esc(k) + '">' + _esc(_clear_table_header(k)) + '</th>'; }).join(''); },
+    function(row, rowIndex) { var _keys = ["name","company","size","assigned_to","status"]; return '<tr data-row-index="' + _esc(rowIndex) + '">' + _keys.map(function(k, idx) { return _clear_cell(k, row[k], false); }).join('') + '</tr>'; }
+  );
+  _clear_table_init(document.getElementById('output_All_Leads_table'));
+  { const _el = document.getElementById('input_name'); if (_el) _el.value = _state.name; }
+  { const _el = document.getElementById('input_email'); if (_el) _el.value = _state.email; }
+  { const _el = document.getElementById('input_company'); if (_el) _el.value = _state.company; }
+  { const _el = document.getElementById('input_size'); if (_el) _el.value = _state.size; }
+  { const _el = document.getElementById('input_source'); if (_el) _el.value = _state.source; }
   // Substitute {varname} in text templates
   const _tplCtx = Object.assign({}, _state || {});
   if (typeof total !== 'undefined') _tplCtx["total"] = total;
   if (typeof rules !== 'undefined') _tplCtx["rules"] = rules;
   if (typeof owners !== 'undefined') _tplCtx["owners"] = owners;
+  if (typeof alice_count !== 'undefined') _tplCtx["alice_count"] = alice_count;
+  if (typeof bob_count !== 'undefined') _tplCtx["bob_count"] = bob_count;
+  if (typeof charlie_count !== 'undefined') _tplCtx["charlie_count"] = charlie_count;
   document.querySelectorAll('[data-clear-tpl]').forEach(_el => {
     const _tpl = _el.getAttribute('data-clear-tpl');
     _el.textContent = _tpl.replace(/\{(\w+)\}/g, (_m, _v) => {
@@ -752,7 +1221,7 @@ document.getElementById('btn_Refresh').addEventListener('click', async function(
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:168]', e.message); return _state.new_leads; });
+    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:157]', e.message); return _state.new_leads; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -770,8 +1239,8 @@ document.getElementById('btn_Add_Lead').addEventListener('click', async function
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
     { const _r = await fetch("/api/leads", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: JSON.stringify({ name: _state.name, email: _state.email, company: _state.company, size: _state.size, source: _state.source }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/leads] [clear:195]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:196]', e.message); return _state.new_leads; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/leads] [clear:184]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:185]', e.message); return _state.new_leads; });
     _state.name = "";
     _state.email = "";
     _state.company = "";
@@ -787,12 +1256,106 @@ _recompute(); // initial render with default state
 (async () => {
   try {
     { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:142]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:143]', e.message); return _state.new_leads; });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/seed] [clear:131]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.new_leads = await fetch("/api/leads/new").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads/new] [clear:132]', e.message); return _state.new_leads; });
+    _state.all_leads = await fetch("/api/leads").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/leads] [clear:237]', e.message); return _state.all_leads; });
   _recompute();
   } catch(e) { console.error("Page load error:", e); }
 })();
 
+// --- Router ---
+// Reads both location.pathname (server-side navigation, direct URLs, route
+// selector) and location.hash (in-iframe clicks). Pathname wins when set,
+// hash is the fallback so hash-style links keep working. Also intercepts
+// <a href> clicks to same-origin routes so we don't hit the server on each
+// click (SPA feel while still supporting refresh/direct-URL).
+const _routes = {
+  '/': 'Lead_Router',
+  '/routing-rules': 'Routing_rules',
+  '/owners': 'Owners'
+};
+
+const _shellRoute = '/';
+const _shellPageId = 'Lead_Router';
+const _standaloneRoutes = { '/login': true, '/signup': true };
+function _clearTemplateHost() {
+  let host = document.getElementById('clear-route-templates');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'clear-route-templates';
+    host.hidden = true;
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function _clearParkMountedRoutes(outlet) {
+  const host = _clearTemplateHost();
+  Array.from(outlet.children).forEach(function(child) {
+    if (!child || !child.getAttribute) return;
+    if (!child.hasAttribute('data-clear-page-route')) return;
+    if (child.id === 'page_' + _shellPageId) return;
+    if (child.getAttribute('data-clear-routed-content') === _shellPageId) return;
+    child.style.display = 'none';
+    host.appendChild(child);
+  });
+}
+function _clearRenderRouteIntoShell(current) {
+  if (_standaloneRoutes[current]) return false;
+  const shellPage = document.getElementById('page_' + _shellPageId);
+  const outlet = document.querySelector('[data-clear-shell-outlet="true"]');
+  if (!shellPage || !outlet) return false;
+  const shellDefault = outlet.querySelector('[data-clear-routed-content="' + _shellPageId + '"]');
+  shellPage.style.display = 'block';
+  _clearParkMountedRoutes(outlet);
+  if (current === _shellRoute) {
+    if (shellDefault) shellDefault.style.display = '';
+    return true;
+  }
+  if (shellDefault) shellDefault.style.display = 'none';
+  const pageId = _routes[current];
+  const target = pageId ? document.getElementById('page_' + pageId) : null;
+  if (!target) return true;
+  target.style.display = 'block';
+  outlet.appendChild(target);
+  return true;
+}
+
+function _currentRoute() {
+  const p = (location.pathname || '/').replace(/\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
+  const h = (location.hash || '').slice(1);
+  if (h && _routes.hasOwnProperty(h)) return h;
+  return Object.keys(_routes)[0]; // first declared route (usually '/')
+}
+function _router() {
+  const current = _currentRoute();
+  const _shellRendered = _clearRenderRouteIntoShell(current);
+  if (_shellRendered) {
+    document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+    if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+    return;
+  }
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (route === current) ? 'block' : 'none';
+  }
+  document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
+  if (typeof _recompute === 'function') requestAnimationFrame(function() { _recompute(); });
+}
+window.addEventListener('popstate', _router);
+window.addEventListener('hashchange', _router);
+document.addEventListener('click', function(e) {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
+  if (_routes.hasOwnProperty(href)) {
+    e.preventDefault();
+    history.pushState({}, '', href);
+    _router();
+  }
+});
+_router();
 if (window.lucide && lucide.createIcons) lucide.createIcons();
 
 
@@ -842,6 +1405,7 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
     var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
     if (!__hasQuery && !__hasMeta) return;
     var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
+    var __directEditMode = false; // Studio Direct Edit toggle (parent posts on/off)
     function __selectorFor(el) {
       if (!el || el === document) return null;
       if (el.id) return '#' + el.id;
@@ -854,8 +1418,38 @@ if (window.lucide && lucide.createIcons) lucide.createIcons();
     function __post(msg) {
       try { window.parent.postMessage(Object.assign({ source: 'clear-bridge' }, msg), __clearOrigin); } catch(e) {}
     }
+    function __postPlain(msg) {
+      // Plain postMessage without the 'source: clear-bridge' wrapper — used for
+      // clear-source-line which the parent's existing handler matches by type alone.
+      try { window.parent.postMessage(msg, __clearOrigin); } catch(e) {}
+    }
+    function __findClearLine(el) {
+      while (el && el !== document.body) {
+        if (el.dataset && el.dataset.clearLine) return parseInt(el.dataset.clearLine);
+        el = el.parentElement;
+      }
+      return null;
+    }
     // Capture user actions and forward to Studio
     document.addEventListener('click', function(e) {
+      // Direct Edit mode (full-stack app path — parallel to srcdoc's sourceMapCapture):
+      // intercept the click, walk up to find data-clear-line, post a clear-source-line
+      // event with directEdit flag so Studio jumps the cursor + drafts a Meph edit.
+      if (__directEditMode) {
+        var line = __findClearLine(e.target);
+        if (line !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          __postPlain({ type: 'clear-source-line', line: line, directEdit: true });
+          var hit = e.target;
+          while (hit && !(hit.dataset && hit.dataset.clearLine)) hit = hit.parentElement;
+          if (hit) {
+            hit.style.outline = '2px solid #6c8cff';
+            setTimeout(function() { hit.style.outline = ''; }, 800);
+          }
+          return;
+        }
+      }
       __post({ type: 'user-action', action: 'click', selector: __selectorFor(e.target), text: (e.target.textContent || '').trim().slice(0, 60), ts: Date.now() });
     }, true);
     document.addEventListener('input', function(e) {

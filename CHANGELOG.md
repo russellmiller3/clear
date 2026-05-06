@@ -94,6 +94,57 @@ SYNONYM_VERSION unchanged.
 
 ---
 
+## 2026-05-05 — Stop button now actually stops Meph + cc-agent timeout bumped + Send button pearled + Meph cheat sheet + reserved-word warnings + full transcripts
+
+Carry-over from the layout sweep: a stack of structural fixes for Studio + Meph that all came out of one Russell ask ("how do the 3 docs work together, why does Meph misuse syntax, fix the empty-response issue, why does Stop not work").
+
+**Stop button kills the AI subprocess (studio/server.js + studio/ghost-meph/router.js + studio/ghost-meph/cc-agent.js):** the client-side abort already worked but the server kept iterating Meph's tool loop after disconnect. Added `req.on('close')` at `/api/chat` that aborts the in-flight AI request controller and SIGTERMs the spawned child. Threaded an AbortSignal through `fetchViaBackend → chatViaClaudeCode → chatViaClaudeCodeWithTools → runClaudeCliStreamJson` so the cc-agent path (which bypasses fetch) also kills its claude subprocess on Stop. SIGTERM first, SIGKILL after 2s.
+
+**cc-agent subprocess timeout 180s → 600s (studio/ghost-meph/cc-agent.js):** complex builds (lead-routing with admin-editable rules) routinely take 4-6 minutes; the old 180s cap was killing them mid-run and the timeout error wasn't always reaching the client cleanly. Plus the timeout error message now carries the last 5 stderr lines + last 200 chars of stdout so a future hang shows a real diagnostic instead of a silent empty stream. Override via `CC_AGENT_TIMEOUT_MS` env var.
+
+**Send button pearled (studio/studio.html):** was bright `--accent2` (#3b5bdb) with white text — read shouty next to the new soft chat bubble + pearl toolbar. Now: subtle pearl gradient (14-22% accent on bg2), normal text color, 1px subtle accent border. Verified live via preview_inspect: backgroundImage = soft oklch gradient, color = rgb(26,32,44).
+
+**Meph canonical-syntax cheat sheet (studio/system-prompt.md):** the 1358-line brain prompt told Meph to "use read_file when stuck" but never inlined the canonical forms — so Meph wrote from training-data prior, hit compile errors, then maybe consulted the docs. Now opens with 12 rules covering ~80% of avoidable mistakes: `=` vs `is`, single quotes, no self-assignment, possessive access, the full reserved-words list (including the new `rule`/`agent`/`skill`/`database` etc.), section headers, endpoint shapes, table declarations, `expect` not `check`, CRUD shapes, mandatory diagram, plain-English comments.
+
+**Validator warns on top-level keywords used as variable names (validator.js):** Russell flagged Meph reaching for `rule` as a variable name. The collision table had warnings for `post`, `put`, `get`, `payment`, `page` — but not for top-level block keywords. Added `rule`, `agent`, `skill`, `database`, `frontend`, `backend`, `table`, `queue` with concrete `try:` suggestions for each. Eight new regression tests in `clear.test.js`.
+
+**Full Meph session transcripts (studio/server.js):** the per-session capture file was skeletal (id / task / start / end / source). Now writes a second file `<sessionId>.transcript.json` alongside with the full messages array (every user turn, every Meph reply with tool calls embedded, every tool result), model + backend identifier, session test calls, last compile errors / warnings. Russell's debugging workflow: hand the transcript to a fresh Claude session, get a root cause without replaying the whole interaction live.
+
+---
+
+## 2026-05-04 — Marcus app layout sweep + Studio mid-stream Stop + soft chat bubble
+
+Russell sent two screenshots showing the cramped layout was still broken even after the earlier stat-card cap. Three real bugs hiding under "looks bad":
+
+**1. Workbench grid was 50/50 (compiler.js layout CSS).** Tailwind's `grid-cols-2` gave equal columns, squishing a 4-col table into a 621px slot — filter cut off, horizontal scroll, detail panel only filling 340px of its 620px column. Fix: when the 2-column grid contains a `.clear-detail-panel`, override to `minmax(0, 1fr) 380px` with 24px gap. Below 768px collapse to single-column. Verified live: workbench now renders as `861px / 380px` instead of `620.5px / 620.5px`.
+
+**2. Vertical-margin rule fired at the wrong depth (compiler.js).** Compiled output sometimes wraps cards in an empty-class `<div>` between the outlet and the actual cards. The `> * + *` rule fires only on direct children — so all cards had `margin-top: 0` and stacked flush against each other. Fix: rule now fires at TWO depths (`outlet > * + *` AND `outlet > div > * + *`). Bumped to 32px (Atlassian space.400 — "major content spacing" rung; Refactoring UI's 8pt grid agrees on 32 as the section-break value).
+
+**3. Submit Request panel bled across full content (compiler.js).** A single bordered card holding a stacked form should cap at form-readable width per Linear's principle. Fix: `.bg-base-100:has(form)` and `.bg-base-100:has(fieldset.fieldset)` now max-width 720px. Left-aligned under the table column instead of stretching across.
+
+**Studio fixes (studio/studio.html):**
+
+- **Pane resizers were 5px wide — nearly impossible to grab.** Industry standard is 16-20px hit target. Fix: 6px visible line plus invisible 22px hit area via `::before` pseudo-element with `left: -8px; right: -8px`. Both `#ep-resizer` (editor↔preview) and `#chat-resizer` (chat↔editor) covered. Russell described it as "sticking, hard to grab and release" — that matches the narrow-resizer pattern exactly.
+- **User chat bubble was bright `--accent2` (#3b5bdb) with white text** — read as "shouty 2018 chat-app." 2026 standard (ChatGPT, Claude, Linear, Notion) is a subtle accent-tinted background with normal text color. Fix: `color-mix(in oklch, var(--accent) 9%, var(--bg2))` background with `var(--tx)` text and a 1px subtle accent border.
+
+**Mid-stream Stop button (studio/server.js):**
+
+The client-side abort already worked (cancels the SSE fetch), but the server kept iterating Meph's tool loop after the stream disconnected — so Meph appeared to ignore Stop until his current iteration completed. Fix: `req.on('close')` handler at `/api/chat` flips a flag, aborts the in-flight fetch's controller, and sends `SIGTERM` (then `SIGKILL` after 2s) to any spawned child process. Top of the tool-iteration loop now checks the flag and bails out the moment the client gives up. `send()` guards against `res.write` after disconnect to avoid EPIPE noise.
+
+**Web research basis** (per Russell's "did you do web research?"): Atlassian Spacing tokens (space.300 = 24, space.400 = 32), Microsoft master-detail spec (360-400px detail pane, list pane fluid), Material 3 list-detail canonical layout (compact-window collapse breakpoint), Linear changelog on issue-view layout, Refactoring UI chapter 3 (spacing), Tailwind Catalyst application layouts. Sources cited inline in the commit message.
+
+**Sweep verification** (live `preview_inspect` numbers, not compile-time guesses):
+
+| App | Workbench | Vertical gap | Stat card |
+|---|---|---|---|
+| deal-desk | 899px table + 340px detail (flex) | 32px × 5 | 320px |
+| lead-router | 861px table + 380px detail (grid) | 32px × 4 | 320px |
+| approval-queue | 861px table + 380px detail (grid) | 32px × 3, Submit 720px | 320px |
+| onboarding-tracker | 861px table + 380px detail (grid) | 32px × 5 | 320px |
+| internal-request-queue | 861px table + 380px detail (grid) | 32px × 3 | 320px |
+
+---
+
 ## 2026-05-04 (latest) — Studio editor highlighting: block comments + sweep follow-up
 
 After the four-bug fix earlier today, a comprehensive sweep against every tricky pattern in a Clear source surfaced one more silent bug: `/* ... */` and `### ... ###` block comments were never recognized by the syntax highlighter. Words inside them tokenized as code (slate gray, structural words even lit blue), which read as broken styling.

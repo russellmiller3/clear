@@ -20,7 +20,7 @@ import {
   HARD_HINT_TASKS,
   buildHardHintSweepEnv,
   buildHardHintSweepOptions,
-} from './playground/supervisor/ab-hint-hard-sweep.js';
+} from './studio/supervisor/ab-hint-hard-sweep.js';
 
 const REPO_ROOT = pathDirname(fileURLToPath(import.meta.url));
 
@@ -7496,6 +7496,68 @@ when user calls GET /api/health:
   });
 });
 
+// Audit-log retention (2026-05-04). Compliance buyers ask "how long do
+// you retain audit data?"; SOC 2 evidence collectors expect a documented
+// policy. The compiler emits a 90-day default cleanup helper and a
+// POST /audit/cleanup route alongside the existing audit_log table.
+// Override via AUDIT_RETENTION_DAYS env var (0 disables cleanup).
+describe('Compiler - audit log retention', () => {
+  const authSrc = `build for web and javascript backend
+database is local memory
+
+# Database
+create a Users table:
+  email
+  password_hash
+
+# Backend
+allow signup and login
+`;
+
+  it('emits the retention env knob with a 90-day default', () => {
+    const result = compileProgram(authSrc);
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS).toContain('_AUDIT_RETENTION_DAYS = Number(process.env.AUDIT_RETENTION_DAYS)');
+    expect(result.serverJS).toContain('_AUDIT_RETENTION_DAYS_EFFECTIVE = Number.isFinite(_AUDIT_RETENTION_DAYS) ? _AUDIT_RETENTION_DAYS : 90');
+  });
+
+  it('emits the cleanup helper with a retention=0 disable branch', () => {
+    const result = compileProgram(authSrc);
+    expect(result.serverJS).toContain('async function _cleanupAuditLog()');
+    expect(result.serverJS).toContain("skipped: 'retention disabled'");
+  });
+
+  it('fires cleanup once at server boot (fire-and-forget)', () => {
+    const result = compileProgram(authSrc);
+    expect(result.serverJS).toContain('_cleanupAuditLog().catch(() => {});');
+  });
+
+  it('emits POST /audit/cleanup route, auth-gated', () => {
+    const result = compileProgram(authSrc);
+    expect(result.serverJS).toContain("app.post('/audit/cleanup'");
+    // Same auth check as the GET /audit and /audit.csv routes.
+    const cleanupIdx = result.serverJS.indexOf("app.post('/audit/cleanup'");
+    const slice = result.serverJS.slice(cleanupIdx, cleanupIdx + 400);
+    expect(slice).toContain("if (!req.user) return res.status(401)");
+    expect(slice).toContain('await _cleanupAuditLog()');
+  });
+
+  it('does not leak retention helper into apps without auth', () => {
+    // A toy app with no auth has no audit_log table to clean up;
+    // the helper would be dead code. Guard against compiler accidentally
+    // emitting it anyway. Uses a minimal `when user calls` shape that's
+    // known to compile clean without `allow signup and login`.
+    const noAuthSrc = `build for javascript backend
+when user calls GET /api/health:
+  send back 'ok'
+`;
+    const result = compileProgram(noAuthSrc);
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS).not.toContain('_cleanupAuditLog');
+    expect(result.serverJS).not.toContain('_AUDIT_RETENTION_DAYS');
+  });
+});
+
 describe('Validator - receiving var in scope', () => {
   it('allows receiving var to be used in endpoint body', () => {
     const result = compileProgram(`
@@ -7526,6 +7588,46 @@ when user sends data to /api/todos:
     expect(result.errors).toHaveLength(0);
     const matched = warnStrs(result).filter(w => w.includes("'data'") && w.includes('banned-names list'));
     expect(matched.length).toBeGreaterThan(0);
+  });
+
+  // Top-level block keywords used as receiving-var names confuse the
+  // tokenizer (it sees the keyword first, tries to parse the line as a
+  // block header). Russell flagged this 2026-05-04 after watching Meph
+  // reach for `rule` as a variable name in a lead-routing build.
+  it('warns when receiving var is `rule` (top-level block keyword)', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user sends rule to /api/policies:
+  send back rule
+    `);
+    const warns = warnStrs(result);
+    const matched = warns.filter(w => w.includes("'rule'") && w.includes('top-level block keyword'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('warns when receiving var is `agent`', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user sends agent to /api/agents:
+  send back agent
+    `);
+    const warns = warnStrs(result);
+    const matched = warns.filter(w => w.includes("'agent'") && w.includes('top-level block keyword'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('warns when receiving var is `skill`, `database`, `frontend`, `backend`, `table`, or `queue`', () => {
+    const cases = ['skill', 'database', 'frontend', 'backend', 'table', 'queue'];
+    for (const name of cases) {
+      const result = compileProgram(`
+build for javascript backend
+when user sends ${name} to /api/items:
+  send back ${name}
+      `);
+      const warns = warnStrs(result);
+      const matched = warns.filter(w => w.includes(`'${name}'`));
+      expect(matched.length, `${name} should trip a collision warning`).toBeGreaterThan(0);
+    }
   });
 
   // Phase 0.29: `user` as a receiving var no longer warns — it's the Users
@@ -28704,16 +28806,16 @@ await import('./lib/packaging-cloudflare-cron.test.js');
 await import('./lib/packaging-cloudflare-workflows.test.js');
 
 // Cloudflare Workers for Platforms target — Phase 7 (WFP REST API wrapper)
-await import('./playground/wfp-api.test.js');
+await import('./studio/wfp-api.test.js');
 
 // Cloudflare Workers for Platforms target — Phase 7.7 (deploy orchestration + lock)
-await import('./playground/deploy-cloudflare.test.js');
+await import('./studio/deploy-cloudflare.test.js');
 
 // LAE Phase C cycle 5 — meph-widget destructive UX (typed confirm + reason + danger button)
 await import('./runtime/meph-widget.test.mjs');
 await import('./scripts/factor-db-summary.test.mjs');
 await import('./scripts/hint-effect-report.test.mjs');
-await import('./playground/supervisor/verify-hint-flow-helpers.test.js');
+await import('./studio/supervisor/verify-hint-flow-helpers.test.js');
 
 // =============================================================================
 // SHELL-5: Data tables emit upgrade — pills, avatars, money, actions, sort, select

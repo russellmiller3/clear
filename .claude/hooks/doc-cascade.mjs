@@ -62,7 +62,7 @@ export function buildReminder(filePath) {
 If this edit ADDED or CHANGED user-visible syntax, a node type, a synonym, a runtime helper, or a compiler behavior, the project CLAUDE.md "Documentation Rule (MANDATORY)" requires updating ALL of these in the same commit:
 
   1. **FEATURES.md**            — REQUIRED. Add a row to the capability table; Russell reads this to answer "can Clear do X?" Skipping this means the feature is invisible.
-  2. **playground/system-prompt.md** — REQUIRED. Meph reads this every Studio session. If the new feature isn't here, every Meph user gets stale guidance.
+  2. **studio/system-prompt.md** — REQUIRED. Meph reads this every Studio session. If the new feature isn't here, every Meph user gets stale guidance.
   3. intent.md            — node-type row in the spec table (authoritative)
   4. SYNTAX.md            — complete syntax reference with example
   5. AI-INSTRUCTIONS.md   — conventions, when-to-use, gotchas (so Meph knows)

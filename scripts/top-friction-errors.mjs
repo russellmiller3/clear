@@ -29,7 +29,7 @@
 //   - Friction = count × mean_recovery_minutes. Errors that fire often AND
 //     take long to recover bubble to the top.
 
-import { FactorDB } from '../playground/supervisor/factor-db.js';
+import { FactorDB } from '../studio/supervisor/factor-db.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
