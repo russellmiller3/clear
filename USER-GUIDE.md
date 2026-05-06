@@ -37,8 +37,10 @@ Let's jump in.
 - [Chapter 13b: Charts (Visualizing Your Data)](#chapter-13b-charts-visualizing-your-data)
 - [Chapter 20: Designing Beautiful Pages](#chapter-20-designing-beautiful-pages)
 
+**Workflow apps — when humans approve, reject, and decide**
+- [Chapter 9: The CRO Approval Queue](#chapter-9-the-cro-approval-queue-from-crud-app-to-workflow-app)
+
 **Real-time and AI — when your app needs to think**
-- [Chapter 9: Real-Time Features](#chapter-9-real-time-features-making-things-go-brrr)
 - [Chapter 10: AI-Powered Apps](#chapter-10-ai-powered-apps-the-fun-part)
 - [Chapter 10b: Chat Interfaces](#chapter-10b-chat-interfaces-making-your-app-talk)
 - [Chapter 19: Workflows (Multi-Step AI Pipelines)](#chapter-19-workflows-multi-step-ai-pipelines)
@@ -2585,56 +2587,259 @@ In Clear, it's one file that you can read top to bottom in two minutes.
 
 ---
 
-## Chapter 9: Real-Time Features (Making Things Go Brrr)
+## Chapter 9: The CRO Approval Queue (From CRUD App to Workflow App)
 
-Want a chat app? A live dashboard? Notifications? You need real-time features.
-Clear makes these surprisingly easy.
+By the end of this chapter, deal-desk stops being a CRUD app and becomes a workflow app. The CRO will sign in, click **Approve** on a deal Alice saved, and three things will happen at once: the deal's status flips from `pending` to `approved`, a permanent decision row lands in an audit table that says *who* approved it and *when*, and an outbound email row drops into a queue ready to tell Alice the news. **Five lines that would have been 150 lines by hand. The compiler does the boring plumbing.**
 
-### Streaming (Live Updates)
+This is the chapter where the deal desk earns the name. Up to now, the rep has been the only user — she signs in, saves a deal, sees her queue. That's a personal organizer. A real deal desk has a **second role** in the loop: somebody with the authority to approve or reject what the rep submitted. In Marcus's company that's the Chief Revenue Officer. The CRO is the wall between "the rep wants to discount this" and "the company actually agrees."
 
-Push data to the browser as it happens:
+### What is an approval queue, anyway?
 
-```clear
-stream:
-  all_messages = get all Messages
-  send back all_messages
-```
+An approval queue is a list of work items waiting for somebody with authority to decide. You've seen them everywhere, even if you didn't call them that. A code-review request waiting on a senior engineer's eyes. An expense report waiting on a manager's signature. A vacation request waiting on HR. A discount request waiting on the CRO. Same shape every time: a record arrives in `pending` state, a specific human looks at it, and they pick from a small set of outcomes — approve, reject, or send it back with a counter-offer.
 
-This creates a `/stream` endpoint that pushes data to connected clients.
+What makes a queue different from a plain CRUD list is the **decision trail**. When the CRO approves Alice's deal, the company doesn't just need to know that the deal is now approved — it needs to remember *who* approved it, *when*, and *what they decided*. If three months later a board member asks "who signed off on the 28% discount to Acme?", somebody had better be able to answer. That's an audit trail, and it's the part most teams forget to build until a regulator asks.
 
-### WebSocket Broadcasting
+So a queue is really three things glued together: a filtered view of pending records, a decision URL per outcome, and an audit table that grows by one row every time somebody clicks a button. Keep that shape in mind — Clear is about to give you all three from one declaration.
 
-Build a real-time chat in a few lines:
+### Why workflow primitives exist
 
-```clear
-subscribe to 'chat':
-  log message
-  broadcast to all message
-```
+Imagine you wrote this from scratch in JavaScript and Express. To support `approve / reject / counter` on a deal, you'd hand-write:
 
-`broadcast to all X` sends the value to every connected WebSocket client
-on that channel. Combined with `subscribe to`, you get a full pub/sub system.
+- A second table called `deal_decisions` with `deal_id`, `decision`, `decided_by`, `decided_at`, `decision_note` columns and a foreign key.
+- A `GET /api/deals/queue` endpoint that filters to `status = 'pending'` and threads the right auth.
+- A `PUT /api/deals/:id/approve` endpoint that requires login, looks up the deal, updates status, inserts a decision row, and queues a notification.
+- The same endpoint a second time for `/reject`. And again for `/counter`. Each one nearly identical, each one a place a bug can hide.
+- A `GET /api/deal-decisions` endpoint so somebody can read the audit log.
+- A notification queue table so you don't block the user's request on a flaky email server.
+- Two more endpoints for the notification rows.
+- The frontend wiring on top of all of it.
 
-### Background Jobs
+Around 150 lines, depending on how careful you are. Each one boring, each one easy to get subtly wrong, each one identical to the next deal-desk-style app you'll ever write. **A workflow primitive is the language saying: "you've written this enough times — declare what you want, and I'll write the boring stuff for you."** You declare *what* should happen on each action. The compiler writes *how*.
 
-Run tasks on a schedule:
+That's the bargain Clear keeps: you describe the shape of the workflow once, and the compiler emits the audit table, the decision URLs, the notification queue, and the filter handler — every time you recompile, in the same shape, without typos.
 
-```clear
-background 'cleanup':
-  runs every 1 hour
-```
+### Five lines that change everything
 
-### Webhooks
-
-Receive notifications from external services:
+Open `deal.clear` from Chapter 8 and add this block right after your `Deals` table declaration:
 
 ```clear
-webhook '/stripe/events' signed with env('STRIPE_SECRET'):
-  new_event = save incoming as new Event
-  send back new_event
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
 ```
 
-This verifies the webhook signature using HMAC and processes the payload.
+Three settings, plus the `queue for deal:` header. That's the whole thing. Read it out loud: *"queue for deal — reviewer is CRO — actions are approve, reject, counter."* No CS jargon. A manager could read this and tell you what the app does.
+
+Here's what those three lines tell the compiler:
+
+- `queue for deal:` — there is a queue, and the items in it are records from the `Deals` table you declared above. The compiler matches the word `deal` to your table by trimming the `s`. (You can also write `queue for deals:` with the `s`; both forms work.)
+- `reviewer is 'CRO'` — the human role doing the approving is called CRO. This name shows up in audit rows and in any notification that says "approved by the CRO." It's a label, not a separate user role; you'll still mark the actual CRO user as `admin` so the rules from Chapter 8 let her see every rep's deals.
+- `actions: approve, reject, counter` — the three buttons the CRO can click. Each one becomes a real URL on your server, plus a row-shape in the audit table.
+
+Save the file and recompile. The output looks the same to a casual reader. Under the hood, the compiler just generated a small backend feature for you.
+
+### What the compiler wrote for you
+
+When the parser sees `queue for deal:`, it goes to work. Each of these landed in your compiled server without you typing a single character:
+
+- **An audit table called `deal_decisions`.** Five columns: `deal_id` (which deal got decided), `decision` (`approved`, `rejected`, or `awaiting`), `decided_by` (the CRO's user id), `decided_at` (a timestamp), and `decision_note` (a free-text field for "why"). Every approve / reject / counter click adds one row. Rows are never deleted — that's the whole point of an audit log. If three months from now the board asks "who signed off on the Acme discount?", you `SELECT * FROM deal_decisions WHERE deal_id = 42` and you have your answer.
+- **A login-gated URL for each action.** `PUT /api/deals/:id/approve`, `/reject`, and `/counter`. Each one requires a valid token (so anonymous attackers can't approve their own deals), looks up the deal, updates its `status` field, and inserts the audit row. The status transitions follow a small cheat sheet: `approve` → `'approved'`, `reject` → `'rejected'`, `counter` → `'awaiting'`. (The "awaiting" status means "we sent a counter-offer and we're waiting on the customer to accept or push back.")
+- **A filtered query handler at `GET /api/deals/queue`.** This returns only the deals where `status = 'pending'` — the work the CRO actually has to look at. The full GET `/api/deals` handler from Chapter 8 still works, still scoped to the caller; the new `/queue` handler is the CRO's inbox view.
+- **A read-only audit URL at `GET /api/deal-decisions`.** This is how anybody — auditor, board member, the CRO herself reviewing what she did last week — pulls back the full decision history.
+
+Five lines in. Four endpoints, one table, hundreds of generated lines of JavaScript out. **You did not type the word `user_id` once. You did not write a `INSERT INTO deal_decisions` statement. You did not set up the filter on `status = 'pending'`.** The compiler did all of it, and it'll do it the same way every time you recompile, on every deal-desk-like app you ever write.
+
+### The CRO needs an admin badge
+
+Quick sidebar before we run anything. Remember the ownership rule from Chapter 8?
+
+```clear
+the deal's creator can read, change, or delete
+```
+
+That rule says only Alice can read or change Alice's deals. Which is exactly what we want for *Alice*, but a CRO who can only see her own deals isn't a CRO — she'd never see anything to approve. We need the second rule from Chapter 8 too:
+
+```clear
+the deal's creator can read, change, or delete
+any admin can read, change, or delete
+```
+
+Two rules. Either one matching grants access. Alice (a normal `user`) can touch her own deals. The CRO (signed up with `role: 'admin'`) can touch every deal. Clear combines the two rules with an OR — that's exactly the both-of-them-at-once shape we want.
+
+If you didn't add the `any admin` line at the end of Chapter 8, add it now. The queue endpoints depend on it: when the CRO clicks Approve on Alice's deal, the auto-generated PUT handler runs the same ownership check the GET handler does, and without the admin rule the CRO would be blocked from touching anybody else's row.
+
+### Now run this
+
+Save the file. Restart the server:
+
+```bash
+clear serve deal.clear
+```
+
+You should see the same `Listening on http://localhost:3000` message as Chapter 8. The new endpoints don't print themselves on startup — they're just *there* now.
+
+We're going to drive three users through the whole workflow: Alice the rep, Bob the other rep, and Carol the CRO. Open three terminals or one with patience.
+
+**Sign Alice up and save a pending deal:**
+
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@acme.com","password":"alice-pw-12345","name":"Alice"}'
+
+curl -X POST http://localhost:3000/api/deals \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <alice-token>" \
+  -d '{"rep_name":"Alice","customer":"Acme Corp","list_price":50000,"discount_percent":15}'
+```
+
+Alice's deal saves with `status: "pending"`. She owns it.
+
+**Sign Carol up — but with the admin role.** Notice the extra `"role":"admin"` field; that's what flips the second rule on for her account:
+
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"carol@cro.com","password":"carol-pw-12345","name":"Carol","role":"admin"}'
+```
+
+Carol gets a token back, same as Alice did. She's now an admin.
+
+**Carol checks her queue:**
+
+```bash
+curl http://localhost:3000/api/deals/queue \
+  -H "Authorization: Bearer <carol-token>"
+```
+
+She sees one row — Alice's pending Acme deal, list price 50000, discount 15%. The `/queue` URL is one the queue primitive auto-emitted; it filters to `status = 'pending'` so Carol's inbox only shows the work she needs to act on.
+
+**Now Carol approves it:**
+
+```bash
+curl -X PUT http://localhost:3000/api/deals/1/approve \
+  -H "Authorization: Bearer <carol-token>"
+```
+
+The server replies with the updated deal. Status is now `approved`. Carol just clicked the button, except via curl.
+
+**Confirm the status flipped.** Pull the deal back as Alice:
+
+```bash
+curl http://localhost:3000/api/deals \
+  -H "Authorization: Bearer <alice-token>"
+```
+
+Alice's row now reads `"status": "approved"`. The change happened. The wall from Chapter 8 still holds — Alice still can only see her own deal — but the *contents* of her deal updated when Carol acted.
+
+**Now check the audit table.** This is the moment that pays for the whole feature:
+
+```bash
+curl http://localhost:3000/api/deal-decisions \
+  -H "Authorization: Bearer <carol-token>"
+```
+
+You see one row:
+
+```
+[{"id":1,"deal_id":1,"decision":"approved","decided_by":2,"decided_at":"2026-05-06T...","decision_note":""}]
+```
+
+Carol's user-id (2) is permanently stamped on Alice's deal. The timestamp is locked in. **If anybody three months from now asks "who approved the Acme deal?", that row is the answer.** Nobody had to remember to write the audit code; the queue primitive emitted it.
+
+### Adding email beats — telling the rep her deal landed
+
+So far Carol approves a deal and the deal's status changes. But Alice doesn't *know* her deal got approved unless she refreshes the page. In the real world the rep wants an email: "Carol approved your Acme renewal." That's a notification.
+
+Here's the concept first, because the way Clear handles notifications has a twist worth understanding. **An outbound email is not sent immediately — it lands in a queue.** When the CRO approves a deal, the app doesn't pause for two seconds while it talks to a flaky email server. Instead, it writes a row to a table called `deal_notifications` saying "an email needs to go to alice@acme.com about deal 1." The user's request returns instantly. Later, a separate worker reads the queue and actually delivers the messages.
+
+That's how every production app does it — Slack, Stripe, Linear, all of them — because emailing is slow and unreliable, and you don't want a customer's deal-approval clicks to fail because GMail is having a bad afternoon. Clear does the same thing for you, automatically, the moment you ask for it.
+
+Add two lines inside your queue block:
+
+```clear
+queue for deal:
+  reviewer is 'CRO'
+  actions: approve, reject, counter
+  email customer when counter
+  email rep when approve, reject
+```
+
+Read these out loud too: *"email the customer when we counter their offer; email the rep when we approve or reject her deal."* No mystery. The compiler turns those two lines into:
+
+- A new table called `deal_notifications` — five columns of metadata about each pending email (`deal_id`, `recipient_role`, `recipient_email`, `template`, `queued_at`).
+- A new step inside each PUT handler. When Carol approves a deal, the handler now runs three writes in one transaction: update the deal's status, insert the audit row, AND insert a notification row pointing at Alice's email.
+- A read-only URL at `GET /api/deal-notifications` so you can peek at the outbox.
+
+How does the compiler know Alice's email address? **Convention.** When you write `email customer when ...`, the compiler reaches into the deal record and reads `customer_email`. When you write `email rep when ...`, it reads `rep_email`. The pattern is `<role>_email` — same name, just with `_email` glued on. Make sure your `Deals` table has those fields:
+
+```clear
+create a Deals table:
+  rep_name, required
+  rep_email
+  customer, required
+  customer_email
+  list_price (number), default 0
+  discount_percent (number), default 0
+  status, default 'pending'
+  the deal's creator can read, change, or delete
+  any admin can read, change, or delete
+```
+
+Save and restart the server.
+
+### Now run this — the email beat
+
+Sign Alice up again (or reuse her account if you didn't restart with a fresh database), and this time include both her own email and the customer's:
+
+```bash
+curl -X POST http://localhost:3000/api/deals \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <alice-token>" \
+  -d '{"rep_name":"Alice","rep_email":"alice@acme.com","customer":"Acme Corp","customer_email":"buyer@acme.com","list_price":50000,"discount_percent":15}'
+```
+
+Carol approves it as before:
+
+```bash
+curl -X PUT http://localhost:3000/api/deals/1/approve \
+  -H "Authorization: Bearer <carol-token>"
+```
+
+Now check the outbox:
+
+```bash
+curl http://localhost:3000/api/deal-notifications \
+  -H "Authorization: Bearer <carol-token>"
+```
+
+There's the row. Recipient is `alice@acme.com`. Role is `rep`. Deal id 1, queued just now. **An actual email has not been sent yet** — the queue primitive only writes outbox rows in default builds. Chapter 10 turns these rows into real email sends through a provider like AgentMail or SendGrid, behind an explicit on-switch. Today you can see exactly which messages your app *would* send, before any of them go out the door. Tests, dev runs, and previews never accidentally email a real customer.
+
+Try the same thing with `/reject` or `/counter` to watch the matching trigger fire — `counter` queues an email to the customer's address (`buyer@acme.com`) instead of the rep's, because the body said `email customer when counter`.
+
+### What you didn't write
+
+For the experienced developer skimming, the things that didn't appear in your source: a `decisions` table schema, a `notifications` table schema, three nearly-identical PUT handlers, a `WHERE status = 'pending'` filter, a `WHERE deal_id = ?` audit query, a `decided_by = req.user.id` insert, an `INSERT INTO ... notifications` follow-up, and the foreign-key relationships between the three tables. The compiler emitted all of it from five lines.
+
+For the newcomer: you just shipped the workflow shape that powers a million SaaS apps — code review, expense approval, vacation requests, lead routing, customer-support tickets, content moderation, regulatory filings. The same five-line block, with different names, fits any of them. Once you can read `queue for X: actions: approve, reject, counter`, you can read every approval-style app anybody has ever written. **The shape is the language.**
+
+### Try it yourself
+
+1. **Add a fourth action.** Inside the queue block, change `actions:` to `actions: approve, reject, counter, awaiting customer`. Recompile and restart the server. You now have a `PUT /api/deals/:id/awaiting` URL that the CRO can hit when a deal is paused on the customer's signature. Drive a curl through it and confirm the deal's status lands on `'awaiting'` and an audit row appears.
+
+2. **Add an email rep when reject line and confirm two outbox rows.** With `email customer when counter, awaiting customer` and `email rep when approve, reject` both in the queue body, sign up Alice + Carol, save a deal, then have Carol reject it. Hit `/api/deal-notifications` and confirm one row landed for the rep on the rejection. Now do the same for a counter: confirm one row lands for the customer instead.
+
+3. **Read the schema directly.** Open the database file with any SQLite browser or run `sqlite3 clear-data.db ".schema deal_decisions"`. You'll see the `deal_decisions` table the compiler emitted — five columns, foreign-keyed back to `Deals`. You did not type the word CREATE TABLE anywhere in your source. The schema was written for you.
+
+### Why this matters
+
+Remember the ownership rules from Chapter 8? They're still doing the work underneath. The CRO can act on every deal because she's an admin; the rep is still walled off to her own queue. Add a queue primitive on top, and you have the load-bearing shape for a regulated-tier app: every decision is logged, every notification is queued, every URL is auth-gated, and not a single byte of the security plumbing is hand-rolled. That's what makes the Marcus pitch land — *"every approval is provable, every email is logged, and the audit table is just there because the compiler wrote it."*
+
+This chapter turned deal-desk from a personal CRUD app into a real workflow app. The CRO has a queue. Each approve/reject/counter writes a permanent decision row. Each action that should email someone drops a row into an outbox. Five lines did all of it.
+
+### What's next
+
+The notifications table is full of rows that *should* go out the door, but nothing is actually sending them yet. Chapter 10 introduces the email-delivery primitive — `email customer when deal's status changes to 'awaiting':` — which turns those queued rows into real messages going through AgentMail (or SendGrid, or Postmark). It's the same `email when` atom you used inside the queue block, but at the top level, with a real subject line and body. Same compiler-does-the-work shape: you describe the message, Clear takes care of the delivery, the retry logic, and the bounce handling. Bring your queue from Chapter 9 — Chapter 10 stands on top of it.
 
 ---
 

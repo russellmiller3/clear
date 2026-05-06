@@ -89,10 +89,19 @@ class TestDbPostgresOffline(unittest.TestCase):
         self.assertEqual(db_pg._to_pg_type({"type": "fk"}), "INTEGER")
         self.assertEqual(db_pg._to_pg_type({"type": "timestamp"}), "TIMESTAMPTZ")
 
-    def test_update_with_version_is_stubbed(self):
-        # Same stub pattern as db.py's update_with_version
-        with self.assertRaises(NotImplementedError):
-            db_pg.update_with_version("users", {"id": 1}, {"name": "Alice"})
+    def test_update_with_version_400_when_no_id(self):
+        # Offline-checkable: raises ValueError(400) before touching Postgres
+        with self.assertRaises(ValueError) as ctx:
+            db_pg.update_with_version("users", {"name": "Alice"}, expected_version=0)
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_version_conflict_class_exists(self):
+        # Sanity: VersionConflict is a real class with the right shape
+        self.assertTrue(hasattr(db_pg, "VersionConflict"))
+        conflict = db_pg.VersionConflict("users", 1, 0, 2)
+        self.assertEqual(conflict.status, 409)
+        self.assertEqual(conflict.expected_version, 0)
+        self.assertEqual(conflict.current_version, 2)
 
     def test_save_and_load_are_no_ops(self):
         # Should return None and not raise (same as JS port)

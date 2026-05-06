@@ -258,12 +258,73 @@ def update(table: str, filter_or_record: Union[int, Dict[str, Any]],
             return cur.rowcount
 
 
-def update_with_version(table: str, filter_dict: Dict[str, Any], data: Dict[str, Any]) -> int:
-    """Optimistic-lock UPDATE. Stubbed for v1 — matches db.py's pattern."""
-    raise NotImplementedError(
-        "update_with_version is the optimistic-lock primitive — port deferred. "
-        "Tracked in plans/plan-python-parity.md as priority follow-up."
-    )
+class VersionConflict(Exception):
+    """Raised when an optimistic-lock UPDATE fails because the row's
+    _version moved since the caller read it. Same shape as db.py's
+    VersionConflict — status 409, current_version readable by the caller."""
+    def __init__(self, table: str, record_id: Any, expected_version: int, current_version: Optional[int]):
+        self.status = 409
+        self.table = table
+        self.record_id = record_id
+        self.expected_version = expected_version
+        self.current_version = current_version
+        super().__init__(
+            f"VERSION_CONFLICT on {table} id={record_id}: "
+            f"expected _version={expected_version}, current={current_version}"
+        )
+
+
+def update_with_version(table: str, record: Dict[str, Any], expected_version: Optional[int] = None) -> int:
+    """Optimistic-lock UPDATE. Mirrors runtime/db.py contract on Postgres
+    (psycopg3). Same shape as the JS port:
+
+    - Requires record['id']. Raises 400 if missing.
+    - Default expected_version = 0 (first-write case).
+    - Raises 404 if no row with that id exists.
+    - UPDATE ... SET col = %s, ..., _version = _version + 1
+      WHERE id = %s AND _version = %s.
+    - If 0 rows matched, raises VersionConflict carrying the live _version
+      so the client can display 'someone else changed this; here is the latest'.
+
+    Returns 1 on success.
+    """
+    if not _is_safe_identifier(table):
+        raise ValueError(f"Unsafe table name: {table}")
+    if not isinstance(record, dict) or record.get("id") is None:
+        err = ValueError(f"Cannot update {table} with optimistic lock without an id on the record.")
+        err.status = 400  # type: ignore[attr-defined]
+        raise err
+    _ensure_table(table)
+
+    record_id = record["id"]
+    exp_ver = 0 if expected_version is None else int(expected_version)
+
+    with _get_pool().connection() as conn:
+        # 404 guard
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT 1 FROM {table} WHERE id = %s LIMIT 1", [record_id])
+            if cur.fetchone() is None:
+                err = LookupError(f"No record found with id {record_id}")
+                err.status = 404  # type: ignore[attr-defined]
+                raise err
+
+        # Build SET ... WHERE ... AND _version = ?
+        set_cols = [k for k in record.keys() if k not in ("id", "_version") and _is_safe_identifier(k)]
+        set_vals = [record[k] for k in set_cols]
+        set_parts = [f"{k} = %s" for k in set_cols]
+        set_parts.append("_version = _version + 1")
+        sql = f"UPDATE {table} SET {', '.join(set_parts)} WHERE id = %s AND _version = %s"
+
+        with conn.cursor() as cur:
+            cur.execute(sql, set_vals + [record_id, exp_ver])
+            if cur.rowcount == 0:
+                # Version moved — read live _version for the caller
+                with conn.cursor(row_factory=dict_row) as live_cur:
+                    live_cur.execute(f"SELECT _version FROM {table} WHERE id = %s", [record_id])
+                    live = live_cur.fetchone()
+                current = live["_version"] if live else None
+                raise VersionConflict(table, record_id, exp_ver, current)
+            return cur.rowcount
 
 
 def remove(table: str, filter_dict: Optional[Dict[str, Any]] = None) -> int:

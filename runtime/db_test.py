@@ -124,9 +124,56 @@ class TestDb(unittest.TestCase):
         with self.assertRaises(ValueError):
             db.find_all("users", {"name; DELETE": "Alice"})
 
-    def test_update_with_version_is_stubbed(self):
-        with self.assertRaises(NotImplementedError):
-            db.update_with_version("users", {"id": 1}, {"name": "Alice"})
+    def test_update_with_version_round_trip(self):
+        # First write — record has no _version yet so default expected = 0
+        db.create_table("users", {"name": {"type": "text"}})
+        result = db.insert("users", {"name": "Alice"})
+        # Initial _version should be 1 (db.py auto-adds with default 1)
+        rows = db.find_all("users", {"id": result["id"]})
+        initial_version = rows[0].get("_version", 0)
+        # Update with the correct expected_version succeeds
+        affected = db.update_with_version(
+            "users",
+            {"id": result["id"], "name": "Alice Renamed"},
+            expected_version=initial_version,
+        )
+        self.assertEqual(affected, 1)
+        # _version should have bumped
+        rows = db.find_all("users", {"id": result["id"]})
+        self.assertEqual(rows[0]["name"], "Alice Renamed")
+        self.assertEqual(rows[0]["_version"], initial_version + 1)
+
+    def test_update_with_version_conflict_raises(self):
+        db.create_table("items", {"label": {"type": "text"}})
+        result = db.insert("items", {"label": "first"})
+        # Wrong expected_version (999) — version moved scenario
+        with self.assertRaises(db.VersionConflict) as ctx:
+            db.update_with_version(
+                "items",
+                {"id": result["id"], "label": "second"},
+                expected_version=999,
+            )
+        # Conflict carries the live current_version for the client to
+        # display "someone else changed this; here is the latest"
+        self.assertEqual(ctx.exception.status, 409)
+        self.assertEqual(ctx.exception.expected_version, 999)
+        self.assertIsNotNone(ctx.exception.current_version)
+
+    def test_update_with_version_404_when_no_record(self):
+        db.create_table("items", {"label": {"type": "text"}})
+        with self.assertRaises(LookupError) as ctx:
+            db.update_with_version(
+                "items",
+                {"id": 99999, "label": "ghost"},
+                expected_version=0,
+            )
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_update_with_version_400_when_no_id(self):
+        db.create_table("items", {"label": {"type": "text"}})
+        with self.assertRaises(ValueError) as ctx:
+            db.update_with_version("items", {"label": "no-id"}, expected_version=0)
+        self.assertEqual(ctx.exception.status, 400)
 
     def test_hidden_field_stripped_from_responses(self):
         db.create_table(

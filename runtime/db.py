@@ -64,7 +64,13 @@ def _is_safe_identifier(name: str) -> bool:
 def _to_sqlite_type(config: Optional[Dict[str, Any]]) -> str:
     if not config or not config.get("type"):
         return "TEXT"
-    type_map = {"number": "REAL", "boolean": "INTEGER", "fk": "INTEGER", "timestamp": "TEXT"}
+    type_map = {
+        "number": "REAL",
+        "integer": "INTEGER",  # for the auto-added id / user_id / tenant_id / _version
+        "boolean": "INTEGER",
+        "fk": "INTEGER",
+        "timestamp": "TEXT",
+    }
     return type_map.get(config["type"], "TEXT")
 
 
@@ -296,14 +302,75 @@ def update(table: str, filter_or_record: Union[int, Dict[str, Any]],
     return cursor.rowcount
 
 
-def update_with_version(table: str, filter_dict: Dict[str, Any], data: Dict[str, Any]) -> int:
-    """Optimistic-lock UPDATE. Reads current _version, sets WHERE _version = N
-    AND increments _version on update. Raises ConcurrencyError if no row
-    matched (lost update)."""
-    raise NotImplementedError(
-        "update_with_version is the optimistic-lock primitive — port deferred. "
-        "Tracked in plans/plan-python-parity.md as priority follow-up."
-    )
+class VersionConflict(Exception):
+    """Raised when an optimistic-lock update fails because the row's
+    _version has moved since the caller read it. status=409 mirrors the
+    JS port. The current_version attribute lets the caller display
+    'someone else changed this; here is the latest' to the user."""
+    def __init__(self, table: str, record_id: Any, expected_version: int, current_version: Optional[int]):
+        self.status = 409
+        self.table = table
+        self.record_id = record_id
+        self.expected_version = expected_version
+        self.current_version = current_version
+        super().__init__(
+            f"VERSION_CONFLICT on {table} id={record_id}: "
+            f"expected _version={expected_version}, current={current_version}"
+        )
+
+
+def update_with_version(table: str, record: Dict[str, Any], expected_version: Optional[int] = None) -> int:
+    """Optimistic-lock UPDATE. Matches runtime/db.js's updateWithVersion
+    contract:
+
+    - Requires record['id']. Raises 400 if missing.
+    - Default expected_version = 0 (first-write case).
+    - Raises 404 if no row with that id exists.
+    - Builds UPDATE ... SET col = ?, ... , _version = _version + 1
+      WHERE id = ? AND _version = ?
+    - If 0 rows matched (version moved), raises VersionConflict with the
+      current _version readable by the caller.
+
+    Returns 1 on success.
+    """
+    if not _is_safe_identifier(table):
+        raise ValueError(f"Unsafe table name: {table}")
+    if not isinstance(record, dict) or record.get("id") is None:
+        err = ValueError(f"Cannot update {table} with optimistic lock without an id on the record.")
+        err.status = 400  # type: ignore[attr-defined]
+        raise err
+
+    record_id = record["id"]
+    exp_ver = 0 if expected_version is None else int(expected_version)
+    schema = _schemas.get(table, {})
+
+    # 404 guard — separate the "no record" signal from "version moved"
+    cursor = _conn.execute(f"SELECT 1 FROM {table} WHERE id = ? LIMIT 1", [record_id])
+    if cursor.fetchone() is None:
+        err = LookupError(f"No record found with id {record_id}")
+        err.status = 404  # type: ignore[attr-defined]
+        raise err
+
+    # Encrypt sensitive fields (matches JS port's behavior on locked updates)
+    encrypted = _encrypt_sensitive_fields(record, schema)
+
+    set_cols = [k for k in encrypted.keys() if k not in ("id", "_version") and _is_safe_identifier(k)]
+    set_vals = [_coerce_for_storage(encrypted[k]) for k in set_cols]
+    set_parts = [f"{k} = ?" for k in set_cols]
+    set_parts.append("_version = _version + 1")
+
+    sql = f"UPDATE {table} SET {', '.join(set_parts)} WHERE id = ? AND _version = ?"
+    cursor = _conn.execute(sql, set_vals + [record_id, exp_ver])
+
+    if cursor.rowcount == 0:
+        # Row exists (404 guard above passed) but version moved. Read live
+        # version so the caller can show "someone else changed this; here
+        # is the latest" to the user.
+        live = _conn.execute(f"SELECT _version FROM {table} WHERE id = ?", [record_id]).fetchone()
+        current = live["_version"] if live else None
+        raise VersionConflict(table, record_id, exp_ver, current)
+
+    return cursor.rowcount
 
 
 def remove(table: str, filter_dict: Optional[Dict[str, Any]] = None) -> int:
