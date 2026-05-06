@@ -5275,6 +5275,57 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 1, cycle 4 — validator errors when a rule names a missing role field
+// =============================================================================
+// `the deal's reviewer can read or change` implies a `reviewer_id` field on
+// the deals table. Without it, the cycle 5 auto-injected filter has nothing
+// to check against — the rule is documentation only. Catch this at compile
+// time with a friendly error that names the missing field and suggests both
+// fixes (add the field, or remove the rule).
+describe('Validator - missing role field error (OWASP Piece 1, cycle 4)', () => {
+  it('errors when a rule names a row-role field that does not exist on the table', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's reviewer can read or change`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/reviewer_id/);
+    expect(errMsgs).toMatch(/Either add|or remove/);
+  });
+
+  it('does NOT error when the role field IS declared on the table', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  reviewer_id, number
+  the deal's reviewer can read or change`;
+    const r = compileProgram(src);
+    // Other warnings may exist (e.g. missing the creator rule); but the
+    // missing-role-field error specifically must NOT fire.
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).not.toMatch(/reviewer_id.*has no/);
+  });
+
+  it('does NOT error when the rule is creator (user_id auto-added by runtime)', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete`;
+    const r = compileProgram(src);
+    // user_id isn't declared but the runtime auto-adds it. The cycle-4
+    // missing-field check is for ROW_ROLE subjects (reviewer, approver,
+    // etc.), not for the creator subject.
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).not.toMatch(/user_id.*has no/);
+  });
+});
+
+// =============================================================================
 // OWASP Piece 1, cycle 3 — IDOR-on-GET is a hard compile error (regression lock)
 // =============================================================================
 // validator.js's "GET endpoint returns ALL records from a user-owned table

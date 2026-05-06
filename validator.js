@@ -1795,21 +1795,39 @@ function validateSecurity(body, errors, warnings) {
         // update. The example phrases mirror what the eventual error will
         // suggest, so apps written against this warning are already in the
         // canonical shape when strict mode lands.
+        const irregulars = { people: 'person', children: 'child', men: 'man', women: 'woman', mice: 'mouse', geese: 'goose' };
+        const entity = irregulars[name]
+          ? irregulars[name]
+          : name.endsWith('ies')
+            ? name.slice(0, -3) + 'y'
+            : name.endsWith('s')
+              ? name.slice(0, -1)
+              : name;
         if (Array.isArray(node.policies) && node.policies.length === 0) {
-          const irregulars = { people: 'person', children: 'child', men: 'man', women: 'woman', mice: 'mouse', geese: 'goose' };
-          const entity = irregulars[name]
-            ? irregulars[name]
-            : name.endsWith('ies')
-              ? name.slice(0, -3) + 'y'
-              : name.endsWith('s')
-                ? name.slice(0, -1)
-                : name;
           warnings.push(
             `Line ${node.line}: ${node.name} table has no access rules. Add at least one line saying who can read, change, or delete it. Examples:\n` +
             `  - the ${entity}'s creator can read, change, or delete  (most common — only whoever made the row)\n` +
             `  - anyone can read  (public data)\n` +
             `  - any admin can read  (admin override)`
           );
+        }
+        // OWASP Piece 1, cycle 4 — error when a row-role policy names a
+        // field that doesn't exist on the table. `the deal's reviewer can
+        // read` implies a `reviewer_id` field on the deals table; without
+        // it, the cycle 5 auto-injected filter has nothing to check
+        // against and the rule is documentation only. Surface the gap
+        // with a friendly error that points at both fixes.
+        if (Array.isArray(node.policies) && node.policies.length > 0) {
+          const fieldNames = new Set(node.fields.map(f => f.name));
+          for (const policy of node.policies) {
+            if (policy && policy.subject === 'row_role' && policy.roleField && !fieldNames.has(policy.roleField)) {
+              const roleWord = policy.roleField.replace(/_id$/, '');
+              errors.push({
+                line: policy.line || node.line,
+                message: `Line ${policy.line || node.line}: rule mentions the ${entity}'s ${roleWord} but the ${node.name} table has no ${policy.roleField} field. Either add ${policy.roleField} (number) above the rule, or remove this rule.`
+              });
+            }
+          }
         }
       }
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) collectSchemas(node.body);
