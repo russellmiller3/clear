@@ -80,3 +80,20 @@ __pycache__/
 *.pyc
 .claude/state/
 .clear-uat-screenshots/
+
+# Per-app build artifacts in apps/<app>/. Source-of-truth is main.clear;
+# everything else regenerates on every `node scripts/run-marcus-uat.mjs`
+# run or any compile-and-run loop. Untrack so rebuilds don't leak into
+# commits. (Added 2026-05-06 — replaces the manual "discard apps/ before
+# git add" rule with structural protection.)
+apps/*/server.js
+apps/*/server.py
+apps/*/index.html
+apps/*/main.html
+apps/*/main.js
+apps/*/style.css
+apps/*/browser-uat.mjs
+apps/*/test.js
+
+# Marcus walker failure snapshots — generated per run, not source
+snapshots/marcus-uat-failures-*.md
