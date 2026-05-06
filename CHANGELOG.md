@@ -34,6 +34,8 @@ Each helper has a focused test suite (12 + 28 + 7 + 7 = 54 tests total today, al
 
 **Update 2026-05-06 evening — Compiler-emit wiring started.** First Python compile-path branch landed: `database is local file` now emits `from clear_runtime import db` (persistent SQLite via the helper) and `database is postgres` emits `from clear_runtime import db_postgres as db`. The default `database is local memory` keeps the inline `_DB` stub for back-compat with existing tests + local-dev mock semantics. Implementation mirrors the existing supabase pattern in `compileToPythonBackend`. Three TDD tests in `clear.test.js` lock the behaviour. Remaining wiring work: auth scaffold, rate-limit middleware, queue auto-emit, rule keyword, AI-agent calls — multi-session follow-up. Also fixed the python-parity audit script's helper-file check, which was reporting false gaps for files using PEP 8 underscored names (audit now correctly reports 0/5 helper gaps).
 
+**Update 2026-05-06 evening — CLI runtime-copy for Python helpers shipped.** The companion change to the wiring above. `cli/clear.js` now detects when the Python emit imports `clear_runtime` and copies the matching `.py` files (`__init__.py`, `db.py`, `db_postgres.py`, `auth.py`, `rate_limit.py`, `sensitive_crypto.py`) into the compiled app's `clear-runtime/` directory next to `server.py`. Both the `clear build` and `clear test` commands handle this. Without this step the wiring's `from clear_runtime import db` line would fail at runtime; with it, Python apps actually USE the helpers in production. New file `runtime/__init__.py` makes the directory a proper Python package.
+
 ---
 
 ## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4

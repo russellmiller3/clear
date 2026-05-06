@@ -18,7 +18,7 @@ The Python emit branches on the source's `database is X` declaration:
 
 Branch lives at `compiler.js` ~line 15738 in `compileToPythonBackend`. Three TDD tests in `clear.test.js` lock the behavior under "Compiler - Python emit imports real db helper (parity follow-up)".
 
-**Still pending follow-up:** the CLI's runtime-copy step (`cli/clear.js`) needs to copy `runtime/db.py` and `runtime/db_postgres.py` to the compiled app's `clear-runtime/` directory next to the existing `.js` copy logic. Without this, the compiled Python app's `from clear_runtime import db` will fail at runtime. Tracked in `plans/plan-python-parity.md` as the companion CLI change.
+**CLI runtime-copy step shipped (2026-05-06 evening):** when the Python emit contains `from clear_runtime import`, `cli/clear.js` now copies `__init__.py`, `db.py`, `db_postgres.py`, `auth.py`, `rate_limit.py`, and `sensitive_crypto.py` into the compiled app's `clear-runtime/` directory. Same logic in both `clear build` and `clear test`. The new `runtime/__init__.py` makes the directory a proper Python package so the imports resolve.
 
 ---
 

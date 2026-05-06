@@ -827,6 +827,26 @@ async function buildCommand(args) {
     }
     files.push('clear-runtime/');
   }
+  // Python runtime copy (parity follow-up, 2026-05-06): when the Python
+  // emit imports clear_runtime helpers, drop the matching .py files into
+  // clear-runtime/ next to the compiled server.py. Triggered by the
+  // `database is local file` / `database is postgres` branches added in
+  // compileToPythonBackend. Default `local memory` keeps the inline stub
+  // and skips this copy.
+  if (result.python && /from\s+clear_runtime\s+import/.test(result.python)) {
+    const runtimeDir = resolve(dir, 'clear-runtime');
+    mkdirSync(runtimeDir, { recursive: true });
+    const runtimeSrc = resolve(__dirname, '..', 'runtime');
+    const pyFiles = [
+      '__init__.py', 'db.py', 'db_postgres.py', 'auth.py',
+      'rate_limit.py', 'sensitive_crypto.py'
+    ];
+    for (const f of pyFiles) {
+      const src = resolve(runtimeSrc, f);
+      if (existsSync(src)) { copyFileSync(src, resolve(runtimeDir, f)); }
+    }
+    if (!files.includes('clear-runtime/')) files.push('clear-runtime/');
+  }
 
   output({ ok: true, files, warnings: result.warnings, message: `Built ${files.length} file(s)` }, flags);
 }
@@ -856,11 +876,17 @@ async function testCommand(args) {
     const rtDir = resolve(buildDir, 'clear-runtime');
     mkdirSync(rtDir, { recursive: true });
 
-    // Copy runtime files
+    // Copy runtime files (JS + Python helpers when Python emit needs them)
     const runtimeSrc = resolve(__dirname, '..', 'runtime');
     for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
       const src = resolve(runtimeSrc, f);
       if (existsSync(src)) copyFileSync(src, resolve(rtDir, f));
+    }
+    if (result.python && /from\s+clear_runtime\s+import/.test(result.python)) {
+      for (const f of ['__init__.py', 'db.py', 'db_postgres.py', 'auth.py', 'rate_limit.py', 'sensitive_crypto.py']) {
+        const src = resolve(runtimeSrc, f);
+        if (existsSync(src)) copyFileSync(src, resolve(rtDir, f));
+      }
     }
 
     // Write server + test files
