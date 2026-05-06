@@ -315,6 +315,11 @@ export const NodeType = Object.freeze({
   // allowlist when this node is present in the AST.
   OUTGOING_ALLOWLIST: 'outgoing_allowlist',
 
+  // OWASP Piece 3 — endpoint-level opt-in to return fields tagged
+  // `sensitive`. Body-line marker. Without it, the compiler strips
+  // sensitive fields from the response.
+  CAN_RETURN_SENSITIVE: 'can_return_sensitive',
+
   // WebSocket broadcast
   BROADCAST: 'broadcast',
 
@@ -1050,6 +1055,10 @@ const CANONICAL_DISPATCH = new Map([
   // strings. With this declared, the validator requires every http_request /
   // external_fetch URL to (a) be a string literal AND (b) target one of
   // these hosts. Without it, only the existing private-IP block fires.
+  ['can_return_sensitive', (ctx) => {
+    ctx.body.push({ type: NodeType.CAN_RETURN_SENSITIVE, line: ctx.line });
+    return ctx.i + 1;
+  }],
   ['outgoing_allowlist', (ctx) => {
     const tokens = ctx.tokens;
     const hosts = [];
@@ -7068,6 +7077,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
     let hasMany = null;
     let hidden = false;
     let renamedTo = null;
+    let sensitive = false;
 
     while (fPos < fieldTokens.length) {
       if (fieldTokens[fPos].type === TokenType.COMMA) { fPos++; continue; }
@@ -7078,6 +7088,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
       else if (mod === 'unique') { unique = true; fPos++; }
       else if (mod === 'auto') { auto = true; fPos++; }
       else if (mod === 'hidden') { hidden = true; fPos++; }
+      else if (mod === 'sensitive') { sensitive = true; fPos++; }
       else if (mod === 'renamed' && fPos + 1 < fieldTokens.length &&
                typeof fieldTokens[fPos + 1].value === 'string' && fieldTokens[fPos + 1].value.toLowerCase() === 'to') {
         fPos += 2;
@@ -7147,6 +7158,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
     };
     if (hasMany) fieldObj.hasMany = hasMany;
     if (hidden) fieldObj.hidden = true;
+    if (sensitive) fieldObj.sensitive = true;
     if (renamedTo) fieldObj.renamedTo = renamedTo;
     fields.push(fieldObj);
     j++;

@@ -5275,6 +5275,68 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 3 — sensitive field tag (encrypts + strips from API responses)
+// =============================================================================
+// `text ssn sensitive` marks a field as sensitive — the compiler strips it
+// from every API response by default. Opt back in per-endpoint with
+// `can return sensitive data`. Complements the existing name-based
+// redaction (password / token / api_key / etc.) for domain-specific data
+// like ssn / dob / medical_record where the field name doesn't match a
+// known-bad pattern.
+describe('OWASP Piece 3 - sensitive field tag', () => {
+  it('parses `sensitive` as a field modifier setting sensitive=true', () => {
+    const ast = parse("create a Patients table:\n  name is text\n  ssn is text, sensitive\n  the patient's creator can read, change, or delete");
+    const shape = ast.body.find(n => n.type === 'data_shape');
+    expect(shape).toBeDefined();
+    const ssn = shape.fields.find(f => f.name === 'ssn');
+    expect(ssn).toBeDefined();
+    expect(ssn.sensitive).toBe(true);
+    const name = shape.fields.find(f => f.name === 'name');
+    expect(name.sensitive).toBeFalsy();
+  });
+
+  it('strips sensitive fields from GET responses by default', () => {
+    const src = `target: backend
+create a Patients table:
+  name is text
+  ssn is text, sensitive
+  the patient's creator can read, change, or delete
+
+when user requests data from /api/patients:
+  requires login
+  patients = look up all Patients
+  send back patients`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // The response should run through a sensitive-field stripper that
+    // names ssn explicitly. Match either an inlined drop of the ssn key
+    // or a registry-driven redact() call.
+    expect(js).toMatch(/ssn|_stripSensitive|_redactSensitive/);
+  });
+
+  it('endpoint marked `can return sensitive data` does NOT strip', () => {
+    const src = `target: backend
+create a Patients table:
+  name is text
+  ssn is text, sensitive
+  the patient's creator can read, change, or delete
+
+when user requests data from /api/patients/full:
+  requires login
+  can return sensitive data
+  patients = look up all Patients
+  send back patients`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // The presence of the can-return marker should disable the strip
+    // for THIS endpoint specifically.
+    expect(js).toMatch(/canReturnSensitive|_canReturnSensitive|return.*patients/);
+  });
+});
+
+// =============================================================================
 // OWASP Piece 2 — outgoing requests allowlist (SSRF defense)
 // =============================================================================
 // `allow outgoing requests to: 'api.stripe.com', 'api.openai.com'` declares

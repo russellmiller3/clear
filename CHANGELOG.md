@@ -6,6 +6,43 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — OWASP Piece 3 (sensitive field tag — AST surface)
+
+Parser surface for the per-field `sensitive` tag and the per-endpoint
+`can return sensitive data` opt-in marker:
+
+```
+create a Patients table:
+  name is text
+  ssn is text, sensitive
+  the patient's creator can read, change, or delete
+
+when user requests data from /api/patients/full:
+  requires login
+  can return sensitive data
+  patients = look up all Patients
+  send back patients
+```
+
+What shipped:
+- `sensitive` recognised as a field modifier in the data-shape parser
+  alongside `required` / `unique` / `hidden` / `auto`. Sets `sensitive: true`
+  on the field AST.
+- New synonym `can return sensitive data` (+ 3 aliases) → canonical
+  `can_return_sensitive`. Maps to a body-line marker NodeType.
+- New `NodeType.CAN_RETURN_SENSITIVE`.
+- SYNONYM_VERSION 0.40.0 → 0.41.0.
+- 3 new tests.
+
+Compiler-emit strip (auto-drop `sensitive` fields from `res.json` unless
+the endpoint has the marker) is a follow-up cycle. The AST surface lands
+first so apps can declare intent today and the strip turns on later
+without a syntax change.
+
+Test suite: 2968 / 2968 green.
+
+---
+
 ## 2026-05-06 — OWASP Piece 2 (outgoing requests allowlist — SSRF defense)
 
 Closes the SSRF gap in the OWASP Top 10 pitch. Top-of-file declaration:

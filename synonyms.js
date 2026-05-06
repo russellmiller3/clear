@@ -308,6 +308,10 @@ const SYNONYM_TABLE = Object.freeze({
   // auth_scaffold — multi-word synonym maps to a single canonical that the
   // dispatch table picks up below.
   outgoing_allowlist: Object.freeze(['allow outgoing requests to', 'allow outbound requests to', 'allow http requests to', 'allow external requests to']),
+  // OWASP Piece 3 — endpoint-level opt-in to return fields tagged
+  // `sensitive` from a table declaration. Default is to strip; this marker
+  // disables the strip for one endpoint (e.g. an admin /export route).
+  can_return_sensitive: Object.freeze(['can return sensitive data', 'returns sensitive data', 'allow sensitive response', 'returns sensitive fields']),
 
   // Collection operations (Phase 21)
   sum_of: Object.freeze(['sum of', 'total of']),
@@ -504,6 +508,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.40.0';
+const SYNONYM_VERSION = '0.41.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
