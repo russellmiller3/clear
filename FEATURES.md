@@ -5,7 +5,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 **Headline numbers:** 169 node types. 2,817 broad compiler/helper checks after the 2026-05-02 merge consolidation. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
-**Python parity (in progress, 2026-05-06):** runtime helpers are landing one at a time as JS-to-Python ports with byte-for-byte interop on shared on-disk formats (SQLite file, encrypted-blob format, password hash format, JWT signature format, Postgres column shapes). **All 5 helpers now shipped** — encrypt-at-rest (`runtime/sensitive_crypto.py`), login + JWT (`runtime/auth.py`), persistent SQLite (`runtime/db.py`), auto login rate-limit (`runtime/rate_limit.py`), Postgres adapter (`runtime/db_postgres.py`). The remaining gap is compiler-emit wiring (`compileToPythonBackend` → use the new helpers instead of the inline `_DB` stub + emit auth scaffold + rate-limit + queue + rule code) — multi-session follow-up; the python-parity audit reports 21 HIGH-severity NodeType gaps to close. The python-first-class hook (`.claude/hooks/python-first-class.mjs`) blocks future JS-only feature shipping by surfacing the audit's HIGH-severity gap count after every relevant edit. Audit script: `node scripts/python-parity-audit.mjs`.
+**Python parity (in progress, 2026-05-06):** runtime helpers are landing one at a time as JS-to-Python ports with byte-for-byte interop on shared on-disk formats (SQLite file, encrypted-blob format, password hash format, JWT signature format, Postgres column shapes). **All 5 helpers now shipped** — encrypt-at-rest (`runtime/sensitive_crypto.py`), login + JWT (`runtime/auth.py`), persistent SQLite (`runtime/db.py`), auto login rate-limit (`runtime/rate_limit.py`), Postgres adapter (`runtime/db_postgres.py`). **Wiring started (2026-05-06 evening):** `database is local file` now emits `from clear_runtime import db` and `database is postgres` emits `from clear_runtime import db_postgres as db` instead of inlining the in-memory stub. The default `database is local memory` keeps the inline stub for back-compat (in-memory mock for local dev / tests). Remaining wiring work: auth scaffold, rate-limit, queue, business-rule, AI-agent emits — the python-parity audit reports 21 HIGH-severity NodeType gaps to close. The python-first-class hook (`.claude/hooks/python-first-class.mjs`) blocks future JS-only feature shipping by surfacing the audit's HIGH-severity gap count after every relevant edit. Audit script: `node scripts/python-parity-audit.mjs`.
 
 ---
 
@@ -275,7 +275,7 @@ section.
 
 | Feature | Syntax | Notes |
 |---------|--------|-------|
-| Database backend | `database is local memory` / `supabase` / `PostgreSQL` / `SQLite` | |
+| Database backend | `database is local memory` / `local file` / `supabase` / `postgres` / `SQLite` | Python target: `local file` imports `runtime/db.py` (persistent SQLite); `postgres` imports `runtime/db_postgres.py`; `local memory` keeps the in-memory stub for local dev |
 | Create table | `create a Users table:` + fields | Types, constraints, defaults |
 | Save (insert) | `save signup as new User` | Var name = incoming entity |
 | Look up one | `look up User where id is 5` | |

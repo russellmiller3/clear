@@ -15737,17 +15737,30 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   }
   const pyDbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
   const pyIsSupabase = pyDbBackend.includes('supabase');
-  if (pyIsSupabase) {
-    // Replace in-memory db with Supabase client
-    // Clear the db stub lines and replace with supabase init
+  // Python parity follow-up (2026-05-06): when the source declares
+  // `database is postgres` or `database is local file`, drop the inline
+  // _DB stub and import the real helper from clear_runtime/. Mirrors the
+  // supabase pattern. Default `local memory` keeps the inline stub for
+  // back-compat with existing tests + local-dev mock semantics.
+  const pyIsPostgres = !pyIsSupabase && pyDbBackend.includes('postgres');
+  const pyIsLocalFile = !pyIsSupabase && !pyIsPostgres && pyDbBackend.includes('local file');
+  const pyNeedsHelperImport = pyIsSupabase || pyIsPostgres || pyIsLocalFile;
+  if (pyNeedsHelperImport) {
+    // Replace in-memory db stub with the real helper import for this backend.
     const dbStubStart = lines.findIndex(l => l.includes('# In-memory database'));
     if (dbStubStart >= 0) {
       // Remove from '# In-memory database' through 'db = _DB()'
       const dbStubEnd = lines.findIndex((l, i) => i > dbStubStart && l.includes('db = _DB()'));
       if (dbStubEnd >= 0) lines.splice(dbStubStart, dbStubEnd - dbStubStart + 2);
     }
-    lines.push('from supabase import create_client');
-    lines.push('supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])');
+    if (pyIsSupabase) {
+      lines.push('from supabase import create_client');
+      lines.push('supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])');
+    } else if (pyIsPostgres) {
+      lines.push('from clear_runtime import db_postgres as db');
+    } else if (pyIsLocalFile) {
+      lines.push('from clear_runtime import db');
+    }
     lines.push('');
   }
 

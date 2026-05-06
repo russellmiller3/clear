@@ -5276,6 +5276,70 @@ create a Deals table:
 });
 
 // =============================================================================
+// Python compile path — import real db helper (Python parity follow-up, 2026-05-06)
+// =============================================================================
+// Today the Python emit always inlines a tiny `class _DB:` stub — meaning
+// compiled Python apps don't actually persist data across restarts even
+// though we shipped the real helpers (runtime/db.py + runtime/db_postgres.py).
+// These tests assert the wiring: when the source declares a non-default
+// backend, the Python output imports the real helper instead of inlining
+// the stub. The default `database is local memory` keeps the inline stub
+// (in-memory mock for local dev / tests).
+describe('Compiler - Python emit imports real db helper (parity follow-up)', () => {
+  it('Python emit imports db helper when database is local file', () => {
+    const src = `target: python backend
+database is local file
+create a Deals table:
+  amount, number
+  anyone can read, change, or delete
+
+when user requests data from /api/deals:
+  deals = look up all Deals
+  send back deals`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).toMatch(/from\s+clear_runtime\s+import\s+db\b/);
+    expect(py).not.toMatch(/^class\s+_DB\s*:/m);
+  });
+
+  it('Python emit imports db_postgres helper when database is postgres', () => {
+    const src = `target: python backend
+database is postgres
+create a Deals table:
+  amount, number
+  anyone can read, change, or delete
+
+when user requests data from /api/deals:
+  deals = look up all Deals
+  send back deals`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).toMatch(/from\s+clear_runtime\s+import\s+db_postgres\s+as\s+db/);
+    expect(py).not.toMatch(/^class\s+_DB\s*:/m);
+  });
+
+  it('Python emit keeps inline stub for default local memory (back-compat)', () => {
+    // Locks the existing behavior: `database is local memory` keeps the
+    // inline _DB class so existing tests don't regress.
+    const src = `build for python backend
+database is local memory
+create a Contacts table:
+  name, required
+
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).toContain('class _DB');
+    expect(py).not.toMatch(/from\s+clear_runtime\s+import\s+db/);
+  });
+});
+
+// =============================================================================
 // OWASP Piece 3 follow-up — encrypt-at-rest for sensitive fields
 // =============================================================================
 // runtime/sensitive-crypto.js gives the compiler an AES-256-GCM helper that

@@ -132,11 +132,16 @@ const pyOnly = rows.filter(r => r.python > 0 && r.js === 0);
 // ---------------------------------------------------------------------------
 const helpers = [
   { js: 'runtime/auth.js', py: 'runtime/auth.py', severity: 'HIGH', note: 'allow signup and login (bcrypt + JWT)' },
-  { js: 'runtime/rateLimit.js', py: 'runtime/rateLimit.py', severity: 'HIGH', note: 'auto login rate-limit (OWASP Piece 4)' },
-  { js: 'runtime/sensitive-crypto.js', py: 'runtime/sensitive-crypto.py', severity: 'HIGH', note: 'encrypt-at-rest for sensitive fields (OWASP Piece 3)' },
+  { js: 'runtime/rateLimit.js', py: 'runtime/rate_limit.py', severity: 'HIGH', note: 'auto login rate-limit (OWASP Piece 4)' },
+  { js: 'runtime/sensitive-crypto.js', py: 'runtime/sensitive_crypto.py', severity: 'HIGH', note: 'encrypt-at-rest for sensitive fields (OWASP Piece 3)' },
   { js: 'runtime/db.js', py: 'runtime/db.py', severity: 'HIGH', note: 'persistent DB layer (Python target uses inline _DB stub today)' },
-  { js: 'runtime/db-postgres.js', py: 'runtime/db-postgres.py', severity: 'MEDIUM', note: 'Postgres adapter parity' },
+  { js: 'runtime/db-postgres.js', py: 'runtime/db_postgres.py', severity: 'MEDIUM', note: 'Postgres adapter parity' },
 ];
+// Python peer paths use PEP 8 underscored filenames (rate_limit.py,
+// sensitive_crypto.py, db_postgres.py) even though the JS siblings use
+// hyphens or camelCase. Earlier versions of this list expected the JS
+// name verbatim with .py — that reported false gaps for files that DO
+// exist under PEP 8 names. Helpers list now uses the actual Python paths.
 const helperGaps = helpers.filter(h =>
   existsSync(join(root, h.js)) && !existsSync(join(root, h.py))
 );
