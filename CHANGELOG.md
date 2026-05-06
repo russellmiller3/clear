@@ -6,6 +6,58 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Encrypt-at-rest for sensitive fields (OWASP Piece 3 follow-up)
+
+The `sensitive` field tag now actually does something. When a Clear data
+shape declares `ssn is text, sensitive`, the compiler emits a schema
+literal carrying `sensitive: true`, and the runtime db layer encrypts
+that field with AES-256-GCM before every insert / update and decrypts
+on every read. Plaintext never reaches disk.
+
+Verified end-to-end: insert "123-45-6789" → on-disk row is
+`enc:v1:<iv>:<ct>:<tag>` (no plaintext substring) → findOne returns
+"123-45-6789" again. Round trip clean.
+
+**Key management.** The encryption key is read from `SENSITIVE_KEY`
+env var (16+ chars, recommended 32+ random) and derived through scrypt
+with a domain separator so the same string can't accidentally be
+reused as a different system's secret. If the env var is unset:
+- Insert / update on a sensitive field THROWS — fail closed, no
+  plaintext on disk.
+- Reads of an existing encrypted blob return `[encrypted — set
+  SENSITIVE_KEY]` placeholder so an operator hitting the app sees a
+  clear signal rather than a silent crash.
+
+**Format.** `enc:v1:<iv-base64>:<ciphertext-base64>:<authTag-base64>`.
+v1 = AES-256-GCM, 12-byte IV, 16-byte auth tag. The version prefix
+lets us migrate keys / algorithms in a future cycle without breaking
+existing rows.
+
+**Tamper resistance.** GCM is authenticated — if a row's ciphertext
+is altered (column-level tampering, partial corruption, wrong key),
+decrypt returns `[encrypted — wrong key or tampered]` rather than
+silent garbage or a crashing 500.
+
+What shipped:
+- New runtime helper at `runtime/sensitive-crypto.js` with
+  `_encryptValue` / `_decryptValue` / `_encryptSensitive` /
+  `_decryptSensitive`.
+- `runtime/db.js`: `coerceRecord` decrypts sensitive fields after
+  every read; `insert` / `update` / `updateWithVersion` encrypt
+  before write.
+- `compiler.js`: schema literal emits `sensitive: true` for fields
+  tagged `sensitive` — same treatment as `hidden` / `unique` / etc.
+- 4 new tests + standalone end-to-end smoke verified.
+
+Test suite: 2981 / 2981 green.
+
+Together with the AST surface that shipped earlier today, OWASP Piece
+3 is now complete: the tag both removes the field from API responses
+by default AND keeps it encrypted on disk. A stolen DB dump still
+reveals nothing without the key.
+
+---
+
 ## 2026-05-06 — Postgres user_id auto-add (parity with SQLite, OWASP follow-up)
 
 The Postgres adapter now mirrors SQLite's auto-managed columns: every

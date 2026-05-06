@@ -54,13 +54,17 @@ function toSQLiteType(config) {
   }
 }
 
-// Coerce SQLite 0/1 back to JS booleans using schema
+// Coerce SQLite 0/1 back to JS booleans using schema. Also decrypts
+// fields tagged `sensitive` in the schema (OWASP Piece 3 follow-up).
 function coerceRecord(record, schema) {
   if (!record || !schema) return record;
   const result = Object.assign({}, record);
   for (const [field, config] of Object.entries(schema)) {
     if (config.type === 'boolean' && result[field] !== undefined && result[field] !== null) {
       result[field] = result[field] === 1 || result[field] === true;
+    }
+    if (config.sensitive && typeof result[field] === 'string') {
+      result[field] = _decryptValueLazy(result[field]);
     }
   }
   return result;
@@ -70,6 +74,43 @@ function coerceRecord(record, schema) {
 function coerceForStorage(value) {
   if (typeof value === 'boolean') return value ? 1 : 0;
   return value;
+}
+
+// =============================================================================
+// SENSITIVE FIELD ENCRYPTION (OWASP Piece 3 follow-up — encrypt at rest)
+// =============================================================================
+// Schemas can mark fields as `sensitive: true`. The compiler emits this
+// flag from the `sensitive` field tag. Insert / update encrypts those
+// values via runtime/sensitive-crypto.js before they hit SQLite; reads
+// decrypt them after pulling from SQLite. The crypto helpers fail closed
+// if SENSITIVE_KEY is not set so plaintext never touches the disk.
+let _cryptoModule = null;
+function _getCrypto() {
+  if (_cryptoModule) return _cryptoModule;
+  try {
+    _cryptoModule = require('./sensitive-crypto');
+  } catch (_e) {
+    _cryptoModule = { _encryptValue: v => v, _decryptValue: v => v };
+  }
+  return _cryptoModule;
+}
+function _encryptValueLazy(v) { return _getCrypto()._encryptValue(v); }
+function _decryptValueLazy(v) { return _getCrypto()._decryptValue(v); }
+
+// Encrypt every field tagged `sensitive: true` in the schema. Returns a
+// new record (the input is left untouched). Called from insert / update
+// / updateWithVersion before writing to SQLite.
+function encryptSensitiveFields(record, schema) {
+  if (!record || !schema) return record;
+  let out = null;
+  for (const [field, config] of Object.entries(schema)) {
+    if (!config.sensitive) continue;
+    if (record[field] === undefined || record[field] === null) continue;
+    if (typeof record[field] !== 'string') continue;
+    if (!out) out = Object.assign({}, record);
+    out[field] = _encryptValueLazy(record[field]);
+  }
+  return out || record;
 }
 
 function isSafeIdentifier(name) {
@@ -373,14 +414,18 @@ function insert(table, record) {
   if (uniqErr) throw new Error(uniqErr);
 
   const withDefaults = applyDefaults(record, schema);
-  const fields = Object.keys(withDefaults).filter(function(k) { return k !== 'id'; });
+  // OWASP Piece 3 follow-up: encrypt sensitive fields before they hit
+  // SQLite. The crypto helper fails closed when SENSITIVE_KEY is unset
+  // so plaintext can never reach disk for fields tagged `sensitive`.
+  const encrypted = encryptSensitiveFields(withDefaults, schema);
+  const fields = Object.keys(encrypted).filter(function(k) { return k !== 'id'; });
 
   let result;
   if (fields.length === 0) {
     result = _db.prepare('INSERT INTO ' + tableName + ' DEFAULT VALUES').run();
   } else {
     const placeholders = fields.map(function() { return '?'; }).join(', ');
-    const values = fields.map(function(f) { return coerceForStorage(withDefaults[f]); });
+    const values = fields.map(function(f) { return coerceForStorage(encrypted[f]); });
     result = _db.prepare('INSERT INTO ' + tableName + ' (' + fields.join(', ') + ') VALUES (' + placeholders + ')').run(values);
   }
 
@@ -441,9 +486,11 @@ function update(table, filterOrRecord, data) {
     }
   }
 
-  const setCols = Object.keys(updateData).filter(function(k) { return k !== 'id'; });
+  // OWASP Piece 3 follow-up: encrypt sensitive fields on update too.
+  const encrypted = encryptSensitiveFields(updateData, schema);
+  const setCols = Object.keys(encrypted).filter(function(k) { return k !== 'id'; });
   if (setCols.length === 0) return 0;
-  const setVals = setCols.map(function(k) { return coerceForStorage(updateData[k]); });
+  const setVals = setCols.map(function(k) { return coerceForStorage(encrypted[k]); });
 
   const sql = 'UPDATE ' + tableName + ' SET ' + setCols.map(function(k) { return k + ' = ?'; }).join(', ') + ' ' + w.clause;
   const result = _db.prepare(sql).run(setVals.concat(w.params));
@@ -495,11 +542,14 @@ function updateWithVersion(table, record, expectedVersion) {
     throw err;
   }
 
+  // OWASP Piece 3 follow-up: encrypt sensitive fields on optimistic-lock
+  // updates too — same fail-closed semantics as plain update.
+  const encrypted = encryptSensitiveFields(updateData, schema);
   // Build SET clause from the record's writable columns + always bump
   // _version. Skip id and _version in the column list — the WHERE
   // clause pins id, and _version moves via SET.
-  const setCols = Object.keys(updateData).filter(function(k) { return k !== 'id' && k !== '_version'; });
-  const setVals = setCols.map(function(k) { return coerceForStorage(updateData[k]); });
+  const setCols = Object.keys(encrypted).filter(function(k) { return k !== 'id' && k !== '_version'; });
+  const setVals = setCols.map(function(k) { return coerceForStorage(encrypted[k]); });
 
   const setParts = setCols.map(function(k) { return k + ' = ?'; });
   setParts.push('_version = _version + 1');

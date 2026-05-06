@@ -5275,6 +5275,84 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 3 follow-up — encrypt-at-rest for sensitive fields
+// =============================================================================
+// runtime/sensitive-crypto.js gives the compiler an AES-256-GCM helper that
+// runtime/db.js calls before every insert / update on a field tagged
+// `sensitive` in the schema. Reads decrypt automatically inside coerceRecord.
+// SENSITIVE_KEY env var is required at write time — the helper fails closed
+// (throws) if missing so plaintext can never reach disk for tagged fields.
+describe('OWASP Piece 3 follow-up - encrypt-at-rest for sensitive fields', () => {
+  it('compiler emits sensitive: true in the schema config for tagged fields', () => {
+    const src = `target: backend
+create a Patients table:
+  name is text
+  ssn is text, sensitive
+  the patient's creator can read, change, or delete
+
+when user requests data from /api/patients:
+  requires login
+  patients = look up all Patients
+  send back patients`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // Schema literal should carry sensitive:true on the ssn field.
+    expect(js).toMatch(/ssn:\s*\{[^}]*sensitive:\s*true/);
+    // And NOT on the name field.
+    expect(js).not.toMatch(/name:\s*\{[^}]*sensitive:\s*true/);
+  });
+
+  it('round-trips a value: encrypt produces ciphertext, decrypt restores plaintext', async () => {
+    process.env.SENSITIVE_KEY = 'test-key-please-rotate-in-prod-12345678';
+    // Force a fresh require so the cached key (if any) gets re-derived
+    // against the env var we just set.
+    const mod = await import('./runtime/sensitive-crypto.js?t=' + Date.now()).catch(() => null);
+    // ESM dynamic import of a CJS file inside the CJS-scoped runtime/
+    // dir is fragile — fall back to require via a CJS bridge.
+    const { createRequire } = await import('module');
+    const require_ = createRequire(import.meta.url);
+    delete require_.cache[require_.resolve('./runtime/sensitive-crypto.js')];
+    const crypto = require_('./runtime/sensitive-crypto.js');
+
+    const plaintext = 'social-security-123-45-6789';
+    const ciphertext = crypto._encryptValue(plaintext);
+    expect(ciphertext.startsWith('enc:v1:')).toBe(true);
+    expect(ciphertext).not.toContain(plaintext);
+    const decrypted = crypto._decryptValue(ciphertext);
+    expect(decrypted).toBe(plaintext);
+  });
+
+  it('decrypt is idempotent on plaintext (does not double-decrypt)', async () => {
+    process.env.SENSITIVE_KEY = 'test-key-please-rotate-in-prod-12345678';
+    const { createRequire } = await import('module');
+    const require_ = createRequire(import.meta.url);
+    delete require_.cache[require_.resolve('./runtime/sensitive-crypto.js')];
+    const crypto = require_('./runtime/sensitive-crypto.js');
+
+    // A non-encrypted string should pass through untouched.
+    expect(crypto._decryptValue('plain old text')).toBe('plain old text');
+    // null and undefined pass through as-is.
+    expect(crypto._encryptValue(null)).toBe(null);
+    expect(crypto._encryptValue(undefined)).toBe(undefined);
+  });
+
+  it('throws on encrypt when SENSITIVE_KEY is unset (fail closed, no plaintext on disk)', async () => {
+    delete process.env.SENSITIVE_KEY;
+    const { createRequire } = await import('module');
+    const require_ = createRequire(import.meta.url);
+    delete require_.cache[require_.resolve('./runtime/sensitive-crypto.js')];
+    const crypto = require_('./runtime/sensitive-crypto.js');
+
+    let threw = false;
+    try { crypto._encryptValue('secret'); } catch (_e) { threw = true; }
+    expect(threw).toBe(true);
+    // Restore for any later tests in the file.
+    process.env.SENSITIVE_KEY = 'test-key-please-rotate-in-prod-12345678';
+  });
+});
+
+// =============================================================================
 // OWASP Piece 1 follow-up — Postgres user_id auto-add (parity with SQLite)
 // =============================================================================
 // runtime/db-postgres.js's ensureTable now mirrors runtime/db.js: every
