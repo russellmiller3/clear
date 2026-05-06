@@ -6390,7 +6390,13 @@ function compileAuthScaffoldPython(pad) {
   // _auth_users SQL table. Tracked in plans/plan-python-parity.md.
   const lines = [];
   lines.push(`${pad}from clear_runtime.auth import hash_password, check_password, create_token, verify_token`);
+  lines.push(`${pad}from clear_runtime.rate_limit import rate_limit`);
   lines.push(`${pad}_users = []`);
+  // OWASP Piece 4 parity (2026-05-06): auto-rate-limit on /auth/login.
+  // Mirrors the JS path's rateLimit({ windowMs: 60000, max: 10 }) wiring.
+  // 10 attempts per minute per IP, before the handler even runs.
+  // Brute-force throttling is structural, not opt-in.
+  lines.push(`${pad}_login_throttle = rate_limit(window_ms=60000, max=10)`);
   lines.push('');
   lines.push(`${pad}@app.post("/auth/signup")`);
   lines.push(`${pad}async def _auth_signup(request: Request):`);
@@ -6407,7 +6413,7 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": "user"})`);
   lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": "user"}}`);
   lines.push('');
-  lines.push(`${pad}@app.post("/auth/login")`);
+  lines.push(`${pad}@app.post("/auth/login", dependencies=[Depends(_login_throttle)])`);
   lines.push(`${pad}async def _auth_login(request: Request):`);
   lines.push(`${pad}    incoming = await request.json()`);
   lines.push(`${pad}    email = incoming.get("email")`);
@@ -15490,7 +15496,7 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('import asyncio');
     lines.push('from contextlib import asynccontextmanager');
   }
-  lines.push('from fastapi import FastAPI, Request, HTTPException');
+  lines.push('from fastapi import FastAPI, Request, HTTPException, Depends');
   lines.push('from fastapi.responses import JSONResponse');
   lines.push('');
   lines.push('app = FastAPI()');
