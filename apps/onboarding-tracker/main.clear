@@ -28,6 +28,8 @@ create a Customers table:
   started_at_date, auto
   account_manager
   notes
+  the customer's creator can read, change, or delete
+  any admin can read
 
 # Customer-success queue
 /*
@@ -46,6 +48,8 @@ create a OnboardingSteps table:
   completed, default false
   completed_at_date
   customer belongs to Customers
+  the step's creator can read, change, or delete
+  any admin can read
 
 # Backend
 

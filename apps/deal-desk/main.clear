@@ -37,6 +37,8 @@ create a Deals table:
   health_signal
   precedent_note
   created_at_date, auto
+  the deal's creator can read, change, or delete
+  any admin can read, change, or delete
 
 # Approval queue
 

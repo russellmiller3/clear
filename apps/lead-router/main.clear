@@ -43,6 +43,8 @@ create a Leads table:
   assigned_to
   status, default 'new'
   created_at_date, auto
+  the lead's creator can read, change, or delete
+  any admin can read, change, or delete
 
 # Backend
 

@@ -30,6 +30,8 @@ create a Requests table:
   notes
   requester
   created_at_date, auto
+  the request's creator can read, change, or delete
+  any admin can read, change, or delete
 
 # Approval queue
 /*
