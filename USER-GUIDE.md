@@ -19,8 +19,8 @@ Let's jump in.
 ## Table of Contents
 
 **Foundations — your first day with Clear**
-- [Chapter 1: Hello, World](#chapter-1-hello-world-the-easiest-chapter-youll-ever-read)
-- [Chapter 2: Making Decisions](#chapter-2-making-decisions-your-app-gets-an-opinion)
+- [Chapter 1: Your First Deal](#chapter-1-your-first-deal-reading-code-aloud)
+- [Chapter 2: Approve or Reject](#chapter-2-approve-or-reject-when-the-app-decides-for-you)
 - [Chapter 3: Lists and Loops](#chapter-3-lists-and-loops-doing-things-more-than-once)
 - [Chapter 4: Functions](#chapter-4-functions-teaching-your-program-new-tricks)
 - [Chapter 5: Your First Web App](#chapter-5-your-first-web-app-its-a-tip-calculator-obviously)
@@ -72,112 +72,256 @@ Let's jump in.
 
 ---
 
-## Chapter 1: Hello, World (The Easiest Chapter You'll Ever Read)
+## Chapter 1: Your First Deal (Reading Code Aloud)
 
-Every programming tutorial starts here. Tradition demands it:
+Welcome. Take a breath. By the end of this chapter you'll have a real program running on your computer that prints out a sales deal — not a toy, an actual deal, like the kind a salesperson at a software company sends to a customer. We'll add to this same deal across the next eleven chapters until it grows into a full app called **deal-desk** that real companies use to approve discounts.
 
-```clear
-show 'Hello, world!'
-```
+If you've never written code before, you're in the right place. Clear was designed so a curious 14-year-old can read it. We'll explain every word as it comes up.
 
-That's the whole program. One line. It shows "Hello, world!" on screen.
+### What is a program, anyway?
 
-Not very useful yet, but congratulations — you're a programmer now.
-Put it on your resume. We won't tell.
+A program is a list of instructions for the computer. You write them in a file. You tell the computer "run this file." The computer reads each line in order and does what it says.
 
-Let's make it do something real:
+That's it. There's no magic. It's a recipe for a machine.
 
-```clear
-price = 100
-tax = price * 0.08
-total = price + tax
-show total
-```
+In Clear, every instruction reads like a sentence. That's the whole point — you should be able to look at any line and know what it does without anyone explaining it.
 
-This shows 108. Four lines, four operations. Each line does exactly one thing.
-That's a rule in Clear: **one line, one job.** No sneaking three things onto
-one line like some languages we won't name. (Looking at you, JavaScript.)
-Notice how you can read each line out loud? "Price equals 100. Tax equals price
-times 0.08." That's not an accident — Clear is designed to be read aloud without
-sounding like a robot.
+### Make a file
 
-### Strings vs Numbers (The Only Slightly Tricky Part)
+Open up your text editor (any editor — Notepad works, VS Code works, Studio works) and make a new file called `deal.clear`. The `.clear` ending tells your computer "this is Clear code."
 
-There's one rule you need to remember. Just one. Ready?
-
-**Numbers use `=`. Everything else uses `is`.**
+Type this in:
 
 ```clear
-# Numbers use =
-price = 9.99
-count = 0
-
-# Strings use "is"
-name is 'Alice'
-greeting is 'Hello there'
-
-# Booleans use "is"
-active is true
+rep_name is 'Sarah'
+customer is 'Acme Corp'
+list_price = 50000
+discount_percent = 18
 ```
 
-Why? Because "price is 9.99" sounds like a comparison ("is the price 9.99?"),
-but "price = 9.99" is clearly setting a value. Clear wants to be unambiguous,
-even if it means using a symbol for one thing.
+Four lines. Each one **gives a name to a value**. We're saying:
 
-### Named Values
+- The salesperson is named Sarah.
+- The customer is Acme Corp.
+- The list price (the sticker price before any discount) is 50,000 dollars.
+- The discount Sarah is offering is 18 percent.
 
-When a value deserves a nice descriptive name (and honestly, they all do):
+Each of these four names is called a **variable**. A variable is just a label you give to a value so you can refer to it later. You'll see them all over your code. Get comfortable with the word.
+
+### Why two different ways to give a value?
+
+Look closely at the four lines. Two of them use the word `is`. Two of them use `=`.
+
+That's not a typo. It's a deliberate rule:
+
+> **Numbers use `=`. Everything else uses `is`.**
+
+Why? Because of how each line reads aloud.
+
+Read the first line out loud: "rep name is Sarah." Sounds right. "Rep name equals Sarah" sounds wrong — equals what? The name isn't a calculation, it just IS Sarah.
+
+Now read the third line: "list price equals 50,000." Sounds right too. Numbers can be calculated, compared, totaled. "Equals" tells the reader: this is the result of something, even if today it's just a fixed value.
+
+Saying "list price IS 50000" would parse as a question — *Is* the list price 50000? (Hmm, let me check.) Clear refuses to be ambiguous, so it gives strings (text) the word `is` and numbers the symbol `=`. Once you internalize this, you'll never mix them up.
+
+### Doing some math
+
+Add two more lines below your four:
 
 ```clear
-price = 100
-tax_rate = 0.08
-define full_name as: 'Alice Smith'
-define total_cost as: price + (price * tax_rate)
+discount_amount = list_price * (discount_percent / 100)
+final_price = list_price - discount_amount
 ```
 
-`define X as:` is the canonical way to create a named value.
+Two more variables. Both are numbers — look, they use `=`. Each one is the result of a calculation:
+
+- `discount_amount` is `list_price` multiplied by `discount_percent` divided by 100. The parentheses make sure the division happens first. With our numbers: 50000 × (18 / 100) = 9000.
+- `final_price` is `list_price` minus `discount_amount`. So 50000 − 9000 = 41000.
+
+Notice we're using `discount_amount` on the SECOND new line, even though we just defined it on the FIRST new line. Order matters. Clear runs lines top to bottom. By the time the program reaches `final_price`, `discount_amount` is already known.
+
+This is the **one operation per line** rule. Other languages would let you cram both calculations into one line. Clear says no — each line gets one job, so you can read it without unpacking.
+
+### Show it on screen
+
+So far we've calculated everything but haven't seen anything. The program is silent.
+
+Add this to the bottom:
+
+```clear
+show 'Deal: {customer} ({rep_name})'
+show 'List price: ${list_price}'
+show 'Discount: {discount_percent}% off'
+show 'Final: ${final_price}'
+```
+
+`show` is the word that puts something on screen. Other languages call it "print" or "log" — Clear calls it `show` because that's what it does for the human watching.
+
+The curly braces `{}` mean: **drop the value of this variable into the sentence here**. So `'Deal: {customer} ({rep_name})'` reads as one finished sentence with the customer's name and the rep's name plugged in. This trick is called **string interpolation**, and it's the cleanest way to mix words and values in Clear.
+
+The `$` in front is just a literal dollar sign — Clear leaves regular characters alone and only swaps in values where it sees the `{}` braces.
+
+### Run it
+
+Open a terminal in the same folder as your `deal.clear` file. Type:
+
+```bash
+clear run deal.clear
+```
+
+You should see:
+
+```
+Deal: Acme Corp (Sarah)
+List price: $50000
+Discount: 18% off
+Final: $41000
+```
+
+That's your first program. Six variables, two calculations, four lines of output. You can read every line of the source and understand what it does without anyone translating.
+
+### Why this matters
+
+What you just wrote is the heart of every deal in **deal-desk** — the app you'll build over the next eleven chapters. Every deal in the system has a rep, a customer, a list price, and a discount. By Chapter 12 there'll be hundreds of deals stored in a database, a CRO approving them on a live web page, an AI drafting summaries, and an audit trail proving no rule was bent. But it all starts with the same four pieces of information you just wrote down.
+
+### Try it yourself
+
+1. Change `rep_name` to your own name and `customer` to a company you know. Re-run. Your name should appear in the output.
+2. Change `list_price` to 100000 and `discount_percent` to 25. What's the final price? Run it and check by hand.
+3. Add a fifth `show` line at the bottom: `show 'Discount amount: ${discount_amount}'`. Run it. Confirm the number matches what you'd compute on a calculator.
+
+### What's next
+
+In Chapter 2 we'll teach the program to **decide** something. Right now it just calculates and prints. Real apps care about whether a discount is too big — and that's where `if` comes in.
 
 ---
 
-## Chapter 2: Making Decisions (Your App Gets an Opinion)
+## Chapter 2: Approve or Reject (When the App Decides for You)
 
-Programs that can't make decisions are just fancy calculators. Let's fix that.
+In Chapter 1, the program just printed numbers. Whether the discount was 5% or 50%, the program ran the same way and showed the same shape of output. That's fine for a calculator. It's not fine for a real business app.
 
-### If/Then (one line)
+Real apps care about *the kind of value*. A 5% discount is routine. A 50% discount is suspicious — somebody up the chain probably needs to sign off. Your app should be able to tell the difference and act differently.
+
+That's what this chapter teaches: how to make Clear **make decisions**.
+
+### What's a decision in code?
+
+A decision is a moment in your program where the next step depends on what some value IS.
+
+In English: "If it's raining, take an umbrella."
+
+In Clear: `if it_is_raining then take_an_umbrella`.
+
+Same shape. The keyword `if` introduces the question. The keyword `then` introduces the action. The action only happens if the answer is yes.
+
+### Add a decision to the deal
+
+Open `deal.clear` from Chapter 1 and add this line below the four `show` lines:
 
 ```clear
-if total is greater than 100 then show 'Big order!'
+if discount_percent is greater than 30 then show 'NEEDS VP APPROVAL'
 ```
 
-### If/Otherwise (block)
+Save the file and run it again:
+
+```bash
+clear run deal.clear
+```
+
+Your `discount_percent` is 18, which is NOT greater than 30. So the `if` doesn't fire. The output is exactly what you saw in Chapter 1 — no new line.
+
+Now change `discount_percent` to 35 (a much bigger discount) and run again. You'll see one extra line at the bottom:
+
+```
+NEEDS VP APPROVAL
+```
+
+That's a decision. The program looked at a value, asked a question, and acted based on the answer.
+
+### Comparisons in Clear — words, not symbols
+
+Most languages use cryptic symbols like `>=` and `!=`. Clear uses words because that's how a human talks:
 
 ```clear
-age = 20
-if age is at least 18:
-  show 'Welcome'
-  discount = 0
+if discount_percent is greater than 30 then show 'too big'
+if discount_percent is less than 5 then show 'too small'
+if discount_percent is at least 20 then show 'large discount'
+if discount_percent is at most 10 then show 'small discount'
+if rep_name is 'Sarah' then show 'hi Sarah'
+if rep_name is not 'Sarah' then show 'who is this?'
+```
+
+Read each one out loud. Each one sounds like English. That's not a coincidence — it's the entire design.
+
+The six most useful comparisons:
+
+| What you say | What it means |
+|---|---|
+| `is greater than` | strictly more |
+| `is less than` | strictly less |
+| `is at least` | more or equal — useful when the boundary counts |
+| `is at most` | less or equal — useful when the boundary counts |
+| `is` | exactly equal (for strings, numbers, true/false) |
+| `is not` | not equal |
+
+You'll use these constantly. They cover almost every business question your code will ever ask.
+
+### When the answer might be either yes or no — the `otherwise` block
+
+Sometimes you want the program to do one thing if the answer is yes AND something different if it's no. That's where you spread the `if` across multiple lines and add `otherwise`.
+
+Replace your one-liner with this:
+
+```clear
+if discount_percent is greater than 30:
+  show 'NEEDS VP APPROVAL'
+  show 'Reason: discount over 30%'
 otherwise:
-  show 'Sorry, adults only'
+  show 'AUTO-APPROVED'
+  show 'Reason: discount under 30%'
 ```
 
-### Comparisons (No Cryptic Symbols)
+Notice the colons (`:`) at the end of `if` and `otherwise`. The colon means "what follows, indented underneath, is the body of this block." Clear uses indentation to show what belongs to what — same idea as outlining a paper. The two indented lines under `if` only run if the answer is yes; the two under `otherwise` only run if it's no.
 
-Other languages use `>=` and `!=`. Clear uses words a human would say:
+Run the program with `discount_percent = 18`:
 
-```clear
-price = 75
-count = 3
-name is 'Alice'
-status is 'active'
-age = 25
-score = 88
-if price is greater than 50 then show 'expensive'
-if count is less than 10 then show 'low stock'
-if name is 'Alice' then show 'hi Alice'
-if status is not 'active' then show 'inactive'
-if age is at least 21 then show 'can drink'
-if score is at most 100 then show 'valid'
 ```
+Deal: Acme Corp (Sarah)
+List price: $50000
+Discount: 18% off
+Final: $41000
+AUTO-APPROVED
+Reason: discount under 30%
+```
+
+Now change to `discount_percent = 35` and run again:
+
+```
+Deal: Acme Corp (Sarah)
+List price: $50000
+Discount: 35% off
+Final: $32500
+NEEDS VP APPROVAL
+Reason: discount over 30%
+```
+
+Same program, different value, different output. The decision is real.
+
+### Why this matters
+
+What you just built — "discounts over 30% need VP approval" — is the **seed of a real business rule**. By Chapter 12 we'll teach Clear to *prove* that this rule can never be bypassed by any user, on any deal, at any time. That's the kind of guarantee a CRO will pay for. But the foundation is what you wrote today: a program that looks at a value, asks a question, and acts on the answer.
+
+Almost every line of business code in the world is some version of this. "If the order is over $10,000, ask for a manager's approval." "If the customer's plan is enterprise, charge a different rate." "If the deal closed this quarter, count it toward the team's quota." Same shape, different specifics. Once you can write `if`, you can write the heart of any policy.
+
+### Try it yourself
+
+1. Change the threshold from 30 to 25. Re-run with `discount_percent = 28`. What does it say now?
+2. What if you want a third tier — a "warning" branch for discounts between 20 and 30? Hint: nest a second `if` inside the `otherwise` block.
+3. Add a comparison on `final_price` instead of `discount_percent`. Show 'BIG DEAL' if the final price is at least $40,000.
+
+### What's next
+
+In Chapter 3 you'll learn about **lists** — when the app needs to track many deals at once, not just one. That's the step that turns a calculator into the start of a real database app.
 
 ---
 
