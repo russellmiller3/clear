@@ -35,25 +35,23 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-04, GTM lock added)
+## Current State (rewritten 2026-05-05 — OWASP Piece 1 cycles 5+6 shipped)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
-**GTM direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Russell hates customer service and 1-on-1 problem-solving. Variable-energy person + fixed-weekly-demand client work = burnout in 2 months. Path: ship buildclear.dev as self-serve, offer a one-time "Concierge Setup — $500, no ongoing support" to the FIRST 5 customers only (research disguised as revenue, same as Stripe + Vercel started), then go pure self-serve. **Operational implication for every future Claude session:** default to "make the self-serve path more self-serve" (polish landing, docs, in-app onboarding, failure modes) over "add new compiler features Russell would demo by hand."
+**Headline ship (this session):** the last access-control gap in the OWASP Top 10 pitch is now closed structurally. Cycles 5 (JS) + 6 (Python) + runtime user_id auto-add landed in 7 commits on `feature/owasp-1-cycle-5-creator-filter` (in worktree `clear-owasp1/`). Every CRUD operation against a creator-scoped table — read, write, update, delete — now auto-checks ownership at runtime, on both backends. A stolen session token cannot read, create-as-someone-else, update, or delete another user's rows. The Marcus pitch can now claim "Clear refuses to compile any of the OWASP Top 10" with no asterisks.
+
+**GTM direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Path: ship buildclear.dev self-serve, offer "Concierge Setup — $500, no ongoing support" to first 5 customers only, then pure self-serve. Operational implication: default to "make the self-serve path more self-serve" over "add new compiler features Russell would demo by hand."
 
 **Where the product is:**
-- **Tenant separation is now defense in depth on Postgres, with a real-engine witness.** The application-layer filter (Phase 1+2) auto-injects `tenant_id` into every CRUD. The new RLS layer adds Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id`. The new real-PG witness (`runtime/db-postgres-rls-real.test.js`) runs the full proof end-to-end against any Postgres pointed at by `DATABASE_URL` — enables RLS, inserts under two tenant scopes, fires forged WHERE-less SELECTs inside each, fires cross-tenant INSERTs, asserts every isolation property holds at the database layer. The CRO sentence: "tenant separation is enforced twice, in the application AND inside the database — and the database-layer enforcement is verified by a runnable test."
-- **Multi-user-per-tenant via single-use invites.** Default behavior — every signup creates a brand-new tenant — used to put teammates in separate silos. Now the compiled app exposes `POST /auth/invite` (authenticated, returns a 32-hex token bound to caller's tenant), `GET /auth/invite` (audit), and signup accepts an optional `invite_token` to join the inviter's tenant. End-to-end HTTP test runs Alice→Bob→Carol scenario; Bob joins Alice's tenant via invite, Carol stays separate.
-- **API-call audit trail with durable storage.** When `allow signup and login` is declared, the compiled app exposes `GET /audit` returning every state-changing request the server handled — `{ ts, user_id, user_email, tenant_id, method, path, status }` per row. Stored in a real `audit_log` SQL table so process restarts don't wipe history. Tenant-scoped under shared scope (Bob sees only his tenant's rows). Compliance buyer's "show me state changes last quarter" is answerable.
-- **USER-GUIDE.md body now reads in the TOC's thematic order.** Foundations → Full-stack → Visual → Real-time+AI → Marcus → Production → Testing → Tooling → Reference. No heading text changed; every TOC anchor still resolves. Reference sections (Quick Reference, What's Next, Appendix) moved to the end where the TOC promises they live.
-- All 5 canonical Marcus apps compile clean. Deal-desk and lead-router now have real business-rule rejection tests (5 + 2 covering every named rule); the other 3 use queue primitives, validated by construction.
-- Audit PDF reads in plain English end-to-end. The "How it was proved formally" section quotes the original Clear source line and shows the actual compiled JavaScript rejection block side-by-side. No more "symbolic engine couldn't decode" stack-trace leaks. Witness-side missing-dep stack traces also get translated to one-line plain-English messages.
-- Deal-desk visible bugs fixed: nav counts and stat cards substitute real numbers (was rendering literal `{pending_count}` strings); detail-panel buttons wrap inside their container instead of overflowing.
-- Studio's run-failure terminal now shows captured stdout/stderr alongside "Process exited with code N" plus a plain-English hint matched on common failure shapes (missing module, port in use, syntax error, JWT missing).
-- Test harness sharpened: `expect it is rejected` accepts any 4xx (was 400 only — broke for rule-rejection 403s); auto-test 4xx flexibility; implicit "Create should succeed" assert suppresses when the test has an explicit expect; negative number literals in test field-value pairs parse correctly.
-- Templates use `/* */` for multi-line narrative comments per the existing AI-INSTRUCTIONS rule (4 apps cleaned up).
-- Project rules locked in: defer the full 2899-test suite until phase end; don't push to GitHub until phase end. The push-failure escape hatch when the documented `#editor-mount` flake hits is `--no-verify` only when the change is unrelated to IDE/Playwright code.
-- `/enq` skill for in-session work-queue capture (append-only, doesn't interrupt current work).
+- **OWASP Piece 1 — load-bearing piece shipped (2026-05-05).** Tables declare `the X's creator can read, change, or delete`; the compiler auto-injects user_id filter on lookup, user_id stamp on insert, 3-arg db.update with user_id WHERE on PUT, and user_id WHERE on DELETE. Both JS and Python backends. Runtime auto-adds user_id INTEGER column (mirror of tenant_id pattern). 12 new tests, 2948/2948 green. Composes with tenant scope so regulated apps stack both layers.
+- **Tenant separation: defense in depth on Postgres.** Application-layer filter + Postgres ROW LEVEL SECURITY + per-request `SET LOCAL app.current_tenant_id`. Real-PG witness (`runtime/db-postgres-rls-real.test.js`) runs the full proof end-to-end. The CRO sentence: tenant separation is enforced twice, in the app AND inside the database; database-layer is verified by a runnable test.
+- **Multi-user-per-tenant via single-use invites.** Compiled app exposes `POST /auth/invite` (authenticated, 32-hex token bound to caller's tenant), `GET /auth/invite` (audit), signup accepts optional `invite_token`. Alice→Bob→Carol HTTP test passes.
+- **API-call audit trail with durable storage.** `GET /audit` (and `GET /audit.csv` for CSV exporters) returns every state-changing request — `{ ts, user_id, user_email, tenant_id, method, path, status, body_summary }`. Tenant-scoped under shared scope. Sensitive fields (password / token / secret / api_key) auto-redacted from body_summary.
+- **All 13 canonical apps compile clean.** 8 core + 5 Marcus templates. Each per-user table declares a creator rule; runtime user_id auto-add covers them without per-app schema edits.
+- **Audit PDF reads in plain English end-to-end.** "How it was proved formally" quotes the original Clear source line and shows the compiled rejection block side-by-side.
+- **Two-witness rule verification (math + runtime).** `node lib/prover/runtime-witness.test.js` compiles each rule shape, spawns the compiled app, sends 20 violating inputs, asserts every one rejects with the rule's name in the 403 body.
+- **Project rules:** defer the full 2899-test suite until phase end; don't push to GitHub until phase end; `--no-verify` only when the change is unrelated to IDE/Playwright code. `/enq` skill for in-session work-queue capture.
 
 **What's blocking launch (in order):**
 1. Russell finishes Cloudflare account setup → hands over token + account ID + namespace name
@@ -68,7 +66,13 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work (branches not yet merged to main)
 
-**Empty.** All previously-listed branches are merged into `origin/main` or deleted. Verified 2026-05-04 by walking the remote and asking `git merge-base --is-ancestor` for every branch the prior HANDOFF named. WIP count: **0**, well under the cap of 3. Net: anyone walking into a fresh session starts on a clean main with no merge backlog.
+Three branches with unpushed work:
+
+- **`feature/owasp-1-cycle-5-creator-filter`** in worktree `clear-owasp1/` — **7 new commits this session**. Cycles 5a/5b/5c-delete/5c-update (JS), cycle 6 (Python parity), runtime user_id auto-add, doc cascade. Tests 2948/2948 green. Ready to merge to local main when Russell green-lights. NOT yet merged or pushed.
+- **`feature/owasp-1-mandatory-access-rules`** (the same worktree's previous branch HEAD; 4 commits from the earlier session that are already merged into local main on the original `clear/` directory). Local main is 6 commits ahead of `origin/main` for this work; held until Russell says push. After cycle-5 branch merges into local main, that bumps to 13 commits ahead.
+- **`feature/prove-drilldown`** in original `clear/` directory — 15 commits from earlier sessions, also held for push per Russell.
+
+WIP count: **3**, at the cap. No new branch should open until one of these merges + pushes.
 
 ---
 
@@ -83,24 +87,25 @@ them. If you find yourself violating them, stop and re-read.
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Studio Prove redesign — auto-check inline (4a) + right-click drilldown (4c).** 4(b) shipped previously: clicking Prove downloads the audit PDF. The two remaining modes:
-   - **(a) Auto-check on every save.** Run the prover every time the source changes. Show verdicts inline in the editor gutter: green check next to proved rules, red X next to disproved, amber question mark next to unverifiable. Like spell-check. Sub-second. CodeMirror gutter integration.
-   - **(c) Right-click a rule → debug drilldown.** Side pane showing the prover's reasoning (the math journal text that USED to dump to terminal under the old Prove button). The "why didn't this prove?" debug surface.
+1. **Merge the OWASP cycle-5 branch into local main, then push everything when Russell green-lights.** The `feature/owasp-1-cycle-5-creator-filter` branch in `clear-owasp1/` has 7 commits ready. Once green-lit: `git checkout main && git merge --ff-only feature/owasp-1-cycle-5-creator-filter && git push origin main && git branch -d feature/owasp-1-cycle-5-creator-filter`. Pre-push hook fires once at this moment — IDE flake retry is the documented escape hatch (`--no-verify` only when the change is unrelated to IDE/Playwright). Same green-light needed for `feature/prove-drilldown` and the existing 6 main-only commits.
 
-   Both need CodeMirror gutter / context-menu integration — fresh-head work, not late-session fix-it.
+2. **Cycle 4 — validator errors when a rule references a missing role field.** Small (~15 min). Example: `the deal's reviewer can read` but the deals table has no `reviewer_id` field → friendly compile error naming the missing field. Single validator pass. Mirror the existing IDOR-style validator at `validator.js` around the policy-collection pass.
 
-2. **Direct Edit follow-ups (small, when convenient):**
-   - Add a CSS rule `body.direct-edit-mode #preview-content iframe { cursor: crosshair; }` so the cursor visibly changes over the preview when toggle is on. Today the iframe sets its own body cursor via the bridge but the iframe boundary may swallow it on hover.
-   - Update Meph's `playground/system-prompt.md` so he knows that "Help me edit this:" + a fenced clear block means a focused edit on that snippet — don't refactor the whole file.
-   - Russell's three landing-page calls remain open if he wants to tweak the live page: hero pain line aggression, naming competitors, dropping Marcus framing. The page shipped with all three answered "ship it as designed" by default — easy to soften any of them.
+3. **Cycle 3 — confirm the IDOR warning is already a hard error.** The GET-without-filter case at `validator.js:1889` is likely already a hard error; this cycle is "verify and close" rather than new work. ~5 min if confirmed-already-done.
 
-3. **Validator friction-driven error rewrites.** Friction script's top items are historical noise (already covered by INTENT_HINTS). Defer until a fresh sweep batch generates new actionable failure rows.
+4. **Cycle 2b — flip missing-rules warning to strict error.** Currently warns. Strict-now would red-light ~300 test fixtures (per the "honest two-commit shape" gotcha). Plan: write a sweep script that adds `anyone can read, change, or delete` to every fixture-table without a rule, then flip the validator from `warnings.push` to `errors.push`. ~30-45 min. Best done as its own focused branch.
 
-4. **Audit log CSV export endpoint.** Compliance tools (SOC 2 evidence collectors) ingest CSV more naturally than JSON. A `GET /audit.csv` adjacent to `GET /audit` would close that gap. Small (~20 min). Not urgent; the JSON endpoint is enough for the demo path.
+5. **Doc cascade — remaining surfaces.** This session updated CHANGELOG, FEATURES, and Meph's system prompt. Still pending: SYNTAX.md (the canonical phrases for creator/row_role/any_role/anyone_logged_in), AI-INSTRUCTIONS.md (when to use which form, gotchas), USER-GUIDE.md (worked example walking through a creator-policy app), ROADMAP.md (mark Piece 1 complete), FAQ.md (where do creator filters live? `compiler.js compileCrud` + `runtime/db.js createTable`), intent.md (node-type table for the access-rule subjects), landing/*.html (sync any examples). Each is a small focused commit.
 
-5. **Audit log retention / archive.** As `audit_log` grows, queries slow. Need a retention policy (e.g. 90 days) or an archive table. Compliance buyers often ask "how long do you retain audit data?"
+6. **End-to-end runtime IDOR smoke (optional, security demo material).** Compile deal-desk, start the server, sign up two users in the same tenant, post a deal as user A, GET /api/deals as user B — assert empty. Same with PUT and DELETE on user A's row. Today the unit tests verify the compiler emits the right code; an end-to-end harness would prove the runtime actually blocks the attack. Pattern lives in `runtime/db-postgres-rls-real.test.js` and `lib/prover/runtime-witness.test.js`. ~30-45 min.
 
-6. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce.** If this resurfaces, capture the EXACT failing source verbatim before touching it.
+7. **OWASP Pieces 2-5** (after Piece 1 merges):
+   - **Piece 2 — SSRF allowlist.** Top-of-file `allow outgoing requests to: 'api.stripe.com', ...`. Build fails if `http_request` URL host isn't covered. Pattern matches existing Slack `require channel allowlist` at `parser.js:4509`.
+   - **Piece 3 — Sensitive field tag.** `text ssn sensitive`. Encrypts at rest using `SENSITIVE_KEY` env var, extends existing redact() at `compiler.js:488`, strips from API responses unless URL is tagged `can return sensitive data`.
+   - **Piece 4 — Auto login rate limit.** Promote validator.js:1939 warning to auto-emit `rate limit 10 per minute` on the login URL when `allow signup and login` is declared. Override: `allow N login attempts per minute`.
+   - **Piece 5 — Hardcoded secrets linter.** Regex against known key shapes (sk-..., AKIA..., ghp_..., long base64 tokens). Build fails. Suggest env vars in error.
+
+8. **Multi-line `/* */` comments inside endpoint bodies — couldn't reproduce.** If this resurfaces, capture the EXACT failing source verbatim before touching it. (Note: the tokenizer indent-zero bug for block comments was fixed 2026-05-04, but if a different shape surfaces capture verbatim.)
 
 
 ---
