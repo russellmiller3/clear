@@ -6,6 +6,63 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-05 — OWASP Piece 1 (mandatory per-line access rules) — partial ship
+
+Closes the last access-control gap in the OWASP Top 10 pitch. After this branch
+fully lands, the Marcus pitch can claim "Clear refuses to compile any of the
+OWASP Top 10" with no asterisks. This session shipped 5 commits of Piece 1; the
+load-bearing compiler auto-injection (cycle 5/6) is the remaining piece.
+
+**What shipped (5 commits):**
+- **CLAUDE.md locks 13 canonical apps as the only Studio dropdown contents.**
+  8 core templates (todo-fullstack, crm-pro, blog-fullstack, live-chat,
+  helpdesk-agent, booking, expense-tracker, ecom-agent) + 5 Marcus apps
+  (deal-desk, approval-queue, internal-request-queue, onboarding-tracker,
+  lead-router). Random apps live outside the dropdown.
+- **Parser accepts new English phrases for access rules (cycle 1).**
+  parseRLSPolicy now handles `the deal's creator can read, change, or delete`,
+  `the deal's reviewer can read or change` (role-from-field-on-row),
+  `any admin can read` (role-from-users-table), and `anyone logged in can read`.
+  Plus `change` is now a synonym for `update` in the action list. All legacy
+  forms (`anyone can`, `owner can`, `role 'X' can`, `same org can`) keep
+  working unchanged. 8 new tests, all green.
+- **Validator warns when a table has no access rules (cycle 2a).**
+  Friendly message names the table and shows three canonical examples
+  (creator-only, public read, admin override). Singularizes the table name
+  for the example phrasing. Per the "honest two-commit shape" gotcha, this
+  ships as a WARNING, not error — flipping to strict (cycle 2b) needs a
+  sweep of ~300 test fixtures first. 7 new tests, all green.
+- **All 13 canonical apps declare access rules.** 8 core templates + 5 Marcus
+  apps each have at least one rule line per table, matching the app's real
+  intent (creator-scoped for per-user, anyone-can-read for catalogs, admin-
+  override where appropriate). 0 errors, 0 missing-rule warnings across all
+  13. Cross-target smoke green: 32/32 emissions parse clean across Node JS,
+  Cloudflare Workers, Browser, Python.
+
+**Remaining cycles (next session — see priority queue for pickup plan):**
+- Cycle 5/6 — JS + Python compiler auto-injects the per-row filter on every
+  read/update/delete touching a table with a creator rule. THIS is what turns
+  rules from documentation into enforcement. Mirror the existing tenant-filter
+  pattern at compiler.js around line 4805. Estimated 45-60 min.
+- Cycle 4 — validator errors when a rule references a missing role field
+  (e.g. `the deal's reviewer` but no reviewer_id field on the deals table).
+- Cycle 3 — promote the IDOR warning to hard error (note: looking at the
+  code, the GET-without-filter case is ALREADY a hard error today; cycle 3
+  may already be done or refer to a different shape — confirm before flipping).
+- Cycle 2b — flip the missing-rules warning to strict error after the test
+  fixture sweep.
+- After cycle 5 ships: add user_id back to all 13 canonical apps so creator
+  rules have real teeth at runtime.
+- 11-doc cascade for Piece 1: intent.md, SYNTAX.md, AI-INSTRUCTIONS.md,
+  USER-GUIDE.md, ROADMAP.md, FAQ.md, RESEARCH.md, FEATURES.md (started in
+  this commit), studio/system-prompt.md, landing/*.html.
+
+Test suite: 2930/2930 green at every commit. SYNONYM_VERSION unchanged
+(cycle 1 didn't add canonicals — `change` was added as a literal in the
+action list, not a new synonym).
+
+---
+
 ## 2026-05-04 (latest) — Studio editor highlighting: block comments + sweep follow-up
 
 After the four-bug fix earlier today, a comprehensive sweep against every tricky pattern in a Clear source surfaced one more silent bug: `/* ... */` and `### ... ###` block comments were never recognized by the syntax highlighter. Words inside them tokenized as code (slate gray, structural words even lit blue), which read as broken styling.
