@@ -707,3 +707,24 @@ rule discount-cap-thirty:
 The one exception is `examples/rule-keyword-tour.clear`, where two intentional tautologies show PROVED / DISPROVED verdicts side-by-side as a teaching device. Those are explicitly labeled and should NOT be changed. Anywhere else — `.clear` app sources, `clear.test.js` fixtures, doc snippets, `playground/system-prompt.md` examples, landing-page code samples, FAQ entries, USER-GUIDE worked examples — tautologies are forbidden.
 
 **Why:** 2026-05-04 — every regulated-tier pitch surface that ships a tautology to a reader looks broken. The audit PDF reads "PROVED for every possible deal" against `5 < 7` and the CRO immediately wonders what happened to the discount cap. Tautologies in tests are also non-evidence — they pass by construction, so they prove nothing about the rule shape. Field-referencing rules cost the same to write and actually demonstrate provability against the entity that matters.
+
+## Never Commit Rebuild Artifacts In apps/ (MANDATORY — added 2026-05-06)
+
+**Never `git add apps/` or `git add -A` after running `node scripts/run-marcus-uat.mjs` or any compile-and-run loop.** The marcus-uat rebuilds these per-app artifacts every run, and they leak into commits if you stage by directory:
+
+- `apps/<app>/server.js` — compiled JS server output
+- `apps/<app>/index.html` — compiled HTML output
+- `apps/<app>/browser-uat.mjs` — auto-generated Playwright walker
+- `apps/<app>/test.js` — auto-generated test runner
+- `apps/<app>/build/*` — full build directory
+
+These regenerate on every compile from `apps/<app>/main.clear` (the only source-of-truth file in the directory). Committing them adds noise to diffs, creates phantom merge conflicts, and drift-detects the source-vs-output gap the next time someone rebuilds.
+
+**The right pattern, every time:**
+1. Before any `git add` after running marcus-uat: `git checkout -- apps/` to discard the rebuild artifacts.
+2. Then `git add` the specific source files you actually changed (`apps/<app>/main.clear` if you edited it; never the regenerated outputs).
+3. The pre-push hook also runs marcus-uat and re-touches the artifacts — that's why my chained `commit && push` sequences silently swallowed the artifacts on the LAST push. The discard has to happen RIGHT BEFORE `git add`, not before the chain starts.
+
+**Don't `git add -A` ever in this repo.** Always specific file lists. The CLAUDE.md global rule already says this; this rule is the project-specific reinforcement: "after marcus-uat, ALWAYS discard apps/ first." Even if `git status` looked clean from the start of your work, marcus-uat runs that fire mid-chain dirty the tree.
+
+**Why this rule exists.** 2026-05-06 — I shipped the empty-table fix successfully but my chained commit-merge-push command tried to `git add -A` and got blocked by the doc cascade hook. The block was correct, but the underlying `M apps/<app>/server.js` × 20 in `git status` came from the marcus-uat run mid-chain, NOT from any source change I made. Russell's response: "add a /rule so you dont commit artifacts you stupid git." This is the rule.
