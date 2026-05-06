@@ -7,6 +7,19 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where does the per-row creator filter live? (OWASP Piece 1, 2026-05-05)
+
+When a table declares `the X's creator can read, change, or delete`, the compiler auto-injects a `user_id` filter / stamp on every CRUD operation. The wiring spans four files:
+
+- **`parser.js` — `parseRLSPolicy()` near line 6795.** Decodes the rule's English into a `policy` object: `{ subject: 'creator', entity: 'deal', actions: ['read','update','delete'] }`. Other subjects supported: `row_role` (with a `roleField` like `reviewer_id`), `any_role` (with a `role` like `'admin'`), `anyone_logged_in`, plus the legacy `anyone` / `owner` / `same_org`.
+- **`validator.js` near line 1798.** Two checks: warns if a table has zero policies (cycle 2a, will be a hard error after the fixture sweep), errors if a row-role policy references a missing field (cycle 4 — e.g. `the deal's reviewer` but no `reviewer_id`).
+- **`compiler.js` `compileCrud()` from line 4658.** A shared helper `_hasCreatorPolicy` is computed once at the top from `ctx.tablePolicies[node.target]`. Lookup wraps the filter, save stamps `user_id` on insert, save (PUT /:id) switches to the 3-arg `db.update(table, where, data)` form so the WHERE requires both id AND user_id, and remove adds `user_id` to the WHERE. Composes with the existing tenant-scope wrap. The Python branch at line 4711 has the parallel emit (Python dict syntax). The Cloudflare D1 branch has its own ctx-build site at `compileToCloudflareWorker` line 1621.
+- **`runtime/db.js` `createTable()` near line 219.** Auto-adds a `user_id INTEGER` column to every SQLite table — same precedent as `tenant_id`. The cycle-5 emit lands on a real column even though no app declares the field. Postgres apps still need explicit declaration; that's a future cycle.
+
+Test fixtures live under `Compiler - per-row creator filter` blocks in `clear.test.js` (12 tests across cycle 5a/5b/5c-delete/5c-update/cycle 6 / cycle 4 / cycle 3 lock).
+
+---
+
 ## Why is the Studio editor highlighting half the English words as keywords? (fixed 2026-05-04)
 
 It's not anymore — the highlighter was rewritten 2026-05-04.

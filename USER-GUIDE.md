@@ -2447,6 +2447,68 @@ when user calls PUT /api/settings/:id sending setting:
   send back setting with success message
 ```
 
+### Per-row Access Rules (Each User Sees Only Their Own Stuff)
+
+`requires login` keeps strangers out, but logged-in users can still see each
+other's data unless you tell the compiler who owns each row. That's what
+per-row access rules do — declare them in the table and the compiler quietly
+adds the ownership check to every read, save, edit, and delete.
+
+```clear
+create a Todos table:
+  task, required
+  done (boolean), default false
+  the todo's creator can read, change, or delete
+
+when user requests data from /api/todos:
+  requires login
+  todos = look up all Todos
+  send back todos
+```
+
+Compile this and look at the generated JavaScript: the `findAll` call has a
+`user_id` filter wired in for you. Alice's GET returns only Alice's todos —
+even if Bob steals Alice's session token and tries to guess row ids on the
+URL, every CRUD operation refuses any row he didn't create.
+
+The vocabulary is small:
+
+- `the X's creator can read, change, or delete` — the row belongs to whoever
+  inserted it (most common — todos, expenses, bookings, deals)
+- `the X's reviewer can read or change` — the row is assigned to a specific
+  user via a `reviewer_id` field (you must declare that field on the table)
+- `any admin can read, change, or delete` — admins override the per-row
+  check (useful alongside the creator rule)
+- `anyone logged in can read` — any authenticated user
+- `anyone can read` — public, no login needed
+- `change` is a synonym for `update` — pick whichever reads naturally
+
+Stack rules to layer permissions:
+
+```clear
+create a Deals table:
+  amount, number
+  status, default 'pending'
+  reviewer_id, number
+  the deal's creator can read, change, or delete
+  the deal's reviewer can read or change
+  any admin can read, change, or delete
+```
+
+Reps see their own deals. The assigned reviewer can also read and change.
+Admins see everything. Anyone else gets a 404 — the WHERE clause won't match
+their user_id and the row stays invisible.
+
+You don't write `user_id` anywhere in your code — the runtime auto-adds the
+column to every table and the compiler stamps it on every insert from
+`req.user.id`. A malicious client trying to forge `user_id: someone_else_id`
+in the request body gets ignored — server-side stamps win every time.
+
+This composes with `database is shared with tenant scope` from Chapter 10.
+A regulated app declaring both gets two layers of filtering on every CRUD:
+the cross-tenant filter (Acme can't see Initech's rows) AND the per-user
+filter (Bob at Acme can't see Alice at Acme's rows). Defense in depth.
+
 ### Guards
 
 ```clear
