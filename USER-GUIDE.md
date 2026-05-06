@@ -21,8 +21,8 @@ Let's jump in.
 **Foundations — your first day with Clear**
 - [Chapter 1: Your First Deal](#chapter-1-your-first-deal-reading-code-aloud)
 - [Chapter 2: Approve or Reject](#chapter-2-approve-or-reject-when-the-app-decides-for-you)
-- [Chapter 3: Lists and Loops](#chapter-3-lists-and-loops-doing-things-more-than-once)
-- [Chapter 4: Functions](#chapter-4-functions-teaching-your-program-new-tricks)
+- [Chapter 3: A Queue of Deals](#chapter-3-a-queue-of-deals-when-one-isnt-enough)
+- [Chapter 4: A Reusable Recipe](#chapter-4-a-reusable-recipe-functions)
 - [Chapter 5: Your First Web App](#chapter-5-your-first-web-app-its-a-tip-calculator-obviously)
 
 **Full-stack basics — apps with a database and a real backend**
@@ -325,183 +325,295 @@ In Chapter 3 you'll learn about **lists** — when the app needs to track many d
 
 ---
 
-## Chapter 3: Lists and Loops (Doing Things More Than Once)
+## Chapter 3: A Queue of Deals (When One Isn't Enough)
 
-Computers are really, REALLY good at doing things over and over. That's basically
-their whole job. Let's put them to work.
+In Chapters 1 and 2 you wrote a program with ONE deal. That's a useful start, but it's not how a real sales team works. The CRO has a *queue* of pending deals — sometimes ten, sometimes fifty, sometimes empty. The program has to handle "many deals" not "one deal."
 
-### Creating Lists
+This chapter teaches you about **lists** (a way to hold many values under one name) and **loops** (a way to do the same thing for every value without writing it out repeatedly).
 
-```clear
-colors is an empty list
-add 'red' to colors
-add 'blue' to colors
-add 'green' to colors
-```
+### What is a list?
 
-### Looping Through Items
+A list is a sequence of values, in order. Real-world examples:
 
-```clear
-colors is an empty list
-add 'red' to colors
-add 'blue' to colors
-for each color in colors:
-  show color
-```
+- Your shopping list (eggs, milk, bread)
+- A queue of customers waiting to be served at the deli counter
+- The pending deals on the CRO's screen this morning
 
-### Counting Loops
+In all three cases you have many values that share a kind. You can count them, look at the first one, add new ones, take old ones off. That's a list.
+
+### Make a list of pending deals
+
+Open `deal.clear` and replace your single deal's contents with this:
 
 ```clear
-repeat 5 times:
-  show 'hello'
+pending_deals is an empty list
+add 'Acme Corp ($50000, 18% off)' to pending_deals
+add 'BlueBird ($25000, 8% off)' to pending_deals
+add 'Northwind ($120000, 35% off)' to pending_deals
 ```
 
-### While Loops
+`pending_deals is an empty list` makes a new empty list and gives it a name. Notice the `is` — a list is a thing, not a number, so it gets `is` (same rule as Chapter 1). `add X to pending_deals` puts a value at the end. After three `add` lines, the list holds three strings — one per deal awaiting CRO review.
+
+### Loop through every deal
+
+Now we want to print every deal. We could write three `show` lines, but that doesn't scale to fifty deals. Use a loop:
+
+```clear
+for each deal in pending_deals:
+  show deal
+```
+
+`for each X in <list>:` is Clear's loop. The colon means a block follows. The indented line under the loop runs ONCE for every value in the list. Each time through, the variable `deal` holds the current value.
+
+This is the **don't repeat yourself** rule in action. The same logic, written once, runs for every item — whether the list has 3 entries or 3,000.
+
+Run it:
+
+```bash
+clear run deal.clear
+```
+
+You should see:
+
+```
+Acme Corp ($50000, 18% off)
+BlueBird ($25000, 8% off)
+Northwind ($120000, 35% off)
+```
+
+Three lines of output for three values in the list. Add a fourth `add` line, re-run, get four output lines. The code didn't change — only the data did.
+
+### Count, total, average
+
+Now upgrade your list so each entry is a *number* — the discount percent — instead of a description string. We can do real math on it:
+
+```clear
+discounts is an empty list
+add 18 to discounts
+add 8 to discounts
+add 35 to discounts
+add 12 to discounts
+
+how_many = count of discounts
+biggest = max of discounts
+average = avg of discounts
+
+show '{how_many} pending deals'
+show 'Biggest discount asked: {biggest}%'
+show 'Average discount asked: {average}%'
+```
+
+`count of`, `max of`, `avg of` are built-in operations Clear gives you for any list of numbers. There are more — `sum of`, `min of`, `first of`, `last of`. Use them whenever you need ONE summary value out of a whole list.
+
+Run it:
+
+```
+4 pending deals
+Biggest discount asked: 35%
+Average discount asked: 18.25
+```
+
+That's real information about a queue of deals, computed by four lines of code. The same lines work for 4 discounts or 4,000 — the list size doesn't matter, the operations do the right thing for any size.
+
+### Combining a loop with a decision
+
+Remember the `if` from Chapter 2? Now combine it with the loop. For every deal in the list, decide whether it needs VP approval:
+
+```clear
+for each d in discounts:
+  if d is greater than 30:
+    show '{d}% — NEEDS VP APPROVAL'
+  otherwise:
+    show '{d}% — auto-approved'
+```
+
+Notice the indentation: `if` is indented under `for each` because it's inside the loop body. `show` is indented further because it's inside the `if` body. Two levels of nesting. Clear uses indentation to show what belongs to what — same as outlining a paper.
+
+Run it:
+
+```
+18% — auto-approved
+8% — auto-approved
+35% — NEEDS VP APPROVAL
+12% — auto-approved
+```
+
+One CRO-routable list, four lines of plain output, zero ambiguity about which deals need attention. That's the start of a real triage system.
+
+### A safety net for loops you can't count in advance
+
+`for each` is great when the list size is known up front. But sometimes you don't know how many times to repeat — maybe you're paginating through a server that returns deals 50 at a time until there are no more. For that you use `while`:
 
 ```clear
 count = 0
-while count is less than 10:
-  show count
+while count is less than 5:
+  show 'Counting: {count}'
   increase count by 1
 ```
 
-Clear automatically caps every `while` loop at **100 iterations** so a missing `increase` line can't lock up your program. If you legitimately need more (paginating through 500 records, walking a deep tree), declare it explicitly:
+`while` keeps repeating the body as long as the question stays true. This loop runs five times — when `count` reaches 5, the condition fails and the loop stops.
+
+**Clear automatically caps every `while` loop at 100 iterations.** Why? Because if you forget to increase `count`, the loop would run forever and lock up your program. The cap makes the program error out instead of hanging. If you legitimately need more than 100 iterations, declare it:
 
 ```clear
 while has_more_pages, max 1000 times:
   page = fetch_next_page()
 ```
 
-When the loop exceeds its cap, you get a clear error: `"while-loop exceeded 100 iterations — add ', max N times' if you need a higher cap"`. Same goes for recursive functions (default depth 1000, override with `define function walk(n), max depth N:`) and `send email` (default 30-second timeout, override with `with timeout N seconds`). The compiler picks safe defaults so you never silently hang.
+When the cap is hit, you get a clear error message instead of a frozen process. The compiler picks safe defaults so you never silently hang. (Same idea protects recursive functions and email sends — defaults that catch mistakes before they become bugs in production.)
 
-### Working with Lists
+### Why this matters
 
-```clear
-prices is an empty list
-add 10 to prices
-add 20 to prices
-items is an empty list
-add 5 to items
-add 15 to items
+The deal-desk app you'll build has hundreds of deals at once — pending, approved, rejected, awaiting customer. Every page that shows a queue is a list, looped through with `for each`. Every dashboard stat ("12 deals pending", "average discount 18%") is a `count of` or an `avg of`. Every "needs approval" badge is the `if` inside a loop. The few lines you wrote today are the entire shape of how the app handles many records. Future chapters will swap your in-memory lists for a real database, but the loop and aggregate patterns stay exactly the same.
 
-# Get the total of a list of numbers
-define total_price as: sum of prices
-define item_count as: count of items
+### Try it yourself
 
-# Get specific items
-define first_item as: first of items
-define last_item as: last of items
+1. Add a fifth value to `discounts` (try `add 22 to discounts`). Re-run. Confirm `count` says 5 and the average shifts.
+2. Change the threshold in the loop from 30 to 25. Which deals now need VP approval?
+3. Add a new aggregate: `total_discount = sum of discounts` and show it. What does the number mean in business terms? (Hint: it's not a dollar amount — it's the sum of percentages.)
 
-# Sort
-sort items by price
-```
+### What's next
 
-### Maps (Key-Value Pairs)
-
-A map stores labeled values — like a tiny spreadsheet with one row.
-
-```clear
-settings is an empty map
-set settings's theme to 'midnight'
-set settings's language to 'english'
-set settings's font_size to 16
-```
-
-Loop over a map's keys and values at the same time:
-
-```clear
-for each key, value in settings:
-  show '{key} = {value}'
-```
-
-Check if a key exists, and get all keys or values:
-
-```clear
-if 'theme' exists in settings:
-  show 'theme is set'
-
-all_keys   = keys of settings
-all_values = values of settings
-```
+In Chapter 4 you'll learn about **functions** — a way to wrap a piece of logic (like "compute the discount amount from list price and percent") and give it a name, so you can reuse it many times without copying the math. That's the last building block before Chapter 5, where deal-desk becomes a real web app.
 
 ---
 
-## Chapter 4: Functions (Teaching Your Program New Tricks)
+## Chapter 4: A Reusable Recipe (Functions)
 
-A function is a reusable recipe. You define it once, use it anywhere.
-Think of it like saving a formula in a spreadsheet — except it has a name.
+In Chapter 1 you wrote `discount_amount = list_price * (discount_percent / 100)` for ONE deal. In Chapter 3 you put four discounts in a list. What happens when you want to compute the discount amount for every deal in the queue?
 
-### One-Line Functions (The Fun Ones)
+You COULD copy the math line into the loop body. That works for now. But the moment you want to do the same calculation in a SECOND place — say, on a deal-detail page later — you'll copy the line again. Now the same math lives in two spots. If the formula ever changes (you decide to round to cents, or apply a loyalty bonus), you have to update BOTH copies. Miss one, and the two places start disagreeing — a bug that's almost impossible to spot because the code "looks right."
 
-```clear
-double(x) = x * 2
-tax(amount) = amount * 0.08
-full_name(first, last) = first + ' ' + last
-```
+The fix is a **function**: a piece of logic that has a name and lives in exactly one place.
 
-Use them:
+### What is a function?
 
-```clear
-double(x) = x * 2
-tax(amount) = amount * 0.08
-full_name(first, last) = first + ' ' + last
-result = double(21)
-my_tax = tax(100)
-name = full_name('Alice', 'Smith')
-```
+A function is a recipe with:
 
-### Block Functions
+- a **name** (like `compute_discount_amount`)
+- a list of **inputs** (the ingredients — list price, discount percent)
+- a **body** (the steps the recipe does)
+- a **result** (what it gives you back)
 
-```clear
-define function calculate_total(price, quantity):
-  subtotal = price * quantity
-  tax = subtotal * 0.08
-  total = subtotal + tax
-  return total
-```
+You write the recipe once. Anywhere you need it, you call it BY NAME and pass the ingredients. The recipe runs, hands back the result. If the recipe ever needs to change, you change it in one place — every caller picks up the new version automatically.
 
-### Typed Parameters (Optional, But Useful)
+Think of a function the way you think of a formula in a spreadsheet — except it has a name, lives outside the cell, and you can use it from anywhere.
 
-Add types to your params and Clear will catch mistakes early and document your code:
+### Your first function — one-line form
+
+For simple math, Clear has a one-liner shape:
 
 ```clear
-define function add(a is number, b is number) returns number:
-  return a + b
-
-define function greet(name is text) returns text:
-  return 'Hello, {name}!'
+discount_amount(list_price, percent) = list_price * (percent / 100)
 ```
 
-Types: `text`, `number`, `boolean`, `list`, `map`, `any`.
+That's the whole function. Read it left to right: "Discount amount, given a list price and a percent, equals list price times percent divided by 100."
 
-If you call `add('hello', 5)`, Clear warns you at compile time — before you ever run it.
-
-### String Interpolation (The Easy Way to Build Messages)
-
-Instead of joining strings with `+`, put `{expr}` right inside a string:
+Use it:
 
 ```clear
-name is 'Alice'
-score = 42
-show 'Welcome, {name}! Your score is {score}.'
-show 'Next level at {score * 2} points.'
+discount_amount(list_price, percent) = list_price * (percent / 100)
+
+acme = discount_amount(50000, 18)
+bluebird = discount_amount(25000, 8)
+northwind = discount_amount(120000, 35)
+
+show 'Acme discount: ${acme}'
+show 'BlueBird discount: ${bluebird}'
+show 'Northwind discount: ${northwind}'
 ```
 
-Works with any expression, including possessives: `'Hi, {user's name}!'`
+Run it:
 
-### Higher-Order Functions (Functions That Take Functions)
+```bash
+clear run deal.clear
+```
+
+```
+Acme discount: $9000
+BlueBird discount: $2000
+Northwind discount: $42000
+```
+
+The math lives in ONE line. Three different deals, three different results, zero copy-paste. If sales policy ever decides discounts should round up to the nearest hundred dollars, you change the function once and every caller picks up the new behavior.
+
+### Block functions — for multi-step logic
+
+The one-liner form works when the recipe is a single expression. When the recipe has multiple steps, use the block form:
 
 ```clear
-define function double(x):
-  return x * 2
-
-define function is_big(x):
-  return x > 10
-
-numbers is [3, 15, 8, 22, 1]
-doubled  = apply double to each in numbers   # [6, 30, 16, 44, 2]
-big_ones = filter numbers using is_big       # [15, 22]
+define function compute_discount_cap(tier):
+  if tier is 'enterprise':
+    return 50
+  if tier is 'mid_market':
+    return 30
+  if tier is 'standard':
+    return 15
+  return 0
 ```
+
+`define function NAME(parameters):` opens a block. The body uses `return` to hand a value back. Each line is one step — `if/then` to look at the tier, `return` the cap that matches.
+
+Use it:
+
+```clear
+acme_cap = compute_discount_cap('enterprise')
+bluebird_cap = compute_discount_cap('standard')
+
+show 'Acme can discount up to {acme_cap}%'
+show 'BlueBird can discount up to {bluebird_cap}%'
+```
+
+Run:
+
+```
+Acme can discount up to 50%
+BlueBird can discount up to 15%
+```
+
+Two callers, two results, one rule that lives in one place. If sales policy changes — say, mid-market jumps to 35% — you change it once in the function body and every caller sees the new cap on the next run.
+
+### Why two forms?
+
+Both shapes exist for the same reason a hammer and a sledgehammer both exist: pick the one that fits the job.
+
+- **One-liner** (`name(args) = expr`) — for math you can write in one breath. Clean, and visually distinct from regular variables because of the parentheses.
+- **Block** (`define function name(args):`) — for anything that needs `if`, multiple steps, or temporary variables. Uses `return` to send the answer back.
+
+You'll see both in real Clear apps. Most calculation helpers fit the one-liner. Anything with a decision tree or a loop wants the block.
+
+### Catch mistakes early — typed parameters
+
+When you write a function, you can label what KIND of value each parameter is. Clear will then warn you if you call the function with the wrong kind.
+
+```clear
+define function discount_amount(list_price is number, percent is number) returns number:
+  return list_price * (percent / 100)
+```
+
+`is number` after each parameter says "this should be a number, not a string." `returns number` says "this function gives back a number."
+
+Now if you slip up and write `discount_amount('50000', 18)` (with the price as a string), Clear catches it BEFORE the program runs and points at the line. Without types, the program would still run but might give you a baffling result like `"5000018"` (string concatenation instead of math).
+
+Types are **optional**. Functions without types still work fine. Adding types to your important business functions is cheap insurance — they document what the function expects AND catch caller bugs early. The available types: `text`, `number`, `boolean`, `list`, `map`, `any`.
+
+### Why this matters
+
+Look back at `compute_discount_cap`. You just wrote a small business rule: "enterprise customers can discount up to 50%, mid-market up to 30%, standard up to 15%."
+
+In Chapter 12 we'll teach Clear to **prove** that no compiled deal-desk endpoint can EVER let a discount through that exceeds this cap. Not "we'll write tests that probably catch it" — *prove*. Provable rules are what makes deal-desk a regulated-tier app a CRO will pay for. And the foundation for that proof is what you wrote today: a function with a clear input-to-output mapping.
+
+Functions also make tests trivial. In Chapter 17 you'll write `expect compute_discount_cap('enterprise') is 50` as a one-liner test — and Clear can mathematically prove that line is true for every possible call.
+
+### Try it yourself
+
+1. Add a fourth tier to `compute_discount_cap`: `'partner'` returns 60. Call it with a partner deal and confirm the cap shows 60.
+2. Write a one-liner function `final_price(list_price, percent)` that gives back the price after the discount. Use it on the three deals from earlier and show the results.
+3. Combine functions and a loop: for each pending deal in a list, compute the final price using your new function. (Hint: you'll need records to make this clean — that's Chapter 6. For now hard-code three deals as separate variables.)
+
+### What's next
+
+Chapter 5 is the **leveling-up moment**: deal-desk becomes a real web app. Instead of `clear run` printing to your terminal, you'll spin up a server with `clear serve`, point your browser at a URL, and get the deal data back. Same Clear primitives — variables, ifs, loops, functions — wrapped in a couple of lines that say "this should be reachable at /api/deals over the web."
 
 ---
 
