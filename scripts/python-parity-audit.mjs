@@ -113,9 +113,39 @@ function countHits(slice, key) {
   return (slice.match(re) || []).length;
 }
 
+// Many NodeTypes are handled in `compileNode` (shared between JS + Python via
+// `ctx.lang === 'python'` branching) or in helper functions called from
+// compileNode (e.g. compileAuthScaffoldPython, compileCrud, compileValidate,
+// compileEndpoint). The slice approach above misses those — reporting a
+// "HIGH gap" for a NodeType that's actually handled. Walk every
+// `case NodeType.X:` block in the JS slice and count it as Python-handled
+// if its body shows ANY Python-emit indicator: explicit `ctx.lang === 'python'`
+// check, or a call to any compile* helper (which usually has internal
+// Python branching).
+function countSharedPythonHandlers(slice, key) {
+  const caseRe = new RegExp(`case\\s+NodeType\\.${key}\\b\\s*:`, 'g');
+  let count = 0;
+  let m;
+  while ((m = caseRe.exec(slice)) !== null) {
+    const start = m.index;
+    const window = slice.slice(start, Math.min(slice.length, start + 2000));
+    // Body extends from this case label until the next case label or default.
+    const nextCaseMatch = window.slice(20).search(/\bcase\s+NodeType\.[A-Z_]+\s*:|^\s*default\s*:/m);
+    const body = nextCaseMatch > 0 ? window.slice(0, nextCaseMatch + 20) : window;
+    if (/ctx\.lang\s*===?\s*['"]python['"]/.test(body) ||
+        /lang\s*===?\s*['"]python['"]/.test(body) ||
+        /compile[A-Z][a-zA-Z]*\s*\(/.test(body)) {
+      count++;
+    }
+  }
+  return count;
+}
+
 const rows = nodeTypes.map(({ key, value }) => {
   const js = countHits(jsSlice, key);
-  const python = countHits(pySlice, key);
+  const pyExplicit = countHits(pySlice, key);
+  const pyShared = countSharedPythonHandlers(jsSlice, key);
+  const python = pyExplicit + pyShared;
   return { key, value, js, python, severity: severity(key) };
 });
 

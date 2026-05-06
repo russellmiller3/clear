@@ -65,9 +65,9 @@ The hook's job is the structural backstop for the CLAUDE.md "Build Python Alongs
 
 Run: `node scripts/python-parity-audit.mjs` — exits 1 when HIGH-severity gaps exist (any helper file missing OR any high-severity NodeType not handled in Python).
 
-First-run baseline (2026-05-06): 21 HIGH-severity NodeType gaps (RUN_AGENT, AUTH_SCAFFOLD, PIPELINE, CRUD, RATE_LIMIT, QUEUE_DEF, RULE_DEF, etc.) + 5 of 5 runtime helper file gaps. After today's helper ports: 2 of 5 helper gaps remaining (db-postgres.py + the postgres-py from db.js's emitted Postgres adapter).
+First-run baseline (2026-05-06): 21 HIGH-severity NodeType gaps (RUN_AGENT, AUTH_SCAFFOLD, PIPELINE, CRUD, RATE_LIMIT, QUEUE_DEF, RULE_DEF, etc.) + 5 of 5 runtime helper file gaps. After today's helper ports: 0 of 5 helper gaps. After the slice-detection fix (2026-05-06 evening): 5 REAL HIGH-severity gaps — RUN_AGENT (11 JS hits), RUN_PIPELINE (4), SCRIPT (2), RUN_WORKFLOW (1), WITH_OPTIMISTIC_LOCK (1). The earlier 16 false positives were NodeTypes handled in shared `compileNode` / `compileCrud` / `compileEndpoint` / `compileAuthScaffoldPython` (each with internal Python branches), invisible to the original slice approach.
 
-The MEDIUM-severity count (~110) has known false positives — basic primitives like IF_THEN show 0 Python hits because the Python branch may emit them via string paths not direct NodeType references. The HIGH count is reliable; MEDIUM is noisy.
+The MEDIUM-severity count is now 16 (was ~110) — same fix dropped most false positives. The HIGH count is reliable; MEDIUM is still mildly noisy because some primitive emit paths use string-based handling not `NodeType.X` references.
 
 Plan: `plans/plan-python-parity.md`. Used by the python-first-class hook to surface the gap state on every relevant edit.
 
