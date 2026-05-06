@@ -5097,6 +5097,69 @@ when user calls DELETE /api/deals/:id:
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 5c-update — PUT auto-filters by user_id
+// =============================================================================
+// Server-side filter on update: when a table has `the X's creator can ...`,
+// every PUT /:id endpoint switches to db.update's 3-arg form, where the
+// WHERE filter requires user_id = req.user.id. The runtime helper at
+// runtime/db.js:377 (Convention 2) already supports this. Without the
+// filter, an attacker with a stolen session token could overwrite
+// another user's row by guessing the row id.
+describe('Compiler - per-row creator filter on update (OWASP Piece 1, cycle 5c-update)', () => {
+  it('PUT under creator policy uses 3-arg db.update with user_id in WHERE', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user calls PUT /api/deals/:id:
+  requires login
+  save incoming to Deals
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // 3-arg form: db.update('table', whereFilter, dataObject)
+    expect(js).toMatch(/db\.update\('deals',\s*\{[^}]*user_id\s*:\s*req\.user\s*&&\s*req\.user\.id/);
+  });
+
+  it('PUT WITHOUT creator policy keeps the existing 2-arg db.update form', () => {
+    const src = `target: backend
+database is local memory
+create a Posts table:
+  title, text
+  anyone can read
+
+when user calls PUT /api/posts/:id:
+  save incoming to Posts
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).not.toContain('user_id: req.user');
+  });
+
+  it('PUT under BOTH tenant scope and creator policy filters by both ids in WHERE', () => {
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user calls PUT /api/deals/:id:
+  requires login
+  save incoming to Deals
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toMatch(/db\.update\('deals',\s*\{[^}]*tenant_id\s*:\s*req\.user\s*&&\s*req\.user\.tenant_id/);
+    expect(js).toMatch(/db\.update\('deals',\s*\{[^}]*user_id\s*:\s*req\.user\s*&&\s*req\.user\.id/);
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");

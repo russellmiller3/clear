@@ -4980,6 +4980,22 @@ function compileCrud(node, ctx, pad) {
     const tenantSetLineNoId = ctx.tenantScope
       ? `\n${pad}/* tenant-scope: pick already includes tenant_id from request; runtime update preserves it */`
       : '';
+    // OWASP Piece 1, cycle 5c-update: when the table has a creator policy
+    // AND we're in a :id endpoint AND no optimistic-lock guard is in
+    // play (those use a different runtime helper), switch to the 3-arg
+    // db.update form so the WHERE clause requires the caller to be the
+    // row's creator. The runtime at runtime/db.js:377 (Convention 2)
+    // already supports the 3-arg form. Without this filter, an attacker
+    // with a stolen session could overwrite another user's row by
+    // guessing its id (IDOR on PUT). Composes with tenant scope so the
+    // WHERE includes both tenant_id and user_id when both apply.
+    if (_hasCreatorPolicy && ctx.endpointHasId && !ctx.endpointHasOptimisticLock) {
+      const whereParts = ['id: req.params.id'];
+      if (ctx.tenantScope) whereParts.push('tenant_id: req.user && req.user.tenant_id');
+      whereParts.push('user_id: req.user && req.user.id');
+      const whereFilter = `{ ${whereParts.join(', ')} }`;
+      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}await _clearTry(() => db.update('${table}', ${whereFilter}, _picked_${varCode}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', ${whereFilter}) || {});`;
+    }
     if (ctx.endpointHasId) {
       // Use _pick to filter incoming fields through the schema (mass-assignment protection).
       // The id comes from the URL param, not the body — set it after picking so db.update
