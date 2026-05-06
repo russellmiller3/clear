@@ -6,6 +6,32 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Meph prompt cut + python-first-class hook + Python runtime helpers (3 of 5)
+
+Two big arcs landed this session.
+
+**Meph system prompt: 1555 → 921 lines (-41%).** Two passes against the Anthropic-cited research at `plans/meph-optimal-setup-research-05-06-2026.md`:
+- Pass 1 cut the OWASP block + AI Agents/Workflows/Routing/Approval Queues/Policies + Styles full reference + SVG kitchen-sink (~510 lines deleted, ~140 lines added — pointers + new sections). Added a "Where to look up X" map after the cheat sheet (the load-bearing reference router) and a "Shape-search — fire it BEFORE writing unfamiliar syntax" trigger before the Workflow section (the retrieval tool was zero-mentioned in the prompt before).
+- Pass 2 cut the per-feature reference for Tenant scope / Per-row creator / Concurrency / Hidden fields / Pagination + aggregates (~178 lines deleted, ~13 lines added — inline summary + map extension). All five live in full at `SYNTAX.md`; the prompt's map points at each.
+- SVG kitchen-sink moved to `studio/svg-examples/pipeline-diagram.svg` for `read_file`-on-demand retrieval.
+- Net effect for Meph: smaller cacheable prefix, load-bearing rules now sit at top-third of prompt where Liu et al / Chroma show recall is highest, detailed reference one tool call away.
+
+**Python-first-class hook (`.claude/hooks/python-first-class.mjs`).** PostToolUse on Edit/Write of `runtime/*.js`, `compiler.js`, `parser.js`, `synonyms.js`. Two checks: (1) runtime helper has a Python peer (hyphen-to-underscore for PEP 8); (2) runs `scripts/python-parity-audit.mjs` and surfaces HIGH-severity NodeType + helper-file gap counts. Doesn't BLOCK (PostToolUse can't undo the edit) — the visible gap count is the enforcement. Override `PYTHON_LATER=1` for explicit JS-only follow-ups. Smoke-tested with synthetic input.
+
+**Python parity audit (`scripts/python-parity-audit.mjs`).** Reads `parser.js`'s NodeType enum, slices `compileToPythonBackend` from `compiler.js`, counts `NodeType.X` references in JS-vs-Python paths. Reports gaps as a human report + optional CSV. First-run baseline: 21 HIGH-severity NodeType gaps + 5 of 5 runtime helper file gaps.
+
+**Python runtime helpers shipped today — 3 of 5:**
+- **`runtime/sensitive_crypto.py`** (encrypt-at-rest, OWASP Piece 3) — AES-256-GCM, scrypt key derivation matching Node defaults, byte-for-byte interop with `runtime/sensitive-crypto.js`. Library: `cryptography` (PyPI).
+- **`runtime/auth.py`** (login + JWT, OWASP Piece 4 prerequisite) — HMAC-SHA256 + PBKDF2-HMAC-SHA512, custom 2-segment token format matching `runtime/auth.js`. **Interop verified live**: Node-hashed password verifies under Python and vice-versa; Node-signed token decodes under Python and vice-versa. **Library deps: ZERO** (Python stdlib only — agent matched JS implementation byte-for-byte rather than swap to bcrypt + PyJWT which would break interop).
+- **`runtime/db.py`** (persistent SQLite, replaces inline `_DB` in-memory stub) — sqlite3 stdlib, same WAL mode + same `clear-data.db` file as JS via better-sqlite3. Cross-target reads work as long as schema matches. Core CRUD complete (create_table, find_all, find_one, insert, update, remove, aggregate). `update_with_version` (optimistic lock) stubbed with NotImplementedError + plan pointer. **Library deps: ZERO**.
+- **`runtime/rate_limit.py`** (auto login rate-limit, OWASP Piece 4) — FastAPI dependency shape (raises HTTPException 429), in-memory dict keyed by client IP, lazy expiry sweep on each call, X-Forwarded-For chain handling. Same defaults as JS (60s window / 10 max). **Library deps: ZERO**.
+
+Each helper has a focused test suite (12 + 28 + 7 + 7 = 54 tests total today, all green via `python runtime/*_test.py`).
+
+**Remaining: 2 of 5 helpers** — `runtime/db-postgres.py` (Postgres adapter parity) and the compiler-emit wiring in `compileToPythonBackend` (the 21 HIGH-severity NodeType gaps the audit reports — multi-session work to actually USE these helpers in compiled Python apps).
+
+---
+
 ## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4
 
 Same session as the plan + chapters 1-2 ship below. Continued into chapters 3 and 4 because the cadence felt right and the deal-desk anchor was warm.

@@ -5,6 +5,8 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 **Headline numbers:** 169 node types. 2,817 broad compiler/helper checks after the 2026-05-02 merge consolidation. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
+**Python parity (in progress, 2026-05-06):** runtime helpers are landing one at a time as JS-to-Python ports with byte-for-byte interop on shared on-disk formats (SQLite file, encrypted-blob format, password hash format, JWT signature format). Today: encrypt-at-rest (`runtime/sensitive_crypto.py`), login + JWT (`runtime/auth.py`), persistent SQLite (`runtime/db.py`), auto login rate-limit (`runtime/rate_limit.py`) — 3 of 5 helpers shipped, db-postgres adapter remaining. Compiler-emit wiring (`compileToPythonBackend` → use the new helpers instead of the inline `_DB` stub) is multi-session follow-up. The python-first-class hook (`.claude/hooks/python-first-class.mjs`) blocks future JS-only feature shipping by surfacing the python-parity audit's HIGH-severity gap count after every relevant edit. Audit script: `node scripts/python-parity-audit.mjs`.
+
 ---
 
 ## Exec summary — what Clear can do today, in plain English
