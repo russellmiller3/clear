@@ -1649,11 +1649,89 @@ The check composes with tenant scope (`database is shared with tenant scope`). A
 
 **Compile errors and warnings:**
 
-- The validator warns when a table has no access rules and suggests three canonical examples.
+- The validator ERRORS when a table has no access rules in any file with security context (auth scaffold, tenant scope, a `rule` keyword, or another table with policies). Toy fixtures without security context still get a warning.
 - The validator errors when a row-role rule names a missing field (e.g. `the deal's reviewer can read` but no `reviewer_id` on the table). The error names both fixes: add the field, or remove the rule.
 - The validator errors when a GET endpoint over a user-owned table has no auth and no where-clause (catches IDOR even if the auto-injection slipped via raw SQL).
 
-**You don't write `user_id` in your source.** The Node SQLite runtime auto-adds `user_id INTEGER` to every table — same precedent as `tenant_id`. Postgres apps still need to declare it explicitly (separate cycle). All 13 canonical apps declare creator rules per their real intent.
+**You don't write `user_id` in your source.** Both the Node SQLite runtime AND the Postgres adapter auto-add `user_id INTEGER` to every table — same precedent as `tenant_id`. All 13 canonical apps declare creator rules per their real intent.
+
+## Outgoing Requests Allowlist (OWASP Piece 2 — SSRF defense)
+
+When the app calls external HTTP, declare every host at the top of the file:
+
+```clear
+allow outgoing requests to: 'api.stripe.com', 'api.openai.com', 'hooks.slack.com'
+```
+
+With the declaration in place, every `call api '<url>'` and `data from '<url>'` URL must be (a) a string literal AND (b) target a host in the allowlist. The compiler fails closed:
+
+- Variable URLs (the classic SSRF vector — a malicious caller controls where the server goes) → compile error pointing at the literal-required fix.
+- Literal URLs targeting a host NOT in the allowlist → compile error listing the allowed hosts.
+
+Without the declaration, the existing private-IP block (`localhost`, `127.0.0.1`, `10.x`, `172.16-31.x`, `192.168.x`) stays as the only check, so existing apps without the allowlist keep working unchanged.
+
+Synonyms: `allow outbound requests to`, `allow http requests to`, `allow external requests to` — same shape, same behavior.
+
+## Sensitive Field Tag (OWASP Piece 3 — encrypt at rest)
+
+Tag any field that holds data you don't want plaintext on disk:
+
+```clear
+create a Patients table:
+  name is text, required
+  email is text, required, unique
+  ssn is text, required, sensitive    # AES-256-GCM encrypted at rest
+  diagnosis is text, sensitive
+  the patient's creator can read, change, or delete
+```
+
+The compiler emits `sensitive: true` in the schema config. The runtime db layer encrypts these fields with AES-256-GCM before every insert/update and decrypts on every read. On-disk format: `enc:v1:<iv-base64>:<ciphertext-base64>:<authTag-base64>` — authenticated encryption, GCM auth tag means tampered ciphertext returns a placeholder rather than silent garbage.
+
+**Key management.** The encryption key is read from the `SENSITIVE_KEY` env var (16+ chars, recommended 32+ random) and derived through scrypt. If unset:
+- Insert/update on a sensitive field THROWS — fail closed, no plaintext on disk.
+- Reads of an existing encrypted blob return `[encrypted — set SENSITIVE_KEY]` placeholder so an operator hitting the app sees a clear signal.
+
+**Endpoint-level opt-in.** Sensitive fields are stripped from API responses by default. To return them from a specific endpoint:
+
+```clear
+when user requests data from /api/patients/full:
+  requires login
+  can return sensitive data
+  patients = look up all Patients
+  send back patients
+```
+
+Synonyms for the endpoint marker: `returns sensitive data`, `allow sensitive response`, `returns sensitive fields`.
+
+## Auto Login Rate-Limit (OWASP Piece 4)
+
+When you write `allow signup and login`, the compiler now auto-wires rate-limit middleware on the auto-generated `POST /auth/login` route — 10 attempts per minute per IP, by default. You don't declare it; you can't accidentally forget it.
+
+```clear
+allow signup and login
+# rate limit middleware auto-emitted on /auth/login
+```
+
+The middleware is the same `rateLimit` runtime helper that user-declared `rate limit N per minute` body modifiers use. Promotes the existing validator warning ("login endpoint has no rate limit") from a nudge into a runtime guarantee.
+
+## Hardcoded Secrets — Compile Error (OWASP Piece 5)
+
+The compiler refuses to build any source containing a recognizable API-key shape:
+
+| Pattern | Match | Suggested env var |
+|---|---|---|
+| Stripe live | `sk_live_<20+ alphanum>` | `STRIPE_SECRET_KEY` |
+| Stripe test | `sk_test_<20+ alphanum>` | `STRIPE_SECRET_KEY` |
+| AWS access key | `AKIA<16 uppercase alphanum>` | `AWS_ACCESS_KEY_ID` |
+| GitHub PAT / OAuth / user / server token | `ghp_<36+>`, `gho_<36+>`, `ghu_<36+>`, `ghs_<36+>` | `GITHUB_TOKEN` |
+| Anthropic | `sk-ant-<20+>` | `ANTHROPIC_API_KEY` |
+| OpenAI | `sk-<40+>` or `sk-proj-<40+>` | `OPENAI_API_KEY` |
+
+Match found → build fails with a friendly message naming the kind of key and suggesting the matching env var. Generic high-entropy strings are NOT flagged (false-positive rate would block legitimate long-string uses). Fix:
+
+```clear
+api_key is process_env('STRIPE_SECRET_KEY')
+```
 
 ## Concurrency Declarations
 

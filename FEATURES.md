@@ -11,21 +11,37 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 
 Scan this in 30 seconds. If you remember Clear can do something but can't remember the syntax, this list points you at the section below.
 
-**Per-line access rules on tables (OWASP Piece 1 — 2026-05-05):** every
-table can declare access rules in the body using natural English: `the deal's
-creator can read, change, or delete`, `the deal's reviewer can read or change`,
-`any admin can read`, `anyone logged in can read`, plus the legacy `anyone can
-read` / `owner can read, update, delete` / `role 'admin' can read`. The compiler
-warns when a table has no rules (will be a hard error after a follow-up sweep).
-All 13 canonical apps declare rules per their real intent. **Cycle 5+6 shipped
-the load-bearing piece: the JS and Python compilers now auto-inject the per-row
-filter on every read, write, update, and delete touching a creator-scoped
-table. A stolen session token cannot read, create-as-someone-else, update, or
-delete another user's rows — the compiler emits the ownership check on every
-CRUD operation, and the runtime auto-adds the user_id column to every SQLite
-table. The Marcus pitch can now claim "Clear refuses to compile any of the
-OWASP Top 10" with no asterisks.** See CHANGELOG.md 2026-05-05 for the full
-picture.
+**OWASP Top 10 — closed by construction (2026-05-05 / 2026-05-06).** The
+compiler refuses to ship the OWASP Top 10. Five small primitives close the
+whole list:
+
+- **Per-row access rules.** `the deal's creator can read, change, or delete`
+  in the table body. The JS and Python compilers auto-inject the ownership
+  check on every read, write, update, and delete. SQLite AND Postgres
+  runtimes auto-add the `user_id` column. A stolen session token cannot
+  read another user's rows. **Strict cycle 2b:** in any file with security
+  context (auth, tenant scope, rule keyword, another policied table), a
+  table without access rules is a hard compile error.
+- **SSRF allowlist.** Top-of-file `allow outgoing requests to: 'host', ...`.
+  Variable URLs (the classic SSRF vector) won't compile; literal URLs
+  outside the allowlist won't compile.
+- **`sensitive` field tag — encrypt at rest.** `ssn is text, sensitive`
+  encrypts on disk with AES-256-GCM (per-row IV, GCM auth tag, scrypt-
+  derived key from `SENSITIVE_KEY`). Inserts FAIL CLOSED if the env var
+  is unset — Clear refuses to write plaintext. Stripped from API
+  responses by default; opt back in with `can return sensitive data`.
+- **Auto login rate-limit.** When `allow signup and login` is declared,
+  the compiler auto-wires rate-limit middleware on `/auth/login` (10
+  attempts/minute/IP). Brute-force throttling is structural.
+- **Hardcoded-secrets linter.** Source containing a recognizable Stripe
+  / AWS / GitHub / Anthropic / OpenAI key shape fails to compile with a
+  plain-English error suggesting the right env var.
+
+The Marcus pitch can claim **"Clear refuses to compile any of the OWASP
+Top 10. The compiler writes the safe version for you, or the build fails."**
+with no asterisks. See CHANGELOG.md 2026-05-05 / 2026-05-06 entries for
+the full picture; landing/marcus.html ships the customer-facing pitch
+section.
 
 **Build full apps by writing English**
 - Write a working web app — frontend + backend + database — in one `.clear` file.

@@ -582,6 +582,218 @@ Shows all todos in a table with a delete button on each row.
 
 ---
 
+## Chapter 6.5: Tables — Every Modifier, In Plain English
+
+You've seen `task, required` and `completed, default false`. That's the
+shape: the field name, then a comma-separated list of modifiers. This
+chapter walks every modifier the table syntax accepts. Read it once;
+keep it open as a reference.
+
+### The 30-second mental model
+
+```clear
+create a Deals table:
+  customer is text, required
+  amount is number, required
+  status is text, default 'pending'
+  reviewer_id (number)
+  created_at, auto
+  the deal's creator can read, change, or delete
+```
+
+Every line is either a field declaration or an access rule. Field
+declarations have a name, an optional type, and zero or more modifiers
+separated by commas. Access rules sit anywhere in the body and describe
+who can do what to each row.
+
+### Field types
+
+You usually don't need to declare types — Clear infers from the field name.
+
+| Type | When you'd write it | What it stores |
+|---|---|---|
+| `text` (default) | `name is text` or just `name` | Strings up to ~64 KB |
+| `number` | `amount is number` or `amount (number)` | Floating-point numbers |
+| `boolean` | `completed is boolean` or `completed, default false` | True/false |
+| `timestamp` | `created_at, auto` (auto-inferred) | ISO 8601 date string |
+| Foreign key | `customer (Customer)` or `customer_id` | Integer reference to another table |
+
+Naming conventions that auto-infer the type:
+- Field ending in `_at` → timestamp
+- Field ending in `_id` → foreign key (integer)
+- Capitalized field name (e.g. `Customer`) → foreign key to that table
+
+### Required, optional, unique
+
+```clear
+create a Users table:
+  email is text, required, unique
+  name is text, required
+  bio is text                       # optional — empty allowed
+```
+
+- `required` — the field must have a value at insert time. Empty string and null both rejected.
+- `unique` — no two rows can share this value. Compiler emits a UNIQUE constraint and the runtime checks before insert.
+
+### Defaults and auto-set fields
+
+```clear
+create a Tasks table:
+  title is text, required
+  completed is boolean, default false
+  priority is number, default 1
+  status is text, default 'open'
+  created_at, auto                  # set to current time on insert
+  updated_at, auto                  # set on insert AND every update
+```
+
+- `default <value>` — value used when the caller doesn't supply one.
+- `auto` — the runtime sets a timestamp automatically. With `_at` field name, it's inferred as a timestamp.
+
+### Relationships
+
+```clear
+create a Customers table:
+  name is text, required
+  email is text, required, unique
+  has many Deals                    # one customer, many deals
+
+create a Deals table:
+  customer (Customer)               # belongs to one Customer (capitalized name = foreign key)
+  amount is number, required
+  status is text, default 'pending'
+```
+
+Two ways to declare a relationship:
+- `has many <PluralTableName>` — one-to-many on the parent side.
+- `<field> (<SingularTableName>)` or `<field>_id` — many-to-one on the child side.
+
+The compiler emits foreign-key constraints + auto-joins on lookups.
+
+### Hiding a field instead of deleting it
+
+```clear
+create a Users table:
+  name
+  email, unique
+  notes, hidden                     # column stays; data preserved; not shown anywhere
+```
+
+Hidden fields are in the database but invisible to API responses and UI
+renderers. Un-hiding is a one-line change — remove the `, hidden`. Use
+this for "remove a field" — never destroy customer data.
+
+For renames, keep the old field around (hidden) AND add the new one:
+
+```clear
+create a Users table:
+  name
+  notes, hidden, renamed to reason  # old field — data preserved, copied to new field on read
+  reason                            # new field
+```
+
+### Sensitive — encrypted at rest
+
+Tag a field `sensitive` and the compiler encrypts it with AES-256-GCM
+before it touches the database, decrypts on read, and strips it from
+API responses by default.
+
+```clear
+create a Patients table:
+  name is text, required
+  ssn is text, required, sensitive  # encrypted on disk, decrypted on read
+  diagnosis is text, sensitive
+  the patient's creator can read, change, or delete
+```
+
+A stolen database dump reveals nothing without the key. Set the key
+once via the `SENSITIVE_KEY` environment variable (16+ random
+characters, recommended 32+). If the key is missing, inserts on
+sensitive fields fail closed — Clear refuses to write plaintext to
+disk.
+
+To opt into returning sensitive fields from a specific endpoint:
+
+```clear
+when user requests data from /api/patients/full:
+  requires login
+  can return sensitive data         # endpoint-level opt-in
+  patients = look up all Patients
+  send back patients
+```
+
+Without that line, sensitive fields are stripped from the response.
+
+### Per-row access rules — who can read, change, delete
+
+Every table that holds user data should declare access rules. The
+compiler auto-injects ownership checks on every read, write, update,
+and delete. A stolen session token can't read another user's records.
+
+```clear
+create a Deals table:
+  customer is text, required
+  amount is number, required
+  the deal's creator can read, change, or delete   # only the row's creator
+  any admin can read                                # admins can also read
+```
+
+The plain-English forms the parser accepts:
+
+| Rule | What it means |
+|---|---|
+| `the deal's creator can read, change, or delete` | Only whoever inserted the row. The compiler stamps `user_id` on insert and filters by it on every other operation. |
+| `the deal's reviewer can read or change` | Whoever's id is in the `reviewer_id` field on the row. Requires that field to exist on the table. |
+| `any admin can read` | Anyone whose `users.role = 'admin'`. Same shape for any role. |
+| `anyone logged in can read` | Any authenticated user (no per-row gate). |
+| `anyone can read` | Public. No login required. Use for catalogs, blog posts, etc. |
+
+The verbs `read`, `change`, `delete` (or `update`) can appear in any
+combination. `change` is canonical; `update` works as an alias.
+
+In a file with security context (auth scaffold, tenant scope, a
+`rule` keyword, or any other table with policies), declaring a table
+without ANY access rule is a compile error. Toy single-table fixtures
+without security context still get a warning. The diagnostic always
+suggests three concrete fixes.
+
+### The full example
+
+```clear
+build for javascript backend
+
+allow signup and login
+
+create a Users table:
+  email is text, required, unique
+  password_hash is text, hidden
+  role is text, default 'user'
+  anyone can read, change, or delete
+
+create a Patients table:
+  name is text, required
+  email is text, required, unique
+  ssn is text, required, sensitive
+  diagnosis is text, sensitive
+  primary_doctor (User)
+  created_at, auto
+  the patient's creator can read, change, or delete
+  any admin can read
+
+create a Visits table:
+  patient (Patient)
+  notes is text
+  visit_date is timestamp, required
+  the visit's creator can read, change, or delete
+```
+
+Six modifiers (`required`, `unique`, `hidden`, `sensitive`, `default`,
+`auto`), three field shapes (typed, foreign key, capitalized FK
+shorthand), three rules (creator, role, anyone). Everything you need
+for a real CRUD app fits on one page.
+
+---
+
 ## Chapter 7: Expense Tracker (Now You're Cooking)
 
 Let's level up. This app has dropdowns, computed totals, dollar formatting,

@@ -38,6 +38,93 @@ The full reference is in SYNTAX.md and AI-INSTRUCTIONS.md. Read those when you n
 
 When in doubt, run `compile` and read the error — the validator now warns when you reach for a reserved word as a variable name and tells you what to try instead.
 
+## Security primitives (OWASP Top 10 — closed by construction)
+
+Clear's compiler refuses to ship the OWASP Top 10. These are the five
+syntax surfaces that close the structural categories. Use them whenever
+you build a real app — the compiler will require them.
+
+**1. Per-row access rules.** Every table that holds user data declares
+who can read, change, or delete each row. The compiler auto-injects the
+ownership check on every database operation.
+
+```clear
+create a Deals table:
+  customer is text, required
+  amount is number, required
+  the deal's creator can read, change, or delete   # most common
+  any admin can read                                 # admin override
+```
+
+Forms the parser accepts: `the X's creator can ...`,
+`the X's reviewer can ...` (requires `reviewer_id` field),
+`any admin can read` (role-from-users-table),
+`anyone logged in can read`, `anyone can read` (public).
+Verbs: `read`, `change` (or `update`), `delete` — any combination.
+
+In a file with security context (auth scaffold, tenant scope, a `rule`
+keyword, or another table with policies), declaring a table with NO
+access rules is a compile ERROR. Toy fixtures without security context
+still get a warning. The error suggests three concrete fixes.
+
+**2. SSRF allowlist.** When the app calls external HTTP, declare every
+host at the top of the file:
+
+```clear
+allow outgoing requests to: 'api.stripe.com', 'api.openai.com'
+```
+
+With this declared, every `call api '<url>'` and `data from '<url>'`
+must use a string literal AND target a host in the allowlist. Variable
+URLs (the classic SSRF vector) won't compile. Without the declaration,
+the existing private-IP block (`localhost`, `127.0.0.1`, `10.x`,
+`192.168.x`) stays as the only check.
+
+**3. Sensitive field tag.** Add `, sensitive` to any field that holds
+data you don't want plaintext on disk:
+
+```clear
+create a Patients table:
+  name is text
+  ssn is text, sensitive            # AES-256-GCM encrypted at rest
+  diagnosis is text, sensitive
+  the patient's creator can read, change, or delete
+```
+
+The compiler encrypts on insert/update and decrypts on read. Sensitive
+fields are stripped from API responses by default. To opt in for one
+endpoint:
+
+```clear
+when user requests data from /api/patients/full:
+  requires login
+  can return sensitive data
+  patients = look up all Patients
+  send back patients
+```
+
+The encryption key is read from the `SENSITIVE_KEY` env var (16+
+random characters). If the key is missing, inserts FAIL CLOSED — Clear
+refuses to write plaintext to disk.
+
+**4. Auto login rate-limit.** When you write `allow signup and login`,
+the compiler auto-wires rate-limit middleware on the auto-generated
+`/auth/login` route — 10 attempts per minute per IP, by default. You
+don't need to declare it; you can't accidentally forget it.
+
+**5. No hardcoded API keys.** The compiler refuses to compile any
+source that contains a recognizable API key shape: Stripe (`sk_live_`,
+`sk_test_`), AWS (`AKIA…`), GitHub (`ghp_`/`gho_`/`ghu_`/`ghs_`),
+Anthropic (`sk-ant-`), OpenAI (`sk-` or `sk-proj-`). The error message
+suggests the matching env-var name. Fix:
+
+```clear
+api_key is process_env('STRIPE_SECRET_KEY')
+```
+
+Don't paste `sk_live_…` into source. The build will fail with a
+friendly error at the line.
+
 ## First Thing Every Conversation
 Read your memory file: `read_file("meph-memory.md")`. Apply what you've learned. If the file doesn't exist yet, that's fine — you'll build it up as you go.
 

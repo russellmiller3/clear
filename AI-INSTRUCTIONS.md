@@ -637,9 +637,78 @@ That's the canonical pattern for "this row belongs to whoever made it." A stolen
 
 **Compile-time guardrails:**
 
-- Validator warns if a table has no rules at all (will be a hard error after the fixture sweep ships).
+- Validator ERRORS if a table has no rules in any file with security context (auth scaffold, tenant scope, a `rule` keyword, or another table with policies). Toy fixtures without security context still get a warning.
 - Validator errors if a row-role rule names a missing field (e.g. `the deal's reviewer` but no `reviewer_id`).
 - Validator errors if a GET endpoint returns rows from a user-owned table without auth or filter (the IDOR catch-all, kept as a backstop in case raw SQL slips past the auto-inject path).
+
+**Both SQLite and Postgres adapters** auto-add `user_id INTEGER` (plus `tenant_id` and `_version`) on every table.
+
+## Outgoing Requests Allowlist (OWASP Piece 2 — SSRF)
+
+When the app calls external HTTP services, declare every host at the top of the file. The compiler then refuses to ship if any URL escapes the allowlist OR isn't a literal string.
+
+```clear
+allow outgoing requests to: 'api.stripe.com', 'api.openai.com', 'hooks.slack.com'
+```
+
+What this catches:
+- Variable URLs (`url = req.body.url; result = call api url`) — refused at compile time. A malicious caller cannot redirect the request anywhere.
+- Literal URLs targeting a host not in the list — refused.
+- Without the declaration, the existing private-IP block (`localhost`, `127.0.0.1`, `10.x`, `172.16-31.x`, `192.168.x`) stays as the only check.
+
+When NOT to declare it: pure-internal apps (no external HTTP) and toy demos. Once you ship one `call api`, declare the allowlist.
+
+Synonyms: `allow outbound requests to`, `allow http requests to`, `allow external requests to`.
+
+## Sensitive Field Tag (OWASP Piece 3 — encrypt at rest)
+
+Tag any field that holds data you don't want plaintext on disk:
+
+```clear
+create a Patients table:
+  name is text
+  email is text, required, unique
+  ssn is text, required, sensitive    # AES-256-GCM encrypted at rest
+  diagnosis is text, sensitive
+  the patient's creator can read, change, or delete
+```
+
+The runtime db layer encrypts these fields with AES-256-GCM before every insert and decrypts on every read. Sensitive fields are also stripped from API responses by default — opt into returning them with the endpoint marker:
+
+```clear
+when user requests data from /api/patients/full:
+  requires login
+  can return sensitive data
+  patients = look up all Patients
+  send back patients
+```
+
+**Key management.** Set `SENSITIVE_KEY` env var to 16+ random characters (recommended 32+). If unset, inserts on sensitive fields THROW — Clear refuses to write plaintext to disk. Reads of existing rows return `[encrypted — set SENSITIVE_KEY]` as a placeholder so an operator notices.
+
+**When to use:** SSNs, medical records, API tokens you store, payment info you must keep, anything that would matter in a stolen-DB-dump scenario. The existing name-based redaction (`password`/`token`/`api_key`/`secret`) catches conventional fields automatically; `sensitive` is for domain-specific data where the field name doesn't match a known-bad pattern.
+
+## Login Rate-Limit (OWASP Piece 4 — automatic)
+
+When you write `allow signup and login`, the compiler auto-emits rate-limit middleware on the auto-generated `POST /auth/login` route — 10 attempts per minute per IP. You don't need to add it; you can't accidentally forget it. Brute-force password guessing is throttled by default.
+
+## Hardcoded API Keys (OWASP Piece 5 — compile error)
+
+Don't paste live API keys into source. The compiler refuses to compile any string literal matching:
+
+| Pattern | Example | Suggested env var |
+|---|---|---|
+| Stripe live | `sk_live_…20+ alphanum` | `STRIPE_SECRET_KEY` |
+| Stripe test | `sk_test_…20+ alphanum` | `STRIPE_SECRET_KEY` |
+| AWS access key | `AKIA…16 uppercase alphanum` | `AWS_ACCESS_KEY_ID` |
+| GitHub PAT/OAuth | `ghp_…36+`, `gho_…36+`, `ghu_…36+`, `ghs_…36+` | `GITHUB_TOKEN` |
+| Anthropic | `sk-ant-…20+` | `ANTHROPIC_API_KEY` |
+| OpenAI | `sk-…40+`, `sk-proj-…40+` | `OPENAI_API_KEY` |
+
+Build fails with a friendly one-line error naming the kind of key. Fix:
+
+```clear
+api_key is process_env('STRIPE_SECRET_KEY')
+```
 
 ## Cookies (sessions, persisted state)
 
