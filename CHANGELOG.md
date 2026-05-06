@@ -6,6 +6,31 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Postgres user_id auto-add (parity with SQLite, OWASP follow-up)
+
+The Postgres adapter now mirrors SQLite's auto-managed columns: every
+table gets `_version`, `tenant_id`, and `user_id` columns at creation,
+plus backfill ALTER TABLE statements for tables that existed before
+each shipped. Without this, regulated apps that target Postgres
+couldn't use the per-row creator filter — the cycle 5/6 emit had no
+column to land on.
+
+Same precedent as the SQLite path: security plumbing should be
+invisible to the author. Apps that don't declare creator policies
+just leave the column null.
+
+What shipped:
+- `runtime/db-postgres.js` ensureTable: 3 new columns in CREATE TABLE
+  (`_version INTEGER DEFAULT 0`, `tenant_id INTEGER`, `user_id INTEGER`)
+  and 3 idempotent ADD COLUMN IF NOT EXISTS backfills.
+- 2 new source-shape tests in clear.test.js. Real Postgres connectivity
+  tested by the existing runtime/db-postgres-rls-real.test.js when
+  DATABASE_URL is set.
+
+Test suite: 2977 / 2977 green. Fake-pool RLS test: 22 / 22 green.
+
+---
+
 ## 2026-05-06 — OWASP Piece 5 (hardcoded-secrets linter) — OWASP TOP 10 EPIC COMPLETE
 
 The compiler now refuses to build any source that contains a recognizable

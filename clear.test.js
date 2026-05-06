@@ -5275,6 +5275,36 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 1 follow-up — Postgres user_id auto-add (parity with SQLite)
+// =============================================================================
+// runtime/db-postgres.js's ensureTable now mirrors runtime/db.js: every
+// table created in Postgres auto-gets `_version`, `tenant_id`, and
+// `user_id` columns plus backfill ALTER TABLE statements for tables that
+// existed before each shipped. Without this, regulated apps that target
+// Postgres can't use the per-row creator filter — the cycle 5/6 emit has
+// no column to land on.
+//
+// Source-shape regression test: real PG connectivity is exercised by
+// runtime/db-postgres-rls-real.test.js when DATABASE_URL is set. Here we
+// just lock the source file's shape so the auto-add can't silently drop.
+describe('OWASP Piece 1 follow-up - Postgres user_id auto-add (parity with SQLite)', () => {
+  it('runtime/db-postgres.js auto-adds user_id, tenant_id, _version on CREATE TABLE', async () => {
+    const fs = await import('fs');
+    const src = fs.readFileSync('runtime/db-postgres.js', 'utf8');
+    expect(src).toContain("cols.push('user_id INTEGER')");
+    expect(src).toContain("cols.push('tenant_id INTEGER')");
+    expect(src).toContain("cols.push('_version INTEGER DEFAULT 0')");
+  });
+
+  it('runtime/db-postgres.js backfills user_id on tables created before cycle 5/6', async () => {
+    const fs = await import('fs');
+    const src = fs.readFileSync('runtime/db-postgres.js', 'utf8');
+    expect(src).toMatch(/ADD COLUMN IF NOT EXISTS user_id INTEGER/);
+    expect(src).toMatch(/if \(!existing\.has\('user_id'\)\)/);
+  });
+});
+
+// =============================================================================
 // OWASP Piece 5 — hardcoded secrets linter
 // =============================================================================
 // New validator pass that scans every string literal in the source for

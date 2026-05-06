@@ -305,6 +305,21 @@ async function ensureTable(tableName) {
     // Quote column names to handle Postgres reserved words (e.g. "order", "user")
     cols.push('"' + field + '" ' + toPgType(schema[field]) + toPgDefault(schema[field]));
   }
+  // Concurrency Phase 2: optimistic-lock version column on every table.
+  // Mirrors the SQLite path so apps that opt into `with optimistic lock`
+  // get version-checked UPDATEs on Postgres too.
+  cols.push('_version INTEGER DEFAULT 0');
+  // Tenant isolation Phase 2: tenant_id auto-added so the RLS policy
+  // (`tenant_id = current_setting('app.current_tenant_id')::int`) has a
+  // column to read. Apps that don't declare shared tenant scope simply
+  // ignore it.
+  cols.push('tenant_id INTEGER');
+  // OWASP Piece 1, cycle 5/6: user_id auto-added so the per-row creator
+  // filter has somewhere to land. Apps that declare `the X's creator
+  // can ...` use it for ownership checks; tables without creator rules
+  // just leave it null. Same precedent as tenant_id and _version —
+  // security plumbing is invisible to the author.
+  cols.push('user_id INTEGER');
   await getPool().query('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')');
 
   // Schema evolution: add columns that exist in schema but not in table
@@ -319,6 +334,19 @@ async function ensureTable(tableName) {
       await getPool().query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS "' + field2 + '" ' + toPgType(schema[field2]) + toPgDefault(schema[field2]));
       existing.add(field2);
     }
+  }
+  // Backfill on tables created before each plumbing column shipped.
+  if (!existing.has('_version')) {
+    await getPool().query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS _version INTEGER DEFAULT 0');
+    existing.add('_version');
+  }
+  if (!existing.has('tenant_id')) {
+    await getPool().query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS tenant_id INTEGER');
+    existing.add('tenant_id');
+  }
+  if (!existing.has('user_id')) {
+    await getPool().query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS user_id INTEGER');
+    existing.add('user_id');
   }
   await backfillRenamedFields(tableName, schema, existing);
   _tablesCreated.add(tableName);
