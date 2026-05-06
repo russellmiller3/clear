@@ -35,11 +35,11 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-06 — OWASP Top 10 epic closed)
+## Current State (rewritten 2026-05-06 PM — OWASP closed + pushed + walker green + gitignore)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
-**Headline ship (today):** the OWASP Top 10 epic is closed by construction. All five primitives are live in the compiler + runtime, plus three follow-ups (strict cycle-2b, Postgres user_id parity, encrypt-at-rest). Every customer-facing doc surface was updated. The Marcus pitch — "Clear refuses to compile any of the OWASP Top 10" — has zero asterisks.
+**Headline ship (today):** the OWASP Top 10 epic is closed by construction AND pushed to GitHub (66 commits landed). Five primitives in the compiler + runtime, three follow-ups (cycle-2b strict mode, Postgres user_id parity, encrypt-at-rest). Marcus walker regression that surfaced after the OWASP work is fixed (was 21 failures, now 145/145 green across all 5 Marcus apps). Build artifacts in `apps/` no longer get tracked by git — 234 files untracked + gitignore patterns + a CLAUDE.md rule as backup documentation.
 
 **GTM direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Path: ship buildclear.dev self-serve, offer "Concierge Setup — $500, no ongoing support" to first 5 customers only, then pure self-serve. Default to "make the self-serve path more self-serve" over new compiler features Russell would demo by hand.
 
@@ -60,12 +60,11 @@ them. If you find yourself violating them, stop and re-read.
 - **Worktree consolidation.** All work now lives in single `clear/` folder. The `clear-owasp1/` worktree was unregistered (empty husk dir on disk, manual delete by Russell when Windows releases the lock).
 
 **What's blocking launch (in order):**
-1. **One-click GitHub secret-scan unblock.** 60 commits queued for push; GitHub blocks the push because three earlier commits contain Stripe-shaped TEST FIXTURES (now fixed at HEAD via string concatenation). Russell needs to click the unblock URL to allowlist the historical fixtures: https://github.com/russellmiller3/clear/security/secret-scanning/unblock-secret/3DLtCZMpA7Kx2Bn6cb3XEtKxhBf — covers all 5 reference locations in one click.
-2. Russell finishes Cloudflare account setup → hands over token + account ID + namespace name.
-3. Agent wires Studio's deploy flow to those credentials (~1 hour).
-4. One Marcus app deployed to a real `<slug>.buildclear.dev` URL.
-5. Russell records the 75-second demo voice-over against the deployed app.
-6. Russell DMs 5 Marcuses on LinkedIn with the recording.
+1. Russell finishes Cloudflare account setup → hands over token + account ID + namespace name.
+2. Agent wires Studio's deploy flow to those credentials (~1 hour).
+3. One Marcus app deployed to a real `<slug>.buildclear.dev` URL.
+4. Russell records the 75-second demo voice-over against the deployed app.
+5. Russell DMs 5 Marcuses on LinkedIn with the recording.
 
 **No critical-path code work needed before step 1 — every blocker upstream is on Russell's hands.**
 
@@ -90,17 +89,17 @@ WIP count: **0**.
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Push the 60 queued commits to origin/main.** Russell needs to click ONE GitHub URL first to allowlist three earlier-commit Stripe-shaped test fixtures: https://github.com/russellmiller3/clear/security/secret-scanning/unblock-secret/3DLtCZMpA7Kx2Bn6cb3XEtKxhBf — covers all 5 reference locations in one click. Once allowlisted, retry: `SKIP_BROWSER_UAT=1 git push origin main`. The browser UAT is intentionally skipped per item 2 below. The compiler tests (2981) + e2e (74/75 with curriculum fix) all pass.
+1. **Hartl-quality user-guide rewrite.** Russell named "our standard is Hartl's Rails Tutorial" for USER-GUIDE / Meph prompt / AI-INSTRUCTIONS / SYNTAX. Today's NEW additions are at that quality; the existing 7000+ lines are mixed-era. A focused multi-session pass: (a) anchor a sample app readers build chapter-by-chapter (deal-desk is the obvious candidate), (b) add prose around every code block, (c) "now run this" beats with expected output, (d) end-of-chapter exercises. Treat as a multi-session epic, not a one-shot. Best to start by writing a chapter-by-chapter plan first.
 
-2. **Marcus UAT regression — investigate.** Pre-push browser UAT shows 124 passed / 21 failed across the 5 Marcus apps with errors like "Use table controls: New Requests - locator.waitFor: Timeout 3000ms exceeded." Suspect: cycle 5/6 user_id auto-stamping is rejecting unauthenticated walker requests, OR cycle 2b strict-mode error fires on something the UAT writes at runtime, OR the new `_AUDIT_RETENTION_DAYS` cleanup helper is interfering with the tests. Reproduce locally with `node scripts/run-marcus-uat.mjs` after starting Studio. Triage which app fails first and chase from there. ~1 focused session.
+2. **Marcus walker auth-flow follow-up.** The 21 walker failures earlier today were fixed at the empty-table layer, but the deeper gap remains: walker hits creator-scoped data pages WITHOUT signing in first, so cycle 5 user_id filter (correctly) returns 0 rows. The walker tests "page loads cleanly" but can't test real interactions on data pages. Real fix: walker signs up + signs in BEFORE testing data pages, then seeds + drives the full flow. ~1 focused session. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` skips auth pages; replace with "hit signup, capture token, set Authorization header on subsequent requests."
 
-3. **Hartl-quality user-guide rewrite.** Russell named "our standard is Hartl's Rails Tutorial" for USER-GUIDE / Meph prompt / AI-INSTRUCTIONS / SYNTAX. Today's NEW additions are at that quality; the existing 7000+ lines are mixed-era. A focused multi-session pass would: (a) anchor a sample app readers build chapter-by-chapter (deal-desk is the obvious candidate), (b) add prose around every code block, (c) "now run this" beats with expected output, (d) end-of-chapter exercises. Treat as a multi-session epic, not a one-shot.
+3. **Plans waiting for execution** in `plans/`:
+   - `plan-meph-optimization.md` — 3-config A/B/C eval (current vs everything-in-prompt vs lean-prompt-with-aggressive-retrieval). ~$30, ~5 hours. Not critical path; do when there's spare API budget.
+   - `plan-python-parity.md` — JS-vs-Python cross-target audit + closure pass. Known HIGH-severity gaps: `runtime/sensitive-crypto.py` doesn't exist (OWASP Piece 3 broken on Python), Python auto-login-rate-limit emit (Piece 4), audit-log emit on Python target. Audit script is 1-2 hours; closure pass is multi-session.
 
-4. **Plans waiting for execution.** Two plans documented today in `plans/`:
-   - `plan-meph-optimization.md` — 3-config A/B/C eval (current vs everything-in-prompt vs lean-prompt-with-aggressive-retrieval) on the eval-meph harness. ~$30, ~5 hours of execution. Not on the critical path; do when there's spare API budget.
-   - `plan-python-parity.md` — JS-vs-Python cross-target audit + closure pass. Has known HIGH-severity gaps: `runtime/sensitive-crypto.py` doesn't exist (OWASP Piece 3 broken on Python), Python auto-login-rate-limit emit (Piece 4), audit-log emit on Python target. Audit script is 1-2 hours; closure pass is multi-session.
+4. **Doc gardening:** USER-GUIDE has the OWASP work in two places (Chapter 6.5 + 24.1). Before next chapter additions, decide whether to consolidate or keep both as different lenses. Current state is correct but redundant.
 
-5. **Doc gardening: USER-GUIDE has the OWASP work in two places (Chapter 6.5 + 24.1 worked example).** Before next chapter additions, decide whether to consolidate into one chapter or keep both as different lenses. Current state is correct but redundant.
+5. **Cloud blockers (gated on Russell's hands)** — Cloudflare account setup, Stripe live keys, Anthropic org key, Fly Trust Verified, first Marcus conversation. None are code work; all are external paperwork or sales motion.
 
 
 ---
