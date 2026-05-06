@@ -28,6 +28,12 @@
             "command": "node .claude/hooks/screenshot-ui-work.mjs",
             "timeout": 5,
             "statusMessage": "Reminding to screenshot UI changes before claiming done..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/python-first-class.mjs",
+            "timeout": 15,
+            "statusMessage": "Checking JS-vs-Python parity gap..."
           }
         ]
       }
