@@ -45,6 +45,11 @@ The cheat sheet above covers ~80% of every-turn syntax. For the rest — when th
 | If the user asks for | Read this |
 |---|---|
 | Security / auth / encryption / sensitive data / SSRF | `SYNTAX.md` (Auth Guards, Outgoing requests, Sensitive fields) + `apps/deal-desk/main.clear` |
+| Multi-customer / tenant isolation (`database is shared with tenant scope`) | `SYNTAX.md` (Tenant Scope) — auto-scopes every CRUD by tenant_id |
+| Per-row creator filter (`the X's creator can read, change, or delete`) | `SYNTAX.md` (Per-row Access Rules / OWASP Piece 1) — auto-injects ownership check on every CRUD |
+| Concurrency (`safe to retry`, `with optimistic lock`) | `SYNTAX.md` (Concurrency) — declare on read-modify-write endpoints to silence the lock warning |
+| Hidden fields (`, hidden`) — safe "remove" for running apps | `SYNTAX.md` (Hidden Fields) — keeps column on disk, drops from API responses |
+| Pagination + aggregates (`limit`, `offset`, `sum of X from T`) | `SYNTAX.md` (Pagination + Aggregates) — `from Table` runs SQL, `in variable` reduces in-memory |
 | AI agents / streaming / tools / RAG / memory | `SYNTAX.md` (AI Agents) |
 | Workflows / pipelines / multi-step orchestration | `SYNTAX.md` (Workflows) |
 | Approval queues / triggered email | `SYNTAX.md` (Approval Queues) + `apps/deal-desk/main.clear` |
@@ -573,187 +578,17 @@ when user sends order to /api/orders:
 
 `caller` is the canonical form — one word, unambiguous with every entity var. The older multi-word forms (`current user`, `authenticated user`, `logged in user`) still work and compile to the same output, but prefer `caller` in new code. You can now safely name your Users-table receiving var just `user` — `caller` won't shadow it.
 
-## Tenant isolation — `database is shared with tenant scope` (2026-05-03)
+## Tenant scope / per-row access / concurrency / hidden fields / pagination
 
-When a Marcus app is deployed on Clear Cloud, multiple customers share one Postgres instance. To prevent customer A from reading or modifying customer B's records, declare `database is shared with tenant scope` at the top of the source. The compiler then auto-scopes every CRUD operation by the caller's `tenant_id`:
+These five every-real-app patterns have full reference in `SYNTAX.md` (the "Where to look up X" map at the top of this prompt points at each one). Quick names + when each fires:
 
-- `look up X where ...` → query also filters by `tenant_id = req.user.tenant_id`
-- `save X as new T` → inserted record gets `tenant_id` from `req.user.tenant_id` (server-side override; body cannot fake it)
-- `save X to T` → updated record carries the caller's tenant_id
-- `remove X` / `delete X at /api/...:id` → WHERE clause includes `tenant_id`
+- **Tenant scope** (`database is shared with tenant scope`) — multi-customer apps on Clear Cloud. Auto-scopes every CRUD by `tenant_id`. Defense-in-depth on Postgres adds row-level security policies + per-request `SET LOCAL` so two layers protect tenant separation.
+- **Per-row creator filter** (`the deal's creator can read, change, or delete`) — OWASP Piece 1. Auto-injects ownership check on every CRUD; auto-stamps `user_id` on insert; rejects non-creator updates/deletes. In files with security context (auth scaffold, tenant scope, a `rule` keyword, another policied table), missing access rules is a HARD compile error.
+- **Concurrency** (`safe to retry`, `with optimistic lock`) — read-modify-write endpoints. Declare either "safe to replay" (idempotent) or "fail loud on stale data" (version-checked UPDATE) to silence the validator's lock warning. Insert-only / DELETE / pure-read endpoints don't need either.
+- **Hidden fields** (`, hidden`) — safe "remove" for running apps. Compiler keeps the column on disk, drops it from API responses, parser still accepts old field references for back-compat.
+- **Pagination + aggregates** — `look up every X where ... limit N offset M` for big tables (default `look up all` caps at 50 rows); `sum of X from Table where ...` for server-side SQL aggregates (`from Table`); `sum of X in variable` for in-memory reduce. Filtered SQL aggregates support equality only (`is X`, `A is X and B is Y`); for `>` / `<` / ranges, `look up every` + in-memory aggregate.
 
-**You don't need to write `tenant_id` anywhere in your source.** It's invisible to the author, automatic in the compiled output. The auth layer must populate `req.user.tenant_id` (the JWT carries it). For apps that genuinely don't need tenant isolation (single-tenant tools, internal apps), don't declare shared scope — the compiler defaults to single-tenant semantics.
-
-**Defense in depth on Postgres (2026-05-03 night):** when the source ALSO declares `database is postgres` (the production-Postgres backend), the compiler emits a second layer on top of the application filter — real Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id` that fires on every CRUD. Even if a future bug or a hand-written raw SQL slip bypasses the application filter, Postgres physically refuses to return another tenant's rows. Two independent layers, either one alone sufficient. Customer compliance buyer asks "how do you guarantee tenant separation?" — the answer is now "twice: in the application AND inside the database."
-
-## Per-row creator filter — `the X's creator can ...` (OWASP Piece 1, 2026-05-05)
-
-Tenant scope keeps customer A's rows away from customer B. The per-row creator filter is the next layer: keeps user 1 inside customer A from reading user 2's rows inside the same tenant. Declare it on any table:
-
-```clear
-create a Deals table:
-  amount, number
-  status, default 'pending'
-  the deal's creator can read, change, or delete
-  any admin can read, change, or delete
-```
-
-The vocabulary for "who":
-- `the <entity>'s creator` — maps to `user_id` on the row (set automatically on insert)
-- `the <entity>'s <role>` — maps to `<role>_id` on the row (e.g. `the deal's reviewer` needs a `reviewer_id` field)
-- `any <role>` — anyone whose users-table role field matches (e.g. `any admin can read`)
-- `anyone logged in` — any authenticated request, regardless of ownership
-- `anyone` — public, no login needed
-
-The vocabulary for "what" — chain with comma and `or`:
-- `read, change, or delete` — the natural English form (`change` is a synonym for `update`)
-
-When a creator rule is on a table, the compiler auto-injects the ownership check on every CRUD operation:
-- `look up X where ...` → query also filters by `user_id = req.user.id`
-- `save X as new T` → inserted record gets `user_id` from `req.user.id` (server-side override; body cannot fake it)
-- `save X to T` (PUT /:id) → switches to the 3-arg `db.update(table, where, data)` form so the WHERE requires both id AND user_id; non-creators get a 404
-- `delete X` (DELETE /:id) → WHERE clause includes `user_id`
-
-**You don't write `user_id` anywhere in your source.** Same precedent as `tenant_id` — security plumbing is invisible to the author. The Node SQLite runtime auto-adds a `user_id INTEGER` column to every table; the auth layer populates `req.user.id` (JWT carries it).
-
-The ownership check composes with tenant scope. A regulated app declaring both `database is shared with tenant scope` AND `the deal's creator can ...` gets BOTH filters stacked on every read, write, update, and delete — defense in depth at two granularities (cross-tenant + intra-tenant per-user).
-
-For pitches: a stolen session token cannot read, create-as-someone-else, update, or delete another user's rows. Every CRUD operation against a creator-scoped table runs the ownership check; the compiler emits it once at compile time and the runtime enforces it on every request. The Marcus pitch can claim "Clear refuses to compile any of the OWASP Top 10" with no asterisks.
-
-**Studio Prove button → audit PDF (2026-05-03 late night):** clicking the toolbar Prove button now downloads the navy/amber compliance PDF directly. The button used to dump the raw math journal into the terminal; that flow moves to a future right-click drilldown. When users ask "how do I show my auditor the proof?", the answer is: click Prove, hand the downloaded `audit.pdf` to them. Same artifact the CLI workflow `node scripts/audit-bundle.mjs <file> | python scripts/audit-pdf.py - <out>` produces, in one click. Needs Python + reportlab installed at the server; if missing, the terminal shows a hint to install reportlab.
-
-**Studio Direct Edit toggle + "Help me edit this:" pattern (2026-05-04):** there's a new toolbar button next to Run/Stop labeled "Direct Edit." When the user toggles it on, clicking ANY element in the running preview drafts a chat message into your input that looks like:
-
-```
-Help me edit this:
-
-```clear
-  button 'Click me' that shows a toast 'hi'
-```
-```
-
-When you receive a message starting with "Help me edit this:" followed by a fenced `clear` block, the user is asking for a FOCUSED edit on that specific snippet — they pointed at it in the live preview and want you to change ONLY that block. **Do not refactor the whole file.** Read the file to find the exact line, propose a small diff for that snippet, and apply it. The fenced snippet always corresponds to a contiguous range starting at the source line of the clicked element. The user will follow up with what they actually want changed (e.g. "make it red" or "rename it to Submit") in the same message or the next one.
-
-**Durable auth state (2026-05-03 night):** when `allow signup and login` is declared, the compiler stores users in `_auth_users` and (under tenant scope) invites in `_auth_invites` SQL tables — not in-memory arrays. A process restart no longer wipes accounts or pending invites. The schema is invisible to the author; just write `allow signup and login` plus optional `database is shared with tenant scope` and the compiler handles the durable storage layer. When users ask "what happens when I redeploy — do my accounts survive?", the answer is now yes.
-
-**API-call audit trail (2026-05-03 night, extended late night):** every Marcus-style app now has a built-in audit log. When `allow signup and login` is declared, every POST/PUT/PATCH/DELETE the server handles is captured to a durable `audit_log` SQL table with the caller's identity, the route, the method, the response status, an ISO timestamp, AND a sanitized `body_summary` of the request payload (sensitive fields like password / token / secret / api_key / jwt / auth are redacted to `[redacted]` so the log isn't a credential exfiltration target). Compliance buyers ask three questions — who / when / what was changed — all three are answerable from a single row. Authenticated callers can read it via `GET /audit`. Under shared tenant scope, the response filters to the caller's tenant_id only — Bob in tenant 2 cannot see Alice's audit rows in tenant 1.
-
-When a Marcus user asks "how do I show compliance who did what when?", the answer is "your app already has it — `GET /audit` returns the full state-change log as JSON, or `GET /audit.csv` returns it as a CSV download (added 2026-05-04). With shared scope, both routes are auto-filtered to the caller's tenant." Use the CSV route when the user mentions SOC 2 evidence collectors, GRC tools, or any compliance pipeline that prefers CSV; JSON for everything else. This is separate from per-queue audit (logs business decisions inside `queue for X:` blocks) and from rule-rejection attribution (rule names in 403 responses) — those are different concerns. The new layer captures API traffic across every endpoint.
-
-**Multi-user-per-tenant via invites (2026-05-03 night):** by default every signup creates a brand-new tenant, so teammates land in separate silos. To let teammates share a workspace, the app now exposes invite endpoints when `allow signup and login` AND `database is shared with tenant scope` are both declared:
-- `POST /auth/invite` (authenticated): returns a 32-hex-char single-use token bound to the caller's tenant.
-- `GET /auth/invite` (authenticated): lists invites the caller created, with `used_at` and `used_by_email` so admins can audit who joined.
-- `POST /auth/signup` accepts an optional `invite_token` in the body. With it, the new user joins the inviter's tenant. Without it, the brand-new-tenant default is preserved.
-
-Tell users this in plain English when they ask: "your teammates sign up by clicking an invite link you generated — same pattern as Slack or Linear. The first user creates the workspace; everyone else joins via invite." The flow is invisible in the source — no extra keyword needed beyond `allow signup and login` plus `database is shared with tenant scope`.
-
-```clear
-target: backend
-database is postgres with tenant scope   # both keywords → both layers fire
-allow signup and login
-
-create a Deals table:
-  status
-```
-
-```clear
-target: backend
-database is shared with tenant scope
-allow signup and login
-
-create a Deals table:
-  status
-
-when user requests data from /api/deals:
-  requires login
-  found = look up all Deals      # auto-filtered by req.user.tenant_id
-  send back found
-
-when user sends deal to /api/deals:
-  requires login
-  saved = save deal as new Deal  # tenant_id auto-set from req.user.tenant_id
-  send back saved
-```
-
-## Concurrency — `safe to retry` + `with optimistic lock` (Phase 2 wired 2026-05-03)
-
-When you write an endpoint that reads a record, changes a field, and saves it back, the compiler will warn `[READ_MODIFY_WRITE_NO_LOCK]` because two simultaneous requests could overwrite each other. You have two ways to handle that:
-
-- `with optimistic lock` — version-checked saves. Use this for state-changing endpoints (approve, reject, transfer, decrement balance). Synonyms: `with version check`, `with version checking`. The compiler emits a UPDATE with `WHERE id = ? AND _version = ?` and bumps `_version`; if another writer moved the version, the save returns **409 Conflict** with a `VERSION_CONFLICT` marker the client uses to retry. Every table auto-gets a `_version` column.
-- `safe to retry` — declares the endpoint is idempotent. Use this for webhook receivers, bulk imports keyed by an external id, anything where running the same request twice produces the same final state. Synonyms: `idempotent`, `idempotent endpoint`.
-
-Both go on a body line, like `requires login`:
-
-```clear
-when user updates deal at /api/deals/:id/approve:
-  requires login
-  with optimistic lock                       # opts into version-checked save
-  selected_deal = look up Deal where id is incoming.id
-  change selected_deal's status from 'pending' to 'approved'
-  save selected_deal to Deals
-  send back 'approved'
-
-when user sends event to /api/billing/webhook:
-  safe to retry                              # idempotent — Stripe replays are fine
-  process_webhook(event)
-  send back 'ok'
-```
-
-Insert-only endpoints (`save X as new <Table>`), DELETE-method endpoints, and pure-read endpoints don't need a declaration — they have no read-modify-write surface.
-
-## Hidden Fields — Safe "Remove" for Running Apps
-
-When a user says "remove field X" on an app with real data, DO NOT physically delete the field. Add `, hidden` to it instead:
-
-```clear
-create a Users table:
-  name
-  email, unique
-  notes, hidden        # column stays in DB, stripped from API + UI responses
-```
-
-Hidden fields:
-- Stay in the database (data preserved)
-- Disappear from API responses (`db.findAll` / `findOne` strip them by default)
-- Disappear from UI renderers
-- Can be un-hidden by removing `, hidden` (one-line change, full data intact)
-
-For renames, pair a hidden-with-`renamed to` marker on the old field with a new field declaration:
-
-```clear
-create a Users table:
-  name
-  notes, hidden, renamed to reason   # old field retained
-  reason                              # new field, app reads + writes here going forward
-```
-
-Use this pattern whenever the app has users and real data — physical deletion is for an explicit, gated "permanently delete" command only (not yet exposed).
-
-## Pagination and Aggregates (read before writing dashboards)
-
-**`get all X` and `look up all X` cap results at 50 rows.** If you need more, use `get every X` or `look up every X`. This is a safety default — Marcus could compile an app that queries 50K rows and kill the browser.
-
-**Don't do `length of all_orders` for stats.** When you fetch with `get all` you get at most 50. `length of all_orders` is capped. For dashboard counts and sums, use server-side SQL aggregates:
-
-```clear
-# WRONG — capped at 50, wrong on real data
-orders = get all Orders
-total_orders = length of orders
-total_revenue = sum of total in orders
-
-# RIGHT — single SQL query, correct at any scale
-total_orders = count of id from Orders
-total_revenue = sum of total from Orders
-```
-
-**Filtered aggregates** use `where`:
-
-```clear
-paid_revenue = sum of total from Orders where status is 'paid'
-support_avg = avg of score from Tickets where team is 'support' and priority is 'high'
-```
-
-Only equality filters (`is X`, `A is X and B is Y`) work with `from Table` aggregates. For `>` / `<` / ranges, use `look up every X where ...` then aggregate the in-memory list.
+When the user reaches for any of these, read the matching `SYNTAX.md` section FIRST — the rules above each have gotchas that bite from memory.
 
 ## Build Targets
 
