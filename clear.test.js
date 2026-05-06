@@ -5274,6 +5274,36 @@ create a Deals table:
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 3 — IDOR-on-GET is a hard compile error (regression lock)
+// =============================================================================
+// validator.js's "GET endpoint returns ALL records from a user-owned table
+// without filtering by user_id" check already uses errors.push (hard error,
+// confirmed 2026-05-05). This test locks the behaviour so future validator
+// edits can't silently downgrade it to a warning. Pairs with cycles 5+6
+// which auto-inject the per-row filter — the validator catches apps that
+// somehow slip past compile (e.g. raw SQL, custom code paths).
+describe('Validator - IDOR-on-GET is a hard compile error (OWASP Piece 1, cycle 3)', () => {
+  it('GET endpoint over a user_id table without auth or where-clause errors at compile time', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  user_id (number)
+
+when user requests data from /api/deals:
+  deals = look up all Deals
+  send back deals`;
+    const r = compileProgram(src);
+    // Hard error, NOT a warning — the validator must refuse to compile this
+    // shape because the compiled output would leak every user's rows to
+    // every caller.
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/user_id|owner_id|user/i);
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");
