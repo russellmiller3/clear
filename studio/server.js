@@ -599,13 +599,16 @@ app.get('/api/builder-status', (req, res) => {
 // =============================================================================
 // TEMPLATES
 // =============================================================================
+// Studio's app dropdown shows EXACTLY these 13 — 8 core templates locked
+// by Playwright tests + 5 Marcus business-ops apps. Project CLAUDE.md
+// hard-locks this list as the only Studio dropdown contents. Anything
+// else lives outside the dropdown.
 const FEATURED_TEMPLATES = [
-  // Marcus 6 — business ops apps (RevOps, approvals, routing, onboarding, support)
+  // Marcus 5 — business ops apps (RevOps, approvals, routing, onboarding)
   'deal-desk',              // GTM-1 hero: discount approval workflow with AI-drafted CRO summaries
   'approval-queue',         // Approval workflow: submit → pending → approved/rejected
   'lead-router',            // Routing: intake + rules + assign by size (SMB/Mid/Enterprise)
   'onboarding-tracker',     // Customer onboarding: multi-step checklist per customer
-  'support-triage',         // AI-assisted: classifies tickets by category + priority
   'internal-request-queue', // IT/HR/Facilities/Finance request triage
 
   // Core 8 — Playwright-tested, showcase all features

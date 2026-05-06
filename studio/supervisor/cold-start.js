@@ -31,10 +31,10 @@ function sha1(str) {
 function inferTaskType(appName) {
   const map = {
     // Marcus 5
+    'deal-desk': 'add_approval_flow',
     'approval-queue': 'add_approval_flow',
     'lead-router': 'add_routing_rules',
     'onboarding-tracker': 'add_multistep_workflow',
-    'support-triage': 'add_ai_classification',
     'internal-request-queue': 'add_request_triage',
     // Core 8
     'todo-fullstack': 'add_crud',
@@ -67,9 +67,9 @@ async function run() {
   console.log('\n=== Pass 1: Core templates ===\n');
 
   const templateNames = [
-    // Marcus 5 — business ops
-    'approval-queue', 'lead-router', 'onboarding-tracker',
-    'support-triage', 'internal-request-queue',
+    // Marcus 5 — business ops (canonical 13 lock per CLAUDE.md)
+    'deal-desk', 'approval-queue', 'lead-router', 'onboarding-tracker',
+    'internal-request-queue',
     // Core 8
     'todo-fullstack', 'crm-pro', 'blog-fullstack', 'live-chat',
     'helpdesk-agent', 'booking', 'expense-tracker', 'ecom-agent',
