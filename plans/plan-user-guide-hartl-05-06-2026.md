@@ -53,6 +53,11 @@ Net result: 12 tutorial chapters + ~13 reference chapters = ~25 total. Shorter, 
 Every chapter, tutorial or reference, must hit ALL of:
 
 - **Opens with WHY this chapter exists.** Two sentences. "By the end of this chapter, deal-desk will refuse any discount over 30%. That's the kind of rule a CRO actually pays for."
+- **Teach the CONCEPT, not just the syntax.** Every new idea — "what is a database?", "what is an URL?", "what is logging in?", "what is a business rule?" — gets a one-paragraph plain-English explanation BEFORE we show the Clear syntax for it. Assume the reader has never written code. Hartl himself does this for Ruby + Rails concepts; we do it for Clear AND for the underlying ideas. Examples:
+  - Before showing `create a Deals table:` — explain what a table is. "A table is a list of records that all have the same shape. Like a spreadsheet — every row is a deal, every column is a field. The database keeps your tables safe between page reloads."
+  - Before showing `when user calls GET /api/deals:` — explain what an URL handler is. "When someone visits a web address on your site, your app gets a chance to respond. We're going to write a handler that says: 'when anyone asks for /api/deals, send back the list.'"
+  - Before showing `allow signup and login` — explain why every real app needs accounts. "Without login, anyone in the world could see anyone else's deals. Login is the wall between users — each person sees only their own data."
+- **Explain WHY for every design choice, not just WHAT.** "Why `=` for numbers and `is` for strings? Because 'price is 9.99' sounds like a question. Clear's job is to read aloud the way a human would say it." — that beat is the bar.
 - **Each code block has prose AROUND it, not just under it.** Before: "we're about to add a function." After: "Notice we wrote `define function` not `def` — Clear's verbs are spelled-out English on purpose."
 - **Every chapter has at least one "Now run this" beat with expected output.** Format: `clear run apps/deal-desk/main.clear` followed by the literal output the reader should see. If the reader doesn't see it, they know something's wrong.
 - **End-of-chapter exercises (2–3).** Format: "Try this: change the discount cap to 25%. Run `clear prove` again and watch the verdict flip from PROVED to DISPROVED." Concrete, doable in under 5 min.
@@ -61,6 +66,20 @@ Every chapter, tutorial or reference, must hit ALL of:
 - **Cross-link forward AND back.** "We'll add the rule keyword in Chapter 12." / "Remember the queue from Chapter 9? We're going to give it teeth now."
 
 A chapter that fails any of these gets sent back. No exceptions — even for the "easy" early chapters.
+
+## Source of truth — latest syntax only
+
+Clear's syntax has shifted across sessions. The OWASP work, business-rules keyword, audit trail, `live:` block, and several validator messages are all recent. Stale chapters will use stale forms. To prevent that:
+
+- **Before writing any chapter, re-read in this order:**
+  1. `CHANGELOG.md` — what shipped recently. New rows at the top.
+  2. `SYNTAX.md` — canonical reference for every node type with examples.
+  3. `FEATURES.md` — capability table; what Clear can do today.
+  4. `FAQ.md` — where things live, why decisions were made.
+  5. `intent.md` — authoritative spec if SYNTAX.md and CHANGELOG disagree.
+- **Never write a chapter from working memory of "how Clear used to look."** Always ground in the current docs. The compiler may have new shorthand, deprecated synonyms, or a new keyword that didn't exist last month.
+- **When in doubt about whether a syntax form is current, grep `parser.js` and `synonyms.js`.** Those are the ground truth. Docs lag the compiler; the compiler is the law.
+- **Cross-check the deal-desk `apps/deal-desk/main.clear` file** — that's the canonical Marcus reference app. If the chapter introduces a feature, that feature should appear in deal-desk in the same form. Mismatches mean either the chapter is wrong or the app needs updating.
 
 ## Per-session cadence
 
