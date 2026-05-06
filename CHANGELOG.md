@@ -6,14 +6,15 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4
+## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4-6
 
-Same session as the plan + chapters 1-2 ship below. Continued into chapters 3 and 4 because the cadence felt right and the deal-desk anchor was warm.
+Same session as the plan + chapters 1-2 ship below. Continued into chapters 3 and 4 because the cadence felt right and the deal-desk anchor was warm. Chapter 6 then jumped the queue ahead of Chapter 5 — the persistence chapter is the load-bearing one and worth shipping while the deal-desk shape is fresh; Chapter 5 (the GET endpoint that reads from the in-memory list) slots in cleanly between them in a follow-up session.
 
 - **Chapter 3 — A Queue of Deals.** Replaces 'Lists and Loops' with the deal-desk pending queue. Teaches lists (sequence of values), `for each` loops, aggregates (`count of`, `max of`, `avg of`), and nests `if` inside the loop to produce a triage view that flags discounts over 30%. Keeps the `while`-loop safety-cap explainer (Clear's safe-defaults story).
 - **Chapter 4 — A Reusable Recipe.** Replaces 'Functions' with `compute_discount_cap`, a tier-based business rule that returns 50% / 30% / 15% by customer segment. Teaches the WHY-not-just-WHAT for functions (single-source-of-truth for logic; copy-pasted math grows bugs). Sets up Chapter 12 — same function shape will become a provable rule.
+- **Chapter 6 — Save Deals to a Database.** Replaces 'The Full-Stack Todo App' with the moment deal-desk crosses the line from demo to product. Teaches what a database is (data lives between page reloads + server restarts), what a table is (spreadsheet metaphor — rows are records, columns are fields), and the canonical CRUD shapes `create a Deals table:`, `save deal as new Deal`, `get all Deals`, plus `requires login` as the first line of every mutation endpoint (with the Chapter 8 deferral noted explicitly). Ends with two curl commands — POST a deal, GET it back, restart the server, GET it again, prove the data outlived the process. Concept-first, syntax-second; 200 lines.
 
-4 of 12 tutorial chapters done. Remaining: 5 (the leveling-up moment — first web URL) and 6-12 across ~5 sessions.
+5 of 12 tutorial chapters done (1, 2, 3, 4, 6). Remaining: 5 (the leveling-up GET endpoint that reads the in-memory list — slots between 4 and 6 next session) and 7-12 across ~4-5 more sessions.
 
 ---
 

@@ -26,7 +26,7 @@ Let's jump in.
 - [Chapter 5: Your First Web App](#chapter-5-your-first-web-app-its-a-tip-calculator-obviously)
 
 **Full-stack basics — apps with a database and a real backend**
-- [Chapter 6: The Full-Stack Todo App](#chapter-6-the-full-stack-todo-app-the-real-deal)
+- [Chapter 6: Save Deals to a Database](#chapter-6-save-deals-to-a-database-make-it-stick)
 - [Chapter 7: Expense Tracker](#chapter-7-expense-tracker-now-youre-cooking)
 - [Chapter 8: Multi-Page Apps](#chapter-8-multi-page-apps-because-one-page-is-never-enough)
 - [Chapter 13: Working with Data](#chapter-13-working-with-data)
@@ -666,175 +666,205 @@ If a curious teenager can't read it, we simplify.)
 
 ---
 
-## Chapter 6: The Full-Stack Todo App (The Real Deal)
+## Chapter 6: Save Deals to a Database (Make It Stick)
 
-This is the moment. We're going to build a real application with a database,
-an API, validation, security, and a reactive frontend. In 35 lines.
+By the end of this chapter, every deal you submit will survive a server restart. The CRO can post a deal in the morning, kick the box at lunch, and the deal is still there in the afternoon. That's the line between a *demo* and a *product* — and it takes about ten lines of Clear to cross it.
 
-If you've ever tried to build a web app from scratch, you know this normally
-involves: a database, a server framework, routes, middleware, CORS headers,
-input validation, HTML templates, CSS, JavaScript event handlers, and a
-partridge in a pear tree. In Clear, it's one file:
+In Chapter 5 you wired up your first URL handler — `/api/deals` returned a hard-coded list. That was a great first step, but the list lived in the program's memory. Stop the server, start it again, and the list is empty. This chapter swaps that in-memory list for a real database. Same shape from the outside; durable underneath.
+
+### What is a database, really?
+
+A database is a place where data lives **between** page reloads, browser refreshes, and server restarts. Without one, every keystroke is goldfish memory — the moment the program ends, it's gone. With one, your app can remember what users typed last Tuesday at 4pm.
+
+You've used databases your whole life without calling them that. A spreadsheet on your laptop is a tiny database. The contact list in your phone is one. The library card catalog is one. They all share the same trick: information stays *put* on disk, so you can come back tomorrow and find it where you left it.
+
+Clear apps get a database for free. You don't install Postgres or learn SQL. You write four lines that say "here's a table called Deals, here are its fields," and Clear takes care of the file on disk, the queries, and the round-trip from your endpoint to that file and back.
+
+### What is a table?
+
+A **table** is a list of records that all have the same shape. Picture a spreadsheet:
+
+```
+| id | rep_name | customer    | list_price | discount_percent | status   |
+|----|----------|-------------|------------|------------------|----------|
+| 1  | Sarah    | Acme Corp   | 50000      | 18               | pending  |
+| 2  | Sarah    | BlueBird    | 25000      | 8                | approved |
+| 3  | Marcus   | Northwind   | 120000     | 35               | pending  |
+```
+
+Each **row** is one deal. Each **column** is a field that every deal has. The shape stays consistent — every row has a customer, a list price, a discount percent, a status. New deals get added as new rows. The shape is set once when you create the table.
+
+This is exactly the same idea as the list of pending deals you wrote in Chapter 3 — just persistent and with named fields instead of free-form strings. Remember `add 'Acme Corp ($50000, 18% off)' to pending_deals`? That single string had to mash four pieces of information together. A table breaks them apart, gives each one a name, and writes them down where the next program run can find them.
+
+### Make the Deals table
+
+Open `deal.clear` (the file you've been growing across the last five chapters) and add this near the top, right after `build for web and javascript backend`:
 
 ```clear
 build for web and javascript backend
+database is local file
 
-# Database
-database is local memory
-create a Todos table:
-  task, required
-  completed, default false
+create a Deals table:
+  rep_name, required
+  customer, required
+  list_price (number), default 0
+  discount_percent (number), default 0
+  status, default 'pending'
   created_at, auto
-
-# Backend
-accept requests from any website
-log every request
-
-when user requests data from /api/todos:
-  all_todos = get all Todos
-  send back all_todos
-
-when user sends todo to /api/todos:
-  validate todo:
-    task is text, required, min 1, max 500
-  new_todo = save todo as new Todo
-  send back new_todo with success message
-
-when user deletes todo at /api/todos/:id:
-  requires login
-  delete the Todo with this id
-  send back 'deleted' with success message
-
-# Frontend
-page 'Todo App':
-  on page load get todos from '/api/todos'
-  heading 'My Todos'
-
-  'What needs to be done?' is a text input saved as a task
-  button 'Add':
-    send task as a new todo to '/api/todos'
-    get todos from '/api/todos'
-    task is ''
-
-  display todos as table showing task, completed with delete
 ```
 
-Run it:
+Two new ideas in those eight lines. Take them one at a time.
+
+**`database is local file`** tells Clear to keep the data in a file on disk (`clear-db.sqlite`, sitting next to your `.clear` file) instead of just in memory. That's the whole "make it stick" switch. If you wrote `database is local memory` instead, the server would still work — but every restart would empty the table. We'll use the disk version for the rest of the tutorial.
+
+**`create a Deals table:`** declares the shape. The block underneath is one field per indented line. Read it top to bottom:
+
+- `rep_name, required` — a text field that every deal must have. The compiler will reject any save that's missing it.
+- `customer, required` — same idea, but for the customer name.
+- `list_price (number), default 0` — a numeric field. The `(number)` tag tells Clear "store this as a number, not a string." `default 0` means if the caller forgets to send a price, we record zero rather than crash.
+- `discount_percent (number), default 0` — same pattern: numeric, with a sensible default.
+- `status, default 'pending'` — a text field that starts as `'pending'` for every new deal. Once a CRO approves or rejects (Chapter 9), you'll change it to `'approved'` or `'rejected'`.
+- `created_at, auto` — a timestamp Clear sets automatically the moment the row is saved. You never write to it; the runtime does.
+
+Notice the small grammar of field types. Plain text needs no annotation (text is the default). Anything that should be stored as a number gets `(number)` after the field name. Booleans and timestamps work the same way; we'll see them in later chapters. The full list of field modifiers is in Chapter 6.5 — read it once and skim back when you need a reminder.
+
+### Why "create a Deals table" and not "create a Deal table"?
+
+Clear leans on plain English: a table holds *many* deals, so it gets a plural name. The compiler also uses the plural to figure out the singular form when you save one record at a time — `save deal as new Deal`. Singular **Deal** for one row, plural **Deals** for the table. This matches how you'd say it out loud.
+
+### Save a deal — the POST endpoint
+
+Now wire up an endpoint that *writes* to the table. Add this below the table declaration:
+
+```clear
+when user sends deal to /api/deals:
+  requires login
+  validate deal:
+    rep_name is text, required, min 1, max 100
+    customer is text, required, min 1, max 200
+    list_price is number, min 0
+    discount_percent is number, min 0, max 100
+  new_deal = save deal as new Deal
+  send back new_deal with success message
+```
+
+This is the densest seven lines you've written so far. Walk through them slowly.
+
+**`when user sends deal to /api/deals:`** opens an endpoint that accepts incoming data. The word `deal` is the **receiving variable** — a name the rest of the body uses to talk about whatever the caller posted. We pick `deal` because the data IS one deal; that's the convention (singular entity name), and it makes the lines below read like English. (You'll see other receiving names like `signup`, `member`, `request` — always singular, always describing what arrived.)
+
+**`requires login`** is the first line of every endpoint that *changes* data — POSTs, PUTs, DELETEs. It's the locked door. If the caller doesn't have a valid session, the request is rejected with HTTP 401 *before* any of the body runs. Without that line, anyone in the world could write deals into your table — including bots scanning the open internet.
+
+A small wrinkle: in this chapter we haven't taught the app what login *is* yet. Chapter 8 introduces `allow signup and login` and the full auth scaffold. For right now Clear will accept the `requires login` line and skip the live auth check (because there are no users in the system yet) — but it's already in your source so the wall lands the moment Chapter 8 turns it on. Plant the seed early; never write a mutation endpoint without `requires login` as line one.
+
+**`validate deal:`** opens a small block that says what the incoming data has to look like. Each indented line names a field, its type, and its limits. `min 1, max 100` means "the rep_name has to be between 1 and 100 characters." `min 0, max 100` on `discount_percent` blocks the kinds of mistakes that cost real money — a typo'd 200% discount, a negative price. The validator runs *before* the save; if any line fails, the caller gets a clean 400 with a message saying which field was wrong.
+
+**`new_deal = save deal as new Deal`** is the magic line. Read it left to right: "new_deal equals save *this incoming deal* as a new *Deal* record." `save X as new T` is Clear's verb for "insert a row into the T table." It returns the saved record back — including the auto-generated `id` and `created_at` — which is why we capture it as `new_deal`. We use `=` because `save` returns a record value, the same way `total = price + tax` returns a number.
+
+**`send back new_deal with success message`** sends the saved row back to the caller as JSON, plus a tidy `{success: true, message: '...'}` wrapper. The caller now knows the save worked and gets back the canonical version of the row (with id and timestamp filled in).
+
+### Read the deals — the GET endpoint
+
+In Chapter 5 your GET endpoint sent back a hard-coded list. Now point it at the database. Replace the Chapter 5 version with this:
+
+```clear
+when user requests data from /api/deals:
+  all_deals = get all Deals
+  send back all_deals
+```
+
+`get all Deals` is the read counterpart to `save … as new Deal`. It pulls every row out of the Deals table and gives you a list. We capture it as `all_deals` and `send back` is the same verb you used in Chapter 5 — JSON in, JSON out. The shape from the caller's view didn't change at all. The data source did.
+
+Notice the verb is `get all`, not `find` — Clear's retrieval verbs are `get all X` and `look up X with this id`. The word `find` is reserved for searching strings ("find pattern X in text") and the compiler will flag it as a typo if you use it for tables.
+
+### Now run this
+
+Save the file. From the same folder, start the server:
 
 ```bash
-clear build main.clear
-cd build
-node server.js
-# Open http://localhost:3000
+clear serve deal.clear
 ```
 
-**35 lines. Full-stack app.** Database, REST API, input validation, auth on delete,
-and a reactive frontend with DaisyUI styling. Your backend developer friends will
-be either impressed or deeply concerned.
+You'll see something like:
 
-Let's break it down so you know exactly what every section does.
-
-### The Database Section
-
-```clear
-database is local memory
-create a Todos table:
-  task, required
-  completed, default false
-  created_at, auto
+```
+Compiling deal.clear...
+Compiled cleanly. Starting server.
+Listening on http://localhost:3000
 ```
 
-- `database is local memory` — uses an in-memory database (great for development)
-- `create a Todos table:` — defines a table with fields
-- `task, required` — text field, must have a value
-- `completed, default false` — boolean field, starts as false
-- `created_at, auto` — timestamp, set automatically
+Leave that terminal running. Open a *second* terminal — the first one is busy hosting the server — and post a deal:
 
-**Hiding a field instead of deleting it.** When your app is running and real users have typed real data, deleting a field takes that data with it. Clear's safe default is to mark the field `hidden`:
-
-```clear
-create a Users table:
-  name
-  email, unique
-  notes, hidden           # column stays; data preserved; just not shown anywhere
+```bash
+curl -X POST http://localhost:3000/api/deals \
+  -H 'Content-Type: application/json' \
+  -d '{"rep_name":"Sarah","customer":"Acme Corp","list_price":50000,"discount_percent":18}'
 ```
 
-Hidden fields stay in the database but disappear from API responses and UI renderers. Un-hiding is a one-line change — remove the `, hidden` marker. Marcus (the owner) uses this through the Live App Editing widget: when he says "remove the notes field," the compiler adds `, hidden`, the column stays, and rolling back is one click.
+You should see something like this come back:
 
-For renames, keep the old field around (hidden) AND add the new one:
-
-```clear
-create a Users table:
-  name
-  notes, hidden, renamed to reason   # old field — data preserved
-  reason                              # new field — copied on read
+```json
+{
+  "success": true,
+  "message": "Deal saved",
+  "data": {
+    "id": 1,
+    "rep_name": "Sarah",
+    "customer": "Acme Corp",
+    "list_price": 50000,
+    "discount_percent": 18,
+    "status": "pending",
+    "created_at": "2026-05-06T14:32:08.114Z"
+  }
+}
 ```
 
-### The Backend Section
+Look at what happened. You sent four fields; you got back seven. The `id`, the `status` (defaulted to `'pending'`), and `created_at` (set automatically) all came along for free. That's the table schema doing its job — every saved row has the full shape, regardless of what the caller forgot to include.
 
-```clear
-when user requests data from /api/todos:
-  all_todos = get all Todos
-  send back all_todos
+Now read it back:
+
+```bash
+curl http://localhost:3000/api/deals
 ```
 
-This creates an API endpoint. When someone visits `/api/todos`, it:
-1. Gets all records from the Todos table
-2. Sends them back as JSON
-
-```clear
-when user sends todo to /api/todos:
-  validate todo:
-    task is text, required, min 1, max 500
-  new_todo = save todo as new Todo
-  send back new_todo with success message
+```json
+[
+  {
+    "id": 1,
+    "rep_name": "Sarah",
+    "customer": "Acme Corp",
+    "list_price": 50000,
+    "discount_percent": 18,
+    "status": "pending",
+    "created_at": "2026-05-06T14:32:08.114Z"
+  }
+]
 ```
 
-This creates a POST endpoint that:
-1. Receives data (named `todo_data`)
-2. Validates it (task must be text, 1-500 characters)
-3. Saves it to the Todos table
-4. Sends back the new record with a success message
+The same deal, fetched fresh from the database. **Now do the test that proves persistence works.** Stop the server (`Ctrl+C` in the first terminal). Start it again with `clear serve deal.clear`. Run that GET curl one more time. The deal is still there. The data outlived the server.
 
-> **Note:** The old syntax `when user calls POST /api/todos sending todo:` also works.
+That's the moment your app graduated from a demo to a product. Everything you've written in Chapters 1 through 5 — variables, ifs, loops, functions, URL handlers — now operates on data that *stays put*. The CRO can close her laptop, drive home, and her queue is still waiting in the morning.
 
-```clear
-when user deletes todo at /api/todos/:id:
-  requires login
-  delete the Todo with this id
-  send back 'deleted' with success message
-```
+### Why we used `local file` and not "a real database"
 
-This creates a DELETE endpoint that:
-1. Requires authentication (no anonymous deletes)
-2. Deletes the record with the given ID
-3. Sends back confirmation
+Clear apps in development run against a SQLite file (`clear-db.sqlite`) sitting next to your source. SQLite is a real database — Apple ships it inside iOS, every browser uses it, your phone has dozens of SQLite files on it right now — it just lives in one file instead of needing a separate server process. For a tutorial, a small Marcus deployment, even production apps with under a million rows, SQLite is enough.
 
-### The Frontend Section
+When you eventually need a remote database (multiple servers reading the same data, dozens of users at once, automatic backups), you change *one line* — `database is local file` becomes `database is postgres at process_env('DATABASE_URL')` — and Clear emits Postgres-flavored queries instead of SQLite ones. Same `save … as new`, same `get all`, same everything else. We'll cover that in the deployment chapter (Chapter 18). For now, lean on the file.
 
-```clear
-page 'Todo App':
-  on page load get todos from '/api/todos'
-```
+### Why this matters
 
-Creates a page that fetches all todos when it loads.
+You crossed the line from "the program prints things" to "the program *remembers* things." Every chapter from here on assumes that the Deals table exists and persists. Chapter 7 puts a real HTML page on top of it so the CRO can see the queue in a browser instead of curl. Chapter 8 adds the login wall the `requires login` line is waiting for. Chapter 9 introduces the queue primitive that lets the CRO approve or reject deals. Each of those chapters reads from and writes to the same Deals table you set up today.
 
-```clear
-  'What needs to be done?' is a text input saved as a task
-  button 'Add':
-    send task as a new todo to '/api/todos'
-    get todos from '/api/todos'
-    task is ''
-```
+The other thing you just touched — without anyone calling it out — is **CRUD**. Four operations every database app does: **C**reate (the POST you just wrote), **R**ead (the GET), and later, **U**pdate (Chapter 9, when the CRO approves a deal) and **D**elete. Real apps do all four; this chapter shipped two. The remaining two follow exactly the same shape — same `when user … to /api/…:`, same receiving variable convention, same `requires login` line.
 
-An input field and a button. When clicked, the button:
-1. Sends the task to the API
-2. Refreshes the list
-3. Clears the input
+### Try it yourself
 
-The line `display todos as table showing task, completed with delete`
+1. Post a second deal with curl — different rep, different customer, bigger discount. Run the GET. You should see two rows. The `id` on the second deal will be `2` — Clear auto-numbers them.
+2. Try a POST with an *invalid* discount: `"discount_percent": 200`. The validator should reject it with a 400 and a message about `max 100`. (The math is fine — the rule isn't.) Read the response, fix the value, re-post.
+3. Try a POST that's missing `rep_name`. You'll get a `required` error from the validator before any save runs. That's the wall doing its job — the table can't even *try* to insert a row that's missing a required field.
 
-Shows all todos in a table with a delete button on each row.
+### What's next
+
+Chapter 7 takes the URL handlers you built today and puts a real **page** on top of them. Same backend, same Deals table, same endpoints — but now the CRO opens her browser instead of typing curl. You'll learn about `page 'X' at '/X':`, `heading`, table widgets, and how Clear stitches the frontend to the backend so a button click on a web page lands in your `when user sends deal to …` handler.
 
 ---
 
