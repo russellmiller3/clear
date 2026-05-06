@@ -4658,6 +4658,17 @@ function findUniqueField(node, ctx) {
 function compileCrud(node, ctx, pad) {
   const table = node.target ? pluralizeName(node.target) : 'unknown';
   const lineComment = node.line ? ` // clear:${node.line}` : '';
+  // OWASP Piece 1, cycle 5: lookup the target table's per-row access
+  // policies once at the top of compileCrud so the lookup, save, and
+  // remove branches share the same decision. Empty array when no rules
+  // were declared (validator warns separately) or no target.
+  const _crudPolicies = (ctx.tablePolicies && node.target)
+    ? (ctx.tablePolicies[node.target.toLowerCase()]
+      || ctx.tablePolicies[node.target.toLowerCase() + 's']
+      || ctx.tablePolicies[node.target.toLowerCase().replace(/s$/, '')]
+      || [])
+    : [];
+  const _hasCreatorPolicy = _crudPolicies.some(p => p && p.subject === 'creator');
 
   // Cloudflare Workers (D1 SQLite) path — emits env.DB.prepare/bind/run.
   // D1 is SQLite over HTTP, so every query must parameterize through .bind()
@@ -4822,19 +4833,12 @@ function compileCrud(node, ctx, pad) {
     // be the row's creator. Composes with tenantWrap so a regulated
     // app with both layers stacks both checks. Plan: OWASP Piece 1,
     // 2026-05-05.
-    const policies = (ctx.tablePolicies && node.target)
-      ? (ctx.tablePolicies[node.target.toLowerCase()]
-        || ctx.tablePolicies[node.target.toLowerCase() + 's']
-        || ctx.tablePolicies[node.target.toLowerCase().replace(/s$/, '')]
-        || [])
-      : [];
-    const hasCreatorPolicy = policies.some(p => p && p.subject === 'creator');
-    const creatorWrap = (filterExpr) => hasCreatorPolicy
+    const creatorWrap = (filterExpr) => _hasCreatorPolicy
       ? `{ ...${filterExpr}, user_id: req.user && req.user.id }`
       : filterExpr;
     const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
     const wrappedFilter = tenantWrap(creatorWrap(baseFilter));
-    const where = node.condition || ctx.tenantScope || hasCreatorPolicy ? `, ${wrappedFilter}` : '';
+    const where = node.condition || ctx.tenantScope || _hasCreatorPolicy ? `, ${wrappedFilter}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
     let lookupCode;
     if (isSingleLookup) {
@@ -4927,6 +4931,22 @@ function compileCrud(node, ctx, pad) {
       // Simpler form when no overrides — just spread picked + tenant_id.
       if (!node.overrides || node.overrides.length === 0) {
         insertArg = `{ ...${picked}, tenant_id: req.user && req.user.tenant_id }`;
+      }
+    }
+    // OWASP Piece 1, cycle 5b: per-row creator stamp on insert. When the
+    // table declared `the <entity>'s creator can ...`, every insert sets
+    // `user_id: req.user && req.user.id`. The server-side stamp wins
+    // over any body-supplied user_id (mass-assignment protection — a
+    // malicious client cannot create rows owned by other users by
+    // forging the field). Composes cleanly with the tenant_id stamp:
+    // append to whatever insertArg already looks like.
+    if (_hasCreatorPolicy) {
+      if (insertArg === picked) {
+        insertArg = `{ ...${picked}, user_id: req.user && req.user.id }`;
+      } else {
+        // Already wrapped (overrides and/or tenant stamp). Append the
+        // user_id field before the closing brace so all stamps stack.
+        insertArg = `${insertArg.replace(/\s*\}\s*$/, '')}, user_id: req.user && req.user.id }`;
       }
     }
     if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;

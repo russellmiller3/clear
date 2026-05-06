@@ -4974,6 +4974,69 @@ describe('Compiler - per-row creator filter auto-injection (OWASP Piece 1, cycle
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 5b — JS compiler stamps user_id on inserts
+// =============================================================================
+// Server-side stamp: when a table has `the X's creator can ...`, every
+// `save Y as new X` insert sets user_id = req.user.id (overriding any
+// body-supplied user_id — mass-assignment protection). This makes the
+// row's creator immutable and authoritative from the moment of insert.
+describe('Compiler - per-row creator stamp on insert (OWASP Piece 1, cycle 5b)', () => {
+  it('insert under creator policy auto-sets user_id from req.user', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user sends deal to /api/deals:
+  requires login
+  saved = save deal as new Deal
+  send back saved`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toMatch(/user_id\s*:\s*req\.user(\s*&&\s*req\.user)?\.id/);
+  });
+
+  it('insert WITHOUT creator policy does NOT inject user_id', () => {
+    const src = `target: backend
+database is local memory
+create a Posts table:
+  title, text
+  anyone can read
+
+when user sends post to /api/posts:
+  saved = save post as new Post
+  send back saved`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).not.toContain('user_id: req.user');
+  });
+
+  it('insert under BOTH tenant scope and creator policy stamps both ids', () => {
+    // Defense-in-depth on creates: regulated apps with both layers must
+    // see both stamps on the inserted row. Locks the composition so
+    // future refactors of the save branch can't drop one stamp.
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user sends deal to /api/deals:
+  requires login
+  saved = save deal as new Deal
+  send back saved`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toContain('tenant_id: req.user && req.user.tenant_id');
+    expect(js).toContain('user_id: req.user && req.user.id');
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");
