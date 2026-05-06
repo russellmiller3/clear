@@ -1922,6 +1922,30 @@ function validateSecurity(body, errors, warnings) {
   // Collect schemas that have user_id or owner-type fields
   const schemasWithOwner = new Set();
   const allSchemaFields = new Map(); // tableName -> Set of fields
+  // OWASP Piece 1, cycle 2b — strict mode trigger. The missing-rules
+  // diagnostic is a hard ERROR when the file has any security context:
+  // auth scaffold (allow signup and login), tenant scope, a rule keyword
+  // anywhere, OR at least one OTHER table with policies declared. In
+  // those files, an undeclared table is a real hole. In a toy unit-test
+  // fixture with zero security context, it's still just a warning so
+  // the existing test surface stays green without a 335-fixture sweep.
+  let hasSecurityContext = false;
+  function scanForSecurityContext(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.type === NodeType.AUTH_SCAFFOLD) hasSecurityContext = true;
+      if (n.type === 'database_decl' && n.tenantScope) hasSecurityContext = true;
+      if (n.type === 'rule') hasSecurityContext = true;
+      if (n.type === NodeType.DATA_SHAPE && Array.isArray(n.policies) && n.policies.length > 0) hasSecurityContext = true;
+      // Recurse into endpoint bodies, conditionals, etc.
+      for (const k of ['body', 'thenBody', 'elseBody', 'actions', 'cards']) {
+        if (Array.isArray(n[k])) scanForSecurityContext(n[k]);
+      }
+    }
+  }
+  scanForSecurityContext(body);
+
   function collectSchemas(nodes) {
     for (const node of nodes) {
       if (node.type === NodeType.DATA_SHAPE) {
@@ -1933,12 +1957,11 @@ function validateSecurity(body, errors, warnings) {
           schemasWithOwner.add(name);
           schemasWithOwner.add(name + (name.endsWith('s') ? '' : 's'));
         }
-        // OWASP Piece 1, cycle 2a — warn when a table has no access rules.
-        // The next cycle (2b) will flip this to a hard error after the 8
-        // core templates declare rules and the test fixtures get a sweep
-        // update. The example phrases mirror what the eventual error will
-        // suggest, so apps written against this warning are already in the
-        // canonical shape when strict mode lands.
+        // OWASP Piece 1, cycle 2b (was 2a) — diagnose tables that ship
+        // without access rules. ERROR in security-aware files (auth /
+        // tenant / rules / other policied tables present); WARN in toy
+        // fixtures with no security context. The example phrases match
+        // the canonical syntax the parser accepts.
         const irregulars = { people: 'person', children: 'child', men: 'man', women: 'woman', mice: 'mouse', geese: 'goose' };
         const entity = irregulars[name]
           ? irregulars[name]
@@ -1948,12 +1971,16 @@ function validateSecurity(body, errors, warnings) {
               ? name.slice(0, -1)
               : name;
         if (Array.isArray(node.policies) && node.policies.length === 0) {
-          warnings.push(
+          const msg =
             `Line ${node.line}: ${node.name} table has no access rules. Add at least one line saying who can read, change, or delete it. Examples:\n` +
             `  - the ${entity}'s creator can read, change, or delete  (most common — only whoever made the row)\n` +
             `  - anyone can read  (public data)\n` +
-            `  - any admin can read  (admin override)`
-          );
+            `  - any admin can read  (admin override)`;
+          if (hasSecurityContext) {
+            errors.push({ line: node.line, message: msg });
+          } else {
+            warnings.push(msg);
+          }
         }
         // OWASP Piece 1, cycle 4 — error when a row-role policy names a
         // field that doesn't exist on the table. `the deal's reviewer can

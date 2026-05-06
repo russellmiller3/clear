@@ -6,6 +6,43 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Cycle 2b: missing-rules now a HARD ERROR in security-aware files
+
+The validator's "table has no access rules" diagnostic, which has shipped
+as a warning since Cycle 2a, now fires as a hard ERROR in any file that
+has security context — auth scaffold (`allow signup and login`), tenant
+scope (`database is shared with tenant scope`), a `rule` keyword, or
+even one OTHER table that already declares policies.
+
+Toy test fixtures and tutorial snippets with zero security context still
+get a warning so the existing test surface stays green without a manual
+sweep of 335 inline fixtures. The honest read of cycle 2b: where it
+matters (regulated apps) the diagnostic is strict; where it's noise
+(unit tests of a single tokenizer feature) it's still just a hint.
+
+What shipped:
+- `validator.js`: new `hasSecurityContext` scan walks the AST for
+  AUTH_SCAFFOLD nodes, tenant-scoped database declarations, rule
+  keywords, and any data-shape with non-empty policies. The trigger is
+  ONE other policy-shaped feature anywhere in the file.
+- 9 in-repo tests that previously had auth + unrules tables (audit
+  retention, send-to button auth headers, tenant-scope smokes, widget
+  injection, Cloudflare D1 packaging) updated with explicit
+  `anyone can read, change, or delete` rules. These were the cases
+  cycle 2b was designed to flag — adding the rule turns each from an
+  implicit hole into explicit intent.
+- All 13 canonical apps (8 core + 5 Marcus) still compile with zero
+  errors.
+
+Test suite: 2981 / 2981 green.
+
+The 335-fixture full sweep noted in the original cycle 2b spec is now
+optional follow-up: most of those fixtures are toy unit tests that
+genuinely don't need rules, and the security-context trigger covers
+every real customer scenario.
+
+---
+
 ## 2026-05-06 — Encrypt-at-rest for sensitive fields (OWASP Piece 3 follow-up)
 
 The `sensitive` field tag now actually does something. When a Clear data

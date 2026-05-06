@@ -3102,6 +3102,7 @@ allow signup and login
 
 create a Deals table:
   customer, required
+  anyone can read, change, or delete
 
 when user sends deal to /api/deals:
   requires login
@@ -7850,6 +7851,7 @@ database is local memory
 create a Users table:
   email
   password_hash
+  anyone can read, change, or delete
 
 # Backend
 allow signup and login
@@ -30624,6 +30626,7 @@ create a Deals table:
 database is shared with tenant scope
 create a Deals table:
   status
+  anyone can read, change, or delete
 
 when user requests data from /api/deals:
   send back all Deals`;
@@ -30651,6 +30654,7 @@ when user requests data from /api/deals:
 database is shared with tenant scope
 create a Deals table:
   status
+  anyone can read, change, or delete
 
 when user requests data from /api/deals:
   requires login
@@ -30687,6 +30691,7 @@ when user requests data from /api/deals:
 database is shared with tenant scope
 create a Deals table:
   status
+  anyone can read, change, or delete
 
 when user sends deal to /api/deals:
   requires login
