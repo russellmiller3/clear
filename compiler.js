@@ -4710,7 +4710,21 @@ function compileCrud(node, ctx, pad) {
     }
     // Default Python path (in-memory db)
     if (node.operation === 'lookup') {
-      const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
+      // OWASP Piece 1, cycle 6: per-row creator filter on Python lookup.
+      // Same pattern as JS — when the table declared `the X's creator
+      // can ...`, every query also requires user_id == the caller's id.
+      const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : null;
+      let pyFilter;
+      if (_hasCreatorPolicy && baseFilter) {
+        pyFilter = `{**${baseFilter}, "user_id": request.user.get("id")}`;
+      } else if (_hasCreatorPolicy) {
+        pyFilter = `{"user_id": request.user.get("id")}`;
+      } else if (baseFilter) {
+        pyFilter = baseFilter;
+      } else {
+        pyFilter = null;
+      }
+      const where = pyFilter ? `, ${pyFilter}` : '';
       const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
       const varName = sanitizeName(node.variable);
       let lookupCode = `${pad}${varName} = db.${isSingleLookup ? 'query_one' : 'query'}("${table}"${where})`;
@@ -4733,20 +4747,50 @@ function compileCrud(node, ctx, pad) {
       return lookupCode;
     }
     if (node.operation === 'save') {
-      if (node.resultVar) return `${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${sanitizeName(node.variable)})`;
-      // In PUT endpoints with :id, inject the URL param so db.update finds the right record
+      const varCode = sanitizeName(node.variable);
+      // OWASP Piece 1, cycle 6: per-row creator stamp on Python insert.
+      // Mirrors the JS cycle 5b stamp — server-side override beats any
+      // body-supplied user_id (mass-assignment protection).
+      const creatorStampLine = _hasCreatorPolicy
+        ? `${pad}${varCode}["user_id"] = request.user.get("id")\n`
+        : '';
+      if (node.resultVar) {
+        return `${creatorStampLine}${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${varCode})`;
+      }
+      // In PUT endpoints with :id, inject the URL param so db.update finds the right record.
+      // OWASP Piece 1, cycle 6: under a creator policy switch to the
+      // 3-arg db.update form so the WHERE requires user_id match. The
+      // inlined _DB.update class supports Convention 2 (table, filter,
+      // data) — see compileToPythonBackend's runtime block.
       if (ctx.endpointHasId) {
-        const varCode = sanitizeName(node.variable);
+        if (_hasCreatorPolicy) {
+          return `${pad}db.update("${table}", {"id": request.path_params["id"], "user_id": request.user.get("id")}, ${varCode})`;
+        }
         return `${pad}${varCode}["id"] = request.path_params["id"]\n${pad}db.update("${table}", ${varCode})`;
       }
-      return `${pad}db.update("${table}", ${sanitizeName(node.variable)})`;
+      return `${pad}db.update("${table}", ${varCode})`;
     }
     if (node.operation === 'remove') {
+      // OWASP Piece 1, cycle 6: per-row creator filter on Python delete.
       // When inside a DELETE endpoint with :id and no explicit condition, auto-inject id filter
       if (ctx.endpointHasId && !node.condition) {
+        if (_hasCreatorPolicy) {
+          return `${pad}id = request.path_params["id"]\n${pad}db.remove("${table}", {"id": id, "user_id": request.user.get("id")})`;
+        }
         return `${pad}id = request.path_params["id"]\n${pad}db.remove("${table}", {"id": id})`;
       }
-      const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
+      const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : null;
+      let pyFilter;
+      if (_hasCreatorPolicy && baseFilter) {
+        pyFilter = `{**${baseFilter}, "user_id": request.user.get("id")}`;
+      } else if (_hasCreatorPolicy) {
+        pyFilter = `{"user_id": request.user.get("id")}`;
+      } else if (baseFilter) {
+        pyFilter = baseFilter;
+      } else {
+        pyFilter = null;
+      }
+      const where = pyFilter ? `, ${pyFilter}` : '';
       return `${pad}db.remove("${table}"${where})`;
     }
     if (node.operation === 'upsert') {
@@ -15409,13 +15453,28 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('        store["next_id"] += 1');
   lines.push('        store["records"].append(new_record)');
   lines.push('        return new_record');
-  lines.push('    def update(self, table, record):');
+  lines.push('    def update(self, table, filter_or_record, data=None):');
+  lines.push('        # Convention 1 (2-arg): db.update(table, record) — match by record["id"]');
+  lines.push('        # Convention 2 (3-arg): db.update(table, filter, data) — match by filter dict.');
+  lines.push('        # Convention 2 makes the compiled output enforce per-row policies (e.g.');
+  lines.push('        # filter requires user_id == caller.id) so a hijacked session token cannot');
+  lines.push('        # overwrite another user\'s row by guessing the id.');
   lines.push('        self.create_table(table)');
-  lines.push('        for r in self._tables[table]["records"]:');
-  lines.push('            if r.get("id") == record.get("id"):');
-  lines.push('                r.update(record)');
-  lines.push('                return 1');
-  lines.push('        return 0');
+  lines.push('        if data is None:');
+  lines.push('            record = filter_or_record');
+  lines.push('            if record.get("id") is None: return 0');
+  lines.push('            for r in self._tables[table]["records"]:');
+  lines.push('                if r.get("id") == record.get("id"):');
+  lines.push('                    r.update(record)');
+  lines.push('                    return 1');
+  lines.push('            return 0');
+  lines.push('        else:');
+  lines.push('            filter_, update_data = filter_or_record, data');
+  lines.push('            for r in self._tables[table]["records"]:');
+  lines.push('                if all(r.get(k) == v for k, v in filter_.items()):');
+  lines.push('                    r.update(update_data)');
+  lines.push('                    return 1');
+  lines.push('            return 0');
   lines.push('    def remove(self, table, filter=None):');
   lines.push('        self.create_table(table)');
   lines.push('        store = self._tables[table]');
@@ -15625,6 +15684,10 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
 
   const pySchemaNames = new Set();
   const pySchemaMap = {};
+  // OWASP Piece 1, cycle 6: per-table access policies for the Python
+  // backend. Same shape as JS — the Python CRUD branches read this to
+  // decide whether to inject the user_id filter / stamp.
+  const pyTablePolicies = {};
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE) {
       pySchemaNames.add(node.name);
@@ -15632,9 +15695,10 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
         fields: node.fields,
         fkFields: node.fields.filter(f => f.fk)
       };
+      pyTablePolicies[node.name.toLowerCase()] = node.policies || [];
     }
   }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, dbBackend: pyDbBackend, _astBody: body, _allNodes: body };
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, tablePolicies: pyTablePolicies, dbBackend: pyDbBackend, _astBody: body, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {

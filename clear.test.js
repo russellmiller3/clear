@@ -5160,6 +5160,120 @@ when user calls PUT /api/deals/:id:
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 6 — Python compiler parity for the per-row creator filter
+// =============================================================================
+// Mirror of cycle 5a-c on the Python emit path: lookup adds user_id to the
+// filter dict, insert stamps user_id on the record, delete adds user_id to
+// the WHERE, update switches to the 3-arg db.update form. Without parity,
+// regulated apps that ship to Python miss the per-row enforcement entirely.
+describe('Compiler - Python parity for creator filter (OWASP Piece 1, cycle 6)', () => {
+  it('Python lookup under creator policy filters by user_id', () => {
+    const src = `target: python backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user requests data from /api/deals:
+  requires login
+  deals = look up all Deals
+  send back deals`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).toMatch(/"user_id":\s*request\.user\.get\("id"\)/);
+  });
+
+  it('Python lookup WITHOUT creator policy does NOT inject user_id', () => {
+    const src = `target: python backend
+database is local memory
+create a Posts table:
+  title, text
+  anyone can read
+
+when user requests data from /api/posts:
+  posts = look up all Posts
+  send back posts`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).not.toMatch(/"user_id":\s*request\.user/);
+  });
+
+  it('Python insert under creator policy stamps user_id on the record', () => {
+    const src = `target: python backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user sends deal to /api/deals:
+  requires login
+  saved = save deal as new Deal
+  send back saved`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).toMatch(/\["user_id"\]\s*=\s*request\.user\.get\("id"\)/);
+  });
+
+  it('Python DELETE under creator policy filters WHERE by user_id', () => {
+    const src = `target: python backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user calls DELETE /api/deals/:id:
+  requires login
+  delete the Deal with this id
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    // The remove call's filter dict can use either {**base, "user_id": ...}
+    // or {"id": id, "user_id": ...} depending on whether the parser turned
+    // `with this id` into a condition or a bare-id endpoint handler. Both
+    // are correct — assert that the user_id stamp lands inside a db.remove
+    // call against the deals table.
+    expect(py).toMatch(/db\.remove\("deals"[\s\S]*?"user_id":\s*request\.user\.get\("id"\)/);
+  });
+
+  it('Python PUT under creator policy uses 3-arg db.update with user_id in WHERE', () => {
+    const src = `target: python backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user calls PUT /api/deals/:id:
+  requires login
+  save incoming to Deals
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).toMatch(/db\.update\("deals",\s*\{[^}]*"user_id":\s*request\.user\.get\("id"\)/);
+  });
+
+  it('Python db runtime supports 3-arg update(table, filter, data)', () => {
+    // Compile any python app and verify the inlined _DB.update method
+    // accepts the 3-arg Convention 2 form. This is the runtime guarantee
+    // that the cycle-5c-update emit pattern depends on.
+    const src = `target: python backend
+database is local memory
+create a Deals table:
+  amount, number
+  anyone can read`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    // Match the def signature with a third positional/default arg
+    expect(py).toMatch(/def update\(self,\s*table,\s*[a-z_]+,\s*data=None\)/);
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");
