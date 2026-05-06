@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Show HN: Clear refuses to compile any of the OWASP Top 10 | Hacker News</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  /* Hacker News visual emulation — close to the real thing without ripping any assets. */
+  body { background: #f6f6ef; color: #000; font-family: Verdana, Geneva, sans-serif; font-size: 10pt; margin: 0; padding: 0; }
+  table { border-collapse: collapse; }
+  a { color: #000; text-decoration: none; }
+  a:visited { color: #828282; }
+  .header { background: #ff6600; padding: 2px 4px; }
+  .header td { vertical-align: middle; }
+  .header .logo { border: 1px solid #fff; width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
+  .header .pagetop { font-size: 10pt; color: #000; padding-left: 4px; }
+  .header .pagetop a { color: #000; }
+  .header .pagetop a:hover { text-decoration: underline; }
+  .header .right { text-align: right; }
+  .container { background: #f6f6ef; max-width: 1100px; margin: 0 auto; padding: 8px; }
+  .submission { padding: 4px 0; }
+  .rank { color: #828282; font-size: 10pt; vertical-align: top; padding: 4px 0 0 4px; }
+  .titleline a { color: #000; font-size: 10.5pt; }
+  .titleline a:hover { text-decoration: underline; }
+  .sitebit { color: #828282; font-size: 8pt; }
+  .subtext { color: #828282; font-size: 7pt; padding-left: 40px; padding-bottom: 8px; }
+  .subtext a { color: #828282; }
+  .subtext a:hover { text-decoration: underline; }
+  .commentbox { padding-left: 40px; padding-top: 12px; padding-bottom: 12px; }
+  .commenttext { font-size: 9pt; line-height: 1.5; padding: 6px 0 4px 0; max-width: 760px; }
+  .commenthead { font-size: 8pt; color: #828282; }
+  .commenthead a { color: #828282; }
+  .commenthead a:hover { text-decoration: underline; }
+  .indent-1 { padding-left: 40px; }
+  .indent-2 { padding-left: 80px; }
+  .indent-3 { padding-left: 120px; }
+  .indent-4 { padding-left: 160px; }
+  pre { background: #fff; border: 1px solid #ddd; padding: 6px 8px; font-family: Monaco, Consolas, monospace; font-size: 8.5pt; line-height: 1.4; max-width: 720px; overflow-x: auto; margin: 6px 0; }
+  code { font-family: Monaco, Consolas, monospace; font-size: 9pt; background: #eee; padding: 1px 3px; }
+  .footer { text-align: center; color: #828282; font-size: 8pt; padding: 16px 0; border-top: 1px solid #828282; margin-top: 24px; }
+  .footer a { color: #828282; }
+  .upvote { color: #828282; font-size: 8pt; padding-right: 4px; }
+  hr { border: none; border-top: 1px solid #828282; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<table class="header" width="100%"><tr>
+  <td style="width:18px;padding-right:4px"><span class="logo"><b style="color:#fff;font-size:10pt;padding-left:3px">Y</b></span></td>
+  <td class="pagetop"><b><a href="#">Hacker News</a></b>
+    <a href="#">new</a> | <a href="#">past</a> | <a href="#">comments</a> | <a href="#">ask</a> | <a href="#">show</a> | <a href="#">jobs</a> | <a href="#">submit</a></td>
+  <td class="right"><a href="#">login</a></td>
+</tr></table>
+
+<div class="container">
+
+<table class="submission"><tr>
+  <td class="rank">1.</td>
+  <td style="vertical-align:top;padding-top:4px"><span class="upvote">▲</span></td>
+  <td class="titleline" style="padding-top:2px">
+    <a href="#">Show HN: Clear refuses to compile any of the OWASP Top 10</a>
+    <span class="sitebit"> (buildclear.dev)</span>
+  </td>
+</tr></table>
+<div class="subtext">
+  847 points by <a href="#">rmiller</a> 6 hours ago | <a href="#">flag</a> | <a href="#">hide</a> | <a href="#">312 comments</a>
+</div>
+
+<div class="commentbox" style="background:#fff;border:1px solid #e0e0d6;padding:14px;margin-top:8px;max-width:780px">
+  <div class="commenttext" style="padding:0">
+    Author here. I built Clear because I'm tired of writing the same security checklist for every CRUD app I ship.<br><br>
+    The pitch in one line: <b>declare what each table allows, in plain English. The compiler writes the safe code, or the build fails.</b><br><br>
+    Worked through the OWASP Top 10 over the last month. Five small primitives close the whole list:<br><br>
+    1. <code>the deal's creator can read, change, or delete</code> — per-row access control. Compiler auto-injects the ownership check on every read/write/update/delete.<br>
+    2. <code>allow outgoing requests to: 'api.stripe.com'</code> — SSRF allowlist. Variable URLs won't compile.<br>
+    3. <code>ssn is text, sensitive</code> — encrypts at rest with AES-256-GCM, strips from API responses by default.<br>
+    4. <code>allow signup and login</code> — auto-wires rate-limit middleware on the login route.<br>
+    5. Hardcoded API keys (sk_live_..., AKIA..., ghp_..., sk-ant-...) in source = build fails with a friendly env-var suggestion.<br><br>
+    No SDK to add. No "did you remember to". The compiler accumulates quality — fix a bug class once, every customer's app gets the fix on the next build.<br><br>
+    Demo + writeup: <a href="#">buildclear.dev/marcus</a>. Happy to answer anything.
+  </div>
+</div>
+
+<hr>
+
+<!-- Comment 1 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">tptacek</a> 5 hours ago | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The "compiler refuses to compile any of the OWASP Top 10" framing is provocative but mostly correct here, because they restricted the surface area to a small DSL. You can't have a SQL injection if your only data access path is a parameterized CRUD primitive. The interesting question is what falls outside the DSL — and the answer in their case seems to be "if you reach for raw SQL or a raw fetch, the compiler errors and tells you why."<br><br>
+    The hardcoded-secret linter is a static check, not a structural guarantee — but I'd take it. The number of teams I've seen ship sk_live keys to public repos in the last year is depressing.
+  </div>
+</div>
+
+<!-- Comment 1 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 5 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Yeah, I'm careful with the framing. "Refuses to compile" is structural for the four CRUD-shape categories (access control, SSRF, sensitive data, brute-force) and a static lint for the secrets one. I document both clearly. The honest sentence is "every Top-10 category is either a hard compile error or auto-injected at runtime."<br><br>
+    The escape hatch question is real. Today there isn't one — you write Clear, you don't drop into raw SQL. We have one customer who needs Postgres advisory locks; that's an open design problem.
+  </div>
+</div>
+
+<!-- Comment 2 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">simonw</a> 5 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The <code>sensitive</code> tag is the kind of thing every framework should have had ten years ago. Tag the field, the framework encrypts at rest and strips from responses, the developer never has to think about it. The fact that I can do<br><br>
+    <pre>create a Patients table:
+  name is text
+  ssn is text, sensitive
+  the patient's creator can read, change, or delete</pre>
+    and have ssn auto-encrypted with a key derived from an env var is genuinely the right ergonomic.
+  </div>
+</div>
+
+<!-- Comment 2 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">aphyr</a> 5 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    AES-256-GCM with a 12-byte IV and a 16-byte auth tag is the right choice. I checked their runtime — the IV is generated per-row via crypto.randomBytes, so two rows with the same plaintext don't produce the same ciphertext. They also reject ciphertext with a bad auth tag rather than returning silent garbage, which is the trap most homegrown encrypt-at-rest implementations fall into.<br><br>
+    Key rotation is not yet supported (single-key only, with a v1 prefix in the format reserved for future migration). That's the next thing I'd push them on.
+  </div>
+</div>
+
+<!-- Comment 2 reply 2 -->
+<div class="commentbox indent-2">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 4 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Correct on all counts, and key rotation is the next cycle. The v1 prefix is exactly so we can migrate without breaking existing rows.<br><br>
+    On the auth-tag point — that one I learned the hard way reading every "encrypt at rest" tutorial that returns the decrypted string regardless of the tag. We return a placeholder string ("[encrypted — wrong key or tampered]") so a single bad row doesn't 500 the whole response, but the string is distinct enough that an operator notices.
+  </div>
+</div>
+
+<!-- Comment 3 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">jashkenas</a> 4 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    I've been waiting for somebody to do this. The DSL surface is small enough that the structural guarantees actually hold — the moment you give people raw SQL the whole thing collapses.<br><br>
+    The thing I want to know: what does the compiler emit? Is the generated JS readable? I don't want a black box.
+  </div>
+</div>
+
+<!-- Comment 3 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 4 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Express + better-sqlite3 (or pg, or D1 on Workers). The output is hand-written-quality JS — every line of compiled output traces back to one line of Clear, and the file starts with an auto-generated ASCII architecture diagram. Determinism is in the design rules: same input always produces the same output, no AI in the compile step.<br><br>
+    There's a "view compiled" button in the IDE. Customers read the output regularly during incident response.
+  </div>
+</div>
+
+<!-- Comment 4 (skeptic) -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">throwaway8821</a> 4 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The hardcoded-secrets linter is going to false-positive on test fixtures and unit tests that use realistic-shaped fake keys. How does it handle that?
+  </div>
+</div>
+
+<!-- Comment 4 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 4 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Conservatively scoped. The patterns target high-confidence prefixes only (sk_live_ + 20+ chars, AKIA + 16 alphanum, ghp_ + 36 chars, sk-ant- + 20+, sk-/sk-proj- + 40+). Generic high-entropy strings aren't flagged because the false-positive rate would block too many legitimate uses (HTML, JWT secrets in env-var names, etc.).<br><br>
+    Easy escape: <code>process_env('STRIPE_KEY')</code> reads from the environment, which is what every test fixture should do anyway.
+  </div>
+</div>
+
+<!-- Comment 5 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">latchkey</a> 4 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Honest question: how do you handle row-level access in joins? "the deal's creator can read" is straightforward when you SELECT from one table. What happens when you JOIN deals with line_items?
+  </div>
+</div>
+
+<!-- Comment 5 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 3 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Clear doesn't have a JOIN primitive — relationships are <code>has many</code> / <code>belongs to</code> at the schema level, and the compiler emits the appropriate filter on each table individually. So if you say "look up all line_items for deal X" and line_items has a creator policy, you get filtered by both deal_id (the relationship) AND user_id (the policy) automatically.<br><br>
+    Postgres customers get a second layer: ROW LEVEL SECURITY policies on every shared-scope table plus a per-request <code>SET LOCAL app.current_tenant_id</code>. So even if the app-layer filter had a bug, the database itself would refuse cross-tenant rows.
+  </div>
+</div>
+
+<!-- Comment 6 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">colmmacc</a> 3 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The idea of the compiler accumulating quality is the actual interesting bit, not the OWASP framing. If I fix a CSRF bug class in the compiler, every customer who recompiles gets the fix. That's a meaningfully different security posture than per-app patches.<br><br>
+    The flip side: a bug in the compiler is a CVE for every customer simultaneously. Have you thought about a security disclosure process?
+  </div>
+</div>
+
+<!-- Comment 6 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 3 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Yes, this is on my mind. The compiler is closed source today (one human reviewer; me). Once we have customers, we'll publish a security@ contact, set up a coordinated disclosure window, and pin a list of every customer's currently-deployed compiler version so a CVE notification is mechanical.<br><br>
+    The same trade exists for any compiler / framework / runtime — Rails, Django, Node, etc. Concentration of code is concentration of risk and concentration of fix.
+  </div>
+</div>
+
+<!-- Comment 7 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">eropple</a> 3 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    "the compiler writes the safe version for you" is a strong claim that I've seen burnt-out a dozen times by frameworks that promised the same thing. What makes you think this one holds?<br><br>
+    The honest answer most of those projects discover later is "we forgot about case X, and case X is the one our biggest customer hits."
+  </div>
+</div>
+
+<!-- Comment 7 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 2 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Fair pushback. The honest answer is: it holds for the surface I've defined, and the surface is small on purpose. Clear is not a general-purpose programming language. It's a DSL for line-of-business apps — auth, CRUD, queues, approvals, dashboards, basic AI.<br><br>
+    The moment a customer needs raw SQL, raw fetch, custom crypto, or anything that escapes the DSL, the structural guarantees end and they're back to writing JS by hand. I document that boundary explicitly. The "compiler writes the safe version" claim is scoped to the DSL surface, not the universe.<br><br>
+    Whether the surface I picked covers 80% of LoB apps is a hypothesis the next year of customer work will test.
+  </div>
+</div>
+
+<!-- Comment 8 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">peterlk</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Looking at the syntax more carefully — this is shockingly close to how a non-engineer would describe their app. I showed it to my CRO and he read the deal-desk example without asking what any line meant. That alone is a more honest demo than half the no-code platforms I've seen this year.<br><br>
+    Pricing? What's the model?
+  </div>
+</div>
+
+<!-- Comment 8 reply -->
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 2 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Self-serve at <a href="#">buildclear.dev</a>. Free tier for hobby apps, $20/mo for solo, $200/mo for team. First five customers get a one-time $500 "Concierge Setup" — I personally help wire the first deploy. After that it's hands-off self-serve.<br><br>
+    Not pursuing consulting. Not chasing enterprise yet. Vercel-shape, not Snowflake-shape.
+  </div>
+</div>
+
+<!-- Comment 9 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">jerf</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The "fail closed" choice on missing SENSITIVE_KEY is exactly right. Insert throws rather than writing plaintext to disk. The number of "encrypt at rest" implementations I've seen that silently fall back to plaintext when the key is missing is genuinely scary.<br><br>
+    Bonus points for the placeholder string on read so an operator notices missing-key situations. Most homegrown crypto either crashes the response or returns nothing useful.
+  </div>
+</div>
+
+<!-- Comment 10 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">stevex</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Saving this for the next time I'm asked to review a small business app. The five primitives map cleanly onto the security checklist I'd otherwise hand a junior dev — and the failure mode of "build fails with a friendly error" beats "the app ships and we find out three months later" every time.
+  </div>
+</div>
+
+<!-- Comment 11 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">danabramov</a> 1 hour ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The thing I keep coming back to is how much of "secure by default" is actually achievable through restricting the surface. Clear didn't invent any new crypto, didn't ship a CVE-scanning AI, didn't add a runtime agent inspecting requests. They just wrote a compiler whose output happens to not contain the bug shapes OWASP names.<br><br>
+    That's the boring, durable answer. Most of the security hype cycle is the opposite: increasingly elaborate runtime detection of bugs that shouldn't have been compileable in the first place.
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <a href="#">Guidelines</a> | <a href="#">FAQ</a> | <a href="#">Lists</a> | <a href="#">API</a> | <a href="#">Security</a> | <a href="#">Legal</a> | <a href="#">Apply to YC</a> | <a href="#">Contact</a><br><br>
+  Search: <input type="text" style="font-family:Verdana;font-size:9pt;width:200px;border:1px solid #828282" disabled>
+</div>
+
+</div>
+
+</body>
+</html>
