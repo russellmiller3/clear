@@ -35,15 +35,19 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-06 evening — Hartl rewrite started + meph plan parked)
+## Current State (rewritten 2026-05-06 late evening — Hartl ch5-6 + Python parity 4/5 + Meph cuts all landed and pushed)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
-**Headline ship (this session):** the user-guide Hartl-quality rewrite is officially in motion. A chapter-by-chapter plan is written that builds **deal-desk** progressively across 12 tutorial chapters (Hartl Rails Tutorial style — each chapter adds one feature, each ends with a working `clear run` + expected output + exercises). Chapters 1-4 are done at the new bar: explain the concept (what a program IS, what a variable IS, what a decision IS, what a list / loop / function IS) before showing the syntax, anchored on the deal-desk record so readers build toward a real Marcus app from line one. Chapter 4 closes with `compute_discount_cap` — the same business rule we'll formalize as provable in Chapter 12. Plan also requires every chapter to cross-check the latest CHANGELOG / SYNTAX / FEATURES / FAQ so chapters can't ship stale syntax.
+**Headline ship (yesterday's marathon — 16 commits, all now on origin/main):** three big arcs landed in one extended session.
 
-**Earlier today:** the OWASP Top 10 epic is closed by construction AND pushed to GitHub (66 commits landed). Five primitives in the compiler + runtime, three follow-ups (cycle-2b strict mode, Postgres user_id parity, encrypt-at-rest). Marcus walker regression fixed (145/145 green across all 5 Marcus apps). Build artifacts in `apps/` no longer get tracked by git.
+- **Hartl user-guide rewrite — chapters 1-6 done.** Reader builds deal-desk from a single deal record (ch 1) → discount-cap decision (ch 2) → list of pending deals + aggregates (ch 3) → reusable function for the discount cap (ch 4) → first web URL serving deals (ch 5, the leveling-up moment) → real database persistence (ch 6). Each chapter teaches the underlying CONCEPT (what a program is, what a variable is, what a database is, what an URL handler does) BEFORE the syntax. Per-chapter checklist + concept-coverage table + dual-audience strategy (newbie + experienced dev) live in `plans/plan-user-guide-hartl-05-06-2026.md`.
 
-**Also this session:** the meph-optimization plan was red-teamed (cost reality fixed from $30 to $45-250 depending on harness path; harness/metric mismatch identified; sample size raised; bias controls added). Plan stays parked per its own "Why NOT" guidance.
+- **Python parity — 4 of 5 runtime helpers shipped + audit + hook.** Encrypt-at-rest (`runtime/sensitive_crypto.py`), login + JWT (`runtime/auth.py` — verified live: a password hashed by Node verifies under Python and vice-versa, same for tokens), persistent SQLite (`runtime/db.py` — same on-disk file as the JS side; a row inserted by one runtime reads back from the other), auto login rate-limit (`runtime/rate_limit.py`). All four helpers have focused test files (54 tests total, all green). The python-parity audit script (`scripts/python-parity-audit.mjs`) lists every gap; the python-first-class hook (`.claude/hooks/python-first-class.mjs`) fires on edits to runtime/* or compiler.js to surface the gap count + remind about the "Build Python Alongside JS" rule.
+
+- **Meph prompt cut 1555 → 921 lines (-41%).** Two passes per the research at `plans/meph-optimal-setup-research-05-06-2026.md`. Reference content (OWASP block, AI agents/queues/policies, styles, SVG kitchen-sink, tenant scope, per-row creator filter, concurrency, hidden fields, pagination + aggregates) moved to look-up-on-demand via SYNTAX.md + a "Where to look up X" map at the top of the prompt + a "Shape-search — fire it BEFORE writing unfamiliar syntax" trigger before the workflow section.
+
+**GTM direction (locked 2026-05-04, unchanged):** self-serve product (Vercel model), NOT consulting. Ship buildclear.dev self-serve, offer "Concierge Setup — $500, no ongoing support" to first 5 customers only, then pure self-serve.
 
 **GTM direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Path: ship buildclear.dev self-serve, offer "Concierge Setup — $500, no ongoing support" to first 5 customers only, then pure self-serve. Default to "make the self-serve path more self-serve" over new compiler features Russell would demo by hand.
 
@@ -76,9 +80,9 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work (branches not yet merged to main)
 
-`plans/user-guide-hartl` — local branch, 4 commits: chapter-by-chapter plan + meph-plan red-team + plan tightening (concept teaching) + USER-GUIDE chapters 1-2 rewrite. Will merge to main + push at end of this session per the don't-push-branches-until-done rule.
+`docs/handoff-refresh` — the branch this rewrite is on. Will merge to main + delete after the commit lands. No actual code changes; just bringing the file in line with reality.
 
-WIP count: **1** (Hartl rewrite epic — multi-session, ~10 chapters left in tutorial track + reference cleanup).
+WIP count: **0** (yesterday's marathon all on origin/main now).
 
 ---
 
@@ -93,17 +97,21 @@ WIP count: **1** (Hartl rewrite epic — multi-session, ~10 chapters left in tut
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Continue Hartl user-guide rewrite — Chapter 5 next session.** Plan lives at `plans/plan-user-guide-hartl-05-06-2026.md`. Through this session: plan + Chapters 1-4 done (Your First Deal, Approve or Reject, A Queue of Deals, A Reusable Recipe — all deal-desk anchored, concept-before-syntax). Chapter 5 is the **leveling-up moment**: deal-desk becomes a real web app. Reader spins up `clear serve`, hits a URL with their browser, gets `/api/deals` back. Bigger chapter than ch 1-4; per the plan it's a one-chapter session, not paired. Per-chapter checklist in the plan; **mandatory: re-read CHANGELOG / SYNTAX.md / FEATURES.md / FAQ.md before writing any chapter so syntax doesn't go stale**. By Chapter 12 the reader has shipped a deployable approval-queue app with auth, audit, business rules, AI drafter, and email.
+1. **Continue Hartl rewrite — Chapter 7 (the deal-desk page in HTML).** Plan at `plans/plan-user-guide-hartl-05-06-2026.md`. Reader takes the URL from Chapter 5 + the database from Chapter 6 and adds a real web page (sidebar + workbench + a table of deals). Concepts: page declarations (`page 'X' at '/X':`), `heading`, the table widget, app-shell presets. Length target ~180-220 lines. After Chapter 7 the reader can BROWSE deals at localhost, not just curl them. **Mandatory: re-read CHANGELOG / SYNTAX.md / FEATURES.md / FAQ.md + the existing Chapter 7 in USER-GUIDE.md before writing.**
 
-2. **Marcus walker auth-flow follow-up.** Earlier walker failures fixed at the empty-table layer, but the deeper gap remains: walker hits creator-scoped data pages WITHOUT signing in first, so cycle 5 user_id filter (correctly) returns 0 rows. ~1 focused session. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` skips auth pages; replace with "hit signup, capture token, set Authorization header on subsequent requests."
+2. **Last Python runtime helper — `runtime/db-postgres.py`.** The Postgres adapter parity. ~1 focused session port + tests. After this lands, all 5 helpers exist on Python. Then the bigger compiler-emit wiring is the next Python parity move (#3 below).
 
-3. **Plans waiting for execution** in `plans/`:
-   - `plan-meph-optimization.md` — **red-teamed today**, executable when ready. Costs $45 (cheap path) or $250 (full multi-turn path) — not $30 like the v1. Stays parked per its own "Why NOT" guidance (off critical path). Run after Marcus signs OR if Meph quality regresses.
-   - `plan-python-parity.md` — JS-vs-Python cross-target audit + closure pass. Known HIGH-severity gaps: encrypt-at-rest broken on Python, Python auto-login-rate-limit emit, audit-log emit on Python target. Audit script is 1-2 hours; closure pass is multi-session.
+3. **Compiler emit wiring for Python (multi-session).** The python-parity audit reports 21 high-severity gaps where the JS path handles a feature but Python silently does nothing — auth scaffolding, login rate-limiting, approval queues, business rules, AI agent calls, CRUD operations, audit-log triggers, etc. Wiring `compileToPythonBackend` to actually USE the helpers (`auth.py`, `db.py`, etc.) and emit matching code for each load-bearing primitive is the load-bearing remaining work for "Python target works as advertised." Multi-session; starts with auth + CRUD since those unblock the most surface.
 
-4. **Doc gardening:** USER-GUIDE has the OWASP work in two places (Chapter 6.5 + 24.1). Before next chapter additions, decide whether to consolidate or keep both as different lenses. Current state is correct but redundant.
+4. **Marcus walker auth-flow follow-up.** Walker hits creator-scoped data pages WITHOUT signing in first, so the user_id filter (correctly) returns 0 rows. ~1 focused session. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` skips auth pages; replace with "hit signup, capture token, set Authorization header on subsequent requests."
 
-5. **Cloud blockers (gated on Russell's hands)** — Cloudflare account setup, Stripe live keys, Anthropic org key, Fly Trust Verified, first Marcus conversation. None are code work; all are external paperwork or sales motion.
+5. **Plans waiting in `plans/`:**
+   - `plan-meph-optimization.md` — **obviated** by `plans/meph-optimal-setup-research-05-06-2026.md`. The research answers what the eval was meant to measure with strong-evidence citations; the eval would burn $45-$250 to confirm what we already know. Not worth running. Plan stays parked.
+   - `plan-python-parity.md` — already in progress (4/5 helpers + audit + hook done); see #2 + #3.
+
+6. **Doc gardening:** USER-GUIDE has the OWASP work in two places (Chapter 6.5 + 24.1). Decide whether to consolidate or keep both as different lenses. Current state is correct but redundant.
+
+7. **Cloud blockers (gated on Russell's hands, unchanged):** Cloudflare account setup, Stripe live keys, Anthropic org key, Fly Trust Verified, first Marcus conversation. None are code work; all external paperwork or sales motion.
 
 
 ---
