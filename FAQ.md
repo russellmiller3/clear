@@ -18,7 +18,11 @@ Python ports of the JS runtime helpers, landing one at a time per `plans/plan-py
 
 Each helper has a `*_test.py` peer in `runtime/`. Run any of them via `python runtime/<name>_test.py`. Total tests today: 54 across the four helpers.
 
-**Still missing:** `runtime/db-postgres.py` (Postgres adapter parity). And the compiler emit in `compileToPythonBackend` (compiler.js:15430+) doesn't yet IMPORT these helpers — Python apps still inline the old in-memory `_DB` stub. Wiring `compileToPythonBackend` to use the helpers is multi-session follow-up. Run `node scripts/python-parity-audit.mjs` for the current gap state.
+- **`runtime/db_postgres.py`** — drop-in Postgres replacement for `db.py` when the source declares `database is postgres`. Uses psycopg3 (PyPI dep, lazy-imported so the module loads even without it). Same API as `db.py`, same auto-added `id`/`user_id`/`tenant_id`/`_version` columns as `runtime/db-postgres.js`, so a row inserted by the JS Postgres runtime reads back via this Python module on the same DATABASE_URL.
+
+Each helper has a `*_test.py` peer in `runtime/`. Run any of them via `python runtime/<name>_test.py`. Total tests across all five helpers: 66 (54 from yesterday + 12 offline `db_postgres` tests today; live `db_postgres` tests skip without psycopg).
+
+**Still missing:** the compiler emit in `compileToPythonBackend` (compiler.js:15430+) doesn't yet IMPORT these helpers — Python apps still inline the old in-memory `_DB` stub. Wiring `compileToPythonBackend` to use the helpers is multi-session follow-up. The CLI's runtime-copy step also needs to copy the new `.py` files alongside the existing `.js` files. Run `node scripts/python-parity-audit.mjs` for the current gap state.
 
 ---
 

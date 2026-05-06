@@ -28,7 +28,9 @@ Two big arcs landed this session.
 
 Each helper has a focused test suite (12 + 28 + 7 + 7 = 54 tests total today, all green via `python runtime/*_test.py`).
 
-**Remaining: 2 of 5 helpers** — `runtime/db-postgres.py` (Postgres adapter parity) and the compiler-emit wiring in `compileToPythonBackend` (the 21 HIGH-severity NodeType gaps the audit reports — multi-session work to actually USE these helpers in compiled Python apps).
+**Remaining: 1 of 5 helpers** — the compiler-emit wiring in `compileToPythonBackend` (the 21 HIGH-severity NodeType gaps the audit reports — multi-session work to actually USE these helpers in compiled Python apps).
+
+**Update 2026-05-06 late evening — `runtime/db_postgres.py` shipped.** The last helper landed. All 5 Python runtime helpers now exist on the filesystem (sensitive_crypto + auth + db + rate_limit + db_postgres). Drop-in replacement for db.py when the source declares `database is postgres`; same API surface, lazy psycopg import, byte-for-byte schema interop with the JS Postgres runtime on the same DATABASE_URL. 12 offline tests + 2 live tests (skipped without psycopg). Optimistic-lock + tenant-RLS-context + sensitive-field-encryption integrations stubbed for follow-up, matching db.py's pattern. Note: the CLI's runtime-copy step (which copies `db-postgres.js` to compiled apps' `clear-runtime/` dir) needs an equivalent for `db_postgres.py` — tracked in `plans/plan-python-parity.md` as part of the bigger compiler-emit pass.
 
 ---
 
@@ -38,8 +40,9 @@ Same session as the plan + chapters 1-2 ship below. Continued into chapters 3 an
 
 - **Chapter 3 — A Queue of Deals.** Replaces 'Lists and Loops' with the deal-desk pending queue. Teaches lists (sequence of values), `for each` loops, aggregates (`count of`, `max of`, `avg of`), and nests `if` inside the loop to produce a triage view that flags discounts over 30%. Keeps the `while`-loop safety-cap explainer (Clear's safe-defaults story).
 - **Chapter 4 — A Reusable Recipe.** Replaces 'Functions' with `compute_discount_cap`, a tier-based business rule that returns 50% / 30% / 15% by customer segment. Teaches the WHY-not-just-WHAT for functions (single-source-of-truth for logic; copy-pasted math grows bugs). Sets up Chapter 12 — same function shape will become a provable rule.
+- **Chapter 7 — The Deal Desk Page (From curl to Browser).** Replaces 'Expense Tracker' with the deal-desk page. Teaches what a web page is (text + structure + styling, served by the program when a browser asks), what a `page 'X' at '/X':` declaration does (HTML for humans, vs `when user calls` returning JSON for code), what a widget is (one line for a styled `<table>`), and what app-shell presets are (`app_layout`, `app_sidebar`, `app_main`, `app_header`, `app_content` — pre-styled section types that emit the slate-on-ivory chrome). End-of-chapter run: `clear serve deal.clear`, open `localhost:3000` in a browser, see the empty queue rendered as a real page with sidebar, header, breadcrumb, page header, and the friendly "No rows yet." placeholder row.
 
-4 of 12 tutorial chapters done. Remaining: 5 (the leveling-up moment — first web URL) and 6-12 across ~5 sessions.
+5 of 12 tutorial chapters done (1-4 + 7; 5 and 6 already shipped on previous branches). Remaining: 8-12 across ~5 sessions.
 
 ---
 
