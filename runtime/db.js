@@ -217,6 +217,13 @@ function createTable(name, schema) {
   // simply ignore it. Cost is one INTEGER per row, far cheaper than
   // making auto-injection a per-table decision.
   cols.push('tenant_id INTEGER');
+  // OWASP Piece 1, cycle 5: every table gets an auto-managed `user_id`
+  // column so the per-row creator filter has somewhere to land. Apps
+  // that declare `the X's creator can ...` use it for ownership
+  // checks; tables with anyone-can-read rules just leave it null.
+  // Same precedent as tenant_id — security plumbing should be
+  // invisible to the author.
+  cols.push('user_id INTEGER');
   _db.prepare('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')').run();
 
   // Schema evolution: add columns present in schema but missing from the table
@@ -236,6 +243,12 @@ function createTable(name, schema) {
   if (!existing.has('tenant_id')) {
     _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN tenant_id INTEGER').run();
     existing.add('tenant_id');
+  }
+  // Backfill user_id on tables that were created before per-row creator
+  // policies (OWASP Piece 1, cycle 5).
+  if (!existing.has('user_id')) {
+    _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN user_id INTEGER').run();
+    existing.add('user_id');
   }
   backfillRenamedFields(tableName, schema, existing);
 }
