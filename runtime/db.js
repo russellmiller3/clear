@@ -242,29 +242,27 @@ function createTable(name, schema) {
   _schemas[tableName] = schema || {};
 
   const cols = ['id INTEGER PRIMARY KEY AUTOINCREMENT'];
+  // Track which fields the user-supplied schema declared so we don't
+  // duplicate auto-managed columns. The auto-emitted audit_log table
+  // declares user_id of its own; without this dedupe, runtime would
+  // add user_id again and SQLite would error with "duplicate column".
+  const declaredFields = new Set(Object.keys(schema || {}));
   for (const [field, config] of Object.entries(schema || {})) {
     cols.push(field + ' ' + toSQLiteType(config));
   }
   // Concurrency Phase 2: every table gets an auto-managed `_version`
   // column so `with optimistic lock` saves can do a version check
-  // without the author having to declare the field. Defaults to 0
-  // for new rows and existing rows that predate this change. The
-  // updateWithVersion runtime helper bumps it on every successful
-  // save and refuses saves where the expected version has moved.
-  cols.push('_version INTEGER DEFAULT 0');
+  // without the author having to declare the field. Skip if the
+  // schema declared it.
+  if (!declaredFields.has('_version')) cols.push('_version INTEGER DEFAULT 0');
   // Tenant isolation Phase 2: every table gets an auto-managed
   // `tenant_id` column. Apps that declare `database is shared with
-  // tenant scope` use it for row-level isolation; apps that don't
-  // simply ignore it. Cost is one INTEGER per row, far cheaper than
-  // making auto-injection a per-table decision.
-  cols.push('tenant_id INTEGER');
+  // tenant scope` use it for row-level isolation. Skip if declared.
+  if (!declaredFields.has('tenant_id')) cols.push('tenant_id INTEGER');
   // OWASP Piece 1, cycle 5: every table gets an auto-managed `user_id`
-  // column so the per-row creator filter has somewhere to land. Apps
-  // that declare `the X's creator can ...` use it for ownership
-  // checks; tables with anyone-can-read rules just leave it null.
-  // Same precedent as tenant_id — security plumbing should be
-  // invisible to the author.
-  cols.push('user_id INTEGER');
+  // column so the per-row creator filter has somewhere to land. Skip
+  // if the schema declared user_id (e.g. audit_log).
+  if (!declaredFields.has('user_id')) cols.push('user_id INTEGER');
   _db.prepare('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')').run();
 
   // Schema evolution: add columns present in schema but missing from the table
