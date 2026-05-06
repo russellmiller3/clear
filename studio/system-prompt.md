@@ -38,15 +38,14 @@ The full reference is in SYNTAX.md and AI-INSTRUCTIONS.md. Read those when you n
 
 When in doubt, run `compile` and read the error — the validator now warns when you reach for a reserved word as a variable name and tells you what to try instead.
 
-## Total by default — `live:` block (PHILOSOPHY Rule 18)
+## Pure vs effectful — the prover decides automatically
 
-Clear functions and rule bodies are total by default. That means: pure math, no side effects. No database lookups, no HTTP calls, no AI calls, no clock reads, no randomness. The code is verifiable because the prover can simulate it without simulating the world.
+The prover is honest about what it can and can't verify. Pure code (math, string formatting, list operations, `enforce that` business rules) gets a PROVED verdict for every possible input. Effectful code (database lookups, HTTP calls, AI calls, clock reads) gets UNVERIFIABLE — the prover refuses to claim universal correctness for code that depends on outside state.
 
-When you DO need to talk to the world — and most real apps do — you wrap that work in a `live:` block. The fence is explicit so the reader (and the prover) sees where effects start and stop.
+You don't have to mark anything. The prover walks the AST, sees the effect, and labels the rule UNVERIFIABLE with a reason ("body calls the database"). Write your code the way every other language wants you to:
 
 ```clear
 define function compute_discount(amount, tier):
-  # pure — math only, no effects
   if tier is 'enterprise':
     return amount * 0.5
   return amount * 0.3
@@ -54,20 +53,26 @@ define function compute_discount(amount, tier):
 when user sends deal to /api/deals:
   validate deal:
     discount is number, required
-  base = compute_discount(deal's amount, deal's tier)   # pure call
-  live:
-    saved = save deal as new Deal                       # effect: DB write
-    notify_slack('new deal: ' + saved's id)             # effect: HTTP
+  base = compute_discount(deal's amount, deal's tier)
+  saved = save deal as new Deal
+  notify_slack('new deal: ' + saved's id)
   send back saved
 ```
 
-The pure call to `compute_discount` lives outside the fence. The DB save and the Slack notify are inside, where the reader expects effects.
+There's an OPTIONAL `live:` block keyword that wraps effects in a visible fence:
 
-**When to fence:** any block that calls the database, makes HTTP requests, calls Claude, sends email, sets timers, broadcasts WebSocket messages, or reads the clock. Two-second test: would running the same code twice produce different results because of outside state? If yes, fence it.
+```clear
+when user sends deal to /api/deals:
+  base = compute_discount(deal's amount, deal's tier)
+  live:
+    saved = save deal as new Deal
+    notify_slack('new deal: ' + saved's id)
+  send back saved
+```
 
-**When NOT to fence:** pure math, string formatting, list operations, conditional logic, `enforce that` business rules. These belong outside the fence so the prover can verify them universally.
+**Use `live:` only** when a regulated-tier auditor wants to see "where exactly do effects happen?" at a glance. The CRO's eye lands on the `live:` keyword and they've answered the question without reading every line. For non-regulated apps, skip it — it's pure ceremony for typical code.
 
-The trade-off is honest. The pure half can be PROVED for every possible input. The effectful half can't, but it's clearly marked, and runtime guards still fire on every request. The CRO sees a sharp line between "we proved this" and "we runtime-checked this."
+The compiler NEVER requires `live:`. The prover infers purity automatically.
 
 ## Audit trail — auto-emitted with `allow signup and login`
 

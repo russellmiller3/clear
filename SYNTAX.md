@@ -339,48 +339,47 @@ fail with 'Database connection failed'
 raise error 'Unauthorized access'
 ```
 
-## Live Blocks (Explicit Effect Fence)
+## Live Blocks (Optional Effect Fence)
 
-A `live:` block is the visible label for code that talks to the outside world —
-asking Claude, calling an API, opening a websocket, running a timer. Pure code
-(arithmetic, string handling, table reads, validation) doesn't need a fence;
-it lives wherever you write it. Effects belong inside `live:` so the reader
-(and the compiler) can see exactly where the program meets the world.
+A `live:` block is an OPTIONAL visible label for code that talks to the outside
+world. The compiler does NOT require it. The prover walks the AST and infers
+purity automatically — rules with effects in their body get UNVERIFIABLE,
+rules without get PROVED. You don't have to mark anything; the prover knows.
+
+Use `live:` only when a regulated-tier auditor wants to see "where exactly do
+effects happen?" at a glance. The CRO's eye lands on the keyword and they've
+answered the question without reading every line. For non-regulated apps,
+skip it — write effects inline like every other language.
 
 ```clear
-# Inside an endpoint — canonical form: instructions string + with data
+# Most apps: just write inline. No fence needed.
+when user sends note to /api/chat:
+  reply = ask claude 'You are a helpful assistant' with note
+  send back reply
+
+# Regulated app that wants the visual marker:
 when user sends note to /api/chat:
   live:
     reply = ask claude 'You are a helpful assistant' with note
   send back reply
-
-# Inside an agent — same shape, different home
-agent 'Replier' receiving message:
-  live:
-    answer = ask claude 'Reply to the user politely' with message
-  send back answer
-
-# Live can sit anywhere a statement can — top level, inside endpoints,
-# inside agents, inside functions. The `'instructions' with <data>`
-# pattern is canonical for every effect call inside the fence.
 ```
 
-**What `live:` does today (Phase B-1, 2026-04-25):**
+**What `live:` does:**
 
-- Marks the boundary between pure code and effect code.
-- Compiles permissively — any statement is allowed inside, body emits inline
-  with a `// live: block — explicit effect fence` comment in the output.
-- Is a *fence*, not a scope: variables created inside `live:` are still
-  visible to code that follows the block.
+- Pure documentation for the human reader. Zero runtime semantics.
+- Compiles permissively — any statement allowed inside.
+- Is a *fence*, not a scope: variables created inside are still visible
+  to code that follows the block.
 
-**What `live:` will do next (Phase B-2):**
-
-- The compiler will start *requiring* effect-shaped calls (`ask claude`,
-  `call API`, `subscribe to`, `every N seconds`) to sit inside a `live:`
-  fence. Pure blocks become provably total — they cannot hang.
+**Earlier plans dropped 2026-05-06.** A "Phase B-2" plan once said the
+compiler would eventually REQUIRE effects to sit inside `live:`. That plan
+is dropped — overhead for typical apps with no real benefit since the
+prover already infers purity automatically. The keyword stays as an
+opt-in for regulated apps.
 
 See `PHILOSOPHY.md` Rule 18 (Total by Default, Effects by Label) for the
-design intent.
+totality story (loop caps, recursion bounds, timeouts) — that's separate
+from the `live:` keyword.
 
 ## Transactions
 

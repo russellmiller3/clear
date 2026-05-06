@@ -138,7 +138,7 @@ section.
 | If / else | `if x is 5:` ... `otherwise:` | Also inline: `if x is 5 then show 'yes'` |
 | Match / when | `match x:` + `when 'a':` + `otherwise:` | Pattern matching |
 | Try / catch | `try:` + `if error:` | Typed handlers: `if error 'not found':` (404) |
-| Live block (effect fence) | `live:` + indented body | Explicit label for code that talks to the world (`ask claude`, `call API`, `subscribe to`, timers). Permissive in Phase B-1 (2026-04-25); Phase B-2 will require effect-shaped calls to sit inside `live:`. See PHILOSOPHY Rule 18. |
+| Live block (optional effect fence) | `live:` + indented body | OPTIONAL visual label for code that talks to the world (`ask claude`, `call API`, `subscribe to`, timers). The compiler does NOT require it — the prover infers purity automatically. Use only when a regulated-tier auditor wants to see "where do effects happen?" at a glance. (Earlier "Phase B-2 will require it" plan was dropped 2026-05-06 as ceremony with no real benefit.) |
 | Break / continue | `stop` / `skip` | |
 | Comments | `# text` | |
 | Modules | `use 'helpers'` | Namespaced, selective, or inline-all |

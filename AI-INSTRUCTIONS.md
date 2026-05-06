@@ -607,34 +607,34 @@ If your app genuinely has no concept of user accounts — no `allow signup and l
 
 Never add a bare `requires login` to an endpoint in an app that has no auth scaffolding — it will fail to authenticate anything because there's no user system to check against.
 
-## Total by default — `live:` block (PHILOSOPHY Rule 18)
+## Pure vs effectful — the prover decides automatically
 
-Functions and rule bodies in Clear are **total by default**. Pure math, no effects. The prover can verify them universally — "this function returns the right answer for every input" — because no outside state can change the result.
+The prover is honest about what it can verify. Pure code (math, string formatting, list operations, `enforce that` business rules) gets a PROVED verdict universally. Effectful code (database lookups, HTTP calls, AI calls, clock reads) gets UNVERIFIABLE because the prover refuses to claim universal correctness for code that depends on outside state.
 
-When you need real-world work — saving a record, calling Claude, sending a Slack message, reading the clock — wrap it in a `live:` block. The fence makes effects explicit so the reader sees them and the prover knows where its math claims stop.
+You don't mark anything. The prover walks the AST, sees the effect, and labels the rule with a clear reason ("body calls the database"). Write your code the way every other language wants you to:
 
 ```clear
-define function compute_discount(amount, tier):
-  # pure: only math allowed in here
-  if tier is 'enterprise':
-    return amount * 0.5
-  return amount * 0.3
-
 when user sends deal to /api/deals:
-  validate deal:
-    discount is number, required
-  base = compute_discount(deal's amount, deal's tier)   # pure call
-  live:
-    saved = save deal as new Deal                       # effect
-    notify_slack('new deal: ' + saved's id)             # effect
+  base = compute_discount(deal's amount, deal's tier)
+  saved = save deal as new Deal
+  notify_slack('new deal: ' + saved's id)
   send back saved
 ```
 
-**The rule.** If a piece of code calls the database, makes HTTP requests, calls AI, sends email, sets timers, broadcasts WebSocket messages, or reads the clock, fence it in `live:`. If it's pure math, string formatting, list operations, or `enforce that` business rules, leave it outside the fence so the prover can verify it.
+There's an OPTIONAL `live:` block keyword that wraps effects in a visible fence:
 
-**The trade-off is honest.** The pure half can be PROVED for every possible input. The effectful half can't — the prover doesn't simulate database contents — but it's clearly fenced and runtime-guarded. The CRO sees a sharp line between "we mathematically proved this" and "we runtime-checked this," which is exactly what a regulated-tier audit wants to see.
+```clear
+when user sends deal to /api/deals:
+  base = compute_discount(deal's amount, deal's tier)
+  live:
+    saved = save deal as new Deal
+    notify_slack('new deal: ' + saved's id)
+  send back saved
+```
 
-**A quick mental check:** would running this twice produce different results because of outside state? If yes, the code is effectful and belongs inside `live:`. If no, leave it pure.
+Use `live:` ONLY when a regulated-tier auditor wants "where exactly do effects happen?" answered at a glance. The CRO's eye lands on the `live:` keyword and they've answered the question without reading every line. For non-regulated apps, skip it — it's pure ceremony for typical code. Most apps just write effects inline.
+
+The compiler NEVER requires `live:`. The prover infers purity automatically.
 
 ## Audit Trail (auto-emitted with `allow signup and login`)
 
