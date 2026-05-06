@@ -4961,6 +4961,17 @@ describe('Compiler - per-row creator filter auto-injection (OWASP Piece 1, cycle
     expect(result.errors.length).toBe(0);
     expect(result.javascript).not.toContain('user_id: req.user');
   });
+
+  it('composes creator filter with tenant scope so both layers fire on the same lookup', () => {
+    // Defense-in-depth: a regulated app declaring BOTH `database is shared
+    // with tenant scope` AND `the deal's creator can ...` must emit BOTH
+    // filters on every lookup. This locks the composition order so future
+    // edits can't silently drop one layer when both apply.
+    const result = compileProgram("build for backend\ndatabase is shared with tenant scope\n\ntable Deals:\n  amount, number\n  the deal's creator can read, change, or delete\n\nwhen user requests data from /api/deals:\n  requires login\n  deals = look up all Deals\n  send back deals");
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('tenant_id: req.user && req.user.tenant_id');
+    expect(result.javascript).toContain('user_id: req.user && req.user.id');
+  });
 });
 
 describe('Compiler - RLS policies to SQL', () => {

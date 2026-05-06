@@ -1622,10 +1622,16 @@ function compileToCloudflareWorker(body, result, opts = {}) {
   const html = typeof result?.html === 'string' ? result.html : '';
   const schemaNames = new Set();
   const schemaMap = {};
+  // OWASP Piece 1, cycle 5: collect per-table access policies so the CRUD
+  // emit can wrap lookup/save/update/delete filters with the right
+  // per-row check. Same shape as schemaMap (keyed by lowercased table
+  // name); empty array if the table declared no rules.
+  const tablePolicies = {};
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE) {
       schemaNames.add(node.name);
       schemaMap[node.name.toLowerCase()] = { fields: node.fields, fkFields: node.fields.filter((f) => f.fk) };
+      tablePolicies[node.name.toLowerCase()] = node.policies || [];
     }
   }
   const declared = new Set();
@@ -1637,6 +1643,7 @@ function compileToCloudflareWorker(body, result, opts = {}) {
     mode: 'backend',
     schemaNames,
     schemaMap,
+    tablePolicies,
     target: 'cloudflare',
     _astBody: body,
     _allNodes: body,
@@ -4805,9 +4812,29 @@ function compileCrud(node, ctx, pad) {
     const tenantWrap = (filterExpr) => ctx.tenantScope
       ? `{ ...${filterExpr}, tenant_id: req.user && req.user.tenant_id }`
       : filterExpr;
+    // OWASP Piece 1, cycle 5: per-row creator filter. When the table
+    // declared `the <entity>'s creator can ...`, every lookup also
+    // auto-scopes by `user_id = req.user.id`. Without this, an
+    // attacker with a stolen session token could read another user's
+    // rows by guessing the row id (IDOR). The wrap is transparent —
+    // the author writes `look up Deal where status is 'pending'`,
+    // the compiler emits a filter that ALSO requires the caller to
+    // be the row's creator. Composes with tenantWrap so a regulated
+    // app with both layers stacks both checks. Plan: OWASP Piece 1,
+    // 2026-05-05.
+    const policies = (ctx.tablePolicies && node.target)
+      ? (ctx.tablePolicies[node.target.toLowerCase()]
+        || ctx.tablePolicies[node.target.toLowerCase() + 's']
+        || ctx.tablePolicies[node.target.toLowerCase().replace(/s$/, '')]
+        || [])
+      : [];
+    const hasCreatorPolicy = policies.some(p => p && p.subject === 'creator');
+    const creatorWrap = (filterExpr) => hasCreatorPolicy
+      ? `{ ...${filterExpr}, user_id: req.user && req.user.id }`
+      : filterExpr;
     const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
-    const wrappedFilter = tenantWrap(baseFilter);
-    const where = node.condition || ctx.tenantScope ? `, ${wrappedFilter}` : '';
+    const wrappedFilter = tenantWrap(creatorWrap(baseFilter));
+    const where = node.condition || ctx.tenantScope || hasCreatorPolicy ? `, ${wrappedFilter}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
     let lookupCode;
     if (isSingleLookup) {
@@ -14629,6 +14656,11 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // Collect schema names so CRUD can reference the correct Schema variable
   const schemaNames = new Set();
   const schemaMap = {};
+  // OWASP Piece 1, cycle 5: collect per-table access policies so the CRUD
+  // emit can wrap lookup/save/update/delete filters with the right
+  // per-row check. Same shape as schemaMap (keyed by lowercased table
+  // name); empty array if the table declared no rules.
+  const tablePolicies = {};
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE) {
       schemaNames.add(node.name);
@@ -14636,6 +14668,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
         fields: node.fields,
         fkFields: node.fields.filter(f => f.fk)
       };
+      tablePolicies[node.name.toLowerCase()] = node.policies || [];
     }
   }
 
@@ -14656,7 +14689,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // _c of agent_X(...))` — which would throw at runtime because agent_X
   // compiled as `async function` not `async function*`. Classic shape
   // mismatch bug surfaced on multi-agent-research's Polished Report.
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions, uploadUrls, tenantScope };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, tablePolicies, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions, uploadUrls, tenantScope };
 
   // Implicit tables for agent-memory features. Agents declared with
   // `remember conversation context` call db.findAll/insert/update on a
