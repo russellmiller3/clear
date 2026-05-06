@@ -28,7 +28,7 @@ Let's jump in.
 **Full-stack basics — apps with a database and a real backend**
 - [Chapter 6: Save Deals to a Database](#chapter-6-save-deals-to-a-database-make-it-stick)
 - [Chapter 7: The Deal Desk Page](#chapter-7-the-deal-desk-page-from-curl-to-browser)
-- [Chapter 8: Multi-Page Apps](#chapter-8-multi-page-apps-because-one-page-is-never-enough)
+- [Chapter 8: Logging In and Owning Your Deals](#chapter-8-logging-in-and-owning-your-deals-the-wall-between-users)
 - [Chapter 13: Working with Data](#chapter-13-working-with-data)
 - [Chapter 15: Modules](#chapter-15-modules-when-one-file-isnt-enough)
 
@@ -1419,42 +1419,243 @@ Right now anyone in the world who knows the URL can open your page and see your 
 
 ---
 
-## Chapter 8: Multi-Page Apps (Because One Page Is Never Enough)
+## Chapter 8: Logging In and Owning Your Deals (The Wall Between Users)
 
-Real apps have multiple pages. A list page, an add page, a detail page.
-Clear handles this with page declarations and the `go to` command:
+By the end of this chapter, two different people can sign up for the deal desk and each one will see only the deals *they* saved. Alice signs up, saves a deal, and sees one row in her queue. Bob signs up, saves a different deal, and sees one row in his — none of Alice's. Same app, same database, same page. The wall between them comes from two short lines you'll add to `deal.clear`.
+
+This is the moment deal-desk becomes a real multi-user product. Chapters 5 through 7 left the doors wide open — anyone who knew the URL could read every deal, save a new deal, or wipe the whole queue. That's fine for a demo on your laptop. It's a non-starter the moment you put the app on the public internet.
+
+### Why every real app needs login
+
+Without login, your app has no idea who's on the other end of the request. A POST to `/api/deals` is just a POST. The server takes the body, saves it, and replies — same answer no matter who sent it. That's the model from Chapter 5 and 6. Fine for a script, broken for a product.
+
+The moment two people use the same app, "who sent this?" becomes the load-bearing question. The CRO at Acme Corp shouldn't see the deals at Globex Industries. The rep on the East Coast team shouldn't see the rep on the West Coast team's discount asks. A stolen session token shouldn't be able to read every deal in the database — just the ones belonging to the user it was issued for.
+
+**Login is the wall between users.** Each person signs up with an email and a password. After they sign in, every request they make carries a tiny invisible badge — a token — that says "I am Alice." The server reads that badge on every request and uses it to decide what Alice is allowed to see and change. No badge, no access. Wrong badge, no access. Right badge, you see *your* data and nobody else's.
+
+That's the concept. Now the syntax.
+
+### One line turns auth on
+
+At the top of `deal.clear`, near where you put `database is local memory` back in Chapter 6, add this single line:
 
 ```clear
-build for web and javascript backend
-
-database is local memory
-create a Recipes table:
-  title, required
-  ingredients, required
-  prep_time (number), default 0
-
-# Backend (endpoints here...)
-
-# Frontend
-page 'Recipes' at '/':
-  heading 'My Recipes'
-  on page load get recipes from '/api/recipes'
-  display recipes as table showing title, prep_time
-
-page 'Add Recipe' at '/add':
-  heading 'Add a Recipe'
-  'Title' is a text input saved as a title
-  'Ingredients' is a text area saved as a ingredients
-  'Prep Time (minutes)' is a number input saved as a prep_time
-  button 'Save':
-    send title, ingredients and prep_time as a new recipe to '/api/recipes'
-    go to '/'
+allow signup and login
 ```
 
-**Key points:**
-- `page 'Name' at '/route':` — defines a page at a specific URL
-- `go to '/'` — navigates to another page
-- Multiple pages share the same backend
+That's it. Save the file, recompile, and your app now has a complete login system. The compiler reads that line and quietly emits a small pile of machinery you don't have to write:
+
+- A `Users` table to hold accounts (email, hashed password, role).
+- A `POST /auth/signup` endpoint where new users register.
+- A `POST /auth/login` endpoint that hands back a token after checking the password.
+- A `GET /auth/me` endpoint that tells the caller "here's who you are."
+- A check on every request that reads the token, looks up the user, and stashes the answer somewhere your endpoints can find it.
+
+Passwords are never stored in plain text — the runtime hashes them with bcrypt before they touch the database. The token is signed with a secret (`JWT_SECRET` env var, auto-generated in dev) so a bad actor can't forge one. And the `/auth/login` endpoint is automatically rate-limited to 10 tries per minute per IP, so nobody can brute-force a password by guessing.
+
+You wrote four words. The compiler did the rest. **This is the bargain Clear keeps over and over: you declare the intent, the compiler writes the safe code for you.**
+
+### Locking the mutation endpoints
+
+Adding `allow signup and login` turns the system on, but it doesn't yet *force* anyone to sign in. The POST and PUT endpoints from Chapter 6 still accept anonymous requests — the door is now lockable, but the lock isn't engaged.
+
+To engage the lock, add `requires login` as the first line inside every endpoint that changes data:
+
+```clear
+when user sends deal to /api/deals:
+  requires login
+  validate deal:
+    rep_name is text, required, min 1, max 100
+    customer is text, required, min 1, max 200
+    list_price is number, min 0
+    discount_percent is number, min 0, max 100
+  if deal's discount_percent is greater than 20:
+    deal's status is 'pending'
+  otherwise:
+    deal's status is 'approved'
+  new_deal = save deal as new Deal
+  send back new_deal with success message
+```
+
+`requires login` goes on **the first line of the body**, above everything else. There's a reason: when every protected endpoint puts the guard on line one, you can scan the file in three seconds and instantly see which endpoints are gated. If you scatter the guard mid-body, the file becomes a hunt.
+
+Add `requires login` to the POST `/api/deals` handler. Add it to the PUT handler at `/api/deals/:id`. If a request hits one of those without a valid token, the server replies `401 Unauthorized` before your validation or save code ever runs. Anonymous writes are now refused.
+
+What about GET `/api/deals`? You can require login there too, and you should — but for a different reason than the mutation endpoints. The mutation endpoints need the guard so anonymous attackers can't trash your data. The GET endpoint needs the guard so anonymous attackers can't *read* everyone's data. Add `requires login` to both.
+
+### The concept that matters most: ownership
+
+Login by itself only solves half the problem. After you add `requires login`, both Alice and Bob have to sign in before they can do anything — but if Alice's GET `/api/deals` returns *every deal in the database*, she still sees Bob's deals and Bob still sees hers. The wall is up; the rooms aren't separated.
+
+**Ownership is the rule that says "every deal has a creator, and only the creator can read, change, or delete it."** When Alice saves a deal, the deal becomes hers. When Bob saves one, it becomes his. When either of them queries the table, the database returns only the rows that belong to them. Same database, same query in your source, completely different answers depending on who's asking.
+
+This is the headline OWASP primitive — the security industry calls it "broken object-level authorization," and it's the single most common bug in real-world apps. A user signs in legitimately, then changes the URL from `/api/deals/42` (their deal) to `/api/deals/43` (someone else's deal) and the server hands it over because nobody told the server to check. Painful breach, expensive lawsuit, easy to ship by accident.
+
+Clear's job is to make that bug impossible to ship by accident. You declare ownership at the table level — one line — and the compiler weaves a per-user filter into every CRUD operation that touches the table. You don't write `user_id` in your source. You don't write the WHERE clause. You don't even see it. The compiler does it for you, on every read, every update, every delete, forever.
+
+### One line turns ownership on
+
+Open the `Deals` table block from Chapter 6 and add a single rule line at the bottom:
+
+```clear
+create a Deals table:
+  rep_name, required
+  customer, required
+  list_price (number), default 0
+  discount_percent (number), default 0
+  status, default 'pending'
+  the deal's creator can read, change, or delete
+```
+
+Read that last line out loud: *"the deal's creator can read, change, or delete."* That's the rule, in plain English, and it says exactly what the compiler will enforce. Whoever first inserted the row is the creator; only the creator can touch it from then on.
+
+Notice you didn't add a `user_id` field. You don't have to. The runtime auto-adds a `user_id` column to every SQLite table — same way it auto-adds the `id` and `created_at` fields you've been using since Chapter 6. When Alice's POST hits `save deal as new Deal`, the runtime quietly stamps the new row with her user-id. When her GET hits `send back all Deals`, the compiler quietly threads a "rows where user-id matches the caller's id" filter into the SQL. Your source stays focused on the business logic; the security plumbing is invisible.
+
+This is the pitch beat to remember: **a stolen session token cannot read another user's deals.** Even if an attacker steals Alice's token, the most they can do is impersonate Alice — and Alice can only see Alice's data. They can't pivot to Bob's queue, can't enumerate every deal in the database, can't hit `/api/deals/43` and walk away with someone else's pricing strategy. The wall holds at the row level, not just the page level.
+
+### Reading the caller in your code
+
+Sometimes you need to know who the caller is from inside an endpoint — for logging, for stamping a record with a name, for a custom check. Clear gives you a one-word handle: `caller`.
+
+```clear
+when user requests data from /api/me:
+  requires login
+  send back caller
+```
+
+Inside any endpoint with `requires login`, `caller` is the authenticated user's record. Read fields off it the same way you read fields off any other record:
+
+- `caller's id` — the user's numeric id (this is what the ownership rule auto-checks against).
+- `caller's email` — the user's email.
+- `caller's name` — the display name they signed up with.
+- `caller's role` — `'user'` for normal accounts, `'admin'` for elevated ones.
+
+You won't reach for `caller` often; the ownership rule already does the matching work for free. But when you do need it — say, stamping a deal's `last_edited_by` field with the editor's email — it's right there.
+
+### Now run this
+
+Save the file. From the same folder, restart the server:
+
+```bash
+clear serve deal.clear
+```
+
+You should see:
+
+```
+Compiling deal.clear...
+Compiled cleanly. Starting server.
+Listening on http://localhost:3000
+```
+
+Now we'll drive two users through the wall. Open a terminal — or two side-by-side, one for Alice and one for Bob.
+
+**Sign Alice up:**
+
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@acme.com","password":"alice-pw-12345","name":"Alice"}'
+```
+
+The response includes a token — a long opaque string. Copy it. You'll send it back on every Alice request:
+
+```
+{"token":"eyJhbGciOi...","user":{"id":1,"email":"alice@acme.com","role":"user"}}
+```
+
+**Save a deal as Alice** (paste her token after `Bearer`):
+
+```bash
+curl -X POST http://localhost:3000/api/deals \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -d '{"rep_name":"Alice","customer":"Acme Corp","list_price":50000,"discount_percent":15}'
+```
+
+Server replies with the saved deal — id 1, owned by Alice.
+
+**Sign Bob up** in the second terminal:
+
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"bob@globex.com","password":"bob-pw-12345","name":"Bob"}'
+```
+
+Bob gets his own token back. **Save a deal as Bob:**
+
+```bash
+curl -X POST http://localhost:3000/api/deals \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <bob-token>" \
+  -d '{"rep_name":"Bob","customer":"Globex","list_price":80000,"discount_percent":22}'
+```
+
+Bob's deal saves as id 2, owned by Bob.
+
+**Now the moment of truth.** Ask the server "who can see what?" first as Alice:
+
+```bash
+curl http://localhost:3000/api/deals \
+  -H "Authorization: Bearer <alice-token>"
+```
+
+You see exactly one row — the Acme deal, list price 50000. Alice does not see Bob's Globex deal. Now run the same query as Bob:
+
+```bash
+curl http://localhost:3000/api/deals \
+  -H "Authorization: Bearer <bob-token>"
+```
+
+You see exactly one row — the Globex deal, list price 80000. Bob does not see Alice's Acme deal. **Same endpoint. Same database. Two different answers, decided entirely by which token came in on the request.**
+
+For good measure, try the GET with no token at all:
+
+```bash
+curl http://localhost:3000/api/deals
+```
+
+The server replies `401 Unauthorized`. The wall is up.
+
+### What you didn't write
+
+For the experienced developer skimming: count the things you didn't write. No bcrypt hashing calls. No JWT signing logic. No middleware function that reads `Authorization` headers and verifies tokens. No per-user WHERE clauses on your queries. No user-id parameter shuffling on inserts. No 401 / 403 response codes. No rate-limiter on the login endpoint. No login attempt counter. No password-policy validator. No audit log table.
+
+You wrote `allow signup and login` plus `the deal's creator can read, change, or delete` plus `requires login` on three endpoint bodies. The rest is generated. If you change the source to add a second table — `Notes` or `Attachments` — and put the same `the X's creator can read, change, or delete` rule on it, the same protection applies to *that* table on the next compile. Recompile, ship, done.
+
+For the newcomer: you just shipped a feature that takes most teams weeks. A real authentication system, hashed passwords, signed tokens, automatic per-row access control, automatic rate-limiting on login, automatic audit logging — all of it from two short rules in your source. Most security bugs in the real world come from one of these layers being wired up by hand, by a tired developer, on a Friday afternoon. Clear's bet is that if the compiler writes the safe code, the safe code is what ships.
+
+### What about admins?
+
+The rule `the deal's creator can read, change, or delete` says ONLY the creator. What if you want a CRO or compliance officer to be able to see every deal? Add a second rule line:
+
+```clear
+the deal's creator can read, change, or delete
+any admin can read, change, or delete
+```
+
+`any admin` matches against the user's `role` field. Mark a user as admin by signing up with that role, or by updating the row in the `Users` table directly. Once they're an admin, the rules combine: the creator can touch their own deals, and admins can touch every deal. Clear does this with an OR — if either rule matches, the access is allowed.
+
+The deal-desk reference app (`apps/deal-desk/main.clear`) ships both rules together for exactly this reason. The CRO needs to see every rep's queue; the rep should only see her own. The two-line rule says both at once. We're going to leave the admin rule out of *this* chapter's working file so the two-user demo above stays clean — but feel free to add it.
+
+### Try it yourself
+
+1. **Add the admin rule and test it.** Add `any admin can read, change, or delete` to the Deals table. Sign up a third user — Carol — with `{"email":"carol@cro.com","password":"...","role":"admin"}` (note the explicit role). Hit `/api/deals` as Carol with her token. You should see *both* Alice's and Bob's deals — three rows total if Carol also has one of her own. The role check on `caller`'s `role` is what unlocks it.
+
+2. **Try to read another user's deal directly.** As Bob, run `curl http://localhost:3000/api/deals/1 -H "Authorization: Bearer <bob-token>"`. Deal #1 belongs to Alice. The server replies `404 Not Found` — not `403 Forbidden`, because the row simply doesn't exist *from Bob's point of view*. (404 vs 403 is a deliberate choice; returning 403 would tell Bob the row exists but he can't see it. 404 says "no such deal," which leaks zero information.)
+
+3. **Confirm the table doesn't have a `user_id` field in your source — but the rows do.** Open the database file with any SQLite browser (or run `sqlite3 clear-data.db ".schema Deals"`). You'll see a `user_id INTEGER` column in the schema, and Alice's row has `user_id = 1`, Bob's has `user_id = 2`. The compiler added the column for you; you didn't type it. That's the safe-by-default story in one query.
+
+### Why this matters
+
+Remember the database from Chapter 6? Each row now knows who owns it. Remember the page from Chapter 7? It still works — you didn't change a single line of the page declaration — but now the table only shows the logged-in user's deals because the GET endpoint underneath only returns the logged-in user's rows. The page is the same code; the data behind it is filtered.
+
+This is the moment deal-desk grows from "a script that holds some deals" into "a real multi-user product a CRO can pay for." Two short lines of source, two long pages of generated security plumbing, zero per-user SQL written by hand. The Marcus pitch in plain English is one sentence: **a stolen session token cannot read another user's deals.** That's what makes the regulated-tier conversation possible.
+
+### What's next
+
+Right now the deal queue is locked down — only the deal's owner can read or change it — but the *workflow* on top of it is still bare. A rep saves a deal, the CRO sees it pending, but there's no formal Approve / Reject / Counter button that records who decided what. Chapter 9 introduces the queue primitive — `queue for deal: actions: approve, reject, counter` — which sits on top of the table you just protected and gives the table real action buttons backed by an audit row per decision. The login wall and the ownership rule from this chapter become the foundation the queue stands on. The CRO will be an admin (so the two-rule pattern from this chapter unlocks the cross-user view), each rep will see only their own pending deals, and every approve / reject / counter click will write a permanent decision row stamped with the CRO's user-id.
 
 ---
 
