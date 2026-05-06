@@ -7,6 +7,16 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where does the empty-table "No rows yet" placeholder live? (2026-05-06)
+
+When a `display X as table` widget renders zero rows, the table shows a single italic "No rows yet." placeholder row. Two reasons: friendlier first-launch UX, and Playwright walkers + accessibility tools treat the table as visible (a zero-row table used to collapse to zero height and be reported as 'hidden').
+
+- **`compiler.js` `_clear_render_table` helper** — when `rows.length === 0`, `tbody.innerHTML = '<tr class="clear-table-empty"><td class="text-center text-base-content/50 py-6 italic">No rows yet.</td></tr>'`. The `clear-table-empty` class is the opt-out signal for callers that need to know "this row isn't real data."
+- **`lib/uat-contract.js` table-controls assertion** — selects rows with `tbody tr:not(.clear-table-empty)` so the auto-generated walker correctly skips filter and sort tests on empty tables instead of failing on a placeholder.
+- **Why it shipped** — the unauthenticated Marcus walker hit creator-scoped GETs, cycle 5 user_id wrap (correctly) returned 0 rows, the resulting empty table had zero height, Playwright reported 'hidden', 21 walker tests failed across 5 apps. Empty-state row + walker exclusion = 145/145 green.
+
+---
+
 ## Where does the OWASP outgoing-requests allowlist live? (Piece 2, 2026-05-06)
 
 When the source declares `allow outgoing requests to: 'api.stripe.com', 'api.openai.com'`, the validator refuses to compile any external HTTP URL that isn't (a) a string literal AND (b) targeting a host in the list.

@@ -282,6 +282,7 @@ section.
 | Update | `save profile to Users` | Var name = incoming entity |
 | Upsert | `upsert user to Users by email` | Match-or-insert on a field; preserves id on hit, returns canonical record either way (JS + Python parity) |
 | Tables — three lead forms | `create a Users table:` \| `table Users:` \| `create data shape User:` | All three parse identically. Shorthand `table X:` added in session 45. |
+| Empty-table state | `display X as table showing ...` (any) | When the rendered data array is empty, the table shows a single italic "No rows yet." placeholder row instead of a blank zero-height body. Friendlier UX for first-launch users + keeps Playwright walkers and accessibility tools treating the table as visible. The placeholder carries class `clear-table-empty` so callers can opt out of treating it as data. (2026-05-06) |
 | Field declarations — two forms | `price, number, required` (comma) \| `name is text, required` (is) | Both compile to the same schema entry. |
 | Belongs to | `author belongs to Users` | Foreign key. `get all Posts` auto-stitches the referenced record on read (JS + Python). |
 | Background jobs | `background 'name': runs every 1 hour` | Compiles to `setInterval`; cleaned up on SIGTERM + SIGINT via `_scheduledCancellers` registry. |

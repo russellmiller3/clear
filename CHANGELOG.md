@@ -6,6 +6,34 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Empty-table state + walker placeholder-aware asserts
+
+Two-part fix unblocked the Marcus browser walker (was 21 failures, now 0)
+and gave every Clear app a friendly empty-table experience.
+
+**Empty-table state (compiler.js, `_clear_render_table` helper).** When
+a `display X as table` widget renders zero rows, the table now shows a
+single italic "No rows yet." placeholder row instead of leaving the
+body blank. Two reasons: UX — first-launch users see a clear empty
+state instead of a blank gap where the table should be; layout —
+empty tables used to collapse to zero height, which Playwright reports
+as 'hidden', which broke the Marcus browser walker on creator-scoped
+endpoints that returned no rows for the unauthenticated walker. The
+placeholder row carries the class `clear-table-empty` so callers can
+opt out of treating it as data.
+
+**Walker placeholder-aware asserts (lib/uat-contract.js).** The auto-
+generated browser walker's table-controls test now selects rows with
+`tbody tr:not(.clear-table-empty)` when deciding whether to run filter
+and sort assertions. Previously the walker counted the placeholder as
+data, ran the filter, found nothing matching, and failed. Now the
+walker correctly skips data-shape interactions on empty tables.
+
+Result: marcus-uat passes 145/145 across all 5 Marcus apps (was
+124/21 before any fix). Compiler suite: 2981/2981 green.
+
+---
+
 ## 2026-05-06 — Cycle 2b: missing-rules now a HARD ERROR in security-aware files
 
 The validator's "table has no access rules" diagnostic, which has shipped
