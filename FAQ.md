@@ -7,6 +7,55 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where does the OWASP outgoing-requests allowlist live? (Piece 2, 2026-05-06)
+
+When the source declares `allow outgoing requests to: 'api.stripe.com', 'api.openai.com'`, the validator refuses to compile any external HTTP URL that isn't (a) a string literal AND (b) targeting a host in the list.
+
+- **`synonyms.js` line 309-310** — `outgoing_allowlist` canonical with four English variants (`allow outgoing requests to`, `allow outbound requests to`, `allow http requests to`, `allow external requests to`).
+- **`parser.js` `OUTGOING_ALLOWLIST` NodeType + dispatch entry** — the dispatch handler reads every quoted-string token after the canonical and pushes them into `node.hosts: string[]`.
+- **`validator.js` `validateOutgoingAllowlist()` — last validator pass before return.** Walks every node looking for `http_request` or `external_fetch`. Non-literal URL → fail-closed error pointing at both fixes (inline the URL OR build a per-target wrapper endpoint). Literal URL with non-allowed host → error listing the allowlist contents.
+
+Without the declaration, the existing private-IP block in `parser.js` (`localhost`, `127.0.0.1`, `10.x`, `172.16-31.x`, `192.168.x`) stays as the only check, so back-compat with apps that don't need the strict gate is preserved. 5 tests under `OWASP Piece 2 - outgoing requests allowlist (SSRF defense)` in `clear.test.js`.
+
+---
+
+## Where does encrypt-at-rest for `sensitive` fields live? (OWASP Piece 3 follow-up, 2026-05-06)
+
+Tag a data-shape field with `, sensitive` and the compiler emits `sensitive: true` in the schema config. The runtime db layer encrypts that field with AES-256-GCM before every insert/update and decrypts on every read.
+
+- **`runtime/sensitive-crypto.js`** — the crypto helper. Exports `_encryptValue` / `_decryptValue` / `_encryptSensitive` / `_decryptSensitive`. AES-256-GCM with 12-byte IV + 16-byte auth tag. On-disk format: `enc:v1:<iv-base64>:<ct-base64>:<authTag-base64>`. Key derivation: `crypto.scryptSync(SENSITIVE_KEY, 'clear-sensitive-v1', 32)`. Fail-closed semantics: if `SENSITIVE_KEY` env var is unset, encrypts throw (refuse plaintext on disk) and decrypts return `[encrypted — set SENSITIVE_KEY]` placeholder.
+- **`runtime/db.js`** — `coerceRecord()` decrypts after every SELECT (extends the existing boolean-coercion loop). `insert`, `update`, and `updateWithVersion` call `encryptSensitiveFields()` before the SQL run. Lazy-require pattern (`_getCrypto`) so apps that don't use the tag don't pay the import cost.
+- **`compiler.js`** — schema emit at `compileToJSBackend` adds `if (f.sensitive) props.push('sensitive: true')` next to the existing hidden / unique / required emit, so the schema literal carries the flag for the runtime to read.
+- **`parser.js`** — `sensitive` recognized as a field modifier in the data-shape parser alongside `required` / `unique` / `hidden` / `auto`. Sets `sensitive: true` on the field AST. The endpoint-level opt-in `can return sensitive data` (`CAN_RETURN_SENSITIVE` NodeType) lives in the dispatch table near the outgoing-allowlist handler.
+
+End-to-end verified: insert plaintext → on-disk row is `enc:v1:…` (no plaintext substring) → findOne returns plaintext. Tampered ciphertext returns the wrong-key placeholder rather than silent garbage (GCM auth tag rejection).
+
+---
+
+## Where does the auto login rate-limit live? (OWASP Piece 4, 2026-05-06)
+
+When the source declares `allow signup and login`, the auto-generated `POST /auth/login` route gets `rateLimit({ windowMs: 60000, max: 10 })` middleware wired in by the compiler — 10 attempts per minute per IP, before the handler even runs.
+
+- **`compiler.js` near line 14722** — the `app.post('/auth/login', ...)` emit now reads `app.post('/auth/login', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => { ... })`.
+- **`compiler.js` `usesRateLimit` flag near line 14154** — promoted from "any endpoint with a RATE_LIMIT body modifier" to ALSO include "any source with an AUTH_SCAFFOLD." This triggers the `rateLimit` runtime helper import at the top of the compiled server.
+- **`runtime/rateLimit.js`** — the existing in-process token-bucket helper. Same one user-declared `rate limit N per minute` body modifiers use.
+
+Promotes the existing validator warning at `validator.js:2076` ("login endpoint has no rate limit") from a nudge into a runtime guarantee. 2 tests under `OWASP Piece 4 - auto-emitted login rate limit`.
+
+---
+
+## Where does the hardcoded-secrets linter live? (OWASP Piece 5, 2026-05-06)
+
+Source containing a recognizable API-key shape fails to compile.
+
+- **`validator.js` `validateHardcodedSecrets()` — last validator pass.** Walks every string literal in the AST and matches against high-confidence prefixes. The `SECRET_PATTERNS` array near the top of the function names each: Stripe live + test, AWS access key, GitHub PAT/OAuth/user/server, Anthropic, OpenAI. Each entry has a regex + a `name` for the error message + an `env` field that names the matching env var to suggest.
+
+Generic high-entropy strings are NOT flagged — false-positive rate would block legitimate long-string uses (HTML, JWT secret env-var names, etc.). The error message is single-line, plain English: "this string looks like a Stripe live secret key hardcoded in source. Read it from an environment variable instead. Example: api_key is process_env('STRIPE_SECRET_KEY')."
+
+5 tests under `OWASP Piece 5 - hardcoded secrets linter` (one positive per pattern + one negative + one error-message shape check).
+
+---
+
 ## Where does the per-row creator filter live? (OWASP Piece 1, 2026-05-05)
 
 When a table declares `the X's creator can read, change, or delete`, the compiler auto-injects a `user_id` filter / stamp on every CRUD operation. The wiring spans four files:

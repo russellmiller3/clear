@@ -792,6 +792,48 @@ Six modifiers (`required`, `unique`, `hidden`, `sensitive`, `default`,
 shorthand), three rules (creator, role, anyone). Everything you need
 for a real CRUD app fits on one page.
 
+### Three more security primitives (outside the table body)
+
+The other three OWASP defenses sit outside the `create a … table:` block.
+Two are top-of-file declarations; the third is invisible (the compiler
+just does it).
+
+**Outgoing requests allowlist (SSRF defense).** When your app calls
+external HTTP, name every host at the top of the file. Variable URLs
+won't compile; literal URLs outside the list won't compile.
+
+```clear
+allow outgoing requests to: 'api.stripe.com', 'api.openai.com'
+
+when user requests data from /api/charge:
+  requires login
+  result = call api 'https://api.stripe.com/v1/charges'
+  send back result
+```
+
+A malicious caller cannot redirect the request — the URL has to be
+hardcoded AND in the allowlist. Without the declaration, only
+private-network URLs are blocked (no `localhost`, `127.0.0.1`, etc.).
+
+**Login rate-limit (automatic).** When you write `allow signup and login`,
+the compiler auto-wires rate-limit middleware on the auto-generated
+`POST /auth/login` route — 10 attempts per minute per IP. You don't
+declare it; you can't accidentally forget it. Brute-force password
+guessing is throttled by default.
+
+**Hardcoded API keys: build error.** If you paste a recognizable API
+key into source — Stripe (`sk_live_…`), AWS (`AKIA…`), GitHub (`ghp_…`),
+Anthropic (`sk-ant-…`), OpenAI (`sk-…`) — the build fails with a
+plain-English error suggesting the matching env var. Read keys from
+the environment instead:
+
+```clear
+api_key is process_env('STRIPE_SECRET_KEY')
+```
+
+This catches the "I accidentally pushed live keys to a public repo at
+3am" mistake at compile time.
+
 ---
 
 ## Chapter 7: Expense Tracker (Now You're Cooking)
