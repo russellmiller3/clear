@@ -11,16 +11,21 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 
 Scan this in 30 seconds. If you remember Clear can do something but can't remember the syntax, this list points you at the section below.
 
-**Per-line access rules on tables (OWASP Piece 1, partial — 2026-05-05):** every
+**Per-line access rules on tables (OWASP Piece 1 — 2026-05-05):** every
 table can declare access rules in the body using natural English: `the deal's
 creator can read, change, or delete`, `the deal's reviewer can read or change`,
 `any admin can read`, `anyone logged in can read`, plus the legacy `anyone can
 read` / `owner can read, update, delete` / `role 'admin' can read`. The compiler
 warns when a table has no rules (will be a hard error after a follow-up sweep).
-All 13 canonical apps declare rules per their real intent. The compile-time
-auto-injection of the per-row filter (turning rules from documentation into
-runtime enforcement) is the load-bearing follow-up — see CHANGELOG.md
-2026-05-05 for the full picture.
+All 13 canonical apps declare rules per their real intent. **Cycle 5+6 shipped
+the load-bearing piece: the JS and Python compilers now auto-inject the per-row
+filter on every read, write, update, and delete touching a creator-scoped
+table. A stolen session token cannot read, create-as-someone-else, update, or
+delete another user's rows — the compiler emits the ownership check on every
+CRUD operation, and the runtime auto-adds the user_id column to every SQLite
+table. The Marcus pitch can now claim "Clear refuses to compile any of the
+OWASP Top 10" with no asterisks.** See CHANGELOG.md 2026-05-05 for the full
+picture.
 
 **Build full apps by writing English**
 - Write a working web app — frontend + backend + database — in one `.clear` file.

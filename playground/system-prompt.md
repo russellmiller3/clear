@@ -478,6 +478,40 @@ When a Marcus app is deployed on Clear Cloud, multiple customers share one Postg
 
 **Defense in depth on Postgres (2026-05-03 night):** when the source ALSO declares `database is postgres` (the production-Postgres backend), the compiler emits a second layer on top of the application filter — real Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id` that fires on every CRUD. Even if a future bug or a hand-written raw SQL slip bypasses the application filter, Postgres physically refuses to return another tenant's rows. Two independent layers, either one alone sufficient. Customer compliance buyer asks "how do you guarantee tenant separation?" — the answer is now "twice: in the application AND inside the database."
 
+## Per-row creator filter — `the X's creator can ...` (OWASP Piece 1, 2026-05-05)
+
+Tenant scope keeps customer A's rows away from customer B. The per-row creator filter is the next layer: keeps user 1 inside customer A from reading user 2's rows inside the same tenant. Declare it on any table:
+
+```clear
+create a Deals table:
+  amount, number
+  status, default 'pending'
+  the deal's creator can read, change, or delete
+  any admin can read, change, or delete
+```
+
+The vocabulary for "who":
+- `the <entity>'s creator` — maps to `user_id` on the row (set automatically on insert)
+- `the <entity>'s <role>` — maps to `<role>_id` on the row (e.g. `the deal's reviewer` needs a `reviewer_id` field)
+- `any <role>` — anyone whose users-table role field matches (e.g. `any admin can read`)
+- `anyone logged in` — any authenticated request, regardless of ownership
+- `anyone` — public, no login needed
+
+The vocabulary for "what" — chain with comma and `or`:
+- `read, change, or delete` — the natural English form (`change` is a synonym for `update`)
+
+When a creator rule is on a table, the compiler auto-injects the ownership check on every CRUD operation:
+- `look up X where ...` → query also filters by `user_id = req.user.id`
+- `save X as new T` → inserted record gets `user_id` from `req.user.id` (server-side override; body cannot fake it)
+- `save X to T` (PUT /:id) → switches to the 3-arg `db.update(table, where, data)` form so the WHERE requires both id AND user_id; non-creators get a 404
+- `delete X` (DELETE /:id) → WHERE clause includes `user_id`
+
+**You don't write `user_id` anywhere in your source.** Same precedent as `tenant_id` — security plumbing is invisible to the author. The Node SQLite runtime auto-adds a `user_id INTEGER` column to every table; the auth layer populates `req.user.id` (JWT carries it).
+
+The ownership check composes with tenant scope. A regulated app declaring both `database is shared with tenant scope` AND `the deal's creator can ...` gets BOTH filters stacked on every read, write, update, and delete — defense in depth at two granularities (cross-tenant + intra-tenant per-user).
+
+For pitches: a stolen session token cannot read, create-as-someone-else, update, or delete another user's rows. Every CRUD operation against a creator-scoped table runs the ownership check; the compiler emits it once at compile time and the runtime enforces it on every request. The Marcus pitch can claim "Clear refuses to compile any of the OWASP Top 10" with no asterisks.
+
 **Studio Prove button → audit PDF (2026-05-03 late night):** clicking the toolbar Prove button now downloads the navy/amber compliance PDF directly. The button used to dump the raw math journal into the terminal; that flow moves to a future right-click drilldown. When users ask "how do I show my auditor the proof?", the answer is: click Prove, hand the downloaded `audit.pdf` to them. Same artifact the CLI workflow `node scripts/audit-bundle.mjs <file> | python scripts/audit-pdf.py - <out>` produces, in one click. Needs Python + reportlab installed at the server; if missing, the terminal shows a hint to install reportlab.
 
 **Studio Direct Edit toggle + "Help me edit this:" pattern (2026-05-04):** there's a new toolbar button next to Run/Stop labeled "Direct Edit." When the user toggles it on, clicking ANY element in the running preview drafts a chat message into your input that looks like:

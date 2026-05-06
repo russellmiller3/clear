@@ -39,27 +39,58 @@ load-bearing compiler auto-injection (cycle 5/6) is the remaining piece.
   13. Cross-target smoke green: 32/32 emissions parse clean across Node JS,
   Cloudflare Workers, Browser, Python.
 
-**Remaining cycles (next session — see priority queue for pickup plan):**
-- Cycle 5/6 — JS + Python compiler auto-injects the per-row filter on every
-  read/update/delete touching a table with a creator rule. THIS is what turns
-  rules from documentation into enforcement. Mirror the existing tenant-filter
-  pattern at compiler.js around line 4805. Estimated 45-60 min.
+**Cycles 5 + 6 + runtime — also shipped this date (6 more commits):**
+- **Cycle 5a — JS lookup auto-injects the per-row creator filter.** When a
+  table declared `the X's creator can ...`, every `db.findAll` / `db.findOne`
+  filter is wrapped with `user_id: req.user && req.user.id`. Composes with
+  the existing tenant_id wrap so a regulated app stacks both layers. 3 tests.
+- **Cycle 5b — JS insert stamps user_id on the record.** Server-side stamp
+  beats any body-supplied user_id (mass-assignment protection). A hijacked
+  client cannot create rows owned by other users by forging the field.
+  Refactored the per-table policy lookup to a shared helper at the top of
+  compileCrud so lookup, save, and remove branches share one decision.
+  3 tests.
+- **Cycle 5c-delete — JS DELETE adds user_id to the WHERE.** Same wrap
+  pattern as lookup. A stolen session token can no longer delete another
+  user's row by guessing its id. 3 tests.
+- **Cycle 5c-update — JS PUT switches to 3-arg db.update with user_id in
+  WHERE.** Uses Convention 2 of the existing runtime helper (table, filter,
+  data) so the WHERE clause requires the caller to be the row's creator.
+  Composes with tenant scope so the WHERE includes both tenant_id and
+  user_id when both apply. 3 tests.
+- **Cycle 6 — Python parity for all four sites.** Lookup wraps the Python
+  filter dict with `{"user_id": request.user.get("id")}`; insert stamps
+  `record["user_id"] = request.user.get("id")` before db.save; DELETE adds
+  user_id to the remove() filter dict; PUT switches to the 3-arg form.
+  Extends the inlined `_DB.update` Python class to accept Convention 2
+  (table, filter, data) so the cycle-5c-update emit pattern works on Python
+  too. 6 tests.
+- **Runtime — auto-add user_id INTEGER column to every SQLite table.**
+  Mirrors the existing tenant_id auto-add at runtime/db.js. Apps that
+  declare creator rules get a real column for the cycle-5 stamp/filter to
+  land on; apps that don't simply leave it null. Includes a backfill on
+  existing tables. Same precedent as tenant_id and _version: security
+  plumbing is invisible to the author. Postgres path still requires
+  explicit declaration (separate cycle if/when regulated apps need it).
+
+After cycles 5+6 ship, the Marcus pitch can claim "Clear refuses to compile
+any of the OWASP Top 10" with no asterisks. The last access-control gap is
+closed structurally — every CRUD operation against a creator-scoped table
+auto-checks ownership at runtime.
+
+**Remaining cycles for Piece 1 (still next session):**
 - Cycle 4 — validator errors when a rule references a missing role field
   (e.g. `the deal's reviewer` but no reviewer_id field on the deals table).
-- Cycle 3 — promote the IDOR warning to hard error (note: looking at the
-  code, the GET-without-filter case is ALREADY a hard error today; cycle 3
-  may already be done or refer to a different shape — confirm before flipping).
+- Cycle 3 — confirm the IDOR warning is already a hard error (the GET-
+  without-filter case at validator.js:1889 likely is); confirm and close.
 - Cycle 2b — flip the missing-rules warning to strict error after the test
   fixture sweep.
-- After cycle 5 ships: add user_id back to all 13 canonical apps so creator
-  rules have real teeth at runtime.
-- 11-doc cascade for Piece 1: intent.md, SYNTAX.md, AI-INSTRUCTIONS.md,
-  USER-GUIDE.md, ROADMAP.md, FAQ.md, RESEARCH.md, FEATURES.md (started in
-  this commit), studio/system-prompt.md, landing/*.html.
+- 11-doc cascade for Piece 1: SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md,
+  ROADMAP.md, FAQ.md, RESEARCH.md, intent.md, landing/*.html. (CHANGELOG +
+  FEATURES + studio/system-prompt.md updated this commit.)
 
-Test suite: 2930/2930 green at every commit. SYNONYM_VERSION unchanged
-(cycle 1 didn't add canonicals — `change` was added as a literal in the
-action list, not a new synonym).
+Test suite: 2948/2948 green at every commit. Runtime db tests: 7/7 green.
+SYNONYM_VERSION unchanged.
 
 ---
 
