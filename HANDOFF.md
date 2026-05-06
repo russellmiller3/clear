@@ -35,11 +35,15 @@ them. If you find yourself violating them, stop and re-read.
 
 ---
 
-## Current State (rewritten 2026-05-06 PM — OWASP closed + pushed + walker green + gitignore)
+## Current State (rewritten 2026-05-06 evening — Hartl rewrite started + meph plan parked)
 
 **North star:** first paying Marcus customer. Revenue gates everything else.
 
-**Headline ship (today):** the OWASP Top 10 epic is closed by construction AND pushed to GitHub (66 commits landed). Five primitives in the compiler + runtime, three follow-ups (cycle-2b strict mode, Postgres user_id parity, encrypt-at-rest). Marcus walker regression that surfaced after the OWASP work is fixed (was 21 failures, now 145/145 green across all 5 Marcus apps). Build artifacts in `apps/` no longer get tracked by git — 234 files untracked + gitignore patterns + a CLAUDE.md rule as backup documentation.
+**Headline ship (this session):** the user-guide Hartl-quality rewrite is officially in motion. A chapter-by-chapter plan is written that builds **deal-desk** progressively across 12 tutorial chapters (Hartl Rails Tutorial style — each chapter adds one feature, each ends with a working `clear run` + expected output + exercises). Chapters 1-2 are done at the new bar: explain the concept (what a program IS, what a variable IS, what a decision IS) before showing the syntax, anchored on the deal-desk record so readers build toward a real Marcus app from line one. Plan also requires every chapter to cross-check the latest CHANGELOG / SYNTAX / FEATURES / FAQ so chapters can't ship stale syntax.
+
+**Earlier today:** the OWASP Top 10 epic is closed by construction AND pushed to GitHub (66 commits landed). Five primitives in the compiler + runtime, three follow-ups (cycle-2b strict mode, Postgres user_id parity, encrypt-at-rest). Marcus walker regression fixed (145/145 green across all 5 Marcus apps). Build artifacts in `apps/` no longer get tracked by git.
+
+**Also this session:** the meph-optimization plan was red-teamed (cost reality fixed from $30 to $45-250 depending on harness path; harness/metric mismatch identified; sample size raised; bias controls added). Plan stays parked per its own "Why NOT" guidance.
 
 **GTM direction (locked 2026-05-04):** self-serve product (Vercel model), NOT consulting. Path: ship buildclear.dev self-serve, offer "Concierge Setup — $500, no ongoing support" to first 5 customers only, then pure self-serve. Default to "make the self-serve path more self-serve" over new compiler features Russell would demo by hand.
 
@@ -72,9 +76,9 @@ them. If you find yourself violating them, stop and re-read.
 
 ## In-Flight Work (branches not yet merged to main)
 
-**Empty.** All session work is on local `main`, 60 commits ahead of `origin/main`, NOT yet pushed. The single open branch `docs/handoff-2026-05-06` exists only to land this HANDOFF rewrite.
+`plans/user-guide-hartl` — local branch, 4 commits: chapter-by-chapter plan + meph-plan red-team + plan tightening (concept teaching) + USER-GUIDE chapters 1-2 rewrite. Will merge to main + push at end of this session per the don't-push-branches-until-done rule.
 
-WIP count: **0**.
+WIP count: **1** (Hartl rewrite epic — multi-session, ~10 chapters left in tutorial track + reference cleanup).
 
 ---
 
@@ -89,13 +93,13 @@ WIP count: **0**.
 
 ## Next Moves (in order — if you have time, do them top down)
 
-1. **Hartl-quality user-guide rewrite.** Russell named "our standard is Hartl's Rails Tutorial" for USER-GUIDE / Meph prompt / AI-INSTRUCTIONS / SYNTAX. Today's NEW additions are at that quality; the existing 7000+ lines are mixed-era. A focused multi-session pass: (a) anchor a sample app readers build chapter-by-chapter (deal-desk is the obvious candidate), (b) add prose around every code block, (c) "now run this" beats with expected output, (d) end-of-chapter exercises. Treat as a multi-session epic, not a one-shot. Best to start by writing a chapter-by-chapter plan first.
+1. **Continue Hartl user-guide rewrite — Chapters 3-4 next session.** Plan lives at `plans/plan-user-guide-hartl-05-06-2026.md`. Today shipped the plan + Chapters 1-2 (Your First Deal, Approve or Reject — both deal-desk anchored, both teach the concept before the syntax). Chapter 3 = lists ("when the app needs to track many deals at once"), Chapter 4 = functions ("define function compute_discount(amount, tier)"). Cadence is 2 chapters per session. Per-chapter checklist in the plan; **mandatory: re-read CHANGELOG / SYNTAX.md / FEATURES.md / FAQ.md before writing any chapter so syntax doesn't go stale**. By Chapter 12 the reader has shipped a deployable approval-queue app with auth, audit, business rules, AI drafter, and email.
 
-2. **Marcus walker auth-flow follow-up.** The 21 walker failures earlier today were fixed at the empty-table layer, but the deeper gap remains: walker hits creator-scoped data pages WITHOUT signing in first, so cycle 5 user_id filter (correctly) returns 0 rows. The walker tests "page loads cleanly" but can't test real interactions on data pages. Real fix: walker signs up + signs in BEFORE testing data pages, then seeds + drives the full flow. ~1 focused session. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` skips auth pages; replace with "hit signup, capture token, set Authorization header on subsequent requests."
+2. **Marcus walker auth-flow follow-up.** Earlier walker failures fixed at the empty-table layer, but the deeper gap remains: walker hits creator-scoped data pages WITHOUT signing in first, so cycle 5 user_id filter (correctly) returns 0 rows. ~1 focused session. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` skips auth pages; replace with "hit signup, capture token, set Authorization header on subsequent requests."
 
 3. **Plans waiting for execution** in `plans/`:
-   - `plan-meph-optimization.md` — 3-config A/B/C eval (current vs everything-in-prompt vs lean-prompt-with-aggressive-retrieval). ~$30, ~5 hours. Not critical path; do when there's spare API budget.
-   - `plan-python-parity.md` — JS-vs-Python cross-target audit + closure pass. Known HIGH-severity gaps: `runtime/sensitive-crypto.py` doesn't exist (OWASP Piece 3 broken on Python), Python auto-login-rate-limit emit (Piece 4), audit-log emit on Python target. Audit script is 1-2 hours; closure pass is multi-session.
+   - `plan-meph-optimization.md` — **red-teamed today**, executable when ready. Costs $45 (cheap path) or $250 (full multi-turn path) — not $30 like the v1. Stays parked per its own "Why NOT" guidance (off critical path). Run after Marcus signs OR if Meph quality regresses.
+   - `plan-python-parity.md` — JS-vs-Python cross-target audit + closure pass. Known HIGH-severity gaps: encrypt-at-rest broken on Python, Python auto-login-rate-limit emit, audit-log emit on Python target. Audit script is 1-2 hours; closure pass is multi-session.
 
 4. **Doc gardening:** USER-GUIDE has the OWASP work in two places (Chapter 6.5 + 24.1). Before next chapter additions, decide whether to consolidate or keep both as different lenses. Current state is correct but redundant.
 

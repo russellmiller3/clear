@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Hartl user-guide rewrite started (chapters 1-2 + plan)
+
+The user-guide rewrite epic kicks off with a chapter-by-chapter plan that builds **deal-desk** progressively across 12 tutorial chapters in the Hartl Rails Tutorial style. Reference chapters (13-24) get a lighter cleanup pass after the tutorial track is done.
+
+**Per-chapter quality bar:** explain the underlying CONCEPT (what a program is, what a database is, what login means) BEFORE showing the Clear syntax for it; prose around every code block; "now run this" beats with literal expected output; 2-3 end-of-chapter exercises; 14-year-old test on every paragraph. Each chapter also cross-checks CHANGELOG / SYNTAX.md / FEATURES.md / FAQ.md before writing so syntax doesn't go stale across sessions.
+
+**Chapters shipped today:**
+- **Chapter 1 — Your First Deal.** Replaces the old Hello-World / tip-calculator opener. Reader builds the deal record (rep, customer, list price, discount), learns what a variable is, why `=` splits from `is` (the read-aloud test), the one-operation-per-line rule, and string interpolation with `{}`.
+- **Chapter 2 — Approve or Reject.** Replaces the generic "Making Decisions" chapter. Reader adds the seed of the discount-cap rule ("discounts > 30% need VP approval") using `if/then` one-liner and `if/otherwise` block. Sets up the provable business rule we'll formalize in Chapter 12.
+
+**Remaining:** 10 tutorial chapters (3-12) plus reference cleanup. Cadence: ~2 chapters per session. Plan at `plans/plan-user-guide-hartl-05-06-2026.md`.
+
+**Also this session:** the meph-optimization plan was red-teamed. Cost estimate corrected from $30 to $45-250 depending on harness path (the v1 mismatched its harness with its claimed metrics); sample size raised to n=5; bias controls added (run interleaving, cache control, pre-registered analysis). Plan stays parked per its own "Why NOT" guidance — none of this is on the critical path to first paying Marcus customer.
+
+---
+
 ## 2026-05-06 — Empty-table state + walker placeholder-aware asserts
 
 Two-part fix unblocked the Marcus browser walker (was 21 failures, now 0)
