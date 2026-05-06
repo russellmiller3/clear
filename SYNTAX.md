@@ -1733,6 +1733,35 @@ Match found → build fails with a friendly message naming the kind of key and s
 api_key is process_env('STRIPE_SECRET_KEY')
 ```
 
+## Audit Trail (auto-emitted with `allow signup and login`)
+
+When the source declares `allow signup and login`, the compiler also emits a durable audit trail. Every state-changing request (POST, PUT, PATCH, DELETE) is captured to a real `audit_log` SQL table with the caller's user_id + email + tenant_id, the route, the method, the response status, an ISO timestamp, AND a sanitized 1KB summary of the request body.
+
+```clear
+allow signup and login    # auto-enables /audit + /audit.csv + /audit/cleanup
+```
+
+What the audit trail provides, automatically:
+
+- **`GET /audit`** — authenticated. Returns the audit log as JSON.
+- **`GET /audit.csv`** — authenticated. Returns the same data as RFC-4180 CSV with a `Content-Disposition: attachment; filename="audit.csv"` header so SOC 2 evidence collectors and other compliance tools that prefer CSV ingest it natively.
+- **`POST /audit/cleanup`** — authenticated. Manually triggers retention cleanup.
+
+**Body redaction.** Sensitive fields by NAME (`password`, `token`, `secret`, `api_key`, `jwt`, `auth`) are auto-redacted to `[redacted]` before the body summary is stored. This complements the `sensitive` field tag (encrypts at rest by content) — the audit trail uses name-based redaction because it's one layer earlier (sanitize before write). Read-only requests (GET / HEAD / OPTIONS) are not captured.
+
+**Tenant scoping.** Under `database is shared with tenant scope`, the audit log is auto-scoped — Bob sees only his tenant's rows.
+
+**Retention.** Configure via `AUDIT_RETENTION_DAYS` env var. Default 90 days. Set to `0` to disable cleanup and keep audit data forever. The compiler emits a 90-day cleanup helper that runs once at server boot and again on demand via `POST /audit/cleanup`.
+
+**Why this matters for the regulated-tier pitch.** A compliance buyer's four questions are answered by one row in the audit table:
+
+| Question | Audit-row column |
+|---|---|
+| Who did it? | `user_id` + `user_email` |
+| When? | `ts` (ISO 8601) |
+| What? | `method` + `path` + `body_summary` |
+| How long do you keep it? | `AUDIT_RETENTION_DAYS` documented policy |
+
 ## Concurrency Declarations
 
 When an endpoint reads a record, mutates a field, and saves the record back, two simultaneous requests can overwrite each other. The validator flags every endpoint where that pattern shows up in plain sight and refuses to ignore the race. Authors choose how to handle it:

@@ -607,6 +607,65 @@ If your app genuinely has no concept of user accounts — no `allow signup and l
 
 Never add a bare `requires login` to an endpoint in an app that has no auth scaffolding — it will fail to authenticate anything because there's no user system to check against.
 
+## Total by default — `live:` block (PHILOSOPHY Rule 18)
+
+Functions and rule bodies in Clear are **total by default**. Pure math, no effects. The prover can verify them universally — "this function returns the right answer for every input" — because no outside state can change the result.
+
+When you need real-world work — saving a record, calling Claude, sending a Slack message, reading the clock — wrap it in a `live:` block. The fence makes effects explicit so the reader sees them and the prover knows where its math claims stop.
+
+```clear
+define function compute_discount(amount, tier):
+  # pure: only math allowed in here
+  if tier is 'enterprise':
+    return amount * 0.5
+  return amount * 0.3
+
+when user sends deal to /api/deals:
+  validate deal:
+    discount is number, required
+  base = compute_discount(deal's amount, deal's tier)   # pure call
+  live:
+    saved = save deal as new Deal                       # effect
+    notify_slack('new deal: ' + saved's id)             # effect
+  send back saved
+```
+
+**The rule.** If a piece of code calls the database, makes HTTP requests, calls AI, sends email, sets timers, broadcasts WebSocket messages, or reads the clock, fence it in `live:`. If it's pure math, string formatting, list operations, or `enforce that` business rules, leave it outside the fence so the prover can verify it.
+
+**The trade-off is honest.** The pure half can be PROVED for every possible input. The effectful half can't — the prover doesn't simulate database contents — but it's clearly fenced and runtime-guarded. The CRO sees a sharp line between "we mathematically proved this" and "we runtime-checked this," which is exactly what a regulated-tier audit wants to see.
+
+**A quick mental check:** would running this twice produce different results because of outside state? If yes, the code is effectful and belongs inside `live:`. If no, leave it pure.
+
+## Audit Trail (auto-emitted with `allow signup and login`)
+
+Declaring `allow signup and login` gives you a full audit trail at no extra syntax cost. The compiler ships three endpoints automatically and a real `audit_log` SQL table behind them.
+
+```clear
+allow signup and login    # also auto-emits /audit, /audit.csv, /audit/cleanup
+```
+
+What gets captured: every state-changing request (POST, PUT, PATCH, DELETE) with the caller's user_id + email + tenant_id, the route, the method, the response status, an ISO timestamp, AND a sanitized 1KB summary of the request body. Read-only requests (GET, HEAD, OPTIONS) are not captured — keeps the table from filling with health-check noise.
+
+**Body redaction by name.** Fields named `password` / `token` / `secret` / `api_key` / `jwt` / `auth` are auto-redacted to `[redacted]` before the body summary is written. This is name-based protection — it complements the `sensitive` field tag (which does content-based encryption at rest).
+
+**The three auto-emitted endpoints:**
+- `GET /audit` — JSON list, authenticated, tenant-scoped under shared scope.
+- `GET /audit.csv` — same data as RFC-4180 CSV with a `Content-Disposition: attachment; filename="audit.csv"` header. SOC 2 evidence collectors prefer CSV.
+- `POST /audit/cleanup` — manual retention trigger, authenticated.
+
+**Retention** is configurable via the `AUDIT_RETENTION_DAYS` env var (default 90 days). Set to `0` to keep the audit log forever. The compiler emits a 90-day cleanup helper that fires once at server boot and again on demand.
+
+**Why this matters in a sales conversation.** A compliance buyer's four standard questions are answered by one row in the audit table:
+
+| Question | Where it lives |
+|---|---|
+| Who did it? | `user_id` + `user_email` |
+| When? | `ts` (ISO 8601) |
+| What? | `method` + `path` + sanitized `body_summary` |
+| How long do you retain it? | `AUDIT_RETENTION_DAYS` documented policy |
+
+You don't write any of this in your `.clear` source. Declaring auth gives you the trail.
+
 ## Per-row Access Rules (OWASP Piece 1)
 
 When a table holds rows that belong to specific users — todos, deals, expenses, bookings — declare a per-row access rule in the table body. The compiler reads it and auto-injects the ownership check on every read, save, edit, and delete.

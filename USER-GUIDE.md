@@ -3490,6 +3490,69 @@ That becomes `deals-over-100k-need-cro-sign-off` in the prover output.
 - Rules live at the top level. You can't nest one inside an endpoint, function, or another rule.
 - A body with no `guard`, `validate`, or `throw` triggers a warning (the rule never enforces anything).
 
+### Conditional rules — `if … otherwise …`
+
+Rules can branch. A common pattern: enterprise customers get a different cap than standard customers.
+
+```clear
+rule discount-cap-tiered:
+  if order's customer_tier is 'enterprise':
+    enforce that order's discount_percent is less than 50, or fail with error message: 'enterprise cap is 50%'
+  otherwise:
+    enforce that order's discount_percent is less than 30, or fail with error message: 'standard cap is 30%'
+```
+
+The prover walks BOTH branches and verifies the cap holds in each path. The verdict is PROVED for the whole rule because every reachable path has a guard that enforces a discount cap. The CRO reads "discount-cap-tiered PROVED" and gets a single audit line for the entire tiered policy — no need to track two separate rules.
+
+### A worked deal-desk example
+
+A real policy file, with three rules covering the kinds of verdicts a regulated-tier customer wants attributed:
+
+```clear
+# Discount caps. Enterprise gets a higher ceiling; everyone else 30%.
+rule discount-cap-tiered:
+  if deal's segment is 'enterprise':
+    enforce that deal's discount_percent is less than 50, or fail with error message: 'enterprise cap is 50%'
+  otherwise:
+    enforce that deal's discount_percent is less than 30, or fail with error message: 'standard cap is 30%'
+
+# Big deals require a named approver — VP for Big, CRO for Huge.
+rule big-deals-need-approver:
+  if deal's amount is greater than 100000:
+    enforce that deal's approver_role is 'cro', or fail with error message: 'deals over $100k need the CRO'
+  otherwise:
+    enforce that deal's approver_role is one of 'vp', 'cro', or fail with error message: 'this deal needs a VP or CRO approver'
+
+# Deals must reference an existing customer. The prover marks this UNVERIFIABLE
+# because the body looks up data from the database — the math engine cannot
+# universally prove that result. The runtime check still fires on every save.
+rule customer-must-exist:
+  found = look up Customer where id is deal's customer_id
+  enforce that found is not nothing, or fail with error message: 'Unknown customer'
+```
+
+Run `clear prove deal-desk.clear`:
+
+```
+Business rules in this file:
+  [PROVED]       discount-cap-tiered (line 2) — for every possible deal
+  [PROVED]       big-deals-need-approver (line 9) — for every possible deal
+  [UNVERIFIABLE] customer-must-exist (line 16) — body calls the database
+
+  2 of 3 rules proved. 1 unverifiable.
+```
+
+That's a CRO-ready audit line. The first two policies are math-proved across every possible input. The third has an honest UNVERIFIABLE — the prover refuses to claim it can verify a database read, but the runtime check still rejects any save that fails the existence test.
+
+### Trust but verify — the runtime witness
+
+A PROVED verdict isn't just a math claim. The compiler also emits a runtime check that rejects every violating input. So if the prover says "PROVED for every possible deal," that's backed by:
+
+1. **Math proof** — the prover walked the source and verified every guard simplifies to true.
+2. **Runtime witness** — the compiled app rejects 100% of violating inputs at runtime, with the rule's name in the rejection. A test harness fires 20 violating inputs at the running app and confirms every one comes back as a 403 with the rule's name in the body.
+
+The two together turn "PROVED" from a developer claim into a measurable claim. The regulated-tier customer can verify it themselves.
+
 ---
 
 ## Chapter 24b: Audit Reports (Hand a Compliance Buyer a PDF)

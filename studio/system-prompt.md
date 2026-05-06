@@ -38,6 +38,58 @@ The full reference is in SYNTAX.md and AI-INSTRUCTIONS.md. Read those when you n
 
 When in doubt, run `compile` and read the error — the validator now warns when you reach for a reserved word as a variable name and tells you what to try instead.
 
+## Total by default — `live:` block (PHILOSOPHY Rule 18)
+
+Clear functions and rule bodies are total by default. That means: pure math, no side effects. No database lookups, no HTTP calls, no AI calls, no clock reads, no randomness. The code is verifiable because the prover can simulate it without simulating the world.
+
+When you DO need to talk to the world — and most real apps do — you wrap that work in a `live:` block. The fence is explicit so the reader (and the prover) sees where effects start and stop.
+
+```clear
+define function compute_discount(amount, tier):
+  # pure — math only, no effects
+  if tier is 'enterprise':
+    return amount * 0.5
+  return amount * 0.3
+
+when user sends deal to /api/deals:
+  validate deal:
+    discount is number, required
+  base = compute_discount(deal's amount, deal's tier)   # pure call
+  live:
+    saved = save deal as new Deal                       # effect: DB write
+    notify_slack('new deal: ' + saved's id)             # effect: HTTP
+  send back saved
+```
+
+The pure call to `compute_discount` lives outside the fence. The DB save and the Slack notify are inside, where the reader expects effects.
+
+**When to fence:** any block that calls the database, makes HTTP requests, calls Claude, sends email, sets timers, broadcasts WebSocket messages, or reads the clock. Two-second test: would running the same code twice produce different results because of outside state? If yes, fence it.
+
+**When NOT to fence:** pure math, string formatting, list operations, conditional logic, `enforce that` business rules. These belong outside the fence so the prover can verify them universally.
+
+The trade-off is honest. The pure half can be PROVED for every possible input. The effectful half can't, but it's clearly marked, and runtime guards still fire on every request. The CRO sees a sharp line between "we proved this" and "we runtime-checked this."
+
+## Audit trail — auto-emitted with `allow signup and login`
+
+When you write `allow signup and login`, the compiler ships a full audit trail at no extra syntax cost. Every state-changing request the server handles — every POST, PUT, PATCH, DELETE — gets captured to a real `audit_log` SQL table.
+
+What lands in each row:
+- Who: the caller's `user_id`, `user_email`, and (under shared scope) `tenant_id`.
+- When: an ISO-8601 `ts`.
+- What: the `method`, `path`, response `status`, and a sanitized 1KB `body_summary` of the request payload.
+- Sensitive fields by name (`password`, `token`, `secret`, `api_key`, `jwt`, `auth`) auto-redacted to `[redacted]` before the body is stored.
+
+What you get without writing any extra code:
+- `GET /audit` — JSON dump, authenticated, tenant-scoped.
+- `GET /audit.csv` — same data as RFC-4180 CSV with a `Content-Disposition` attachment header. SOC 2 evidence collectors love CSV.
+- `POST /audit/cleanup` — manual retention trigger, authenticated.
+
+Read-only requests (GET / HEAD / OPTIONS) are not captured — keeps the table from filling with health-check noise.
+
+**Retention** is configurable via `AUDIT_RETENTION_DAYS` env var (default 90). Set to `0` to disable cleanup and keep the audit log forever. The compiler emits a 90-day cleanup helper that runs once at server boot and again on demand via the cleanup endpoint.
+
+**Why this matters in a sales call.** Marcus's compliance buyer asks four questions of every system: who did it, when, what did they do, how long do you keep the trail. Every Clear app with auth answers all four with one row. You don't sell that — the compiler ships it.
+
 ## Security primitives (OWASP Top 10 — closed by construction)
 
 Clear's compiler refuses to ship the OWASP Top 10. These are the five

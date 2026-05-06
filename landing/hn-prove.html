@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Show HN: Clear's `rule` keyword — your CRO reads PROVED next to each policy | Hacker News</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { background: #f6f6ef; color: #000; font-family: Verdana, Geneva, sans-serif; font-size: 10pt; margin: 0; padding: 0; }
+  table { border-collapse: collapse; }
+  a { color: #000; text-decoration: none; }
+  a:visited { color: #828282; }
+  .header { background: #ff6600; padding: 2px 4px; }
+  .header td { vertical-align: middle; }
+  .header .logo { border: 1px solid #fff; width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
+  .header .pagetop { font-size: 10pt; color: #000; padding-left: 4px; }
+  .header .right { text-align: right; }
+  .container { background: #f6f6ef; max-width: 1100px; margin: 0 auto; padding: 8px; }
+  .submission { padding: 4px 0; }
+  .rank { color: #828282; font-size: 10pt; vertical-align: top; padding: 4px 0 0 4px; }
+  .titleline a { color: #000; font-size: 10.5pt; }
+  .titleline a:hover { text-decoration: underline; }
+  .sitebit { color: #828282; font-size: 8pt; }
+  .subtext { color: #828282; font-size: 7pt; padding-left: 40px; padding-bottom: 8px; }
+  .subtext a { color: #828282; }
+  .commentbox { padding-left: 40px; padding-top: 12px; padding-bottom: 12px; }
+  .commenttext { font-size: 9pt; line-height: 1.5; padding: 6px 0 4px 0; max-width: 760px; }
+  .commenthead { font-size: 8pt; color: #828282; }
+  .commenthead a { color: #828282; }
+  .indent-1 { padding-left: 40px; }
+  .indent-2 { padding-left: 80px; }
+  .indent-3 { padding-left: 120px; }
+  pre { background: #fff; border: 1px solid #ddd; padding: 6px 8px; font-family: Monaco, Consolas, monospace; font-size: 8.5pt; line-height: 1.4; max-width: 720px; overflow-x: auto; margin: 6px 0; }
+  code { font-family: Monaco, Consolas, monospace; font-size: 9pt; background: #eee; padding: 1px 3px; }
+  .footer { text-align: center; color: #828282; font-size: 8pt; padding: 16px 0; border-top: 1px solid #828282; margin-top: 24px; }
+  .upvote { color: #828282; font-size: 8pt; padding-right: 4px; }
+  hr { border: none; border-top: 1px solid #828282; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<table class="header" width="100%"><tr>
+  <td style="width:18px;padding-right:4px"><span class="logo"><b style="color:#fff;font-size:10pt;padding-left:3px">Y</b></span></td>
+  <td class="pagetop"><b><a href="#">Hacker News</a></b>
+    <a href="#">new</a> | <a href="#">past</a> | <a href="#">comments</a> | <a href="#">ask</a> | <a href="#">show</a> | <a href="#">jobs</a> | <a href="#">submit</a></td>
+  <td class="right"><a href="#">login</a></td>
+</tr></table>
+
+<div class="container">
+
+<table class="submission"><tr>
+  <td class="rank">1.</td>
+  <td style="vertical-align:top;padding-top:4px"><span class="upvote">▲</span></td>
+  <td class="titleline" style="padding-top:2px">
+    <a href="#">Show HN: A `rule` keyword that proves your business logic and shows your CRO PROVED next to each policy</a>
+    <span class="sitebit"> (buildclear.dev)</span>
+  </td>
+</tr></table>
+<div class="subtext">
+  712 points by <a href="#">rmiller</a> 4 hours ago | <a href="#">flag</a> | <a href="#">hide</a> | <a href="#">258 comments</a>
+</div>
+
+<div class="commentbox" style="background:#fff;border:1px solid #e0e0d6;padding:14px;margin-top:8px;max-width:780px">
+  <div class="commenttext" style="padding:0">
+    Author here. Most B2B apps I've shipped have one or two business policies that matter more than anything else. "Discounts over 30% need VP approval." "Refunds over $500 need a CFO sign-off." "Big enterprise deals need the CRO." When something goes wrong, that's the rule a board member asks about.<br><br>
+    Today these rules are buried in middleware, sprinkled across endpoints, half-tested. Audit time you write a slide deck explaining what was supposed to happen.<br><br>
+    Clear has a <code>rule</code> keyword that names the policy and proves it:<br>
+<pre>rule discount-cap-thirty:
+  enforce that deal's discount_percent is less than 30,
+    or fail with error message: 'Discounts of 30% or more require VP approval'
+
+rule big-deals-need-cro:
+  if deal's amount is greater than 100000:
+    enforce that deal's approver_role is 'cro',
+      or fail with error message: 'deals over $100k need the CRO'</pre>
+    Run <code>clear prove deal-desk.clear</code>:<br>
+<pre>Business rules in this file:
+  [PROVED]       discount-cap-thirty (line 1) — for every possible deal
+  [PROVED]       big-deals-need-cro (line 5) — for every possible deal
+  [UNVERIFIABLE] customer-must-exist (line 11) — body calls the database
+
+  2 of 3 rules proved. 1 unverifiable.</pre>
+    The CRO sees PROVED next to "discount-cap-thirty" and trusts it. Not because they read the code — because the verdict is attributed by name and the prover is a small, auditable program.<br><br>
+    UNVERIFIABLE is the honest one. The rule looks up data from a database; the math engine can't enumerate every possible DB state, so it refuses to claim universal correctness. Runtime check still fires. We tell customers exactly which rules are math-proved and which are runtime-only.<br><br>
+    Demo + sample audit PDF: <a href="#">buildclear.dev/prove</a>.
+  </div>
+</div>
+
+<hr>
+
+<!-- Comment 1 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">tptacek</a> 4 hours ago | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The interesting choice here is the three-way verdict. PROVED, DISPROVED, UNVERIFIABLE. Most "we'll prove your code" pitches drop UNVERIFIABLE on the floor and pretend everything is PROVED. Showing the customer "we proved 2 of 3, the third is honest about touching the database" is the kind of integrity I haven't seen in a tools-pitch before.<br><br>
+    The pitch isn't "we prove everything." It's "we prove the parts a math engine can prove, and clearly fence the parts it can't." That's a sustainable claim.
+  </div>
+</div>
+
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 4 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Right. The honest sentence in every customer conversation is: "this rule is PROVED, this rule is UNVERIFIABLE because it touches the database, and here's the runtime witness for the UNVERIFIABLE one — we fired 20 violating inputs at the running app and 100% rejected with the rule's name in the body."<br><br>
+    The combination of math proof for pure logic + runtime witness for effectful logic is the only honest thing I could come up with. Customers can verify both themselves.
+  </div>
+</div>
+
+<!-- Comment 2 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">aphyr</a> 4 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    What's the math engine? Bounded model checker, SMT, abstract interpretation, custom?
+  </div>
+</div>
+
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 4 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Custom symbolic simplifier — small, single-file, walks the AST and folds expressions over the rule's free variables. Handles arithmetic equality and inequality, boolean composition, and bounded conditionals. We deliberately picked a tiny verifiable engine over an SMT solver because the engine ITSELF needs to be auditable — if a CRO asks "how do I trust the prover?" the answer should be "here's the file, it's 800 lines of JS."<br><br>
+    The cost is expressive limits. Rules with non-linear arithmetic, unbounded loops, or floats outside narrow ranges hit UNVERIFIABLE. We treat that as a feature: the prover is honest about its scope. Hooking in Z3 as an option for power users is a future cycle.
+  </div>
+</div>
+
+<div class="commentbox indent-2">
+  <div class="commenthead">
+    <a href="#">aphyr</a> 4 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    "The prover itself is auditable" is the right call for this customer. Compliance reviewers asking how a verdict was reached can read 800 lines. They cannot read Z3.
+  </div>
+</div>
+
+<!-- Comment 3 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">jashkenas</a> 3 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    "Total by default" is the part of this that interests me most. Most languages let you have side effects anywhere; Clear flips the default and makes you write <code>live:</code> when you want effects. That's the same instinct as Haskell's IO monad but expressed in plain English instead of monadic plumbing.<br><br>
+    Does the fence actually matter, or is it ceremonial?
+  </div>
+</div>
+
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 3 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    It does real work. The prover walks rule bodies and refuses to give a PROVED verdict to anything that contains a node it classifies as effectful — DB lookups, HTTP requests, AI calls, time reads. The <code>live:</code> block is what marks those nodes. So when a developer writes a rule that should be pure and accidentally calls the database, the prover catches it: UNVERIFIABLE with a reason ("body calls the database").<br><br>
+    The customer-facing version: every PROVED rule is mathematically guaranteed regardless of database state. Every UNVERIFIABLE rule has at least one effect inside its body. The fence is what makes the verdict trustworthy.
+  </div>
+</div>
+
+<!-- Comment 4 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">simonw</a> 3 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Quick sanity check on the runtime witness piece — is this just "you wrote a test that asserts 400 on a violation"? Or something stronger?
+  </div>
+</div>
+
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 3 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    Stronger. The harness:<br>
+    1. Compiles your <code>.clear</code> file<br>
+    2. Spawns the compiled Express server on a free port<br>
+    3. Generates 20 random inputs that VIOLATE each rule (using the rule's symbolic constraints to pick adversarial values)<br>
+    4. Fires them at the live server<br>
+    5. Asserts 100% come back as 4xx with the rule's name in the response body<br><br>
+    If even one violator slips through with success, the prover lied. We've caught compiler bugs that way — symbolic proof said PROVED but the runtime guard had a bug. The witness is the canary.
+  </div>
+</div>
+
+<!-- Comment 5 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">colmmacc</a> 3 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The ergonomic story is the part I keep noticing. <code>rule discount-cap-thirty:</code> reads like a name a CRO would say out loud. Compared to a TLA+ spec that the same CRO can't read at all, this is a meaningfully different sales surface.<br><br>
+    What goes in the audit PDF the post mentions?
+  </div>
+</div>
+
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 3 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    A real PDF generated by <code>clear audit deal-desk.clear</code>. Per-rule pages: the rule name, the source line in plain Clear, the verdict, and (for PROVED rules) the symbolic reasoning the prover used; (for runtime-witnessed rules) the count of violating inputs tested and rejected; (for UNVERIFIABLE rules) the reason the prover refused. Plus a session header with the file's commit SHA, the prover version, and the date.<br><br>
+    Compliance buyers want a snapshot they can hand to their auditor. The PDF is that snapshot. Every customer's deploy generates one.
+  </div>
+</div>
+
+<!-- Comment 6 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">peterlk</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The integration with the audit trail in your previous post is what makes this commercial. Compile-time proof + runtime trail = "here's our policy, here's the math proof, here's the row in the audit log when someone tried to violate it." Three layers, one story.<br><br>
+    For a customer being asked "how do I know your discount cap holds?" the answer is "PROVED at compile time, runtime-rejected with rule name on every attempt, every rejection is a row in /audit." That's a complete answer.
+  </div>
+</div>
+
+<!-- Comment 7 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">jerf</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The choice to dasherize quoted-string rule names is small but real. <code>rule 'Deals over $100k need CRO sign-off':</code> becomes <code>deals-over-100k-need-cro-sign-off</code> for the audit log and the prover output. So you can write the rule in the language a CRO would say AND get a stable identifier the audit log can index. The CRO never has to read camelCase.
+  </div>
+</div>
+
+<!-- Comment 8 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">throwaway8821</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    What happens when a rule is mathematically PROVED but has a bug in its specification? The prover is happy, the CRO is happy, but the rule is doing the wrong thing.
+  </div>
+</div>
+
+<div class="commentbox indent-1">
+  <div class="commenthead">
+    <a href="#">rmiller</a> 2 hours ago | <a href="#">root</a> | <a href="#">parent</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    That's the right question. The prover proves "this rule rejects every input that violates the condition you wrote." It does NOT prove "the condition you wrote is the right condition." Those are different things and we're explicit about it.<br><br>
+    The mitigation is in the workflow: rules read in plain English, so a non-engineer can review them. <code>discount-cap-thirty</code> says "discount must be less than 30" — the CRO reads it directly, no translation. That's the bug-in-spec defense, and it works because the spec IS readable by the person who owns the policy.<br><br>
+    There's no good answer to "did you write the right rule?" in any system. The answer to "did you implement the rule you wrote correctly?" is what the prover gives you.
+  </div>
+</div>
+
+<!-- Comment 9 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">stevex</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    This is what every rule-engine pitch I've seen has missed. Drools, Camunda, half a dozen others — they all give you a way to author rules but no way to prove them. The author writes a rule, the runtime fires it, audit time you have to trust the rule was correctly authored AND correctly executed. Two layers of trust required.<br><br>
+    Compile-time proof + runtime witness collapses the trust to "do you trust the prover?" — and at 800 lines of JS, that's a one-afternoon code review.
+  </div>
+</div>
+
+<!-- Comment 10 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">jcr</a> 2 hours ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    I keep noticing that Clear's whole pitch is "small surface, strong claims" — small DSL, restricted enough to make universal claims about; small prover, simple enough to audit. Most modern frameworks pitch large surface and weak claims (Rails: "convention over configuration, write whatever you want"). The trade is real and Clear is on the side I think compliance customers want.
+  </div>
+</div>
+
+<!-- Comment 11 -->
+<div class="commentbox">
+  <div class="commenthead">
+    <a href="#">danabramov</a> 1 hour ago | <a href="#">parent</a> | <a href="#">prev</a> | <a href="#">next</a> [&ndash;]
+  </div>
+  <div class="commenttext">
+    The pairing of <code>rule</code> + <code>live:</code> + audit trail tells one coherent story. You write policies in English, the compiler proves the pure ones, runtime witnesses the effectful ones, and every state-changing request is captured to a tamper-resistant log with the rule's name in the rejection. A compliance buyer hearing that story doesn't have a follow-up question.<br><br>
+    "Yes, we can prove your discount cap holds, here's the math; yes, we can show you every attempt to violate it, here's the audit row; yes, we can hand you a PDF for your auditor."
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <a href="#">Guidelines</a> | <a href="#">FAQ</a> | <a href="#">Lists</a> | <a href="#">API</a> | <a href="#">Security</a> | <a href="#">Legal</a> | <a href="#">Apply to YC</a> | <a href="#">Contact</a><br><br>
+  Search: <input type="text" style="font-family:Verdana;font-size:9pt;width:200px;border:1px solid #828282" disabled>
+</div>
+
+</div>
+
+</body>
+</html>
