@@ -23,7 +23,7 @@ Let's jump in.
 - [Chapter 2: Approve or Reject](#chapter-2-approve-or-reject-when-the-app-decides-for-you)
 - [Chapter 3: A Queue of Deals](#chapter-3-a-queue-of-deals-when-one-isnt-enough)
 - [Chapter 4: A Reusable Recipe](#chapter-4-a-reusable-recipe-functions)
-- [Chapter 5: Your First Web App](#chapter-5-your-first-web-app-its-a-tip-calculator-obviously)
+- [Chapter 5: Your First Web URL](#chapter-5-your-first-web-url-from-script-to-server)
 
 **Full-stack basics — apps with a database and a real backend**
 - [Chapter 6: The Full-Stack Todo App](#chapter-6-the-full-stack-todo-app-the-real-deal)
@@ -617,52 +617,178 @@ Chapter 5 is the **leveling-up moment**: deal-desk becomes a real web app. Inste
 
 ---
 
-## Chapter 5: Your First Web App (It's a Tip Calculator, Obviously)
+## Chapter 5: Your First Web URL (From Script to Server)
 
-OK, enough theory. Let's build something you can actually see in a browser.
-Every programming tutorial builds a tip calculator at some point. It's the law.
+So far every program in this guide has been a *script*. You ran `clear run deal.clear`, the program printed something to your terminal, and it exited. That's a useful shape — a recipe that runs from top to bottom and stops — but it's not what people usually mean when they say "an app."
 
-Here's the entire app:
+The deal-desk app a sales team actually uses isn't a script. It's a *server*: a program that stays running and answers requests from web browsers. When the CRO opens deal-desk on her laptop and the pending-deals queue appears, she's not running a script — her browser asked your program for the queue, and your program sent it back. By the end of this chapter you'll have written that program. You'll start it with `clear serve`, hit it from another terminal with `curl`, and see your list of deals come back as a web response.
+
+This is the moment deal-desk levels up from "thing on your laptop" to "thing on the web."
+
+### What is an URL, really?
+
+An URL — `https://deal-desk.example.com/api/deals` — is just an *address*. When someone types that address into their browser (or when JavaScript on a page calls it in the background), the browser sends a small message across the internet asking for whatever lives at that address. Somewhere, a program receives that message and decides what to send back.
+
+URLs aren't magic. They're addresses your program answers. The first half (`https://deal-desk.example.com`) tells the internet *which machine* to talk to. The second half (`/api/deals`) tells the program on that machine *which thing you want*. Two different addresses on the same machine can serve completely different things — `/api/deals` returns the queue, `/api/deals/approved` returns approved deals, `/api/users` returns users. Same server, different addresses, different answers.
+
+For the rest of this chapter we're only going to care about the second half — the path. Your machine answers as `localhost`, which means "this computer." So when you start the server and visit `http://localhost:3000/api/deals`, your browser is asking your laptop "what lives at /api/deals?"
+
+### What does a server do?
+
+A server is just a program that doesn't exit. It starts up, opens a port (think of a port as a door numbered 3000 on your computer), and sits there waiting. When a request arrives at that door, the server reads it, decides what to send back, and sends it. Then it goes back to waiting for the next request. Forever — or until you press Ctrl+C.
+
+That's the big shift from chapters 1–4. A script runs and ends. A server runs and *keeps running*. The CRO can hit it once, hit it again ten minutes later, hit it from her phone — same server, same answers, no restart needed.
+
+You don't have to write any of the listening, port-opening, request-parsing machinery. The Clear compiler emits all of that for you. What you write is the part that's specific to your app: what addresses you answer, and what you send back.
+
+### What is an URL handler?
+
+An **URL handler** is the rule that says "when *this* address gets asked for, do *this*." Pages have URL handlers. APIs have URL handlers. Every running web app is, underneath, a list of handlers — one per address.
+
+A handler has two parts:
+- which address it answers (e.g. `/api/deals`)
+- what it sends back when someone asks (e.g. the list of pending deals)
+
+In Clear you write that as one block of code. Concept first; we'll show the syntax in a moment. Read the concept twice if you've never built a server before — once you have it, the syntax is almost mechanical.
+
+### Your first handler
+
+Open `deal.clear` and replace its contents with this:
 
 ```clear
-build for web
+build for javascript backend
 
-page 'Tip Calculator':
-  heading 'Tip Calculator'
+discounts is an empty list
+add 18 to discounts
+add 8 to discounts
+add 35 to discounts
+add 12 to discounts
 
-  'Bill Amount' is a number input saved as a bill
-  'Tip Percentage' is a number input saved as a tip_percent
-
-  tip = bill * tip_percent / 100
-  total = bill + tip
-
-  display tip as dollars called 'Tip Amount'
-  display total as dollars called 'Total'
+when user requests data from /api/deals:
+  send back discounts
 ```
 
-Run it:
+That's the entire program. Eight lines, and it's a real web server. Let's walk it.
+
+`build for javascript backend` is a one-line instruction to the compiler: "this program is going to be a backend server." Without that line Clear wouldn't know whether to generate a script (chapters 1–4) or a server (this chapter). The four `discounts` lines are exactly the list you built in Chapter 3 — the same percentages, the same shape — except now they live inside a server program instead of a one-shot script.
+
+The new piece is the last two lines.
+
+`when user requests data from /api/deals:` is the URL handler. Read it aloud: *"when a user requests data from /api/deals."* It says "if anyone — a browser, a curl command, another program — asks for the address `/api/deals`, run the indented block." The colon at the end opens a block, the same way `if`, `for each`, and `define function` opened blocks in the earlier chapters. Indentation tells Clear what's inside the handler.
+
+`send back discounts` is the body. When the request arrives, the server packages up the `discounts` list and sends it to whoever asked. That's it. No HTML templates, no setting headers, no handling JSON encoding — `send back X` does the right thing. Clear ships your list back to the caller as JSON (more on what that means in a second).
+
+> **Synonym:** `when user calls GET /api/deals:` works too — both forms parse to the same handler. The plain-English `when user requests data from` is canonical because it reads aloud the way a manager would describe what's happening. Use it.
+
+### Now run this
+
+Save `deal.clear`. In your terminal, from the directory where the file lives, run:
 
 ```bash
-clear build main.clear
-# Open build/index.html in your browser
+clear serve deal.clear
 ```
 
-**Wait, that's it?** 11 lines? Yep. The compiler turns that into a complete HTML page
-with styled inputs, reactive calculations, and formatted dollar amounts. Change the
-bill amount and the tip updates instantly — no "submit" button needed.
+You'll see output like this:
 
-In JavaScript, this would be about 80 lines. In React, maybe 40 plus a build system.
-In Clear, it's 11 lines that a 14-year-old can read. (That's actually our design test.
-If a curious teenager can't read it, we simplify.)
+```
+Server running on http://localhost:3000
+```
 
-### What Each Line Does
+That's your server. It's now listening on port 3000 of your machine, waiting for requests. Don't close that terminal — the server runs as long as that command keeps running. (When you want to stop it, hit Ctrl+C in that terminal.)
 
-- `build for web` — tells the compiler to generate HTML + JavaScript
-- `page 'Tip Calculator':` — creates a web page with this title
-- `heading 'Tip Calculator'` — an `<h1>` heading
-- `'Bill Amount' is a number input saved as a bill` — creates a labeled input that stores its value in `bill`
-- `tip = bill * tip_percent / 100` — calculates the tip (reactively!)
-- `display tip as dollars called 'Tip Amount'` — shows the tip formatted as currency
+Now open a *second* terminal — leave the server running in the first one — and ask the server for `/api/deals`:
+
+```bash
+curl http://localhost:3000/api/deals
+```
+
+`curl` is a small command-line tool that sends a request to a URL and prints whatever comes back. (If you don't have curl, paste the URL into your browser instead — same result.) You should see:
+
+```
+[18,8,35,12]
+```
+
+That's your discounts list, served back as a web response. Square brackets, comma-separated values — that's JSON, which we'll cover in a second. Your program just answered its first web request.
+
+### What is JSON?
+
+JSON is the standard way servers and browsers exchange data. It's the same idea as Python lists or JavaScript arrays — square brackets for lists, curly braces for records, commas between items, quotes around strings. Almost every API on the web speaks JSON. When Clear's `send back` ships your list, it converts it to JSON automatically. When you call an API later (Chapter 6), Clear will turn JSON it receives back into Clear values for you. You don't have to think about JSON beyond knowing that's what those `[ ]` brackets are.
+
+If your `discounts` list were empty, the server would have answered with:
+
+```
+[]
+```
+
+That's an empty JSON list — zero items. Same shape, no contents. We'll see that exact output when we start with a real database in Chapter 6 (no rows yet → `[]` comes back).
+
+### Add a second handler
+
+A real app answers many addresses, not just one. Let's add a second handler that returns just the deals over the cap.
+
+```clear
+build for javascript backend
+
+discounts is an empty list
+add 18 to discounts
+add 8 to discounts
+add 35 to discounts
+add 12 to discounts
+
+when user requests data from /api/deals:
+  send back discounts
+
+when user requests data from /api/deals/over-cap:
+  big_ones is an empty list
+  for each d in discounts:
+    if d is greater than 30:
+      add d to big_ones
+  send back big_ones
+```
+
+Two handlers, two addresses. The second one walks the discounts list, picks out the ones over 30, and sends those back. Notice how *everything* you learned in chapters 1–4 — lists, `for each`, `if`, comparisons — works the same inside a handler body. A handler body is just a Clear block. The new ingredient isn't a new way to write logic; it's a new way to *expose* logic over the web.
+
+Stop the running server (Ctrl+C in the first terminal), then start it again with the new file:
+
+```bash
+clear serve deal.clear
+```
+
+Hit both addresses:
+
+```bash
+curl http://localhost:3000/api/deals
+curl http://localhost:3000/api/deals/over-cap
+```
+
+You should see:
+
+```
+[18,8,35,12]
+[35]
+```
+
+The first address returned everything. The second returned only the discount that exceeds the 30% cap. Same data, two different views, two different addresses.
+
+### Why this matters
+
+Every full-stack app you've ever used works this way under the hood. Gmail's "show me my inbox" is an URL handler. Stripe's "charge this card" is an URL handler. The deal-desk app from `apps/deal-desk/main.clear` (the canonical reference Marcus app) has roughly a dozen handlers — `/api/deals/pending`, `/api/deals/approved`, `/api/deals/rejected`, one per slice of the queue. They're all the exact shape you just wrote: `when user requests data from /api/X:` followed by `send back something`.
+
+For the experienced developer skimming: notice what you *didn't* write. No Express boilerplate. No router definition. No `app.listen(3000)`. No JSON serialization. No CORS middleware. The compiler emitted all of it. What's in your file is exactly the part that's specific to your business — the addresses you answer and the data you return — and nothing else. That's the whole pitch: Clear's verbs map 1:1 to the parts a human cares about, and the framework noise lives in the compiled output where you don't have to read it.
+
+For the newcomer: you just built a real web server. It's eight lines. It runs. It answers requests. The thing you've been clicking on every website for years — your program now does that.
+
+### Try it yourself
+
+1. **Add a `/api/deals/count` handler** that sends back the count of discounts. (Hint: `count of discounts` from Chapter 3 gives you the number; you can `send back` it directly without storing it in a variable.) Restart the server, hit it with curl, confirm you get `4`.
+2. **Make the `/api/deals/over-cap` threshold configurable.** Define a function `is_over_cap(percent)` that returns true when the percent exceeds 30. Use it inside the loop instead of the inline `if`. Pulled the comparison into one named place — same idea as Chapter 4.
+3. **Open the URL in your browser** instead of using curl. Visit `http://localhost:3000/api/deals` in Chrome or Firefox. The browser will display the same JSON. (If your browser tries to download the file instead of showing it, that's fine — the response is still correct, your browser just doesn't know it's safe to display.)
+
+### What's next
+
+Right now your discounts list is hard-coded into the program. Restart the server and the list resets. Type four `add` lines in your editor; that's the only way new deals enter the queue. That's not a real app — a real app *remembers* deals across restarts and lets users add new ones from a form.
+
+In Chapter 6 we'll swap your in-memory list for a real **database**. You'll declare a `Deals` table with named fields (rep, customer, list price, discount), and your handler will query the database instead of an in-memory list. Then we'll add a *second* handler — a POST endpoint — that lets a caller send a new deal to the server and saves it to the table. Restart the server, the deals are still there. That's persistence: data that survives across runs. The line you wrote today (`when user requests data from /api/deals: send back discounts`) is going to evolve into one line: `send back all Deals`. Same shape, real data underneath.
 
 ---
 
