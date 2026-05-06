@@ -14153,7 +14153,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   const usesRateLimit = body.some(n =>
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.RATE_LIMIT)
-  );
+  ) || body.some(n => n.type === NodeType.AUTH_SCAFFOLD); // OWASP Piece 4: auto-rate-limit on /auth/login
   const dbDecl = body.find(n => n.type === NodeType.DATABASE_DECL);
   const dbBackend = dbDecl?.backend || 'local memory';
   const isSupabase = dbBackend.includes('supabase');
@@ -14720,7 +14720,10 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
       lines.push('');
     }
     lines.push('// POST /auth/login — authenticate user');
-    lines.push("app.post('/auth/login', async (req, res) => {");
+    lines.push('// OWASP Piece 4: auto-emitted rate limit (10 attempts/minute) on the');
+    lines.push('// login route so brute-force password guessing is throttled by default.');
+    lines.push('// Without this, an attacker can try thousands of guesses per second.');
+    lines.push("app.post('/auth/login', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {");
     lines.push('  try {');
     lines.push('    const { email, password } = req.body;');
     lines.push("    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });");

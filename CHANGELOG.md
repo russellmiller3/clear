@@ -6,6 +6,31 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — OWASP Piece 4 (auto-emitted login rate limit)
+
+When `allow signup and login` is declared, the compiler now auto-wires
+rate-limit middleware on the auto-generated `POST /auth/login` route —
+10 attempts per minute per IP by default. Without this, an attacker
+could try thousands of password guesses per second through the same
+endpoint that handles legitimate logins.
+
+What shipped:
+- Compiler emits `app.post('/auth/login', rateLimit({ windowMs: 60000,
+  max: 10 }), async (req, res) => { ... })` when the auth scaffold is
+  present, threading the same `rateLimit` runtime helper that
+  user-declared `rate limit N per minute` body modifiers already use.
+- Auto-import `clear-runtime/rateLimit` when auth scaffold is present
+  (mirrors the existing user-declared rate-limit gate).
+- 2 new tests.
+
+Promotes the existing validator warning at `validator.js:2076` ("login
+endpoint has no rate limit") from a nudge into a runtime guarantee
+for the auth-scaffold path.
+
+Test suite: 2970 / 2970 green.
+
+---
+
 ## 2026-05-06 — OWASP Piece 3 (sensitive field tag — AST surface)
 
 Parser surface for the per-field `sensitive` tag and the per-endpoint

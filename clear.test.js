@@ -5275,6 +5275,43 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 4 — auto-emitted login rate limit
+// =============================================================================
+// When `allow signup and login` is declared, the compiler now auto-emits
+// rate limit middleware on the auto-generated POST /auth/login route.
+// Without this, an attacker can try thousands of password guesses per
+// second. Default limit is 10 per minute; the existing validator warning
+// promoted to a hard runtime guard via construction.
+describe('OWASP Piece 4 - auto-emitted login rate limit', () => {
+  it('emits rate limit middleware on POST /auth/login when allow signup and login is declared', () => {
+    const src = `target: backend
+allow signup and login
+
+when user requests data from /api/me:
+  requires login
+  send back caller`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // The auto-generated login route should have rate-limit middleware
+    // wired into the route definition. Match the route + a rate-limit
+    // shape together so we know the limit is on THIS route specifically.
+    expect(js).toMatch(/app\.post\(['"]\/auth\/login['"][\s\S]{0,200}rateLimit/);
+  });
+
+  it('does NOT emit login rate limit when there is no auth scaffold', () => {
+    const src = `target: backend
+when user requests data from /api/health:
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // No /auth/login at all if no auth scaffold.
+    expect(js).not.toContain('/auth/login');
+  });
+});
+
+// =============================================================================
 // OWASP Piece 3 — sensitive field tag (encrypts + strips from API responses)
 // =============================================================================
 // `text ssn sensitive` marks a field as sensitive — the compiler strips it
