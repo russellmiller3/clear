@@ -7,6 +7,21 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## How does the Python compile path pick which database backend to use? (2026-05-06)
+
+The Python emit branches on the source's `database is X` declaration:
+
+- **`database is local memory`** (default if no declaration) — keeps the inline `_DB` class stub. In-memory only; data forgets across restarts. Used by tests + local-dev mocks.
+- **`database is local file`** — drops the inline stub and emits `from clear_runtime import db`. Imports `runtime/db.py` (persistent SQLite via Python's stdlib `sqlite3`). Same on-disk file format as the JS target via better-sqlite3, so cross-runtime data interop holds.
+- **`database is postgres`** — drops the inline stub and emits `from clear_runtime import db_postgres as db`. Imports `runtime/db_postgres.py` (psycopg3, lazy connection). Same column shapes as `runtime/db-postgres.js`, so a row inserted by either runtime reads back via the other on the same DATABASE_URL.
+- **`database is supabase`** — drops the inline stub and emits a Supabase client init (existing pattern; unchanged 2026-05-06).
+
+Branch lives at `compiler.js` ~line 15738 in `compileToPythonBackend`. Three TDD tests in `clear.test.js` lock the behavior under "Compiler - Python emit imports real db helper (parity follow-up)".
+
+**Still pending follow-up:** the CLI's runtime-copy step (`cli/clear.js`) needs to copy `runtime/db.py` and `runtime/db_postgres.py` to the compiled app's `clear-runtime/` directory next to the existing `.js` copy logic. Without this, the compiled Python app's `from clear_runtime import db` will fail at runtime. Tracked in `plans/plan-python-parity.md` as the companion CLI change.
+
+---
+
 ## Where do the Python runtime helpers live? (2026-05-06)
 
 Python ports of the JS runtime helpers, landing one at a time per `plans/plan-python-parity.md`:
