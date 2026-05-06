@@ -217,6 +217,8 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
   .product-frame { transform: none; }
 }
 </style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });</script>
 </head>
 <body>
 
@@ -685,6 +687,139 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
 
     </div>
 
+  </div>
+</section>
+
+<!-- OWASP Top 10 — structural defense, no asterisks -->
+<section class="py-24" style="background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); border-top: 1px solid rgba(0,0,0,0.04); border-bottom: 1px solid rgba(0,0,0,0.04);">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14">
+      <div class="inline-flex items-center gap-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-5 uppercase tracking-wider">
+        <i data-lucide="shield-check" style="width:14px;height:14px"></i> OWASP Top 10 — closed by construction
+      </div>
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
+        Clear refuses to compile<br>any of the OWASP Top 10.
+      </h2>
+      <p class="text-[16px] text-slate-500 max-w-2xl mx-auto leading-relaxed">
+        The compiler writes the safe version for you, or the build fails.
+        No checklist. No "did you remember to". No security PR review.
+        The whole class of bugs the OWASP Top 10 names is structurally impossible.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <!-- 1. Access control -->
+      <div class="rounded-2xl border border-slate-100 bg-white p-7 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
+            <i data-lucide="key-round" style="width:20px;height:20px"></i>
+          </div>
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">A01 — Broken Access Control</div>
+        </div>
+        <h3 class="text-[19px] font-bold tracking-tight mb-2">Per-row access rules in plain English</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          Declare who can read, change, or delete each row. The compiler auto-injects
+          the ownership check on every database read, write, update, and delete.
+          A stolen session token can't read another user's records.
+        </p>
+        <div class="bg-slate-50 border border-slate-100 rounded-lg p-4 font-mono text-[12.5px] leading-relaxed">
+          <div><span class="text-violet-600 font-semibold">create a</span> <span class="text-emerald-700">Deals</span> <span class="text-violet-600 font-semibold">table:</span></div>
+          <div class="pl-4">amount <span class="text-violet-600 font-semibold">is number</span></div>
+          <div class="pl-4 text-emerald-700">the deal's creator can read, change, or delete</div>
+        </div>
+      </div>
+
+      <!-- 2. SSRF -->
+      <div class="rounded-2xl border border-slate-100 bg-white p-7 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
+            <i data-lucide="globe-lock" style="width:20px;height:20px"></i>
+          </div>
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">A10 — SSRF</div>
+        </div>
+        <h3 class="text-[19px] font-bold tracking-tight mb-2">Outgoing requests allowlist</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          Name every host the app is allowed to call. Variable URLs (the classic SSRF
+          vector — a malicious caller controls where the server goes) won't compile.
+          Build fails, plain English error, suggests how to fix.
+        </p>
+        <div class="bg-slate-50 border border-slate-100 rounded-lg p-4 font-mono text-[12.5px] leading-relaxed">
+          <div class="text-emerald-700">allow outgoing requests to: 'api.stripe.com', 'api.openai.com'</div>
+        </div>
+      </div>
+
+      <!-- 3. Sensitive data -->
+      <div class="rounded-2xl border border-slate-100 bg-white p-7 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
+            <i data-lucide="lock" style="width:20px;height:20px"></i>
+          </div>
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">A02 — Cryptographic Failures</div>
+        </div>
+        <h3 class="text-[19px] font-bold tracking-tight mb-2">One word: <code class="font-mono text-[14px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">sensitive</code></h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          Tag a field <code class="font-mono text-[12.5px] bg-slate-100 px-1 rounded">sensitive</code>.
+          The compiler encrypts it with AES-256-GCM before it touches disk and decrypts
+          on read. Stolen DB dump? Reveals nothing without the key.
+          Stripped from API responses by default — opt back in per route.
+        </p>
+        <div class="bg-slate-50 border border-slate-100 rounded-lg p-4 font-mono text-[12.5px] leading-relaxed">
+          <div><span class="text-violet-600 font-semibold">create a</span> <span class="text-emerald-700">Patients</span> <span class="text-violet-600 font-semibold">table:</span></div>
+          <div class="pl-4">name <span class="text-violet-600 font-semibold">is text</span></div>
+          <div class="pl-4">ssn <span class="text-violet-600 font-semibold">is text</span>, <span class="text-emerald-700">sensitive</span></div>
+        </div>
+      </div>
+
+      <!-- 4. Auth -->
+      <div class="rounded-2xl border border-slate-100 bg-white p-7 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
+            <i data-lucide="user-lock" style="width:20px;height:20px"></i>
+          </div>
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">A07 — Auth Failures</div>
+        </div>
+        <h3 class="text-[19px] font-bold tracking-tight mb-2">Brute-force throttling, automatic</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          When you declare login, the compiler wires rate-limit middleware on the
+          login route — 10 attempts per minute per IP, by default. No SDK to add.
+          No "did you remember rate limiting?" question. It just exists.
+        </p>
+        <div class="bg-slate-50 border border-slate-100 rounded-lg p-4 font-mono text-[12.5px] leading-relaxed">
+          <div class="text-emerald-700">allow signup and login</div>
+          <div class="text-slate-400 italic mt-1">// rate limit auto-emitted on /auth/login</div>
+        </div>
+      </div>
+
+      <!-- 5. Hardcoded secrets -->
+      <div class="rounded-2xl border border-slate-100 bg-white p-7 shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:col-span-2">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
+            <i data-lucide="file-warning" style="width:20px;height:20px"></i>
+          </div>
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">A05 — Misconfiguration / hardcoded secrets</div>
+        </div>
+        <h3 class="text-[19px] font-bold tracking-tight mb-2">Live API keys in source = build fails</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          The compiler scans every string literal for shapes that look like real keys
+          — Stripe, AWS, GitHub, Anthropic, OpenAI. Match found? Build fails with a
+          one-line error naming the kind of key and suggesting an env var. The "I
+          accidentally pushed a key to a public repo" 3 a.m. story doesn't happen here.
+        </p>
+        <div class="bg-rose-50 border border-rose-100 rounded-lg p-4 font-mono text-[12.5px] leading-relaxed">
+          <div class="text-rose-700 font-semibold">Build failed</div>
+          <div class="text-slate-700 mt-1">Line 4: this string looks like a Stripe live secret key hardcoded in source.</div>
+          <div class="text-slate-700">Read it from an environment variable instead. Example: api_key is process_env('STRIPE_SECRET_KEY').</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="mt-12 text-center">
+      <p class="text-[14px] text-slate-400 italic">
+        The compiler accumulates quality. Fix a bug class once, every customer's app gets the fix on the next build.
+      </p>
+    </div>
   </div>
 </section>
 
