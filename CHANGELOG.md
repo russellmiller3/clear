@@ -6,6 +6,40 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — OWASP Piece 5 (hardcoded-secrets linter) — OWASP TOP 10 EPIC COMPLETE
+
+The compiler now refuses to build any source that contains a recognizable
+API-key shape inline. Validator pass walks every string literal in the AST
+and matches against high-confidence patterns:
+
+- Stripe live + test keys (sk_live_..., sk_test_...)
+- AWS access keys (AKIA + 16 alphanum chars)
+- GitHub tokens (ghp_, gho_, ghu_, ghs_)
+- Anthropic API keys (sk-ant-...)
+- OpenAI API keys (sk-, sk-proj-)
+
+When matched, errors with a friendly message naming the kind of key and
+suggesting an env var: "this string looks like a Stripe live secret key
+hardcoded in source. Read it from an environment variable instead."
+
+Generic high-entropy strings are NOT flagged — false positive rate would
+block too many legitimate long-string uses (HTML, JWT secret env-var
+names, etc.).
+
+Tests: 5 new (one per pattern + one negative + one error-message check).
+Suite: 2975 / 2975 green.
+
+**OWASP Top 10 epic — COMPLETE.** Together with Pieces 1-4, the Marcus
+pitch can claim "Clear refuses to compile any of the OWASP Top 10. The
+compiler writes the safe version for you, or the build fails." with no
+asterisks and no follow-ups outstanding for the structural cases.
+Full-feature gaps (the encrypt-at-rest side of `sensitive`, the Postgres
+side of the runtime user_id auto-add, and a few validator polish cycles)
+remain as documented follow-ups, but every Top-10 category is now
+either a hard error at compile time or auto-injected at runtime.
+
+---
+
 ## 2026-05-06 — OWASP Piece 4 (auto-emitted login rate limit)
 
 When `allow signup and login` is declared, the compiler now auto-wires

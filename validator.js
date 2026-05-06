@@ -138,7 +138,66 @@ export function validate(ast) {
   validateConcurrency(ast.body, warnings);
   validateTenantScope(ast.body, warnings);
   validateOutgoingAllowlist(ast.body, errors);
+  validateHardcodedSecrets(ast.body, errors);
   return { errors, warnings };
+}
+
+// =============================================================================
+// OWASP Piece 5 — hardcoded secrets linter (2026-05-06).
+//
+// Walks every string literal in the AST and matches it against known API-
+// key shapes. If found, errors with a friendly message naming the kind of
+// key and suggesting an environment variable. Stops customers from
+// accidentally committing live keys to git.
+//
+// The patterns target HIGH-CONFIDENCE shapes (Stripe, AWS, GitHub,
+// Anthropic, OpenAI). Generic high-entropy strings are NOT flagged
+// because the false-positive rate would block too many legitimate
+// long-string uses (HTML, JWT secret env-var names, etc.).
+// =============================================================================
+function validateHardcodedSecrets(body, errors) {
+  if (!Array.isArray(body)) return;
+
+  const SECRET_PATTERNS = [
+    { name: 'Stripe live secret key', regex: /\bsk_live_[A-Za-z0-9]{20,}\b/, env: 'STRIPE_SECRET_KEY' },
+    { name: 'Stripe test secret key', regex: /\bsk_test_[A-Za-z0-9]{20,}\b/, env: 'STRIPE_SECRET_KEY' },
+    { name: 'AWS access key', regex: /\bAKIA[A-Z0-9]{16}\b/, env: 'AWS_ACCESS_KEY_ID' },
+    { name: 'GitHub personal access token', regex: /\bghp_[A-Za-z0-9]{36,}\b/, env: 'GITHUB_TOKEN' },
+    { name: 'GitHub OAuth token', regex: /\bgho_[A-Za-z0-9]{36,}\b/, env: 'GITHUB_TOKEN' },
+    { name: 'GitHub user access token', regex: /\bghu_[A-Za-z0-9]{36,}\b/, env: 'GITHUB_TOKEN' },
+    { name: 'GitHub server-to-server token', regex: /\bghs_[A-Za-z0-9]{36,}\b/, env: 'GITHUB_TOKEN' },
+    { name: 'Anthropic API key', regex: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/, env: 'ANTHROPIC_API_KEY' },
+    { name: 'OpenAI API key', regex: /\bsk-(?:proj-)?[A-Za-z0-9_-]{40,}\b/, env: 'OPENAI_API_KEY' },
+  ];
+
+  function checkString(value, line) {
+    if (typeof value !== 'string' || !value) return;
+    for (const pattern of SECRET_PATTERNS) {
+      if (pattern.regex.test(value)) {
+        errors.push({
+          line: line || 0,
+          message: `Line ${line || '?'}: this string looks like a ${pattern.name} hardcoded in source. Committing live secrets to git is a CRITICAL leak — anyone with read access to the repo (or the next AI training run that scrapes it) gets your key. Read it from an environment variable instead. Example: api_key is process_env('${pattern.env}'). Then put the real value in a .env file (which .gitignore excludes by default).`
+        });
+        return; // one match per string is enough
+      }
+    }
+  }
+
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'literal_string') {
+      checkString(node.value, node.line);
+    }
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (v && typeof v === 'object') {
+        if (Array.isArray(v)) for (const child of v) walk(child);
+        else walk(v);
+      }
+    }
+  }
+
+  for (const node of body) walk(node);
 }
 
 // =============================================================================

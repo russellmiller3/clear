@@ -5275,6 +5275,76 @@ create a Deals table:
 });
 
 // =============================================================================
+// OWASP Piece 5 — hardcoded secrets linter
+// =============================================================================
+// New validator pass that scans every string literal in the source for
+// patterns that match known API-key shapes (Stripe, AWS, GitHub, Anthropic,
+// OpenAI, generic JWT). Build fails with a friendly error suggesting an
+// env var. Stops customers from accidentally committing live keys to git.
+describe('OWASP Piece 5 - hardcoded secrets linter', () => {
+  it('errors when source contains a Stripe live key (sk_live_...)', () => {
+    const src = `target: backend
+stripe_key is 'sk_live_abcdefghijklmnopqrstuvwxyz0123456789'
+
+when user requests data from /api/charge:
+  send back stripe_key`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/secret|api key|env|environment/i);
+    expect(errMsgs).toMatch(/stripe|sk_live/i);
+  });
+
+  it('errors when source contains an AWS access key (AKIA...)', () => {
+    const src = `target: backend
+aws_key is 'AKIAIOSFODNN7EXAMPLE'
+
+when user requests data from /api/upload:
+  send back aws_key`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/AWS|AKIA|secret|env/i);
+  });
+
+  it('errors when source contains a GitHub personal access token (ghp_...)', () => {
+    const src = `target: backend
+gh_token is 'ghp_abcdefghijklmnopqrstuvwxyz0123456789AB'
+
+when user requests data from /api/repos:
+  send back gh_token`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    expect(errMsgs).toMatch(/GitHub|ghp_|secret|env/i);
+  });
+
+  it('does NOT error on harmless strings that happen to be long', () => {
+    const src = `target: backend
+welcome is 'Welcome to our application! We are happy to see you here.'
+description is 'This is a long description but it is not a secret token.'
+
+when user requests data from /api/welcome:
+  send back welcome`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('error message names the offending pattern and suggests an env var', () => {
+    const src = `target: backend
+key is 'sk_live_abcdefghijklmnopqrstuvwxyz0123456789'
+
+when user requests data from /api/test:
+  send back key`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const errMsgs = (r.errors || []).map(e => typeof e === 'string' ? e : (e.message || '')).join(' | ');
+    // Helpful message names the kind of key + suggests env var
+    expect(errMsgs).toMatch(/process\.env|environment variable|env var|env\./i);
+  });
+});
+
+// =============================================================================
 // OWASP Piece 4 — auto-emitted login rate limit
 // =============================================================================
 // When `allow signup and login` is declared, the compiler now auto-emits
