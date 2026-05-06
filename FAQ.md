@@ -7,6 +7,51 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where do the Python runtime helpers live? (2026-05-06)
+
+Python ports of the JS runtime helpers, landing one at a time per `plans/plan-python-parity.md`:
+
+- **`runtime/sensitive_crypto.py`** — AES-256-GCM encrypt-at-rest for `, sensitive` fields. Byte-for-byte interop with `runtime/sensitive-crypto.js` (same scrypt params, same on-disk `enc:v1:<iv>:<ct>:<tag>` format). Library: `cryptography` (PyPI).
+- **`runtime/auth.py`** — login + JWT. HMAC-SHA256 + PBKDF2-HMAC-SHA512. **Stdlib only** — matches `runtime/auth.js` byte-for-byte rather than swap to bcrypt+PyJWT (which would break interop with existing JS-hashed passwords). Cross-runtime interop verified live: Node-hashed password verifies under Python, Node-signed token decodes under Python, both directions.
+- **`runtime/db.py`** — persistent SQLite via Python's `sqlite3` stdlib. Same WAL mode + same `clear-data.db` file as JS via better-sqlite3, so a row inserted by one runtime is readable by the other. Core CRUD shipped (create_table, find_all, find_one, insert, update, remove, aggregate); `update_with_version` (optimistic lock) stubbed with NotImplementedError pending follow-up.
+- **`runtime/rate_limit.py`** — FastAPI-shaped dependency for OWASP Piece 4 auto login rate-limit. Sliding window per client IP, lazy expiry sweep, X-Forwarded-For handling. Defaults match `runtime/rateLimit.js`.
+
+Each helper has a `*_test.py` peer in `runtime/`. Run any of them via `python runtime/<name>_test.py`. Total tests today: 54 across the four helpers.
+
+**Still missing:** `runtime/db-postgres.py` (Postgres adapter parity). And the compiler emit in `compileToPythonBackend` (compiler.js:15430+) doesn't yet IMPORT these helpers — Python apps still inline the old in-memory `_DB` stub. Wiring `compileToPythonBackend` to use the helpers is multi-session follow-up. Run `node scripts/python-parity-audit.mjs` for the current gap state.
+
+---
+
+## Where does the python-first-class hook live? (2026-05-06)
+
+`.claude/hooks/python-first-class.mjs` is a PostToolUse hook on Edit + Write. It fires when Claude edits any of:
+- `runtime/*.js` / `runtime/*.mjs` (helper files; need .py peers)
+- `compiler.js` / `parser.js` / `synonyms.js` (compile path; Python emit should handle every NodeType the JS emit handles)
+
+Two checks per edit: (1) runtime helper file has a Python peer (hyphen-to-underscore for PEP 8); (2) runs `scripts/python-parity-audit.mjs` and surfaces HIGH-severity NodeType + helper-file gap counts as additional context for Claude's next message.
+
+Doesn't BLOCK (PostToolUse can't undo the edit). The visible gap count + reminder is the enforcement — Claude reads it on the next turn and adds the Python equivalent. Override with `PYTHON_LATER=1` env var for explicit JS-only follow-up commits.
+
+Registered in `.claude/settings.json` under PostToolUse / Edit|Write hooks alongside validator-friction, learnings-miner, doc-cascade, and screenshot-ui-work.
+
+The hook's job is the structural backstop for the CLAUDE.md "Build Python Alongside JS — No Drift Tax" rule. Per Russell's directive 2026-05-06: "make a hook that requires you to always make python first class when doing any feature."
+
+---
+
+## Where does the python-parity audit script live? (2026-05-06)
+
+`scripts/python-parity-audit.mjs` reads `parser.js`'s NodeType enum, slices `compileToPythonBackend` out of `compiler.js`, and counts `NodeType.X` references in JS-vs-Python paths. Reports gaps as a human report + optional CSV (`--csv` flag). Also checks `runtime/*.js` files have Python peers via `existsSync`.
+
+Run: `node scripts/python-parity-audit.mjs` — exits 1 when HIGH-severity gaps exist (any helper file missing OR any high-severity NodeType not handled in Python).
+
+First-run baseline (2026-05-06): 21 HIGH-severity NodeType gaps (RUN_AGENT, AUTH_SCAFFOLD, PIPELINE, CRUD, RATE_LIMIT, QUEUE_DEF, RULE_DEF, etc.) + 5 of 5 runtime helper file gaps. After today's helper ports: 2 of 5 helper gaps remaining (db-postgres.py + the postgres-py from db.js's emitted Postgres adapter).
+
+The MEDIUM-severity count (~110) has known false positives — basic primitives like IF_THEN show 0 Python hits because the Python branch may emit them via string paths not direct NodeType references. The HIGH count is reliable; MEDIUM is noisy.
+
+Plan: `plans/plan-python-parity.md`. Used by the python-first-class hook to surface the gap state on every relevant edit.
+
+---
+
 ## Where does the empty-table "No rows yet" placeholder live? (2026-05-06)
 
 When a `display X as table` widget renders zero rows, the table shows a single italic "No rows yet." placeholder row. Two reasons: friendlier first-launch UX, and Playwright walkers + accessibility tools treat the table as visible (a zero-row table used to collapse to zero height and be reported as 'hidden').
