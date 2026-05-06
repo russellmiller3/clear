@@ -111,3 +111,54 @@ We either close the gap or stop advertising the gap-having-feature. CLAUDE.md sa
 ## When to execute
 
 After Marcus signs (revenue funds the focused time), OR when a prospect asks for Python and we want to credibly say yes. Until then, the audit script alone (1-2 hours) is worth running so we have honest answers when the question comes up.
+
+---
+
+## Status update — 2026-05-06 late evening
+
+**Audit script + 5 of 5 runtime helpers SHIPPED.**
+
+- `scripts/python-parity-audit.mjs` — runs in <1s. Surfaces 21 HIGH-severity NodeType gaps + (yesterday morning) 5 of 5 runtime helper file gaps. Exit 1 when any HIGH gap exists.
+- `runtime/sensitive_crypto.py` — AES-256-GCM, byte-for-byte interop with the JS sibling.
+- `runtime/auth.py` — login + JWT, ZERO PyPI deps (matches JS stdlib HMAC + PBKDF2 instead of bcrypt + PyJWT, preserving cross-runtime password + token interop).
+- `runtime/db.py` — persistent SQLite via stdlib `sqlite3`. Same on-disk file as JS via better-sqlite3.
+- `runtime/rate_limit.py` — FastAPI dependency for OWASP Piece 4. Stdlib only.
+- `runtime/db_postgres.py` — psycopg3 sync API. Same column shapes as JS Postgres adapter.
+- `.claude/hooks/python-first-class.mjs` — PostToolUse hook on edits to runtime/* and compiler.js / parser.js / synonyms.js. Surfaces audit's HIGH gap count + reminds about the rule.
+
+**Remaining (the load-bearing piece): compiler-emit wiring in `compileToPythonBackend`.** Compiled Python apps still inline the in-memory `_DB` stub at compiler.js lines ~15504-15557 instead of importing the real helpers. Until this lands, "Python target works as advertised" remains aspirational.
+
+### First-session scope for the compiler-emit wiring (next pickup)
+
+Replace the inline `_DB` emission in `compileToPythonBackend` with helper imports:
+
+- **`database is local memory`** — keep the inline stub (it's the in-memory mock for local dev / tests; some existing tests depend on it).
+- **`database is local file`** — emit `from clear_runtime import db` (uses `runtime/db.py`, real SQLite). The CLI's runtime-copy step needs to drop `runtime/db.py` into the compiled app's `clear-runtime/` directory next to the existing `runtime/db.js` copy logic.
+- **`database is postgres`** — emit `from clear_runtime import db_postgres as db` (aliased so call sites match the SQLite path verbatim). CLI copies `runtime/db_postgres.py`.
+
+The `database is local file` keyword may not exist for Python yet — check the parser. If not, add it as a parser change in the same arc.
+
+### TDD shape for the wiring (when picked up)
+
+1. Add a passing-today test that locks the existing `database is local memory → inline stub` behavior (currently tested at clear.test.js:14932 — verify it stays green).
+2. Add a failing test that asserts `database is local file` → `from clear_runtime import db` (and no inline stub).
+3. Add a failing test that asserts `database is postgres` → `from clear_runtime import db_postgres as db`.
+4. Make the new tests green by:
+   - Add `database is local file` parser support if missing.
+   - Branch the Python `_DB` emission on `dbBackend` (local-memory vs file vs postgres).
+   - Skip the stub emission for the file/postgres cases and emit the import line instead.
+5. Add CLI runtime-copy support for `runtime/db.py` and `runtime/db_postgres.py` (the JS files have a parallel copy step in cli/clear.js).
+6. Cross-target smoke (`scripts/cross-target-smoke.mjs`) compiles every template against Python; verify no regressions.
+
+### Gotchas to apply (from learnings.md, surfaced 2026-05-06)
+
+- **Thread the new `dbBackend` ctx field through ALL ctx build sites.** Missed one cycle 5 = silent no-op. The Python ctx-build site is around compiler.js:15770. Verify every `mode: 'backend'` ctx literal has the new field after the change. (Pattern: `grep -nE "mode:.*'backend'" compiler.js`.)
+- **Substring collisions on common JS keywords inside Python strings.** Don't put words like `let`, `const`, `function`, `return`, `=>`, `;` in any docstring or comment that the Python compiler embeds — the existing test harness greps the Python output for "no JS artifacts" and substring matches will fail it.
+- **Runtime files are COPIED at build, not imported.** The compiler doesn't import `runtime/db.py`; the CLI copies it into compiled apps' `clear-runtime/` dir. Emitting `from clear_runtime import db` is HALF the change; the other half is the CLI copy step.
+
+### Test-floor invariant after the wiring lands
+
+- The existing test at clear.test.js:14932 ("Python local memory still uses db stub") MUST stay green. The wiring is opt-in via the new `local file` / `postgres` declarations.
+- Cross-target smoke pre-push hook must pass on all 13 canonical apps for both JS and Python targets.
+- The python-parity audit's HIGH NodeType gap count drops by at least 6 (CRUD's 6 hits — that's the immediate unblocker).
+
