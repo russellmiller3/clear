@@ -5037,6 +5037,66 @@ when user sends deal to /api/deals:
   });
 });
 
+// =============================================================================
+// OWASP Piece 1, cycle 5c-delete — DELETE auto-filters by user_id
+// =============================================================================
+// Server-side filter: when a table has `the X's creator can ...`, every
+// `delete the X with this id` extends db.remove's WHERE with user_id.
+// Without this, an attacker with a stolen session token could delete
+// another user's rows by guessing the row id (IDOR on DELETE).
+describe('Compiler - per-row creator filter on delete (OWASP Piece 1, cycle 5c-delete)', () => {
+  it('DELETE under creator policy filters by user_id', () => {
+    const src = `target: backend
+database is local memory
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user calls DELETE /api/deals/:id:
+  requires login
+  delete the Deal with this id
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toMatch(/db\.remove\([^)]*user_id\s*:\s*req\.user\s*&&\s*req\.user\.id/);
+  });
+
+  it('DELETE WITHOUT creator policy does NOT inject user_id', () => {
+    const src = `target: backend
+database is local memory
+create a Posts table:
+  title, text
+  anyone can read
+
+when user calls DELETE /api/posts/:id:
+  delete the Post with this id
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).not.toContain('user_id: req.user');
+  });
+
+  it('DELETE under BOTH tenant scope and creator policy filters by both', () => {
+    const src = `target: backend
+database is shared with tenant scope
+create a Deals table:
+  amount, number
+  the deal's creator can read, change, or delete
+
+when user calls DELETE /api/deals/:id:
+  requires login
+  delete the Deal with this id
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toContain('tenant_id: req.user && req.user.tenant_id');
+    expect(js).toContain('user_id: req.user && req.user.id');
+  });
+});
+
 describe('Compiler - RLS policies to SQL', () => {
   it('generates CREATE POLICY for anyone can read', () => {
     const result = compileProgram("target: python backend\ncreate data shape Post:\n  title is text\n  anyone can read");

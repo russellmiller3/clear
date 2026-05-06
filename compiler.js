@@ -4999,14 +4999,21 @@ function compileCrud(node, ctx, pad) {
     const tenantWrap = (filterExpr) => ctx.tenantScope
       ? `{ ...${filterExpr}, tenant_id: req.user && req.user.tenant_id }`
       : filterExpr;
+    // OWASP Piece 1, cycle 5c-delete: per-row creator filter on remove.
+    // When the table declared `the <entity>'s creator can ...`, every
+    // delete adds `user_id = req.user.id` to the WHERE so a hijacked
+    // session token can't delete another user's row by guessing the id.
+    const creatorWrap = (filterExpr) => _hasCreatorPolicy
+      ? `{ ...${filterExpr}, user_id: req.user && req.user.id }`
+      : filterExpr;
     // When inside a DELETE endpoint with :id and no explicit condition, auto-inject id filter
     if (ctx.endpointHasId && !node.condition) {
-      const filter = tenantWrap(`{ id: req.params.id }`);
+      const filter = creatorWrap(tenantWrap(`{ id: req.params.id }`));
       return `${pad}await _clearTry(() => db.remove('${table}', ${filter}), ${removeCtx});${lineComment}`;
     }
     const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
-    const wrapped = tenantWrap(baseFilter);
-    const where = (node.condition || ctx.tenantScope) ? `, ${wrapped}` : '';
+    const wrapped = creatorWrap(tenantWrap(baseFilter));
+    const where = (node.condition || ctx.tenantScope || _hasCreatorPolicy) ? `, ${wrapped}` : '';
     return `${pad}await _clearTry(() => db.remove('${table}'${where}), ${removeCtx});${lineComment}`;
   }
   if (node.operation === 'upsert') {
