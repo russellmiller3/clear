@@ -6,6 +6,17 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Hartl user-guide rewrite, chapters 3-4
+
+Same session as the plan + chapters 1-2 ship below. Continued into chapters 3 and 4 because the cadence felt right and the deal-desk anchor was warm.
+
+- **Chapter 3 — A Queue of Deals.** Replaces 'Lists and Loops' with the deal-desk pending queue. Teaches lists (sequence of values), `for each` loops, aggregates (`count of`, `max of`, `avg of`), and nests `if` inside the loop to produce a triage view that flags discounts over 30%. Keeps the `while`-loop safety-cap explainer (Clear's safe-defaults story).
+- **Chapter 4 — A Reusable Recipe.** Replaces 'Functions' with `compute_discount_cap`, a tier-based business rule that returns 50% / 30% / 15% by customer segment. Teaches the WHY-not-just-WHAT for functions (single-source-of-truth for logic; copy-pasted math grows bugs). Sets up Chapter 12 — same function shape will become a provable rule.
+
+4 of 12 tutorial chapters done. Remaining: 5 (the leveling-up moment — first web URL) and 6-12 across ~5 sessions.
+
+---
+
 ## 2026-05-06 — Hartl user-guide rewrite started (chapters 1-2 + plan)
 
 The user-guide rewrite epic kicks off with a chapter-by-chapter plan that builds **deal-desk** progressively across 12 tutorial chapters in the Hartl Rails Tutorial style. Reference chapters (13-24) get a lighter cleanup pass after the tutorial track is done.
