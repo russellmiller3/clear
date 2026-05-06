@@ -25,6 +25,8 @@ create a Rooms table:
   capacity (number)
   description
   bookings has many Bookings
+  anyone can read
+  any admin can change or delete
 
 create a Bookings table:
   guest_name, required
@@ -33,6 +35,8 @@ create a Bookings table:
   notes
   created_at_date, auto
   room belongs to Rooms
+  the booking's creator can read, change, or delete
+  any admin can read, change, or delete
 
 # Backend
 

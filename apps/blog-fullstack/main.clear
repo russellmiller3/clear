@@ -31,10 +31,14 @@ create an Authors table:
   name, required
   email, required, unique
   posts has many Posts
+  anyone can read
+  any admin can change or delete
 
 create a Categories table:
   name, required, unique
   posts has many Posts
+  anyone can read
+  any admin can change or delete
 
 create a Posts table:
   title, required
@@ -44,6 +48,9 @@ create a Posts table:
   created_at_date, auto
   author belongs to Authors
   category belongs to Categories
+  anyone can read
+  the post's creator can change or delete
+  any admin can change or delete
 
 # Backend
 

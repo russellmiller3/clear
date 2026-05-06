@@ -30,6 +30,8 @@ create a Products table:
   stock (number), default 0
   reorder_threshold (number), default 10
   image_url
+  anyone can read
+  any admin can change or delete
 
 create an Orders table:
   customer_name, required
@@ -39,6 +41,8 @@ create an Orders table:
   status, default 'pending'
   tracking_number
   created_at (timestamp), auto
+  the order's creator can read, change, or delete
+  any admin can read, change, or delete
 
 create a Returns table:
   order_id (number), required
@@ -46,17 +50,21 @@ create a Returns table:
   status, default 'requested'
   refund_amount (number)
   created_at (timestamp), auto
+  the return's creator can read, change, or delete
+  any admin can read, change, or delete
 
 create a Messages table:
   role, required
   content, required
   intent
   created_at (timestamp), auto
+  the message's creator can read, change, or delete
 
 create a Conversations table:
   user_id
   messages
   created_at (timestamp), auto
+  the conversation's creator can read, change, or delete
 
 # Tools
 

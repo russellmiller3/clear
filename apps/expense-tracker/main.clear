@@ -22,12 +22,14 @@ database is local memory
 create a Categories table:
   name
   expenses has many Expenses
+  the category's creator can read, change, or delete
 
 create a Expenses table:
   description, required
   amount (number), required
   created_at, auto
   category belongs to Categories
+  the expense's creator can read, change, or delete
 
 # Backend
 # Middleware

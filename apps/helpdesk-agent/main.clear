@@ -27,12 +27,16 @@ create a Products table:
   name, required
   description
   price (number)
+  anyone can read
+  any admin can change or delete
 
 create a Tickets table:
   subject, required
   status, default 'open'
   customer_email
   created_at (timestamp), auto
+  the ticket's creator can read, change, or delete
+  any admin can read, change, or delete
 
 # Backend
 

@@ -22,12 +22,14 @@ owner is 'owner@example.com'
 create a Categories table:
   name, required
   todos has many Todos
+  the category's creator can read, change, or delete
 
 create a Todos table:
   title, required
   completed, default false
   created_at_date, auto
   category belongs to Categories
+  the todo's creator can read, change, or delete
 
 # Backend
 

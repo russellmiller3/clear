@@ -35,6 +35,7 @@ create a Companies table:
   industry
   website
   contacts has many Contacts
+  the company's creator can read, change, or delete
 
 create a Contacts table:
   name, required
@@ -42,12 +43,15 @@ create a Contacts table:
   phone
   company belongs to Companies
   deals has many Deals
+  the contact's creator can read, change, or delete
 
 create a Deals table:
   title, required
   value (number), default 0
   stage, default 'lead'
   contact belongs to Contacts
+  the deal's creator can read, change, or delete
+  any admin can read
 
 # Backend
 

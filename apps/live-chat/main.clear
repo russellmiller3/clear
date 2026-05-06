@@ -23,6 +23,8 @@ create a Messages table:
   content, required
   room, default 'general'
   created_at, auto
+  anyone logged in can read
+  the message's creator can change or delete
 
 # Backend
 
