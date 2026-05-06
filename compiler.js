@@ -241,8 +241,16 @@ export const UTILITY_FUNCTIONS = [
   var thead = tableEl.querySelector('thead tr');
   var tbody = tableEl.querySelector('tbody');
   if (rows.length === 0) {
+    // Empty state: render a friendly placeholder row instead of clearing
+    // the body. Two reasons: (1) UX — users see "No data yet" instead of
+    // a blank space, (2) layout — the empty <table> would otherwise
+    // collapse to zero height, which Playwright reports as 'hidden' and
+    // accessibility tools mark as not-visible. The placeholder keeps the
+    // table renderable, focusable, and visible to all walkers.
     if (thead) thead.innerHTML = '';
-    if (tbody) tbody.innerHTML = '';
+    if (tbody) {
+      tbody.innerHTML = '<tr class="clear-table-empty"><td class="text-center text-base-content/50 py-6 italic">No rows yet.</td></tr>';
+    }
     tableEl._clear_rows = [];
     return;
   }
