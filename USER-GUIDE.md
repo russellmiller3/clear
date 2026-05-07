@@ -33,7 +33,6 @@ Let's jump in.
 - [Chapter 15: Modules](#chapter-15-modules-when-one-file-isnt-enough)
 
 **Making it pretty — visual layer**
-- [Chapter 11: Making It Pretty (Styling and Layout)](#chapter-11-making-it-pretty-styling-and-layout)
 - [Chapter 13b: Charts (Visualizing Your Data)](#chapter-13b-charts-visualizing-your-data)
 - [Chapter 20: Designing Beautiful Pages](#chapter-20-designing-beautiful-pages)
 
@@ -42,6 +41,7 @@ Let's jump in.
 
 **Triggered emails and AI — when your app needs to reach out or think**
 - [Chapter 10: Email the Rep When Approved](#chapter-10-email-the-rep-when-approved-from-outbox-row-to-real-email)
+- [Chapter 11: The AI Drafter (Claude Writes the Deal Summary)](#chapter-11-the-ai-drafter-claude-writes-the-deal-summary)
 - [Chapter 10b: Chat Interfaces](#chapter-10b-chat-interfaces-making-your-app-talk)
 - [Chapter 19: Workflows (Multi-Step AI Pipelines)](#chapter-19-workflows-multi-step-ai-pipelines)
 
@@ -1809,92 +1809,6 @@ without the ` ```clear ` tag — they can't compile standalone.)
 
 ---
 
-## Chapter 11: Making It Pretty (Styling and Layout)
-
-Clear apps automatically use DaisyUI and Tailwind CSS, so they look
-professional out of the box. But you can customize the look with
-sections, cards, and content elements.
-
-### Sections and Cards
-
-```clear
-section 'User Info' with style card:
-  heading 'Profile'
-  text 'Welcome back!'
-```
-
-### Content Elements
-
-```clear
-heading 'Welcome'
-subheading 'Get started'
-text 'This is a paragraph'
-bold text 'Important!'
-italic text 'A side note'
-small text 'Terms apply'
-link 'Learn more' to '/about'
-divider
-image 'https://example.com/hero.jpg'
-image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
-```
-
-### Input Types
-
-```clear
-'Name' is a text input saved as a name
-'Age' is a number input saved as a age
-'Bio' is a text area saved as a bio
-'Body' is a text editor saved as a body        # rich WYSIWYG with toolbar
-'Country' is a dropdown with ['US', 'UK', 'Canada'] saved as a country
-'Newsletter' is a checkbox saved as newsletter
-'Resume' is a file input saved as a resume
-```
-
-**When to use `text editor`:** blog posts, long-form notes, comments where
-formatting matters. You get a Quill toolbar (headers, bold/italic, lists,
-links, blockquote, code) mounted over a `contenteditable` div. The HTML
-flows into `_state[var]` on every keystroke so you can POST it like any
-other input. Use plain `text area` for simple multi-line text without
-formatting.
-
-### Display Formatting
-
-```clear
-price = 29.99
-rate = 0.15
-created = current time
-config is an empty map
-
-display price as dollars              # $29.99 (formatted currency)
-display price as dollars called 'Total'  # with a label
-display rate as percent               # 15% (percentage)
-display created as date               # Apr 11, 2026 (localized date)
-display config as json                # formatted JSON in a code block
-display count called 'Items'          # plain number (default)
-```
-
-Formats use `toLocaleString` under the hood, so they handle thousands separators
-and locale differences automatically. `as json` renders in a `<pre>` block for readability.
-
-### Loading and Notifications
-
-```clear
-# Show a spinner during a slow operation
-show loading
-response = ask claude 'Analyze this' with data
-hide loading
-
-// Show a native toast with message data rendered as text
-show toast 'Settings saved!' as success
-show alert 'Something went wrong' as error
-```
-
-Toast can be the whole action for a notification button. It cannot be the whole
-action for a business button like Approve, Save, Reject, Resolve, Assign, or
-Delete. Those buttons must also change/update/delete/send/save the actual data.
-
----
-
 ## Chapter 13b: Charts (Visualizing Your Data)
 
 Clear includes built-in charts powered by ECharts. No setup needed — the CDN
@@ -3056,7 +2970,172 @@ The Marcus pitch lands here. *"Every approval is provable, every email is logged
 
 You've watched the email get composed from a template, dropped into an outbox, and delivered by a worker — all kicked off by Carol's single click. But the *body* of the email was hand-written. You typed `Hi {deal's rep_name}, your discount request just cleared CRO review`. For a one-off rule that's fine. For a CRO who wants the email to summarize the deal — *"approved at 15% off list against a 22% precedent for similar Enterprise renewals; risk score 3"* — you'd be writing a different body for every kind of deal forever.
 
-Chapter 11 introduces **the AI drafter**: an agent that reads the deal record and writes the email body for you. Same outbox shape. Same worker. Same reply tracking. The only thing that changes is who composes the message — and once you have a drafter, you can swap human-written bodies for AI-written ones without touching a single line of the delivery plumbing. Bring your queue from Chapter 9 and your email block from Chapter 10. Chapter 11 stands on top of both.
+Chapter 11 introduces **the AI drafter**: an agent that reads the deal record and writes a one-paragraph summary that lands directly on the deal. Same outbox shape, same worker, same reply tracking — what changes is that the email body can now pull in `{deal's summary}` and that summary was written by Claude, not by you. Bring your queue from Chapter 9 and your email block from Chapter 10. Chapter 11 stands on top of both.
+
+## Chapter 11: The AI Drafter (Claude Writes the Deal Summary)
+
+By the end of this chapter, when Carol opens a pending deal and clicks **Draft AI summary**, an AI agent will read the deal — Acme renewal, $84,000, 28% discount, mid-quarter — and write a one-paragraph summary that lands on the deal's `summary` field alongside a clear approve-or-reject recommendation. The audit row from Chapter 9 still gets stamped. The email from Chapter 10 still gets queued. Now the email body can include the AI's summary, and the CRO opens a deal already prepped with a written brief instead of staring at a row of numbers.
+
+This is the first chapter where deal-desk *thinks*. Up to here, every line you've written has been a rule the compiler turns into deterministic code — `if discount > 30 then reject`, `email rep when status changes to approved`. Today we add a different kind of code: a recipe that asks an AI to do the part rules can't do. **The rule is the gate. The AI is the writer. Two different jobs.** Hold that distinction — Chapter 12 will make it concrete by adding a *provable* business rule alongside the AI, and you'll see why the same app needs both.
+
+### What is an AI agent in code?
+
+You've been hearing "AI agent" for two years and probably picturing something complicated — a chatbot, a robot, a system with a personality. In code it's much smaller than that. **An AI agent is a named recipe for asking an AI model to do one specific job.** Like the function you wrote in Chapter 4 (`compute_discount_cap`) — but instead of math, the body is *"send this prompt and these inputs to Claude, wait for the answer, return the text."*
+
+That's it. A function whose body is "ask the AI." You name it. You give it inputs. You call it from anywhere in your app like any other function. The AI is the engine; the agent is the wrapper around the engine that says *what job* the engine is doing this time.
+
+A deal-desk app might have several agents: one that summarizes the deal, one that drafts a counter-offer email, one that scores a customer's risk based on free-text procurement notes. Each is its own named recipe. Each calls the same Claude in the background, but each has its own prompt, its own inputs, and its own job. **Naming the recipe is what turns "calling an AI" into a reusable feature of your app** — because now anyone reading your code sees `draft_approval(deal)` and knows exactly which AI job is happening.
+
+### Why does the AI need context? (`knows about:`)
+
+Here's the part newcomers trip on. When you ask Claude to summarize a deal, Claude doesn't know what's on your screen. Claude doesn't have a database connection. Claude can't peek at your `Deals` table. **Claude only sees what you put into the prompt.**
+
+So if you write `ask claude 'Summarize this deal'` and don't pass any deal data, Claude will write a generic essay about deal summaries. Useless. You have to *hand* Claude the deal — the customer name, the price, the discount, the rep, the segment — every time. The AI's whole understanding of "this deal" is whatever bytes you typed into the call.
+
+There are two ways to feed the AI. The simple way is `with deal_data` — you pass one record (or one variable) and Claude sees just that. The bigger way is `knows about: SomeTable` — you tell Clear *"every time this agent runs, also pull recent rows from that table and include them in the prompt."* That's how you give an agent ongoing background knowledge it can refer to without you re-typing it on every call. For our drafter, we'll keep it simple — pass the one deal that's being approved. The CRO doesn't need Claude to remember every deal in history; the CRO needs Claude to read *this* deal and write *this* summary.
+
+### What does `ask claude` actually do?
+
+`ask claude` is the line that makes the network call. Read it as one verb: **"go ask Claude this question with this data, and give me the answer back."** Underneath, Clear's runtime does five things: opens an HTTPS connection to Anthropic's API, sends your prompt and your inputs as a JSON request, waits for Claude to think and respond, parses the answer, and hands the text back as a regular variable in your code. From your point of view it looks like a function call. Under the covers it's a network round-trip to a server farm somewhere on the internet that runs a language model.
+
+That round-trip costs money — Anthropic charges per word in and per word out — and takes time, usually one to five seconds. Both facts matter for your app. The cost is small per call (fractions of a cent for a deal summary) but it adds up if you call it on every page load. The latency means you don't want to put `ask claude` inside a tight loop or in front of a user click that needs to feel instant. For deal-desk, the CRO clicking *Draft AI summary* and waiting two seconds for a written paragraph is fine — that's the same wait you'd accept opening a dropdown in any web app.
+
+### The deal-desk drafter
+
+Open `deal.clear` from Chapter 10. Find the section just below your email block — that's where the drafter goes. Add this:
+
+```clear
+define function draft_approval(deal_data):
+  drafted = ask claude 'You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.' with deal_data returning JSON text:
+    summary
+    recommendation
+    risk_score (number)
+  return drafted
+```
+
+Six lines. Read the call out loud: *"drafted equals ask claude — followed by the prompt — with deal_data — returning JSON text with three fields: summary, recommendation, and risk_score as a number."* No CS jargon. A manager could tell you what this function does.
+
+Here's what each piece is doing:
+
+- `define function draft_approval(deal_data):` — a regular function declaration, just like Chapter 4's `compute_discount_cap`. It takes one input (the deal record) and returns one output (the drafted summary).
+- `drafted = ask claude '...' with deal_data` — the AI call. The string in quotes is the **prompt** — the instructions Claude reads before writing. The `with deal_data` part attaches your input. Claude sees both.
+- `returning JSON text:` followed by an indented field list — the **output shape**. We're telling Claude *"don't write me a free-form essay; give me back a JSON object with exactly these three fields."* Clear writes the JSON-parsing code for you so `drafted's summary`, `drafted's recommendation`, and `drafted's risk_score` are usable as ordinary fields the moment Claude returns.
+- `return drafted` — hand the parsed object back to whoever called the function.
+
+That's the drafter. One AI agent, sixty seconds of typing, a CRO-ready summary on demand.
+
+### Wire it into an endpoint
+
+A function on its own does nothing — somebody has to call it. Chapter 9's queue auto-generated the approve / reject / counter URLs. We'll add one more endpoint that runs the drafter when the CRO asks for a written brief. Add this just below the function:
+
+```clear
+when user sends deal_request to /api/deals/draft:
+  requires login
+  drafted = draft_approval(deal_request)
+  send back drafted
+```
+
+Four lines. The CRO's browser POSTs the deal record to `/api/deals/draft`, the endpoint requires login (the wall from Chapter 8 still applies), the drafter runs, and the parsed `{summary, recommendation, risk_score}` object goes back to the browser. The browser stores it on the page's `selected_deal` so the detail panel updates with the freshly written paragraph.
+
+Notice what we did NOT do: we did not write `fetch('https://api.anthropic.com/v1/messages')`. We did not parse a streaming response. We did not handle retries. We did not catch network errors. We did not authenticate against Anthropic's API. The compiler did all of that the moment you wrote `ask claude`.
+
+### Why the AI doesn't replace the rule
+
+Here's the question that has cost real companies real money: *if the AI is so smart, why not let Claude decide whether to approve the deal?*
+
+Because Claude is a writer, not a gate. Claude is excellent at language — summaries, drafts, suggestions, explanations. Claude is **bad** at the kind of decision a CRO is paid to make: *"can this 32% discount go through, yes or no?"* Not because Claude is stupid — because Claude is non-deterministic. Ask the same question twice, get two different answers. Ask once on Tuesday and once on Wednesday and the model behind the scenes might have changed. None of that is acceptable for a business rule. The CRO needs to know *"discounts of 30% or more are blocked, every time, with the same reason."* The compliance buyer needs to be able to point at the rule and say *"prove it."* AI can't be proven. **A rule can.**
+
+So in deal-desk we split the work cleanly:
+
+- **The rule** — `enforce that deal's discount_percent is less than 30` — is the gate. Compiler-checked, deterministic, the same answer every time, provable. Chapter 12 will introduce this in detail.
+- **The AI** — the `draft_approval` agent — is the writer. It produces the paragraph that explains *what's going on* with this deal, but never the verdict on whether the deal can pass. The verdict is the rule's job.
+
+Get this division wrong and you ship one of two failure modes. Either you let the AI gate and your CRO fields one *"the bot let through a deal it shouldn't have"* report a month, or you write rules in English and ask Claude to interpret them, and now your business policy is whatever Claude felt like that morning. Get it right and you have an app where the boring deterministic part is always right and the writing-words part feels like having a junior analyst.
+
+### The Anthropic key — `ANTHROPIC_API_KEY`
+
+The `ask claude` runtime has to authenticate with Anthropic to make the call. That's done with an **API key** — a long random string that Anthropic gives you when you sign up for their developer console. You paste the key into an environment variable named `ANTHROPIC_API_KEY` and the runtime reads it on startup. **The compiler never sees the key. It's not in your source file. It's not in your git history.** It lives only in the environment of the machine running the app.
+
+On your laptop:
+
+```bash
+export ANTHROPIC_API_KEY='sk-ant-…your-key-from-console.anthropic.com'
+clear serve deal.clear
+```
+
+In production you set the same variable on whatever server you deploy to. If the variable is missing, the runtime logs *"ANTHROPIC_API_KEY not set — `ask claude` calls will fail"* once and goes quiet. Calls to `draft_approval` return a clear error to the browser instead of silently making something up. **Inert by default** — the same shape Chapter 10's email worker uses. A misconfigured deploy can never accidentally pretend it's calling an AI when it isn't, and your dev runs never accidentally burn API credit before you're ready.
+
+### Now run this
+
+Save the file. Set the key, restart the server:
+
+```bash
+export ANTHROPIC_API_KEY='sk-ant-…your-key'
+clear serve deal.clear
+```
+
+Sign Carol up as the CRO (Chapter 8 setup):
+
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"carol@cro.com","password":"carol-pw-12345","name":"Carol","role":"admin"}'
+```
+
+Send a deal in for drafting. The seed data from `/api/seed` already has Acme — `customer: "Acme Corp"`, `list_price: 84000`, `discount_percent: 28`, `account_segment: "Enterprise"` — so we'll draft a summary for that one:
+
+```bash
+curl -X POST http://localhost:3000/api/deals/draft \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <carol-token>" \
+  -d '{"customer":"Acme Corp","rep_name":"Sarah Chen","list_price":84000,"discount_percent":28,"account_segment":"Enterprise","deal_type":"Renewal"}'
+```
+
+Two seconds later you get a JSON response that looks something like this:
+
+```json
+{
+  "summary": "Acme Corp is renewing as an Enterprise account with rep Sarah Chen requesting a 28% discount on $84,000 list price. The dollar concession is roughly $23,500 against a contract that historically runs at 22-24% for similar Enterprise renewals. Strategic risk is moderate: precedent supports the request and customer health is steady, but approving sets a higher anchor for the next renewal cycle.",
+  "recommendation": "Approve with a 25% counter to hold the precedent line.",
+  "risk_score": 3
+}
+```
+
+That paragraph was not in your source file. You did not write it. Claude did. The compiler turned `ask claude '…' with deal_data returning JSON text:` into the network call, the response parse, and the object that came back into your app. **And every fact in that paragraph traces to the deal data you sent in** — Claude can't make up the dollar amount because Claude only knows what you handed over.
+
+If you want to see the summary land on the deal record itself, the front-end button in `apps/deal-desk/main.clear` already does this — `button 'Draft AI summary': send selected_deal to '/api/deals/draft'` — and the response writes back into `selected_deal's summary`. Open the deal-desk page in a browser, click any pending deal, click **Draft AI summary**, and the detail panel re-renders with the freshly-written text.
+
+### Try it yourself
+
+1. **Tighten the prompt for risk-only.** Clone the `draft_approval` function as a second function called `score_risk(deal_data)`. Change the prompt to *"You are a risk analyst. Score this deal from 1 to 10 where 10 means walk away. Return only the number and a one-sentence reason."* Change the `returning JSON text:` block to `risk_score (number)` and `reason`. Wire it to `/api/deals/risk` the same way `/api/deals/draft` is wired. POST the Initech deal (35% discount, $118,000 expansion) and watch Claude push the score higher than the Acme renewal's. Same compiler shape, different job.
+
+2. **Give the agent background knowledge with `knows about:`.** Switch from `define function` to the agent form so you can use `knows about:`. Replace the function block with:
+
+   ```clear
+   agent 'draft approval' receives deal_data:
+     knows about: Deals
+     drafted = ask claude 'You are a deal-desk analyst. Given a discount request and recent deal history, write a one-paragraph approval summary that compares this request to recent precedents.' with deal_data returning JSON text:
+       summary
+       recommendation
+       risk_score (number)
+     send back drafted
+   ```
+
+   Now Claude sees not only the incoming deal but also a snapshot of recent rows from the `Deals` table. Ask the drafter to summarize the same Acme renewal and watch the paragraph mention precedent rows from the seed data. Same six lines, much sharper output — that's what `knows about:` buys you.
+
+3. **Pull the AI summary into the email body from Chapter 10.** Open the email block from Chapter 10 and change the body line from `'Hi {deal's rep_name}, your discount request for {deal's customer} just cleared CRO review. Status is now approved.'` to `'Hi {deal's rep_name}, your {deal's customer} discount cleared CRO review. Carol''s notes: {deal''s summary}'`. Recompile, run the same Chapter 10 approve flow, then check `GET /api/workflow-email-queue`. The body now includes the AI-written summary verbatim. **Same outbox row, same worker, same delivery — the email is now smarter because the deal record is now smarter.** That's the compounding the AI drafter unlocks.
+
+### Why this matters
+
+Three chapters ago, deal-desk learned to write rows. Two chapters ago, it learned to send mail. Today it learned to *think* — but only about the part of the job that's actually thinking. **The verdict — can this deal pass — is still the rule's job, deterministic and provable.** The writing — *what does this deal actually mean, in plain English, to a CRO with twenty more deals in the queue today* — is now Claude's job. The CRO opens deal-desk Monday morning and every pending row already has a written brief attached. The same brief lands in the rep's email when the deal approves. The audit row that gets stamped includes the deal as Claude described it. **One AI call, and three downstream surfaces get smarter.**
+
+The Marcus pitch sharpens here. *"Claude writes the summary; the rule decides the verdict; the audit trail records both."* That sentence is the entire AI story for the regulated tier — small surface area, clear division of labor, and a story the compliance buyer can follow without ever using the word "machine learning."
+
+### What's next
+
+Right now your file has rules written as `if/then` — *"if the discount is over 30 percent, status is pending."* They work, and they fire on every save, but they're invisible to anyone outside the code. The CRO can't point at them. The compliance buyer can't audit them. The prover can't prove them.
+
+Chapter 12 introduces the `rule` keyword: *"rule discount-cap-thirty: enforce that deal's discount_percent is less than 30, or fail with error message: …"*. Same logic you've already written, but now with a name, a verdict the prover can compute (PROVED, DISPROVED, or UNVERIFIABLE), and an audit row that points at the rule by name when a deal fails. We'll also wire `clear prove` and `clear ship` so by the end of Chapter 12, deal-desk is a deployed app with a one-page audit PDF you could hand to a CRO. Bring your drafter from this chapter and your queue from Chapter 9 — Chapter 12 closes the tutorial track.
 
 ## Chapter 10b: Chat Interfaces (Making Your App Talk)
 
