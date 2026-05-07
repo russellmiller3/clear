@@ -67,3 +67,21 @@ prove that agent 'Refund Bot' cannot call purge_deal with deal_id is greater tha
 #    Claude. The symbolic engine treats it as a free variable; verdict is
 #    DISPROVED with the message "add an enforce statement to bound it".
 prove that agent 'Refund Bot' cannot call record_refund with amount is greater than 10000
+
+# --- Phase 4: Agent x Policy bridge ------------------------------------------
+# Combines the enact-style policy: block (already in Clear) with the agent
+# reachability walker. Each policy rule that's statically provable gets a
+# subverdict; runtime-only rules (block_prompt_injection, code_freeze) are
+# honestly marked UNVERIFIABLE rather than falsely PROVED.
+
+policy:
+  protect tables Deals
+  block ddl
+  block prompt injection
+
+# 8. Composes Phases 1-3 against the policy block above. Walks every reachable
+#    code path in Refund Bot for ops that would violate any policy rule.
+#    Expected output: PROVED on protect_tables Deals (no remove/save/upsert
+#    against Deals reachable), PROVED on block_ddl (Clear agents can't run
+#    raw SQL), UNVERIFIABLE on block_prompt_injection (runtime check).
+prove that agent 'Refund Bot' upholds all policies

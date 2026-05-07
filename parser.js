@@ -2973,16 +2973,35 @@ CANONICAL_DISPATCH.set('prove', (ctx) => {
       "  prove that agent 'Name' cannot call <function_name>\n" +
       "  prove that agent 'Name' cannot call <function_name> with <arg> is greater than <value>\n" +
       "  prove that agent 'Name' cannot delete from <Entity>\n" +
-      "  prove that agent 'Name' cannot modify <Entity>";
+      "  prove that agent 'Name' cannot modify <Entity>\n" +
+      "  prove that agent 'Name' upholds all policies";
     if (tokens.length < 7 ||
         tokens[1].value !== 'that' ||
         tokens[2].value !== 'agent' ||
         tokens[3].type !== TokenType.STRING ||
-        tokens[4].value !== 'cannot') {
+        (tokens[4].value !== 'cannot' && tokens[4].value !== 'upholds')) {
       ctx.errors.push({ line: ctx.line, message: usageError });
       return ctx.i + 1;
     }
     const agentName = tokens[3].value;
+    // Bridge form: `upholds all policies` — composes the agent surface walker
+    // with every `policy:` block in scope. The prover dispatches each rule
+    // (protect_tables, dont_delete_without_where, etc.) to its appropriate
+    // static checker against the agent's reachable code.
+    if (tokens[4].value === 'upholds') {
+      if (tokens.length < 7 || tokens[5].value !== 'all' || tokens[6].value !== 'policies') {
+        ctx.errors.push({ line: ctx.line, message: usageError });
+        return ctx.i + 1;
+      }
+      ctx.body.push({
+        type: NodeType.AGENT_BOUND_CLAIM,
+        agentName,
+        claimKind: 'upholds_policies',
+        target: 'all_policies',
+        line: ctx.line,
+      });
+      return ctx.i + 1;
+    }
     const verbToken = tokens[5];
     const verb = verbToken.value;
     const verbCanonical = verbToken.canonical;

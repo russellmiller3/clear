@@ -6,6 +6,52 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (Phase 4) — Agent × Policy bridge: `upholds all policies`
+
+Russell asked the load-bearing question: *"with enact tools + symbolic prover we should be able to prove that an agent can't take a specific bad action with tools it has access to — can we?"*
+
+Yes. Phase 4 ships the bridge that composes Clear's existing `policy:` block (the enact-style catalog already in the parser at `parsePolicyRule()`) with the agent reachability walker. New claim form:
+
+```clear
+policy:
+  protect tables Deals, Payments
+  block ddl
+  block prompt injection
+
+agent 'Refund Bot' receives request:
+  has tools: lookup_deal, refund_amount
+  ...
+
+prove that agent 'Refund Bot' upholds all policies
+```
+
+Output:
+
+```
+!  agent 'Refund Bot' upholds all policies — 2 of 3 rule(s) proved, 1 unverifiable (runtime-only)
+   OK  protect tables Deals, Payments — no reachable code touches any of the protected tables
+   OK  block ddl — structurally satisfied — Clear agents have no path to execute raw SQL
+   !   block prompt injection — enforced at runtime, not by static analysis
+```
+
+Per-rule dispatch:
+- `protect_tables [t]` → walk reachable code for any CRUD on listed tables; DISPROVED with path if found
+- `dont_delete_row` → walk for any `remove` op
+- `dont_delete_without_where` / `dont_update_without_where` → walk for ops with empty condition
+- `dont_read_sensitive_tables [t]` → walk for `lookup` against listed tables
+- `block_ddl`, git/filesystem rules → trivially proves (Clear agents go through CRUD primitives, not raw SQL/git/fs)
+- `block_prompt_injection`, `code_freeze`, `maintenance_window`, role/clearance checks → honest UNVERIFIABLE — the prover refuses to claim what only the runtime check enforces
+
+The bridge answers the regulated-tier question with two distinct halves:
+1. **Statically provable** policies become mathematical guarantees in the audit bundle.
+2. **Runtime-only** policies stay marked UNVERIFIABLE so the audit doesn't lie.
+
+The CRO can read both halves and know exactly what the build catches at compile time vs what depends on runtime gates being in place.
+
+6 new tests under `Prover — agent tool-bound claims`. Demo file (`examples/proofs/agent-bounds-demo.clear`) extended with a policy block + the new claim form. 53/53 prover tests green. 3016/3016 full Clear suite green.
+
+---
+
 ## 2026-05-07 (Phase 3) — Symbolic argument-bound claims for agent tool use
 
 After the Direct + Transitive flavors shipped earlier today, Russell pushed back: *"we have a prover — why not formal verification?"* That landed. Phase 3 adds a fourth claim form that uses Clear's existing symbolic prover (`lib/prover/symbolic.js`) — the same engine that proves business rules — to bound what arguments an agent could possibly pass at every call site:

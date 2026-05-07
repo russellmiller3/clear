@@ -46,6 +46,7 @@ Let's jump in.
 
 **Provable correctness — closing the tutorial track**
 - [Chapter 12: Provable Business Rules (Math, Not Just Tests)](#chapter-12-provable-business-rules-math-not-just-tests)
+- [Chapter 12b: Provable Agent Bounds (Math for Agents Too)](#chapter-12b-provable-agent-bounds-math-for-agents-too)
 
 **Reference — chat, workflows, Marcus primitives**
 - [Chapter 10b: Chat Interfaces](#chapter-10b-chat-interfaces-making-your-app-talk)
@@ -3729,6 +3730,220 @@ From here, the rest of the guide is the **reference track** — chapters you rea
 - **Chapter 16: The Clear CLI** and **Chapter 16b: Clear Studio** — the toolbox you'll use every day.
 
 You don't have to read those in order. Pick the one you need next, and the rest of the guide is there when a question comes up. **Welcome to the other side of the tutorial — you're a Clear developer now.**
+
+---
+
+## Chapter 12b: Provable Agent Bounds (Math for Agents Too)
+
+By the end of this chapter, deal-desk will have a Refund Bot — an AI agent with real tools — and four mathematically-proven sentences about what that bot can and cannot do, no matter what a customer types into the prompt. The CRO will get a paragraph in the audit PDF that reads *"Refund Bot cannot delete from Deals — proved for every possible input,"* not *"we tested 12 prompts and none of them deleted a deal."* **Same difference as Chapter 12, but for an agent that holds a credit card processor.**
+
+This is the chapter that takes the proof story from *"my business rules hold"* to *"and my agent can't sneak around them."* Same prover, same `clear prove` command, four new sentences your code can write.
+
+### The four mistakes an agent can make
+
+A tool-wielding agent is a piece of code with a *very persuasive user* (the AI) holding the keyboard. Four kinds of mistake — each one harder to catch than the last:
+
+1. **Wires the wrong tool.** A developer adds `charge_card` to the agent's `has tools:` list by accident. The customer types *"refund my $5"* and the bot somehow charges instead.
+2. **Buries the wrong tool inside an innocent one.** The agent has a tool called `deactivate`. Looks safe. But `deactivate`'s body calls a helper function that deletes the whole user row. The agent never *names* the dangerous function — the chain hides it.
+3. **Wires the right tool but doesn't bound the argument.** The agent has `charge_card`. The body of `charge_card` charges whatever amount Claude passes. Claude reads the customer's *"refund $5"* prompt and decides to charge $5,000 instead — because nothing in the code stopped it.
+4. **Forgets to update a policy block when the tool surface changes.** Six months ago the company wrote *"protect tables Deals"* in a `policy:` block. Today a developer added `force_close_deal` to the agent's tools. The policy is still in the file. Nothing in the build flagged the drift.
+
+Phases 1-4 of the prover catch one mistake each. **One sentence in your source, one verdict in the audit PDF, no test cases needed.**
+
+### Add a Refund Bot to deal-desk
+
+Open `apps/deal-desk/main.clear`. Below the existing rules from Chapter 12, add a few helper functions and an agent. We're going to wire the agent up imperfectly on purpose — that way the prover gets to demonstrate both PROVED and DISPROVED verdicts on real code:
+
+```clear
+define function lookup_deal(deal_id):
+  return look up Deal where id is deal_id
+
+define function record_refund(deal_id, amount):
+  save new_refund as new Refund
+
+skill 'Charge Card':
+  has tools: record_refund
+  instructions: 'Use record_refund to log a successful refund.'
+
+agent 'Refund Bot' receives request:
+  has tools: lookup_deal
+  uses skills: 'Charge Card'
+  reply = ask claude 'Process this refund' with request
+  return reply
+```
+
+Two functions, one skill, one agent. Read the agent block out loud: *"Refund Bot receives a request, has the tool lookup_deal, uses the skill 'Charge Card,' asks Claude to process the refund using the request, and sends the reply back."* You also need a `Refunds` table — add it next to your `Deals` table:
+
+```clear
+create a Refunds table:
+  deal_id, number
+  amount, number
+```
+
+Save the file. The agent is wired. Now we're going to ask the prover four questions about it.
+
+### Phase 1 — Direct: "the agent can't even name the function"
+
+The first question: *"Can Refund Bot ever invoke charge_card?"* You haven't even defined a function called `charge_card`, and even if it existed, you didn't put it in the bot's tool surface. Write the proof obligation right above the agent definition:
+
+```clear
+prove that agent 'Refund Bot' cannot call charge_card
+```
+
+One line. Read it out loud: *"prove that agent 'Refund Bot' cannot call charge_card."* Save the file. From the repo root:
+
+```bash
+clear prove apps/deal-desk/main.clear
+```
+
+In the *Agent tool-bound claims* section of the output you'll see:
+
+```
+OK  agent 'Refund Bot' cannot call 'charge_card' — closure has 2 tool(s) and 'charge_card' is not among them
+```
+
+PROVED. The prover walked the agent's static **tool closure** — the union of `has tools:` plus every tool brought in by `uses skills:` — and confirmed `charge_card` isn't there. Why is that *enough* for a proof? Because Clear's runtime tool-dispatch is closed-world: when Claude asks to call a tool by name, the runtime looks the name up in a dictionary that was built at compile time from the agent's declared closure. Anything not in the dictionary returns *"Unknown tool"* and the loop continues. **There's no escape hatch — no `eval`, no string lookup of globals.** If the function isn't in the closure, Claude has no way to dispatch to it.
+
+That sentence is the soundness story for every verdict in this chapter. Lean on it.
+
+### Phase 2 — Transitive: "the agent can't reach the forbidden op through any chain"
+
+Now the second question: *"Can Refund Bot ever delete from the Deals table?"* The agent has `lookup_deal` (a read) and `record_refund` (an insert into `Refunds`). Neither one obviously deletes a Deal. But maybe one of them does indirectly. Add another proof obligation:
+
+```clear
+prove that agent 'Refund Bot' cannot delete from Deals
+```
+
+Run `clear prove` again:
+
+```
+OK  agent 'Refund Bot' cannot delete from 'Deals' — no reachable code (agent body + 2 tool(s)) deletes from 'Deals'
+```
+
+PROVED. This time the prover did more work. It walked the agent's body *plus* every reachable tool body — `lookup_deal`'s body, `record_refund`'s body, and the body of any function those bodies call. For every `delete the X with this id` it found, it checked whether `X` matched `Deals`. None did. **Phrased differently: the prover built the graph of every database operation the agent could ever cause, and confirmed none of them is a delete on Deals.**
+
+To see what DISPROVED looks like, add a function that *does* delete a Deal and wire it as a tool:
+
+```clear
+define function purge_deal(deal_id):
+  delete the Deal with this id
+```
+
+Then change the agent's `has tools:` line to include it:
+
+```clear
+agent 'Refund Bot' receives request:
+  has tools: lookup_deal, purge_deal
+  ...
+```
+
+Run `clear prove` again. The verdict flips:
+
+```
+X   agent 'Refund Bot' cannot delete from 'Deals' — agent 'Refund Bot' CAN delete from 'Deals' — 'remove' against 'Deals' at line 41 via: agent 'Refund Bot' → has tool: purge_deal → remove Deal @ line 41
+```
+
+DISPROVED, with the **call chain**: agent → tool → CRUD operation, line numbers included. A developer reading this in CI knows exactly what to fix. **Either remove `purge_deal` from the agent's tools, or remove the obligation if the deletion is genuinely intended (and update the policy block to reflect that).** Then revert the `purge_deal` change before moving on.
+
+The Marcus pitch in one sentence: *"This is the structural answer to the Replit incident. The agent could not have deleted that production database on Clear because the prover would have refused to ship the build."*
+
+### Phase 3 — Symbolic: "the agent can't pass a dangerous value"
+
+The third question: *"Even if Refund Bot can call record_refund, can it ever call it with an amount over $10,000?"* This question can't be answered by walking the closure. The function IS in the closure — that's the whole point. The question is whether the *argument* could ever be that high.
+
+Add the obligation:
+
+```clear
+prove that agent 'Refund Bot' cannot call record_refund with amount is greater than 10000
+```
+
+Run `clear prove`:
+
+```
+X   agent 'Refund Bot' cannot call 'record_refund' with amount is greater than 10000 — agent 'Refund Bot' can invoke 'record_refund' directly via tool dispatch — Claude controls every argument, so 'amount is greater than 10000' is satisfiable. Use 'cannot call record_refund' to forbid it entirely, OR add an enforce statement inside record_refund's body to bound the argument
+```
+
+DISPROVED — and the verdict gives you the *fix*. The prover noticed that `record_refund` is itself a tool Claude can dispatch to directly. When Claude makes a tool call, the runtime hands Claude's choice of arguments straight to the function — there's no source-level call site where the prover could read what value gets passed. From the prover's point of view, every argument to a directly-dispatched tool is **a free symbolic variable Claude controls**. So the constraint *"amount is greater than 10000"* is trivially satisfiable.
+
+Two ways to make this PROVED. Either forbid the call entirely (Phase 1: `cannot call record_refund`) — but then Refund Bot can't issue refunds, which defeats the point. Or **bound the argument inside the function body** with an enforce statement:
+
+```clear
+define function record_refund(deal_id, amount):
+  enforce that amount is at most 10000, or fail with error message: 'Refunds over $10k need CRO approval'
+  save new_refund as new Refund
+```
+
+Now the function refuses to proceed if Claude tries to pass anything bigger than $10,000. Run `clear prove` again — the obligation is still DISPROVED for *the same structural reason* (Claude can still try to pass any value), but the function will reject the bad call at runtime. **The right pattern: a `cannot call X with arg op value` claim signals to the auditor that the bound exists; the enforce inside the function is what enforces it.** Two halves, one story.
+
+For the cleaner PROVED case — when the constrained function is *not* a direct tool but is called transitively from a tool — the symbolic prover walks the source-level call site, evaluates the argument expression with literal substitution, and tries to fold the constraint. If the argument is literal `50` and the constraint is *"greater than 1000,"* the prover can prove `50 > 1000` is unsatisfiable and emit PROVED. **For literals, this is real symbolic verification, not pattern matching.**
+
+### Phase 4 — The bridge: "the agent can't violate any of your declared policies"
+
+The fourth question, and the one that survives a real audit: *"Refund Bot's tool surface might change three times before launch. Can the build keep my policies in sync?"*
+
+In Chapter 21 (Policies — Safety Guardrails) you'll meet the `policy:` block — the enact-style catalog of one-line policies that Clear apps declare at the top of the file (`protect tables Users`, `block ddl`, `block prompt injection`, etc.). Phase 4 of the agent prover composes that block with the agent reachability walker and emits a **per-rule subverdict**.
+
+Add a policy block to deal-desk near the top:
+
+```clear
+policy:
+  protect tables Deals
+  block ddl
+  block prompt injection
+```
+
+Now add one obligation that covers the whole policy block:
+
+```clear
+prove that agent 'Refund Bot' upholds all policies
+```
+
+Run `clear prove`:
+
+```
+!  agent 'Refund Bot' upholds all policies — 2 of 3 policy rule(s) proved, 1 unverifiable (runtime-only)
+   OK  protect tables Deals — no reachable code in agent 'Refund Bot' touches the protected table
+   OK  block ddl — structurally satisfied — Clear agents have no path to execute raw SQL
+   !   block prompt injection — enforced at runtime, not by static analysis — the prover cannot claim what the runtime check will refuse
+```
+
+Read it slowly. The parent verdict is **UNVERIFIABLE** because not every rule could be statically proved — but the subverdicts give you the breakdown. *"Protect tables Deals" — PROVED, no reachable code touches it.* *"Block DDL" — PROVED, structurally, Clear agents go through CRUD primitives and can't run raw SQL.* *"Block prompt injection" — UNVERIFIABLE, the prover honestly admits this is a runtime-only check and refuses to claim the build proves it.*
+
+That last sentence is the load-bearing one. **The prover doesn't lie.** A weaker tool would print PROVED on every rule and let the auditor assume everything is mathematically guaranteed. Clear's prover splits the rules into two buckets and tells you which is which. The CRO can hand the auditor a paragraph that says *"two policies are mathematically proved at compile time, one depends on the runtime guard being in place — here are the runtime tests that exercise the third."*
+
+### When the prover says UNVERIFIABLE
+
+You'll see UNVERIFIABLE on three kinds of obligation. Each one means something different:
+
+- **The named agent doesn't exist** in this file. Don't write proof obligations against agents you haven't defined.
+- **A reachable tool body isn't in this file** (Transitive flavor). The prover refuses to claim what it can't read. Either pull the missing function into the file, or accept that the verdict can't be sharper than UNVERIFIABLE.
+- **A policy rule is enforced at runtime** rather than by static analysis (Phase 4 only). `block_prompt_injection`, `code_freeze_active`, `maintenance_window`, `require_role`, `require_clearance`, and `contractor_cannot_write_pii` all fire at runtime — there's no source-level structure for the prover to walk. The prover marks them UNVERIFIABLE so the audit doesn't pretend they're proved.
+
+UNVERIFIABLE is a *feature*, not a failure. It's the prover keeping the audit bundle honest.
+
+### Reading the audit output
+
+When `clear prove` runs against a file with all four claim shapes plus a policy block, the *Agent tool-bound claims* section shows one line per claim, with subverdicts indented under the policy claim. The CLI exit code reflects the worst verdict:
+
+- **0** — every claim PROVED (the build is green, the audit bundle ships).
+- **1** — at least one DISPROVED (the build refuses to ship; CI catches the violation).
+- **5** — at least one UNVERIFIABLE without any DISPROVED (the audit bundle ships with a note for the auditor).
+
+**The exit code is what makes this a CI gate, not just a marketing surface.** Add `clear prove apps/deal-desk/main.clear` to your build pipeline. When a developer adds a tool that breaks a standing claim, the merge fails. The audit attribution is built in: the verdict says *"agent 'Refund Bot' CAN delete from 'Deals' via: has tool: purge_deal."* That's the developer's name on the change, the tool's name on the leak, and the table's name on the data — all in one CI failure message.
+
+### What you shipped
+
+Five new sentences in your `.clear` file. Four PROVED verdicts and one structural UNVERIFIABLE on a runtime-only rule. **A complete, audit-trail-aware story about what Refund Bot can and cannot do, mathematically, with the path that explains every verdict.**
+
+The Chapter 12 promise was *"prove the rule for every possible deal."* The Chapter 12b promise is *"and prove the agent can't sneak around the rule, even with the tools you gave it."* Same prover. Same audit PDF. Different question, same shape of answer.
+
+### Where to read next
+
+- **Chapter 21: Policies (Safety Guardrails)** — the full catalog of policy: rules and what each one protects against.
+- **Chapter 11b: Building Real Agents** — the agent-syntax reference: tools, skills, memory, schedules, multi-agent.
+- **Chapter 24: Writing Business Rules** and **Chapter 24b: Audit Reports** — deeper on the `rule` keyword and the audit PDF that wraps every verdict in this chapter.
+
+The prover is the same engine across all three of those chapters and this one. *One bundle, four verdict categories, one signed PDF.*
 
 ---
 
