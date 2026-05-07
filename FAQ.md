@@ -88,20 +88,6 @@ The hook's job is the structural backstop for the CLAUDE.md "Build Python Alongs
 
 ---
 
-## Where does the python-parity audit script live? (2026-05-06)
-
-`scripts/python-parity-audit.mjs` reads `parser.js`'s NodeType enum, slices `compileToPythonBackend` out of `compiler.js`, and counts `NodeType.X` references in JS-vs-Python paths. Reports gaps as a human report + optional CSV (`--csv` flag). Also checks `runtime/*.js` files have Python peers via `existsSync`.
-
-Run: `node scripts/python-parity-audit.mjs` — exits 1 when HIGH-severity gaps exist (any helper file missing OR any high-severity NodeType not handled in Python).
-
-First-run baseline (2026-05-06): 21 HIGH-severity NodeType gaps (RUN_AGENT, AUTH_SCAFFOLD, PIPELINE, CRUD, RATE_LIMIT, QUEUE_DEF, RULE_DEF, etc.) + 5 of 5 runtime helper file gaps. After today's helper ports: 0 of 5 helper gaps. After the slice-detection fix (2026-05-06 evening): 5 REAL HIGH-severity gaps — RUN_AGENT (11 JS hits), RUN_PIPELINE (4), SCRIPT (2), RUN_WORKFLOW (1), WITH_OPTIMISTIC_LOCK (1). The earlier 16 false positives were NodeTypes handled in shared `compileNode` / `compileCrud` / `compileEndpoint` / `compileAuthScaffoldPython` (each with internal Python branches), invisible to the original slice approach.
-
-The MEDIUM-severity count is now 16 (was ~110) — same fix dropped most false positives. The HIGH count is reliable; MEDIUM is still mildly noisy because some primitive emit paths use string-based handling not `NodeType.X` references.
-
-Plan: `plans/plan-python-parity.md`. Used by the python-first-class hook to surface the gap state on every relevant edit.
-
----
-
 ## Where does the empty-table "No rows yet" placeholder live? (2026-05-06)
 
 When a `display X as table` widget renders zero rows, the table shows a single italic "No rows yet." placeholder row. Two reasons: friendlier first-launch UX, and Playwright walkers + accessibility tools treat the table as visible (a zero-row table used to collapse to zero height and be reported as 'hidden').

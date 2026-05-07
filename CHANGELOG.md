@@ -6,6 +6,21 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (latest) — Python parity audit: false-positive triage + FAQ merge
+
+The python-parity-audit script's slice-detection had been flagging 16 medium-severity gaps that were almost all false positives. Two patterns the audit missed:
+
+- **Universal expressions** (LITERAL_NUMBER, LITERAL_LIST, MAP_EXISTS): exprToCode emits identical syntax on both targets. Added to `UNIVERSAL_EMIT` set with one-line notes so future readers see why each is shared.
+- **No-op on both targets** (TARGET, THEME, MOCK_AI, SKILL, DEPLOY, FIELD_RULE, ON_PAGE_LOAD, ON_SCROLL, ON_CHANGE, OWNER_DECL, EVAL_DEF, TEST_INTENT): case body is `return null` because they're consumed by parent compilation (TEST_DEF consumes MOCK_AI, agents consume SKILLs) or by the orchestrator (DEPLOY directive). Either way they emit nothing on BOTH targets. New `NO_OP_ON_BOTH` set.
+
+Result: medium-severity gaps drop from 16 to 2. The 2 remaining are genuine — `SERVICE_CALL` (Stripe / SendGrid / Twilio adapters Python doesn't yet emit; each provider needs its Python library) and `CLASSIFY` (audit doesn't yet detect its exprToCode path). Both are non-launch-relevant; the regulated-tier pitch holds without them.
+
+**Audit summary today:** 0 HIGH-severity gaps, 2 MEDIUM-severity gaps (both genuine but non-blocking), 0 of 5 runtime helper file gaps. `node scripts/python-parity-audit.mjs` exits 0.
+
+**FAQ merge:** the older "Where does the python-parity audit script live? (2026-05-06)" entry had stale numbers (5 HIGH gaps when current is 0) and overlapped with the comprehensive "How much Python parity work is left?" entry I added at the top. Removed the older entry; the canonical top entry covers location, run command, current numbers, the python-first-class hook, and the slice-detection rules so future Claude doesn't re-add false positives.
+
+---
+
 ## 2026-05-07 (later) — Python tenant scope auto-injection (multi-customer separation)
 
 `database is shared with tenant scope` now works on Python end-to-end. Mirrors the JS scaffold's tenant_id injection at compiler.js:4896-5106. When the source declares shared scope, every Python CRUD operation auto-scopes by `tenant_id == request.user.get("tenant_id")`:
