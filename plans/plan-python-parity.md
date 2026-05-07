@@ -154,13 +154,18 @@ The `database is local file` keyword may not exist for Python yet — check the 
 
 **Step 1 of the auth scaffold rewrite shipped: method-name harmonization.** The inline `_DB` stub now exposes `find_all` / `find_one` / `insert` alongside the legacy `query` / `query_one` / `save`. The new methods delegate to the legacy ones — same behavior, canonical PEP 8 names available. Four new tests at `clear.test.js` lock the aliases in. This unblocks the auth scaffold rewrite that follows because the auth code can now call `db.find_one("_auth_users", {"email": email})` regardless of which database backend is in scope.
 
-**Next pickup (session N+1):** rewrite `compileAuthScaffoldPython` in `compiler.js:6401` to:
-- emit `db.create_table('_auth_users', {...})` once at the top of the scaffold (mirroring the JS scaffold's `db.createTable` at compiler.js:14470)
-- replace `_users = []` + `any(u["email"] == email for u in _users)` with `db.find_one("_auth_users", {"email": email})`
-- replace `_users.append(user)` with `await db.insert("_auth_users", user_record)` — handle the async/sync split (real db.py is sync, signup handler is currently `async def`)
-- replace the user lookup in `/auth/me` with `db.find_one("_auth_users", {"id": payload["id"]})`
+### Status update — 2026-05-06 (latest)
 
-The id-vs-tenant_id init-order gotcha (from learnings.md 2026-05-03 night) applies — when the JS scaffold added durable users, it had to do a two-step insert+update because `tenant_id = user.id` and id is auto-issued. The Python rewrite will hit the same shape and needs the same fix.
+**Step 2 of the auth scaffold rewrite shipped: durable user storage.** `compileAuthScaffoldPython` at `compiler.js:6401` now emits `db.create_table("_auth_users", {...})` at scaffold init plus `db.find_one` + `db.insert` calls in signup / login / /auth/me. The `_users = []` in-memory list is gone. Five new tests lock the durable-storage emit shape. 2993 / 2993 tests green.
+
+The async/sync split was simpler than the plan anticipated — Python's `db.insert` returns a sync record (the inline stub's `save` is sync, `runtime/db.py` is sync), so the signup handler doesn't need `await db.insert(...)`. The id-vs-tenant_id gotcha doesn't apply yet because Python tenant scope isn't wired (a future cycle); the JS scaffold's two-step insert+update at compiler.js:14672 is for tenant_id setup only, not durable users. When Python tenant scope lands, the same two-step pattern will need to come along.
+
+**Next pickup (next session):**
+1. Audit-log emit on Python target — the JS scaffold writes every state-change to `audit_log` table at compiler.js:14580. Python needs the same. Includes the body-summary sanitization helper and the GET `/audit` + GET `/audit.csv` + POST `/audit/cleanup` endpoints.
+2. Multi-user-per-tenant invite endpoints on Python — the JS scaffold has `POST /auth/invite` + `GET /auth/invite` + signup-with-invite-token under tenant scope. Python needs these once tenant scope itself lands.
+3. Tenant scope on Python — `database is shared with tenant scope` doesn't yet auto-inject tenant_id on Python CRUD operations. The runtime has the helpers; the compiler emit needs to use them.
+
+These are three independent epics, each ~1 focused session.
 
 ### Gotchas to apply (from learnings.md, surfaced 2026-05-06)
 

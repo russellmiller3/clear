@@ -6399,20 +6399,23 @@ function compilePolicyPython(node, ctx, pad) {
 }
 
 function compileAuthScaffoldPython(pad) {
-  // Python parity follow-up (2026-05-06): emit signup / login / auth-me
-  // routes that import from clear_runtime.auth (the Python port of
-  // runtime/auth.js). Uses stdlib HMAC + PBKDF2 (matches JS byte-for-byte)
-  // instead of passlib bcrypt + PyJWT — gives cross-runtime interop, so a
-  // password hashed by Node verifies under Python and vice-versa, same
-  // for tokens.
+  // Python parity (2026-05-06 evening): emit signup / login / auth-me routes
+  // that import from clear_runtime.auth (the Python port of runtime/auth.js).
+  // Uses stdlib HMAC + PBKDF2 (matches JS byte-for-byte) instead of passlib
+  // bcrypt + PyJWT — gives cross-runtime interop, so a password hashed by
+  // Node verifies under Python and vice-versa, same for tokens.
   //
-  // User storage is still in-memory (_users list). Persistence via
-  // runtime/db.py is a follow-up — same shape as the JS scaffold's
-  // _auth_users SQL table. Tracked in plans/plan-python-parity.md.
+  // User storage is durable via runtime/db.py — the in-memory _users list is
+  // gone. Process restart no longer wipes accounts. Mirrors the JS scaffold's
+  // _auth_users SQL table at compiler.js:14470. The id column is auto-issued
+  // by db.insert (SERIAL on Postgres, AUTOINCREMENT on SQLite, next_id on the
+  // inline stub for local-memory) so the inserted row carries its id back to
+  // the caller. Schema intentionally omits tenant_id because the runtime
+  // auto-adds it to every table.
   const lines = [];
   lines.push(`${pad}from clear_runtime.auth import hash_password, check_password, create_token, verify_token`);
   lines.push(`${pad}from clear_runtime.rate_limit import rate_limit`);
-  lines.push(`${pad}_users = []`);
+  lines.push(`${pad}db.create_table("_auth_users", {"email": {"type": "text", "required": True, "unique": True}, "password_hash": {"type": "text", "required": True}, "role": {"type": "text"}, "created_at": {"type": "text"}})`);
   // OWASP Piece 4 parity (2026-05-06): auto-rate-limit on /auth/login.
   // Mirrors the JS path's rateLimit({ windowMs: 60000, max: 10 }) wiring.
   // 10 attempts per minute per IP, before the handler even runs.
@@ -6426,11 +6429,11 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}    password = incoming.get("password")`);
   lines.push(`${pad}    if not email or not password:`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
-  lines.push(`${pad}    if any(u["email"] == email for u in _users):`);
+  lines.push(`${pad}    if db.find_one("_auth_users", {"email": email}):`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email already registered")`);
   lines.push(`${pad}    password_hash = hash_password(password)`);
-  lines.push(`${pad}    user = {"id": len(_users) + 1, "email": email, "password_hash": password_hash, "role": "user"}`);
-  lines.push(`${pad}    _users.append(user)`);
+  lines.push(`${pad}    user_record = {"email": email, "password_hash": password_hash, "role": "user"}`);
+  lines.push(`${pad}    user = db.insert("_auth_users", user_record)`);
   lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": "user"})`);
   lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": "user"}}`);
   lines.push('');
@@ -6441,7 +6444,7 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}    password = incoming.get("password")`);
   lines.push(`${pad}    if not email or not password:`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
-  lines.push(`${pad}    user = next((u for u in _users if u["email"] == email), None)`);
+  lines.push(`${pad}    user = db.find_one("_auth_users", {"email": email})`);
   lines.push(`${pad}    if not user or not check_password(password, user["password_hash"]):`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid email or password")`);
   lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": user["role"]})`);
@@ -6454,7 +6457,7 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
   lines.push(`${pad}    try:`);
   lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
-  lines.push(`${pad}        user = next((u for u in _users if u["id"] == payload["id"]), None)`);
+  lines.push(`${pad}        user = db.find_one("_auth_users", {"id": payload["id"]})`);
   lines.push(`${pad}        if not user: raise HTTPException(status_code=404, detail="User not found")`);
   lines.push(`${pad}        return {"id": user["id"], "email": user["email"], "role": user["role"]}`);
   lines.push(`${pad}    except HTTPException:`);

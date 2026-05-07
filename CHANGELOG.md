@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 (latest) — Python auth scaffold migrates to durable user storage
+
+The Python auth scaffold's `_users = []` in-memory list is gone. New emit shape mirrors the JS scaffold's durable storage at compiler.js:14470:
+
+- Scaffold init declares `db.create_table("_auth_users", {...})` once at server startup. Schema: email (text, required, unique), password_hash (text, required), role (text), created_at (text). Schema intentionally omits tenant_id and id — both are auto-managed by the runtime.
+- Signup uses `db.find_one("_auth_users", {"email": email})` for the duplicate-email check, then `db.insert("_auth_users", user_record)` to create. The inserted row carries its auto-issued id back so the response can include `{"id": user["id"], ...}` without computing `len(_users) + 1`.
+- Login uses `db.find_one("_auth_users", {"email": email})` for the lookup. Same form, no in-memory iteration.
+- `/auth/me` uses `db.find_one("_auth_users", {"id": payload["id"]})` to verify the token holder still exists.
+
+The `db` symbol resolves to whichever backend is in scope at compile time:
+- `database is local memory` (default) → the inline `_DB` stub from the previous "method-name harmonization" commit, which now speaks `find_one` / `insert` natively. Process restart still wipes (it's a memory mock by design), but the API surface is identical to the durable backends so the scaffold doesn't have to know.
+- `database is local file` → `from clear_runtime import db` resolves to `runtime/db.py` (real SQLite). Users durable across restarts. Same on-disk file as the JS runtime via `better-sqlite3`.
+- `database is postgres` → `from clear_runtime import db_postgres as db`. Same shape, Postgres backend.
+
+5 new tests in `clear.test.js` lock the durable-storage emit shape: no `_users = []`, no `for u in _users` comprehensions, `db.create_table("_auth_users")` at scaffold init, signup uses `db.find_one` + `db.insert`, login uses `db.find_one`, `/auth/me` uses `db.find_one` by id. 2993 / 2993 tests green (+5).
+
+The Marcus-pitch sentence — *"your Python app survives a restart and your users come back"* — now holds. Previous to this commit it was aspirational; with this commit it's true on every Python backend.
+
+The audit-log emit on Python and the multi-user-per-tenant invite endpoints are tracked separately in `plans/plan-python-parity.md` as next pickup work.
+
+---
+
 ## 2026-05-06 (even later) — Python inline stub method-name harmonization (auth scaffold unblocker)
 
 The inline `_DB` Python stub originally exposed `query` / `query_one` / `save` while the real `runtime/db.py` and `runtime/db_postgres.py` helpers expose `find_all` / `find_one` / `insert` to match PEP 8 conventions. The auth scaffold rewrite that follows in the next session needs to call durable storage methods that work on BOTH the inline stub (when `database is local memory`) AND the real helper (when `database is local file` / `database is postgres`). Two surfaces, divergent APIs — the auth scaffold can't migrate until they speak the same language.

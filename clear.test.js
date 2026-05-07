@@ -7822,6 +7822,53 @@ describe('Python inline _DB stub — canonical-name aliases (find_all / find_one
 });
 
 // =============================================================================
+// PYTHON AUTH SCAFFOLD — DURABLE USER STORAGE (Python parity step, 2026-05-06)
+// =============================================================================
+// The Python auth scaffold previously stored users in an in-memory `_users`
+// list, so process restarts wiped every account. This describe block locks
+// in the durable-storage emit shape: signup creates a row in `_auth_users`,
+// login looks it up, /auth/me looks it up by id. Mirrors the JS scaffold's
+// db.createTable + db.findOne + db.insert pattern at compiler.js:14470.
+// Plan: plans/plan-python-parity.md.
+describe('Python auth scaffold — durable user storage', () => {
+  it('does NOT emit the in-memory _users list anymore', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).not.toContain('_users = []');
+    // Also no comprehensions over _users — the lookup pattern moved to db.find_one.
+    expect(r.python).not.toMatch(/for u in _users/);
+  });
+
+  it('declares the _auth_users table at scaffold init', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('db.create_table("_auth_users"');
+    // Schema includes the four columns the JS scaffold uses.
+    expect(r.python).toMatch(/email[\s\S]+?required[\s\S]+?unique/);
+    expect(r.python).toContain('password_hash');
+    expect(r.python).toContain('role');
+    expect(r.python).toContain('created_at');
+  });
+
+  it('signup uses db.find_one for duplicate-email check + db.insert to create', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('db.find_one("_auth_users", {"email": email})');
+    expect(r.python).toContain('db.insert("_auth_users"');
+  });
+
+  it('login uses db.find_one to look up the user by email (signup + login both call it)', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    // Two find_one-by-email calls now — one for signup's duplicate-check, one for login lookup.
+    // The custom runner doesn't have toBeGreaterThanOrEqual, so split the count check.
+    const matches = r.python.match(/db\.find_one\("_auth_users", \{"email":/g) || [];
+    expect(matches.length === 2 || matches.length === 3).toBe(true);
+  });
+
+  it('/auth/me uses db.find_one by id to verify the token holder still exists', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('db.find_one("_auth_users", {"id": payload["id"]})');
+  });
+});
+
+// =============================================================================
 // DB RELATIONSHIPS (belongs to)
 // =============================================================================
 
