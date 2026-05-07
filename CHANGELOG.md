@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (later) — Auto-generated browser walker signs in before walking auth-scaffolded apps
+
+The auto-generated `browser-uat.mjs` walker walked protected pages without authenticating. Pages with creator-scoped tables returned zero rows and the walker mistook *"anonymous user sees nothing"* for *"table broken"* — the most common false-fail before this fix.
+
+For apps with `allow signup and login` declared, the walker now signs up a synthetic test user FIRST, captures the bearer token from the response, calls `page.setExtraHTTPHeaders({Authorization: 'Bearer <token>'})` so every subsequent page load attaches the header, AND mirrors the token into `localStorage.token` so the front end's on-load token check sees an authenticated session. Apps without auth scaffolding skip the signup step (no behavior change).
+
+Plumbing: `generateUATContract` records `app.hasAuthScaffold` based on the source's auth-scaffold node; `generateBrowserUAT` reads the flag and conditionally emits the auth-signup test step before the walk loop. 4 regression tests in `lib/uat-contract.test.js` lock the contract flag and the emitted walker shape (signup endpoint POST, token capture, header injection, localStorage write).
+
+This was HANDOFF item #4 from the prior session. Closes the false-fail story for Marcus walker runs against deal-desk, approval-queue, internal-request-queue, onboarding-tracker, and lead-router.
+
+---
+
 ## 2026-05-07 (latest) — Meph conversation trace logger
 
 Every Meph turn now lands in `factor-db.sqlite` as it streams: user prompt once at session start, assistant reasoning + visible reply per iteration, one row per tool call dispatched, one row per tool result. Joins to the existing `code_actions` rows via `session_id`.
