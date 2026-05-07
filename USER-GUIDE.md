@@ -1674,6 +1674,10 @@ Right now the deal queue is locked down — only the deal's owner can read or ch
 
 ## Chapter 13: Working with Data
 
+This is the **reference track**. The tutorial is over — you've built deal-desk in Chapters 1–12. From here on, the chapters answer *"what else can the data layer do?"* questions and assume you already know how to write Clear.
+
+You met the basic CRUD shape in Chapters 5–9 (create, read, update, delete on the Deals table). This chapter covers the rest of the data toolkit: foreign keys with `belongs to`, parent-child auto-endpoints with `has many`, full-text search, server-side aggregates, and env-var access. Open it like a glossary — find the section you need, copy the pattern, get back to building.
+
 All CRUD operations happen inside endpoint bodies. Here's the full pattern:
 
 ```clear
@@ -1822,8 +1826,9 @@ without the ` ```clear ` tag — they can't compile standalone.)
 
 ## Chapter 13b: Charts (Visualizing Your Data)
 
-Clear includes built-in charts powered by ECharts. No setup needed — the CDN
-loads automatically when your app has a chart.
+Reference chapter. The deal-desk app you built in the tutorial doesn't *need* charts to function, but the moment you want a CRO dashboard — pipeline by stage, deals approved this quarter, average discount by segment — charts are the difference between *"a queue of rows"* and *"a screen the CRO opens every Monday morning."*
+
+Clear includes built-in charts powered by ECharts. No setup needed — the CDN loads automatically when your app has a chart. Same primitives work on every dashboard you'll ever build; pick the chart type that matches the question (`bar` for *"how does this compare across categories?"*, `line` for *"how does this change over time?"*, `pie` for *"what's the breakdown?"*).
 
 ### Bar Chart
 
@@ -4053,8 +4058,9 @@ different attack. Skip any one and your app has a hole.
 
 ## Chapter 14: Error Handling (Because Things Go Wrong)
 
-The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense
-into every field. Clear gives you clean ways to handle all of it.
+Reference chapter. You met the canonical refusal form in Chapter 12 (`enforce that X, or fail with error message: '...'`) — that's how *business rules* fail. This chapter is about how *infrastructure* fails: the AI service times out, the email provider rate-limits you, the database deadlocks, the customer's browser hangs up mid-request. Different failure mode, different toolkit.
+
+The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense into every field. Clear gives you clean ways to handle all of it.
 
 ```clear
 try:
