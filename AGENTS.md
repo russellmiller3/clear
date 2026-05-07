@@ -19,6 +19,18 @@
 - Update `learnings.md` as work proceeds. After each meaningful fix, phase, or mistake, append the concrete lesson before moving to the next lane.
 - Run the docs sweep after each completed phase before continuing. Update the relevant docs while the phase context is fresh, then move to the next phase.
 
+## Windows Command Hygiene
+
+- Use PowerShell-native commands on Windows. Do not reach for Unix habits unless already verified in this session.
+- Do not use `rg` in this repo on this machine unless a same-session smoke check proves it works. Use `Get-ChildItem` plus `Select-String`.
+- Before reading a list of paths, prove each path exists or pipe from `Get-ChildItem`. Missing paths should not create avoidable Windows errors.
+- Never print `.env` lines directly. Use a masked scanner that shows key names and set/length metadata only.
+- Use the bundled Node executable or `process.execPath`; do not rely on bare `node`, Windows shims, or PATH.
+- If process command-line inspection needs permissions, escalate the narrow inspection command once. Do not thrash through blocked variants.
+- If Git cannot create `.git/index.lock`, immediately rerun the exact Git action with the required sandbox permission.
+- Do not anchor patches on non-ASCII punctuation copied from terminal output. PowerShell encoding can mangle dashes and quotes.
+- After a Windows command fails, switch to the known fallback or escalate once. Do not retry the same broken shape.
+
 ## Branch Discipline
 
 - Always do work on a branch. Never edit, stage, or commit feature/fix/doc work directly on `main`.

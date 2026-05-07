@@ -382,6 +382,18 @@ Scan `learnings.md` TOC before starting any work — not just at session start, 
 ## Test in Clear Studio (MANDATORY)
 Do all testing by running the app in Clear Studio — compile, run, click Run Tests, click Run Evals — and verify the output in the actual UI. Don't rely on harness scripts or compiler tests alone. The real errors Russell sees come from the Studio environment (Windows paths, spawn timeouts, live compilation, browser rendering). If you skip Studio, you miss the same bugs he'll hit.
 
+## Windows Command Hygiene (MANDATORY)
+This repo is often driven from Windows PowerShell. Treat avoidable Windows tool errors as process bugs, not harmless noise.
+
+- Use PowerShell-native commands by default. If `rg` has not passed a same-session smoke check, use `Get-ChildItem` plus `Select-String`.
+- Before reading multiple paths, verify the paths exist or pipe discovered files from `Get-ChildItem`. Do not let a missing path blow up the whole command.
+- Never print `.env` directly. Use masked output: key name, whether it is set, and length only.
+- Use the bundled Node executable or `process.execPath`; do not rely on bare `node` or Windows shims.
+- For process command-line inspection, start with `Get-Process`. If command lines require `Get-CimInstance`, escalate the narrow command once.
+- If Git cannot create `.git/index.lock`, rerun the same Git action with sandbox permission instead of trying unrelated workarounds.
+- Do not anchor patches on non-ASCII punctuation copied from terminal output. PowerShell can display smart punctuation incorrectly.
+- After a Windows command fails, change tactic immediately: known fallback, verified path, or one narrow escalation. Do not retry the same broken command shape.
+
 ## Known Issues
 - Browser server may 404 on some routes (untested in real browser)
 - Playground styling needs visual verification

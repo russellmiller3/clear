@@ -2463,3 +2463,4 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.
 - **Obvious next step is a stop gate, not a suggestion.** If the agent can name a safe approved next action, it must run it before final; otherwise Russell has to re-prompt the same work.
 - **Secret inspection must be masked.** Checking `.env` for model/backend settings should print key names and set/length metadata only, never API key values.
+- **Windows command errors need a guardrail, not tolerance.** On this machine, `rg`, missing `Select-String` paths, bare `node`, blocked process inspection, and Git lock creation can all fail noisily; use the PowerShell-native fallbacks and narrow escalation path first.
