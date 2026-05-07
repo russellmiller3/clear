@@ -112,6 +112,18 @@ console.log('\nGhost Meph format bridge');
   assert(events.some(ev => ev.type === 'message_delta' && ev.delta.stop_reason === 'tool_use'), 'Anthropic SSE stop reason is tool_use');
 }
 
+{
+  const raw = [
+    'data:{"choices":[{"delta":{"content":"No-space stream. "}}]}',
+    '',
+    'data:[DONE]',
+    '',
+  ].join('\n');
+  const result = await accumulateOpenAITextAndToolCalls(streamFromText(raw));
+
+  assert(result.text === 'No-space stream. ', 'OpenAI data lines without a space still accumulate');
+}
+
 console.log(`\nPassed: ${passed}`);
 console.log(`Failed: ${failed}`);
 if (failed > 0) process.exit(1);

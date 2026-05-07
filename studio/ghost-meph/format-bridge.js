@@ -200,8 +200,8 @@ export async function accumulateOpenAITextAndToolCalls(stream) {
 }
 
 function processOpenAISSELine(line, result) {
-  if (!line.startsWith('data: ')) return;
-  const raw = line.slice(6).trim();
+  if (!line.startsWith('data:')) return;
+  const raw = line.slice('data:'.length).trim();
   if (!raw || raw === '[DONE]') return;
 
   let chunk;
