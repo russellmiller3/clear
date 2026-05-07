@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (sharpened) — Prover bounds claim now honest about tool-using agents
+
+The earlier *"agent output cannot bypass this rule"* sentence shipped earlier today was technically true for output-only drafter agents but misleading for any agent with tools. By the time the rule fires (after the agent returns), tool calls during the agent's execution have already happened — Stripe charges, row deletions, emails sent. The rule guards the RETURN VALUE, not those side effects.
+
+Two changes shipped in this commit:
+
+1. **Sentence sharpened.** Translator now reads: *"PROVED for every possible deal — the agent's return value cannot bypass this rule (the rule fires after the agent returns; for tool actions, use `must not:` on the agent)."* Names what's bounded, names what isn't, points at the right tool for the unbounded case.
+
+2. **Prover drops the bounds claim entirely when any called agent has tools.** New `containsToolUsingAgent` walker looks up each `call 'AgentName' with X` invocation against the AST's top-level agent definitions, checks `node.tools.length > 0`, and refuses to set `bounds_agent_output` if any agent in the rule's preceding statements has tools. Direct `ask claude '...'` calls still set the bound (no tool loop). One new test in `lib/prover/index.test.js` (`does NOT flag a rule downstream of a tool-using agent`) locks the behavior. 27 prover tests green, 3017 full suite green.
+
+Russell flagged the misleading framing within minutes of the original ship — the fix is structural, not cosmetic.
+
+---
+
 ## 2026-05-07 — Prover claims agent-bounded safety on rules downstream of agent calls
 
 The prover now recognizes a load-bearing pattern: an agent (or `ask claude` directly) produces output, and a rule fires AFTER the agent returns. When the rule's guard is structurally provable, the prover marks the verdict with `bounds_agent_output: true`. The business-language translator surfaces this as:

@@ -9,13 +9,13 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ## How does the prover handle rules that fire after an AI call? (2026-05-07)
 
-If a `rule:` fires AFTER an agent invocation in the same body — `call 'X' with Y` (named-agent dispatch) or `ask claude '…'` (direct AI call) — and the rule's guard is structurally provable, the prover marks the verdict with `bounds_agent_output: true`. The business-language translator then surfaces:
+If a `rule:` fires AFTER an agent invocation in the same body — `call 'X' with Y` (named-agent dispatch) or `ask claude '…'` (direct AI call) — AND every called agent is output-only (no tools), the prover marks the verdict with `bounds_agent_output: true`. The business-language translator surfaces:
 
-> **PROVED for every possible deal — agent output cannot bypass this rule (the rule fires after the agent returns).**
+> **PROVED for every possible deal — the agent's return value cannot bypass this rule (the rule fires after the agent returns; for tool actions, use `must not:` on the agent).**
 
-**Why this matters.** The agent itself is non-deterministic — Claude could suggest any number — but the runtime guard fires before the next line runs. Every agent output flows through the same gate. The math claim doesn't change ("the program rejects any input that fails the condition before the next line runs"); the new sentence makes the agent-safety guarantee explicit on the audit surface so a CRO reads it without having to know what "structural enforcement" means.
+**The drafter vs. tool-using distinction matters.** A drafter agent (one input, one prompt, returns a value) runs once and the rule guards what it returned. Safe — every output flows through the gate. A **tool-using agent** (`has tool: charge_card`) runs Claude in a tool-use loop where the AI can mutate state mid-thought (charge a card, delete a row, send an email). By the time the agent returns and the rule fires, those tool calls have already executed. The rule guards what the agent returned, NOT the side effects along the way. So the prover **drops the bounds claim entirely** when any called agent has tools — the rule still PROVES, but without the misleading "AI is bounded" sentence. For tool-action guarantees, use `must not: ...` on the agent definition (compile-time check on every tool's effects).
 
-**How detection works.** When walking the AST in `lib/prover/index.js::collectRuleDefs`, every container body (endpoint, function, conditional branch) tracks the sibling statements it has already passed. When a `rule_def` lands, the walker asks: did any prior sibling contain a `run_agent` or `ask_ai` node? If yes, the rule's verdict gets the flag. Rules that fire BEFORE the agent call do NOT get the flag — there is no agent output to bound at that point.
+**How detection works.** When walking the AST in `lib/prover/index.js::collectRuleDefs`, every container body (endpoint, function, conditional branch) tracks the sibling statements it has already passed. When a `rule_def` lands, the walker asks two questions: (1) did any prior sibling contain a `run_agent` or `ask_ai` node? (2) for any named-agent invocation, does the agent definition have tools? Bounds claim fires only if (1) is yes AND (2) is no. Rules that fire BEFORE the agent call do NOT get the flag — there is no agent output to bound at that point.
 
 **Where it lives.**
 - Detection: `lib/prover/index.js` — `containsAgentInvocation()` + `containsAgentInvocationNode()` walkers, used by `collectRuleDefs`.
