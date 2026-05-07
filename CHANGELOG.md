@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 — Prover claims agent-bounded safety on rules downstream of agent calls
+
+The prover now recognizes a load-bearing pattern: an agent (or `ask claude` directly) produces output, and a rule fires AFTER the agent returns. When the rule's guard is structurally provable, the prover marks the verdict with `bounds_agent_output: true`. The business-language translator surfaces this as:
+
+> **PROVED for every possible deal — agent output cannot bypass this rule (the rule fires after the agent returns).**
+
+This is the regulated-tier pitch in one sentence. The agent is non-deterministic — Claude could suggest any number — but the runtime gate fires before the next line runs. Every agent output is constrained by the rule's guard. The math claim is unchanged; the new sentence makes the agent-safety guarantee explicit on the audit surface.
+
+**Detection shape.** When walking the AST, every container body (endpoint, function, conditional branch) tracks its sibling statements. If any sibling BEFORE a rule contains a `run_agent` (named-agent call) or `ask_ai` (direct Claude call), the rule's verdict gets the flag. Rules that fire BEFORE the agent call do NOT get the flag — there is no agent output to bound at that point.
+
+**Tests.** Three tests in `lib/prover/index.test.js` under `Prover — bounds_agent_output annotation`: positive (agent → rule → flag), negative (no agent call → no flag), edge (rule before agent → no flag).
+
+**Files.** `lib/prover/index.js` (detection + flag attachment), `lib/proof-business-language.mjs` (translator sentence), `lib/prover/index.test.js` (tests).
+
+---
+
 ## 2026-05-07 (latest +1) — Credential safety rule for agents — full doc cascade
 
 The validator now refuses to compile any agent whose body reads `env(...)` or `process_env(...)` directly (a sibling background agent shipped the validator pass). This commit lands the doc cascade for it across SYNTAX, FEATURES, FAQ, AI-INSTRUCTIONS, USER-GUIDE Chapter 11b, and Meph's system prompt.
