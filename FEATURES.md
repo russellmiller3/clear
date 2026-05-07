@@ -2,10 +2,63 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
+## Table of Contents
+
+**The 30-second scan**
+- [Exec summary — what Clear can do today, in plain English](#exec-summary--what-clear-can-do-today-in-plain-english)
+
+**Language**
+- [Core Language](#core-language)
+- [Expressions](#expressions)
+
+**Apps you can build**
+- [Web Frontend](#web-frontend)
+- [Backend (JS + Python)](#backend-js--python)
+- [Database & CRUD](#database--crud)
+- [Service Integrations (SERVICE_CALL)](#service-integrations-service_call)
+- [Data Operations](#data-operations)
+
+**AI**
+- [AI Agents](#ai-agents)
+- [Workflows](#workflows)
+- [Routing](#routing)
+
+**Workflow primitives**
+- [Approval Queues](#approval-queues)
+- [Scheduling](#scheduling)
+- [Testing](#testing)
+- [Policies (App-Level Guards)](#policies-app-level-guards)
+
+**Tooling and shipping**
+- [Studio IDE](#studio-ide)
+- [Live App Editing (LAE — Phase A + B shipped)](#live-app-editing-lae--phase-a--b-shipped)
+- [Clear Cloud (buildclear.dev — login + multi-tenant runtime)](#clear-cloud-buildclear.dev--login--multi-tenant-runtime)
+- [Developer Tooling (Dave-first wedge — shipped 2026-04-24)](#developer-tooling-dave-first-wedge--shipped-2026-04-24)
+
+**Compile targets**
+- [Compile Targets](#compile-targets)
+- [Compiler Guarantees — Bug Classes Eliminated at Compile Time](#compiler-guarantees--bug-classes-eliminated-at-compile-time)
+
+**What you can build (the tier list)**
+- [What You Can Build](#what-you-can-build)
+- [Not Building (and Why)](#not-building-and-why)
+
+**Cross-target parity:** the Python parity status block in the exec summary above tracks whether Python lags JS. Hook + audit script keep it honest. See FAQ entry "How much Python parity work is left? How do I check?" for the two-command audit.
+
 **Headline numbers:** 169 node types. 2,817 broad compiler/helper checks after the 2026-05-02 merge consolidation. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
 
-**Python parity (in progress, 2026-05-06):** runtime helpers are landing one at a time as JS-to-Python ports with byte-for-byte interop on shared on-disk formats (SQLite file, encrypted-blob format, password hash format, JWT signature format, Postgres column shapes). **All 5 helpers now shipped** — encrypt-at-rest (`runtime/sensitive_crypto.py`), login + JWT (`runtime/auth.py`), persistent SQLite (`runtime/db.py`), auto login rate-limit (`runtime/rate_limit.py`), Postgres adapter (`runtime/db_postgres.py`). **Wiring started (2026-05-06 evening):** `database is local file` now emits `from clear_runtime import db` and `database is postgres` emits `from clear_runtime import db_postgres as db` instead of inlining the in-memory stub. The default `database is local memory` keeps the inline stub for back-compat (in-memory mock for local dev / tests). The CLI runtime-copy step (`cli/clear.js`) detects the import line and drops the matching `.py` files into the compiled app's `clear-runtime/` directory next to `server.py` — so the import line resolves at runtime. **AUTH_SCAFFOLD also wired** (2026-05-06 evening): `allow signup and login` on Python now emits signup/login/auth-me endpoints that import from `clear_runtime.auth` — a password hashed by the JS runtime verifies under Python and vice versa, same for tokens. Replaces the older passlib + PyJWT emission which broke cross-runtime interop. **OWASP Piece 4 parity (RATE_LIMIT) also wired:** the Python `/auth/login` route now gets `Depends(_login_throttle)` from `clear_runtime.rate_limit` — 10 attempts per minute per IP, matching the JS path's middleware on the same route. Remaining wiring work: auth scaffold, rate-limit, queue, business-rule, AI-agent emits — the python-parity audit reports 21 HIGH-severity NodeType gaps to close. The python-first-class hook (`.claude/hooks/python-first-class.mjs`) blocks future JS-only feature shipping by surfacing the audit's HIGH-severity gap count after every relevant edit. Audit script: `node scripts/python-parity-audit.mjs`.
+**Python parity status (2026-05-07):** **substantially closed.** Five runtime helpers shipped (encrypt-at-rest, login + JWT, persistent SQLite, auto login rate-limit, Postgres adapter — all with byte-for-byte interop on shared on-disk formats so a JS-saved row reads correctly under Python and vice versa). Compile-emit wired for: `database is local file` / `local memory` / `postgres`, `allow signup and login` (durable storage on Python — no more in-memory `_users` list), audit log table + middleware + GET /audit + GET /audit.csv + retention helper, multi-customer separation auto-injection on every CRUD operation, and the audit log is tenant-scoped on read (no cross-tenant leak). **`ask claude`, agents, pipelines, and workflows already work on Python end-to-end** — the python-parity audit had been false-flagging these because their case bodies emit universal `await fn(arg)` syntax with no `ctx.lang === 'python'` branch needed; audit script's slice detection sharpened 2026-05-07 to recognize universal-emit cases.
+
+**Audit script:** `node scripts/python-parity-audit.mjs` — runs in <1 second, exits 1 if any HIGH-severity gap remains. Current state: **1 HIGH-severity gap** (down from 21 at the start of the closure pass). The remaining gap is `SCRIPT` — the embed-raw-JS escape hatch, intentionally JS-only by design (raw JavaScript inside a `script:` block has no equivalent on the Python target). 16 MEDIUM-severity gaps remain — most are noise from primitive emit patterns the audit doesn't yet recognize as universal (literal numbers, literal lists, etc.); the rest need triage. Runtime helper file gaps: 0 of 5.
+
+**The "Python doesn't fall behind JS" backstop:** `.claude/hooks/python-first-class.mjs` (PostToolUse on edits to `runtime/*.js`, `compiler.js`, `parser.js`, `synonyms.js`) — runs the audit and surfaces the HIGH-severity gap count + the rule. Not a hard block; a visible nudge that pre-commit can't be skipped past. Override with `PYTHON_LATER=1` in env when an explicit JS-only follow-up is intentional.
+
+**The "is parity true today?" check, in two commands:**
+```bash
+node scripts/python-parity-audit.mjs        # human report
+node scripts/python-parity-audit.mjs --csv  # CSV at the bottom
+```
 
 ---
 

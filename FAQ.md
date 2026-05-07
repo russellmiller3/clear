@@ -7,6 +7,35 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## How much Python parity work is left? How do I check? (2026-05-07)
+
+**Two-command answer:**
+```bash
+node scripts/python-parity-audit.mjs        # human report
+node scripts/python-parity-audit.mjs --csv  # CSV at the bottom
+```
+
+**Current state (2026-05-07):** Substantially closed. 1 HIGH-severity gap, 16 MEDIUM-severity gaps, 0 of 5 runtime helper file gaps.
+
+The 1 remaining HIGH-severity gap is `SCRIPT` — the `script:` block that embeds raw JavaScript. Intentionally JS-only — there's no Python equivalent for "embed raw JavaScript inline." Not a real gap.
+
+The 16 MEDIUM-severity gaps are mostly audit-detection noise (`LITERAL_NUMBER`, `LITERAL_LIST`, `TARGET`, etc. — universal expression primitives the audit's slice detection doesn't yet recognize as shared between targets). Each one needs a 30-second look at the compiler.js case body to confirm it's a false positive vs. a real gap; expect most to be false positives.
+
+**What's actually shipped on Python (the "parity holds" surface):**
+- All 5 runtime helpers (encrypt-at-rest, login + JWT, persistent SQLite, auto rate-limit, Postgres adapter). Byte-for-byte interop on shared on-disk formats.
+- Compile-emit for: `database is local file` / `local memory` / `postgres`, `allow signup and login` (durable user storage), audit log table + middleware + `/audit` + `/audit.csv` + retention helper, multi-customer separation auto-injection on every CRUD operation, audit log tenant-filtered on read.
+- `ask claude`, agents, pipelines, workflows — all emit real Anthropic API calls on Python.
+
+**The "Python won't fall behind JS again" backstop:** `.claude/hooks/python-first-class.mjs` (PostToolUse on edits to `runtime/*.js`, `compiler.js`, `parser.js`, `synonyms.js`). Runs the audit and surfaces the HIGH-severity gap count after the edit. Not a hard block — a visible nudge. Override with `PYTHON_LATER=1` in env when intentional.
+
+**Rule that adds new HIGH gaps:** the `HIGH_SEVERITY` set in `scripts/python-parity-audit.mjs` (lines 65-89). When a new feature lands on JS that should also exist on Python, add the NodeType key to that set so future audit runs flag it until Python catches up.
+
+**The audit's slice-detection rules** (so future Claude doesn't add false positives back):
+- `UNIVERSAL_EMIT` set: case bodies that return universal `await fn(arg)` syntax — count as Python-handled even without an explicit `ctx.lang === 'python'` branch.
+- `countPythonMarkerLines`: `NodeType.X` mentions on lines containing `Py` suffix, `_py`, or `python` count as Python-handled (catches refs like `endpointHasOptimisticLockPy = ...` outside the compileToPythonBackend slice).
+
+---
+
 ## How does the Python compile path pick which database backend to use? (2026-05-06)
 
 The Python emit branches on the source's `database is X` declaration:
@@ -412,6 +441,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 ## Table of Contents
 
 **Where is X?**
+- [How much Python parity work is left? How do I check?](#how-much-python-parity-work-is-left-how-do-i-check-2026-05-07) — current state + audit script + the hook that prevents drift
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
