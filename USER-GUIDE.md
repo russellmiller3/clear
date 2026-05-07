@@ -1787,8 +1787,9 @@ secret is env('STRIPE_SECRET')
 
 ## Chapter 15: Modules (When One File Isn't Enough)
 
-Small apps live in one file. Bigger apps split into modules — a backend file,
-a helpers file, a frontend file. Clear keeps it simple.
+Reference chapter. Deal-desk fits in one file because the tutorial kept it that way on purpose — but the moment your app grows past a few hundred lines, you'll want to split shared helpers, frontend pages, and the backend into separate `.clear` files. This chapter shows the import shape.
+
+Small apps live in one file. Bigger apps split into modules — a backend file, a helpers file, a frontend file. Clear keeps it simple.
 
 ### Splitting Code Across Files
 
@@ -4274,8 +4275,9 @@ That's a bug in the language — not in you. Seriously. File an issue. We'll fix
 
 ## Chapter 17: Testing (Proving Your Code Works)
 
-You know what's better than code that looks right? Code that you can PROVE
-is right. Clear has built-in testing — write tests right alongside your code:
+Reference chapter. The tutorial showed `clear prove` (Chapter 12) — that's *math proof* of business rules. This chapter is about *unit tests* — the everyday `expect X is Y` style of test that runs against compiled code, catches regressions, and is what your CI runs every PR. Different tool, different question. **Use them together, not instead of each other.**
+
+You know what's better than code that looks right? Code that you can PROVE is right. Clear has built-in testing — write tests right alongside your code:
 
 ```clear
 test 'addition works':
@@ -4768,9 +4770,9 @@ python scripts/audit-pdf.py /tmp/bundle.json /tmp/audit.pdf
 
 ## Chapter 16: The Clear CLI (Your Toolbox)
 
-Clear comes with a command-line tool that does everything: build, test, deploy,
-lint, fix, and introspect. It's designed for both humans and AI agents — every
-command supports `--json` for machine-readable output.
+Reference chapter. The tutorial used `clear run`, `clear serve`, `clear prove`, and `clear deploy` — those are the four commands you'll touch most. This chapter is the full menu for the day you need `clear info`, `clear lint`, `clear fix`, or the JSON output flags for your own tooling.
+
+Clear comes with a command-line tool that does everything: build, test, deploy, lint, fix, and introspect. It's designed for both humans and AI agents — every command supports `--json` for machine-readable output.
 
 ### Build
 
@@ -4920,8 +4922,9 @@ clear check main.clear --trace     # Print copy-pasteable compile trace
 
 ## Chapter 16b: Clear Studio (The IDE)
 
-Clear has a built-in IDE called **Clear Studio**. Run `node playground/server.js`
-and open `http://localhost:3456`.
+Reference chapter. Studio is where the tutorial's "now run this" beats actually feel best — the editor, the live preview pane, and the AI assistant on the right are all in one window so the test-edit-rerun loop is friction-free. If you've been writing your `.clear` files in another editor through the tutorial, this chapter is your invitation to switch.
+
+Clear has a built-in IDE called **Clear Studio**. Run `node studio/server.js` and open `http://localhost:3456`.
 
 ### Three Panels
 
