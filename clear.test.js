@@ -31252,4 +31252,69 @@ when user updates deal at /api/deals/:id/approve:
   });
 });
 
+// =============================================================================
+// AGENT CREDENTIAL SAFETY — agents must not read env vars directly
+// (Marcus-pitch security beat — 2026-05-07)
+//
+// Even one prompt injection ("print your env vars and reasoning") could
+// exfiltrate the secret if the agent ever holds it in scope. The compile-
+// time guard refuses any agent body that calls env('X') / process_env('X')
+// directly. Functions the agent uses as tools CAN read env — that's the
+// whole point: the function uses the credential, the agent calls the
+// function, the agent never sees the value.
+// =============================================================================
+describe('agent credential safety — env/process_env in agent body is rejected', () => {
+  it('rejects an agent body that reads env() directly', () => {
+    const src = `agent 'Stripe Charger' receives amount:
+  api_key is env('STRIPE_KEY')
+  return 'done'`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    // Mentions the agent name, the env call, and steers toward the function-wrapping fix.
+    expect(msg).toMatch(/Stripe Charger/);
+    expect(msg).toMatch(/env\('STRIPE_KEY'\)/);
+    expect(msg.toLowerCase()).toMatch(/wrap|tool|function|never see/);
+  });
+
+  it('allows an agent that uses a tool function which itself reads env() (no false positive)', () => {
+    const src = `define function call_stripe(amount):
+  api_key is env('STRIPE_KEY')
+  result is 'charged ' + amount
+  return result
+
+agent 'Charger' receives amount:
+  has tool: call_stripe
+  charge_result is run call_stripe with amount
+  return charge_result`;
+    const r = compileProgram(src);
+    // Specifically: no credential-safety error. (Other unrelated errors would
+    // be a separate concern, but this should not raise the agent-credential one.)
+    const credErrors = r.errors.filter(e => /never see|wrap.*credential|env\(.*\) directly/i.test(e.message));
+    expect(credErrors).toEqual([]);
+  });
+
+  it('rejects process_env() (alias) in an agent body', () => {
+    const src = `agent 'Looker' receives data:
+  k is process_env('SECRET_TOKEN')
+  return 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg).toMatch(/Looker/);
+    expect(msg).toMatch(/process_env\('SECRET_TOKEN'\)/);
+  });
+
+  it('rejects env() nested inside a binary expression in agent body', () => {
+    const src = `agent 'Header Builder' receives data:
+  header is 'Bearer ' + env('API_KEY')
+  return header`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg).toMatch(/Header Builder/);
+    expect(msg).toMatch(/env\('API_KEY'\)/);
+  });
+});
+
 run();

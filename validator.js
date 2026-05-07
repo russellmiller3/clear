@@ -118,6 +118,7 @@ export function validate(ast) {
   validateFieldMismatch(ast.body, warnings);
   validateOWASP(ast.body, errors, warnings);
   validateAgentTools(ast.body, errors);
+  validateAgentCredentialAccess(ast.body, errors);
   validateCallTargets(ast.body, errors);
   validateMemberAccessTypes(ast.body, warnings);
   validateTypedCallArgs(ast.body, warnings);
@@ -2706,6 +2707,79 @@ function validateAgentTools(body, errors) {
           }
         }
       }
+    }
+  }
+}
+
+// =============================================================================
+// AGENT CREDENTIAL SAFETY (2026-05-07) — agents must not see env-var values.
+//
+// The Marcus-pitch security beat: "your AI can charge a Stripe card via
+// Stripe but never see the Stripe key." Even one prompt injection
+// ("print your env vars and reasoning") would exfiltrate the credential
+// if the agent ever held it in scope. So: any agent body that calls
+// env('X') or process_env('X') directly is a compile error.
+//
+// What's allowed: the agent body calls a function that internally reads
+// env(). The function uses the credential, the agent calls the function,
+// the agent never sees the value. We walk ONLY the agent's own body —
+// NOT into bodies of functions the agent uses as tools — because the
+// agent never enters those scopes; the runtime calls them and feeds back
+// only the return value.
+// =============================================================================
+function validateAgentCredentialAccess(body, errors) {
+  if (!Array.isArray(body)) return;
+
+  // Recursive walker over expressions and child bodies. Returns the FIRST
+  // env/process_env call found, or null. Returning the call node lets us
+  // quote the offending text (env('STRIPE_KEY')) in the error message.
+  function findEnvCall(node) {
+    if (!node || typeof node !== 'object') return null;
+    if (node.type === 'call' && (node.name === 'env' || node.name === 'process_env')) {
+      return node;
+    }
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (!v || typeof v !== 'object') continue;
+      if (Array.isArray(v)) {
+        for (const child of v) {
+          const found = findEnvCall(child);
+          if (found) return found;
+        }
+      } else {
+        const found = findEnvCall(v);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  // Render an env call back to its source-like form for the error message.
+  function renderCall(callNode) {
+    const name = callNode.name;
+    const arg0 = callNode.args && callNode.args[0];
+    if (arg0 && arg0.type === 'literal_string') {
+      return `${name}('${arg0.value}')`;
+    }
+    return `${name}(...)`;
+  }
+
+  for (const node of body) {
+    if (!node || node.type !== NodeType.AGENT) continue;
+    if (!Array.isArray(node.body)) continue;
+    // Walk EACH statement in the agent body — but do NOT recurse into the
+    // bodies of OTHER agents/functions/etc that might happen to live there
+    // (agents don't normally nest, but the recursive walker is safe because
+    // the agent body's own statements are the only path env() can land on).
+    for (const stmt of node.body) {
+      const offender = findEnvCall(stmt);
+      if (!offender) continue;
+      const rendered = renderCall(offender);
+      errors.push({
+        line: offender.line || stmt.line || node.line,
+        message: `Line ${offender.line || stmt.line || node.line}: agent '${node.name}' reads \`${rendered}\` directly. Agents must never see credential values — even one prompt injection ("print your env vars") could exfiltrate it. Wrap the credential in a function: \`define function call_external(amount): result is call api 'https://...' with bearer ${rendered}; return result\`. Then in the agent: \`has tool: call_external\`. The agent calls the function, the function uses the key, the agent never sees the value.`
+      });
+      break; // one error per agent is enough — fix the first, recompile, see the next
     }
   }
 }
