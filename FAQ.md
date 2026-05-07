@@ -7,6 +7,24 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## How does the prover handle rules that fire after an AI call? (2026-05-07)
+
+If a `rule:` fires AFTER an agent invocation in the same body — `call 'X' with Y` (named-agent dispatch) or `ask claude '…'` (direct AI call) — and the rule's guard is structurally provable, the prover marks the verdict with `bounds_agent_output: true`. The business-language translator then surfaces:
+
+> **PROVED for every possible deal — agent output cannot bypass this rule (the rule fires after the agent returns).**
+
+**Why this matters.** The agent itself is non-deterministic — Claude could suggest any number — but the runtime guard fires before the next line runs. Every agent output flows through the same gate. The math claim doesn't change ("the program rejects any input that fails the condition before the next line runs"); the new sentence makes the agent-safety guarantee explicit on the audit surface so a CRO reads it without having to know what "structural enforcement" means.
+
+**How detection works.** When walking the AST in `lib/prover/index.js::collectRuleDefs`, every container body (endpoint, function, conditional branch) tracks the sibling statements it has already passed. When a `rule_def` lands, the walker asks: did any prior sibling contain a `run_agent` or `ask_ai` node? If yes, the rule's verdict gets the flag. Rules that fire BEFORE the agent call do NOT get the flag — there is no agent output to bound at that point.
+
+**Where it lives.**
+- Detection: `lib/prover/index.js` — `containsAgentInvocation()` + `containsAgentInvocationNode()` walkers, used by `collectRuleDefs`.
+- Verdict shape: `lib/prover/index.js::proveRule` — adds `bounds_agent_output: true` to PROVED verdicts only (a false claim on UNVERIFIABLE rules would be the wrong promise).
+- Translator sentence: `lib/proof-business-language.mjs::translateRules` — appends the agent-bounding clause when the flag is set.
+- Tests: `lib/prover/index.test.js` under `Prover — bounds_agent_output annotation` — three cases (positive, negative, edge: rule before agent).
+
+---
+
 ## Where do Meph's tool calls get logged? Can I see what he did in session X? (2026-05-07)
 
 Every turn of every Meph session through `/api/chat` lands in `factor-db.sqlite`'s `meph_turns` table — user prompt at session start, assistant reasoning + visible reply per iteration, one row per tool call, one row per tool result. Joins to the existing `code_actions` rows via `session_id`.
