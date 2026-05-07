@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 — Python audit log emit (compliance trail parity)
+
+The Python target now writes every state-changing request to a durable `audit_log` SQL table, mirroring the JS scaffold's emission at compiler.js:14503-14656. When `allow signup and login` is declared on Python, the compiled app gets:
+
+- An `audit_log` table created at scaffold init with seven columns: ts, user_id, user_email, method, path, status, body_summary.
+- `_AUDIT_RETENTION_DAYS` constant + `_cleanup_audit_log()` helper. Default 90 days; override via `AUDIT_RETENTION_DAYS` env var (set to 0 to disable cleanup). Fire-and-forget cleanup runs at server boot.
+- `_sanitize_audit_body` helper that redacts sensitive fields (password, token, secret, api_key, jwt, auth) and caps the body summary at 1KB. Uses Python's `re.IGNORECASE` regex compiled once at module init.
+- A FastAPI `@app.middleware("http")` that captures every POST / PUT / PATCH / DELETE. Reads the body BEFORE `call_next` so the handler can still consume it (Starlette caches body on first read). Records the response status AFTER `call_next` so the audit row reflects the actual outcome. Resolves user_id + user_email from the JWT in the Authorization header.
+- `GET /audit` (JSON list, auth-gated), `GET /audit.csv` (downloadable CSV with `Content-Disposition: attachment; filename="audit.csv"`, auth-gated), `POST /audit/cleanup` (apply retention policy on demand, auth-gated).
+
+Read-only methods (GET, HEAD, OPTIONS) are skipped per the JS pattern. CSV escaping handles commas, quotes, and newlines via inline `_audit_csv_escape` helper. The audit insert is best-effort — `db.insert` failures are logged but don't crash the response, so the audit cost can never break a user-facing request.
+
+8 new tests in `clear.test.js` lock the emit shape: audit_log table at init, sanitization helper exists with redaction, middleware emitted, GET /audit, GET /audit.csv with download header, POST /audit/cleanup, retention helper with the 90-day default, and a negative test that the audit log is NOT emitted when there's no auth scaffold. 3001 / 3001 tests green (+8 from last commit's 2993).
+
+The Marcus-pitch sentence — *"your Python app survives a restart AND you can audit every state change"* — now holds end-to-end. Previous to this commit the audit story broke the moment a customer with the Python target asked for the trail.
+
+What's NOT included (next pickups, separate epics): tenant scope filtering on /audit and /audit.csv (Python tenant scope itself isn't yet wired — that's the next gap), and the per-tenant audit emit that the JS path has under shared scope. Those land when Python tenant scope lands.
+
+---
+
 ## 2026-05-06 (latest) — Python auth scaffold migrates to durable user storage
 
 The Python auth scaffold's `_users = []` in-memory list is gone. New emit shape mirrors the JS scaffold's durable storage at compiler.js:14470:

@@ -7869,6 +7869,80 @@ describe('Python auth scaffold — durable user storage', () => {
 });
 
 // =============================================================================
+// PYTHON AUDIT LOG EMIT (Python parity step, 2026-05-06)
+// =============================================================================
+// Mirrors the JS scaffold's audit_log emission at compiler.js:14503-14656.
+// When `allow signup and login` is declared on Python, the compiled app
+// gets:
+//   - an audit_log SQL table with who/what/when/status/body_summary columns
+//   - a body-sanitization helper that redacts sensitive field names
+//   - an audit middleware that captures every state-change request
+//   - GET /audit (JSON), GET /audit.csv (download), POST /audit/cleanup
+//   - 90-day default retention via AUDIT_RETENTION_DAYS env var
+// "Your Python app survives a restart AND you can audit every state change"
+// — true on Python after this commit, like it's been true on Node since
+// 2026-05-03 night.
+describe('Python audit log emit', () => {
+  it('declares the audit_log table at scaffold init', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('db.create_table("audit_log"');
+    expect(r.python).toContain('"method"');
+    expect(r.python).toContain('"path"');
+    expect(r.python).toContain('"status"');
+    expect(r.python).toContain('"body_summary"');
+  });
+
+  it('emits the body sanitization helper that redacts sensitive fields', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('def _sanitize_audit_body');
+    // Must redact each sensitive name (matches the JS regex /password|token|secret|api[_-]?key|jwt|auth/i)
+    expect(r.python).toMatch(/password.*token.*secret/);
+    expect(r.python).toContain('[redacted]');
+  });
+
+  it('emits an audit middleware that runs on state-changing requests', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    // FastAPI middleware decorator form
+    expect(r.python).toContain('@app.middleware("http")');
+    // Must skip read-only methods
+    expect(r.python).toMatch(/GET.*HEAD.*OPTIONS|HEAD.*GET.*OPTIONS|OPTIONS.*GET.*HEAD/);
+  });
+
+  it('emits GET /audit (JSON)', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('@app.get("/audit")');
+    expect(r.python).toContain('db.find_all("audit_log"');
+  });
+
+  it('emits GET /audit.csv with download header', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('@app.get("/audit.csv")');
+    expect(r.python).toContain('attachment; filename=');
+    expect(r.python).toContain('text/csv');
+  });
+
+  it('emits POST /audit/cleanup', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('@app.post("/audit/cleanup")');
+  });
+
+  it('emits the retention helper with AUDIT_RETENTION_DAYS env var', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('AUDIT_RETENTION_DAYS');
+    expect(r.python).toContain('_cleanup_audit_log');
+    // Default retention is 90 days when env var is unset
+    expect(r.python).toMatch(/90/);
+  });
+
+  it('does NOT emit the audit log when there is no auth scaffold', () => {
+    const r = compileProgram("target: python backend\non GET '/test':\n  send back 'ok'");
+    expect(r.python).not.toContain('audit_log');
+    expect(r.python).not.toContain('_sanitize_audit_body');
+    expect(r.python).not.toContain('/audit.csv');
+  });
+});
+
+// =============================================================================
 // DB RELATIONSHIPS (belongs to)
 // =============================================================================
 

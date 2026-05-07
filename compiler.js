@@ -6415,7 +6415,191 @@ function compileAuthScaffoldPython(pad) {
   const lines = [];
   lines.push(`${pad}from clear_runtime.auth import hash_password, check_password, create_token, verify_token`);
   lines.push(`${pad}from clear_runtime.rate_limit import rate_limit`);
+  lines.push(`${pad}import re as _audit_re`);
+  lines.push(`${pad}import json as _audit_json`);
+  lines.push(`${pad}import os as _audit_os`);
+  lines.push(`${pad}from datetime import datetime as _audit_datetime, timezone as _audit_tz, timedelta as _audit_td`);
+  lines.push(`${pad}from fastapi.responses import Response as _AuditResponse`);
   lines.push(`${pad}db.create_table("_auth_users", {"email": {"type": "text", "required": True, "unique": True}, "password_hash": {"type": "text", "required": True}, "role": {"type": "text"}, "created_at": {"type": "text"}})`);
+  // Audit log table (Python parity, 2026-05-06): mirrors the JS scaffold's
+  // audit_log emission at compiler.js:14503. Captures every state-changing
+  // request with caller (user_id + email), what (method + path), when
+  // (ISO timestamp), outcome (status), and a sanitized body summary so
+  // the compliance buyer's four questions — who/when/what/how-long —
+  // all answer in one row.
+  lines.push(`${pad}db.create_table("audit_log", {"ts": {"type": "text"}, "user_id": {"type": "number"}, "user_email": {"type": "text"}, "method": {"type": "text"}, "path": {"type": "text"}, "status": {"type": "number"}, "body_summary": {"type": "text"}})`);
+  lines.push('');
+  // Retention helper. Default 90 days; override via AUDIT_RETENTION_DAYS
+  // env var. Set to 0 to keep audit data forever (disables cleanup).
+  // Cleanup deletes rows whose ISO timestamp is older than the cutoff.
+  // ISO 8601 timestamps sort correctly as text so a simple < works.
+  lines.push(`${pad}_AUDIT_RETENTION_DAYS_RAW = _audit_os.environ.get("AUDIT_RETENTION_DAYS", "")`);
+  lines.push(`${pad}try:`);
+  lines.push(`${pad}    _AUDIT_RETENTION_DAYS = int(_AUDIT_RETENTION_DAYS_RAW) if _AUDIT_RETENTION_DAYS_RAW else 90`);
+  lines.push(`${pad}except ValueError:`);
+  lines.push(`${pad}    _AUDIT_RETENTION_DAYS = 90`);
+  lines.push('');
+  lines.push(`${pad}def _cleanup_audit_log():`);
+  lines.push(`${pad}    days = _AUDIT_RETENTION_DAYS`);
+  lines.push(`${pad}    if days <= 0:`);
+  lines.push(`${pad}        return {"deleted": 0, "retention_days": days, "cutoff": None, "skipped": "retention disabled"}`);
+  lines.push(`${pad}    cutoff = (_audit_datetime.now(_audit_tz.utc) - _audit_td(days=days)).isoformat()`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        all_rows = db.find_all("audit_log")`);
+  lines.push(`${pad}        old = [r for r in all_rows if r.get("ts") and r["ts"] < cutoff]`);
+  lines.push(`${pad}        for r in old:`);
+  lines.push(`${pad}            db.remove("audit_log", {"id": r["id"]})`);
+  lines.push(`${pad}        return {"deleted": len(old), "retention_days": days, "cutoff": cutoff}`);
+  lines.push(`${pad}    except Exception as e:`);
+  lines.push(`${pad}        print("[clear:audit-cleanup]", str(e))`);
+  lines.push(`${pad}        return {"deleted": 0, "retention_days": days, "cutoff": cutoff, "error": str(e)}`);
+  lines.push('');
+  // Fire-and-forget cleanup at boot. Errors are swallowed so cleanup
+  // failure can't crash the boot path.
+  lines.push(`${pad}try:`);
+  lines.push(`${pad}    _cleanup_audit_log()`);
+  lines.push(`${pad}except Exception:`);
+  lines.push(`${pad}    pass`);
+  lines.push('');
+  // Body sanitization helper. Walks the request body and redacts fields
+  // whose names look secret-y (password, token, secret, api_key, jwt,
+  // auth). Caps at 1KB so a giant POST doesn't bloat the audit log.
+  lines.push(`${pad}_AUDIT_SENSITIVE_PATTERN = _audit_re.compile(r"password|token|secret|api[_-]?key|jwt|auth", _audit_re.IGNORECASE)`);
+  lines.push('');
+  lines.push(`${pad}def _sanitize_audit_body(body):`);
+  lines.push(`${pad}    if body is None:`);
+  lines.push(`${pad}        return None`);
+  lines.push(`${pad}    if not isinstance(body, dict):`);
+  lines.push(`${pad}        return str(body)[:1024]`);
+  lines.push(`${pad}    cleaned = {}`);
+  lines.push(`${pad}    for k, v in body.items():`);
+  lines.push(`${pad}        if _AUDIT_SENSITIVE_PATTERN.search(str(k)):`);
+  lines.push(`${pad}            cleaned[k] = "[redacted]"`);
+  lines.push(`${pad}            continue`);
+  lines.push(`${pad}        if v is None or isinstance(v, (str, int, float, bool)):`);
+  lines.push(`${pad}            cleaned[k] = v`);
+  lines.push(`${pad}        else:`);
+  lines.push(`${pad}            try:`);
+  lines.push(`${pad}                cleaned[k] = _audit_json.dumps(v)[:200]`);
+  lines.push(`${pad}            except Exception:`);
+  lines.push(`${pad}                cleaned[k] = "[unserializable]"`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        return _audit_json.dumps(cleaned)[:1024]`);
+  lines.push(`${pad}    except Exception:`);
+  lines.push(`${pad}        return "[unserializable-body]"`);
+  lines.push('');
+  // Audit middleware. Runs on every state-changing request, after the
+  // handler so res.status_code is final. Skips read-only methods (GET,
+  // HEAD, OPTIONS) because they don't change state. db.insert is best-
+  // effort — if it fails we log and move on so the audit cost can never
+  // crash the user-facing response.
+  lines.push(`${pad}@app.middleware("http")`);
+  lines.push(`${pad}async def _audit_middleware(request, call_next):`);
+  lines.push(`${pad}    if request.method in ("GET", "HEAD", "OPTIONS"):`);
+  lines.push(`${pad}        return await call_next(request)`);
+  lines.push(`${pad}    ts = _audit_datetime.now(_audit_tz.utc).isoformat()`);
+  lines.push(`${pad}    body_summary = None`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        raw = await request.body()`);
+  lines.push(`${pad}        if raw:`);
+  lines.push(`${pad}            try:`);
+  lines.push(`${pad}                body_summary = _sanitize_audit_body(_audit_json.loads(raw))`);
+  lines.push(`${pad}            except Exception:`);
+  lines.push(`${pad}                body_summary = _sanitize_audit_body(raw.decode("utf-8", errors="replace"))`);
+  lines.push(`${pad}    except Exception:`);
+  lines.push(`${pad}        body_summary = None`);
+  lines.push(`${pad}    response = await call_next(request)`);
+  lines.push(`${pad}    user_id = None`);
+  lines.push(`${pad}    user_email = None`);
+  lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+  lines.push(`${pad}    if auth_header.startswith("Bearer "):`);
+  lines.push(`${pad}        try:`);
+  lines.push(`${pad}            payload = verify_token(auth_header[7:])`);
+  lines.push(`${pad}            if payload:`);
+  lines.push(`${pad}                user_id = payload.get("id")`);
+  lines.push(`${pad}                user_email = payload.get("email")`);
+  lines.push(`${pad}        except Exception:`);
+  lines.push(`${pad}            pass`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        db.insert("audit_log", {"ts": ts, "user_id": user_id, "user_email": user_email, "method": request.method, "path": request.url.path, "status": response.status_code, "body_summary": body_summary})`);
+  lines.push(`${pad}    except Exception as e:`);
+  lines.push(`${pad}        print("[clear:audit] insert failed:", str(e))`);
+  lines.push(`${pad}    return response`);
+  lines.push('');
+  // GET /audit — list audit entries the caller is allowed to see.
+  // Authentication required so the log isn't a public-facing data leak.
+  // Reads from the durable audit_log table so a process restart doesn't
+  // wipe history.
+  lines.push(`${pad}@app.get("/audit")`);
+  lines.push(`${pad}async def _audit_list(request):`);
+  lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+  lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
+  lines.push(`${pad}        if not payload:`);
+  lines.push(`${pad}            raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push(`${pad}    except HTTPException:`);
+  lines.push(`${pad}        raise`);
+  lines.push(`${pad}    except Exception:`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push(`${pad}    rows = db.find_all("audit_log")`);
+  lines.push(`${pad}    return rows`);
+  lines.push('');
+  // GET /audit.csv — same data as /audit but in CSV format. SOC 2
+  // evidence collectors and most compliance tools ingest CSV more
+  // naturally than JSON. Quote-escape every value to handle
+  // body_summary text that may contain commas, quotes, or newlines.
+  lines.push(`${pad}def _audit_csv_escape(value):`);
+  lines.push(`${pad}    if value is None:`);
+  lines.push(`${pad}        return ""`);
+  lines.push(`${pad}    s = str(value)`);
+  lines.push(`${pad}    if any(ch in s for ch in (",", chr(34), "\\n", "\\r")):`);
+  lines.push(`${pad}        return chr(34) + s.replace(chr(34), chr(34) + chr(34)) + chr(34)`);
+  lines.push(`${pad}    return s`);
+  lines.push('');
+  lines.push(`${pad}@app.get("/audit.csv")`);
+  lines.push(`${pad}async def _audit_csv(request):`);
+  lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+  lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
+  lines.push(`${pad}        if not payload:`);
+  lines.push(`${pad}            raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push(`${pad}    except HTTPException:`);
+  lines.push(`${pad}        raise`);
+  lines.push(`${pad}    except Exception:`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push(`${pad}    rows = db.find_all("audit_log")`);
+  lines.push(`${pad}    cols = ["id", "ts", "user_id", "user_email", "method", "path", "status", "body_summary"]`);
+  lines.push(`${pad}    header = ",".join(cols)`);
+  lines.push(`${pad}    body_lines = []`);
+  lines.push(`${pad}    for r in rows:`);
+  lines.push(`${pad}        body_lines.append(",".join(_audit_csv_escape(r.get(c)) for c in cols))`);
+  lines.push(`${pad}    body = "\\n".join(body_lines)`);
+  lines.push(`${pad}    csv_content = header + "\\n" + body + ("\\n" if body else "")`);
+  lines.push(`${pad}    return _AuditResponse(content=csv_content, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename=` + '\\"audit.csv\\"' + `'})`);
+  lines.push('');
+  // POST /audit/cleanup — apply the retention policy on demand.
+  // Returns {deleted, retention_days, cutoff}. Boot already runs this
+  // once per process; this URL lets compliance tooling confirm the
+  // policy fired after a config change without restarting the app.
+  lines.push(`${pad}@app.post("/audit/cleanup")`);
+  lines.push(`${pad}async def _audit_cleanup(request):`);
+  lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+  lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
+  lines.push(`${pad}        if not payload:`);
+  lines.push(`${pad}            raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push(`${pad}    except HTTPException:`);
+  lines.push(`${pad}        raise`);
+  lines.push(`${pad}    except Exception:`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push(`${pad}    return _cleanup_audit_log()`);
+  lines.push('');
   // OWASP Piece 4 parity (2026-05-06): auto-rate-limit on /auth/login.
   // Mirrors the JS path's rateLimit({ windowMs: 60000, max: 10 }) wiring.
   // 10 attempts per minute per IP, before the handler even runs.
