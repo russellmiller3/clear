@@ -27,7 +27,7 @@ What shipped:
 
 Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
 
-Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, `scripts/meph-pattern-live-probe.test.mjs`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns a useful routing primitive, row-action questions find approve/reject behavior, and stale approval questions find the optimistic-lock primitive. A five-question OpenRouter live probe caught the missing double-processing primitive; retrieval and prompt rules were tightened from that miss.
+Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, `scripts/meph-pattern-live-probe.test.mjs`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns a useful routing primitive, row-action questions find approve/reject behavior, and stale approval questions find the optimistic-lock primitive. A five-question OpenRouter live probe caught the missing double-processing primitive; retrieval and prompt rules were tightened from that miss. A seven-question OpenRouter narrow approval probe then passed 4/7; the three misses answered from docs or memory without calling pattern search, so the system prompt now makes `browse_templates` search mandatory before answering narrow Clear shape questions.
 
 ---
 

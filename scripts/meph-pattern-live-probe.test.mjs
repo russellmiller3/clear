@@ -1,5 +1,7 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
 import { probeSuites, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 describe('meph pattern live probe harness', () => {
   it('keeps a narrow Marcus-style approval suite for realistic pattern retrieval', () => {
@@ -47,6 +49,15 @@ describe('meph pattern live probe harness', () => {
 
     expect(noSearch.pass).toEqual(false);
     expect(searched.pass).toEqual(true);
+  });
+
+  it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {
+    const prompt = readFileSync(join(process.cwd(), 'studio', 'system-prompt.md'), 'utf8');
+
+    expect(prompt).toContain('MUST call `browse_templates` with `action: "search"` before answering');
+    expect(prompt).toContain('threshold routing');
+    expect(prompt).toContain('selected-row detail');
+    expect(prompt).toContain('approval manager gate');
   });
 });
 

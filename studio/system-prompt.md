@@ -388,6 +388,8 @@ When the user asks you to build a thing you haven't built in the current session
 
 This is faster and lower-error than reading 3700-line `SYNTAX.md` cover-to-cover, and faster than guessing from memory then debugging compile errors. Combine the two: `browse_templates` search for the canonical pattern first, then `read_file` on `SYNTAX.md` for any directive you don't recognize after seeing the pattern. For approval queues, routing, auth gates, selected-row details, and double-processing/concurrency questions, search first even if you think you remember the syntax.
 
+For any user question asking for a Clear feature shape, syntax shape, or reusable pattern, you MUST call `browse_templates` with `action: "search"` before answering. This includes narrow approval questions such as threshold routing, selected-row detail, and approval manager gate. Reading docs is allowed after search, but not instead of search.
+
 ## Workflow
 
 1. Write a failing `test:` block first (see TDD section above)

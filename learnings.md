@@ -2455,5 +2455,6 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Query-only pattern search must not get empty-source shape points.** If the user asks in plain English without current source, rank by text first; otherwise generic pages beat the useful primitive.
 - **Critical language primitives should not wait for an app template.** If live probes show a compiler feature Meph needs, seed it as a `language` primitive with evidence and provenance.
 - **Pattern probes must use narrow builder questions.** Broad "what is the shape" prompts can pass while real asks fail. Keep probes phrased like a Marcus builder changing one queue behavior.
+- **Pattern availability is not pattern use.** A live probe can prove the DB has the right snippet and still fail if Meph answers from docs or memory. Search-before-answer needs an explicit prompt guard and a test.
 - **Learned primitives need a staging queue.** Meph and user sessions may propose; only deterministic evidence plus review promotes.
 - **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.
