@@ -374,7 +374,9 @@ const browsePatternCtx = new MephContext({
         archetype: 'queue_workflow',
         score: 1.7,
         shape_score: 1.2,
-        source: "build for javascript backend\n\n# Deal Desk\n",
+        source: "build for javascript backend\n\n# Deal Desk top of file\n",
+        source_excerpt: "rule 'Discount cap':\n  enforce that discount is less than 20\n",
+        source_excerpt_start_line: 42,
       }];
     },
   },
@@ -384,8 +386,12 @@ assert(browsePatternCalls === 1,
   `browseTemplatesTool search calls pattern DB exactly once (got ${browsePatternCalls})`);
 assert(bt6.count === 1 && bt6.patterns[0].name === 'deal-desk',
   `browseTemplatesTool search returns pattern names (got ${JSON.stringify(bt6)})`);
-assert(bt6.patterns[0].source.includes('Deal Desk'),
+assert(bt6.patterns[0].source.includes("rule 'Discount cap'"),
   'browseTemplatesTool search returns source snippets Meph can pull from');
+assert(bt6.patterns[0].source.includes("rule 'Discount cap'"),
+  'browseTemplatesTool search prefers the relevant pattern excerpt over the file prefix');
+assert(bt6.patterns[0].source_start_line === 42,
+  `browseTemplatesTool search returns excerpt line number (got ${bt6.patterns[0].source_start_line})`);
 
 console.log('\n🌉 Bridge tools (click_element, fill_input, inspect_element, read_storage, read_dom)\n');
 
@@ -1301,7 +1307,9 @@ const fdbWithPatternDb = {
       archetype: 'crud_app',
       score: 1.8,
       shape_score: 1.6,
-      source: "build for javascript backend\n\n# Todo Fullstack\ncreate a Todos table:\n  title is text\n",
+      source: "build for javascript backend\n\n# Todo Fullstack top of file\n",
+      source_excerpt: "create a Todos table:\n  title is text\n\nwhen user calls GET /api/todos:\n  send back all Todos\n",
+      source_excerpt_start_line: 18,
     }];
   },
   _db: { prepare: () => ({ get: () => null }) },
@@ -1318,8 +1326,12 @@ assert(compPattern.hints?.pattern_count === 1,
   `compileTool records pattern_count=1 (got ${compPattern.hints?.pattern_count})`);
 assert(compPattern.hints?.text?.includes('Pattern DB Match #1'),
   'compileTool hint text includes Pattern DB match header');
-assert(compPattern.hints?.text?.includes('Todo Fullstack'),
-  'compileTool hint text includes source pulled from the canonical pattern DB');
+assert(compPattern.hints?.text?.includes('todo-fullstack'),
+  'compileTool hint text includes the canonical pattern name');
+assert(compPattern.hints?.text?.includes('create a Todos table'),
+  'compileTool hint text prefers the relevant pattern excerpt over the file prefix');
+assert(compPattern.hints?.text?.includes('starts at line 18'),
+  'compileTool hint text names the excerpt start line');
 
 // --- 8. Reranker fallback: EBM used when pairwise fails / is absent
 const ebmCtx = new MephContext({

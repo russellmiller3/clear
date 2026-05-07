@@ -693,7 +693,7 @@ export function browseTemplatesTool(input, ctx) {
         topK,
       });
       const patterns = rows.map(row => {
-        const src = String(row.source || '');
+        const src = String(row.source_excerpt || row.source || '');
         return {
           name: row.template_name,
           pattern_set: row.pattern_set,
@@ -704,6 +704,8 @@ export function browseTemplatesTool(input, ctx) {
           query_score: row.query_score,
           source: src.slice(0, 2000),
           source_truncated: src.length > 2000,
+          source_start_line: row.source_excerpt_start_line || 1,
+          source_end_line: row.source_excerpt_end_line || null,
         };
       });
       return JSON.stringify({ patterns, count: patterns.length });
@@ -1176,12 +1178,13 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
       const patternMatches = ctx.factorDB.queryProgrammingPatterns({ source, topK: 2 });
       if (patternMatches.length > 0) {
         const patternBlocks = patternMatches.map((row, i) => {
-          const raw = String(row.source || '').slice(0, 900);
+          const startLine = row.source_excerpt_start_line ? ` (excerpt starts at line ${row.source_excerpt_start_line})` : '';
+          const raw = String(row.source_excerpt || row.source || '').slice(0, 900);
           const trimmed = raw.lastIndexOf('\n') > 650 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
           const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
           const score = typeof row.score === 'number' ? row.score.toFixed(3) : 'n/a';
           const shapeScore = typeof row.shape_score === 'number' ? row.shape_score.toFixed(3) : 'n/a';
-          const header = `── Pattern DB Match #${i + 1} [${row.pattern_set || 'pattern'}, ${row.archetype || 'general'}, score=${score}, shape=${shapeScore}] — ${row.template_name}: ${row.title || ''} ──`;
+          const header = `── Pattern DB Match #${i + 1} [${row.pattern_set || 'pattern'}, ${row.archetype || 'general'}, score=${score}, shape=${shapeScore}] — ${row.template_name}: ${row.title || ''}${startLine} ──`;
           const desc = row.description ? `Why it matters: ${row.description}` : '';
           return [header, desc, code].filter(Boolean).join('\n');
         }).join('\n\n');

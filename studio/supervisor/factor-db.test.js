@@ -268,6 +268,53 @@ describe('FactorDB', () => {
     cleanup();
   });
 
+  it('returns the relevant pattern snippet instead of the top of the file', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const source = [
+      'build for javascript backend',
+      '',
+      '/*',
+      'LAYOUT:',
+      'This long opening diagram is useful to humans but not the best snippet for Meph.',
+      'It should not crowd out the rule/action block when the query asks about rules.',
+      '*/',
+      '',
+      'create a Deals table:',
+      '  customer, required',
+      '  amount is number',
+      '  status is text',
+      '',
+      "rule 'Discount cap':",
+      '  enforce that amount is less than 100000',
+      '',
+      'when user sends deal to /api/deals:',
+      '  requires login',
+      '  save deal as new Deal',
+      '  send back deal',
+    ].join('\n');
+    const shape = computeShape(parse(source));
+    db.upsertProgrammingPattern({
+      template_name: 'deal-desk',
+      pattern_set: 'marcus',
+      title: 'Discount approval with provable rules',
+      description: 'Approval queue, audit, discount rules, CRO sign-off',
+      archetype: shape.archetype,
+      shape_signature: shape,
+      feature_tags: ['approval', 'rules', 'audit'],
+      source,
+    });
+
+    const results = db.queryProgrammingPatterns({ query: 'discount rules', topK: 1 });
+    expect(results[0].template_name).toEqual('deal-desk');
+    expect(results[0].source_excerpt).toContain("rule 'Discount cap'");
+    expect(results[0].source_excerpt).not.toContain('This long opening diagram');
+    expect(results[0].source_excerpt_start_line > 1).toEqual(true);
+
+    db.close();
+    cleanup();
+  });
+
   it('creates a GA run and logs candidates', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);

@@ -14,6 +14,12 @@ const VALID_TURN_ROLES = new Set([
   'snap_retry',          // snap-layer re-prompt event
 ]);
 const TURN_TRUNC_BYTES = 4096;
+const SNIPPET_STOP_WORDS = new Set([
+  'build', 'clear', 'javascript', 'backend', 'python', 'web', 'for', 'with',
+  'the', 'and', 'that', 'this', 'when', 'user', 'calls', 'sends', 'send',
+  'back', 'create', 'table', 'page', 'section', 'text', 'required', 'default',
+  'login', 'api', 'get', 'post', 'put', 'delete', 'all', 'new', 'save',
+]);
 
 function sha1Short(str) {
   return createHash('sha1').update(String(str || '')).digest('hex').slice(0, 16);
@@ -35,6 +41,60 @@ function normalizeTokens(text) {
     .toLowerCase()
     .split(/[^a-z0-9_/-]+/)
     .filter(t => t.length > 1);
+}
+
+function canonicalToken(token) {
+  const t = String(token || '').toLowerCase();
+  if (t.endsWith('ies') && t.length > 4) return `${t.slice(0, -3)}y`;
+  if (t.endsWith('es') && t.length > 4) return t.slice(0, -2);
+  if (t.endsWith('s') && t.length > 3) return t.slice(0, -1);
+  return t;
+}
+
+function snippetTerms(query, querySource) {
+  const raw = [
+    ...normalizeTokens(query),
+    ...normalizeTokens(querySource).filter(t => !['is', 'to', 'as', 'of'].includes(t)),
+  ];
+  const terms = new Set();
+  for (const token of raw) {
+    const term = canonicalToken(token);
+    if (!SNIPPET_STOP_WORDS.has(term) && term.length >= 3) terms.add(term);
+  }
+  return [...terms].slice(0, 32);
+}
+
+function pickSourceExcerpt(source, { query = '', querySource = '', maxChars = 1200, radius = 5 } = {}) {
+  const src = String(source || '');
+  const lines = src.split(/\r?\n/);
+  if (lines.length === 0) return { source_excerpt: '', source_excerpt_start_line: 1, source_excerpt_end_line: 1 };
+  const terms = snippetTerms(query, querySource);
+  let bestIndex = 0;
+  let bestScore = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const lineTokens = new Set(normalizeTokens(lines[i]).map(canonicalToken));
+    let score = 0;
+    for (const term of terms) {
+      if (lineTokens.has(term)) score += 2;
+      else if (lines[i].toLowerCase().includes(term)) score += 1;
+    }
+    if (/^\s*(rule|agent|queue|when user|display|detail panel|create a .+ table)\b/i.test(lines[i])) score += 0.5;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+  let start = Math.max(0, bestIndex - radius);
+  let end = Math.min(lines.length - 1, bestIndex + radius);
+  while (end > start && lines.slice(start, end + 1).join('\n').length > maxChars) {
+    if (bestIndex - start > end - bestIndex) start++;
+    else end--;
+  }
+  return {
+    source_excerpt: lines.slice(start, end + 1).join('\n'),
+    source_excerpt_start_line: start + 1,
+    source_excerpt_end_line: end + 1,
+  };
 }
 
 function textMatchScore(row, query) {
@@ -368,8 +428,10 @@ export class FactorDB {
     const scored = rows.map(row => {
       const shapeScore = shapeSimilarity(queryShape, row.shape_signature);
       const queryScore = textMatchScore(row, query);
+      const excerpt = pickSourceExcerpt(row.source, { query, querySource: source });
       return {
         ...row,
+        ...excerpt,
         tier: 'canonical_pattern',
         shape_score: shapeScore,
         query_score: queryScore,
