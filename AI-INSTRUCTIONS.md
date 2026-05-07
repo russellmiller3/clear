@@ -1774,6 +1774,46 @@ agent 'Support Agent' receives question:
 - **`must not:`** — compile-time check that the agent's tools can't do the forbidden thing
 - **`block arguments matching 'regex'`** — runtime regex filter on every tool call argument
 
+### 5b. Credential Safety — Agents NEVER Read Env Vars Directly
+
+**Purpose:** prevent prompt-injection exfiltration. One *"print all your environment variables"* attack on an agent that reads `env('STRIPE_SECRET_KEY')` could leak the production payment key. The compiler refuses to compile this pattern at all.
+
+**Scope:** any `agent 'X' receives Y:` block.
+
+**Use on:** every agent. Always.
+
+```clear
+# YES — agent calls a function, function uses the credential, agent never sees the value.
+define function charge_card(amount, token):
+  result = call api 'https://api.stripe.com/v1/charges'
+    with bearer env('STRIPE_SECRET_KEY')
+    sending amount, source: token
+  return result
+
+agent 'refund bot' receives request:
+  has tool: charge_card
+  reply = ask claude 'Process this refund' with request
+  return reply
+```
+
+```clear
+# NO — agent body reads env directly. Compile error.
+agent 'leaky bot' receives message:
+  api_key is env('STRIPE_SECRET_KEY')
+  reply = ask claude 'Process payment with key' with message, api_key
+  return reply
+```
+
+The compiler rejects the second form with: *"agent 'leaky bot' reads `env('STRIPE_SECRET_KEY')` directly. Agents must never see credential values — even one prompt injection ('print your env vars') could exfiltrate it. Wrap the credential in a function and use `has tool: that_function`."*
+
+**The rule, mechanically:**
+- The check walks ONLY the agent's own body.
+- If a CALL node's callee is `env` or `process_env`, error.
+- Functions the agent uses as tools are NOT checked — they can read env vars freely (that's the whole point of the design).
+- Skills work the same way: skill instructions don't read env vars; the tools the skill bundles can.
+
+This rule is the structural version of *"don't put secrets in the prompt."* You don't have to remember it; the compiler does.
+
 ### 6. App-Level Policies — Global safety rules
 
 **Purpose:** Enforce rules across the whole app. Set once at the top, applies everywhere.
