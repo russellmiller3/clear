@@ -1,44 +1,71 @@
-# Handoff — 2026-05-06 (very late, three phases shipped)
+# Handoff — 2026-05-07 (marathon session, 9 commits, three Python parity gaps closed)
 
 ## Where you are
 
-- **Branch:** `main`. WIP=0. Working tree: untracked `playground/` only (longstanding noise).
-- **Last commit:** `39c91a6` feat(compiler/python): auth scaffold uses durable user storage.
-- **Tests:** 2993/2993 green at last full run.
-- **Critical-path standing:** Python AUTH persistence epic is now substantially closed. Process restart no longer wipes user accounts when database is `local file` or `postgres`. The "Clear runs anywhere — same source, same durability" pitch is now true on Python at the auth layer. Audit log + tenant scope on Python remain the next chunks.
+- **Branch:** `main`. WIP=0. Working tree: untracked `playground/` only (longstanding noise — old folder, real code lives in `studio/`).
+- **Last commit:** `0589d44` docs(user-guide): drop stale Appendix + replace empty What's Next.
+- **Tests:** 3006/3006 green at last full run.
+- **Critical-path standing:** Python parity epic — three of the five launch-relevant gaps closed this session (durable user accounts, audit log emit, tenant scope auto-injection). Hartl tutorial track is fully shipped (Chapters 1-12); reference-track cleanup has started (2 small prunes done, ~5-6 chapters of light rewrite remaining).
 
-## What this session shipped (4 commits on main, all pushed)
+## What this session shipped (9 commits on main, all pushed)
 
-1. **`94413cf`** — Hartl Chapter 12 (the agent's ship). Closing chapter of the tutorial track. ~201 lines walking the reader through `rule discount-cap-thirty` + `clear prove` + the audit PDF. Renamed the existing Chapter 12 (Security) to Chapter 25 to avoid the duplicate-heading collision.
-2. **`7019b5b`** — Hartl FEATURES + FAQ pass on Chapters 6, 8, 12. Russell's standard for the tutorial: "ultimately for me to learn Clear so it has to be great." Three substantive additions: Chapter 12 got a new "audit log table" subsection (the daily receipt the CRO consults; the PDF is the dated artifact for buyers) plus a 4th try-it-yourself exercise and a jargon scrub. Chapter 8 got an "audit log for free" subsection at the end of "What you didn't write." Chapter 6 got a sensitive-fields side note pointing at Chapter 6.5 so a reader skipping the modifier reference doesn't miss encrypt-at-rest.
-3. **`d0d5222`** — Python inline `_DB` stub method-name harmonization. The stub now exposes `find_all` / `find_one` / `insert` alongside the legacy `query` / `query_one` / `save`. Pure delegation. Unblocks the auth scaffold rewrite below.
-4. **`39c91a6`** — Python auth scaffold uses durable user storage. The `_users = []` list is gone. Signup uses `db.find_one` for duplicate-email + `db.insert` to create. Login + `/auth/me` use `db.find_one`. Mirrors the JS scaffold's `db.createTable('_auth_users', ...)` shape at compiler.js:14470. 5 new tests lock the emit shape.
+1. **`94413cf`** — Hartl Chapter 12 (the agent's ship). Provable business rules + `clear prove` + audit PDF. Renamed the existing Chapter 12 (Security) to Chapter 25 to avoid the duplicate-heading collision.
+2. **`7019b5b`** — Hartl FEATURES + FAQ pass on Chapters 6, 8, 12. Added the audit-log subsection to Chapter 12, the "audit log for free" mention to Chapter 8, and the sensitive-fields side note to Chapter 6.
+3. **`d0d5222`** — Python inline `_DB` stub method-name harmonization. The stub now exposes `find_all` / `find_one` / `insert` alongside the legacy names (delegation). Unblocks the auth scaffold rewrite that follows.
+4. **`39c91a6`** — Python auth scaffold uses durable user storage. The `_users = []` list is gone. `db.create_table("_auth_users", ...)` at scaffold init; `db.find_one` + `db.insert` in signup / login / `/auth/me`.
+5. **`c63c92b`** — Mid-session handoff update.
+6. **`5a790e0`** — Python audit log emit. `audit_log` SQL table, body-sanitization helper, FastAPI `@app.middleware("http")` capturing every state-change, `GET /audit` + `GET /audit.csv` + `POST /audit/cleanup`, 90-day retention with `AUDIT_RETENTION_DAYS` env var.
+7. **`973eb14`** — Python tenant scope auto-injection on CRUD. Lookup wraps with `tenant_id`, insert stamps `tenant_id`, update on `:id` switches to 3-arg form with `tenant_id` in WHERE, remove includes `tenant_id` in filter. Composes with creator policy.
+8. **`6139145`** — Hartl reference cleanup pass 1. Dropped Chapter 20.5 (Ship It) — duplicate of Chapter 18. ~90 lines pruned + TOC entry removed.
+9. **`0589d44`** — Hartl reference cleanup pass 2. Dropped stale Appendix (Meph tool list — already in Studio docs); replaced empty `What's Next?` heading with a tight `You Did It` closing beat. Net -47 lines.
+
+## Python parity status — 3 of 5 launch-relevant gaps closed
+
+| # | Gap | Status |
+|---|-----|--------|
+| 1 | Durable user accounts on Python | ✅ shipped commit `39c91a6` |
+| 2 | Audit log emit on Python | ✅ shipped commit `5a790e0` |
+| 3 | Multi-customer separation (tenant scope) | ✅ shipped commit `973eb14` |
+| 4 | AI assistant calls on Python (`ask claude`, agents, workflows) | ❌ remains — Anthropic SDK plumbing on Python is the biggest single chunk |
+| 5 | Optimistic-lock on Python | ⚠️ probably already shipped (commit `a91fedd` from yesterday) — needs ~5 min audit verification |
+
+The audit script reports 5 HIGH-severity NodeType gaps still. Some are likely false positives (script's slice-detection misses shared handlers — the audit fix from yesterday only handled some patterns). Worth re-running the audit and triaging the remaining 5 manually next session.
+
+## Hartl status — tutorial DONE, reference cleanup ~5-6 chapters left
+
+- Tutorial track Chapters 1-12: **fully shipped this session**.
+- Reference track:
+  - **Dropped:** Chapter 20.5 (duplicate of 18), Appendix (stale Meph reference).
+  - **Still to drop / merge:** Chapter 6.5 → fold into Ch 6 expanded; Chapter 11 (Making It Pretty) → fold into Ch 7 expanded; Chapter 19b → fold into Ch 9; Chapter 21 (Policies) → fold into Ch 12; Chapter 8 (Multi-Page Apps) → drop, covered by Ch 7; Chapter 10b (Chat Interfaces) → keep, NOT a duplicate of Ch 11 (chat is conversational, drafter is one-paragraph summary).
+  - **Light rewrite remaining:** Chapters 13, 13b, 14, 15, 16, 16b, 17, 19, 19c, 22, 23, 24, 24b — each needs a "this assumes you have deal-desk from Chapters 1-12" opening sentence + a syntax-currency check against current SYNTAX.md.
+  - Plan: `plans/plan-user-guide-hartl-05-06-2026.md` (note chapter numbers in the plan are stale relative to where Security ended up after the agent's renumber; treat as guidance, not law).
 
 ## Next session — priority order
 
-1. **Audit log emit on Python** (~1 focused session). The JS scaffold writes every state-changing request to an `audit_log` SQL table at compiler.js:14503-14594, plus emits `GET /audit` + `GET /audit.csv` + `POST /audit/cleanup` + the `_sanitizeAuditBody` helper for redacting password/token/secret/api_key/jwt/auth fields. Python needs the same. **Why for launch:** today, Python apps with login DON'T audit-log state changes — the compliance story breaks the moment a customer asks for the trail. Closing this gap makes the "your app survives a restart AND you can audit every state change" pitch true on Python.
+1. **AI assistant calls on Python** (~1 focused session). The biggest remaining Python parity gap. `ask claude` + `agent` + `workflow` primitives don't yet emit real Anthropic API calls on Python. The runtime helper `_ask_ai` already exists in `compileToPythonBackend` (line ~15812 — seen during this session's audit log work) but the AGENT / WORKFLOW node-type handlers may not be wired. Read the JS pattern at `compileToJSBackend` for `NodeType.AGENT` and `NodeType.WORKFLOW`; mirror on Python. **Why for Marcus:** the AI drafter from Chapter 11 is the most visible value-prop; if a customer picks Python and `ask claude` doesn't emit, the demo breaks immediately.
 
-2. **Hartl reference-track cleanup** (~3 sessions). Existing chapters 13-24 need light retitling + "assume reader has deal-desk from ch 1-12" framing. Plan at `plans/plan-user-guide-hartl-05-06-2026.md` lists the merges + drops + keeps. **Why for launch:** the user-guide is the self-serve onboarding surface; mixed-era chapters lose prospects after the tutorial track ends.
+2. **Verify optimistic-lock on Python is actually wired** (~5 min). Yesterday's commit `a91fedd` says it shipped. The audit still flags it. One of the two is wrong. Re-run `node scripts/python-parity-audit.mjs` and inspect — if false positive, fix the audit's slice detection; if real gap, port the JS pattern.
 
-3. **Marcus walker auth-flow follow-up** (~1 focused session). Walker hits creator-scoped pages without signing in first; ownership filter (correctly) returns 0 rows. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` — replace skip-auth-pages with "hit signup, capture token, set Authorization header on subsequent requests." **Why for launch:** the Marcus walker is the deployed-app smoke check; signed-in coverage proves the apps actually work end-to-end.
+3. **Hartl reference-track light rewrites** (~3 sessions, ~30-45 min per chapter). Pick a batch (suggest Chapters 13, 13b, 14 for one session; 15, 16, 16b, 17 for another; 19/19c/22/23/24/24b for a third).
 
-4. **Python tenant scope** (multi-session). `database is shared with tenant scope` on Python doesn't yet auto-inject `tenant_id` on CRUD operations. The runtime has the helpers; the compiler emit needs to use them. After this lands, the multi-tenant story holds end-to-end on Python.
+4. **Marcus walker auth-flow** (~1 focused session). Walker hits creator-scoped pages without signing in first; ownership filter (correctly) returns 0 rows. Pattern: line 739 of each `apps/<app>/browser-uat.mjs` — replace skip-auth-pages with "hit signup, capture token, set Authorization header on subsequent requests."
 
-5. **Python multi-user-per-tenant invites** (1 session, blocked on tenant scope). The JS scaffold has `POST /auth/invite` + `GET /auth/invite` + signup-with-invite-token under tenant scope at compiler.js:14481. Python needs these once tenant scope itself lands.
+5. **Multi-user-per-tenant invite endpoints on Python** (~1 session). The JS scaffold has `POST /auth/invite` + `GET /auth/invite` + signup-with-invite-token. Now that Python tenant scope is wired, this is the natural follow-up.
 
 ## Blocked on Russell (skip these, work around)
 
 - **Cloudflare account finishing**: Workers Paid + Workers for Platforms add-on, `buildclear.dev` zone, dispatch namespace, API token. When done, hand over token + account ID + namespace name.
 - **First Marcus conversation**: Russell's pitch move.
 - **Stripe live keys, Anthropic org key, Fly Trust Verified**: external paperwork, parallel async track.
-- **Meph eval can't run from a Claude subprocess.** No `ANTHROPIC_API_KEY` value lives in any user shell-init file (none of `.bashrc` / `.bash_profile` / `.profile` / `.zshrc` exist on this machine), only in Studio's stored-key memory or Russell's Windows env. To run the eval, run it from Studio's "Run Eval" button OR from a Windows terminal with `set ANTHROPIC_API_KEY=...` exported.
+- **Meph eval can't run from a Claude subprocess.** No `ANTHROPIC_API_KEY` value lives in any user shell-init file (none of `.bashrc` / `.bash_profile` / `.profile` / `.zshrc` exist on this machine), only in Studio's stored-key memory or Russell's Windows env. To run the eval, run it from Studio's "Run Eval" button OR from a Windows terminal with `set ANTHROPIC_API_KEY=...` exported first.
 
 ## Tested vs assumed
 
-- ✅ **Tested + saw work this session:** Hartl Chapter 12 doc edits compiled (no parsing of the .md file, but it's pure markdown so syntax-clean). Python auth scaffold rewrite: 2993/2993 unit tests green, including the 5 new ones that exercise the durable-storage emit shape (no `_users = []`, `db.create_table` at init, signup uses `db.find_one` + `db.insert`, login + /auth/me use `db.find_one`).
-- ⚠️ **Assumed worked, NOT driven end-to-end:** the durable Python auth scaffold was verified at compile-output level only — never deployed and signed-in against a real running Python app with `database is local file`. Specifically untested: does signup actually persist a user in the SQLite file via `runtime/db.py`? Does login find them after restart? The JS path of this work has end-to-end witness tests (lib/invite-multi-user-witness.test.js); Python doesn't yet. Worth a small witness test before someone tries to use the Python target in anger.
-- ⚠️ **The auto-issued id behavior** depends on whether the inline stub's `next_id` counter and the real `runtime/db.py` SQLite AUTOINCREMENT both emit the id back from `db.insert(...)`. The inline stub at compiler.js:15554 returns `{**record, "id": store["next_id"]}` so id is in the returned dict. `runtime/db.py:insert` should return the inserted row with id (matches the SQLite AUTOINCREMENT). If a future cycle finds `user["id"]` is None on Python after signup, that's the place to look.
+- ✅ **Tested + saw work this session:** all 13 new tests on Python parity green at compile-output level. 3006 / 3006 unit tests green. Five committed pushes through the pre-commit hook (which runs the full compiler test suite). Hartl chapter edits all on doc-only commits using `--no-verify` per the doc-only rule.
+- ⚠️ **Assumed worked, NOT driven end-to-end on Python:** the durable user storage, audit log middleware, and tenant scope injection are verified at compile-output level only. Nobody has booted a real Python app with `database is local file` and signed in / hit `/audit.csv` / written-then-read across two tenants. The JS path of each has end-to-end witness tests (`lib/invite-multi-user-witness.test.js`, `runtime/db-postgres-rls.test.js`); Python doesn't yet. Worth a small witness suite before someone tries to use the Python target in anger.
+- ⚠️ **The auto-issued id behavior** depends on whether the inline stub's `next_id` counter and the real `runtime/db.py` SQLite AUTOINCREMENT both emit the id back from `db.insert(...)`. The inline stub at compiler.js:15554 returns `{**record, "id": store["next_id"]}`. `runtime/db.py:insert` should return the inserted row with id (matches SQLite AUTOINCREMENT). If a future cycle finds `user["id"]` is None on Python after signup, that's the place to look.
+- ⚠️ **Python audit middleware reads body before `call_next`.** Starlette caches body on first read, so the handler can still consume it via `await request.json()`. This is the documented FastAPI pattern but worth confirming against a real Python app the first time someone uses it. If body shows up empty in handlers, look at the `request._body` cache.
 
 ## Resume prompt (paste into fresh session)
 
-> Read HANDOFF.md and start on item 1 (audit log emit on Python). The pattern is at compiler.js:14503-14594 — port the audit_log table declaration + the JWT middleware + the body-sanitization helper + the GET /audit + GET /audit.csv + POST /audit/cleanup endpoints to the Python compileAuthScaffoldPython function at compiler.js:6401. Apply the gotchas: substring collisions on JS keywords inside Python strings (no `let` / `const` / `function` / `return` / `=>` / `;` in any docstring or comment the Python emit embeds — the existing test harness greps the Python output for "no JS artifacts"); the find_one / insert canonical names are now available on every Python database backend so use them. Current main commit: `39c91a6`.
+> Read HANDOFF.md and start on item 1 (AI assistant calls on Python). The runtime helper `_ask_ai` already exists in compileToPythonBackend (line ~15812). The gap is the AGENT and WORKFLOW node-type handlers — they don't yet wire the helper into compiled Python apps. Mirror the JS scaffold's `compileToJSBackend` AGENT/WORKFLOW patterns. Apply the gotchas from learnings.md: substring collisions on JS keywords inside Python strings (no `let` / `const` / `function` / `return` / `=>` / `;` in any docstring or comment the Python emit embeds), the find_one / insert canonical names are now available on every Python database backend so use them. Current main commit: `0589d44`.
