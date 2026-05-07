@@ -1,9 +1,15 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, isProviderQuotaError, probeSuites, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
 describe('meph pattern live probe harness', () => {
+  it('defaults to a cheap OpenRouter model and blocks accidental Sonnet spend', () => {
+    expect(resolveProbeModel({})).toEqual('deepseek/deepseek-v4-flash');
+    expect(isExpensiveProbeModel('~anthropic/claude-sonnet-latest')).toEqual(true);
+    expect(isExpensiveProbeModel('deepseek/deepseek-v4-flash')).toEqual(false);
+  });
+
   it('keeps a narrow Marcus-style approval suite for realistic pattern retrieval', () => {
     const narrow = probeSuites.narrowApprovalQueue;
 

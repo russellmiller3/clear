@@ -130,7 +130,7 @@ node scripts/primitive-audit.mjs --json
 MEPH_PATTERN_PROBE_AB=1 node scripts/meph-pattern-live-probe.mjs
 ```
 
-The A arm is docs-only: system prompt with pattern-search guidance stripped, `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts injected, and the pattern-search tool removed. The B arm is the full hook: the same docs plus forced pattern DB retrieval. The scorer compiles the generated full app and checks required app behavior, rather than merely checking whether Meph answered a shape question.
+The A arm is docs-only: system prompt with pattern-search guidance stripped, `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts injected, and the pattern-search tool removed. The B arm is the full hook: the same docs plus forced pattern DB retrieval. The scorer compiles the generated full app and checks required app behavior, rather than merely checking whether Meph answered a shape question. The harness defaults to `deepseek/deepseek-v4-flash`; Sonnet/Opus are blocked unless `MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1` is set.
 
 Current audit snapshot after mining the rest of `apps/` and adding three language primitives: 13 whole-app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
 
@@ -1061,7 +1061,7 @@ Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live emai
 | `model-picker.js` | Declares the Studio picker choices, default selection, selected-model resolution, and "send full chat history when the model changes" rule. |
 | `cc-agent.js` | `MEPH_BRAIN=cc-agent` - spawns Claude Code. Tool mode is available through the MCP bridge when enabled. |
 | `ollama.js` | `MEPH_BRAIN=ollama:<model>` - POSTs to local Ollama daemon at `OLLAMA_HOST`. OpenAI-compatible tool calls flow through the shared bridge when the model supports them. |
-| `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is OpenRouter Claude; picker options also include GLM, DeepSeek, and Kimi. |
+| `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is cheap DeepSeek V4 Flash; picker options also include Claude, GLM, and Kimi. |
 | `format-bridge.js` | Anthropic <-> OpenAI translation, including tool definitions, assistant tool calls, tool results, text deltas, and tool-call SSE back into Anthropic shape. |
 
 Tests: `node playground/ghost-meph.test.js`, `node playground/ghost-meph/model-picker.test.js`, and `node playground/ghost-meph/format-bridge.test.js`. The live smoke test for this feature used `openrouter-glm` and verified tool calls, `meph-memory.md`, `requests.md`, editor read, compile, todos, terminal access, personality override, and the full-history marker on model switch.

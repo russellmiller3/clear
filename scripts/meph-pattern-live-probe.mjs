@@ -8,7 +8,14 @@ const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)
 const nodeBin = process.execPath;
 const port = process.env.PORT || '3462';
 const base = `http://127.0.0.1:${port}`;
-const model = process.env.MEPH_PATTERN_PROBE_MODEL || process.env.OPENROUTER_MODEL || '~anthropic/claude-sonnet-latest';
+const CHEAP_DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v4-flash';
+export function resolveProbeModel(env = process.env) {
+  return env.MEPH_PATTERN_PROBE_MODEL || env.OPENROUTER_MODEL || CHEAP_DEFAULT_OPENROUTER_MODEL;
+}
+export function isExpensiveProbeModel(modelName) {
+  return /\banthropic\/claude-(?:sonnet|opus)\b|claude-sonnet|claude-opus/i.test(String(modelName || ''));
+}
+const model = resolveProbeModel();
 const chatTimeoutMs = Number(process.env.MEPH_PATTERN_PROBE_TIMEOUT_MS || 600_000);
 const TRIAL_BUILD_INSTRUCTION = [
   'Trial instruction: build the app in the Clear editor.',
@@ -356,6 +363,9 @@ async function main() {
   const openRouterKey = process.env.OPENROUTER_API_KEY || envFromFile.OPENROUTER_API_KEY;
   if (!openRouterKey) {
     throw new Error('OPENROUTER_API_KEY missing from environment and .env');
+  }
+  if (isExpensiveProbeModel(model) && process.env.MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE !== '1') {
+    throw new Error(`Refusing expensive probe model "${model}". Set MEPH_PATTERN_PROBE_MODEL=${CHEAP_DEFAULT_OPENROUTER_MODEL} or MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1.`);
   }
 
   const child = spawn(nodeBin, ['studio/server.js'], {

@@ -27,6 +27,7 @@ What shipped:
 - New `/api/chat` pattern preflight hook detects complex app/feature/shape requests, injects relevant `SYNTAX.md` + `AI-INSTRUCTIONS.md` excerpts, runs a pattern DB search, and appends the snippets before Meph answers.
 - The live probe harness now supports the corrected A/B: docs-only baseline with no pattern DB mention or tool exposure versus full forced retrieval. It builds complete approval-queue apps, compiles the generated source, and scores required behavior instead of grading snippet answers.
 - First corrected live attempt exposed a harness flaw: the prompt allowed Meph to spend the turn reading docs and never write the app. The harness now gives both arms the same explicit build instruction and continues through per-row failures instead of aborting the whole A/B.
+- The probe and raw OpenRouter backend no longer default to Sonnet. They default to `deepseek/deepseek-v4-flash`; Sonnet/Opus probes require `MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1`.
 
 Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
 
