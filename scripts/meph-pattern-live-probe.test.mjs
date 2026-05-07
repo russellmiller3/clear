@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { probeSuites, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, probeSuites, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -46,9 +46,32 @@ describe('meph pattern live probe harness', () => {
       toolNames: ['browse_templates'],
       text: 'Use a concurrency pattern with optimistic lock.',
     });
+    const preflightSearched = scoreProbe(probe, {
+      toolNames: [],
+      preflight: { required: true, pattern_count: 2 },
+      text: 'Use a concurrency pattern with optimistic lock.',
+    });
 
     expect(noSearch.pass).toEqual(false);
     expect(searched.pass).toEqual(true);
+    expect(preflightSearched.pass).toEqual(true);
+    expect(preflightSearched.usedSearch).toEqual(true);
+  });
+
+  it('builds chat bodies that can isolate hook-on/off A/B trials from prompt prose', () => {
+    const off = buildChatBody('Build an approval queue', {
+      patternPreflight: false,
+      disablePatternSearchPromptGuard: true,
+    });
+    const on = buildChatBody('Build an approval queue', {
+      patternPreflight: true,
+      disablePatternSearchPromptGuard: true,
+    });
+
+    expect(off.patternPreflight).toEqual(false);
+    expect(on.patternPreflight).toEqual(true);
+    expect(off.disablePatternSearchPromptGuard).toEqual(true);
+    expect(on.disablePatternSearchPromptGuard).toEqual(true);
   });
 
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {

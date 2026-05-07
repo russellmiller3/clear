@@ -140,15 +140,24 @@ async function waitForServer() {
   throw new Error(`Studio did not start at ${base}`);
 }
 
-async function runChat(prompt) {
-  const body = {
+export function buildChatBody(prompt, {
+  patternPreflight = true,
+  disablePatternSearchPromptGuard = false,
+} = {}) {
+  return {
     messages: [{ role: 'user', content: prompt }],
     apiKey: '',
     personality: '',
     editorContent: '',
     errors: [],
     webTools: false,
+    patternPreflight,
+    disablePatternSearchPromptGuard,
   };
+}
+
+async function runChat(prompt, options = {}) {
+  const body = buildChatBody(prompt, options);
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -162,6 +171,7 @@ async function runChat(prompt) {
 
   const events = [];
   const toolNames = [];
+  let preflight = null;
   let text = '';
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -181,15 +191,18 @@ async function runChat(prompt) {
       events.push(event);
       if (event.type === 'text') text += event.delta || '';
       if (event.type === 'tool_start' && event.name) toolNames.push(event.name);
+      if (event.type === 'pattern_preflight') preflight = event;
       if (event.type === 'error') throw new Error(event.message || 'Studio emitted an error');
     }
   }
-  return { text, toolNames, events };
+  return { text, toolNames, preflight, events };
 }
 
 export function scoreProbe(probe, result) {
   const lower = result.text.toLowerCase();
-  const usedSearch = result.toolNames.includes('browse_templates');
+  const usedToolSearch = result.toolNames.includes('browse_templates');
+  const usedPreflightSearch = !!result.preflight?.required && Number(result.preflight?.pattern_count || 0) > 0;
+  const usedSearch = usedToolSearch || usedPreflightSearch;
   const mentionedPrimitive =
     /primitive|snippet|pattern db|browse_templates|canonical_primitive/i.test(result.text);
   const foundExpectedKind = probe.expectKinds.some(kind =>
@@ -198,6 +211,8 @@ export function scoreProbe(probe, result) {
   const foundExpectedTerm = probe.expectTerms.some(term => lower.includes(term.toLowerCase()));
   return {
     usedSearch,
+    usedToolSearch,
+    usedPreflightSearch,
     mentionedPrimitive,
     foundExpectedKind,
     foundExpectedTerm,
@@ -239,20 +254,38 @@ async function main() {
     await waitForServer();
     console.log(`meph-pattern-live-probe: server=${base} model=${model}`);
     const rows = [];
+    const abMode = process.env.MEPH_PATTERN_PROBE_AB === '1';
+    const variants = abMode
+      ? [
+        { label: 'hook_off', options: { patternPreflight: false, disablePatternSearchPromptGuard: true } },
+        { label: 'hook_on', options: { patternPreflight: true, disablePatternSearchPromptGuard: true } },
+      ]
+      : [{ label: 'default', options: { patternPreflight: true, disablePatternSearchPromptGuard: false } }];
+
     for (const probe of selectedProbes) {
-      console.log(`\n=== ${probe.id} ===`);
-      const result = await runChat(probe.prompt);
-      const score = scoreProbe(probe, result);
-      rows.push({ probe, result, score });
-      console.log(`tools: ${result.toolNames.join(', ') || '(none)'}`);
-      console.log(`pass: ${score.pass ? 'yes' : 'no'} search=${score.usedSearch ? 'yes' : 'no'} kind=${score.foundExpectedKind ? 'yes' : 'no'} term=${score.foundExpectedTerm ? 'yes' : 'no'}`);
-      console.log(result.text.replace(/\s+/g, ' ').slice(0, 700));
+      for (const variant of variants) {
+        console.log(`\n=== ${probe.id} :: ${variant.label} ===`);
+        const result = await runChat(probe.prompt, variant.options);
+        const score = scoreProbe(probe, result);
+        rows.push({ probe, variant: variant.label, result, score });
+        console.log(`tools: ${result.toolNames.join(', ') || '(none)'}`);
+        console.log(`preflight: required=${result.preflight?.required ? 'yes' : 'no'} patterns=${result.preflight?.pattern_count ?? 0}`);
+        console.log(`pass: ${score.pass ? 'yes' : 'no'} search=${score.usedSearch ? 'yes' : 'no'} tool=${score.usedToolSearch ? 'yes' : 'no'} preflight=${score.usedPreflightSearch ? 'yes' : 'no'} kind=${score.foundExpectedKind ? 'yes' : 'no'} term=${score.foundExpectedTerm ? 'yes' : 'no'}`);
+        console.log(result.text.replace(/\s+/g, ' ').slice(0, 700));
+      }
     }
 
     const passed = rows.filter(row => row.score.pass).length;
     console.log(`\nSUMMARY ${passed}/${rows.length} passed`);
     for (const row of rows) {
-      console.log(`- ${row.probe.id}: ${row.score.pass ? 'PASS' : 'FAIL'} tools=${row.result.toolNames.join('|') || 'none'}`);
+      console.log(`- ${row.probe.id} ${row.variant}: ${row.score.pass ? 'PASS' : 'FAIL'} tools=${row.result.toolNames.join('|') || 'none'} preflight=${row.score.usedPreflightSearch ? 'yes' : 'no'}`);
+    }
+    if (abMode) {
+      const offRows = rows.filter(row => row.variant === 'hook_off');
+      const onRows = rows.filter(row => row.variant === 'hook_on');
+      const offPassed = offRows.filter(row => row.score.pass).length;
+      const onPassed = onRows.filter(row => row.score.pass).length;
+      console.log(`\nAB SUMMARY hook_off=${offPassed}/${offRows.length} hook_on=${onPassed}/${onRows.length} delta=${onPassed - offPassed}`);
     }
     if (passed !== rows.length) process.exitCode = 1;
   } finally {

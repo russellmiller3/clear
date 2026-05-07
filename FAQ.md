@@ -105,6 +105,8 @@ Language primitives that are too important to wait for a template can also be se
 
 `browse_templates` with `action: "search"` returns the best matching excerpt, not the whole file. A narrow question like "route approvals under 50000 to a manager and 50000+ to a VP" should return the language routing primitive. A generic approval-queue shape question should still return the `approval-queue` queue primitive with `queue for request:` and its reviewer/actions block. Use `action: "read"` only when Meph explicitly needs a full template file.
 
+For complex app, feature-shape, syntax-shape, or reusable-pattern questions, `/api/chat` now runs a pattern preflight before Meph answers. The hook treats the system prompt as already loaded, injects relevant excerpts from `SYNTAX.md` and `AI-INSTRUCTIONS.md`, searches `clear_programming_patterns`, and appends those snippets to the last user message. This is mechanical; it does not depend on Meph remembering to call a tool.
+
 **Main paths:**
 - `studio/supervisor/pattern-library.js` — canonical template list, seed loader, and primitive extractor
 - `studio/supervisor/factor-db.js` — table schema, primitive metadata, upsert, list, and shape/text search
@@ -115,10 +117,17 @@ Language primitives that are too important to wait for a template can also be se
 
 - `scripts/meph-pattern-live-probe.mjs` - runs the live probe harness; defaults to narrow Marcus-style approval questions
 
+- `studio/supervisor/meph-pattern-preflight.js` - detects complex requests, reads doc excerpts, searches patterns, and injects the preflight context into `/api/chat`
+
 **Audit it:**
 ```bash
 node scripts/primitive-audit.mjs
 node scripts/primitive-audit.mjs --json
+```
+
+**A/B the hook, with prompt-only search guidance stripped from both arms:**
+```bash
+MEPH_PATTERN_PROBE_AB=1 node scripts/meph-pattern-live-probe.mjs
 ```
 
 Current audit snapshot after mining the rest of `apps/` and adding three language primitives: 13 whole-app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.

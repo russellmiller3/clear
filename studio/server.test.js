@@ -527,6 +527,15 @@ try {
     assert(text.includes('Ghost Meph stub'), 'chat stream is not killed when the request body closes normally');
   }
 
+  {
+    const serverSrc = readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes('buildPatternPreflight'), 'chat path builds required pattern preflight');
+    assert(serverSrc.includes('appendPatternPreflightToMessages'), 'chat path injects pattern preflight into messages');
+    assert(serverSrc.includes("type: 'pattern_preflight'"), 'chat path emits pattern_preflight telemetry');
+    assert(serverSrc.includes('patternPreflightRequest !== false'), 'chat path can disable preflight for A/B trials');
+    assert(serverSrc.includes('stripPatternSearchPromptGuard'), 'chat path can strip prompt-only search guard for A/B trials');
+  }
+
   // =========================================================================
   // SAVE ENDPOINT
   // =========================================================================

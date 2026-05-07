@@ -16,6 +16,12 @@ import { seedCoreTemplatePatterns } from './supervisor/pattern-library.js';
 import { classifyArchetype } from './supervisor/archetype.js';
 import { getOpenCapabilities, formatReportForMeph } from './supervisor/open-capabilities.js';
 import {
+  appendPatternPreflightToMessages,
+  buildPatternPreflight,
+  lastUserText,
+  stripPatternSearchPromptGuard,
+} from './supervisor/meph-pattern-preflight.js';
+import {
   loadBundle as _loadEBM,
   rank as _rankEBM,
   featurizeFactorRow as _featurizeRow,
@@ -3127,7 +3133,7 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSou
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged, patternPreflight: patternPreflightRequest, disablePatternSearchPromptGuard } = req.body;
   // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
   // A step "passes" if ALL its sourceMatches regexes appear in the current source.
   // currentStep = the highest-index step whose regexes all match. This lets us
@@ -3419,11 +3425,35 @@ app.post('/api/chat', async (req, res) => {
   // we don't send). Either way, the effective cap here is 200k.
   const MEPH_CTX_MAX = 200000;
   let currentMessages = selectChatMessagesForModel(messages, { modelChanged: !!modelChanged, limit: 50 });
+  const patternPreflightEnabled = patternPreflightRequest !== false && process.env.MEPH_PATTERN_PREFLIGHT !== '0';
+  const patternPreflightResult = patternPreflightEnabled
+    ? buildPatternPreflight({
+      userText: lastUserText(currentMessages),
+      currentSource,
+      factorDB: _factorDB,
+      rootDir: ROOT_DIR,
+      topK: 5,
+    })
+    : { required: false, docs: [], patterns: [], text: '' };
+  if (patternPreflightResult.required) {
+    currentMessages = appendPatternPreflightToMessages(currentMessages, patternPreflightResult.text);
+  }
+  const effectiveSystemPrompt =
+    (disablePatternSearchPromptGuard === true || process.env.MEPH_PATTERN_PROMPT_GUARD === '0')
+      ? stripPatternSearchPromptGuard(systemPrompt)
+      : systemPrompt;
+  send({
+    type: 'pattern_preflight',
+    enabled: patternPreflightEnabled,
+    required: !!patternPreflightResult.required,
+    docs: patternPreflightResult.docs?.map(doc => doc.filename) || [],
+    pattern_count: patternPreflightResult.patterns?.length || 0,
+  });
   let toolResults = [];
 
   // Estimate context usage (rough: ~4 chars per token)
   function estimateContextUsage() {
-    const systemChars = (systemPrompt.length + (personality || '').length);
+    const systemChars = (effectiveSystemPrompt.length + (personality || '').length);
     const toolChars = JSON.stringify(enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS).length;
     const msgChars = currentMessages.reduce((sum, m) => sum + JSON.stringify(m.content || '').length, 0);
     const totalTokens = Math.round((systemChars + toolChars + msgChars) / 4);
@@ -3495,7 +3525,7 @@ app.post('/api/chat', async (req, res) => {
         model: MEPH_MODEL,
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
-        system: buildSystemWithContext(systemPrompt, personality, testSnapshot, currentSource, lastCompileResult),
+        system: buildSystemWithContext(effectiveSystemPrompt, personality, testSnapshot, currentSource, lastCompileResult),
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: cachedMessages,
