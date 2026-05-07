@@ -140,6 +140,7 @@ section.
 - Ghost Meph: route /api/chat to Claude Code, Ollama, Anthropic, or OpenRouter models through the Studio model picker, with tool use preserved.
 - Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
 - Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
+- Curated programming-pattern search lets Meph pull small trusted Clear snippets instead of whole templates. The database indexes 13 golden apps, mined reference primitives, and critical language primitives for approval routing, row actions, and optimistic locking.
 - Flywheel hint telemetry proves whether hints reached Meph and whether he used, rejected, or partially used them.
 - Hint-effect reports say whether the flywheel evidence is significant, inconclusive, negative, or underpowered.
 - Conversation trace logger captures every Meph turn (user prompt, reasoning, visible reply, each tool call, each tool result) into `factor-db.sqlite`'s `meph_turns` table. Default ON; disable with `MEPH_TRACE_LOG=0`. The companion script `scripts/factor-db-trace-summary.mjs` answers research probes like "did Meph plan with the todo tool before acting?" in five-minute queries against accumulated session data — no fresh sweeps needed. Currently scoped to Anthropic-direct sessions; cc-agent mode is a follow-up.

@@ -101,9 +101,9 @@ Each canonical app gets one whole-app row plus deterministic primitive rows extr
 
 Non-golden templates in `apps/` also contribute `reference` primitive rows. They do **not** contribute whole-app rows. That keeps the 13 golden templates as trusted full examples while still mining useful source shapes from the rest of the repo.
 
-Language primitives that are too important to wait for a template can also be seeded as `language` rows. Current example: the optimistic-lock approval update shape for preventing double-processing.
+Language primitives that are too important to wait for a template can also be seeded as `language` rows. Current examples: optimistic-lock approval updates, amount-threshold approval routing, and approve/reject row actions.
 
-`browse_templates` with `action: "search"` returns the best matching excerpt, not the whole file. A narrow question like "what's the shape to modify routing of an approval queue?" should return the `approval-queue` queue primitive with `queue for request:` and its reviewer/actions block. Use `action: "read"` only when Meph explicitly needs a full template file.
+`browse_templates` with `action: "search"` returns the best matching excerpt, not the whole file. A narrow question like "route approvals under 50000 to a manager and 50000+ to a VP" should return the language routing primitive. A generic approval-queue shape question should still return the `approval-queue` queue primitive with `queue for request:` and its reviewer/actions block. Use `action: "read"` only when Meph explicitly needs a full template file.
 
 **Main paths:**
 - `studio/supervisor/pattern-library.js` — canonical template list, seed loader, and primitive extractor
@@ -113,13 +113,15 @@ Language primitives that are too important to wait for a template can also be se
 - `studio/ghost-meph/mcp-server/tools.js` — seeds the same table for Ghost Meph's MCP path
 - `scripts/primitive-audit.mjs` — reports primitive counts by set, kind, parent template, examples, and review flags
 
+- `scripts/meph-pattern-live-probe.mjs` - runs the live probe harness; defaults to narrow Marcus-style approval questions
+
 **Audit it:**
 ```bash
 node scripts/primitive-audit.mjs
 node scripts/primitive-audit.mjs --json
 ```
 
-Current audit snapshot after mining the rest of `apps/` and adding the first language primitive: 13 whole-app rows, 1,221 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
+Current audit snapshot after mining the rest of `apps/` and adding three language primitives: 13 whole-app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
 
 **One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
 

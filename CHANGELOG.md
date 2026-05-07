@@ -15,18 +15,19 @@ What shipped:
 - New primitive metadata in that table: parent template, primitive kind, primitive flag, and source line span.
 - New seeder in `studio/supervisor/pattern-library.js` that loads each canonical template from disk, parses it, computes its shape, upserts the app row, extracts primitive source blocks, and upserts those rows too.
 - The current 13-template seed produces 523 primitive rows across all 13 golden templates.
-- The rest of `apps/` is mined for `reference` primitive rows only. Current audit: 1,221 total primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
-- Critical language primitives can be seeded even before a template uses them. The first `language` primitive is the optimistic-lock approval update shape for avoiding double-processing.
+- The rest of `apps/` is mined for `reference` primitive rows only. Current audit: 1,223 total primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
+- Critical language primitives can be seeded even before a template uses them. Current `language` primitives cover optimistic-lock approval updates, amount-threshold approval routing, and approve/reject row actions.
 - New `scripts/primitive-audit.mjs` report shows counts by pattern set, primitive kind, parent template, examples, and review flags.
 - `browse_templates` now supports `action: "search"` so Meph can search patterns by app shape plus plain-English query. Search returns the relevant snippet with parent/kind metadata, not a whole template by default.
 - The compile tool now injects the closest trusted pattern matches into Meph's hint text and labels primitive matches explicitly.
 - The legacy markdown shape-search hint layer was removed from Meph compile hints. Exact-error fix hints remain; reusable shape hints now come from the pattern DB.
 - New `clear_programming_pattern_candidates` table stages learned primitive candidates from test runs or user sessions. Promotion into trusted retrieval requires compile/test evidence and an explicit promotion call.
 - Ghost Meph's MCP path seeds the same table, so both Studio chat paths share the library.
+- New narrow approval probe suite asks seven realistic Marcus-style questions, not broad template questions, and the local retrieval test now guards that those questions return useful primitives.
 
 Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
 
-Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns the `approval-queue` queue primitive at its real source line. A five-question OpenRouter live probe caught the missing double-processing primitive; retrieval and prompt rules were tightened from that miss.
+Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, `scripts/meph-pattern-live-probe.test.mjs`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns a useful routing primitive, row-action questions find approve/reject behavior, and stale approval questions find the optimistic-lock primitive. A five-question OpenRouter live probe caught the missing double-processing primitive; retrieval and prompt rules were tightened from that miss.
 
 ---
 

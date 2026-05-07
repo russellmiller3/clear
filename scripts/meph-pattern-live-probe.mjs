@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const nodeBin = process.execPath;
@@ -9,7 +10,7 @@ const port = process.env.PORT || '3462';
 const base = `http://127.0.0.1:${port}`;
 const model = process.env.MEPH_PATTERN_PROBE_MODEL || process.env.OPENROUTER_MODEL || '~anthropic/claude-sonnet-latest';
 
-const probes = [
+const baselineApprovalQueueProbes = [
   {
     id: 'approval-routing-shape',
     prompt: 'What is the Clear shape for modifying an approval queue so requests route to different approvers by deal size? Answer with the smallest relevant snippet shape.',
@@ -41,15 +42,72 @@ const probes = [
     expectTerms: ['detail', 'selected'],
   },
 ];
-const onlyIds = new Set(
-  String(process.env.MEPH_PATTERN_PROBE_ONLY || '')
+
+const narrowApprovalQueueProbes = [
+  {
+    id: 'threshold-routing-change',
+    prompt: 'In an approval queue, requests under 50000 should go to a manager and requests 50000 or above should go to a VP. What Clear feature shape changes that routing?',
+    expectKinds: ['routing', 'queue', 'policy', 'rule'],
+    expectTerms: ['route', 'manager', 'vp'],
+  },
+  {
+    id: 'only-my-pending-items',
+    prompt: 'In an approval queue, the current approver should only see pending requests assigned to them. What Clear shape filters those rows?',
+    expectKinds: ['queue', 'display_table', 'page', 'auth_guard'],
+    expectTerms: ['current user', 'pending', 'approver'],
+  },
+  {
+    id: 'row-approve-reject-endpoints',
+    prompt: 'In an approval queue table, each row needs approve and reject buttons that call the backend for that request. What feature shape should I copy?',
+    expectKinds: ['row_action', 'button_action', 'endpoint'],
+    expectTerms: ['approve', 'reject'],
+  },
+  {
+    id: 'stale-approval-submit',
+    prompt: 'In an approval queue, if two approvers open the same pending request and both click approve, what Clear shape stops the second submit from changing it twice?',
+    expectKinds: ['concurrency', 'validation', 'rule', 'endpoint'],
+    expectTerms: ['optimistic', 'pending', 'status'],
+  },
+  {
+    id: 'legal-review-escalation',
+    prompt: 'Some approval requests need legal review before final approval when the contract flag is true. What Clear shape adds that branch?',
+    expectKinds: ['routing', 'rule', 'policy', 'queue'],
+    expectTerms: ['legal', 'review', 'contract'],
+  },
+  {
+    id: 'selected-request-detail-panel',
+    prompt: 'In an approval queue, clicking a row should show that request amount, owner, and notes beside the table. What Clear shape handles that selected-row detail?',
+    expectKinds: ['detail_panel', 'display_table', 'page'],
+    expectTerms: ['selected', 'detail'],
+  },
+  {
+    id: 'approval-manager-gate',
+    prompt: 'Only approval managers should load the approval queue screen. What Clear shape guards that page?',
+    expectKinds: ['auth_guard', 'page', 'endpoint', 'rule'],
+    expectTerms: ['requires login', 'manager', 'approval'],
+  },
+];
+
+export const probeSuites = {
+  baselineApprovalQueue: baselineApprovalQueueProbes,
+  narrowApprovalQueue: narrowApprovalQueueProbes,
+};
+
+export function selectProbes({ suiteName = 'narrowApprovalQueue', only = '' } = {}) {
+  const suite = probeSuites[suiteName];
+  if (!suite) {
+    throw new Error(`Unknown probe suite "${suiteName}". Choose one of: ${Object.keys(probeSuites).join(', ')}`);
+  }
+  const onlyIds = new Set(
+    String(only || '')
     .split(',')
     .map(id => id.trim())
     .filter(Boolean)
-);
-const selectedProbes = onlyIds.size
-  ? probes.filter(probe => onlyIds.has(probe.id))
-  : probes;
+  );
+  return onlyIds.size
+    ? suite.filter(probe => onlyIds.has(probe.id))
+    : suite;
+}
 
 function loadEnvFile() {
   const envPath = join(repoRoot, '.env');
@@ -129,7 +187,7 @@ async function runChat(prompt) {
   return { text, toolNames, events };
 }
 
-function scoreProbe(probe, result) {
+export function scoreProbe(probe, result) {
   const lower = result.text.toLowerCase();
   const usedSearch = result.toolNames.includes('browse_templates');
   const mentionedPrimitive =
@@ -148,6 +206,10 @@ function scoreProbe(probe, result) {
 }
 
 async function main() {
+  const selectedProbes = selectProbes({
+    suiteName: process.env.MEPH_PATTERN_PROBE_SUITE || 'narrowApprovalQueue',
+    only: process.env.MEPH_PATTERN_PROBE_ONLY || '',
+  });
   const envFromFile = loadEnvFile();
   const openRouterKey = process.env.OPENROUTER_API_KEY || envFromFile.OPENROUTER_API_KEY;
   if (!openRouterKey) {
@@ -206,7 +268,10 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error(`meph-pattern-live-probe failed: ${err.message}`);
-  process.exit(1);
-});
+const thisFile = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolve(process.argv[1]) === thisFile) {
+  main().catch(err => {
+    console.error(`meph-pattern-live-probe failed: ${err.message}`);
+    process.exit(1);
+  });
+}

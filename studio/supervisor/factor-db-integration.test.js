@@ -15,6 +15,7 @@ import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
 import { classifyArchetype } from './archetype.js';
 import { CORE_TEMPLATE_SPECS, LANGUAGE_PRIMITIVE_SPECS, extractTemplatePrimitivePatterns, seedCoreTemplatePatterns } from './pattern-library.js';
+import { probeSuites } from '../../scripts/meph-pattern-live-probe.mjs';
 import { parse } from '../../parser.js';
 import { compileProgram } from '../../index.js';
 import { readFileSync, unlinkSync } from 'fs';
@@ -198,5 +199,31 @@ describe('Factor DB compile integration', () => {
       expect(primitives.every(p => p.source_start_line >= 1)).toEqual(true);
       expect(primitives.every(p => p.source.length > 0)).toEqual(true);
     }
+  });
+
+  it('retrieves useful primitives for narrow approval-queue questions', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
+    const failures = [];
+
+    for (const probe of probeSuites.narrowApprovalQueue) {
+      const matches = db.queryProgrammingPatterns({ query: probe.prompt, topK: 5 });
+      const haystack = matches
+        .map(row => `${row.template_name} ${row.parent_template_name || ''} ${row.pattern_kind || ''} ${row.source || ''}`)
+        .join('\n')
+        .toLowerCase();
+      const foundKind = probe.expectKinds.some(kind =>
+        haystack.includes(kind.replace(/_/g, ' ')) || haystack.includes(kind)
+      );
+      const foundTerm = probe.expectTerms.some(term => haystack.includes(term.toLowerCase()));
+      if (!foundKind || !foundTerm) {
+        failures.push(`${probe.id}: expected kind ${probe.expectKinds.join('/')} and terms ${probe.expectTerms.join('/')} but got ${matches.map(row => `${row.template_name}:${row.pattern_kind}`).join(', ')}`);
+      }
+    }
+
+    expect(failures).toEqual([]);
+    db.close();
+    cleanup();
   });
 });
