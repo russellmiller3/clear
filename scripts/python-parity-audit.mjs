@@ -141,11 +141,45 @@ function countSharedPythonHandlers(slice, key) {
   return count;
 }
 
+// Some NodeTypes emit identical syntax on both targets — e.g. RUN_AGENT,
+// RUN_PIPELINE, RUN_WORKFLOW all return template literals like
+// `await ${fnName}(${arg})` which is valid Python AND valid JS. The case
+// body has no `ctx.lang === 'python'` check (because nothing diverges),
+// so countSharedPythonHandlers misses them. List them explicitly here so
+// the audit stops crying wolf. Each entry includes a one-line note for
+// future readers checking whether the universal-syntax claim still holds.
+const UNIVERSAL_EMIT = new Set([
+  'RUN_AGENT',     // emits `await agent_X(arg)` — universal
+  'RUN_PIPELINE',  // emits `await pipeline_X(arg)` — universal
+  'RUN_WORKFLOW',  // emits `await workflow_X(arg)` (or Cloudflare-specific path) — Node + Python share the await form
+]);
+
+// Some NodeTypes are referenced via `node.type === NodeType.X` checks
+// (e.g. WITH_OPTIMISTIC_LOCK is consumed as an endpoint modifier, not a
+// switch case). The Python emit reference lives in the same compiler.js
+// file but OUTSIDE the compileToPythonBackend slice — so it lands in
+// jsSlice. Detection: scan the jsSlice for lines containing both
+// `NodeType.${key}` AND a Python-marker (`Py` suffix, `python`, `_py`).
+// If found, count as Python-handled.
+function countPythonMarkerLines(slice, key) {
+  const lines = slice.split('\n');
+  const re = new RegExp(`NodeType\\.${key}\\b`);
+  let count = 0;
+  for (const line of lines) {
+    if (re.test(line) && /\b\w*[Pp]ython|\b\w*Py(?![a-zA-Z])|_py\b/.test(line)) {
+      count++;
+    }
+  }
+  return count;
+}
+
 const rows = nodeTypes.map(({ key, value }) => {
   const js = countHits(jsSlice, key);
   const pyExplicit = countHits(pySlice, key);
   const pyShared = countSharedPythonHandlers(jsSlice, key);
-  const python = pyExplicit + pyShared;
+  const pyMarker = countPythonMarkerLines(jsSlice, key);
+  const universal = UNIVERSAL_EMIT.has(key) && js > 0 ? 1 : 0;
+  const python = pyExplicit + pyShared + pyMarker + universal;
   return { key, value, js, python, severity: severity(key) };
 });
 
