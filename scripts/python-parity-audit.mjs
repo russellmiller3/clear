@@ -149,9 +149,34 @@ function countSharedPythonHandlers(slice, key) {
 // the audit stops crying wolf. Each entry includes a one-line note for
 // future readers checking whether the universal-syntax claim still holds.
 const UNIVERSAL_EMIT = new Set([
-  'RUN_AGENT',     // emits `await agent_X(arg)` — universal
-  'RUN_PIPELINE',  // emits `await pipeline_X(arg)` — universal
-  'RUN_WORKFLOW',  // emits `await workflow_X(arg)` (or Cloudflare-specific path) — Node + Python share the await form
+  'RUN_AGENT',      // emits `await agent_X(arg)` — universal
+  'RUN_PIPELINE',   // emits `await pipeline_X(arg)` — universal
+  'RUN_WORKFLOW',   // emits `await workflow_X(arg)` (or Cloudflare-specific path) — Node + Python share the await form
+  'SCRIPT',         // raw escape hatch — node.code already target-appropriate; _compileNodeInner returns it verbatim for both targets
+  // Universal expressions handled in exprToCode with no per-target divergence:
+  'LITERAL_NUMBER', // `return String(expr.value)` — same number syntax on both targets
+  'LITERAL_LIST',   // `return \`[${...}]\`` — Python and JS both use [a, b, c]
+  'MAP_EXISTS',     // exprToCode emits a key-in-map check that compiles on both
+]);
+
+// NodeTypes whose case body is a deliberate `return null` — these are
+// consumed by parent compilation (e.g. TEST_DEF consumes MOCK_AI, agents
+// consume SKILLs) or by the orchestrator (DEPLOY directive isn't a code
+// emit). Either way they emit nothing on BOTH targets, so they aren't
+// a Python-specific gap. Audit treats them as parity-clean.
+const NO_OP_ON_BOTH = new Set([
+  'TARGET',        // top-level routing directive, no code emit
+  'THEME',         // CSS theme directive, no code emit
+  'MOCK_AI',       // consumed by TEST_DEF compilation
+  'SKILL',         // consumed by agent compilation
+  'DEPLOY',        // consumed by the deploy orchestrator
+  'FIELD_RULE',    // consumed by VALIDATE compilation
+  'ON_PAGE_LOAD',  // consumed by reactive frontend loop (no Python equivalent — frontend is HTML target only)
+  'ON_SCROLL',     // consumed by reactive frontend loop
+  'ON_CHANGE',     // consumed by reactive frontend loop
+  'OWNER_DECL',    // metadata flag, no code emit
+  'EVAL_DEF',      // consumed by eval harness, no per-target emit
+  'TEST_INTENT',   // intent-based test step, consumed by TEST_DEF
 ]);
 
 // Some NodeTypes are referenced via `node.type === NodeType.X` checks
@@ -179,7 +204,11 @@ const rows = nodeTypes.map(({ key, value }) => {
   const pyShared = countSharedPythonHandlers(jsSlice, key);
   const pyMarker = countPythonMarkerLines(jsSlice, key);
   const universal = UNIVERSAL_EMIT.has(key) && js > 0 ? 1 : 0;
-  const python = pyExplicit + pyShared + pyMarker + universal;
+  // No-op-on-both NodeTypes: case body is `return null`, no code emit,
+  // not a Python gap. Score them as Python-handled so the audit stops
+  // flagging consumed-by-parent and orchestrator-only nodes as gaps.
+  const noOp = NO_OP_ON_BOTH.has(key) && js > 0 ? 1 : 0;
+  const python = pyExplicit + pyShared + pyMarker + universal + noOp;
   return { key, value, js, python, severity: severity(key) };
 });
 
