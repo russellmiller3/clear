@@ -9,28 +9,40 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ## How do I prove that an agent cannot do action X? (2026-05-07)
 
-Three top-level proof obligations on agent tool use, each with its own verdict in the `clear prove` output:
+Five top-level proof obligations on agent tool use, each with its own verdict in the `clear prove` output. Phases 1-2 ship as pattern-match static analysis; Phases 3-4 use the existing symbolic prover (`lib/prover/symbolic.js`) — the same engine that proves business rules.
 
 ```clear
-prove that agent 'Refund Bot' cannot call charge_card           # Direct
-prove that agent 'Refund Bot' cannot delete from Deals          # Transitive
-prove that agent 'Refund Bot' cannot modify Users               # Transitive
+prove that agent 'Refund Bot' cannot call charge_card                                # 1. Direct
+prove that agent 'Refund Bot' cannot delete from Deals                               # 2. Transitive
+prove that agent 'Refund Bot' cannot modify Refunds                                  # 2. Transitive
+prove that agent 'Refund Bot' cannot call charge_card with amount is greater than 10000  # 3. Symbolic
+prove that agent 'Refund Bot' upholds all policies                                   # 4. Bridge
 ```
 
-**Direct (`cannot call <fn>`).** The prover walks the agent's static tool closure (`has tools:` plus the recursive `uses skills:` closure) and emits PROVED iff `<fn>` is absent. Soundness rests on Clear's closed-world tool dispatch — `_askAIWithTools` (`compiler.js`) only honors function names in the compile-time-built `_toolFns` dict and falls through to "Unknown tool" otherwise. So the static closure IS the runtime dispatch surface; nothing can extend it at runtime (no `eval`, no string lookup of globals).
+**1. Direct (`cannot call <fn>`).** The prover walks the agent's static tool closure (`has tools:` plus the recursive `uses skills:` closure) and emits PROVED iff `<fn>` is absent. Soundness rests on Clear's closed-world tool dispatch — `_askAIWithTools` (`compiler.js`) only honors function names in the compile-time-built `_toolFns` dict and falls through to "Unknown tool" otherwise. So the static closure IS the runtime dispatch surface; nothing can extend it at runtime (no `eval`, no string lookup of globals).
 
-**Transitive (`cannot delete from <Entity>` / `cannot modify <Entity>`).** The prover walks the agent body PLUS every reachable tool body (transitively, following function calls in the file) for matching CRUD operations: `delete` matches `remove`, `modify` covers `save` / `remove` / `upsert` / `update`. PROVED iff no path reaches a matching op against the named entity. DISPROVED with the call chain (e.g. `agent 'Admin Bot' → has tool: deactivate → function force_remove() → remove User @ line 14`). UNVERIFIABLE if a reachable tool's body isn't in this file — the prover refuses to claim soundness over code it can't read.
+**2. Transitive (`cannot delete from <Entity>` / `cannot modify <Entity>`).** The prover walks the agent body PLUS every reachable tool body (transitively, following function calls in the file) for matching CRUD operations: `delete` matches `remove`, `modify` covers `save` / `remove` / `upsert` / `update`. PROVED iff no path reaches a matching op against the named entity. DISPROVED with the call chain (e.g. `agent 'Admin Bot' → has tool: deactivate → function force_remove() → remove User @ line 14`). UNVERIFIABLE if a reachable tool's body isn't in this file — the prover refuses to claim soundness over code it can't read.
 
-**The CRO pitch.** A regulated-tier customer writes `prove that agent 'Refund Bot' cannot delete from Deals` next to their agent definition. The build refuses to ship unless every claim is PROVED. When a developer adds a new tool, any standing claim against that tool flips DISPROVED in the next CI run, and the audit trail records exactly who lifted the bound and why.
+**3. Symbolic (`cannot call <fn> with <arg> <comparison> <value>`).** Uses `evaluateSymbolic` to bound argument values at every reachable static call site. Looks up the parameter's positional index from the function's params list, evaluates the call's argument expression with free symbolic variables for everything Claude could control, and checks satisfiability of the constraint. PROVED for literal values that fail the constraint (e.g. `50 > 1000` is unsatisfiable). DISPROVED if any site can satisfy it — the verdict text suggests the fix (forbid the call entirely OR add an enforce inside the function body). **Soundness gate:** if `<fn>` is itself a tool the agent can directly invoke, the verdict is unconditionally DISPROVED — Claude's tool-dispatch is opaque to source-level analysis, so every parameter is effectively a free variable.
+
+**4. Bridge (`upholds all policies`).** Composes Phases 1-3 with every `policy:` block in the file (the enact-style catalog at `parsePolicyRule()`). Returns one parent verdict plus one subverdict per rule. **Statically provable rules** (CRUD walks, structural domain checks): `protect_tables`, `dont_delete_row`, `dont_delete_without_where`, `dont_update_without_where`, `dont_read_sensitive_tables`, `block_ddl`, plus the git/filesystem rules (which Clear agents have no path to anyway). **Runtime-only rules**: `block_prompt_injection`, `code_freeze_active`, `maintenance_window`, `require_role`, `require_clearance`, `contractor_cannot_write_pii`. Static rules get PROVED with reason or DISPROVED with the path; runtime-only rules get UNVERIFIABLE with an honest reason — the prover refuses to claim what only the runtime check enforces, instead of lying with a false PROVED.
+
+**The CRO pitch.** A regulated-tier customer writes the obligations next to their agent definition. The build refuses to ship unless every claim is PROVED (or all UNVERIFIABLE rules are documented runtime-only). When a developer adds a new tool, any standing claim against that tool flips DISPROVED in the next CI run, and the audit trail records exactly who lifted the bound and why.
 
 **Where it lives.**
-- Parser dispatch: `parser.js` `CANONICAL_DISPATCH.set('prove', ...)` (around line 2935) — recognizes `prove that agent 'Name' cannot call|delete from|modify <target>` and emits an `agent_bound_claim` AST node.
-- Prover: `lib/prover/index.js` — `proveAgentBoundClaim()` dispatches by `claimKind`; `proveCannotCall()` does the closure walk; `proveCannotAffect()` does the transitive body walk via `findCrudViolation()` + `extractCallName()`.
+- Parser dispatch: `parser.js` `CANONICAL_DISPATCH.set('prove', ...)` (around line 2935) — recognizes all 5 forms and emits an `agent_bound_claim` AST node with `claimKind: 'call' | 'delete' | 'modify' | 'call_with_constraint' | 'upholds_policies'`.
+- Prover: `lib/prover/index.js` — `proveAgentBoundClaim()` dispatches by `claimKind`. `proveCannotCall()` does the closure walk. `proveCannotAffect()` does the transitive body walk. `proveCannotCallWithConstraint()` does the symbolic argument evaluation. `proveAgentUpholdsPolicies()` does per-rule dispatch into static checkers.
 - Closure builder: `collectAgentToolClosure()` walks own tools + skill-merged tools and tracks the path each tool entered scope through.
-- CLI surface: `formatBundle()` renders an "Agent tool-bound claims:" section under the existing "Business rules in this file:" section, same badge format.
-- Tests: `lib/prover/index.test.js` under `Prover — agent tool-bound claims` (10 cases — Direct + Transitive flavors + edge cases like missing agents, skill closures, transitive call chains, agent-body CRUD).
+- CRUD walkers: `findCrudViolation()` (Transitive) and `findCrudHitForRule()` (Bridge — accepts an empty-condition gate).
+- Symbolic checker: `proveCannotCallWithConstraint()` uses `evaluateSymbolic` + `simplify` from `lib/prover/symbolic.js`. The `checkConstraint()` helper is decisive on literals, conservatively satisfiable on free vars.
+- CLI surface: `formatBundle()` (math view) and `formatProveOutput()` (CRO view) both render an "Agent tool-bound claims:" section. Phase 4 verdicts include indented per-rule subverdicts.
+- Tests: `lib/prover/index.test.js` under `Prover — agent tool-bound claims` — 23 cases across all 4 phases.
+- User Guide: Chapter 12b "Provable Agent Bounds (Math for Agents Too)" walks all four phases with deal-desk-anchored examples.
+- Demo file: `examples/proofs/agent-bounds-demo.clear` — 8 obligations against a Refund Bot, mixed PROVED + DISPROVED + UNVERIFIABLE on purpose.
 
 **Singular/plural.** Entity names match tolerantly — `cannot delete from Users` and `cannot delete from User` both match a CRUD op whose `target` field is `User`. Clear normalizes table names to the singular record name in CRUD AST, but developers writing the claim use the table name; the prover accepts either.
+
+**Competitive context (verified 2026-05-07).** OpenAI Agents SDK, Claude Managed Agents, and Nous Research Hermes Agent are all runtime-only — none ship static / symbolic verification of agent tool surfaces today. Sources: [OpenAI guardrails docs](https://openai.github.io/openai-agents-python/guardrails/) (runtime-only), [Claude Managed Agents tools](https://platform.claude.com/docs/en/managed-agents/tools) (`enabled: false` is runtime config), [Hermes Agent docs](https://hermes-agent.nousresearch.com/docs/) (runtime gatekeeping). The hardest piece for big labs to copy is the symbolic prover itself — they'd need to build a symbolic interpreter from scratch (their SDKs are wrappers around APIs, not languages).
 
 ---
 
