@@ -6,6 +6,25 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (later) — Python tenant scope auto-injection (multi-customer separation)
+
+`database is shared with tenant scope` now works on Python end-to-end. Mirrors the JS scaffold's tenant_id injection at compiler.js:4896-5106. When the source declares shared scope, every Python CRUD operation auto-scopes by `tenant_id == request.user.get("tenant_id")`:
+
+- **Lookup:** filter wraps with `**baseFilter, "tenant_id": request.user.get("tenant_id")`. Composes with creator policy — both filters stack when both rules apply, so a regulated app stacks `user_id` AND `tenant_id` checks on every read.
+- **Insert:** stamps `record["tenant_id"] = request.user.get("tenant_id")` before save. Server-side override beats any body-supplied tenant_id (mass-assignment protection).
+- **Update on `:id` endpoint:** switches to 3-arg `db.update(table, {id, tenant_id, user_id?}, record)` form so the WHERE filter requires tenant_id match. A cross-tenant id cannot be hijacked.
+- **Remove:** filter includes tenant_id whether it's the auto-`{id, ...}` form on a `:id` DELETE endpoint or the generic `where ...` form.
+
+The Python ctx at compiler.js:16019 now carries `tenantScope: pyTenantScope` (computed from the AST's `DATABASE_DECL` node) — mirrors the JS computation at compiler.js:14409. Without this thread-through, the CRUD branches would have read `ctx.tenantScope = undefined` and silently skipped the injection (the gotcha that bit OWASP cycle 5 last week — applied as a rule when threading new ctx fields).
+
+5 new tests in `clear.test.js` lock the emit shape: lookup with tenant_id, lookup without (negative control), insert stamps tenant_id, remove includes tenant_id, lookup composes BOTH user_id AND tenant_id when both rules apply. 3006 / 3006 tests green (+5 from last commit's 3001).
+
+The Marcus pitch sentence — *"customer A genuinely cannot see customer B's data, by construction"* — is now true on Python the same way it's been true on Node since 2026-05-03.
+
+What's NOT yet wired: tenant-filtered `/audit` and `/audit.csv` on Python (currently they return all rows; should filter by tenant under shared scope, matches JS's behavior at compiler.js:14605). And the multi-user-per-tenant invite endpoints (`POST /auth/invite` etc) don't yet emit on Python. Both follow-ups are smaller now that tenant scope itself is wired.
+
+---
+
 ## 2026-05-07 — Python audit log emit (compliance trail parity)
 
 The Python target now writes every state-changing request to a durable `audit_log` SQL table, mirroring the JS scaffold's emission at compiler.js:14503-14656. When `allow signup and login` is declared on Python, the compiled app gets:

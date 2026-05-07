@@ -7943,6 +7943,98 @@ describe('Python audit log emit', () => {
 });
 
 // =============================================================================
+// PYTHON TENANT SCOPE — auto-inject tenant_id on every CRUD (Python parity, 2026-05-07)
+// =============================================================================
+// Mirrors the JS scaffold's tenant_id injection. When the source declares
+// `database is shared with tenant scope`, every Python CRUD operation also
+// scopes by `tenant_id == request.user.get("tenant_id")`. Without this,
+// a stolen session token (or even a benign cross-tenant id-guess) could
+// read or modify another tenant's rows. Composes with creator policy:
+// when both apply, the filter requires BOTH user_id AND tenant_id.
+describe('Python tenant scope — auto-inject tenant_id on CRUD', () => {
+  it('lookup under tenant scope auto-scopes by tenant_id from caller', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+create a Deals table:
+  customer
+  list_price (number)
+  the deal's creator can read, change, or delete
+when user requests data from /api/deals:
+  requires login
+  all_deals = get all Deals
+  send back all_deals`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('"tenant_id": request.user.get("tenant_id")');
+  });
+
+  it('lookup WITHOUT tenant scope does NOT inject tenant_id', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+create a Deals table:
+  customer
+  list_price (number)
+  the deal's creator can read, change, or delete
+when user requests data from /api/deals:
+  requires login
+  all_deals = get all Deals
+  send back all_deals`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).not.toContain('"tenant_id": request.user.get("tenant_id")');
+  });
+
+  it('insert under tenant scope stamps tenant_id on the record', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+create a Deals table:
+  customer
+  list_price (number)
+  the deal's creator can read, change, or delete
+when user sends deal to /api/deals:
+  requires login
+  new_deal = save deal as new Deal
+  send back new_deal`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('["tenant_id"] = request.user.get("tenant_id")');
+  });
+
+  it('remove under tenant scope includes tenant_id in WHERE filter', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+create a Deals table:
+  customer
+  list_price (number)
+  the deal's creator can read, change, or delete
+when user deletes deal at /api/deals/:id:
+  requires login
+  remove the Deal with this id
+  send back 'deleted'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('"tenant_id": request.user.get("tenant_id")');
+  });
+
+  it('lookup composes tenant_id AND user_id when both rules apply', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+create a Deals table:
+  customer
+  list_price (number)
+  the deal's creator can read, change, or delete
+when user requests data from /api/deals:
+  requires login
+  all_deals = get all Deals
+  send back all_deals`);
+    expect(r.errors).toHaveLength(0);
+    // Both filters present in the same emit
+    expect(r.python).toContain('"user_id": request.user.get("id")');
+    expect(r.python).toContain('"tenant_id": request.user.get("tenant_id")');
+  });
+});
+
+// =============================================================================
 // DB RELATIONSHIPS (belongs to)
 // =============================================================================
 

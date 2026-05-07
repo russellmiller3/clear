@@ -4727,12 +4727,20 @@ function compileCrud(node, ctx, pad) {
       // OWASP Piece 1, cycle 6: per-row creator filter on Python lookup.
       // Same pattern as JS — when the table declared `the X's creator
       // can ...`, every query also requires user_id == the caller's id.
+      // Tenant isolation Phase 2 parity (2026-05-07): when source declared
+      // `database is shared with tenant scope`, every query also requires
+      // tenant_id == request.user.get("tenant_id"). Composes with creator:
+      // both filters stack when both rules apply.
       const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : null;
+      const extraPairs = [];
+      if (_hasCreatorPolicy) extraPairs.push('"user_id": request.user.get("id")');
+      if (ctx.tenantScope) extraPairs.push('"tenant_id": request.user.get("tenant_id")');
+      const extraStr = extraPairs.join(', ');
       let pyFilter;
-      if (_hasCreatorPolicy && baseFilter) {
-        pyFilter = `{**${baseFilter}, "user_id": request.user.get("id")}`;
-      } else if (_hasCreatorPolicy) {
-        pyFilter = `{"user_id": request.user.get("id")}`;
+      if (extraStr && baseFilter) {
+        pyFilter = `{**${baseFilter}, ${extraStr}}`;
+      } else if (extraStr) {
+        pyFilter = `{${extraStr}}`;
       } else if (baseFilter) {
         pyFilter = baseFilter;
       } else {
@@ -4765,11 +4773,16 @@ function compileCrud(node, ctx, pad) {
       // OWASP Piece 1, cycle 6: per-row creator stamp on Python insert.
       // Mirrors the JS cycle 5b stamp — server-side override beats any
       // body-supplied user_id (mass-assignment protection).
-      const creatorStampLine = _hasCreatorPolicy
-        ? `${pad}${varCode}["user_id"] = request.user.get("id")\n`
-        : '';
+      // Tenant isolation Phase 2 parity (2026-05-07): under tenant scope,
+      // every insert also stamps tenant_id from the caller. The server-
+      // side stamp wins over any body-supplied tenant_id so a malicious
+      // caller cannot create rows that leak across tenants.
+      const stampLines = [];
+      if (_hasCreatorPolicy) stampLines.push(`${pad}${varCode}["user_id"] = request.user.get("id")`);
+      if (ctx.tenantScope) stampLines.push(`${pad}${varCode}["tenant_id"] = request.user.get("tenant_id")`);
+      const stampPrefix = stampLines.length ? stampLines.join('\n') + '\n' : '';
       if (node.resultVar) {
-        return `${creatorStampLine}${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${varCode})`;
+        return `${stampPrefix}${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${varCode})`;
       }
       // Concurrency Phase 2 parity (Python, 2026-05-06): when the
       // enclosing endpoint declares `with optimistic lock`, the save
@@ -4791,9 +4804,16 @@ function compileCrud(node, ctx, pad) {
       // 3-arg db.update form so the WHERE requires user_id match. The
       // inlined _DB.update class supports Convention 2 (table, filter,
       // data) — see compileToPythonBackend's runtime block.
+      // Tenant isolation Phase 2 parity (2026-05-07): under tenant scope,
+      // the WHERE filter also requires tenant_id match so a cross-tenant
+      // id cannot be hijacked. Composes with creator policy.
       if (ctx.endpointHasId) {
-        if (_hasCreatorPolicy) {
-          return `${pad}db.update("${table}", {"id": request.path_params["id"], "user_id": request.user.get("id")}, ${varCode})`;
+        const wherePairs = ['"id": request.path_params["id"]'];
+        if (_hasCreatorPolicy) wherePairs.push('"user_id": request.user.get("id")');
+        if (ctx.tenantScope) wherePairs.push('"tenant_id": request.user.get("tenant_id")');
+        if (wherePairs.length > 1) {
+          // Use 3-arg form so the filter is enforced at update time
+          return `${pad}db.update("${table}", {${wherePairs.join(', ')}}, ${varCode})`;
         }
         return `${pad}${varCode}["id"] = request.path_params["id"]\n${pad}db.update("${table}", ${varCode})`;
       }
@@ -4801,19 +4821,26 @@ function compileCrud(node, ctx, pad) {
     }
     if (node.operation === 'remove') {
       // OWASP Piece 1, cycle 6: per-row creator filter on Python delete.
+      // Tenant isolation Phase 2 parity (2026-05-07): under tenant scope,
+      // every remove also requires tenant_id match. Both stack when both
+      // rules apply.
       // When inside a DELETE endpoint with :id and no explicit condition, auto-inject id filter
       if (ctx.endpointHasId && !node.condition) {
-        if (_hasCreatorPolicy) {
-          return `${pad}id = request.path_params["id"]\n${pad}db.remove("${table}", {"id": id, "user_id": request.user.get("id")})`;
-        }
-        return `${pad}id = request.path_params["id"]\n${pad}db.remove("${table}", {"id": id})`;
+        const wherePairs = ['"id": id'];
+        if (_hasCreatorPolicy) wherePairs.push('"user_id": request.user.get("id")');
+        if (ctx.tenantScope) wherePairs.push('"tenant_id": request.user.get("tenant_id")');
+        return `${pad}id = request.path_params["id"]\n${pad}db.remove("${table}", {${wherePairs.join(', ')}})`;
       }
       const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : null;
+      const extraPairs = [];
+      if (_hasCreatorPolicy) extraPairs.push('"user_id": request.user.get("id")');
+      if (ctx.tenantScope) extraPairs.push('"tenant_id": request.user.get("tenant_id")');
+      const extraStr = extraPairs.join(', ');
       let pyFilter;
-      if (_hasCreatorPolicy && baseFilter) {
-        pyFilter = `{**${baseFilter}, "user_id": request.user.get("id")}`;
-      } else if (_hasCreatorPolicy) {
-        pyFilter = `{"user_id": request.user.get("id")}`;
+      if (extraStr && baseFilter) {
+        pyFilter = `{**${baseFilter}, ${extraStr}}`;
+      } else if (extraStr) {
+        pyFilter = `{${extraStr}}`;
       } else if (baseFilter) {
         pyFilter = baseFilter;
       } else {
@@ -16016,7 +16043,15 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
       pyTablePolicies[node.name.toLowerCase()] = node.policies || [];
     }
   }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, tablePolicies: pyTablePolicies, dbBackend: pyDbBackend, _astBody: body, _allNodes: body };
+  // Tenant isolation Phase 2 parity (Python, 2026-05-07): when the source
+  // declares `database is shared with tenant scope`, the Python ctx
+  // carries tenantScope: true so compileCrud's Python branch auto-
+  // injects `tenant_id == request.user.get("tenant_id")` on every
+  // lookup, save, and remove. Mirrors compileToJSBackend's tenantScope
+  // computation at compiler.js:14409.
+  const pyDbDecl = body.find(n => n.type === NodeType.DATABASE_DECL);
+  const pyTenantScope = !!(pyDbDecl && pyDbDecl.tenantScope);
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, schemaMap: pySchemaMap, tablePolicies: pyTablePolicies, dbBackend: pyDbBackend, tenantScope: pyTenantScope, _astBody: body, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
