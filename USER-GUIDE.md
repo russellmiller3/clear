@@ -861,6 +861,8 @@ Two new ideas in those eight lines. Take them one at a time.
 
 Notice the small grammar of field types. Plain text needs no annotation (text is the default). Anything that should be stored as a number gets `(number)` after the field name. Booleans and timestamps work the same way; we'll see them in later chapters. The full list of field modifiers is in Chapter 6.5 — read it once and skim back when you need a reminder.
 
+**A side note on sensitive data.** Real apps eventually store fields you don't want sitting in plaintext on disk — Social Security numbers, credit card last-fours, medical notes. Clear has a one-word answer: tag the field `sensitive` (e.g. `ssn is text, sensitive`) and the compiler encrypts it before it touches the database, decrypts it on read, and strips it from the API response by default. The `Deals` table here doesn't need it — a list price isn't sensitive. But the moment you build a table with a payment method or a personal identifier, reach for `sensitive`. Chapter 6.5 has the full picture; the design rule is *"if your CTO would lose sleep if it leaked, tag it sensitive."*
+
 ### Why "create a Deals table" and not "create a Deal table"?
 
 Clear leans on plain English: a table holds *many* deals, so it gets a plural name. The compiler also uses the plural to figure out the singular form when you save one record at a time — `save deal as new Deal`. Singular **Deal** for one row, plural **Deals** for the table. This matches how you'd say it out loud.
@@ -1632,6 +1634,12 @@ For the experienced developer skimming: count the things you didn't write. No bc
 You wrote `allow signup and login` plus `the deal's creator can read, change, or delete` plus `requires login` on three endpoint bodies. The rest is generated. If you change the source to add a second table — `Notes` or `Attachments` — and put the same `the X's creator can read, change, or delete` rule on it, the same protection applies to *that* table on the next compile. Recompile, ship, done.
 
 For the newcomer: you just shipped a feature that takes most teams weeks. A real authentication system, hashed passwords, signed tokens, automatic per-row access control, automatic rate-limiting on login, automatic audit logging — all of it from two short rules in your source. Most security bugs in the real world come from one of these layers being wired up by hand, by a tired developer, on a Friday afternoon. Clear's bet is that if the compiler writes the safe code, the safe code is what ships.
+
+### One more thing you got for free — the audit log
+
+You wrote `allow signup and login` and got login plus password hashing plus rate-limiting. You also got an **audit log** — a real database table named `audit_log` that the runtime quietly fills, one row per state-changing request, every time someone POSTs, PUTs, PATCHes, or DELETEs against your app. We'll dig into it properly in Chapter 12 (and again in Chapter 24b for the deeper coverage), but it's already running. Two URLs surface it: `GET /audit` returns the rows as JSON, `GET /audit.csv` returns a downloadable spreadsheet for compliance buyers. Both require a logged-in caller. The fields stored — *who, what, when, status* — are the four questions an auditor asks.
+
+The audit log is the receipt the CRO consults when a rep asks *"why did my deal get rejected?"* Every rejection lands in a row, named with the rule that fired, sanitized of anything sensitive (`password`, `token`, `secret` are redacted before the body summary gets stored). You don't write any code for this. The runtime fills it whether you ask or not. **The compliance buyer's question — *show me a record of every state change in your app* — is already answered the moment you turn on login.**
 
 ### What about admins?
 
@@ -3228,9 +3236,9 @@ Notice the ending: *"PROVED for every possible deal."* The prover figures out th
 
 ### What PROVED actually means
 
-A PROVED verdict isn't *"this passed all the tests."* It's *"the prover walked the source AST, simplified the guard expression, and confirmed it folds to the right answer for every input the guard could ever see."* No examples. No sample data. Just symbolic math.
+A PROVED verdict isn't *"this passed all the tests."* It's *"the prover read your rule's logic, simplified the math, and confirmed the answer holds for every input the rule could ever see."* No examples. No sample data. Just symbolic math.
 
-For `enforce that deal's discount_percent is less than 30`, the prover reasons: *the rule rejects every input where `discount_percent >= 30`, so any execution past the guard has `discount_percent < 30`. That's a structural proof — the runtime literally cannot let a 30+ discount through, because the guard rejects first.* That logic doesn't need test cases. It needs the prover to read the source and check the math, which it does in milliseconds.
+For `enforce that deal's discount_percent is less than 30`, the prover reasons: *the rule rejects every input where `discount_percent` is 30 or more, so any execution past the guard has `discount_percent` under 30. That's a structural proof — the runtime literally cannot let a 30%+ discount through, because the guard rejects first.* That logic doesn't need test cases. It needs the prover to read the source and check the math, which it does in milliseconds.
 
 There are three verdicts the prover can return:
 
@@ -3287,6 +3295,31 @@ The first command spawns deal-desk on a free port, fires twenty inputs that viol
 
 Open `/tmp/deal-desk-audit.pdf`. You'll see a CONFIDENTIAL header bar, a metrics row that reads `3/3 rules proved · 60/60 violating inputs rejected`, a trust-basis explanation, then one page per rule with the math verdict, the runtime witness summary, and a sample of five rejected inputs with the actual response Carol's app sent back. **That PDF is what the CRO signs off on.** Date it, hand it over, save a copy. Re-run after every rule change.
 
+### And there's an audit log the CRO can scroll through any time
+
+The PDF is the dated artifact you hand a compliance buyer once a quarter. The audit log is the *living record* the CRO consults whenever someone says *"why did that deal get rejected last Tuesday?"* It's a real database table that Clear started filling the moment you wrote `allow signup and login` back in Chapter 8. You haven't touched it. You don't need to. Every state-changing request — every POST, PUT, PATCH, DELETE — has been quietly writing one row per request to a table named `audit_log`.
+
+Each row holds:
+
+- the user's id and email (so you know *who*)
+- the route and HTTP method (so you know *what*)
+- the response status (so you know *whether the request succeeded or got rejected*)
+- an ISO timestamp (so you know *when*)
+- a sanitized one-line summary of the request body (so you know *the shape of what they tried*)
+
+That last field is doing real work. The runtime captures the request body, redacts anything that looks sensitive (`password`, `token`, `secret`, `api_key`, `jwt`, `auth` — all replaced with `[redacted]`), caps the whole thing at 1KB, and saves the result. So when a deal gets rejected by `discount-cap-thirty`, the audit row records *the discount the rep tried to push through* without leaking any session token they happened to have in the headers.
+
+Two URLs surface the log:
+
+- **`GET /audit`** — returns the rows as JSON. Useful for ad-hoc queries from a developer console, or for piping into a custom dashboard.
+- **`GET /audit.csv`** — returns the same data as a CSV file with a `Content-Disposition: attachment` header. SOC 2 evidence collectors and most compliance tools ingest CSV natively; this is the path of least resistance for handing over the log to an auditor.
+
+Both URLs require a logged-in caller. Both filter by tenant when you're running with tenant scope (`database is shared with tenant scope` — out of scope for this chapter, see Chapter 24b). The same wall from Chapter 8 holds for the audit log: a stolen session token can only see rows for its own tenant.
+
+There's also a retention knob. By default the runtime keeps audit data for 90 days, then a small cleanup helper trims older rows on every server boot. Set the `AUDIT_RETENTION_DAYS` environment variable to override the window — a longer one for stricter compliance, `0` to disable cleanup entirely. **The compliance buyer's four questions — *who, when, what, how-long* — all answer in one row plus one knob.**
+
+A practical loop you'll run at least once a quarter: hit `GET /audit.csv` from your CRO account, save the file, open it in Excel, filter to rows where `status = 403` (the "rejected by a rule" rows), look at `body_summary` to see what the rep tried, and you have a one-screen story of every rule firing in the last quarter. **The PDF says *the rules are correct.* The audit log says *here's what they actually rejected.*** Two artifacts, one story, both load-bearing.
+
 ### Why two proofs per rule? The trust-but-verify story
 
 You'll notice the PDF lists *two* proofs for each rule, not one: the math claim and the runtime witness. That's deliberate, and it's the hardest part of the regulated-tier pitch to articulate, so let's spend a paragraph on it.
@@ -3318,6 +3351,8 @@ A heads-up on the future: a single command called `clear ship` is in flight — 
 2. **Add a counter-offer round limit.** Add a fourth rule: `rule counter-rounds-bounded` that enforces `deal's counter_rounds is at most 3`. (You'll need to add `counter_rounds (number), default 0` to the Deals table first.) Re-run `clear prove`. You should see *4 of 4 rules proved*. Now the CRO has a math-proved cap on counter-offer rounds — a real Marcus policy from a real Marcus customer.
 
 3. **Use the quoted-string name form.** Replace `rule discount-cap-thirty:` with `rule 'Discount cap of 30% on every deal':`. Re-run `clear prove`. The verdict now reads `discount-cap-of-30-on-every-deal PROVED for every possible deal`. **You wrote the name as a sentence; the parser dasherized it.** This matters for audit logs — searching for the original sentence won't match; you have to search for the dasherized form. Some teams use the quoted form for readability; some prefer the hyphenated identifier form for searchability. Pick a convention and stick with it. Restore the rule to `discount-cap-thirty`.
+
+4. **Pull the audit log and find a rule rejection.** With your server running and at least one rejected deal in history (use the curl from Chapter 8 with `discount_percent: 35` if you don't have one yet), hit `curl http://localhost:3000/audit.csv -H "Authorization: Bearer <your-token>" > audit.csv` and open the file in Excel or any spreadsheet. Filter the `status` column to `403`. Look at the `body_summary` column on each rejected row — you'll see the discount the rep tried, redacted of any sensitive header fields. **That's the regulated-tier loop in one sentence: every rule rejection lands in a row, every row has the four facts a compliance buyer asks for, every quarter you hand the CSV over and the answer is already there.**
 
 ### Why this matters
 

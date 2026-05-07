@@ -6,6 +6,19 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 (later) — USER-GUIDE FEATURES + FAQ pass on chapters 6, 8, 12
+
+Russell's standard for the tutorial track is *"ultimately for me to learn Clear so it has to be great."* Read the existing Chapters 1–11 against `FEATURES.md` exec summary + `FAQ.md` recent entries to surface drift. Three substantive additions landed:
+
+- **Chapter 12 — new "audit log" subsection** between *Get the audit PDF* and *Why two proofs per rule*. Explains the `audit_log` table that gets quietly filled the moment `allow signup and login` is declared (per FEATURES line 107). Walks through the four fields a row holds (who / what / when / status), the sanitized `body_summary` with the redaction list (`password`, `token`, `secret`, `api_key`, `jwt`, `auth`), the two URLs (`GET /audit` and `GET /audit.csv`), and the 90-day default retention with the `AUDIT_RETENTION_DAYS` knob. Frames the audit log as *the receipt the CRO consults day-to-day* alongside the PDF as *the dated artifact for compliance buyers*. Added a fourth try-it-yourself exercise that walks the reader through pulling `audit.csv` and filtering to `status = 403` to find rule rejections.
+- **Chapter 12 — jargon scrub.** Replaced *"the prover walked the source AST, simplified the guard expression"* with *"the prover read your rule's logic, simplified the math, and confirmed the answer holds for every input."* Replaced inline `>=` operator with plain *"30 or more"*. The 14-yo / coffee-shop test now holds end-to-end.
+- **Chapter 8 — new "audit log for free" subsection** at the end of *What you didn't write*. Surfaces the audit log as a free feature unlocked by `allow signup and login`, points forward at Chapter 12 for the depth + Chapter 24b for the deeper coverage. Frames it as *"you get login + password hashing + rate-limiting + audit logging"* — four free features, not three.
+- **Chapter 6 — sensitive-data side note.** Added a paragraph at the end of *Why "create a Deals table"* explaining the `sensitive` field tag (encrypt-at-rest with AES-256-GCM, decrypt on read, strip from API responses by default). The Deals table itself doesn't need it; the side note plants the seed and points at Chapter 6.5 for the full picture. Closes the gap where a reader skipping 6.5 would have missed encrypt-at-rest entirely.
+
+No syntax changes. No new keywords. No primitive shifts. The pass closes the gap between *"the chapter teaches the basics"* and *"the chapter teaches the basics AND points at every adjacent capability the reader will need next."*
+
+---
+
 ## 2026-05-06 — USER-GUIDE Chapter 12: Provable Business Rules (closes the tutorial track)
 
 Wrote Chapter 12 of the Hartl-style user guide — the closing tutorial chapter. Reader takes the deal-desk app from Chapters 1–11 and adds three top-level `rule` blocks (`discount-cap-thirty`, `price-floor-positive`, `discount-not-over-cap`), runs `clear prove` to see *"3 of 3 rules proved, for every possible deal"*, deliberately disproves a fourth rule to see DISPROVED come back, generates the navy/amber audit PDF (Studio Prove button or `audit-bundle.mjs` + `audit-pdf.py` two-stage CLI flow), and ships with `clear deploy`. ~202 lines of prose, three end-of-chapter exercises (tighten the cap, add counter-rounds-bounded, try the quoted-string name form), real-output captured from `clear prove apps/deal-desk/main.clear`. Renamed the existing "Chapter 12: Security" to "Chapter 25: Security" to avoid the duplicate heading; TOC updated. Plan-vs-reality gap noted in chapter prose: `clear ship` doesn't exist yet — chapter directs reader to `clear prove` + `clear deploy` + Studio Prove button as the real shipping path today.
