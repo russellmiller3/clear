@@ -3154,7 +3154,9 @@ app.post('/api/chat', async (req, res) => {
   }
 
   // Mid-stream stop support — when the user clicks Stop in Studio, the
-  // client aborts its fetch which fires `req.on('close')` here. Without
+  // client aborts the response stream, which fires `res.on('close')`.
+  // `req.on('close')` also fires after a normal POST body finishes, so using
+  // it here makes every non-browser probe look like a disconnect. Without
   // this handler, the per-attempt watchdog AbortController INSIDE the
   // retry loop kept running, the cc-agent subprocess kept spawning new
   // tool calls, and Meph appeared to ignore the Stop button until his
@@ -3164,7 +3166,8 @@ app.post('/api/chat', async (req, res) => {
   let clientClosed = false;
   let activeAbortCtrl = null;        // mirrored from per-attempt ctrl below
   let activeChildProcess = null;     // mirrored from cc-agent / OpenRouter spawn
-  req.on('close', () => {
+  res.on('close', () => {
+    if (res.writableEnded) return;
     clientClosed = true;
     try { activeAbortCtrl && activeAbortCtrl.abort(new Error('client disconnected')); } catch {}
     try { activeChildProcess && activeChildProcess.kill && activeChildProcess.kill('SIGTERM'); } catch {}
@@ -3442,7 +3445,7 @@ app.post('/api/chat', async (req, res) => {
     let snapRetryCount = 0;
 
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
-      // Bail out the moment the user clicks Stop. The req.on('close')
+      // Bail out the moment the user clicks Stop. The response close
       // handler set this flag and already aborted the in-flight fetch;
       // checking here ensures we don't fire ANOTHER tool iteration after
       // the client gave up.

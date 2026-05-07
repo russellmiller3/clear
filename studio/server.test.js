@@ -161,7 +161,7 @@ const server = spawn(process.execPath, ['studio/server.js'], {
   // smoke test below seeds a tenant, injects a fake CF api wrapper, ships the
   // deal-desk source, and verifies the multi-tenant subdomain binding landed.
   // CLEAR_CLOUD_ROOT_DOMAIN pins the deploy URL so we can assert it exactly.
-  env: { ...process.env, PORT, CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
+  env: { ...process.env, PORT, CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev', MEPH_BRAIN: 'haiku-dev' },
   stdio: 'pipe',
 });
 
@@ -510,6 +510,21 @@ try {
   {
     const { status } = await post('/api/chat', { apiKey: 'sk-test', messages: [] });
     assert(status === 400 || status === 200, 'chat with empty messages returns 400 or streams');
+  }
+
+  {
+    const r = await fetch(BASE + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'hello' }],
+        editorContent: "show 'hi'",
+        webTools: false,
+      }),
+    });
+    const text = await r.text();
+    assert(r.status === 200, 'chat with a normal POST body streams');
+    assert(text.includes('Ghost Meph stub'), 'chat stream is not killed when the request body closes normally');
   }
 
   // =========================================================================
