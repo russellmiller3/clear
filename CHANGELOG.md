@@ -6,6 +6,12 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 — USER-GUIDE Chapter 12: Provable Business Rules (closes the tutorial track)
+
+Wrote Chapter 12 of the Hartl-style user guide — the closing tutorial chapter. Reader takes the deal-desk app from Chapters 1–11 and adds three top-level `rule` blocks (`discount-cap-thirty`, `price-floor-positive`, `discount-not-over-cap`), runs `clear prove` to see *"3 of 3 rules proved, for every possible deal"*, deliberately disproves a fourth rule to see DISPROVED come back, generates the navy/amber audit PDF (Studio Prove button or `audit-bundle.mjs` + `audit-pdf.py` two-stage CLI flow), and ships with `clear deploy`. ~202 lines of prose, three end-of-chapter exercises (tighten the cap, add counter-rounds-bounded, try the quoted-string name form), real-output captured from `clear prove apps/deal-desk/main.clear`. Renamed the existing "Chapter 12: Security" to "Chapter 25: Security" to avoid the duplicate heading; TOC updated. Plan-vs-reality gap noted in chapter prose: `clear ship` doesn't exist yet — chapter directs reader to `clear prove` + `clear deploy` + Studio Prove button as the real shipping path today.
+
+---
+
 ## 2026-05-06 — Meph prompt cut + python-first-class hook + Python runtime helpers (3 of 5)
 
 Two big arcs landed this session.

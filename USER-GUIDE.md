@@ -42,6 +42,11 @@ Let's jump in.
 **Triggered emails and AI — when your app needs to reach out or think**
 - [Chapter 10: Email the Rep When Approved](#chapter-10-email-the-rep-when-approved-from-outbox-row-to-real-email)
 - [Chapter 11: The AI Drafter (Claude Writes the Deal Summary)](#chapter-11-the-ai-drafter-claude-writes-the-deal-summary)
+
+**Provable correctness — closing the tutorial track**
+- [Chapter 12: Provable Business Rules (Math, Not Just Tests)](#chapter-12-provable-business-rules-math-not-just-tests)
+
+**Reference — chat, workflows, Marcus primitives**
 - [Chapter 10b: Chat Interfaces](#chapter-10b-chat-interfaces-making-your-app-talk)
 - [Chapter 19: Workflows (Multi-Step AI Pipelines)](#chapter-19-workflows-multi-step-ai-pipelines)
 
@@ -51,7 +56,7 @@ Let's jump in.
 - [Chapter 22: Scheduled Tasks](#chapter-22-scheduled-tasks-set-it-and-forget-it)
 
 **Production concerns — security, errors, policies**
-- [Chapter 12: Security](#chapter-12-security-the-part-you-cant-skip)
+- [Chapter 25: Security](#chapter-25-security-the-part-you-cant-skip)
 - [Chapter 14: Error Handling](#chapter-14-error-handling-because-things-go-wrong)
 - [Chapter 21: Policies (Safety Guardrails)](#chapter-21-policies-safety-guardrails)
 
@@ -3135,7 +3140,209 @@ The Marcus pitch sharpens here. *"Claude writes the summary; the rule decides th
 
 Right now your file has rules written as `if/then` — *"if the discount is over 30 percent, status is pending."* They work, and they fire on every save, but they're invisible to anyone outside the code. The CRO can't point at them. The compliance buyer can't audit them. The prover can't prove them.
 
-Chapter 12 introduces the `rule` keyword: *"rule discount-cap-thirty: enforce that deal's discount_percent is less than 30, or fail with error message: …"*. Same logic you've already written, but now with a name, a verdict the prover can compute (PROVED, DISPROVED, or UNVERIFIABLE), and an audit row that points at the rule by name when a deal fails. We'll also wire `clear prove` and `clear ship` so by the end of Chapter 12, deal-desk is a deployed app with a one-page audit PDF you could hand to a CRO. Bring your drafter from this chapter and your queue from Chapter 9 — Chapter 12 closes the tutorial track.
+Chapter 12 introduces the `rule` keyword: *"rule discount-cap-thirty: enforce that deal's discount_percent is less than 30, or fail with error message: …"*. Same logic you've already written, but now with a name, a verdict the prover can compute (PROVED, DISPROVED, or UNVERIFIABLE), and an audit row that points at the rule by name when a deal fails. We'll also wire `clear prove` and the audit PDF so by the end of Chapter 12, deal-desk is a deployable app with a one-page audit PDF you could hand to a CRO. Bring your drafter from this chapter and your queue from Chapter 9 — Chapter 12 closes the tutorial track.
+
+## Chapter 12: Provable Business Rules (Math, Not Just Tests)
+
+By the end of this chapter, deal-desk will refuse any discount of 30% or more — and you'll be able to prove that refusal holds for *every possible deal*, not just the three you tested. The CRO will get a one-page PDF with three rules and a verdict next to each one. The compliance buyer will get an artifact that reads like a board document, not a developer log. **And every fact in that PDF will be backed by both a math claim and a runtime witness — twenty violating inputs fired at the running app, every one rejected, every one with the rule's name on the rejection.**
+
+This is the closing chapter of the tutorial track. Eleven chapters ago you wrote `show 'Discount: 18%'`. Today you're going to take the `if discount > 30 then reject` line you wrote in Chapter 2 and promote it from a runtime check to a *named, provable, audit-trail-aware policy*. Same logic. Wildly different artifact at the end. **The rule is the gate; the prover is the witness; the PDF is the receipt.**
+
+### What is a business rule?
+
+A **business rule** is a sentence the company refuses to break. *"No discount over 30%."* *"Counter-offers max out at 3 rounds."* *"Every lead needs an email address."* These aren't features — they're constraints. A feature is something your app *does*; a rule is something your app *won't do, ever, no matter who asks*. The CRO is paid to set those rules. The compliance buyer is paid to verify them. Your job, as the person building deal-desk, is to put the rule in the code in a way both can read.
+
+Up to here, you've been writing rules implicitly. Chapter 2's `if discount > 30 then status is pending` is a rule. Chapter 8's `requires login` is a rule. Chapter 9's queue's auto-rejection of an empty status field is a rule. They all *work*. They all fire when they should. **But none of them have names.** The CRO can't point at them. The compliance buyer can't audit them. The next person on your team has to read code to figure out what's enforced.
+
+The `rule` keyword fixes that. It wraps a check in a name, lifts it to the top of the file, and tells the compiler *"this one's load-bearing — track it specially, attribute it by name in the audit log, and submit it to the prover."* Same logic, much bigger artifact.
+
+### Why does the CRO want a math proof, not just a test?
+
+This is the question that matters most, so we're going to spend a paragraph on it. A test is *"I tried this case and it worked."* A math proof is *"I checked every possible case and confirmed it works."* The first is a sample. The second is a guarantee. **They are not the same thing, and the difference is the entire regulated-tier pitch.**
+
+Here's the failure mode tests don't catch. You write a discount-cap rule. You write three tests — discount of 25 (passes), discount of 35 (rejected), discount of 50 (rejected). You ship. Six months later a rep submits a deal with discount of 29.99999% and it slips through because of a floating-point quirk in the rule. The tests didn't catch it because the tests didn't check 29.99999. **There are infinite numbers between 0 and 100, and you only tested three.**
+
+A math proof walks the *expression* of your rule — not specific values, the actual logic — and proves the conclusion holds for every value the rule could ever see. The prover doesn't pick examples. It folds the math. It checks that any number where `discount_percent < 30` is false (i.e. 30 or more) gets rejected, period. Twenty test cases would not catch every edge case; one math proof does. The CRO asks "are you sure?" The prover answers "yes, for every possible deal." **That's a different sentence than "yes, for the three I tested."** And that sentence is exactly what a compliance buyer wants signed.
+
+### Promote your check to a named rule
+
+Open `apps/deal-desk/main.clear`. Just below the `database is local memory` line and above the `# Database` comment, add a top-level `rule` block. Top level means *no indentation* — the rule lives next to your `create a Deals table:` and your endpoints, not inside any of them.
+
+```clear
+rule discount-cap-thirty:
+  enforce that deal's discount_percent is less than 30, or fail with error message: 'Discounts of 30% or more require VP approval'
+```
+
+Two lines. Read them out loud: *"rule discount-cap-thirty — enforce that the deal's discount percent is less than 30, or fail with error message: discounts of 30% or more require VP approval."* No CS jargon. A manager could tell you what this rule does.
+
+Here's what each piece is doing:
+
+- `rule discount-cap-thirty:` — the wrapper. The name `discount-cap-thirty` is what the prover, the audit log, and the PDF will use to attribute the verdict. Names use lowercase letters, numbers, and hyphens. Keep them short and policy-shaped.
+- `enforce that deal's discount_percent is less than 30` — the **guard**. This is the actual check the runtime will fire. If a deal's discount is 30 or more, the guard rejects.
+- `, or fail with error message: '...'` — the **refusal**. When the guard fails, this is the message that goes back to the caller and into the audit row. **Note the exact form: comma, space, then `or fail with error message:`, then the message in single quotes.** That's the locked canonical syntax — older forms like `or fail` or `with refusal:` no longer work.
+
+Now add two more rules right below the first one. We're going to give the CRO three policies to verify, not one — a deal-desk audit PDF with one rule looks thin.
+
+```clear
+rule price-floor-positive:
+  enforce that deal's list_price is greater than 0, or fail with error message: 'List price must be positive — zero or negative prices are never valid'
+
+rule discount-not-over-cap:
+  enforce that deal's discount_percent is less than 100, or fail with error message: 'Discount cannot meet or exceed 100% — that would mean giving the product away'
+```
+
+Three rules. Three policies. Each one names a single load-bearing constraint your CRO would call out by name. Save the file.
+
+### A word about rule names
+
+You'll notice each rule's name is a hyphenated phrase: `discount-cap-thirty`, `price-floor-positive`, `discount-not-over-cap`. That's not styling — the parser treats names as identifiers, lowercase with hyphens, and the prover output prints them verbatim. **There's also a quoted-string form** if you want a name that reads like a sentence:
+
+```clear
+rule 'Deals over $100k need CRO sign-off':
+  enforce that deal's list_price is less than 100000, or fail with error message: 'Big deals need CRO sign-off'
+```
+
+When you use the quoted form, the parser **dasherizes** the name — it strips punctuation, lowercases everything, and joins the words with hyphens. The rule above becomes `deals-over-100k-need-cro-sign-off` in the prover output and the audit log. **Don't be surprised when you search the audit log for a deal that hit *"Deals over $100k need CRO sign-off"* and find dashes instead.** The dasherized form is what gets indexed.
+
+### Now run this — `clear prove`
+
+Save the file. From the repo root, run:
+
+```bash
+clear prove apps/deal-desk/main.clear
+```
+
+You should see something like this (line numbers will depend on where in the file you put the rules):
+
+```
+We proved 3 of 3 named rules in this app, for every possible deal.
+
+  OK  discount-cap-thirty    PROVED for every possible deal
+  OK  price-floor-positive   PROVED for every possible deal
+  OK  discount-not-over-cap  PROVED for every possible deal
+```
+
+That output is the regulated-tier pitch surface. Read it slowly. *"We proved 3 of 3 named rules — for every possible deal."* Not "all the tests passed." Not "we tried 20 inputs." For *every possible deal*, the rule holds. That's a different claim — and it's the one a compliance buyer wants to see.
+
+Notice the ending: *"PROVED for every possible deal."* The prover figures out the entity name (`deal`) by reading what your rule references — `deal's discount_percent`, `deal's list_price` — and threads the entity through the verdict. If your rule had referenced `order's discount_percent` instead, the verdict would have read *"PROVED for every possible order."* That's not a hardcoded sentence. **The prover read your code and wrote the audit-friendly English version.**
+
+### What PROVED actually means
+
+A PROVED verdict isn't *"this passed all the tests."* It's *"the prover walked the source AST, simplified the guard expression, and confirmed it folds to the right answer for every input the guard could ever see."* No examples. No sample data. Just symbolic math.
+
+For `enforce that deal's discount_percent is less than 30`, the prover reasons: *the rule rejects every input where `discount_percent >= 30`, so any execution past the guard has `discount_percent < 30`. That's a structural proof — the runtime literally cannot let a 30+ discount through, because the guard rejects first.* That logic doesn't need test cases. It needs the prover to read the source and check the math, which it does in milliseconds.
+
+There are three verdicts the prover can return:
+
+- **PROVED** — the guard simplifies to a definite conclusion that holds for every input. This is what you got for all three rules above.
+- **DISPROVED** — the guard always fires (rejects every input). The rule is broken — it refuses everyone. You'll see this in the next section when we deliberately break a rule.
+- **UNVERIFIABLE** — the guard depends on something the prover can't see. A database lookup, an AI call, a network request, a random number. The prover refuses to claim more than its math engine can verify. The runtime check still fires; the prover just won't sign off symbolically.
+
+PROVED is what you want for every load-bearing rule. UNVERIFIABLE is honest — some rules genuinely depend on data the prover can't access (does this customer exist in the database? did this deal get approved by an admin?) — and the prover marking them UNVERIFIABLE is *correct behavior*, not a failure. DISPROVED is a bug, and the prover catches it before you ship.
+
+### Make a rule fail (deliberately)
+
+Let's see DISPROVED. Add this fourth rule at the bottom of your other rules — a *deliberately impossible* rule — and run `clear prove` again:
+
+```clear
+rule impossible-rule:
+  enforce that 1 is greater than 2, or fail with error message: 'This rule rejects every possible input'
+```
+
+Now run:
+
+```bash
+clear prove apps/deal-desk/main.clear
+```
+
+You should see DISPROVED come back:
+
+```
+We proved 3 of 4 named rules in this app, for every possible deal.
+
+  OK  discount-cap-thirty    PROVED for every possible deal
+  OK  price-floor-positive   PROVED for every possible deal
+  OK  discount-not-over-cap  PROVED for every possible deal
+  X   impossible-rule        Counterexample: guard at line 12 rejects every possible input — message: "This rule rejects every possible input"
+```
+
+The prover did the work for you. *1 is greater than 2* is never true, so `enforce that 1 is greater than 2` is a guard that fires for every input, which means the rule rejects every deal — and that's a bug the prover caught before any deal hit the runtime. **DISPROVED is your friend.** It means a rule is structurally broken — usually a flipped operator, a wrong constant, or a copy-paste mistake — and the prover refuses to let you ship it.
+
+Delete the `impossible-rule` block. Re-run `clear prove`. You should be back to 3 of 3 PROVED.
+
+### Get the audit PDF
+
+The prover's terminal output is for you, the developer. The PDF is for the CRO and the compliance buyer. They want a navy/amber document with one page per rule, the math verdict next to the runtime witness, and a sample table of violating inputs and the actual rejection responses.
+
+You can generate the PDF two ways. The simplest path — if you're working in **Clear Studio** — is to open `apps/deal-desk/main.clear`, click the **Prove** button in the toolbar, and the PDF downloads to your machine. Studio runs the same engine as the CLI, plus a runtime-witness step that fires twenty violating inputs at your running app and records every rejection, then renders the result as a navy/amber PDF. Click, wait a few seconds, you've got a deliverable.
+
+If you're working at the command line, the same artifact takes two stages:
+
+```bash
+node scripts/audit-bundle.mjs apps/deal-desk/main.clear > /tmp/bundle.json
+python scripts/audit-pdf.py /tmp/bundle.json /tmp/deal-desk-audit.pdf
+```
+
+The first command spawns deal-desk on a free port, fires twenty inputs that violate each rule (29 doesn't trigger discount-cap-thirty; 30, 31, 32, ... 49 do), and records every rejection response. The second command takes that JSON and renders the PDF.
+
+Open `/tmp/deal-desk-audit.pdf`. You'll see a CONFIDENTIAL header bar, a metrics row that reads `3/3 rules proved · 60/60 violating inputs rejected`, a trust-basis explanation, then one page per rule with the math verdict, the runtime witness summary, and a sample of five rejected inputs with the actual response Carol's app sent back. **That PDF is what the CRO signs off on.** Date it, hand it over, save a copy. Re-run after every rule change.
+
+### Why two proofs per rule? The trust-but-verify story
+
+You'll notice the PDF lists *two* proofs for each rule, not one: the math claim and the runtime witness. That's deliberate, and it's the hardest part of the regulated-tier pitch to articulate, so let's spend a paragraph on it.
+
+The math claim is what the prover figured out from reading your source. *Symbolically, the rule rejects any discount of 30 or more.* That's a strong claim — but the math engine is a piece of software, and software has bugs. So the audit script does a second, independent thing: it spawns your compiled app on a free port, sends twenty real HTTP requests with violating inputs (`discount_percent: 30`, 31, 32, ..., 49), and records what came back. **If every one of those twenty requests came back as a 403 with `discount-cap-thirty` named in the rejection, the math claim is corroborated by measured runtime evidence.**
+
+The two proofs are independent. The math walks the source AST. The runtime witness drives the actual app over HTTP. If they disagree — math says PROVED, runtime says some inputs got through — you've got a compiler bug and the PDF surfaces it. If they agree, you've got a measured, verifiable, dated audit artifact. **Trust the math, verify the math.** That's the sentence the compliance buyer wants to hear.
+
+### Deploying deal-desk
+
+You've got rules. You've got a PDF. The last step is putting deal-desk on the internet so Carol can use it from her browser tomorrow morning.
+
+Today's path is `clear deploy`, which packages your app and ships it to Railway:
+
+```bash
+clear deploy apps/deal-desk/main.clear
+```
+
+This runs `clear package` to generate the Dockerfile and dependencies, runs `railway up` to push the container to Railway's infrastructure, and prints the URL where deal-desk is now reachable. You'll need the Railway CLI installed (`npm install -g @railway/cli`), a Railway account (`railway login`), and a project (`railway init`). Once that's set up, `clear deploy` is the one-line ship command.
+
+You'll also need to set the environment variables your app uses on Railway's dashboard — `ANTHROPIC_API_KEY` for the AI drafter from Chapter 11, the AgentMail key from Chapter 10, and any others your build introduced. Railway's CLI prints the variable list at the end of `clear deploy`. Set them once and Carol's browser hits the live URL.
+
+A heads-up on the future: a single command called `clear ship` is in flight — the design is `clear ship apps/deal-desk/main.clear` produces a deploy URL, a custom domain via Cloudflare, *and* the audit PDF in one shot — but it's not in the CLI yet. Today, the path is `clear prove` for the verdict, `clear deploy` for the deploy, and either the Studio Prove button or the audit-bundle/audit-pdf CLI scripts for the PDF. When `clear ship` lands, this section will collapse to one command.
+
+### Try it yourself
+
+1. **Tighten the cap and see PROVED still hold.** Change `is less than 30` to `is less than 25` in `discount-cap-thirty`. Re-run `clear prove`. The verdict still says PROVED — because the prover is checking *the math of the rule*, not whether the rule is a good policy. Both 25 and 30 are valid caps as far as the prover is concerned; the prover just verifies the rule structurally rejects values at or above the threshold. **The prover doesn't tell you whether your policy is right; it tells you whether your policy is *enforced*.** Restore the rule to 30.
+
+2. **Add a counter-offer round limit.** Add a fourth rule: `rule counter-rounds-bounded` that enforces `deal's counter_rounds is at most 3`. (You'll need to add `counter_rounds (number), default 0` to the Deals table first.) Re-run `clear prove`. You should see *4 of 4 rules proved*. Now the CRO has a math-proved cap on counter-offer rounds — a real Marcus policy from a real Marcus customer.
+
+3. **Use the quoted-string name form.** Replace `rule discount-cap-thirty:` with `rule 'Discount cap of 30% on every deal':`. Re-run `clear prove`. The verdict now reads `discount-cap-of-30-on-every-deal PROVED for every possible deal`. **You wrote the name as a sentence; the parser dasherized it.** This matters for audit logs — searching for the original sentence won't match; you have to search for the dasherized form. Some teams use the quoted form for readability; some prefer the hyphenated identifier form for searchability. Pick a convention and stick with it. Restore the rule to `discount-cap-thirty`.
+
+### Why this matters
+
+Eleven chapters ago, deal-desk was a sentence on a screen: *"Discount: 18%."* Today it's a deployable app with a math-proved business policy and a one-page CRO-signed audit PDF. **You did not write a single line of JavaScript.** You did not write a SQL schema. You did not configure a prover. You wrote three sentences in plain English with a `rule` wrapper, and the compiler did everything else.
+
+This is the regulated-tier pitch in compressed form. *"Show me your discount policy."* You point at `rule discount-cap-thirty`. *"Show me you actually enforce it."* You point at the runtime check the compiler emitted. *"Show me you've enforced it correctly for every possible input."* You hand over the PDF. *"Show me you'll catch a bug if I flip an operator."* You change `is less than 30` to `is greater than 30` and watch the audit PDF change to DISPROVED. **Every question a compliance buyer can ask, you have a one-line answer that fits on a page.**
+
+The Marcus pitch is exactly this loop. Every Marcus app — deal-desk, approval-queue, internal-request-queue, onboarding-tracker, lead-router — is a queue with rules attached. Every rule gets a verdict. Every verdict gets a PDF. **The audit story isn't bolted on after; it's compiled in from the first line you write.**
+
+### What's next — the reference track
+
+You've finished the tutorial track. Twelve chapters, one app, every primitive in the language. Carol can run deal-desk in her browser, the CRO can sign the audit PDF, and the rep gets an email when the deal approves.
+
+From here, the rest of the guide is the **reference track** — chapters you read when you need them, not in order. They assume you have deal-desk from Chapters 1–12 and they cover the rest of the language at depth:
+
+- **Chapter 13: Working with Data** — every `look up`, `find all`, `count`, `sum`, `group by`. The full data-query reference.
+- **Chapter 13b: Charts** — visualizing the deal pipeline with line charts, bar charts, and dashboards.
+- **Chapter 17: Testing** and **Chapter 23: Writing Tests** — the test-block reference, including unit-level value assertions and intent-based test descriptions.
+- **Chapter 22: Scheduled Tasks** — running jobs on a cron-like schedule (e.g. *"every Monday at 9 a.m., email the CRO a deal pipeline summary"*).
+- **Chapter 24: Writing Business Rules** and **Chapter 24b: Audit Reports** — deeper coverage of the `rule` keyword (conditional rules, tiered rules, all the verdict shapes) and of the audit PDF.
+- **Chapter 16: The Clear CLI** and **Chapter 16b: Clear Studio** — the toolbox you'll use every day.
+
+You don't have to read those in order. Pick the one you need next, and the rest of the guide is there when a question comes up. **Welcome to the other side of the tutorial — you're a Clear developer now.**
+
+---
 
 ## Chapter 10b: Chat Interfaces (Making Your App Talk)
 
@@ -3566,7 +3773,7 @@ Supports times like `9am`, `2:30pm`, `12:00am` (midnight).
 
 ---
 
-## Chapter 12: Security (The Part You Can't Skip)
+## Chapter 25: Security (The Part You Can't Skip)
 
 Clear takes security seriously. The compiler actually REFUSES to build your app
 if it has obvious security holes. Try creating a DELETE endpoint without auth
