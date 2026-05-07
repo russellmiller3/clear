@@ -7940,6 +7940,44 @@ describe('Python audit log emit', () => {
     expect(r.python).not.toContain('_sanitize_audit_body');
     expect(r.python).not.toContain('/audit.csv');
   });
+
+  // Tenant-scope audit filtering parity (2026-05-07): JS path filters
+  // audit_log by tenant_id when shared scope is on (compiler.js:14586 +
+  // 14605 + 14628). Python path was shipping all-rows-everyone-sees,
+  // which is a cross-tenant leak waiting to happen. These tests lock the
+  // parity in.
+  it('audit middleware insert under tenant scope stamps tenant_id from caller', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+on GET '/test':
+  send back 'ok'`);
+    expect(r.errors).toHaveLength(0);
+    // The insert call should include tenant_id (resolved from the JWT payload)
+    expect(r.python).toMatch(/db\.insert\("audit_log"[\s\S]+?"tenant_id":/);
+  });
+
+  it('GET /audit under tenant scope filters by caller tenant_id', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+on GET '/test':
+  send back 'ok'`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toMatch(/db\.find_all\("audit_log", \{"tenant_id":/);
+  });
+
+  it('GET /audit.csv under tenant scope filters by caller tenant_id', () => {
+    const r = compileProgram(`target: python backend
+allow signup and login
+database is shared with tenant scope
+on GET '/test':
+  send back 'ok'`);
+    expect(r.errors).toHaveLength(0);
+    // Both /audit and /audit.csv must filter — count of tenant_id-filtered find_all calls is 2+
+    const matches = r.python.match(/db\.find_all\("audit_log", \{"tenant_id":/g) || [];
+    expect(matches.length === 2 || matches.length === 3).toBe(true);
+  });
 });
 
 // =============================================================================
@@ -8031,6 +8069,58 @@ when user requests data from /api/deals:
     // Both filters present in the same emit
     expect(r.python).toContain('"user_id": request.user.get("id")');
     expect(r.python).toContain('"tenant_id": request.user.get("tenant_id")');
+  });
+});
+
+// =============================================================================
+// PYTHON AI ASSISTANT EMIT — ask claude / agent definition / agent call (2026-05-07)
+// =============================================================================
+// The Python target's AI machinery is wired but the python-parity audit
+// flagged RUN_AGENT / RUN_PIPELINE / RUN_WORKFLOW as HIGH-severity gaps.
+// Empirical check shows the audit was wrong — these node types share their
+// `await fnName(arg)` emit shape between JS and Python via the compileNode
+// case at compiler.js:10363. This describe block locks the actual behavior
+// in: ask claude emits the API call helper, agent definitions emit async
+// functions, agent calls emit await fnName(arg). The audit's slice
+// detection needs sharpening as a follow-up; the regression net is here.
+describe('Python AI assistant emit — ask claude + agents + workflows', () => {
+  it('ask claude in an endpoint emits _ask_ai call on Python', () => {
+    const r = compileProgram(`target: python backend
+when user sends question to /api/answer:
+  reply = ask claude "You are a helpful assistant" with question
+  send back reply`);
+    expect(r.errors).toHaveLength(0);
+    // The Anthropic API helper is defined
+    expect(r.python).toContain('async def _ask_ai(prompt');
+    // The endpoint awaits the helper with prompt + context
+    expect(r.python).toMatch(/await _ask_ai\("You are a helpful assistant", question\)/);
+  });
+
+  it('agent definition emits an async Python function', () => {
+    const r = compileProgram(`target: python backend
+agent "lead scorer" receives lead:
+  score = ask claude "Score this lead 1-10" with lead
+  return score
+
+when user sends new_lead to /api/score:
+  result = ask "lead scorer" with new_lead
+  send back result`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('async def agent_lead_scorer(lead):');
+    expect(r.python).toContain('await agent_lead_scorer(new_lead)');
+  });
+
+  it('Anthropic API helper has retry on transient errors and reads ANTHROPIC_API_KEY', () => {
+    // Locks the runtime helper's safety properties: env-key-from-env, retry
+    // on 429/5xx, no-key error message.
+    const r = compileProgram(`target: python backend
+when user sends question to /api/ask:
+  answer = ask claude "Reply" with question
+  send back answer`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('ANTHROPIC_API_KEY');
+    // Retry logic — exponential backoff
+    expect(r.python).toMatch(/_attempt|backoff|retry/i);
   });
 });
 

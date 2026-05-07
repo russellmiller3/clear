@@ -6425,7 +6425,7 @@ function compilePolicyPython(node, ctx, pad) {
   return code;
 }
 
-function compileAuthScaffoldPython(pad) {
+function compileAuthScaffoldPython(pad, tenantScope = false) {
   // Python parity (2026-05-06 evening): emit signup / login / auth-me routes
   // that import from clear_runtime.auth (the Python port of runtime/auth.js).
   // Uses stdlib HMAC + PBKDF2 (matches JS byte-for-byte) instead of passlib
@@ -6547,8 +6547,21 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}                user_email = payload.get("email")`);
   lines.push(`${pad}        except Exception:`);
   lines.push(`${pad}            pass`);
+  lines.push(`${pad}    tenant_id = None`);
+  if (tenantScope) {
+    // Tenant scope: stamp tenant_id from the JWT payload so /audit and
+    // /audit.csv can filter by caller's tenant. Without this, every
+    // tenant would see every other tenant's audit rows on read.
+    lines.push(`${pad}    if auth_header.startswith("Bearer "):`);
+    lines.push(`${pad}        try:`);
+    lines.push(`${pad}            _payload = verify_token(auth_header[7:])`);
+    lines.push(`${pad}            if _payload:`);
+    lines.push(`${pad}                tenant_id = _payload.get("tenant_id")`);
+    lines.push(`${pad}        except Exception:`);
+    lines.push(`${pad}            pass`);
+  }
   lines.push(`${pad}    try:`);
-  lines.push(`${pad}        db.insert("audit_log", {"ts": ts, "user_id": user_id, "user_email": user_email, "method": request.method, "path": request.url.path, "status": response.status_code, "body_summary": body_summary})`);
+  lines.push(`${pad}        db.insert("audit_log", {"ts": ts, "user_id": user_id, "user_email": user_email, "tenant_id": tenant_id, "method": request.method, "path": request.url.path, "status": response.status_code, "body_summary": body_summary})`);
   lines.push(`${pad}    except Exception as e:`);
   lines.push(`${pad}        print("[clear:audit] insert failed:", str(e))`);
   lines.push(`${pad}    return response`);
@@ -6570,7 +6583,11 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}        raise`);
   lines.push(`${pad}    except Exception:`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
-  lines.push(`${pad}    rows = db.find_all("audit_log")`);
+  if (tenantScope) {
+    lines.push(`${pad}    rows = db.find_all("audit_log", {"tenant_id": payload.get("tenant_id")})`);
+  } else {
+    lines.push(`${pad}    rows = db.find_all("audit_log")`);
+  }
   lines.push(`${pad}    return rows`);
   lines.push('');
   // GET /audit.csv — same data as /audit but in CSV format. SOC 2
@@ -6598,8 +6615,12 @@ function compileAuthScaffoldPython(pad) {
   lines.push(`${pad}        raise`);
   lines.push(`${pad}    except Exception:`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
-  lines.push(`${pad}    rows = db.find_all("audit_log")`);
-  lines.push(`${pad}    cols = ["id", "ts", "user_id", "user_email", "method", "path", "status", "body_summary"]`);
+  if (tenantScope) {
+    lines.push(`${pad}    rows = db.find_all("audit_log", {"tenant_id": payload.get("tenant_id")})`);
+  } else {
+    lines.push(`${pad}    rows = db.find_all("audit_log")`);
+  }
+  lines.push(`${pad}    cols = ["id", "ts", "user_id", "user_email", "tenant_id", "method", "path", "status", "body_summary"]`);
   lines.push(`${pad}    header = ",".join(cols)`);
   lines.push(`${pad}    body_lines = []`);
   lines.push(`${pad}    for r in rows:`);
@@ -9966,7 +9987,7 @@ ${pad}}`;
     case NodeType.AUTH_SCAFFOLD: {
       // JS: handled in scaffold (compileToJSBackend) — emits full auth system
       if (ctx.lang === 'python') {
-        return compileAuthScaffoldPython(pad);
+        return compileAuthScaffoldPython(pad, !!ctx.tenantScope);
       }
       return null; // emitted in scaffold
     }
