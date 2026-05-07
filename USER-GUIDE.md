@@ -73,8 +73,7 @@ Let's jump in.
 
 **Reference**
 - [Quick Reference](#quick-reference)
-- [What's Next?](#whats-next-you-did-it)
-- [Appendix: What Meph Can Do](#appendix-what-meph-can-do)
+- [You Did It](#you-did-it)
 
 ---
 
@@ -5141,49 +5140,8 @@ if error:
 
 ---
 
-## What's Next? (You Did It!)
+## You Did It
 
-## Appendix: What Meph Can Do
+You started Chapter 1 with `show 'Discount: 18%'`. You finished Chapter 12 with a math-proved business rule, an audit log, an AI summary, and a one-page CRO-signed PDF. Twelve chapters, one app, every primitive in the language.
 
-Meph is the AI agent inside Clear Studio. Here's everything Meph has access to:
-
-### Tools
-
-| Tool | What it does |
-|------|-------------|
-| `edit_code` | Read, replace, or undo the Clear source in the editor |
-| `read_file` | Read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, meph-memory.md |
-| `run_command` | Run CLI commands: `node cli/clear.js check`, `curl`, `ls` |
-| `compile` | Compile the current source — returns errors, warnings, output targets |
-| `run_app` | Start the compiled app as a live server |
-| `stop_app` | Stop the running app |
-| `http_request` | Make HTTP requests to the running app (GET, POST, PUT, DELETE) |
-| `edit_file` | Edit any project file (append, insert, replace, overwrite, read) |
-| `read_terminal` | Read terminal output + frontend console errors |
-| `screenshot_output` | Get the rendered HTML from the running app |
-| `highlight_code` | Flash-highlight lines in the editor to point something out |
-| `browse_templates` | List or read any template's source code |
-| `source_map` | Query which compiled output comes from which Clear line |
-| `web_search` | Search the web (when enabled) |
-| `web_fetch` | Fetch content from URLs (when enabled) |
-
-### What Meph Can Access
-
-Meph can see and use everything in Studio: templates, docs, source maps, terminal,
-data view, API testing, screenshots. The only things Meph cannot touch are the dark
-mode button, "New" (clearing the editor), and "Load" (loading a template) — those
-are user-initiated actions only.
-
-### How Meph Edits Code
-
-Meph currently uses `edit_code action='write'` which replaces the entire editor
-content. For small changes, this is like rewriting a whole essay to fix a typo.
-The patch API (`patch.js`) provides surgical edits — add an endpoint, fix a line,
-add a field — but isn't yet wired as a Meph tool. Coming soon.
-
-### Meph's Memory
-
-Meph has persistent memory in `meph-memory.md`. Tell Meph "remember this" and it
-saves facts across conversations. Memory persists between sessions.
-
-Happy building!
+The reference chapters (13 onward) are there when you need them — pick the one that answers your next question, in any order. Welcome to the other side. You're a Clear developer now.
