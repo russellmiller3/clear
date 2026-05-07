@@ -6,6 +6,30 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (latest) — Hartl Chapter 11b: Building Real Agents
+
+The user-guide had scattered agent coverage: Chapter 11 taught the deal drafter (single agent, single prompt, one API call), Chapter 19 (reference) covered multi-step pipelines, Chapter 22 (reference) covered cron-style schedules. Nowhere was there a single chapter a reader could open to learn how to build a real agent end-to-end.
+
+This commit adds **Chapter 11b: Building Real Agents** between Chapters 11 and 12. ~390 lines of Hartl-quality prose covering:
+
+- **Mental model** — agent = function with optional extras (tools, memory, knows about, must not, scheduled).
+- **Tools** — `has tool: my_function` lets the AI call your code mid-thought; canonical Clear function shape.
+- **Skills** — `skill 'X':` bundles tools + instructions, reusable across agents via `uses skills:`.
+- **Memory** — `remember conversation context` (per-user history) + `remember user's preferences` (long-term facts).
+- **RAG** — `knows about: Tables, 'urls', 'files'` with all three source types (tables, URLs, .pdf/.docx/.txt/.md files).
+- **Guardrails** — `must not: delete any records / access Users table / call more than 5 tools per request` + `block arguments matching '<regex>'`.
+- **The credential safety rule** — agents NEVER read env vars directly; the compiler refuses to compile `api_key is env('STRIPE_SECRET_KEY')` inside any agent body. The pattern that works: wrap the credential in a function, attach the function as a tool, the agent calls the function but never sees the value. Marcus-pitch beat: *"your AI can charge cards via Stripe but never sees the Stripe key."*
+- **Multi-agent** — five patterns (sequential, parallel fan-out, dynamic fan-out, pipeline, iterative refinement) with deal-desk-anchored examples.
+- **Scheduled / long-running agents** — `agent 'morning briefing' runs every 1 day at '9:00 AM':` — no endpoint, no button, runtime fires it on a timer with retry + observability.
+- **Streaming control** — auto-streams text agents; `do not stream` opts out for pipeline steps.
+- **Bridge to Chapter 12** — wrapping agent output with `enforce that` is what makes the AI safe; the rule fires after the agent and rejects any output that violates policy.
+
+TOC updated. Chapter 11's "What's next" now threads through 11b before reaching 12. Three try-it-yourself exercises (add a precedent tool, schedule a daily briefing, try to leak the Stripe key and watch the compiler reject it).
+
+This was Russell's directive 2026-05-07: *"need to make sure Hartl guide has complete instructions on building an agent, including durable long running scheduled agents, memory, enforce that, multi and single agent, etc."*
+
+---
+
 ## 2026-05-07 (later) — Auto-generated browser walker signs in before walking auth-scaffolded apps
 
 The auto-generated `browser-uat.mjs` walker walked protected pages without authenticating. Pages with creator-scoped tables returned zero rows and the walker mistook *"anonymous user sees nothing"* for *"table broken"* — the most common false-fail before this fix.

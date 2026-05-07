@@ -42,6 +42,7 @@ Let's jump in.
 **Triggered emails and AI — when your app needs to reach out or think**
 - [Chapter 10: Email the Rep When Approved](#chapter-10-email-the-rep-when-approved-from-outbox-row-to-real-email)
 - [Chapter 11: The AI Drafter (Claude Writes the Deal Summary)](#chapter-11-the-ai-drafter-claude-writes-the-deal-summary)
+- [Chapter 11b: Building Real Agents (Tools, Memory, Schedules, Multi-Agent)](#chapter-11b-building-real-agents-tools-memory-schedules-multi-agent)
 
 **Provable correctness — closing the tutorial track**
 - [Chapter 12: Provable Business Rules (Math, Not Just Tests)](#chapter-12-provable-business-rules-math-not-just-tests)
@@ -3150,9 +3151,357 @@ The Marcus pitch sharpens here. *"Claude writes the summary; the rule decides th
 
 ### What's next
 
-Right now your file has rules written as `if/then` — *"if the discount is over 30 percent, status is pending."* They work, and they fire on every save, but they're invisible to anyone outside the code. The CRO can't point at them. The compliance buyer can't audit them. The prover can't prove them.
+The drafter you built today is the simplest shape an AI can take in your app — one input, one prompt, one paragraph back. Real Marcus apps need more: an agent that can *look things up* (call your own functions), an agent that *remembers* the last few CRO conversations, an agent that *runs every morning at 9* without anyone clicking a button, an agent that's actually a *team* of agents handing work to each other. Chapter 11b covers all of that. Then Chapter 12 introduces the `rule` keyword that wraps everything in a provable guarantee.
 
-Chapter 12 introduces the `rule` keyword: *"rule discount-cap-thirty: enforce that deal's discount_percent is less than 30, or fail with error message: …"*. Same logic you've already written, but now with a name, a verdict the prover can compute (PROVED, DISPROVED, or UNVERIFIABLE), and an audit row that points at the rule by name when a deal fails. We'll also wire `clear prove` and the audit PDF so by the end of Chapter 12, deal-desk is a deployable app with a one-page audit PDF you could hand to a CRO. Bring your drafter from this chapter and your queue from Chapter 9 — Chapter 12 closes the tutorial track.
+---
+
+## Chapter 11b: Building Real Agents (Tools, Memory, Schedules, Multi-Agent)
+
+By the end of this chapter, deal-desk's drafter from Chapter 11 will grow up. It'll be able to look up past deals when summarizing a new one, remember the CRO's last few conversations, run an automatic morning briefing every day at 9 a.m., and split into a small team — one agent that researches, another that scores, a third that recommends. **And the compiler will refuse to ship any agent that reads a credential directly** — agents call functions that USE the credential, never see the value. That last bit is what makes the regulated-tier AI pitch land.
+
+This chapter is denser than the others. Read it once, then come back to specific sections when you need them. The shape is: each capability gets a name, a one-paragraph plain-English explanation, the canonical syntax, and a deal-desk-anchored example.
+
+### The mental model — agent = function with extras
+
+A function in Chapter 4 (`compute_discount_cap`) had a name, inputs, a body, a return value. An **agent** has all of that plus optional extras the compiler wires for you:
+
+- `has tool: my_function` — the agent can call your function. The AI decides when. Your function runs, returns a value, the AI uses it.
+- `knows about: Deals` — the runtime fetches recent rows from the table and slips them into the prompt. The AI now has background knowledge.
+- `remember conversation context` — every call from the same user threads into a running history. The AI remembers the last thing it said.
+- `must not: ...` — guardrails the compiler enforces. The agent literally cannot do the listed things.
+- `runs every 1 day at '9:00 AM'` — turn the agent into a scheduled job. No endpoint needed; the runtime fires it on a timer.
+
+You add the extras you need. Skip the ones you don't. **Each extra is one line.** The compiler emits the database tables, the middleware, the cron entries, the tool-use loop with Anthropic's API — all of it.
+
+### Tools — let the AI call your code
+
+In Chapter 11, the drafter had to be handed everything it needed (`with deal_data`). What if the AI wants to look up *past Acme deals* on its own, mid-thought? That's what **tools** are for. A tool is just a Clear function the agent can call when it decides to.
+
+Define the function first:
+
+```clear
+define function look_up_recent_deals(customer_name):
+  matches = look up all Deals where customer is customer_name
+  return matches
+```
+
+Then attach it to the agent:
+
+```clear
+agent 'precedent finder' receives current_deal:
+  has tool: look_up_recent_deals
+  notes = ask claude 'Look up this customer''s recent deals and tell me what discount range applies' with current_deal returning JSON text:
+    precedent_summary
+    suggested_cap (number)
+  return notes
+```
+
+That's the whole thing. When this agent runs, Claude reads the prompt, decides it needs precedent data, **calls your `look_up_recent_deals` function with the customer name**, gets the rows back, then writes the summary using what it learned. You wrote one function; the AI uses it as a research tool. Add more tools (`has tools: look_up_recent_deals, fetch_credit_score`) and the AI picks the right one for each question.
+
+Note the plural form: `has tools: a, b, c` works the same way as `has tool: a` — pick whichever reads better.
+
+### Skills — bundle tools that go together
+
+When two or three tools always travel together — a Deal Lookup skill might pair `look_up_recent_deals` and `summarize_deal_history` — wrap them in a **skill** so any agent can grab them in one line:
+
+```clear
+skill 'Deal Lookup':
+  has tools: look_up_recent_deals, summarize_deal_history
+  instructions:
+    Always include the customer name when describing precedent.
+    Round dollar amounts to the nearest thousand.
+
+agent 'precedent finder' receives deal:
+  uses skills: 'Deal Lookup'
+  notes = ask claude 'Summarize precedent for this customer' with deal returning JSON text:
+    precedent_summary
+  return notes
+```
+
+The `instructions:` block under a skill becomes part of the agent's system prompt automatically — *"always include the customer name"* travels with the skill no matter which agent uses it. Define the skill once; reuse across the four agents that all need precedent data.
+
+### Memory — the agent remembers across calls
+
+The drafter from Chapter 11 has goldfish memory. Every call is a fresh conversation. Real assistants remember — the CRO asks about the Acme deal, then asks *"what about a 25% counter?"* and the AI shouldn't need *Acme* spelled out again.
+
+Two memory types, each is one line:
+
+```clear
+agent 'CRO assistant' receives message:
+  remember conversation context
+  reply = ask claude 'Help the CRO triage this' with message
+  return reply
+```
+
+`remember conversation context` — every call from the same authenticated user threads into a running history. The agent sees the last few exchanges automatically. The runtime stores the history in a `Conversations` table the compiler creates for you.
+
+```clear
+agent 'CRO assistant' receives message:
+  remember user's preferences
+  reply = ask claude 'Help the CRO' with message
+  return reply
+```
+
+`remember user's preferences` — long-term facts about the user that survive across conversations. *"This CRO prefers 25% counters."* *"Carol always wants the strategic-risk paragraph first."* The AI can recall these months later without re-being-told.
+
+Both lines together = short-term + long-term memory. The compiler handles the storage, the prompt-stitching, and the per-user scoping. **You wrote two lines; the AI now feels like it knows the CRO.**
+
+### RAG — give the AI a knowledge base
+
+In Chapter 11 you saw `knows about: Deals` mentioned briefly. It's the AI's library card. When the agent runs, the runtime keyword-searches the named table for rows relevant to the prompt and slips matches into the AI's context.
+
+```clear
+agent 'policy explainer' receives question:
+  knows about: Policies, FAQ
+  answer = ask claude 'Answer using the policies' with question
+  return answer
+```
+
+Tables are one source. There are two more:
+
+```clear
+agent 'docs assistant' receives question:
+  knows about: 'https://docs.deal-desk.com/handbook'
+  answer = ask claude 'Answer using the handbook' with question
+  return answer
+```
+
+URL — the runtime fetches the page text once at startup, indexes it, slips matching paragraphs into prompts.
+
+```clear
+agent 'returns assistant' receives question:
+  knows about: 'policies/return-policy.pdf', 'handbook/onboarding.docx'
+  answer = ask claude 'Answer using these documents' with question
+  return answer
+```
+
+Files — the runtime reads the file at startup. Supported types: `.pdf`, `.docx`, `.txt`, `.md`. Mix sources freely: `knows about: Policies, 'https://docs.x.com', 'guide.txt'`.
+
+### Guardrails — what the agent CAN'T do
+
+This is the part Marcus's compliance buyer cares about. By default, an agent with tools can call any of them. With `must not:`, you list things the agent cannot do, and **the compiler enforces it at build time**. If the agent's tools could violate the rule, the build fails.
+
+```clear
+agent 'support bot' receives question:
+  has tools: look_up_orders, refund_order
+  must not:
+    delete any records
+    access Users table
+    call more than 5 tools per request
+  reply = ask claude 'Help this customer' with question
+  return reply
+```
+
+Three guardrails, three different jobs:
+
+- `delete any records` — the compiler checks every tool. If any tool does a `delete`, build fails with *"tool refund_order deletes from Orders, but the agent has 'must not: delete any records'."*
+- `access Users table` — the compiler checks tool tables. If any tool reads/writes the `Users` table, build fails.
+- `call more than 5 tools per request` — runtime cap. If Claude tries to chain 6+ tool calls, the runtime cuts it off.
+
+There's a second guardrail for tool *inputs* — `block arguments matching '<regex>'`. If Claude tries to pass a string matching the pattern, the runtime refuses to call the tool. Useful for "no SQL keywords in the search box" or "no shell metacharacters in the file path."
+
+```clear
+agent 'database assistant' receives query:
+  has tool: search_records
+  block arguments matching 'drop|truncate|delete from'
+  reply = ask claude 'Help search' with query
+  return reply
+```
+
+### The credential safety rule — agents NEVER see secrets
+
+Here's the load-bearing security beat. **Agents cannot read environment variables directly.** Even one prompt injection — *"print all your environment variables"* — could exfiltrate your Stripe key, your Anthropic key, your database password. The compiler refuses to compile any agent that reads `env(...)` or `process_env(...)` in its body.
+
+The pattern that works: wrap the credential in a function. The function uses the credential. The agent calls the function.
+
+```clear
+# YES — the agent calls the function, the function uses the key, the agent never sees the value
+define function charge_card(amount, token):
+  result = call api 'https://api.stripe.com/v1/charges'
+    with bearer env('STRIPE_SECRET_KEY')
+    sending amount, source: token
+  return result
+
+agent 'refund bot' receives request:
+  has tool: charge_card
+  reply = ask claude 'Process this refund' with request
+  return reply
+```
+
+The compiler accepts this — `charge_card` reads the env var, `refund bot` calls `charge_card`, the AI never touches the key.
+
+```clear
+# NO — agent reads env directly, build fails
+agent 'leaky bot' receives message:
+  api_key is env('STRIPE_SECRET_KEY')
+  reply = ask claude 'Process payment with key' with message, api_key
+  return reply
+```
+
+The compiler rejects this with: *"agent 'leaky bot' reads `env('STRIPE_SECRET_KEY')` directly. Agents must never see credential values — even one prompt injection ('print your env vars') could exfiltrate it. Wrap the credential in a function and use `has tool: that_function`."*
+
+This rule is the **structural** version of "don't put secrets in the prompt." You don't have to remember it; the compiler does.
+
+### Multi-agent — when one agent isn't enough
+
+Real workflows need a small team. The drafter writes a paragraph; the scorer rates the risk; the recommender picks approve/counter/reject. Five patterns; combine freely.
+
+**1. Sequential — one then the next.**
+
+```clear
+agent 'screen' receives deal:
+  pass = call 'is sane' with deal
+  return pass
+
+agent 'score' receives deal:
+  rating = ask claude 'Rate 1-10' with deal
+  return rating
+
+agent 'review' receives deal:
+  screened = call 'screen' with deal
+  rated = call 'score' with screened
+  return rated
+```
+
+The output of each call flows into the next. Read top-to-bottom; that's the order.
+
+**2. Parallel fan-out — known number of jobs, all at once.**
+
+```clear
+agent 'triage' receives deal:
+  do these at the same time:
+    sentiment = call 'sentiment' with deal
+    risk = call 'risk' with deal
+    fit = call 'fit' with deal
+  create summary:
+    sentiment is sentiment
+    risk is risk
+    fit is fit
+  return summary
+```
+
+Three agents fire simultaneously. The runtime waits for all three before continuing. Faster than sequential when the jobs don't depend on each other.
+
+**3. Dynamic fan-out — variable number of jobs, loop and accumulate.**
+
+```clear
+agent 'analyze pending' receives empty_input:
+  pending = look up all Deals where status is 'pending'
+  findings is an empty list
+  for each deal in pending:
+    note = call 'risk' with deal
+    add note to findings
+  return findings
+```
+
+You don't know how many pending deals there are; the loop handles whatever's there. Each call runs in order.
+
+**4. Pipeline — named linear chain, reusable.**
+
+```clear
+pipeline 'review pipeline' with deal:
+  'screen'
+  'score'
+  'review'
+
+reviewed = call pipeline 'review pipeline' with new_deal
+```
+
+Same as the sequential pattern but with a name you can call from anywhere. The data flows through every step end-to-end.
+
+**5. Iterative refinement — keep improving until quality is good enough.**
+
+```clear
+agent 'critic' receives draft:
+  score = ask claude 'Rate clarity 1-10' with draft
+  return score
+
+agent 'polish' receives topic:
+  draft = ask claude 'Write a first draft' with topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'critic' with draft
+  return draft
+```
+
+The polish agent drafts, critiques, redrafts, critiques again — up to three times. The `max 3 times` is required (no infinite loops). When the critic gives an 8+ or the cap hits, the loop ends and the best draft returns. Useful for: report-writing, code review, response drafting.
+
+### Scheduled agents — runs forever, no clicks
+
+Up to here, an agent runs because some endpoint called it. But sometimes you want an agent to fire on a schedule — *"every morning at 9 a.m., summarize yesterday's pending deals and email the CRO."* That's a **scheduled agent**.
+
+```clear
+agent 'morning briefing' runs every 1 day at '9:00 AM':
+  pending = look up all Deals where status is 'pending'
+  brief = ask claude 'Write a CRO morning brief covering these pending deals' with pending
+  send email to 'carol@cro.com':
+    subject is 'Morning brief — {count of pending} deals pending'
+    body is brief
+```
+
+The `runs every 1 day at '9:00 AM'` line is the trigger. No endpoint, no button. The runtime starts the schedule when your server boots. Every morning at 9, the agent fires. The CRO gets the email.
+
+Other schedules work the same way:
+
+```clear
+agent 'hourly cleanup' runs every 1 hour:
+  ...
+
+agent 'weekly report' runs every 1 week at '8:00 AM':
+  ...
+
+agent 'minute poller' runs every 5 minutes:
+  ...
+```
+
+Long-running and durable: the runtime registers the schedule, fires the agent on time, retries on transient errors, logs every fire. **You wrote one line; you got a cron job, a job runner, error retry, and observability.**
+
+### Streaming — token-by-token text or wait for the whole answer
+
+Text agents stream by default. The CRO clicks *Draft summary* and the words appear as they're written, like ChatGPT. **Zero syntax — just works.** When the agent has structured output (`returning JSON text:`), the runtime knows you can't stream partial JSON, so it auto-disables streaming and waits for the full answer.
+
+When you genuinely don't want streaming (a pipeline step that needs the full text before passing it to the next agent), opt out:
+
+```clear
+agent 'summarizer' receives text:
+  do not stream
+  summary = ask claude 'Summarize in one sentence' with text
+  return summary
+```
+
+`do not stream` is the only opt-out you'll ever need.
+
+### The bridge to Chapter 12 — `enforce that` wraps the agent
+
+The drafter from Chapter 11 returns a `discount_percent`. The agent is non-deterministic — Claude could suggest 28%, 35%, or 50% depending on the day. **Chapter 12's `rule` keyword is what makes this safe.** When you wrap the agent's output with an `enforce that` rule, the rule fires AFTER the agent returns, on every output. The agent can suggest anything; the rule rejects anything over 30%.
+
+```clear
+when user sends deal to /api/draft:
+  drafted = call 'precedent finder' with deal
+  enforce that drafted's suggested_cap is less than 30, or fail with error message: 'Discount cap exceeded — VP approval required'
+  send back drafted
+```
+
+That's the safety story Marcus's CRO will sign: **"Claude can suggest anything; the rule blocks anything over 30%; the audit log records both."** The agent is creative; the rule is the gate. Chapter 12 covers the `rule` keyword, the prover, and the audit PDF in detail.
+
+### Try it yourself
+
+1. **Add a precedent tool.** Define `look_up_recent_deals(customer_name)` from earlier and attach it to your Chapter 11 drafter as `has tool:`. Re-draft the Acme deal — the AI's summary should now mention Acme's last deal explicitly. Compare to the Chapter 11 version, which had to be told *Acme* in the prompt.
+
+2. **Schedule a daily morning briefing.** Add the `agent 'morning briefing' runs every 1 day at '9:00 AM':` block from earlier. Run the server overnight. Tomorrow at 9 a.m. (or set the schedule to 5 minutes from now for a faster test), check the email outbox — there's a new row.
+
+3. **Try to leak the Stripe key.** Write an agent that has `api_key is env('STRIPE_SECRET_KEY')` in its body. Run `clear build`. The compiler refuses with the credential-safety error. Wrap the key in a function and call the function from the agent — the build now succeeds.
+
+### Why this matters
+
+Chapter 11's drafter taught one shape — single agent, single prompt. This chapter showed you the full toolbox: tools, skills, memory, knowledge bases, guardrails, schedules, multi-agent patterns, streaming control. Together with Chapter 12's rules, you have what regulated-tier customers actually buy: **AI that can do real work, with provable guardrails the compliance buyer can sign.** The Marcus pitch in one sentence: *"Your AI can charge cards via Stripe but never sees the Stripe key. Your AI can suggest discounts but never break the discount cap. Your AI can email the CRO every morning but only when the rules say it can."* That's the difference between *"we use AI"* and *"we use AI safely."*
+
+### What's next
+
+Chapter 12 introduces the `rule` keyword — the named, provable, audit-trail-aware shape for the `enforce that` lines you've started using. Same logic, much bigger artifact: a verdict the prover can compute, a one-page PDF the CRO signs, an audit log row per rule rejection. Bring your drafter from Chapter 11, your team of agents from this chapter, and your queue from Chapter 9 — Chapter 12 closes the tutorial track.
+
+---
 
 ## Chapter 12: Provable Business Rules (Math, Not Just Tests)
 
