@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, probeSuites, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, isProviderQuotaError, probeSuites, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -112,6 +112,23 @@ describe('meph pattern live probe harness', () => {
     expect(passed.pass).toEqual(true);
     expect(passed.compiles).toEqual(true);
     expect(passed.usedEditor).toEqual(true);
+  });
+
+  it('does not count provider quota blocks as failed app trials', () => {
+    expect(isProviderQuotaError('openrouter HTTP 403: Key limit exceeded')).toEqual(true);
+    expect(isProviderQuotaError('syntax compile failed')).toEqual(false);
+
+    const rows = [
+      { probe: { id: 'a', requiredSourceTerms: ['approval'] }, variant: 'docs_only', score: { pass: true }, result: {} },
+      { probe: { id: 'a', requiredSourceTerms: ['approval'] }, variant: 'full_hook', score: { pass: false }, result: { blocked: true, error: 'Key limit exceeded' } },
+    ];
+    const summary = summarizeRows(rows, { abMode: true });
+
+    expect(summary.completedRows.length).toEqual(1);
+    expect(summary.blockedRows.length).toEqual(1);
+    expect(summary.passed).toEqual(1);
+    expect(summary.ab.full_hook.total).toEqual(0);
+    expect(summary.aborted).toEqual(true);
   });
 
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {

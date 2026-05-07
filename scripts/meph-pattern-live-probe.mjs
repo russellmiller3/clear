@@ -315,6 +315,38 @@ export function scoreGeneratedApp(probe, result) {
   };
 }
 
+export function isProviderQuotaError(message) {
+  return /key limit exceeded|insufficient credits|quota exceeded|credit limit|billing limit/i.test(String(message || ''));
+}
+
+export function summarizeRows(rows, { abMode = false } = {}) {
+  const blockedRows = rows.filter(row => row.result?.blocked);
+  const completedRows = rows.filter(row => !row.result?.blocked);
+  const passed = completedRows.filter(row => row.score.pass).length;
+  const summary = {
+    rows,
+    completedRows,
+    blockedRows,
+    passed,
+    total: completedRows.length,
+    aborted: blockedRows.length > 0,
+    ab: null,
+  };
+  if (abMode) {
+    const byVariant = {};
+    for (const label of ['docs_only', 'full_hook']) {
+      const variantRows = completedRows.filter(row => row.variant === label);
+      byVariant[label] = {
+        passed: variantRows.filter(row => row.score.pass).length,
+        total: variantRows.length,
+      };
+    }
+    byVariant.delta = byVariant.full_hook.passed - byVariant.docs_only.passed;
+    summary.ab = byVariant;
+  }
+  return summary;
+}
+
 async function main() {
   const selectedProbes = selectProbes({
     suiteName: process.env.MEPH_PATTERN_PROBE_SUITE || 'approvalQueueFullApps',
@@ -358,7 +390,9 @@ async function main() {
       : [{ label: 'default', options: { patternPreflight: 'full', disablePatternSearchPromptGuard: false, disablePatternSearchTool: false } }];
 
     for (const probe of selectedProbes) {
+      let abortProbe = false;
       for (const variant of variants) {
+        if (abortProbe) break;
         console.log(`\n=== ${probe.id} :: ${variant.label} ===`);
         let result;
         let score;
@@ -371,17 +405,21 @@ async function main() {
             ? scoreGeneratedApp(probe, result)
             : scoreProbe(probe, result);
         } catch (err) {
+          const message = err?.message || String(err);
+          const blocked = isProviderQuotaError(message);
           result = {
             text: '',
             toolNames: [],
             preflight: null,
             source: '',
-            error: err?.message || String(err),
-            compile: { errors: [{ message: err?.message || String(err) }] },
+            error: message,
+            blocked,
+            compile: { errors: [{ message }] },
           };
           score = probe.requiredSourceTerms
             ? scoreGeneratedApp(probe, result)
             : { pass: false, usedSearch: false, usedToolSearch: false, usedPreflightSearch: false, foundExpectedKind: false, foundExpectedTerm: false };
+          if (blocked) abortProbe = true;
         }
         rows.push({ probe, variant: variant.label, result, score });
         console.log(`tools: ${result.toolNames.join(', ') || '(none)'}`);
@@ -395,24 +433,26 @@ async function main() {
         console.log(result.text.replace(/\s+/g, ' ').slice(0, 700));
         if (result.source) console.log(result.source.replace(/\s+/g, ' ').slice(0, 700));
       }
+      if (abortProbe) break;
     }
 
-    const passed = rows.filter(row => row.score.pass).length;
-    console.log(`\nSUMMARY ${passed}/${rows.length} passed`);
+    const summary = summarizeRows(rows, { abMode });
+    console.log(`\nSUMMARY ${summary.passed}/${summary.total} completed trials passed`);
+    if (summary.blockedRows.length) {
+      console.log(`ABORTED provider quota blocked ${summary.blockedRows.length} trial(s): ${summary.blockedRows[0].result.error}`);
+    }
     for (const row of rows) {
       const detail = row.probe.requiredSourceTerms
         ? `compiles=${row.score.compiles ? 'yes' : 'no'} missing=${row.score.missingRequired.join('|') || 'none'}`
         : `tools=${row.result.toolNames.join('|') || 'none'} preflight=${row.score.usedPreflightSearch ? 'yes' : 'no'}`;
-      console.log(`- ${row.probe.id} ${row.variant}: ${row.score.pass ? 'PASS' : 'FAIL'} ${detail}`);
+      const label = row.result.blocked ? 'BLOCKED' : (row.score.pass ? 'PASS' : 'FAIL');
+      console.log(`- ${row.probe.id} ${row.variant}: ${label} ${detail}`);
     }
-    if (abMode) {
-      const offRows = rows.filter(row => row.variant === 'docs_only');
-      const onRows = rows.filter(row => row.variant === 'full_hook');
-      const offPassed = offRows.filter(row => row.score.pass).length;
-      const onPassed = onRows.filter(row => row.score.pass).length;
-      console.log(`\nAB SUMMARY docs_only=${offPassed}/${offRows.length} full_hook=${onPassed}/${onRows.length} delta=${onPassed - offPassed}`);
+    if (summary.ab) {
+      console.log(`\nAB SUMMARY docs_only=${summary.ab.docs_only.passed}/${summary.ab.docs_only.total} full_hook=${summary.ab.full_hook.passed}/${summary.ab.full_hook.total} delta=${summary.ab.delta}`);
     }
-    if (passed !== rows.length) process.exitCode = 1;
+    if (summary.aborted) process.exitCode = 2;
+    else if (summary.passed !== summary.total) process.exitCode = 1;
   } finally {
     child.kill('SIGTERM');
     await new Promise(resolve => child.once('exit', resolve));
