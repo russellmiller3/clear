@@ -136,13 +136,15 @@ describe('meph pattern live probe harness', () => {
     expect(passed.usedEditor).toEqual(true);
   });
 
-  it('does not count provider quota blocks as failed app trials', () => {
+  it('does not count provider quota or network blocks as failed app trials', () => {
     expect(isProviderQuotaError('openrouter HTTP 403: Key limit exceeded')).toEqual(true);
+    expect(isProviderQuotaError('[openrouter network error: fetch failed]')).toEqual(true);
+    expect(isProviderQuotaError('The operation was aborted due to timeout')).toEqual(true);
     expect(isProviderQuotaError('syntax compile failed')).toEqual(false);
 
     const rows = [
       { probe: { id: 'a', requiredSourceTerms: ['approval'] }, variant: 'docs_only', score: { pass: true }, result: {} },
-      { probe: { id: 'a', requiredSourceTerms: ['approval'] }, variant: 'full_hook', score: { pass: false }, result: { blocked: true, error: 'Key limit exceeded' } },
+      { probe: { id: 'a', requiredSourceTerms: ['approval'] }, variant: 'full_hook', score: { pass: false }, result: { blocked: true, error: 'fetch failed' } },
     ];
     const summary = summarizeRows(rows, { abMode: true });
 

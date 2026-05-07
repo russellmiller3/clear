@@ -343,7 +343,7 @@ export function scoreGeneratedApp(probe, result) {
 }
 
 export function isProviderQuotaError(message) {
-  return /key limit exceeded|insufficient credits|quota exceeded|credit limit|billing limit/i.test(String(message || ''));
+  return /key limit exceeded|insufficient credits|quota exceeded|credit limit|billing limit|openrouter network error|fetch failed|request timed out|aborted due to timeout|econnreset|etimedout|enotfound|eai_again/i.test(String(message || ''));
 }
 
 export function summarizeRows(rows, { abMode = false } = {}) {
@@ -460,7 +460,7 @@ async function main() {
     const summary = summarizeRows(rows, { abMode });
     console.log(`\nSUMMARY ${summary.passed}/${summary.total} completed trials passed`);
     if (summary.blockedRows.length) {
-      console.log(`ABORTED provider quota blocked ${summary.blockedRows.length} trial(s): ${summary.blockedRows[0].result.error}`);
+      console.log(`ABORTED provider blocked ${summary.blockedRows.length} trial(s): ${summary.blockedRows[0].result.error}`);
     }
     for (const row of rows) {
       const detail = row.probe.requiredSourceTerms
