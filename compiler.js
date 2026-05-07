@@ -15589,6 +15589,19 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('        return before - len(store["records"])');
   lines.push('    def execute(self, sql): pass');
   lines.push('    def run(self, sql): pass');
+  // Canonical-name aliases (Python parity step, 2026-05-06). The real
+  // runtime/db.py and runtime/db_postgres.py helpers expose find_all /
+  // find_one / insert to match PEP 8 conventions. The inline stub now
+  // offers the same names so compiler-emit code (notably the auth
+  // scaffold rewrite that follows) can call db.find_one("_auth_users",
+  // {"email": email}) regardless of which database backend is in scope.
+  lines.push('    def find_all(self, table, filter=None, options=None):');
+  lines.push('        return self.query(table, filter)');
+  lines.push('    def find_one(self, table, filter=None):');
+  lines.push('        results = self.query(table, filter)');
+  lines.push('        return results[0] if results else None');
+  lines.push('    def insert(self, table, record):');
+  lines.push('        return self.save(table, record)');
   lines.push('');
   lines.push('db = _DB()');
   lines.push('');

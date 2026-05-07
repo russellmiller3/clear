@@ -150,6 +150,18 @@ The `database is local file` keyword may not exist for Python yet — check the 
 5. Add CLI runtime-copy support for `runtime/db.py` and `runtime/db_postgres.py` (the JS files have a parallel copy step in cli/clear.js).
 6. Cross-target smoke (`scripts/cross-target-smoke.mjs`) compiles every template against Python; verify no regressions.
 
+### Status update — 2026-05-06 (even later)
+
+**Step 1 of the auth scaffold rewrite shipped: method-name harmonization.** The inline `_DB` stub now exposes `find_all` / `find_one` / `insert` alongside the legacy `query` / `query_one` / `save`. The new methods delegate to the legacy ones — same behavior, canonical PEP 8 names available. Four new tests at `clear.test.js` lock the aliases in. This unblocks the auth scaffold rewrite that follows because the auth code can now call `db.find_one("_auth_users", {"email": email})` regardless of which database backend is in scope.
+
+**Next pickup (session N+1):** rewrite `compileAuthScaffoldPython` in `compiler.js:6401` to:
+- emit `db.create_table('_auth_users', {...})` once at the top of the scaffold (mirroring the JS scaffold's `db.createTable` at compiler.js:14470)
+- replace `_users = []` + `any(u["email"] == email for u in _users)` with `db.find_one("_auth_users", {"email": email})`
+- replace `_users.append(user)` with `await db.insert("_auth_users", user_record)` — handle the async/sync split (real db.py is sync, signup handler is currently `async def`)
+- replace the user lookup in `/auth/me` with `db.find_one("_auth_users", {"id": payload["id"]})`
+
+The id-vs-tenant_id init-order gotcha (from learnings.md 2026-05-03 night) applies — when the JS scaffold added durable users, it had to do a two-step insert+update because `tenant_id = user.id` and id is auto-issued. The Python rewrite will hit the same shape and needs the same fix.
+
 ### Gotchas to apply (from learnings.md, surfaced 2026-05-06)
 
 - **Thread the new `dbBackend` ctx field through ALL ctx build sites.** Missed one cycle 5 = silent no-op. The Python ctx-build site is around compiler.js:15770. Verify every `mode: 'backend'` ctx literal has the new field after the change. (Pattern: `grep -nE "mode:.*'backend'" compiler.js`.)

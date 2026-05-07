@@ -7778,6 +7778,50 @@ describe('Auth scaffolding', () => {
 });
 
 // =============================================================================
+// PYTHON INLINE DB STUB — METHOD NAME HARMONIZATION (Python parity step, 2026-05-06)
+// =============================================================================
+// The inline `_DB` Python stub originally exposed `query` / `query_one` / `save`
+// while the real `runtime/db.py` (and `runtime/db_postgres.py`) helper exposes
+// `find_all` / `find_one` / `insert` to match PEP 8 conventions. Auth scaffold
+// can't migrate to durable storage until both database surfaces speak the same
+// API — these tests lock in the canonical-named aliases on the inline stub so
+// auth-scaffold can call `db.find_one("_auth_users", {"email": email})` whether
+// the database is `local memory` (stub) or `local file` / `postgres` (real
+// helper). Plan: plans/plan-python-parity.md.
+describe('Python inline _DB stub — canonical-name aliases (find_all / find_one / insert)', () => {
+  it('exposes find_all alongside legacy query', () => {
+    const r = compileProgram("target: python backend\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('def find_all(self');
+    // Legacy alias still works for any compiler-emit code that hasn't migrated
+    expect(r.python).toContain('def query(self');
+  });
+
+  it('exposes find_one alongside legacy query_one', () => {
+    const r = compileProgram("target: python backend\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('def find_one(self');
+    expect(r.python).toContain('def query_one(self');
+  });
+
+  it('exposes insert alongside legacy save', () => {
+    const r = compileProgram("target: python backend\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('def insert(self');
+    expect(r.python).toContain('def save(self');
+  });
+
+  it('canonical names delegate to the legacy methods so behavior is identical', () => {
+    // The stub must behave the same way under the canonical names as under
+    // the legacy names — otherwise the auth scaffold rewrite will break when
+    // database is local memory. The cleanest way is to delegate (find_one
+    // calls query_one, insert calls save) so there's only one body to
+    // maintain. These regexes lock that delegation in.
+    const r = compileProgram("target: python backend\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toMatch(/def find_all\(self[^)]*\):\s*\n\s+return self\.query/);
+    expect(r.python).toMatch(/def find_one\(self[^)]*\):[\s\S]+?self\.query/);
+    expect(r.python).toMatch(/def insert\(self[^)]*\):\s*\n\s+return self\.save/);
+  });
+});
+
+// =============================================================================
 // DB RELATIONSHIPS (belongs to)
 // =============================================================================
 

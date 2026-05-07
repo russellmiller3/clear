@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-06 (even later) — Python inline stub method-name harmonization (auth scaffold unblocker)
+
+The inline `_DB` Python stub originally exposed `query` / `query_one` / `save` while the real `runtime/db.py` and `runtime/db_postgres.py` helpers expose `find_all` / `find_one` / `insert` to match PEP 8 conventions. The auth scaffold rewrite that follows in the next session needs to call durable storage methods that work on BOTH the inline stub (when `database is local memory`) AND the real helper (when `database is local file` / `database is postgres`). Two surfaces, divergent APIs — the auth scaffold can't migrate until they speak the same language.
+
+This commit adds three canonical-named methods to the inline stub that delegate to the legacy methods: `find_all` calls `query`, `find_one` calls `query_one`, `insert` calls `save`. Behavior is identical; the only thing that changed is that compiler-emit code can now use the canonical names regardless of which database backend is in scope. Legacy methods stay because plenty of compiler-emit paths still use them (the canonical-name migration of those paths is its own follow-up).
+
+Four new tests in `clear.test.js` lock the new aliases in: each one asserts the canonical method exists alongside the legacy method, and the fourth asserts the delegation pattern (so future compiler edits can't break behavior by inlining different bodies). 2988 / 2988 tests green (+4 from last session's 2984).
+
+Plan reference: `plans/plan-python-parity.md` — "First-session scope" step 1 ("harmonize method names"). Next session: rewrite `compileAuthScaffoldPython` to use `db.create_table('_auth_users', ...)` + `db.find_one("_auth_users", {"email": email})` + `db.insert("_auth_users", user_record)` instead of the in-memory `_users = []` list. After that, the auth scaffold's "your users survive a restart" promise holds on Python the same way it does on JS.
+
+---
+
 ## 2026-05-06 (later) — USER-GUIDE FEATURES + FAQ pass on chapters 6, 8, 12
 
 Russell's standard for the tutorial track is *"ultimately for me to learn Clear so it has to be great."* Read the existing Chapters 1–11 against `FEATURES.md` exec summary + `FAQ.md` recent entries to surface drift. Three substantive additions landed:
