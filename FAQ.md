@@ -101,6 +101,8 @@ Each canonical app gets one whole-app row plus deterministic primitive rows extr
 
 Non-golden templates in `apps/` also contribute `reference` primitive rows. They do **not** contribute whole-app rows. That keeps the 13 golden templates as trusted full examples while still mining useful source shapes from the rest of the repo.
 
+Language primitives that are too important to wait for a template can also be seeded as `language` rows. Current example: the optimistic-lock approval update shape for preventing double-processing.
+
 `browse_templates` with `action: "search"` returns the best matching excerpt, not the whole file. A narrow question like "what's the shape to modify routing of an approval queue?" should return the `approval-queue` queue primitive with `queue for request:` and its reviewer/actions block. Use `action: "read"` only when Meph explicitly needs a full template file.
 
 **Main paths:**
@@ -117,7 +119,7 @@ node scripts/primitive-audit.mjs
 node scripts/primitive-audit.mjs --json
 ```
 
-Current audit snapshot after mining the rest of `apps/`: 13 whole-app rows, 1,220 primitive rows, 61 parent templates, 23 primitive kinds, 0 review flags.
+Current audit snapshot after mining the rest of `apps/` and adding the first language primitive: 13 whole-app rows, 1,221 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
 
 **One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
 

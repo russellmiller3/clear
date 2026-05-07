@@ -518,6 +518,7 @@ export class FactorDB {
 
   queryProgrammingPatterns({ source = '', shape_signature = null, query = '', topK = 3, pattern_set = null } = {}) {
     const queryShape = shapeFromInput({ source, shape_signature });
+    const hasShapeSignal = !!shape_signature || String(source || '').trim().length > 0;
     let sql = 'SELECT * FROM clear_programming_patterns';
     const params = [];
     if (pattern_set) {
@@ -526,7 +527,7 @@ export class FactorDB {
     }
     const rows = this._db.prepare(sql).all(...params).map(normalizePatternRow);
     const scored = rows.map(row => {
-      const shapeScore = shapeSimilarity(queryShape, row.shape_signature);
+      const shapeScore = hasShapeSignal ? shapeSimilarity(queryShape, row.shape_signature) : 0;
       const queryScore = textMatchScore(row, query);
       const excerpt = pickSourceExcerpt(row.source, { query, querySource: source });
       const lineOffset = Math.max(1, Number(row.source_start_line) || 1) - 1;

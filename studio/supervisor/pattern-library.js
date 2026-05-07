@@ -101,6 +101,28 @@ export const CORE_TEMPLATE_SPECS = Object.freeze([
   },
 ]);
 
+export const LANGUAGE_PRIMITIVE_SPECS = Object.freeze([
+  {
+    template_name: 'clear-language::concurrency::optimistic-lock-approval',
+    parent_template_name: 'clear-language-primitives',
+    pattern_kind: 'concurrency',
+    is_primitive: 1,
+    pattern_set: 'language',
+    title: 'Optimistic lock approval update',
+    description: 'Prevent double-processing by version-checking a status transition before save',
+    feature_tags: ['concurrency', 'approval', 'optimistic_lock', 'double_processing', 'status_transition'],
+    source: [
+      'when user updates deal at /api/deals/:id/approve:',
+      '  requires login',
+      '  with optimistic lock',
+      '  selected_deal = look up Deal where id is this id',
+      "  change selected_deal's status from 'pending' to 'approved'",
+      '  save selected_deal to Deals',
+      "  send back 'approved'",
+    ].join('\n'),
+  },
+]);
+
 const PRIMITIVE_DETECTORS = Object.freeze([
   { kind: 'database', tags: ['database'], match: line => /^database\b/i.test(line) },
   { kind: 'data_table', tags: ['database', 'table', 'schema'], match: line => /^(?:create (?:a |an )?.+\btable|table\s+\w+):/i.test(line) },
@@ -108,6 +130,7 @@ const PRIMITIVE_DETECTORS = Object.freeze([
   { kind: 'relationship', tags: ['database', 'relationship'], match: line => /\b(has many|belongs to)\b/i.test(line), maxLines: 8 },
   { kind: 'queue', tags: ['queue', 'workflow', 'approval', 'assignment', 'routing', 'reviewer', 'approver'], match: line => /^queue\s+for\b/i.test(line) },
   { kind: 'routing', tags: ['routing', 'rules', 'assignment'], match: line => /^route\s+\w+\s+by\b/i.test(line) },
+  { kind: 'concurrency', tags: ['concurrency', 'optimistic_lock', 'double_processing'], match: line => /^with\s+optimistic\s+lock\b/i.test(line), maxLines: 14 },
   { kind: 'policy', tags: ['policy', 'security', 'rules'], match: line => /^policy\b/i.test(line), maxLines: 24 },
   { kind: 'proof', tags: ['proof', 'prover', 'policy'], match: line => /^prove\b/i.test(line), maxLines: 12 },
   { kind: 'rule', tags: ['rule', 'validation', 'policy'], match: line => /^rule\b/i.test(line) },
@@ -292,6 +315,19 @@ export function loadReferenceTemplatePatterns(repoRoot = DEFAULT_REPO_ROOT, cano
   return loadTemplatePatterns(repoRoot, discoverReferenceTemplateSpecs(repoRoot, canonicalSpecs));
 }
 
+export function loadLanguagePrimitivePatterns() {
+  return LANGUAGE_PRIMITIVE_SPECS.map(spec => {
+    const shape = safeShape(spec.source);
+    return {
+      ...spec,
+      archetype: shape.archetype,
+      shape_signature: shape,
+      source_start_line: 1,
+      source_end_line: spec.source.split(/\r?\n/).length,
+    };
+  });
+}
+
 export function seedCoreTemplatePatterns(factorDB, repoRoot = DEFAULT_REPO_ROOT, specs = CORE_TEMPLATE_SPECS, options = {}) {
   if (!factorDB || typeof factorDB.upsertProgrammingPattern !== 'function') {
     throw new Error('seedCoreTemplatePatterns requires a FactorDB with upsertProgrammingPattern()');
@@ -328,15 +364,21 @@ export function seedCoreTemplatePatterns(factorDB, repoRoot = DEFAULT_REPO_ROOT,
       referencePrimitives.push(primitive);
     }
   }
+  const languagePrimitives = loadLanguagePrimitivePatterns();
+  for (const primitive of languagePrimitives) {
+    factorDB.upsertProgrammingPattern(primitive);
+  }
   return {
     seeded: patterns.length,
     primitiveSeeded: primitives.length,
     referenceTemplateCount: referencePatterns.length,
     referencePrimitiveSeeded: referencePrimitives.length,
+    languagePrimitiveSeeded: languagePrimitives.length,
     names: patterns.map(p => p.template_name),
     patterns,
     primitives,
     referencePatterns,
     referencePrimitives,
+    languagePrimitives,
   };
 }

@@ -14,7 +14,7 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
 import { classifyArchetype } from './archetype.js';
-import { CORE_TEMPLATE_SPECS, extractTemplatePrimitivePatterns, seedCoreTemplatePatterns } from './pattern-library.js';
+import { CORE_TEMPLATE_SPECS, LANGUAGE_PRIMITIVE_SPECS, extractTemplatePrimitivePatterns, seedCoreTemplatePatterns } from './pattern-library.js';
 import { parse } from '../../parser.js';
 import { compileProgram } from '../../index.js';
 import { readFileSync, unlinkSync } from 'fs';
@@ -139,6 +139,7 @@ describe('Factor DB compile integration', () => {
     expect(result.primitiveSeeded > 13).toEqual(true);
     expect(result.referenceTemplateCount > 0).toEqual(true);
     expect(result.referencePrimitiveSeeded > 0).toEqual(true);
+    expect(result.languagePrimitiveSeeded).toEqual(LANGUAGE_PRIMITIVE_SPECS.length);
     expect(CORE_TEMPLATE_SPECS.length).toEqual(13);
 
     const coreRows = db.listProgrammingPatterns({ pattern_set: 'core' });
@@ -147,8 +148,8 @@ describe('Factor DB compile integration', () => {
     expect(marcusRows.length).toEqual(5);
 
     const primitiveRows = db.listProgrammingPatterns({ include_primitives: true }).filter(r => r.is_primitive);
-    expect(primitiveRows.length).toEqual(result.primitiveSeeded + result.referencePrimitiveSeeded);
-    const canonicalPrimitiveParents = new Set(primitiveRows.filter(r => r.pattern_set !== 'reference').map(r => r.parent_template_name));
+    expect(primitiveRows.length).toEqual(result.primitiveSeeded + result.referencePrimitiveSeeded + result.languagePrimitiveSeeded);
+    const canonicalPrimitiveParents = new Set(primitiveRows.filter(r => r.pattern_set === 'core' || r.pattern_set === 'marcus').map(r => r.parent_template_name));
     expect([...canonicalPrimitiveParents].sort()).toEqual(CORE_TEMPLATE_SPECS.map(s => s.name).sort());
     const referenceRows = db.listProgrammingPatterns({ pattern_set: 'reference', include_primitives: true });
     expect(referenceRows.length).toEqual(result.referencePrimitiveSeeded);
@@ -173,6 +174,15 @@ describe('Factor DB compile integration', () => {
     expect(narrowMatches[0].parent_template_name).toEqual('approval-queue');
     expect(narrowMatches[0].pattern_kind).toEqual('queue');
     expect(narrowMatches[0].source).toContain('queue for request:');
+
+    const concurrencyMatches = db.queryProgrammingPatterns({
+      query: 'avoid double processing approval optimistic lock',
+      topK: 1,
+    });
+    expect(concurrencyMatches[0].is_primitive).toEqual(1);
+    expect(concurrencyMatches[0].pattern_kind).toEqual('concurrency');
+    expect(concurrencyMatches[0].source).toContain('with optimistic lock');
+    expect(concurrencyMatches[0].source).toContain("status from 'pending' to 'approved'");
 
     db.close();
     cleanup();

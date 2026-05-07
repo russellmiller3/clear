@@ -14,8 +14,9 @@ What shipped:
 - New `clear_programming_patterns` table in Factor DB with shape signatures, tags, descriptions, source hashes, and source text.
 - New primitive metadata in that table: parent template, primitive kind, primitive flag, and source line span.
 - New seeder in `studio/supervisor/pattern-library.js` that loads each canonical template from disk, parses it, computes its shape, upserts the app row, extracts primitive source blocks, and upserts those rows too.
-- The current 13-template seed produces 455 primitive rows across all 13 golden templates.
-- The rest of `apps/` is mined for `reference` primitive rows only. Current audit: 1,220 total primitive rows, 61 parent templates, 23 primitive kinds, 0 review flags.
+- The current 13-template seed produces 523 primitive rows across all 13 golden templates.
+- The rest of `apps/` is mined for `reference` primitive rows only. Current audit: 1,221 total primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
+- Critical language primitives can be seeded even before a template uses them. The first `language` primitive is the optimistic-lock approval update shape for avoiding double-processing.
 - New `scripts/primitive-audit.mjs` report shows counts by pattern set, primitive kind, parent template, examples, and review flags.
 - `browse_templates` now supports `action: "search"` so Meph can search patterns by app shape plus plain-English query. Search returns the relevant snippet with parent/kind metadata, not a whole template by default.
 - The compile tool now injects the closest trusted pattern matches into Meph's hint text and labels primitive matches explicitly.
@@ -25,7 +26,7 @@ What shipped:
 
 Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
 
-Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns the `approval-queue` queue primitive at its real source line.
+Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns the `approval-queue` queue primitive at its real source line. A five-question OpenRouter live probe caught the missing double-processing primitive; retrieval and prompt rules were tightened from that miss.
 
 ---
 

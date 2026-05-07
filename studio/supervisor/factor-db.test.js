@@ -496,6 +496,69 @@ describe('FactorDB', () => {
     cleanup();
   });
 
+  it('uses text relevance, not empty general shape, for query-only primitive searches', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const approvalSource = [
+      "button 'Approve':",
+      "  change selected_request's status from 'pending' to 'approved'",
+      '  update selected_request at /api/requests/:id/approve',
+    ].join('\n');
+    const marketingSource = [
+      "page 'Approved Customers' at '/customers':",
+      "  heading 'Approved customers'",
+      "  text 'Show approval stories after customers approve quotes.'",
+    ].join('\n');
+    const approvalShape = computeShape(parse([
+      'build for web',
+      "page 'Approval Queue' at '/':",
+      '  detail panel for selected_request:',
+      approvalSource.split('\n').map(line => `    ${line}`).join('\n'),
+    ].join('\n')));
+    const marketingShape = computeShape(parse(marketingSource));
+
+    db.upsertProgrammingPattern({
+      template_name: 'approval-queue::button_action::187::button-approve',
+      parent_template_name: 'approval-queue',
+      pattern_kind: 'button_action',
+      is_primitive: 1,
+      pattern_set: 'marcus',
+      title: 'Approval Queue: approve button',
+      description: 'Primitive pattern from approval-queue: button Approve',
+      archetype: approvalShape.archetype,
+      shape_signature: approvalShape,
+      feature_tags: ['approval', 'queue', 'button', 'status'],
+      source: approvalSource,
+    });
+    db.upsertProgrammingPattern({
+      template_name: 'marketing::page::approved-customers',
+      parent_template_name: 'marketing',
+      pattern_kind: 'page',
+      is_primitive: 1,
+      pattern_set: 'reference',
+      title: 'Marketing page: approved customers',
+      description: 'Reference marketing copy that mentions approval words',
+      archetype: marketingShape.archetype,
+      shape_signature: marketingShape,
+      feature_tags: ['approval', 'customer', 'page'],
+      source: marketingSource,
+    });
+
+    const results = db.queryProgrammingPatterns({
+      query: 'approval status pending approved',
+      topK: 1,
+    });
+
+    expect(results[0].template_name).toEqual('approval-queue::button_action::187::button-approve');
+    expect(results[0].pattern_kind).toEqual('button_action');
+    expect(results[0].query_score > 0.5).toEqual(true);
+    expect(results[0].shape_score).toEqual(0);
+    expect(results[0].source_excerpt).toContain("status from 'pending' to 'approved'");
+
+    db.close();
+    cleanup();
+  });
+
   it('stages learned primitive candidates before promotion into trusted patterns', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);

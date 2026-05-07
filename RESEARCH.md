@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-05-07 (curated pattern DB now indexes primitive Clear shapes across templates; learned primitives stage before promotion; flywheel hint delivery remains boundary-tested)**.
+Updated: **2026-05-07 (curated pattern DB now indexes primitive Clear shapes across templates, includes critical language primitives, and stages learned primitives before promotion; flywheel hint delivery remains boundary-tested)**.
 
 ## Capability surface — provable named business rules (2026-05-02)
 

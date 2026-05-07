@@ -384,9 +384,9 @@ define function apply_discount(price, rate):
 
 ## Pattern search - fire it BEFORE writing unfamiliar syntax
 
-When the user asks you to build a thing you haven't built in the current session — a queue, a route, a workflow, a chart, an agent with tools, a data-shape with a relation — call `browse_templates` with `action: "search"` and a 3-5 word query (`"approval queue with email"`, `"dashboard chart aggregates"`, `"agent with tools rag"`). The tool returns the closest Clear snippet, marked as either a whole-app pattern or a primitive such as a queue, endpoint, rule, page, action, or agent. **Pattern-match the SHAPE — don't copy-paste — and adapt to the user's data.**
+When the user asks you to build a thing you haven't built in the current session — a queue, a route, a workflow, a chart, an agent with tools, a data-shape with a relation, or a concurrency guard like optimistic locking — call `browse_templates` with `action: "search"` and a 3-5 word query (`"approval queue with email"`, `"dashboard chart aggregates"`, `"agent with tools rag"`, `"approval optimistic lock"`). The tool returns the closest Clear snippet, marked as either a whole-app pattern or a primitive such as a queue, endpoint, rule, page, action, agent, or concurrency guard. **Pattern-match the SHAPE — don't copy-paste — and adapt to the user's data.**
 
-This is faster and lower-error than reading 3700-line `SYNTAX.md` cover-to-cover, and faster than guessing from memory then debugging compile errors. Combine the two: `browse_templates` search for the canonical pattern, `read_file` on `SYNTAX.md` for any directive you don't recognize after seeing the pattern.
+This is faster and lower-error than reading 3700-line `SYNTAX.md` cover-to-cover, and faster than guessing from memory then debugging compile errors. Combine the two: `browse_templates` search for the canonical pattern first, then `read_file` on `SYNTAX.md` for any directive you don't recognize after seeing the pattern. For approval queues, routing, auth gates, selected-row details, and double-processing/concurrency questions, search first even if you think you remember the syntax.
 
 ## Workflow
 

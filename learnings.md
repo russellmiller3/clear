@@ -2452,5 +2452,7 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Do not run two reusable-pattern hint systems.** If both answer "what shape should I write?", consolidate them before adding more data.
 - **Separate repair memory from pattern memory.** Exact-error fixes are not the same thing as reusable app primitives.
 - **Reference templates should not become trusted whole-app rows by accident.** Mine their snippets, preserve their provenance, and keep the golden app set small.
+- **Query-only pattern search must not get empty-source shape points.** If the user asks in plain English without current source, rank by text first; otherwise generic pages beat the useful primitive.
+- **Critical language primitives should not wait for an app template.** If live probes show a compiler feature Meph needs, seed it as a `language` primitive with evidence and provenance.
 - **Learned primitives need a staging queue.** Meph and user sessions may propose; only deterministic evidence plus review promotes.
 - **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.
