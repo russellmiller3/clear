@@ -2461,3 +2461,4 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Never let live probes default to premium models.** A Sonnet default burned about $18 before the quota wall. Probes and OpenRouter fallbacks must default cheap, and Sonnet/Opus need an explicit allow-expensive flag.
 - **Learned primitives need a staging queue.** Meph and user sessions may propose; only deterministic evidence plus review promotes.
 - **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.
+- **Obvious next step is a stop gate, not a suggestion.** If the agent can name a safe approved next action, it must run it before final; otherwise Russell has to re-prompt the same work.

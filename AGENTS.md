@@ -39,6 +39,14 @@
 - When work sprawls, pause for one sentence: what is in flight, what is blocked, and what ships next.
 - Prefer closing one tested, committed lane over opening another interesting lane.
 
+## Obvious Next Step Gate
+
+- Do not end a substantive turn after naming a safe next step. Execute it first.
+- Before any final response, check for an obvious safe command, edit, test, retry, commit, or doc update.
+- If the next step is already approved and directly advances the user's goal, keep working in the same turn.
+- Stop only for a real blocker: destructive action, irreversible cleanup, missing credential, explicit spend threshold, or a user command to stop.
+- When blocked, state the exact blocker and unlock. Do not end with "want me to", "should I", "let me know", or "I can next".
+
 ## Plain English Depth
 
 - Respond in plain English first. Conceptual depth is good; jargon is not.
