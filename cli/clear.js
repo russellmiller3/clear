@@ -459,12 +459,27 @@ async function proveCommand(args) {
   }
 
   // Exit code semantics:
-  //   0 — every test PROVED, OR there were no tests (nothing to claim)
-  //   1 — at least one test FAILED OR at least one rule DISPROVED
-  //   5 — at least one test was UNVERIFIABLE / errored (impure code in path)
+  //   0 — every test/rule/agent-claim PROVED, OR nothing to claim
+  //   1 — at least one test FAILED, rule DISPROVED, or agent claim DISPROVED
+  //   5 — at least one was UNVERIFIABLE / errored (impure code in path)
   if (bundle.status === 'proved' || bundle.status === 'partial') process.exit(0);
   if (bundle.counts && bundle.counts.failed > 0) process.exit(1);
   if (bundle.ruleCounts && bundle.ruleCounts.disproved > 0) process.exit(1);
+  if (bundle.boundCounts && bundle.boundCounts.disproved > 0) process.exit(1);
+  // No test/rule/claim is failing; if there are no rules/tests/claims at all,
+  // exit 0 — nothing to refuse. Otherwise the leftover state is unverifiable.
+  const totalsPresent =
+    (bundle.counts && bundle.counts.total > 0) ||
+    (bundle.ruleCounts && bundle.ruleCounts.total > 0) ||
+    (bundle.boundCounts && bundle.boundCounts.total > 0);
+  if (!totalsPresent) process.exit(0);
+  // All-PROVED bound-claims with no other content should exit 0 — the
+  // status field defaults to 'empty' when there were no test_defs, but the
+  // claims provide real signal. proved > 0 with disproved == 0 means a
+  // green build for the regulated-tier audit pipeline.
+  if (bundle.boundCounts && bundle.boundCounts.proved > 0 && bundle.boundCounts.disproved === 0 && bundle.boundCounts.unverifiable === 0) {
+    process.exit(0);
+  }
   process.exit(5);
 }
 

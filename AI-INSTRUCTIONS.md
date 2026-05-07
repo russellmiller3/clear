@@ -2721,6 +2721,30 @@ send back 'Error: column user_id not found' status 500
 send back 'Something went wrong' status 500
 ```
 
+## Agent Tool-Bound Claims (`prove that agent 'X' cannot ...`)
+
+Top-level proof obligations about an agent's tool surface. Use them to make agent capabilities a regulated-tier audit artifact. The prover walks the agent's static tool closure (Direct: `cannot call <fn>`) or the closure plus reachable tool bodies (Transitive: `cannot delete from <Entity>` / `cannot modify <Entity>`).
+
+```clear
+agent 'Refund Bot' receives request:
+  has tool: lookup_deal
+  uses skills: 'Charge Card'
+  reply = ask claude 'Process this refund' with request
+  return reply
+
+prove that agent 'Refund Bot' cannot call charge_card
+prove that agent 'Refund Bot' cannot delete from Deals
+prove that agent 'Refund Bot' cannot modify Refunds
+```
+
+**Gotchas to avoid when generating agent code:**
+- Singular and plural entity names both work (`cannot delete from Users` matches CRUD ops with `target='User'`). Use whichever reads naturally next to the table declaration.
+- `cannot call <fn>` only sees direct dispatch — if the AI cannot say the function's name to a tool, it cannot invoke it. The agent's prompt body, however, is regular Clear code and can call any function — that's caught by the Transitive forms.
+- Skills are merged into the closure at compile time, so `cannot call <fn_in_skill>` will read DISPROVED. The verdict path names the skill — useful for narrowing scope.
+- UNVERIFIABLE fires only when the named agent doesn't exist OR a transitive tool body isn't in the file. Don't write claims against agents you haven't defined yet.
+
+When generating apps with sensitive tool surfaces (anything that touches money, deletes data, or sends external messages), pair every dangerous tool with one or more `prove that agent 'X' cannot ...` claims. The build refuses to ship if a tool sneaks into the closure without lifting the obligation.
+
 ## Agent Style Rules
 
 ### Assign AI results directly to the target property

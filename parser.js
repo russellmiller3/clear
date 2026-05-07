@@ -216,6 +216,16 @@ export const NodeType = Object.freeze({
   // ("discount-cap PROVED for every possible deal") instead of by line.
   // Plan: plans/plan-rule-keyword-rebuild-2026-05-02.md
   RULE_DEF: 'rule_def',
+  // Agent tool-bound claim (2026-05-07). Top-level statement:
+  //   prove that agent 'X' cannot call <function_name>
+  // Asserts that the named agent has no path to invoke <function_name> via
+  // tool use. The prover walks the agent's tool closure (own `has tools:`
+  // entries plus the recursive transitive closure of `uses skills:`) and
+  // emits PROVED iff <function_name> is absent. Sound because Clear's
+  // tool-use loop is closed-world: `_askAIWithTools` only dispatches to
+  // entries in the explicitly-built `_toolFns` dict, with an "Unknown tool"
+  // path for anything else (compiler.js:_askAIWithTools).
+  AGENT_BOUND_CLAIM: 'agent_bound_claim',
   TRIGGERED_SEND_EMAIL: 'triggered_send_email',
   // Triggered email primitive (2026-04-28). Top-level block:
   // `email <role> when <entity>'s status changes to <value>:` + body
@@ -2932,6 +2942,85 @@ CANONICAL_DISPATCH.set('rule', (ctx) => {
     const result = parseRuleDef(ctx.lines, ctx.i, ctx.indent, ctx.errors, seenNames);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
+});
+CANONICAL_DISPATCH.set('prove', (ctx) => {
+    // Agent tool-bound claim. Single-line top-level statement, three forms:
+    //
+    //   prove that agent 'X' cannot call <function_name>     (Direct — closure check)
+    //   prove that agent 'X' cannot delete from <Entity>     (Transitive — walks reachable bodies)
+    //   prove that agent 'X' cannot modify <Entity>          (Transitive — save/update/upsert/remove)
+    //
+    // Direct soundness: Clear's tool-use loop is closed-world — `_askAIWithTools`
+    // only honors functions in the compile-time-built `_toolFns` dict, with an
+    // "Unknown tool" path for anything else (compiler.js around line 695). So
+    // if a function name isn't in the agent's static tool closure, the runtime
+    // genuinely cannot dispatch to it.
+    //
+    // Transitive soundness: walks the agent body + every reachable tool's body
+    // (transitively, following function calls) for matching CRUD nodes. Refuses
+    // to claim PROVED if any reachable function body is opaque (e.g. calls an
+    // undefined function — UNVERIFIABLE rather than a false PROVED).
+    //
+    // Token shapes:
+    //   prove that agent 'Refund Bot' cannot call charge_card
+    //   [0]   [1]  [2]   [3]         [4]    [5]  [6]
+    //   prove that agent 'Refund Bot' cannot delete from Users
+    //   [0]   [1]  [2]   [3]         [4]    [5]    [6]  [7]
+    //   prove that agent 'Refund Bot' cannot modify Users
+    //   [0]   [1]  [2]   [3]         [4]    [5]    [6]
+    const tokens = ctx.tokens;
+    const usageError = "prove statement needs one of:\n" +
+      "  prove that agent 'Name' cannot call <function_name>\n" +
+      "  prove that agent 'Name' cannot delete from <Entity>\n" +
+      "  prove that agent 'Name' cannot modify <Entity>";
+    if (tokens.length < 7 ||
+        tokens[1].value !== 'that' ||
+        tokens[2].value !== 'agent' ||
+        tokens[3].type !== TokenType.STRING ||
+        tokens[4].value !== 'cannot') {
+      ctx.errors.push({ line: ctx.line, message: usageError });
+      return ctx.i + 1;
+    }
+    const agentName = tokens[3].value;
+    const verbToken = tokens[5];
+    const verb = verbToken.value;
+    const verbCanonical = verbToken.canonical;
+    let claimKind = null;
+    let target = null;
+    // The tokenizer collapses common multi-word forms — `delete from` lands
+    // as a single keyword token with canonical `delete_from`. The parser
+    // dispatches on canonical first, then bare value, so it stays robust as
+    // synonyms.js evolves.
+    if (verb === 'call' && tokens.length >= 7) {
+      claimKind = 'call';
+      target = tokens[6].value;
+    } else if (verb === 'modify' && tokens.length >= 7) {
+      claimKind = 'modify';
+      target = tokens[6].value;
+    } else if ((verbCanonical === 'delete_from' || verb === 'delete from') && tokens.length >= 7) {
+      claimKind = 'delete';
+      target = tokens[6].value;
+    } else if (verb === 'delete' && tokens.length >= 8 && tokens[6].value === 'from') {
+      // Tolerant fallback: in case the tokenizer ever emits the words
+      // separately (e.g. surrounded by punctuation that breaks the multi-
+      // word match), accept that form too.
+      claimKind = 'delete';
+      target = tokens[7].value;
+    } else {
+      ctx.errors.push({ line: ctx.line, message: usageError });
+      return ctx.i + 1;
+    }
+    ctx.body.push({
+      type: NodeType.AGENT_BOUND_CLAIM,
+      agentName,
+      claimKind,
+      target,
+      // Back-compat: keep `forbiddenAction` mirroring `target` for the call kind
+      // so older test code that read this field keeps reading something useful.
+      forbiddenAction: target,
+      line: ctx.line,
+    });
+    return ctx.i + 1;
 });
 CANONICAL_DISPATCH.set('email', (ctx) => {
     // Two top-level forms share the `email` keyword. Disambiguate by token[1]:

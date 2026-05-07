@@ -3322,6 +3322,67 @@ That output is the regulated-tier pitch surface — auditors and CROs see verdic
 - Use `rule:` for named business policies the CRO / auditor cares about — the prover gives them a per-policy verdict.
 - Use raw `guard` for one-off checks inside an endpoint that don't deserve a policy name.
 
+## Agent Tool-Bound Claims (`prove that agent 'X' cannot ...`)
+
+A `prove that agent 'X' cannot ...` line is a top-level proof obligation about what an agent can or cannot do via tool use. The prover walks the agent's static tool surface and emits a per-claim verdict — same bundle as `rule:` verdicts, so the audit output reads them side by side.
+
+Three forms:
+
+### Direct: `cannot call <function_name>`
+
+```clear
+agent 'Refund Bot' receives request:
+  has tool: lookup_user
+  reply = ask claude 'Process this refund' with request
+  return reply
+
+prove that agent 'Refund Bot' cannot call charge_card
+```
+
+PROVED — `charge_card` isn't in the agent's tool closure (own `has tools:` plus the recursive `uses skills:` closure). Soundness rests on Clear's closed-world tool dispatch — `_askAIWithTools` only honors functions in the compile-time-built `_toolFns` dict, with an "Unknown tool" fallthrough for anything else.
+
+If the function IS in the closure, the verdict is DISPROVED with the path that brings it in:
+
+```
+[DISPROVED] agent 'Refund Bot' cannot call 'charge_card' — agent 'Refund Bot' → uses skills: 'Billing' → has tool: charge_card
+```
+
+### Transitive: `cannot delete from <Entity>`
+
+```clear
+agent 'Admin Bot' receives request:
+  has tool: deactivate_user
+  reply = ask claude 'Process this admin request' with request
+  return reply
+
+prove that agent 'Admin Bot' cannot delete from Users
+```
+
+The prover walks the agent body PLUS every reachable tool body (transitively, following function calls) for any `remove` CRUD op against the named entity. PROVED iff no such operation is reachable; DISPROVED with the call chain (e.g. `agent 'Admin Bot' → has tool: deactivate_user → function force_remove() → remove User @ line 14`).
+
+Singular and plural entity names are interchangeable — `cannot delete from Users` and `cannot delete from User` both match a CRUD op against `User`.
+
+### Transitive: `cannot modify <Entity>`
+
+Same shape as `cannot delete from` but covers `save` / `remove` / `upsert` / `update` operations — i.e. any state change to the named entity, not just deletes.
+
+```clear
+prove that agent 'Read Only Bot' cannot modify Deals
+```
+
+PROVED iff every reachable tool body only does `lookup` operations against `Deals`. The pitch: the regulated-tier audit can read *"Read Only Bot cannot modify Deals — PROVED"* as a mathematical guarantee.
+
+### Verdict semantics
+
+- **PROVED** — the closure walk (Direct) or reachable-body walk (Transitive) found no path that reaches the forbidden action.
+- **DISPROVED** — a path exists; the verdict carries `path[]` showing exactly how the action enters scope.
+- **UNVERIFIABLE** — the agent isn't defined, OR (Transitive only) a reachable tool's function body isn't in this file. The prover refuses to make a claim it can't fully back.
+
+### When to use
+
+- **Marcus / regulated-tier pitches.** The CRO writes the proof obligations directly in the source — *"prove that agent 'Refund Bot' cannot delete from Deals"* — and the build pipeline either ships with a green proof bundle or refuses to ship.
+- **Catch agent scope creep over time.** When someone adds a new tool to `has tools:`, any standing `prove that agent 'X' cannot call <new_tool>` flips DISPROVED in the next CI run. The pre-merge check fails — the developer either removes the tool or removes the obligation, with audit attribution either way.
+
 ## Approval Queues (Single-Stage Reviewer)
 
 When an entity needs human approval before its status changes, declare a queue. One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action.

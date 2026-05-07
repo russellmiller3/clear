@@ -6,6 +6,38 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 — Prover extended to bound agent tool use
+
+Three new top-level proof obligations let a developer (or auditor) write a mathematical claim about an agent's tool surface, run `clear prove`, and either ship with a green bundle or refuse to ship.
+
+```clear
+prove that agent 'Refund Bot' cannot call charge_card           # Direct
+prove that agent 'Refund Bot' cannot delete from Deals          # Transitive
+prove that agent 'Refund Bot' cannot modify Refunds             # Transitive
+```
+
+**Direct (`cannot call <fn>`).** Walks the agent's static tool closure — own `has tools:` plus the recursive `uses skills:` closure. PROVED iff `<fn>` isn't in the closure; DISPROVED with the path that brings it in (e.g. `agent 'Refund Bot' → uses skills: 'Charge Card' → has tool: record_refund`). Soundness rests on Clear's closed-world tool dispatch — `_askAIWithTools` (`compiler.js`) only honors functions in the compile-time-built `_toolFns` dict and falls through to "Unknown tool" otherwise. So the static closure IS the runtime dispatch surface.
+
+**Transitive — delete (`cannot delete from <Entity>`).** Walks the agent body PLUS every reachable tool body (transitively, following function calls in this file) for any `remove` CRUD op against the named entity. PROVED iff no path reaches one. DISPROVED with the call chain (e.g. `agent 'Admin Bot' → has tool: deactivate → function force_remove() → remove User @ line 14`).
+
+**Transitive — modify (`cannot modify <Entity>`).** Same as delete but covers `save` / `remove` / `upsert` / `update`.
+
+**UNVERIFIABLE** when the named agent doesn't exist OR a reachable tool's function body isn't in this file — the prover refuses to claim soundness over code it can't see. Singular/plural entity names match tolerantly (`Users` ↔ `User`).
+
+**The CRO pitch.** A regulated-tier customer writes the obligation next to their agent definition. The build pipeline gates on `clear prove`. When a developer adds a new tool to `has tools:` later, any standing claim against that tool flips DISPROVED in CI — the merge fails until the obligation is updated, with audit attribution either way.
+
+**Where it lives.**
+- Parser: `parser.js` `CANONICAL_DISPATCH.set('prove', ...)` emits an `agent_bound_claim` AST node with `claimKind: 'call' | 'delete' | 'modify'`.
+- Prover: `lib/prover/index.js` — `proveAgentBoundClaim()` dispatches to `proveCannotCall()` (closure walk) or `proveCannotAffect()` (transitive body walk via `findCrudViolation()` + `extractCallName()`).
+- Closure builder: `collectAgentToolClosure()` walks own tools + skill-merged tools, tracking the path each tool entered scope through.
+- CLI surface: `formatBundle()` ("[PROVED] / [DISPROVED] / [UNVERIFIABLE]" math view) AND `formatProveOutput()` (CRO-readable view) both render an "Agent tool-bound claims:" section. CLI exit code: 0 on all-PROVED, 1 if any DISPROVED, 5 if any UNVERIFIABLE without disproofs.
+- Tests: `lib/prover/index.test.js` under `Prover — agent tool-bound claims` (10 cases — Direct + Transitive + edges: missing agents, skill closures, transitive call chains, agent-body CRUD, multi-claim, different-entity).
+- Demo file: `examples/proofs/agent-bounds-demo.clear` (5 obligations against a refund-bot, three PROVED two DISPROVED on purpose).
+
+40/40 prover tests green. 3017 full suite green.
+
+---
+
 ## 2026-05-07 (sharpened) — Prover bounds claim now honest about tool-using agents
 
 The earlier *"agent output cannot bypass this rule"* sentence shipped earlier today was technically true for output-only drafter agents but misleading for any agent with tools. By the time the rule fires (after the agent returns), tool calls during the agent's execution have already happened — Stripe charges, row deletions, emails sent. The rule guards the RETURN VALUE, not those side effects.

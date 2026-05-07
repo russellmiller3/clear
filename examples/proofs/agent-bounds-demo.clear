@@ -1,0 +1,56 @@
+# Refund bot — what can it do, what can't it?
+# Run: node cli/clear.js prove examples/proofs/agent-bounds-demo.clear
+
+create a Deals table:
+  amount, number
+  customer, text
+  status, text
+
+create a Refunds table:
+  deal_id, number
+  amount, number
+
+# Three regular functions — the agent can only invoke the ones we wire up.
+define function lookup_deal(deal_id):
+  return look up Deal where id is deal_id
+
+define function record_refund(deal_id, amount):
+  save new_refund as new Refund
+
+define function purge_deal(deal_id):
+  delete the Deal with this id
+
+# Skill bundles a tool plus instructions. Whichever agent uses this skill
+# gets the tool added to its closure.
+skill 'Charge Card':
+  has tools: record_refund
+  instructions: 'Use record_refund to log a successful refund.'
+
+# The agent is wired with read access (lookup_deal) plus the skill that
+# adds record_refund. It cannot call purge_deal — purge_deal exists in
+# the file but isn't in this agent's closure.
+agent 'Refund Bot' receives request:
+  has tools: lookup_deal
+  uses skills: 'Charge Card'
+  reply = ask claude 'Process this refund' with request
+  return reply
+
+# Five proof obligations the prover answers automatically:
+
+# 1. Direct: PROVED — purge_deal isn't in the agent's closure.
+prove that agent 'Refund Bot' cannot call purge_deal
+
+# 2. Direct: PROVED — charge_card doesn't even exist as a function.
+prove that agent 'Refund Bot' cannot call charge_card
+
+# 3. Direct: DISPROVED — record_refund IS in the closure, via the skill.
+#    The verdict shows the exact path: agent -> uses skills: 'Charge Card' -> has tool: record_refund.
+prove that agent 'Refund Bot' cannot call record_refund
+
+# 4. Transitive: PROVED — no reachable tool body deletes from Deals.
+#    purge_deal would do it, but it's not reachable (not in the closure).
+prove that agent 'Refund Bot' cannot delete from Deals
+
+# 5. Transitive: DISPROVED — record_refund's body inserts into Refunds.
+#    The verdict surfaces the call chain so the developer sees exactly why.
+prove that agent 'Refund Bot' cannot modify Refunds

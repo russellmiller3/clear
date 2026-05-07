@@ -7,6 +7,33 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## How do I prove that an agent cannot do action X? (2026-05-07)
+
+Three top-level proof obligations on agent tool use, each with its own verdict in the `clear prove` output:
+
+```clear
+prove that agent 'Refund Bot' cannot call charge_card           # Direct
+prove that agent 'Refund Bot' cannot delete from Deals          # Transitive
+prove that agent 'Refund Bot' cannot modify Users               # Transitive
+```
+
+**Direct (`cannot call <fn>`).** The prover walks the agent's static tool closure (`has tools:` plus the recursive `uses skills:` closure) and emits PROVED iff `<fn>` is absent. Soundness rests on Clear's closed-world tool dispatch — `_askAIWithTools` (`compiler.js`) only honors function names in the compile-time-built `_toolFns` dict and falls through to "Unknown tool" otherwise. So the static closure IS the runtime dispatch surface; nothing can extend it at runtime (no `eval`, no string lookup of globals).
+
+**Transitive (`cannot delete from <Entity>` / `cannot modify <Entity>`).** The prover walks the agent body PLUS every reachable tool body (transitively, following function calls in the file) for matching CRUD operations: `delete` matches `remove`, `modify` covers `save` / `remove` / `upsert` / `update`. PROVED iff no path reaches a matching op against the named entity. DISPROVED with the call chain (e.g. `agent 'Admin Bot' → has tool: deactivate → function force_remove() → remove User @ line 14`). UNVERIFIABLE if a reachable tool's body isn't in this file — the prover refuses to claim soundness over code it can't read.
+
+**The CRO pitch.** A regulated-tier customer writes `prove that agent 'Refund Bot' cannot delete from Deals` next to their agent definition. The build refuses to ship unless every claim is PROVED. When a developer adds a new tool, any standing claim against that tool flips DISPROVED in the next CI run, and the audit trail records exactly who lifted the bound and why.
+
+**Where it lives.**
+- Parser dispatch: `parser.js` `CANONICAL_DISPATCH.set('prove', ...)` (around line 2935) — recognizes `prove that agent 'Name' cannot call|delete from|modify <target>` and emits an `agent_bound_claim` AST node.
+- Prover: `lib/prover/index.js` — `proveAgentBoundClaim()` dispatches by `claimKind`; `proveCannotCall()` does the closure walk; `proveCannotAffect()` does the transitive body walk via `findCrudViolation()` + `extractCallName()`.
+- Closure builder: `collectAgentToolClosure()` walks own tools + skill-merged tools and tracks the path each tool entered scope through.
+- CLI surface: `formatBundle()` renders an "Agent tool-bound claims:" section under the existing "Business rules in this file:" section, same badge format.
+- Tests: `lib/prover/index.test.js` under `Prover — agent tool-bound claims` (10 cases — Direct + Transitive flavors + edge cases like missing agents, skill closures, transitive call chains, agent-body CRUD).
+
+**Singular/plural.** Entity names match tolerantly — `cannot delete from Users` and `cannot delete from User` both match a CRUD op whose `target` field is `User`. Clear normalizes table names to the singular record name in CRUD AST, but developers writing the claim use the table name; the prover accepts either.
+
+---
+
 ## How does the prover handle rules that fire after an AI call? (2026-05-07)
 
 If a `rule:` fires AFTER an agent invocation in the same body — `call 'X' with Y` (named-agent dispatch) or `ask claude '…'` (direct AI call) — AND every called agent is output-only (no tools), the prover marks the verdict with `bounds_agent_output: true`. The business-language translator surfaces:
