@@ -3178,6 +3178,32 @@ app.post('/api/chat', async (req, res) => {
   const sessionStartedAt = Math.floor(Date.now() / 1000);
   const sessionTestCalls = []; // { ok, error } for each run_tests call
 
+  // Conversation trace — one row per turn (user / assistant_text / thinking /
+  // tool_use / tool_result) into factor-db.sqlite's meph_turns table. Lets
+  // research probes ask "did Meph use the todo tool before acting?" / "which
+  // tools correlate with success?" / "does cross-domain transfer work?"
+  // without instrumenting fresh sweeps. Default ON; disable with MEPH_TRACE_LOG=0.
+  const TRACE_ENABLED = !!_factorDB && process.env.MEPH_TRACE_LOG !== '0';
+  let _traceTurnIndex = 0;
+  function _logTurn(payload) {
+    if (!TRACE_ENABLED) return;
+    try {
+      _factorDB.logTurn({ session_id: sessionId, turn_index: _traceTurnIndex++, ...payload });
+    } catch { /* tracing is telemetry; never crash the chat */ }
+  }
+  // Log the user prompt that opened this turn — last user message in the
+  // incoming array. Content can be a string (legacy) or a content-block array
+  // (Claude Sonnet 4.6+); flatten to plain text so the trace stays readable.
+  if (TRACE_ENABLED && Array.isArray(messages)) {
+    const lastUser = [...messages].reverse().find(m => m && m.role === 'user');
+    const text = typeof lastUser?.content === 'string'
+      ? lastUser.content
+      : Array.isArray(lastUser?.content)
+        ? lastUser.content.map(b => (typeof b === 'string' ? b : (b?.text || ''))).join('')
+        : '';
+    if (text) _logTurn({ role: 'user', message_text: text });
+  }
+
   // Factor DB trajectory tracking — one row per compile, updated by subsequent run_tests
   // Each compile cycle emits a new row. Test results update the most recent row for this session.
   let _lastFactorRowId = null;
@@ -3622,6 +3648,11 @@ app.post('/api/chat', async (req, res) => {
       const assistantContent = [];
       if (accThinking) assistantContent.push({ type: 'thinking', thinking: accThinking, signature: accThinkingSignature });
       if (accText) assistantContent.push({ type: 'text', text: accText });
+      // Trace: log Meph's reasoning + visible reply for this iteration before
+      // we dispatch any tools. Two separate rows so a downstream query can
+      // measure thinking-vs-text ratios per tool call.
+      if (accThinking) _logTurn({ role: 'assistant_thinking', message_text: accThinking });
+      if (accText) _logTurn({ role: 'assistant_text', message_text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
         // Snap layer: if Meph stopped with compile errors still on screen,
@@ -3670,6 +3701,9 @@ app.post('/api/chat', async (req, res) => {
         let input;
         try { input = JSON.parse(tb.inputJson || '{}'); } catch { input = {}; }
         assistantContent.push({ type: 'tool_use', id: tb.id, name: tb.name, input });
+        // Trace: log every tool call with its parsed input. Joins back to the
+        // matching tool_result row via tool_use_id below.
+        _logTurn({ role: 'tool_use', tool_name: tb.name, tool_use_id: tb.id, tool_input: input });
 
         // Human-readable tool summary for chat UI
         const toolSummary = (() => {
@@ -3865,6 +3899,9 @@ app.post('/api/chat', async (req, res) => {
           Array.isArray(result) ? result :
           JSON.stringify(result);
         toolResultBlocks.push({ type: 'tool_result', tool_use_id: tb.id, content: safeContent });
+        // Trace: log the tool result so research probes can join "what Meph
+        // tried" → "what came back" → "did the next compile pass".
+        _logTurn({ role: 'tool_result', tool_name: tb.name, tool_use_id: tb.id, tool_result: safeContent });
       }
 
       currentMessages.push({ role: 'assistant', content: assistantContent });
