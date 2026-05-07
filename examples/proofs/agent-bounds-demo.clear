@@ -54,3 +54,16 @@ prove that agent 'Refund Bot' cannot delete from Deals
 # 5. Transitive: DISPROVED — record_refund's body inserts into Refunds.
 #    The verdict surfaces the call chain so the developer sees exactly why.
 prove that agent 'Refund Bot' cannot modify Refunds
+
+# --- Phase 3: symbolic argument bounds ---------------------------------------
+# These claims use the symbolic prover (not pattern matching) to evaluate
+# what arguments could be passed at every reachable call site.
+
+# 6. Symbolic PROVED — record_refund is called nowhere with an explicit
+#    amount, so this proves trivially. Demo of the "no reachable site" case.
+prove that agent 'Refund Bot' cannot call purge_deal with deal_id is greater than 0
+
+# 7. Symbolic DISPROVED — record_refund's body passes amount through from
+#    Claude. The symbolic engine treats it as a free variable; verdict is
+#    DISPROVED with the message "add an enforce statement to bound it".
+prove that agent 'Refund Bot' cannot call record_refund with amount is greater than 10000

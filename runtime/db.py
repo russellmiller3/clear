@@ -28,14 +28,19 @@ API (matches runtime/db.js exports, snake_case for PEP 8):
     reset()                                 DELETE FROM all known tables
     close()                                 Close the SQLite connection
 
-DEFERRED (stubbed, raise NotImplementedError):
-    update_with_version(table, where, data) optimistic lock — needs port
-    Sensitive field encrypt-at-rest integration with runtime/sensitive_crypto.py
+FULL JS-PARITY (shipped 2026-05-06 / 2026-05-07):
+    update_with_version(table, record, expected_version)  optimistic-lock UPDATE
+                                                          (raises VersionConflict
+                                                          on stale version, status 409)
+    Sensitive field encrypt-at-rest                       integrated via
+                                                          runtime/sensitive_crypto.py;
+                                                          insert/update/update_with_version
+                                                          all encrypt before SQL run, and
+                                                          coerce_record decrypts after read.
 
-These deferred pieces are tracked in plans/plan-python-parity.md as
-follow-up work. Today's scaffold gets Python apps to the point where they
-can persist data; the optimistic-lock + sensitive-field integrations
-follow once the basic CRUD is verified end-to-end.
+The previously-deferred pieces are now wired end-to-end. Cross-runtime interop
+holds: a row encrypted by Node verifies under Python and vice versa, same for
+optimistic-lock _version columns.
 """
 
 import os

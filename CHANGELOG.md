@@ -6,6 +6,30 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (Phase 3) — Symbolic argument-bound claims for agent tool use
+
+After the Direct + Transitive flavors shipped earlier today, Russell pushed back: *"we have a prover — why not formal verification?"* That landed. Phase 3 adds a fourth claim form that uses Clear's existing symbolic prover (`lib/prover/symbolic.js`) — the same engine that proves business rules — to bound what arguments an agent could possibly pass at every call site:
+
+```clear
+prove that agent 'Refund Bot' cannot call charge_card with amount is greater than 10000
+```
+
+For each reachable static call to `charge_card`, the prover:
+1. Looks up the parameter index for `amount` from the function's params list.
+2. Evaluates the arg expression at that index with `evaluateSymbolic` — free variables for everything Claude could control upstream, literal values folded.
+3. Calls `simplify` and checks satisfiability of `amount > 10000` against the resulting symbolic value.
+4. PROVED iff every site has a literal/bounded value that provably fails the constraint. DISPROVED if any site can satisfy it.
+
+**Soundness gate:** if the constrained function is itself a tool in the agent's closure, Claude's tool-dispatch is opaque to source-level analysis — every parameter is effectively a free variable. Verdict goes DISPROVED unconditionally with a developer-actionable suggestion ("forbid the call entirely OR add an enforce statement inside the function body to bound the argument").
+
+Verified 2026-05-07 against three competing systems: OpenAI Agents SDK, Claude Managed Agents, and Nous Research Hermes Agent — all three are runtime-only. None ship symbolic argument-bound verification today. The moat isn't the static analysis itself (any SDK could ship a closure walker in days). The moat is the **language-level symbolic prover** that the same proof obligation walks alongside business rules + test assertions, all in one bundle.
+
+7 new tests under `Prover — agent tool-bound claims` (PROVED on literals, DISPROVED on free vars, UNVERIFIABLE for missing fn / mismatched arg name, soundness gate when fn is itself a tool). Demo file extended to include 2 symbolic claims (`examples/proofs/agent-bounds-demo.clear`).
+
+47/47 prover tests green. 3016/3016 full Clear suite green.
+
+---
+
 ## 2026-05-07 — Prover extended to bound agent tool use
 
 Three new top-level proof obligations let a developer (or auditor) write a mathematical claim about an agent's tool surface, run `clear prove`, and either ship with a green bundle or refuse to ship.

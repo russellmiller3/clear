@@ -2971,6 +2971,7 @@ CANONICAL_DISPATCH.set('prove', (ctx) => {
     const tokens = ctx.tokens;
     const usageError = "prove statement needs one of:\n" +
       "  prove that agent 'Name' cannot call <function_name>\n" +
+      "  prove that agent 'Name' cannot call <function_name> with <arg> is greater than <value>\n" +
       "  prove that agent 'Name' cannot delete from <Entity>\n" +
       "  prove that agent 'Name' cannot modify <Entity>";
     if (tokens.length < 7 ||
@@ -2994,6 +2995,52 @@ CANONICAL_DISPATCH.set('prove', (ctx) => {
     if (verb === 'call' && tokens.length >= 7) {
       claimKind = 'call';
       target = tokens[6].value;
+      // Optional argument constraint: `with <argName> <comparison> <value>`
+      // e.g. `cannot call charge_card with amount is greater than 1000`
+      // The tokenizer collapses comparisons like `is greater than` into a
+      // single keyword token; values can be number literals, string literals,
+      // or bare identifiers. We accept any of the symbolic prover's
+      // recognized comparison canonicals (is, is not, is greater than,
+      // is less than, is at least, is at most).
+      if (tokens.length >= 11 && tokens[7].canonical === 'with') {
+        const argName = tokens[8].value;
+        const cmpToken = tokens[9];
+        const cmpCanonical = cmpToken.canonical || cmpToken.value;
+        const COMPARISONS = new Set([
+          'is', 'is not', 'is greater than', 'is less than',
+          'is at least', 'is at most',
+        ]);
+        if (!COMPARISONS.has(cmpCanonical)) {
+          ctx.errors.push({
+            line: ctx.line,
+            message: "constraint comparison must be one of: is, is not, is greater than, is less than, is at least, is at most",
+          });
+          return ctx.i + 1;
+        }
+        const valueToken = tokens[10];
+        let valueLiteral = valueToken.value;
+        if (valueToken.type === TokenType.NUMBER) {
+          valueLiteral = Number(valueToken.value);
+        }
+        // Switch the claim to the constraint kind so the prover dispatches to
+        // the symbolic-checker path rather than the simple closure check.
+        claimKind = 'call_with_constraint';
+        ctx.body.push({
+          type: NodeType.AGENT_BOUND_CLAIM,
+          agentName,
+          claimKind,
+          target,
+          forbiddenAction: target,
+          constraint: {
+            argName,
+            op: cmpCanonical,
+            value: valueLiteral,
+            valueIsString: valueToken.type === TokenType.STRING,
+          },
+          line: ctx.line,
+        });
+        return ctx.i + 1;
+      }
     } else if (verb === 'modify' && tokens.length >= 7) {
       claimKind = 'modify';
       target = tokens[6].value;
