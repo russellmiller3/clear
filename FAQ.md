@@ -115,7 +115,7 @@ For complex app, feature-shape, syntax-shape, or reusable-pattern questions, `/a
 - `studio/ghost-meph/mcp-server/tools.js` — seeds the same table for Ghost Meph's MCP path
 - `scripts/primitive-audit.mjs` — reports primitive counts by set, kind, parent template, examples, and review flags
 
-- `scripts/meph-pattern-live-probe.mjs` - runs the live probe harness; defaults to narrow Marcus-style approval questions
+- `scripts/meph-pattern-live-probe.mjs` - runs the live probe harness; defaults to seven full approval-queue app builds
 
 - `studio/supervisor/meph-pattern-preflight.js` - detects complex requests, reads doc excerpts, searches patterns, and injects the preflight context into `/api/chat`
 
@@ -129,6 +129,8 @@ node scripts/primitive-audit.mjs --json
 ```bash
 MEPH_PATTERN_PROBE_AB=1 node scripts/meph-pattern-live-probe.mjs
 ```
+
+The A arm is docs-only: system prompt with pattern-search guidance stripped, `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts injected, and the pattern-search tool removed. The B arm is the full hook: the same docs plus forced pattern DB retrieval. The scorer compiles the generated full app and checks required app behavior, rather than merely checking whether Meph answered a shape question.
 
 Current audit snapshot after mining the rest of `apps/` and adding three language primitives: 13 whole-app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
 

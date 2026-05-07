@@ -65,6 +65,36 @@ describe('Meph pattern preflight hook', () => {
     }
   });
 
+  it('can build a docs-only baseline without mentioning the pattern database', () => {
+    const root = mkdtempSync(join(tmpdir(), 'meph-preflight-docs-'));
+    try {
+      writeFileSync(join(root, 'SYNTAX.md'), 'approval queue syntax\npage "Approval Queue"');
+      writeFileSync(join(root, 'AI-INSTRUCTIONS.md'), 'Compile the app before calling it done.');
+      let patternCalls = 0;
+      const preflight = buildPatternPreflight({
+        userText: 'Build a complete approval queue app',
+        rootDir: root,
+        mode: 'docs',
+        factorDB: {
+          queryProgrammingPatterns() {
+            patternCalls++;
+            return [];
+          },
+        },
+      });
+
+      expect(patternCalls).toEqual(0);
+      expect(preflight.required).toEqual(true);
+      expect(preflight.mode).toEqual('docs');
+      expect(preflight.text).toContain('SYNTAX.md');
+      expect(preflight.text).toContain('AI-INSTRUCTIONS.md');
+      expect(preflight.text).not.toContain('pattern DB');
+      expect(preflight.text).not.toContain('browse_templates');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('appends preflight context to the last user message', () => {
     const messages = [{ role: 'user', content: 'Build an approval queue app' }];
     const out = appendPatternPreflightToMessages(messages, '## Required Meph Preflight Hook\nsearch results');

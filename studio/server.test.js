@@ -534,6 +534,7 @@ try {
     assert(serverSrc.includes("type: 'pattern_preflight'"), 'chat path emits pattern_preflight telemetry');
     assert(serverSrc.includes('patternPreflightRequest !== false'), 'chat path can disable preflight for A/B trials');
     assert(serverSrc.includes('stripPatternSearchPromptGuard'), 'chat path can strip prompt-only search guard for A/B trials');
+    assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
   }
 
   // =========================================================================

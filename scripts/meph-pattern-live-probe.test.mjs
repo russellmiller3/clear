@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, probeSuites, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, probeSuites, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -17,6 +17,17 @@ describe('meph pattern live probe harness', () => {
       expect(probe.prompt).not.toContain('smallest relevant snippet shape');
       expect(probe.expectKinds.length).toBeGreaterThan(0);
       expect(probe.expectTerms.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps a full-app approval suite for the hook A/B outcome test', () => {
+    const fullApps = probeSuites.approvalQueueFullApps;
+
+    expect(fullApps.length).toEqual(7);
+    for (const probe of fullApps) {
+      expect(probe.prompt).toContain('Build a complete Clear app');
+      expect(probe.prompt).not.toContain('pattern DB');
+      expect(probe.requiredSourceTerms.length).toBeGreaterThan(2);
     }
   });
 
@@ -60,18 +71,47 @@ describe('meph pattern live probe harness', () => {
 
   it('builds chat bodies that can isolate hook-on/off A/B trials from prompt prose', () => {
     const off = buildChatBody('Build an approval queue', {
-      patternPreflight: false,
+      patternPreflight: 'docs',
       disablePatternSearchPromptGuard: true,
+      disablePatternSearchTool: true,
     });
     const on = buildChatBody('Build an approval queue', {
-      patternPreflight: true,
+      patternPreflight: 'full',
       disablePatternSearchPromptGuard: true,
+      disablePatternSearchTool: false,
     });
 
-    expect(off.patternPreflight).toEqual(false);
-    expect(on.patternPreflight).toEqual(true);
+    expect(off.patternPreflight).toEqual('docs');
+    expect(on.patternPreflight).toEqual('full');
     expect(off.disablePatternSearchPromptGuard).toEqual(true);
     expect(on.disablePatternSearchPromptGuard).toEqual(true);
+    expect(off.disablePatternSearchTool).toEqual(true);
+    expect(on.disablePatternSearchTool).toEqual(false);
+    expect(off.messages[0].content).toContain('Call edit_code with the complete .clear source');
+    expect(off.messages[0].content).not.toContain('pattern DB');
+  });
+
+  it('scores full-app builds with compile success and required source behavior', () => {
+    const probe = {
+      requiredSourceTerms: ['page "Approval Queue"', 'approve', 'reject'],
+      optionalSourceTerms: ['with optimistic lock'],
+    };
+
+    const failed = scoreGeneratedApp(probe, {
+      source: 'page "Approval Queue"\nbutton "Approve"',
+      toolNames: ['edit_code'],
+      compile: { errors: [] },
+    });
+    const passed = scoreGeneratedApp(probe, {
+      source: 'page "Approval Queue"\nbutton "Approve"\nbutton "Reject"\nwith optimistic lock',
+      toolNames: ['edit_code'],
+      compile: { errors: [] },
+    });
+
+    expect(failed.pass).toEqual(false);
+    expect(passed.pass).toEqual(true);
+    expect(passed.compiles).toEqual(true);
+    expect(passed.usedEditor).toEqual(true);
   });
 
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {

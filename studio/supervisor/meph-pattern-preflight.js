@@ -81,17 +81,19 @@ export function buildPatternPreflight({
   factorDB = null,
   rootDir = process.cwd(),
   topK = 5,
+  mode = 'full',
 } = {}) {
   const text = String(userText || '');
   const required = shouldRunPatternPreflight(text);
-  if (!required) return { required: false, text: '', docs: [], patterns: [] };
+  const normalizedMode = mode === 'docs' ? 'docs' : 'full';
+  if (!required) return { required: false, mode: normalizedMode, text: '', docs: [], patterns: [] };
 
   const docs = ['SYNTAX.md', 'AI-INSTRUCTIONS.md']
     .map(filename => readDocExcerpt(rootDir, filename, text))
     .filter(Boolean);
 
   let patterns = [];
-  if (factorDB && typeof factorDB.queryProgrammingPatterns === 'function') {
+  if (normalizedMode === 'full' && factorDB && typeof factorDB.queryProgrammingPatterns === 'function') {
     try {
       patterns = factorDB.queryProgrammingPatterns({
         query: text,
@@ -109,12 +111,34 @@ export function buildPatternPreflight({
     doc.excerpt,
     '```',
   ].join('\n')).join('\n\n');
+
+  if (normalizedMode === 'docs') {
+    return {
+      required,
+      mode: normalizedMode,
+      docs,
+      patterns: [],
+      text: [
+        '## Required Meph Docs Preflight',
+        '',
+        'This request looks like a complex Clear app, feature, or syntax-shape request.',
+        'Before answering or editing, use these Clear doc excerpts. The server already loaded your system prompt.',
+        '',
+        '### Required doc excerpts',
+        docText || 'No SYNTAX.md / AI-INSTRUCTIONS.md excerpts found.',
+        '',
+        'Use the syntax and AI instructions before answering or editing.',
+      ].join('\n'),
+    };
+  }
+
   const patternText = patterns.length
     ? patterns.map(formatPattern).join('\n\n')
     : 'No pattern DB matches were available. Say that explicitly before proceeding.';
 
   return {
     required,
+    mode: normalizedMode,
     docs,
     patterns,
     text: [

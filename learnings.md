@@ -2457,5 +2457,6 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Pattern probes must use narrow builder questions.** Broad "what is the shape" prompts can pass while real asks fail. Keep probes phrased like a Marcus builder changing one queue behavior.
 - **Pattern availability is not pattern use.** A live probe can prove the DB has the right snippet and still fail if Meph answers from docs or memory. Search-before-answer needs an explicit prompt guard and a test.
 - **For complex Clear requests, make retrieval a server preflight, not a model habit.** The reliable flow is system prompt already loaded, syntax and AI-instruction excerpts injected, pattern DB searched, then Meph answers.
+- **Pattern A/Bs must measure built apps, not shape answers.** A prompt that asks "what shape" can pass while the actual builder still fails. The baseline should get prompt+syntax+AI instructions with no pattern DB mention, and the treatment should add forced pattern retrieval. Judge the generated app after compile.
 - **Learned primitives need a staging queue.** Meph and user sessions may propose; only deterministic evidence plus review promotes.
 - **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.
