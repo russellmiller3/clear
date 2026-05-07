@@ -188,6 +188,26 @@ function loadEnvFile() {
   return out;
 }
 
+export function buildProbeServerEnv({
+  processEnv = process.env,
+  envFromFile = {},
+  openRouterKey,
+  model,
+  port,
+} = {}) {
+  return {
+    ...processEnv,
+    ...envFromFile,
+    OPENROUTER_API_KEY: openRouterKey,
+    OPENROUTER_MODEL: model,
+    MEPH_MODEL: model,
+    MEPH_BRAIN: 'openrouter',
+    PORT: port,
+    CLEAR_ALLOW_SEED: '1',
+    CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev',
+  };
+}
+
 async function waitForServer() {
   const start = Date.now();
   while (Date.now() - start < 20_000) {
@@ -370,16 +390,7 @@ async function main() {
 
   const child = spawn(nodeBin, ['studio/server.js'], {
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      ...envFromFile,
-      OPENROUTER_API_KEY: openRouterKey,
-      OPENROUTER_MODEL: model,
-      MEPH_BRAIN: 'openrouter',
-      PORT: port,
-      CLEAR_ALLOW_SEED: '1',
-      CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev',
-    },
+    env: buildProbeServerEnv({ processEnv: process.env, envFromFile, openRouterKey, model, port }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

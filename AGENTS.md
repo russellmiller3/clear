@@ -11,6 +11,7 @@
 
 - Keep generated artifacts out of Git. Build outputs, sweep sessions, scratch apps, temp files, caches, and root-level generated app files should stay ignored and untracked.
 - `playground/factor-db.sqlite` is source/training data for the flywheel, not a disposable artifact.
+- When inspecting `.env`, credentials, or provider config, print key names and masked metadata only. Never echo API key, token, or secret values into tool output.
 - Run `node clear.test.js` after JavaScript/runtime/compiler changes. Use the bundled Node runtime if `node` is not available on PATH.
 - Launch-facing features need browser regression coverage. If a customer can click it, the automated browser suite must cover it before the feature is called done.
 - A task is not done while the worktree is dirty. Before calling work complete, every change must be intentionally committed, stashed with a clear name, or removed after confirming it is disposable. No loose modified, deleted, or untracked files.

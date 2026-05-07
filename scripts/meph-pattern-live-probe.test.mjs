@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, buildProbeServerEnv, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -8,6 +8,22 @@ describe('meph pattern live probe harness', () => {
     expect(resolveProbeModel({})).toEqual('deepseek/deepseek-v4-flash');
     expect(isExpensiveProbeModel('~anthropic/claude-sonnet-latest')).toEqual(true);
     expect(isExpensiveProbeModel('deepseek/deepseek-v4-flash')).toEqual(false);
+  });
+
+  it('forces the Ghost OpenRouter server to use the requested probe model', () => {
+    const env = buildProbeServerEnv({
+      processEnv: { ANTHROPIC_API_KEY: 'sk-ant-test' },
+      envFromFile: { OPENROUTER_API_KEY: 'sk-or-file-test' },
+      openRouterKey: 'sk-or-run-test',
+      model: 'deepseek/deepseek-v4-flash',
+      port: 3999,
+    });
+
+    expect(env.MEPH_BRAIN).toEqual('openrouter');
+    expect(env.OPENROUTER_MODEL).toEqual('deepseek/deepseek-v4-flash');
+    expect(env.MEPH_MODEL).toEqual('deepseek/deepseek-v4-flash');
+    expect(env.OPENROUTER_API_KEY).toEqual('sk-or-run-test');
+    expect(env.PORT).toEqual(3999);
   });
 
   it('keeps a narrow Marcus-style approval suite for realistic pattern retrieval', () => {
