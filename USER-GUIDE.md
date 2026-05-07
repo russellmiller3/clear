@@ -4078,9 +4078,7 @@ The compiler detects that the POST endpoint calls a streaming agent and wires ev
 
 ## Chapter 19: Workflows (Multi-Step AI Pipelines)
 
-Chapter 10 showed you how to build AI agents. But real-world AI work often needs
-multiple agents working together — one researches, another writes, another reviews,
-and they keep going until the quality is good enough. That's a workflow.
+Reference chapter. Chapter 11 showed you a single AI agent (the deal drafter) that produces one paragraph from one input. Real-world AI work often needs multiple agents in sequence — one researches, another writes, another reviews — with conditional branches and a quality gate at the end. That's a workflow. Reach for this chapter when one `ask claude` call isn't enough and you need a chain.
 
 ### Your First Workflow
 
@@ -4343,8 +4341,9 @@ Marcus used to hand-write a `Notifications` table, a SendGrid client wrapper, a 
 
 ## Chapter 22: Scheduled Tasks (Set It and Forget It)
 
-Sometimes you want your app to do things automatically — clean up old data every hour,
-send a daily report, check for updates every few minutes. That's what scheduled tasks are for.
+Reference chapter. The deal-desk app doesn't strictly need scheduled tasks — every action is triggered by a CRO clicking a button. But the moment you want a *"every Monday at 9 a.m., email the CRO last week's pipeline summary"* feature, or *"every hour, expire any deals that have been pending more than 30 days,"* this chapter is the answer. Cron-style schedules in Clear's plain-English shape.
+
+Sometimes you want your app to do things automatically — clean up old data every hour, send a daily report, check for updates every few minutes. That's what scheduled tasks are for.
 
 ### Running Something Every Few Minutes
 
@@ -5072,8 +5071,9 @@ Three rules of thumb:
 
 ## Chapter 23: Writing Tests (Proving Your API Works)
 
-You can write tests right in your Clear file. The easiest way is intent-based tests
-that read like user stories:
+Reference chapter. Chapter 17 covered the basic `expect X is Y` shape. This chapter goes deeper: **intent-based tests** that read like user stories (`can user create a deal`, `expect it succeeds`), end-to-end test patterns that drive the URLs your app exposes, and the test harness flags you'll use in CI. Pair this chapter with Chapter 17 — same primitive, deeper toolkit.
+
+You can write tests right in your Clear file. The easiest way is intent-based tests that read like user stories:
 
 ```clear
 test 'todo workflow':
