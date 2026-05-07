@@ -7,6 +7,35 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where do Meph's tool calls get logged? Can I see what he did in session X? (2026-05-07)
+
+Every turn of every Meph session through `/api/chat` lands in `factor-db.sqlite`'s `meph_turns` table — user prompt at session start, assistant reasoning + visible reply per iteration, one row per tool call, one row per tool result. Joins to the existing `code_actions` rows via `session_id`.
+
+**Default ON.** Disable with `MEPH_TRACE_LOG=0` in env (privacy switch for customer Studio runs where the user's source shouldn't land in our DB without consent).
+
+**See one session in order:**
+```bash
+node scripts/factor-db-trace-summary.mjs --session=<session_id>
+```
+Prints every turn with role icons (👤 user / 💭 thinking / 💬 reply / 🔧 tool / ✓ result) and a 400-char preview of each payload.
+
+**Aggregate across all sessions:**
+```bash
+node scripts/factor-db-trace-summary.mjs --recent=20    # 20 most recent sessions
+node scripts/factor-db-trace-summary.mjs --stats        # role + tool counts overall
+node scripts/factor-db-trace-summary.mjs --todo-probe   # "did Meph plan or theater?"
+```
+
+`--todo-probe` answers the planning question directly: counts sessions where `todo` was the FIRST tool dispatched (PLANNED), where another tool fired first (ACTED), and where `todo` never fired at all (NEVER). High PLANNED + high `todo set` fraction = real planning. High ACTED + low todo-ever = the tool is decoration.
+
+**Schema:** `session_id`, `turn_index`, `role`, `tool_name`, `tool_use_id`, `tool_input`, `tool_result`, `message_text`, `full_hash`, `truncated`, `created_at`. Big payloads truncate at 4KB with `truncated=1`; `full_hash` is the SHA1 of the original untruncated content for join + dedup.
+
+**Known scope:** Anthropic-direct sessions only. Ghost-Meph cc-agent mode dispatches tools through MCP in a child process and never reaches the trace points in `studio/server.js`'s `/api/chat`. Cross-path coverage is a follow-up; most research sweeps run through Anthropic-direct anyway.
+
+**Contrast with the existing transcript JSON files** (`studio/sessions/<id>.transcript.json`): those are full chat dumps for human review. The `meph_turns` table is the queryable structured copy — any "across all sessions, when did X happen" question is a SQL one-liner.
+
+---
+
 ## How much Python parity work is left? How do I check? (2026-05-07)
 
 **Two-command answer:**

@@ -6,7 +6,35 @@ Newest entries at the top.
 
 ---
 
-## 2026-05-07 (latest) — Python parity audit: false-positive triage + FAQ merge
+## 2026-05-07 (latest) — Meph conversation trace logger
+
+Every Meph turn now lands in `factor-db.sqlite` as it streams: user prompt once at session start, assistant reasoning + visible reply per iteration, one row per tool call dispatched, one row per tool result. Joins to the existing `code_actions` rows via `session_id`.
+
+**Why:** the Factor DB tracks code-edit OUTCOMES (compile_ok, test_pass) but not the REASONING that produced them. Research probes — "did Meph use the todo tool before acting?" / "which tools correlate with success?" / "is cross-domain transfer real?" — couldn't be answered from outcomes alone; we'd need to instrument fresh sweeps every time. Now they're five-minute queries against accumulated session data.
+
+**Plumbing:**
+- New `meph_turns` table: `session_id`, `turn_index`, `role` (user / assistant_text / assistant_thinking / tool_use / tool_result / snap_retry), `tool_name`, `tool_use_id`, `tool_input`, `tool_result`, `message_text`, `full_hash`, `truncated`, `created_at`.
+- 4KB truncation per stored field with `truncated=1` flag; `full_hash` is the SHA1 of the original untruncated content so dedup + joins still work even when the stored copy is shortened.
+- `logTurn`, `getSessionTurns`, `turnStats` API on `FactorDB`.
+- 4 wire-up points in `studio/server.js` /api/chat: user prompt at session start, assistant text + thinking after each streamed iteration, each tool_use before dispatch, each tool_result after dispatch.
+- Default ON; disable with `MEPH_TRACE_LOG=0` (privacy switch for customer Studio mode where the user's source code shouldn't land in our DB without consent).
+- Telemetry-best-effort error handling: a SQLite hiccup in the trace layer never crashes the live chat.
+
+**Pretty-print + probe script:** `scripts/factor-db-trace-summary.mjs`
+- `--session=<id>` — chronological view of one session with role icons
+- `--recent=<N>` — list N most recent sessions with row + tool counts
+- `--stats` — aggregate counts by role and tool name
+- `--todo-probe` — direct answer to "did Meph plan or theater?" — buckets sessions by whether `todo` was the FIRST tool, was used later, or never fired at all
+
+**Known scope:** only Anthropic-direct sessions through /api/chat are captured. Ghost-Meph cc-agent mode dispatches tools through MCP in a child process and never reaches this loop. Most research sweeps run through Anthropic-direct anyway; cross-path coverage is a follow-up.
+
+5 new tests in `studio/supervisor/factor-db.test.js`; all 21 factor-db tests green. `studio/server.js` syntax-checks. Verified opening the existing 1818-row DB: zero rows touched, new `meph_turns` table created cleanly.
+
+Commits: `f7b0ec8` (factor-db schema + methods + tests), `78a3451` (server.js wire-up + summary script).
+
+---
+
+## 2026-05-07 (earlier) — Python parity audit: false-positive triage + FAQ merge
 
 The python-parity-audit script's slice-detection had been flagging 16 medium-severity gaps that were almost all false positives. Two patterns the audit missed:
 
