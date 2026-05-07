@@ -2438,3 +2438,19 @@ contract is: Meph asks what to build first; source is reachable, not primary.
 - **Default mode is not the same as first screen.** Test the visible first load: prompt, editor hidden, source toggle reachable.
 - **Do not auto-open source for onboarding.** The old first-three-publishes rule taught Clear, but it made the editor the front door.
 - **Browser harnesses should wait on HTTP readiness, not stdout.** A "server ready" log can be a timeout path; probe the actual URL before opening the browser.
+
+## Session 2026-05-07: Pattern Libraries Need One Trusted Path
+
+The first pattern DB slice risked recreating the old hint sprawl: exact-error fixes from `code_actions`, markdown shape-search from `canonical-examples.md`, and curated pattern snippets from `clear_programming_patterns` all showing up as "hints." That makes Meph harder to steer because two different systems can answer the same "what shape should I use?" question.
+
+The split that holds is: exact-error fixes are empirical repair memory, while reusable Clear shapes belong in the curated pattern DB. The markdown shape-search path stays as a reference CLI, but Meph's compile hints now pull reusable shapes from the DB only.
+
+Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates can be whole-app rows. Non-golden templates contribute `reference` primitives only. User/test-run discoveries stage in `clear_programming_pattern_candidates` until compile/test evidence plus review promotes them into trusted retrieval.
+
+### Gotchas-as-rules
+
+- **Do not run two reusable-pattern hint systems.** If both answer "what shape should I write?", consolidate them before adding more data.
+- **Separate repair memory from pattern memory.** Exact-error fixes are not the same thing as reusable app primitives.
+- **Reference templates should not become trusted whole-app rows by accident.** Mine their snippets, preserve their provenance, and keep the golden app set small.
+- **Learned primitives need a staging queue.** Meph and user sessions may propose; only deterministic evidence plus review promotes.
+- **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.

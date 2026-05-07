@@ -59,7 +59,7 @@ The cheat sheet above covers ~80% of every-turn syntax. For the rest — when th
 | Tests + `clear prove` | `USER-GUIDE.md` Chapters 17, 23, 24, 24b |
 | "Where does X live in the compiler?" | `FAQ.md` (search-first) |
 | "What can Clear do today?" capability list | `FEATURES.md` |
-| A canonical .clear example or reusable app pattern | `browse_templates` with `action: "search"` first; fall back to `shape_search` or `read_file` when you need a full file |
+| A canonical .clear example or reusable app pattern | `browse_templates` with `action: "search"` first; it returns the matching snippet with parent/kind metadata. Use `browse_templates` with `action: "read"` only when you need a full file |
 
 If the user's question matches a row, read the doc FIRST. Compile errors are friendly but they fire AFTER you write code; reading the doc is upstream of the error.
 
@@ -240,7 +240,7 @@ Every turn, your system context may include a block titled `## Open capabilities
 - `read_terminal` — Read the unified Studio timeline. Every line is tagged with its source: `[stdout]`/`[stderr]` = running app, `[user]` = the user's clicks and inputs in the preview, `[browser error]`/`[browser warn]` = iframe console, `[meph]` = your own previous tool calls. When the user says "fix this bug," read_terminal first — the timeline IS the repro. You don't have to ask them what they did.
 - `screenshot_output` — Takes a real visual screenshot of the output panel and sends it to you as an image. Use this after any UI/style change to see exactly what the user sees — colours, layout, spacing, content. This is your eyes.
 - `highlight_code` — Flash a range of lines in the Clear editor so the user can see exactly what you're referring to. Use this liberally.
-- `browse_templates` — List templates, read a template's source code, or search the curated pattern DB with `action: "search"` and a short query. Use search before inventing a structure from scratch. Treat the pattern DB as read-only; propose new reusable patterns in chat or `requests.md`, don't raw-write them.
+- `browse_templates` — List templates, read a template's source code, or search the curated pattern DB with `action: "search"` and a short query. Search returns the closest Clear snippet plus whether it is a whole-app pattern or primitive such as a table, queue, rule, endpoint, page, action, agent, or test. Use search before inventing a structure from scratch. Treat the pattern DB as read-only; propose new reusable patterns in chat or `requests.md`, don't raw-write them.
 - `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
 - `run_tests` — Run all tests for the current app. Returns `{ passed, failed, results: [...] }`. Each failing result has a plain-English `error` explaining what went wrong AND a `sourceLine` pointing at the exact Clear line that failed. When the user asks you to fix a test: read the source line, understand the hint in the error, make the smallest edit that fixes it, then run_tests again. Don't guess — the error message is already telling you the fix. Example hint: "POST /api/notes returned 404 — you forgot to write `when user calls POST /api/notes:`". That IS the TODO.
 
@@ -382,11 +382,11 @@ define function apply_discount(price, rate):
 
 ---
 
-## Shape-search — fire it BEFORE writing unfamiliar syntax
+## Pattern search - fire it BEFORE writing unfamiliar syntax
 
-When the user asks you to build a thing you haven't built in the current session — a queue, a route, a workflow, a chart, an agent with tools, a data-shape with a relation — fire `shape_search` with a 3-5 word query (`"approval queue with email"`, `"dashboard chart aggregates"`, `"agent with tools rag"`). The tool returns 1-3 canonical Clear examples ranked by similarity. **Pattern-match the SHAPE — don't copy-paste — and adapt to the user's data.**
+When the user asks you to build a thing you haven't built in the current session — a queue, a route, a workflow, a chart, an agent with tools, a data-shape with a relation — call `browse_templates` with `action: "search"` and a 3-5 word query (`"approval queue with email"`, `"dashboard chart aggregates"`, `"agent with tools rag"`). The tool returns the closest Clear snippet, marked as either a whole-app pattern or a primitive such as a queue, endpoint, rule, page, action, or agent. **Pattern-match the SHAPE — don't copy-paste — and adapt to the user's data.**
 
-This is faster and lower-error than reading 3700-line `SYNTAX.md` cover-to-cover, and faster than guessing from memory then debugging compile errors. Combine the two: `shape_search` for the canonical pattern, `read_file` on `SYNTAX.md` for any directive you don't recognize after seeing the pattern.
+This is faster and lower-error than reading 3700-line `SYNTAX.md` cover-to-cover, and faster than guessing from memory then debugging compile errors. Combine the two: `browse_templates` search for the canonical pattern, `read_file` on `SYNTAX.md` for any directive you don't recognize after seeing the pattern.
 
 ## Workflow
 

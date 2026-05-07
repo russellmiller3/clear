@@ -738,7 +738,7 @@ try {
     const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
     assert(serverSrc.includes("name: 'browse_templates'"), 'server.js has browse_templates tool');
     assert(serverSrc.includes("enum: ['list', 'read', 'search']"), 'browse_templates tool schema exposes pattern search');
-    assert(serverSrc.includes('search canonical app patterns'), 'browse_templates tool schema explains pattern search');
+    assert(serverSrc.includes('search canonical app patterns and primitive snippets'), 'browse_templates tool schema explains pattern search');
     assert(serverSrc.includes("case 'browse_templates'"), 'server.js has browse_templates dispatch');
   }
 

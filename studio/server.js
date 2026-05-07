@@ -2737,11 +2737,11 @@ Rules: Only ONE task should be in_progress at a time. Mark tasks completed immed
   },
   {
     name: 'browse_templates',
-    description: 'Browse the template and pattern library. Use action="list" to see templates. Use action="read" with a template name to get full Clear source. Use action="search" with query/topK to search the curated pattern DB seeded from the 13 canonical apps.',
+    description: 'Browse the template and pattern library. Use action="list" to see templates. Use action="read" with a template name to get full Clear source. Use action="search" with query/topK to search the curated pattern DB for whole-app patterns and primitive snippets.',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'read', 'search'], description: 'list = show templates, read = get one template source, search = search canonical app patterns' },
+        action: { type: 'string', enum: ['list', 'read', 'search'], description: 'list = show templates, read = get one template source, search = search canonical app patterns and primitive snippets' },
         name: { type: 'string', description: 'Template name to read (e.g. "todo-fullstack", "crm-pro"). Only needed for action=read.' },
         query: { type: 'string', description: 'Plain-English search text for action=search, e.g. "approval rules" or "agent with tools".' },
         topK: { type: 'number', description: 'How many pattern matches to return for action=search. Default 3, max 5.' },

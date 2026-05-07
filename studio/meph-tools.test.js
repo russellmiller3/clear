@@ -368,10 +368,14 @@ const browsePatternCtx = new MephContext({
       assert(source.includes('Deals table'), 'browse_templates search forwards current source for shape matching');
       assert(topK === 2, `browse_templates search forwards topK (got ${topK})`);
       return [{
-        template_name: 'deal-desk',
+        template_name: 'deal-desk::rule::42::discount-cap',
+        parent_template_name: 'deal-desk',
+        pattern_kind: 'rule',
+        is_primitive: 1,
         pattern_set: 'marcus',
         title: 'Discount approval with provable rules',
         archetype: 'queue_workflow',
+        tier: 'canonical_primitive',
         score: 1.7,
         shape_score: 1.2,
         source: "build for javascript backend\n\n# Deal Desk top of file\n",
@@ -384,8 +388,12 @@ const browsePatternCtx = new MephContext({
 const bt6 = JSON.parse(browseTemplatesTool({ action: 'search', query: 'approval rules', topK: 2 }, browsePatternCtx));
 assert(browsePatternCalls === 1,
   `browseTemplatesTool search calls pattern DB exactly once (got ${browsePatternCalls})`);
-assert(bt6.count === 1 && bt6.patterns[0].name === 'deal-desk',
+assert(bt6.count === 1 && bt6.patterns[0].name === 'deal-desk::rule::42::discount-cap',
   `browseTemplatesTool search returns pattern names (got ${JSON.stringify(bt6)})`);
+assert(bt6.patterns[0].parent_template_name === 'deal-desk' && bt6.patterns[0].pattern_kind === 'rule',
+  'browseTemplatesTool search returns primitive parent and kind metadata');
+assert(bt6.patterns[0].is_primitive === true && bt6.patterns[0].tier === 'canonical_primitive',
+  'browseTemplatesTool search marks primitive matches explicitly');
 assert(bt6.patterns[0].source.includes("rule 'Discount cap'"),
   'browseTemplatesTool search returns source snippets Meph can pull from');
 assert(bt6.patterns[0].source.includes("rule 'Discount cap'"),
@@ -1182,6 +1190,8 @@ assert(Array.isArray(comp1.errors) && comp1.errors.length === 0,
   `compileTool clean compile returns empty errors array (got ${JSON.stringify(comp1.errors)})`);
 assert(typeof comp1.hasServerJS === 'boolean' && typeof comp1.hasHTML === 'boolean',
   'compileTool returns hasServerJS + hasHTML boolean flags');
+assert(!comp1.hints,
+  'compileTool without Factor DB does not attach legacy shape-search hints');
 assert(comp1.serverJS === undefined && comp1.javascript === undefined,
   'compileTool clean compile WITHOUT include_compiled omits compiled source from payload');
 
@@ -1300,11 +1310,15 @@ const fdbWithPatternDb = {
     assert(source.includes('Todos table'), 'compileTool pattern DB receives current source');
     assert(topK === 2, `compileTool pattern DB asks for top 2 patterns (got ${topK})`);
     return [{
-      template_name: 'todo-fullstack',
+      template_name: 'todo-fullstack::data_table::3::create-a-todos-table',
+      parent_template_name: 'todo-fullstack',
+      pattern_kind: 'data_table',
+      is_primitive: 1,
       pattern_set: 'core',
       title: 'CRUD basics',
       description: 'Tables, endpoints, auth, validation, pages',
       archetype: 'crud_app',
+      tier: 'canonical_primitive',
       score: 1.8,
       shape_score: 1.6,
       source: "build for javascript backend\n\n# Todo Fullstack top of file\n",
@@ -1328,6 +1342,10 @@ assert(compPattern.hints?.text?.includes('Pattern DB Match #1'),
   'compileTool hint text includes Pattern DB match header');
 assert(compPattern.hints?.text?.includes('todo-fullstack'),
   'compileTool hint text includes the canonical pattern name');
+assert(compPattern.hints?.text?.includes('todo-fullstack / data_table'),
+  'compileTool hint text names the primitive parent and kind');
+assert(compPattern.hints?.text?.includes('canonical_primitive'),
+  'compileTool hint text labels primitive matches');
 assert(compPattern.hints?.text?.includes('create a Todos table'),
   'compileTool hint text prefers the relevant pattern excerpt over the file prefix');
 assert(compPattern.hints?.text?.includes('starts at line 18'),

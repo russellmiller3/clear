@@ -98,19 +98,27 @@ function pickSourceExcerpt(source, { query = '', querySource = '', maxChars = 12
 }
 
 function textMatchScore(row, query) {
-  const terms = normalizeTokens(query);
+  const terms = snippetTerms(query, '');
   if (terms.length === 0) return 0;
-  const haystack = normalizeTokens([
+  const haystackText = [
     row.template_name,
+    row.parent_template_name,
+    row.pattern_kind,
     row.pattern_set,
     row.title,
     row.description,
     row.archetype,
     Array.isArray(row.feature_tags) ? row.feature_tags.join(' ') : row.feature_tags,
-  ].join(' '));
-  const bag = new Set(haystack);
+    row.is_primitive ? row.source : '',
+  ].join(' ');
+  const haystack = normalizeTokens(haystackText);
+  const bag = new Set(haystack.map(canonicalToken));
   let hits = 0;
-  for (const term of terms) if (bag.has(term)) hits++;
+  const lowerHaystack = haystackText.toLowerCase();
+  for (const term of terms) {
+    if (bag.has(term)) hits += 1;
+    else if (lowerHaystack.includes(term)) hits += 0.5;
+  }
   return hits / terms.length;
 }
 
@@ -127,6 +135,15 @@ function normalizePatternRow(row) {
   return {
     ...row,
     shape_signature: parseJson(row.shape_signature, null),
+    feature_tags: parseJson(row.feature_tags, []),
+    is_primitive: row.is_primitive ? 1 : 0,
+  };
+}
+
+function normalizePatternCandidateRow(row) {
+  if (!row) return row;
+  return {
+    ...row,
     feature_tags: parseJson(row.feature_tags, []),
   };
 }
@@ -262,6 +279,9 @@ CREATE INDEX IF NOT EXISTS idx_compiler_edits_file  ON compiler_edits(file_path,
 CREATE TABLE IF NOT EXISTS clear_programming_patterns (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   template_name    TEXT NOT NULL UNIQUE,
+  parent_template_name TEXT,
+  pattern_kind     TEXT NOT NULL DEFAULT 'app',
+  is_primitive     INTEGER NOT NULL DEFAULT 0,
   pattern_set      TEXT NOT NULL,           -- core | marcus | future curated set
   title            TEXT NOT NULL,
   description      TEXT,
@@ -270,12 +290,45 @@ CREATE TABLE IF NOT EXISTS clear_programming_patterns (
   feature_tags     TEXT NOT NULL DEFAULT '[]',
   source           TEXT NOT NULL,
   source_hash      TEXT NOT NULL,
+  source_start_line INTEGER NOT NULL DEFAULT 1,
+  source_end_line INTEGER,
   line_count       INTEGER NOT NULL DEFAULT 0,
   updated_at       INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_clear_patterns_set ON clear_programming_patterns(pattern_set, archetype);
 CREATE INDEX IF NOT EXISTS idx_clear_patterns_archetype ON clear_programming_patterns(archetype);
+
+-- Staging queue for learned pattern primitives. Meph and test runs may propose
+-- rows here, but trusted retrieval only reads clear_programming_patterns.
+-- Promotion is a separate reviewed operation after compile/test evidence.
+CREATE TABLE IF NOT EXISTS clear_programming_pattern_candidates (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_kind        TEXT NOT NULL DEFAULT 'unknown', -- test_run | user_session | manual | other
+  source_ref         TEXT,
+  parent_template_name TEXT,
+  pattern_kind       TEXT NOT NULL DEFAULT 'unknown',
+  pattern_set        TEXT NOT NULL DEFAULT 'candidate',
+  title              TEXT NOT NULL,
+  description        TEXT,
+  feature_tags       TEXT NOT NULL DEFAULT '[]',
+  source             TEXT NOT NULL,
+  source_hash        TEXT NOT NULL,
+  source_start_line  INTEGER NOT NULL DEFAULT 1,
+  source_end_line    INTEGER,
+  compile_ok         INTEGER NOT NULL DEFAULT 0,
+  test_pass          INTEGER NOT NULL DEFAULT 0,
+  test_score         REAL NOT NULL DEFAULT 0.0,
+  status             TEXT NOT NULL DEFAULT 'needs_evidence',
+  review_notes       TEXT,
+  promoted_pattern_name TEXT,
+  created_at         INTEGER NOT NULL,
+  promoted_at        INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_pattern_candidates_status ON clear_programming_pattern_candidates(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_pattern_candidates_kind ON clear_programming_pattern_candidates(pattern_kind, test_pass, test_score DESC);
+CREATE INDEX IF NOT EXISTS idx_pattern_candidates_source ON clear_programming_pattern_candidates(source_kind, source_ref);
 
 -- Meph turn trace. One row per conversation event: user prompt, assistant
 -- prose, assistant thinking, tool_use, tool_result. Joins to code_actions
@@ -336,6 +389,25 @@ export class FactorDB {
       this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_helpful TEXT');
       this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_reason TEXT');
     }
+    const patternCols = this._db.prepare('PRAGMA table_info(clear_programming_patterns)').all();
+    const hasPatternCol = (name) => patternCols.some(c => c.name === name);
+    if (!hasPatternCol('parent_template_name')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN parent_template_name TEXT');
+    }
+    if (!hasPatternCol('pattern_kind')) {
+      this._db.exec("ALTER TABLE clear_programming_patterns ADD COLUMN pattern_kind TEXT NOT NULL DEFAULT 'app'");
+    }
+    if (!hasPatternCol('is_primitive')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN is_primitive INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!hasPatternCol('source_start_line')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN source_start_line INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!hasPatternCol('source_end_line')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN source_end_line INTEGER');
+    }
+    this._db.exec('CREATE INDEX IF NOT EXISTS idx_clear_patterns_parent ON clear_programming_patterns(parent_template_name, pattern_kind)');
+    this._db.exec('CREATE INDEX IF NOT EXISTS idx_clear_patterns_kind ON clear_programming_patterns(pattern_kind, is_primitive)');
   }
 
   // Update hint-usage columns on an existing row. Called by the server after
@@ -356,6 +428,9 @@ export class FactorDB {
 
   upsertProgrammingPattern({
     template_name,
+    parent_template_name = null,
+    pattern_kind = 'app',
+    is_primitive = 0,
     pattern_set = 'core',
     title = '',
     description = '',
@@ -363,6 +438,8 @@ export class FactorDB {
     shape_signature = null,
     feature_tags = [],
     source = '',
+    source_start_line = 1,
+    source_end_line = null,
   } = {}) {
     const name = String(template_name || '').trim();
     const src = String(source || '');
@@ -373,10 +450,15 @@ export class FactorDB {
     const lineCount = src.split('\n').filter(l => l.trim()).length;
     const result = this._db.prepare(`
       INSERT INTO clear_programming_patterns
-        (template_name, pattern_set, title, description, archetype,
-         shape_signature, feature_tags, source, source_hash, line_count, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (template_name, parent_template_name, pattern_kind, is_primitive,
+         pattern_set, title, description, archetype, shape_signature,
+         feature_tags, source, source_hash, source_start_line, source_end_line,
+         line_count, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(template_name) DO UPDATE SET
+        parent_template_name = excluded.parent_template_name,
+        pattern_kind = excluded.pattern_kind,
+        is_primitive = excluded.is_primitive,
         pattern_set = excluded.pattern_set,
         title = excluded.title,
         description = excluded.description,
@@ -385,10 +467,15 @@ export class FactorDB {
         feature_tags = excluded.feature_tags,
         source = excluded.source,
         source_hash = excluded.source_hash,
+        source_start_line = excluded.source_start_line,
+        source_end_line = excluded.source_end_line,
         line_count = excluded.line_count,
         updated_at = excluded.updated_at
     `).run(
       name,
+      parent_template_name ? String(parent_template_name) : null,
+      String(pattern_kind || 'app'),
+      is_primitive ? 1 : 0,
       String(pattern_set || 'core'),
       String(title || name),
       String(description || ''),
@@ -397,6 +484,8 @@ export class FactorDB {
       JSON.stringify(tags),
       src,
       sha1Short(src),
+      Math.max(1, Number(source_start_line) || 1),
+      source_end_line == null ? null : Math.max(1, Number(source_end_line) || 1),
       lineCount,
       Date.now()
     );
@@ -405,14 +494,25 @@ export class FactorDB {
     ).get(name)?.id || null;
   }
 
-  listProgrammingPatterns({ pattern_set = null } = {}) {
+  listProgrammingPatterns({ pattern_set = null, include_primitives = false, parent_template_name = null, pattern_kind = null } = {}) {
     let sql = 'SELECT * FROM clear_programming_patterns';
     const params = [];
+    const where = [];
     if (pattern_set) {
-      sql += ' WHERE pattern_set = ?';
+      where.push('pattern_set = ?');
       params.push(String(pattern_set));
     }
-    sql += ' ORDER BY pattern_set, template_name';
+    if (!include_primitives) where.push('is_primitive = 0');
+    if (parent_template_name) {
+      where.push('parent_template_name = ?');
+      params.push(String(parent_template_name));
+    }
+    if (pattern_kind) {
+      where.push('pattern_kind = ?');
+      params.push(String(pattern_kind));
+    }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ');
+    sql += ' ORDER BY pattern_set, parent_template_name, is_primitive, pattern_kind, template_name';
     return this._db.prepare(sql).all(...params).map(normalizePatternRow);
   }
 
@@ -429,10 +529,13 @@ export class FactorDB {
       const shapeScore = shapeSimilarity(queryShape, row.shape_signature);
       const queryScore = textMatchScore(row, query);
       const excerpt = pickSourceExcerpt(row.source, { query, querySource: source });
+      const lineOffset = Math.max(1, Number(row.source_start_line) || 1) - 1;
       return {
         ...row,
         ...excerpt,
-        tier: 'canonical_pattern',
+        source_excerpt_start_line: lineOffset + excerpt.source_excerpt_start_line,
+        source_excerpt_end_line: lineOffset + excerpt.source_excerpt_end_line,
+        tier: row.is_primitive ? 'canonical_primitive' : 'canonical_pattern',
         shape_score: shapeScore,
         query_score: queryScore,
         score: shapeScore + queryScore,
@@ -441,9 +544,116 @@ export class FactorDB {
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       if (b.shape_score !== a.shape_score) return b.shape_score - a.shape_score;
+      if (String(query || '').trim() && b.is_primitive !== a.is_primitive) return b.is_primitive - a.is_primitive;
+      if (!String(query || '').trim() && b.is_primitive !== a.is_primitive) return a.is_primitive - b.is_primitive;
       return String(a.template_name).localeCompare(String(b.template_name));
     });
     return scored.slice(0, Math.max(1, Number(topK) || 3));
+  }
+
+  logProgrammingPatternCandidate({
+    source_kind = 'unknown',
+    source_ref = null,
+    parent_template_name = null,
+    pattern_kind = 'unknown',
+    pattern_set = 'candidate',
+    title = '',
+    description = '',
+    feature_tags = [],
+    source = '',
+    source_start_line = 1,
+    source_end_line = null,
+    compile_ok = 0,
+    test_pass = 0,
+    test_score = 0,
+    status = null,
+    review_notes = null,
+  } = {}) {
+    const src = String(source || '');
+    if (!src.trim()) return null;
+    const tags = Array.isArray(feature_tags) ? feature_tags : normalizeTokens(feature_tags);
+    const ready = compile_ok && test_pass;
+    const candidateStatus = status || (ready ? 'ready_for_review' : 'needs_evidence');
+    const result = this._db.prepare(`
+      INSERT INTO clear_programming_pattern_candidates
+        (source_kind, source_ref, parent_template_name, pattern_kind, pattern_set,
+         title, description, feature_tags, source, source_hash, source_start_line,
+         source_end_line, compile_ok, test_pass, test_score, status, review_notes,
+         created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      String(source_kind || 'unknown'),
+      source_ref ? String(source_ref) : null,
+      parent_template_name ? String(parent_template_name) : null,
+      String(pattern_kind || 'unknown'),
+      String(pattern_set || 'candidate'),
+      String(title || pattern_kind || 'Candidate pattern'),
+      String(description || ''),
+      JSON.stringify(tags),
+      src,
+      sha1Short(src),
+      Math.max(1, Number(source_start_line) || 1),
+      source_end_line == null ? null : Math.max(1, Number(source_end_line) || 1),
+      compile_ok ? 1 : 0,
+      test_pass ? 1 : 0,
+      Number(test_score) || 0,
+      candidateStatus,
+      review_notes ? String(review_notes) : null,
+      Date.now()
+    );
+    return result.lastInsertRowid;
+  }
+
+  listProgrammingPatternCandidates({ status = null, pattern_kind = null, limit = 100 } = {}) {
+    let sql = 'SELECT * FROM clear_programming_pattern_candidates';
+    const params = [];
+    const where = [];
+    if (status) {
+      where.push('status = ?');
+      params.push(String(status));
+    }
+    if (pattern_kind) {
+      where.push('pattern_kind = ?');
+      params.push(String(pattern_kind));
+    }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ');
+    sql += ' ORDER BY test_pass DESC, test_score DESC, created_at DESC LIMIT ?';
+    params.push(Math.max(1, Number(limit) || 100));
+    return this._db.prepare(sql).all(...params).map(normalizePatternCandidateRow);
+  }
+
+  promoteProgrammingPatternCandidate(id, {
+    template_name,
+    pattern_set = 'learned',
+    parent_template_name = null,
+    review_notes = null,
+  } = {}) {
+    const row = this._db.prepare('SELECT * FROM clear_programming_pattern_candidates WHERE id = ?').get(id);
+    if (!row || !row.compile_ok || !row.test_pass) return null;
+    const name = String(template_name || '').trim();
+    if (!name) return null;
+    const patternId = this.upsertProgrammingPattern({
+      template_name: name,
+      parent_template_name: parent_template_name || row.parent_template_name,
+      pattern_kind: row.pattern_kind,
+      is_primitive: 1,
+      pattern_set,
+      title: row.title,
+      description: row.description,
+      feature_tags: parseJson(row.feature_tags, []),
+      source: row.source,
+      source_start_line: row.source_start_line,
+      source_end_line: row.source_end_line,
+    });
+    this._db.prepare(`
+      UPDATE clear_programming_pattern_candidates
+      SET status = 'promoted',
+          promoted_pattern_name = ?,
+          review_notes = COALESCE(?, review_notes),
+          promoted_at = ?
+      WHERE id = ?
+    `).run(name, review_notes ? String(review_notes) : null, Date.now(), id);
+    return patternId;
   }
 
   logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,

@@ -12,14 +12,20 @@ Meph now has a trusted programming-pattern database separate from the empirical 
 
 What shipped:
 - New `clear_programming_patterns` table in Factor DB with shape signatures, tags, descriptions, source hashes, and source text.
-- New seeder in `studio/supervisor/pattern-library.js` that loads each canonical template from disk, parses it, computes its shape, and upserts it.
-- `browse_templates` now supports `action: "search"` so Meph can search patterns by app shape plus plain-English query.
-- The compile tool now injects the closest trusted pattern matches into Meph's hint text.
+- New primitive metadata in that table: parent template, primitive kind, primitive flag, and source line span.
+- New seeder in `studio/supervisor/pattern-library.js` that loads each canonical template from disk, parses it, computes its shape, upserts the app row, extracts primitive source blocks, and upserts those rows too.
+- The current 13-template seed produces 455 primitive rows across all 13 golden templates.
+- The rest of `apps/` is mined for `reference` primitive rows only. Current audit: 1,220 total primitive rows, 61 parent templates, 23 primitive kinds, 0 review flags.
+- New `scripts/primitive-audit.mjs` report shows counts by pattern set, primitive kind, parent template, examples, and review flags.
+- `browse_templates` now supports `action: "search"` so Meph can search patterns by app shape plus plain-English query. Search returns the relevant snippet with parent/kind metadata, not a whole template by default.
+- The compile tool now injects the closest trusted pattern matches into Meph's hint text and labels primitive matches explicitly.
+- The legacy markdown shape-search hint layer was removed from Meph compile hints. Exact-error fix hints remain; reusable shape hints now come from the pattern DB.
+- New `clear_programming_pattern_candidates` table stages learned primitive candidates from test runs or user sessions. Promotion into trusted retrieval requires compile/test evidence and an explicit promotion call.
 - Ghost Meph's MCP path seeds the same table, so both Studio chat paths share the library.
 
 Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
 
-Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, and `studio/meph-tools.test.js` green.
+Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns the `approval-queue` queue primitive at its real source line.
 
 ---
 

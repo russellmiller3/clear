@@ -1,5 +1,6 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
+import Database from 'better-sqlite3';
 import { parse } from '../../parser.js';
 import { computeShape } from './program-shape.js';
 import { unlinkSync } from 'fs';
@@ -268,6 +269,44 @@ describe('FactorDB', () => {
     cleanup();
   });
 
+  it('migrates an existing pattern DB before creating primitive indexes', () => {
+    cleanup();
+    const old = new Database(TEST_DB);
+    old.exec(`
+      CREATE TABLE clear_programming_patterns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_name TEXT NOT NULL UNIQUE,
+        pattern_set TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        archetype TEXT,
+        shape_signature TEXT NOT NULL,
+        feature_tags TEXT NOT NULL DEFAULT '[]',
+        source TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        line_count INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    old.close();
+
+    const db = new FactorDB(TEST_DB);
+    db.upsertProgrammingPattern({
+      template_name: 'approval-queue::queue::42::queue-for-request',
+      parent_template_name: 'approval-queue',
+      pattern_kind: 'queue',
+      is_primitive: 1,
+      pattern_set: 'marcus',
+      title: 'Approval queue primitive',
+      source: 'queue for request:\n  reviewer is approver',
+    });
+    const rows = db.listProgrammingPatterns({ include_primitives: true, parent_template_name: 'approval-queue' });
+    expect(rows.length).toEqual(1);
+    expect(rows[0].pattern_kind).toEqual('queue');
+    db.close();
+    cleanup();
+  });
+
   it('returns the relevant pattern snippet instead of the top of the file', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);
@@ -310,6 +349,205 @@ describe('FactorDB', () => {
     expect(results[0].source_excerpt).toContain("rule 'Discount cap'");
     expect(results[0].source_excerpt).not.toContain('This long opening diagram');
     expect(results[0].source_excerpt_start_line > 1).toEqual(true);
+
+    db.close();
+    cleanup();
+  });
+
+  it('answers narrow approval-routing questions with an indexed queue primitive row', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const fullTemplateSource = [
+      '/*',
+      'LAYOUT:',
+      '+----------------+-----------------------------------------------+',
+      '| Approval Queue | Header: intake workspace                       |',
+      '| Queues         | Pending approvals + KPI strip                  |',
+      '*/',
+      '',
+      'build for web and javascript backend',
+      'database is local memory',
+      '',
+      'create a Requests table:',
+      '  title is text',
+      '  owner is text',
+      '  status is text',
+      '',
+      '# Approval queue',
+      '/*',
+      'Auto-generates audit table, notification queue, filtered URL, and update URLs',
+      'for each action. Each update requires login.',
+      '*/',
+      '',
+      'queue for request:',
+      "  reviewer is 'approver'",
+      '  actions: approve, reject',
+      '',
+      "page 'Approval Queue' at '/':",
+      '  detail panel for selected_request:',
+      "    button 'Approve':",
+      "      change selected_request's status from 'pending' to 'approved'",
+      '      update selected_request at /api/requests/:id/approve',
+    ].join('\n');
+    const primitiveSource = [
+      '/*',
+      'Auto-generates audit table, notification queue, filtered URL, and update URLs',
+      'for each action. Each update requires login.',
+      '*/',
+      '',
+      'queue for request:',
+      "  reviewer is 'approver'",
+      '  actions: approve, reject',
+    ].join('\n');
+    const shape = computeShape(parse(fullTemplateSource));
+    db.upsertProgrammingPattern({
+      template_name: 'approval-queue',
+      pattern_set: 'marcus',
+      title: 'Generic approval workflow',
+      description: 'Submit, queue, approve, reject, audit, notify',
+      archetype: shape.archetype,
+      shape_signature: shape,
+      feature_tags: ['approval', 'queue', 'workflow', 'audit', 'notifications'],
+      source: fullTemplateSource,
+    });
+    db.upsertProgrammingPattern({
+      template_name: 'approval-queue::queue::42::queue-for-request',
+      parent_template_name: 'approval-queue',
+      pattern_kind: 'queue',
+      is_primitive: 1,
+      pattern_set: 'marcus',
+      title: 'Generic approval workflow: queue',
+      description: 'Primitive pattern from approval-queue: queue for request:',
+      archetype: shape.archetype,
+      shape_signature: shape,
+      feature_tags: ['approval', 'queue', 'workflow', 'audit', 'notifications', 'routing', 'reviewer', 'approver'],
+      source: primitiveSource,
+      source_start_line: 37,
+      source_end_line: 44,
+    });
+
+    const results = db.queryProgrammingPatterns({
+      query: 'what is the shape of features to modify the routing of an approval queue',
+      source: [
+        'app ApprovalProbe:',
+        '  state:',
+        '    requests is list of request',
+        '',
+        '  type request:',
+        '    title is text',
+        '    region is text',
+        '    owner is text',
+        '    status is text',
+        '',
+        '  ui:',
+        "    section 'Pending approvals':",
+        '      table requests:',
+        '        column title',
+        '        column region',
+        '        column owner',
+        '        column status',
+        "        action 'Re-route':",
+        "          change selected_request's owner from '' to 'next approver'",
+      ].join('\n'),
+      topK: 1,
+    });
+
+    expect(results[0].template_name).toEqual('approval-queue::queue::42::queue-for-request');
+    expect(results[0].parent_template_name).toEqual('approval-queue');
+    expect(results[0].pattern_kind).toEqual('queue');
+    expect(results[0].is_primitive).toEqual(1);
+    expect(results[0].tier).toEqual('canonical_primitive');
+    expect(results[0].source_excerpt).toContain('queue for request:');
+    expect(results[0].source_excerpt).toContain("reviewer is 'approver'");
+    expect(results[0].source_excerpt).not.toContain('LAYOUT:');
+    expect(results[0].source_excerpt_start_line >= 37).toEqual(true);
+
+    const rerouteResults = db.queryProgrammingPatterns({
+      query: 'how do I reroute an approval request to a different approver',
+      source: [
+        'app ApprovalProbe:',
+        '  state:',
+        '    requests is list of request',
+        '',
+        '  type request:',
+        '    title is text',
+        '    region is text',
+        '    owner is text',
+        '    status is text',
+        '',
+        '  ui:',
+        "    section 'Pending approvals':",
+        '      table requests:',
+        '        column title',
+        '        column region',
+        '        column owner',
+        '        column status',
+        "        action 'Re-route':",
+        "          change selected_request's owner from '' to 'next approver'",
+      ].join('\n'),
+      topK: 1,
+    });
+
+    expect(rerouteResults[0].template_name).toEqual('approval-queue::queue::42::queue-for-request');
+    expect(rerouteResults[0].source_excerpt).toContain('queue for request:');
+    expect(rerouteResults[0].source_excerpt).toContain("reviewer is 'approver'");
+
+    db.close();
+    cleanup();
+  });
+
+  it('stages learned primitive candidates before promotion into trusted patterns', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const source = [
+      'queue for request:',
+      "  reviewer is request's region",
+      '  actions: approve, reject, reroute',
+    ].join('\n');
+
+    const weakId = db.logProgrammingPatternCandidate({
+      source_kind: 'test_run',
+      source_ref: 'sweep-123',
+      pattern_kind: 'queue',
+      title: 'Region-routed approval queue',
+      description: 'Candidate from a test run',
+      source,
+      compile_ok: 1,
+      test_pass: 0,
+    });
+    expect(weakId).toBeTruthy();
+    expect(db.promoteProgrammingPatternCandidate(weakId, {
+      template_name: 'learned::queue::region-routed-approval',
+    })).toEqual(null);
+
+    const readyId = db.logProgrammingPatternCandidate({
+      source_kind: 'user_session',
+      source_ref: 'meph-session-456',
+      parent_template_name: 'approval-queue',
+      pattern_kind: 'queue',
+      title: 'Region-routed approval queue',
+      description: 'User-proven queue routing primitive',
+      feature_tags: ['approval', 'queue', 'routing', 'region'],
+      source,
+      compile_ok: 1,
+      test_pass: 1,
+      test_score: 1,
+    });
+    const candidates = db.listProgrammingPatternCandidates({ status: 'ready_for_review' });
+    expect(candidates.some(c => c.id === readyId)).toEqual(true);
+
+    const patternId = db.promoteProgrammingPatternCandidate(readyId, {
+      template_name: 'learned::queue::region-routed-approval',
+      pattern_set: 'learned',
+      review_notes: 'Promoted after compile and tests passed.',
+    });
+    expect(patternId).toBeTruthy();
+    const learned = db.listProgrammingPatterns({ pattern_set: 'learned', include_primitives: true });
+    expect(learned.length).toEqual(1);
+    expect(learned[0].is_primitive).toEqual(1);
+    expect(learned[0].pattern_kind).toEqual('queue');
+    expect(learned[0].source).toContain('reviewer is request');
+    expect(db.listProgrammingPatternCandidates({ status: 'promoted' })[0].promoted_pattern_name).toEqual('learned::queue::region-routed-approval');
 
     db.close();
     cleanup();

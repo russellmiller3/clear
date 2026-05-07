@@ -27,11 +27,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync, spawn } from 'child_process';
-// Shape-search retrieval (Lean Lesson 2): finds canonical worked examples
-// whose program shape matches Meph's current source — additive layer next to
-// the existing text-match (querySuggestions) hint pipeline below. Defers the
-// canonical-examples.md read until first use so module load stays cheap.
-import { loadCanonicalExamples, matchShape } from '../scripts/match-shape.mjs';
 
 /**
  * Top-level tool dispatcher. Routes a validated tool_use to the right
@@ -696,6 +691,10 @@ export function browseTemplatesTool(input, ctx) {
         const src = String(row.source_excerpt || row.source || '');
         return {
           name: row.template_name,
+          parent_template_name: row.parent_template_name || null,
+          pattern_kind: row.pattern_kind || 'app',
+          is_primitive: !!row.is_primitive,
+          tier: row.tier || (row.is_primitive ? 'canonical_primitive' : 'canonical_pattern'),
           pattern_set: row.pattern_set,
           title: row.title,
           archetype: row.archetype,
@@ -1184,7 +1183,11 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
           const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
           const score = typeof row.score === 'number' ? row.score.toFixed(3) : 'n/a';
           const shapeScore = typeof row.shape_score === 'number' ? row.shape_score.toFixed(3) : 'n/a';
-          const header = `── Pattern DB Match #${i + 1} [${row.pattern_set || 'pattern'}, ${row.archetype || 'general'}, score=${score}, shape=${shapeScore}] — ${row.template_name}: ${row.title || ''}${startLine} ──`;
+          const tier = row.tier || (row.is_primitive ? 'canonical_primitive' : 'canonical_pattern');
+          const label = row.is_primitive
+            ? `${row.parent_template_name || row.template_name} / ${row.pattern_kind || 'primitive'}`
+            : row.template_name;
+          const header = `── Pattern DB Match #${i + 1} [${tier}, ${row.pattern_set || 'pattern'}, ${row.archetype || 'general'}, score=${score}, shape=${shapeScore}] — ${label}: ${row.title || ''}${startLine} ──`;
           const desc = row.description ? `Why it matters: ${row.description}` : '';
           return [header, desc, code].filter(Boolean).join('\n');
         }).join('\n\n');
@@ -1203,48 +1206,6 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
     } catch { /* non-fatal */ }
   }
 
-  // ── Shape-search retrieval (Lean Lesson 2 — additive layer) ──
-  // Fires on EVERY compile (success or failure) because Meph's program shape
-  // changes as he writes; shape-matched examples teach pre-emptively.
-  // Layered ON TOP of the text-match hints — does not replace them.
-  if (source && !hintsDisabled) {
-    try {
-      if (!ctx._canonicalExamplesLoaded) {
-        try {
-          ctx._canonicalExamples = loadCanonicalExamples();
-        } catch {
-          ctx._canonicalExamples = [];
-        }
-        ctx._canonicalExamplesLoaded = true;
-      }
-      const examples = ctx._canonicalExamples;
-      if (examples && examples.length > 0) {
-        const shapeMatches = matchShape(source, { top: 2, examples });
-        if (shapeMatches.length > 0) {
-          const shapeBlocks = shapeMatches.map(m => {
-            const ex = m.example;
-            const arch = m.signature.archetype;
-            const trimmed = (ex.source || '').slice(0, 600);
-            const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
-            const header = `── Canonical Example #${ex.number} [${arch}, shape_score=${m.score.toFixed(3)}] — ${ex.title} ──`;
-            return `${header}${code}`;
-          }).join('\n\n');
-          const shapeNote = `Shape-matched canonical examples (your program looks like these — reference for idiomatic Clear):`;
-          const shapeText = `${shapeNote}\n\n${shapeBlocks}`;
-
-          if (!result.hints) {
-            result.hints = { note: shapeNote, reranked_by: 'shape', text: shapeText };
-          } else {
-            result.hints.text = (result.hints.text || '') + '\n\n' + shapeText;
-          }
-          result.hints.shape_text = shapeText;
-          result.hints.shape_count = shapeMatches.length;
-          result.hints.shape_top_archetype = shapeMatches[0].signature.archetype;
-          console.log(`[hints] shape_match retrieved=${shapeMatches.length} top_archetype=${shapeMatches[0].signature.archetype} top_score=${shapeMatches[0].score.toFixed(3)}`);
-        }
-      }
-    } catch { /* non-fatal — shape-search is additive, never blocks compile */ }
-  }
 }
 
 /**

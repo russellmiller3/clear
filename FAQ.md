@@ -97,14 +97,33 @@ node scripts/factor-db-trace-summary.mjs --todo-probe   # "did Meph plan or thea
 
 Meph's curated pattern memory lives in the Factor DB table `clear_programming_patterns`. Studio seeds it from the 13 canonical apps in `CLAUDE.md`: 8 core templates plus 5 Marcus workflow templates.
 
+Each canonical app gets one whole-app row plus deterministic primitive rows extracted from the Clear source. Primitive rows are the small reusable shapes Meph usually needs: tables, queues, rules, validations, endpoints, auth guards, pages, detail panels, displays, buttons, row actions, inputs, agents, realtime blocks, background jobs, tests, and components.
+
+Non-golden templates in `apps/` also contribute `reference` primitive rows. They do **not** contribute whole-app rows. That keeps the 13 golden templates as trusted full examples while still mining useful source shapes from the rest of the repo.
+
+`browse_templates` with `action: "search"` returns the best matching excerpt, not the whole file. A narrow question like "what's the shape to modify routing of an approval queue?" should return the `approval-queue` queue primitive with `queue for request:` and its reviewer/actions block. Use `action: "read"` only when Meph explicitly needs a full template file.
+
 **Main paths:**
-- `studio/supervisor/pattern-library.js` — canonical template list and seed loader
-- `studio/supervisor/factor-db.js` — table schema, upsert, list, and shape/text search
+- `studio/supervisor/pattern-library.js` — canonical template list, seed loader, and primitive extractor
+- `studio/supervisor/factor-db.js` — table schema, primitive metadata, upsert, list, and shape/text search
 - `studio/server.js` — seeds the table when Studio opens the Factor DB
 - `studio/meph-tools.js` — exposes search through `browse_templates` with `action: "search"` and injects closest trusted patterns into compile hints
 - `studio/ghost-meph/mcp-server/tools.js` — seeds the same table for Ghost Meph's MCP path
+- `scripts/primitive-audit.mjs` — reports primitive counts by set, kind, parent template, examples, and review flags
+
+**Audit it:**
+```bash
+node scripts/primitive-audit.mjs
+node scripts/primitive-audit.mjs --json
+```
+
+Current audit snapshot after mining the rest of `apps/`: 13 whole-app rows, 1,220 primitive rows, 61 parent templates, 23 primitive kinds, 0 review flags.
+
+**One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
 
 **Write policy:** Meph should not raw-write this DB. Raw writes would let one bad session poison future sessions. The safe shape is: Meph proposes a candidate pattern, deterministic code compiles/tests it, then a promotion gate writes it only if the source is trusted and useful.
+
+**Future learned primitives:** candidates go into `clear_programming_pattern_candidates` first with source kind, source reference, compile/test evidence, status, and review notes. Only `promoteProgrammingPatternCandidate()` writes a passing reviewed candidate into `clear_programming_patterns` as a trusted `learned` primitive.
 
 ---
 
@@ -1196,15 +1215,17 @@ Bundle file: `playground/supervisor/reranker.json` (created manually after train
 2. If `r.errors.length > 0`, server computes `archetype` + `error_sig`
 3. `factorDB.querySuggestions()` returns top-10 candidates via tiered BM25 (same error in this archetype → same error anywhere → same-archetype gold rows)
 4. If EBM bundle loaded: `rank(bundle, candidates, featurizeFactorRow)` rescores + resorts
-5. Top 3 returned in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
+5. Top 3 repair hints return in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
 6. Meph reads them in the tool result of his next turn
+
+Reusable pattern snippets are separate from repair hints but now use the same Factor DB-backed hint payload. `factorDB.queryProgrammingPatterns()` adds `result.hints.pattern_text` from `clear_programming_patterns`. The old markdown shape-match hint layer is retired from Meph.
 
 2026-05-01 verification tightened the boundary. The regression test now asserts the dispatcher returns a compile-tool result string containing the `HINT_APPLIED` protocol and the worked source snippet. That is the string `/api/chat` sends back to Meph, so the test proves delivery at the agent-visible boundary rather than only inside helper state.
 
 Telemetry notes:
 
 - `scripts/factor-db-summary.mjs` counts text labels: `yes`, `partial`, and `inferred`.
-- `playground/supervisor/verify-hint-flow.js` reports shape-match hints as `shape_match:<archetype>`, not `none`.
+- `playground/supervisor/verify-hint-flow.js` should distinguish exact-error repair hints, pattern DB snippets, and no hint. Do not collapse a weak delivered hint into `none`.
 - A rejected hint still proves delivery. It means Meph saw the hint and said it did not help.
 
 ### How do we know whether hints make Meph better?

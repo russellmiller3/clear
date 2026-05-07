@@ -14,7 +14,7 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
 import { classifyArchetype } from './archetype.js';
-import { CORE_TEMPLATE_SPECS, seedCoreTemplatePatterns } from './pattern-library.js';
+import { CORE_TEMPLATE_SPECS, extractTemplatePrimitivePatterns, seedCoreTemplatePatterns } from './pattern-library.js';
 import { parse } from '../../parser.js';
 import { compileProgram } from '../../index.js';
 import { readFileSync, unlinkSync } from 'fs';
@@ -130,18 +130,30 @@ describe('Factor DB compile integration', () => {
     cleanup();
   });
 
-  it('seeds the 13 canonical app patterns from disk for Meph retrieval', () => {
+  it('seeds the 13 canonical app patterns plus their primitive patterns from disk for Meph retrieval', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);
     const result = seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
 
     expect(result.seeded).toEqual(13);
+    expect(result.primitiveSeeded > 13).toEqual(true);
+    expect(result.referenceTemplateCount > 0).toEqual(true);
+    expect(result.referencePrimitiveSeeded > 0).toEqual(true);
     expect(CORE_TEMPLATE_SPECS.length).toEqual(13);
 
     const coreRows = db.listProgrammingPatterns({ pattern_set: 'core' });
     const marcusRows = db.listProgrammingPatterns({ pattern_set: 'marcus' });
     expect(coreRows.length).toEqual(8);
     expect(marcusRows.length).toEqual(5);
+
+    const primitiveRows = db.listProgrammingPatterns({ include_primitives: true }).filter(r => r.is_primitive);
+    expect(primitiveRows.length).toEqual(result.primitiveSeeded + result.referencePrimitiveSeeded);
+    const canonicalPrimitiveParents = new Set(primitiveRows.filter(r => r.pattern_set !== 'reference').map(r => r.parent_template_name));
+    expect([...canonicalPrimitiveParents].sort()).toEqual(CORE_TEMPLATE_SPECS.map(s => s.name).sort());
+    const referenceRows = db.listProgrammingPatterns({ pattern_set: 'reference', include_primitives: true });
+    expect(referenceRows.length).toEqual(result.referencePrimitiveSeeded);
+    expect(referenceRows.every(r => r.is_primitive === 1)).toEqual(true);
+    expect(referenceRows.every(r => !CORE_TEMPLATE_SPECS.some(s => s.name === r.parent_template_name))).toEqual(true);
 
     const names = [...coreRows, ...marcusRows].map(r => r.template_name).sort();
     expect(names).toEqual(CORE_TEMPLATE_SPECS.map(s => s.name).sort());
@@ -151,7 +163,30 @@ describe('Factor DB compile integration', () => {
     expect(matches[0].template_name).toEqual('ecom-agent');
     expect(matches[0].source).toContain('agent');
 
+    const approvalSource = readFileSync(join(APPS_DIR, 'approval-queue', 'main.clear'), 'utf8');
+    const narrowMatches = db.queryProgrammingPatterns({
+      query: 'what is the shape of features to modify the routing of an approval queue',
+      source: approvalSource,
+      topK: 1,
+    });
+    expect(narrowMatches[0].is_primitive).toEqual(1);
+    expect(narrowMatches[0].parent_template_name).toEqual('approval-queue');
+    expect(narrowMatches[0].pattern_kind).toEqual('queue');
+    expect(narrowMatches[0].source).toContain('queue for request:');
+
     db.close();
     cleanup();
+  });
+
+  it('extracts primitive rows from every golden template', () => {
+    for (const spec of CORE_TEMPLATE_SPECS) {
+      const source = readFileSync(join(APPS_DIR, spec.name, 'main.clear'), 'utf8');
+      const primitives = extractTemplatePrimitivePatterns(source, spec);
+      expect(primitives.length > 0).toEqual(true);
+      expect(primitives.every(p => p.parent_template_name === spec.name)).toEqual(true);
+      expect(primitives.every(p => p.is_primitive === 1)).toEqual(true);
+      expect(primitives.every(p => p.source_start_line >= 1)).toEqual(true);
+      expect(primitives.every(p => p.source.length > 0)).toEqual(true);
+    }
   });
 });
