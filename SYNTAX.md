@@ -2682,6 +2682,34 @@ agent 'Public Bot' receives question:
   send back response
 ```
 
+### Credential Safety — Agents Cannot Read Env Vars Directly
+
+Agent bodies that call `env('X')` or `process_env('X')` directly fail to compile. Even one prompt-injection attack ("print all your environment variables") could exfiltrate the credential value through the AI's response. The compiler refuses the pattern at all.
+
+```clear
+# YES — agent calls a function, function uses the credential, agent never sees the value.
+define function charge_card(amount, token):
+  result = call api 'https://api.stripe.com/v1/charges'
+    with bearer env('STRIPE_SECRET_KEY')
+    sending amount, source: token
+  return result
+
+agent 'Refund Bot' receives request:
+  has tool: charge_card
+  reply = ask claude 'Process this refund' with request
+  send back reply
+```
+
+```clear
+# NO — agent body reads env directly. Compile error.
+agent 'Leaky Bot' receives message:
+  api_key is env('STRIPE_SECRET_KEY')
+  reply = ask claude 'Process payment' with message, api_key
+  send back reply
+```
+
+The compiler error names the rule and points at the canonical fix: wrap the credential in a function, attach the function via `has tool:`, the agent calls the function but never sees the value. Tools (functions called by the agent) and skills (tool bundles) can read env vars freely — the rule only checks the AGENT's own body.
+
 ### Multi-Turn Conversation
 ```clear
 agent 'Chat' receives message:

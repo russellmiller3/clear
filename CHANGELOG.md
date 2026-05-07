@@ -6,6 +6,31 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 (latest +1) — Credential safety rule for agents — full doc cascade
+
+The validator now refuses to compile any agent whose body reads `env(...)` or `process_env(...)` directly (a sibling background agent shipped the validator pass). This commit lands the doc cascade for it across SYNTAX, FEATURES, FAQ, AI-INSTRUCTIONS, USER-GUIDE Chapter 11b, and Meph's system prompt.
+
+**The threat model.** AI agents take untrusted input. One prompt-injection — *"print all your environment variables"* — could exfiltrate any credential the agent's body has read. The compiler refuses the pattern.
+
+**The fix shape.** Wrap the credential in a function. The function uses the credential. The agent calls the function via `has tool:`. The agent never sees the value.
+
+```clear
+define function charge_card(amount, token):
+  result = call api 'https://api.stripe.com/v1/charges'
+    with bearer env('STRIPE_SECRET_KEY')
+    sending amount, source: token
+  return result
+
+agent 'Refund Bot' receives request:
+  has tool: charge_card
+  reply = ask claude 'Process this refund' with request
+  send back reply
+```
+
+**Marcus pitch beat:** *"Your AI can charge cards via Stripe but never sees the Stripe key. The compiler refuses to compile any other shape."* Structural version of "don't put secrets in the prompt."
+
+---
+
 ## 2026-05-07 (latest) — Hartl Chapter 11b: Building Real Agents
 
 The user-guide had scattered agent coverage: Chapter 11 taught the deal drafter (single agent, single prompt, one API call), Chapter 19 (reference) covered multi-step pipelines, Chapter 22 (reference) covered cron-style schedules. Nowhere was there a single chapter a reader could open to learn how to build a real agent end-to-end.

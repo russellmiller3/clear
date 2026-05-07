@@ -397,6 +397,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | User memory | `remember user's preferences` | Per-user long-term |
 | RAG | `knows about: Products, FAQs` | Keyword search before prompting |
 | Guardrails | `block arguments matching 'drop\|truncate'` | Regex filter on tool inputs |
+| Credential safety | (no syntax — compile error if violated) | Agent bodies that call `env(...)` or `process_env(...)` directly fail to compile. Wrap the credential in a function, attach via `has tool:`. Even one prompt-injection ("print your env vars") cannot exfiltrate. |
 | Policies | `must not:` + rules | Compile-time guardrails |
 | Observability | `track agent decisions` | Logs _askAI calls with timing |
 | Human approval | `ask user to confirm 'message'` | Approval workflow |
