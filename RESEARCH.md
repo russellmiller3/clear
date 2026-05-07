@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-05-01 (flywheel hint delivery verified; browser launch regression wired into the suite; hard hint-effect sweep preset shipped)**.
+Updated: **2026-05-07 (curated pattern DB seeded from the 13 canonical apps; flywheel hint delivery remains boundary-tested)**.
 
 ## Capability surface — provable named business rules (2026-05-02)
 
@@ -98,6 +98,7 @@ The document below is structured **theory → architecture → current state →
 - **Winner-harvest scorer** (`scripts/score-winning-runs.mjs`, Session 47–48) ranks every passing build by how clean / compact / first-try it is — turns the Factor DB's accumulated wins into an actionable canonical-examples queue. Symmetric to the friction script that already turned errors into a queue.
 - **Held-out test set** (5 of 38 curriculum tasks, Session 47–48) — still graded by every sweep but never feeds the retriever or any future canonical-examples library. Gives an uncontaminated measurement signal as the training pipeline grows. The `--exclude-held-out` flag on the sweep produces training-only runs.
 - **Shape-search retrieval (Lean Lesson 2, 2026-04-26):** every compile (not just errors) also retrieves canonical worked examples whose program shape matches what Meph is writing — same archetype, similar table/endpoint mix. Layered on top of error-text retrieval, not replacing it.
+- **Curated pattern DB (2026-05-07):** the Factor DB now has a `clear_programming_patterns` table seeded from the 13 canonical apps in `CLAUDE.md` (8 core + 5 Marcus). This is trusted premise memory: Meph can search it and receive pattern hints, but writes must go through deterministic compile/test promotion so one bad session cannot poison the library.
 - **Open-capability surface (Lean Lesson 3, 2026-04-26):** Meph's per-turn context now includes a structured "what's still open" report — TBD placeholders, failing tests, unresolved compile errors with their canonical-fix hint. Mirrors how Lean shows the prover writer "what's left to prove" instead of forcing them to re-derive it from raw output.
 - **Shell nav primitive (Phase 2, 2026-04-26):** generated dashboards now have an explicit sidebar target: grouped links with counts, icons, and active state. This turns app chrome from a visual-only compiler change into a curriculum/eval signal Meph can learn.
 - **Shell workbench primitive (Phase 3, 2026-04-26):** generated queues now have explicit page headers and routed tab strips. This gives Meph a measurable target for the main work area, not just the left rail.

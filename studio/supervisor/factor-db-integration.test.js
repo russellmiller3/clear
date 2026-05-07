@@ -14,9 +14,11 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
 import { classifyArchetype } from './archetype.js';
+import { CORE_TEMPLATE_SPECS, seedCoreTemplatePatterns } from './pattern-library.js';
 import { parse } from '../../parser.js';
 import { compileProgram } from '../../index.js';
 import { readFileSync, unlinkSync } from 'fs';
+import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
@@ -24,8 +26,12 @@ import { createHash } from 'crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APPS_DIR = join(__dirname, '..', '..', 'apps');
 
-const TEST_DB = '/tmp/factor-integration-test.db';
-function cleanup() { try { unlinkSync(TEST_DB); } catch {} }
+const TEST_DB = join(tmpdir(), 'factor-integration-test.db');
+function cleanup() {
+  for (const path of [TEST_DB, `${TEST_DB}-wal`, `${TEST_DB}-shm`]) {
+    try { unlinkSync(path); } catch {}
+  }
+}
 function sha1(s) { return createHash('sha1').update(s).digest('hex').slice(0, 16); }
 
 describe('Factor DB compile integration', () => {
@@ -119,6 +125,31 @@ describe('Factor DB compile integration', () => {
     expect(db.querySimilar({ archetype: 'crud_app' }).length).toEqual(1);
     expect(db.querySimilar({ archetype: 'realtime_app' }).length).toEqual(1);
     expect(db.querySimilar({ archetype: 'booking_app' }).length).toEqual(1);
+
+    db.close();
+    cleanup();
+  });
+
+  it('seeds the 13 canonical app patterns from disk for Meph retrieval', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const result = seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
+
+    expect(result.seeded).toEqual(13);
+    expect(CORE_TEMPLATE_SPECS.length).toEqual(13);
+
+    const coreRows = db.listProgrammingPatterns({ pattern_set: 'core' });
+    const marcusRows = db.listProgrammingPatterns({ pattern_set: 'marcus' });
+    expect(coreRows.length).toEqual(8);
+    expect(marcusRows.length).toEqual(5);
+
+    const names = [...coreRows, ...marcusRows].map(r => r.template_name).sort();
+    expect(names).toEqual(CORE_TEMPLATE_SPECS.map(s => s.name).sort());
+
+    const agentSource = readFileSync(join(APPS_DIR, 'ecom-agent', 'main.clear'), 'utf8');
+    const matches = db.queryProgrammingPatterns({ source: agentSource, topK: 3 });
+    expect(matches[0].template_name).toEqual('ecom-agent');
+    expect(matches[0].source).toContain('agent');
 
     db.close();
     cleanup();

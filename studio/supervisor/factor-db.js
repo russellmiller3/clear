@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3';
 import { createHash } from 'crypto';
+import { parse } from '../../parser.js';
+import { computeShape, shapeSimilarity } from './program-shape.js';
 
 // Roles for the meph_turns trace table. Locked here so the test file and
 // the chat handler agree on what's valid.
@@ -12,6 +14,62 @@ const VALID_TURN_ROLES = new Set([
   'snap_retry',          // snap-layer re-prompt event
 ]);
 const TURN_TRUNC_BYTES = 4096;
+
+function sha1Short(str) {
+  return createHash('sha1').update(String(str || '')).digest('hex').slice(0, 16);
+}
+
+function parseJson(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function safeShapeFromSource(source) {
+  try { return computeShape(parse(String(source || ''))); }
+  catch { return computeShape(null); }
+}
+
+function normalizeTokens(text) {
+  return String(text || '')
+    .toLowerCase()
+    .split(/[^a-z0-9_/-]+/)
+    .filter(t => t.length > 1);
+}
+
+function textMatchScore(row, query) {
+  const terms = normalizeTokens(query);
+  if (terms.length === 0) return 0;
+  const haystack = normalizeTokens([
+    row.template_name,
+    row.pattern_set,
+    row.title,
+    row.description,
+    row.archetype,
+    Array.isArray(row.feature_tags) ? row.feature_tags.join(' ') : row.feature_tags,
+  ].join(' '));
+  const bag = new Set(haystack);
+  let hits = 0;
+  for (const term of terms) if (bag.has(term)) hits++;
+  return hits / terms.length;
+}
+
+function shapeFromInput({ source = '', shape_signature = null } = {}) {
+  if (shape_signature) {
+    if (typeof shape_signature === 'string') return parseJson(shape_signature, safeShapeFromSource(source));
+    return shape_signature;
+  }
+  return safeShapeFromSource(source);
+}
+
+function normalizePatternRow(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    shape_signature: parseJson(row.shape_signature, null),
+    feature_tags: parseJson(row.feature_tags, []),
+  };
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS code_actions (
@@ -138,6 +196,27 @@ CREATE INDEX IF NOT EXISTS idx_compiler_edits_sha   ON compiler_edits(commit_sha
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_kind  ON compiler_edits(edit_kind, authored_at);
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_file  ON compiler_edits(file_path, authored_at);
 
+-- Curated Clear programming-pattern memory. Seeded from the 13 canonical
+-- app templates (8 core + 5 Marcus). Meph searches this table by program
+-- shape and plain-English query, then pulls the matching Clear source.
+CREATE TABLE IF NOT EXISTS clear_programming_patterns (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_name    TEXT NOT NULL UNIQUE,
+  pattern_set      TEXT NOT NULL,           -- core | marcus | future curated set
+  title            TEXT NOT NULL,
+  description      TEXT,
+  archetype        TEXT,
+  shape_signature  TEXT NOT NULL,           -- JSON from program-shape.js
+  feature_tags     TEXT NOT NULL DEFAULT '[]',
+  source           TEXT NOT NULL,
+  source_hash      TEXT NOT NULL,
+  line_count       INTEGER NOT NULL DEFAULT 0,
+  updated_at       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_clear_patterns_set ON clear_programming_patterns(pattern_set, archetype);
+CREATE INDEX IF NOT EXISTS idx_clear_patterns_archetype ON clear_programming_patterns(archetype);
+
 -- Meph turn trace. One row per conversation event: user prompt, assistant
 -- prose, assistant thinking, tool_use, tool_result. Joins to code_actions
 -- via session_id. Lets research probes ask "did Meph plan with the todo
@@ -213,6 +292,96 @@ export class FactorDB {
       reason,
       rowId
     );
+  }
+
+  upsertProgrammingPattern({
+    template_name,
+    pattern_set = 'core',
+    title = '',
+    description = '',
+    archetype = null,
+    shape_signature = null,
+    feature_tags = [],
+    source = '',
+  } = {}) {
+    const name = String(template_name || '').trim();
+    const src = String(source || '');
+    if (!name || src.length === 0) return null;
+    const shape = shape_signature || safeShapeFromSource(src);
+    const normalizedArchetype = archetype || shape?.archetype || 'general';
+    const tags = Array.isArray(feature_tags) ? feature_tags : normalizeTokens(feature_tags);
+    const lineCount = src.split('\n').filter(l => l.trim()).length;
+    const result = this._db.prepare(`
+      INSERT INTO clear_programming_patterns
+        (template_name, pattern_set, title, description, archetype,
+         shape_signature, feature_tags, source, source_hash, line_count, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(template_name) DO UPDATE SET
+        pattern_set = excluded.pattern_set,
+        title = excluded.title,
+        description = excluded.description,
+        archetype = excluded.archetype,
+        shape_signature = excluded.shape_signature,
+        feature_tags = excluded.feature_tags,
+        source = excluded.source,
+        source_hash = excluded.source_hash,
+        line_count = excluded.line_count,
+        updated_at = excluded.updated_at
+    `).run(
+      name,
+      String(pattern_set || 'core'),
+      String(title || name),
+      String(description || ''),
+      String(normalizedArchetype || 'general'),
+      JSON.stringify(shape),
+      JSON.stringify(tags),
+      src,
+      sha1Short(src),
+      lineCount,
+      Date.now()
+    );
+    return result.lastInsertRowid || this._db.prepare(
+      'SELECT id FROM clear_programming_patterns WHERE template_name = ?'
+    ).get(name)?.id || null;
+  }
+
+  listProgrammingPatterns({ pattern_set = null } = {}) {
+    let sql = 'SELECT * FROM clear_programming_patterns';
+    const params = [];
+    if (pattern_set) {
+      sql += ' WHERE pattern_set = ?';
+      params.push(String(pattern_set));
+    }
+    sql += ' ORDER BY pattern_set, template_name';
+    return this._db.prepare(sql).all(...params).map(normalizePatternRow);
+  }
+
+  queryProgrammingPatterns({ source = '', shape_signature = null, query = '', topK = 3, pattern_set = null } = {}) {
+    const queryShape = shapeFromInput({ source, shape_signature });
+    let sql = 'SELECT * FROM clear_programming_patterns';
+    const params = [];
+    if (pattern_set) {
+      sql += ' WHERE pattern_set = ?';
+      params.push(String(pattern_set));
+    }
+    const rows = this._db.prepare(sql).all(...params).map(normalizePatternRow);
+    const scored = rows.map(row => {
+      const shapeScore = shapeSimilarity(queryShape, row.shape_signature);
+      const queryScore = textMatchScore(row, query);
+      return {
+        ...row,
+        tier: 'canonical_pattern',
+        shape_score: shapeScore,
+        query_score: queryScore,
+        score: shapeScore + queryScore,
+      };
+    });
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.shape_score !== a.shape_score) return b.shape_score - a.shape_score;
+      return String(a.template_name).localeCompare(String(b.template_name));
+    });
+    return scored.slice(0, Math.max(1, Number(topK) || 3));
   }
 
   logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,

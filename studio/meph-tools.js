@@ -320,7 +320,9 @@ export function describeMephTool(name, input) {
     case 'fill_input': return `fill_input → ${input.selector || ''} = ${JSON.stringify(String(input.value || '').slice(0, 60))}`;
     case 'screenshot_output': return 'screenshot_output';
     case 'highlight_code': return `highlight_code ${input.start_line || ''}-${input.end_line || ''}`;
-    case 'browse_templates': return `browse_templates ${input.template || ''}`;
+    case 'browse_templates': return input.action === 'search'
+      ? `browse_templates search ${input.query || ''}`
+      : `browse_templates ${input.name || input.template || input.action || ''}`;
     case 'source_map': return `source_map`;
     case 'read_actions': return 'read_actions';
     case 'read_dom': return 'read_dom';
@@ -662,7 +664,8 @@ export function websocketLogTool(input, ctx) {
  */
 export function browseTemplatesTool(input, ctx) {
   const TEMPLATE_DIR = join(ctx.rootDir, 'apps');
-  if (input.action === 'list') {
+  const action = input.action || 'list';
+  if (action === 'list') {
     try {
       const dirs = readdirSync(TEMPLATE_DIR).filter(d => {
         try { return statSync(join(TEMPLATE_DIR, d)).isDirectory(); } catch { return false; }
@@ -678,14 +681,42 @@ export function browseTemplatesTool(input, ctx) {
       return JSON.stringify({ templates, count: templates.length });
     } catch (e) { return JSON.stringify({ error: e.message }); }
   }
-  if (input.action === 'read') {
+  if (action === 'search') {
+    if (!ctx.factorDB || typeof ctx.factorDB.queryProgrammingPatterns !== 'function') {
+      return JSON.stringify({ error: 'Pattern database is not available in this Meph session.' });
+    }
+    const topK = Math.min(Math.max(Number(input.topK) || 3, 1), 5);
+    try {
+      const rows = ctx.factorDB.queryProgrammingPatterns({
+        query: input.query || '',
+        source: input.source || ctx.source || '',
+        topK,
+      });
+      const patterns = rows.map(row => {
+        const src = String(row.source || '');
+        return {
+          name: row.template_name,
+          pattern_set: row.pattern_set,
+          title: row.title,
+          archetype: row.archetype,
+          score: row.score,
+          shape_score: row.shape_score,
+          query_score: row.query_score,
+          source: src.slice(0, 2000),
+          source_truncated: src.length > 2000,
+        };
+      });
+      return JSON.stringify({ patterns, count: patterns.length });
+    } catch (e) { return JSON.stringify({ error: e.message }); }
+  }
+  if (action === 'read') {
     if (!input.name) return JSON.stringify({ error: 'Need a template name. Use action="list" first to see available templates.' });
     const safeName = input.name.replace(/[^a-zA-Z0-9_-]/g, '');
     const mainFile = join(TEMPLATE_DIR, safeName, 'main.clear');
     if (!existsSync(mainFile)) return JSON.stringify({ error: `Template "${safeName}" not found. Use action="list" to see available templates.` });
     return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
   }
-  return JSON.stringify({ error: 'action must be "list" or "read"' });
+  return JSON.stringify({ error: 'action must be "list", "read", or "search"' });
 }
 
 /**
@@ -1134,6 +1165,37 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
         ctx.hintState.hintsInjectedErrorCount = r.errors.length;
         ctx.hintState.hintsInjectedTier = hintRows[0]?.tier || null;
         ctx.hintState.postHintMinErrorCount = null;
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // Curated app-pattern DB (13 canonical apps): Meph gets examples from the
+  // same SQLite memory as the flywheel instead of only the markdown fallback.
+  if (ctx.factorDB && typeof ctx.factorDB.queryProgrammingPatterns === 'function' && source && !hintsDisabled) {
+    try {
+      const patternMatches = ctx.factorDB.queryProgrammingPatterns({ source, topK: 2 });
+      if (patternMatches.length > 0) {
+        const patternBlocks = patternMatches.map((row, i) => {
+          const raw = String(row.source || '').slice(0, 900);
+          const trimmed = raw.lastIndexOf('\n') > 650 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
+          const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
+          const score = typeof row.score === 'number' ? row.score.toFixed(3) : 'n/a';
+          const shapeScore = typeof row.shape_score === 'number' ? row.shape_score.toFixed(3) : 'n/a';
+          const header = `── Pattern DB Match #${i + 1} [${row.pattern_set || 'pattern'}, ${row.archetype || 'general'}, score=${score}, shape=${shapeScore}] — ${row.template_name}: ${row.title || ''} ──`;
+          const desc = row.description ? `Why it matters: ${row.description}` : '';
+          return [header, desc, code].filter(Boolean).join('\n');
+        }).join('\n\n');
+        const patternNote = 'Curated Clear pattern database matches (canonical app patterns Meph can pull from):';
+        const patternText = `${patternNote}\n\n${patternBlocks}`;
+        if (!result.hints) {
+          result.hints = { note: patternNote, reranked_by: 'pattern_db', text: patternText };
+        } else {
+          result.hints.text = (result.hints.text || '') + '\n\n' + patternText;
+        }
+        result.hints.pattern_text = patternText;
+        result.hints.pattern_count = patternMatches.length;
+        result.hints.pattern_top_template = patternMatches[0].template_name;
+        console.log(`[hints] pattern_db retrieved=${patternMatches.length} top_template=${patternMatches[0].template_name} top_score=${Number(patternMatches[0].score || 0).toFixed(3)}`);
       }
     } catch { /* non-fatal */ }
   }

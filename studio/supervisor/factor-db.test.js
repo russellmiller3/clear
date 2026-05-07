@@ -1,5 +1,7 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
+import { parse } from '../../parser.js';
+import { computeShape } from './program-shape.js';
 import { unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -217,6 +219,51 @@ describe('FactorDB', () => {
     row = db._db.prepare('SELECT hint_applied, hint_tier, hint_helpful, hint_reason FROM code_actions WHERE id = ?').get(id2);
     expect(row.hint_applied).toEqual(0);
     expect(row.hint_reason).toEqual('wrong archetype');
+    db.close();
+    cleanup();
+  });
+
+  it('stores curated Clear programming patterns and searches them by shape plus text', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const crudSource = "build for javascript backend\n\ncreate a Todos table:\n  title is text\n\nwhen user calls GET /api/todos:\n  send back all Todos\n";
+    const dealSource = "build for javascript backend\n\ncreate a Deals table:\n  amount is number\n  status is text\n\nrule 'Discount cap':\n  enforce that amount is less than 100000\n\nwhen user sends deal to /api/deals:\n  save deal as new Deal\n";
+    const crudShape = computeShape(parse(crudSource));
+    const dealShape = computeShape(parse(dealSource));
+
+    db.upsertProgrammingPattern({
+      template_name: 'todo-fullstack',
+      pattern_set: 'core',
+      title: 'CRUD basics',
+      description: 'Tables, endpoints, auth, validation, pages',
+      archetype: crudShape.archetype,
+      shape_signature: crudShape,
+      feature_tags: ['crud', 'tables', 'endpoints'],
+      source: crudSource,
+    });
+    db.upsertProgrammingPattern({
+      template_name: 'deal-desk',
+      pattern_set: 'marcus',
+      title: 'Discount approval with provable rules',
+      description: 'Approval queue, audit, discount rules, CRO sign-off',
+      archetype: dealShape.archetype,
+      shape_signature: dealShape,
+      feature_tags: ['approval', 'rules', 'audit'],
+      source: dealSource,
+    });
+
+    const byShape = db.queryProgrammingPatterns({ shape_signature: crudShape, topK: 2 });
+    expect(byShape.length).toEqual(2);
+    expect(byShape[0].template_name).toEqual('todo-fullstack');
+    expect(byShape[0].tier).toEqual('canonical_pattern');
+    expect(Array.isArray(byShape[0].feature_tags)).toEqual(true);
+    expect(typeof byShape[0].shape_score).toEqual('number');
+
+    const byText = db.queryProgrammingPatterns({ query: 'approval discount rules', topK: 1 });
+    expect(byText.length).toEqual(1);
+    expect(byText[0].template_name).toEqual('deal-desk');
+    expect(byText[0].source).toContain("rule 'Discount cap'");
+
     db.close();
     cleanup();
   });

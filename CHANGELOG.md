@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-07 — Meph curated pattern DB from the 13 canonical apps
+
+Meph now has a trusted programming-pattern database separate from the empirical `code_actions` flywheel rows. Studio seeds `factor-db.sqlite` with the 13 canonical apps named in `CLAUDE.md`: the 8 core templates plus the 5 Marcus workflow templates.
+
+What shipped:
+- New `clear_programming_patterns` table in Factor DB with shape signatures, tags, descriptions, source hashes, and source text.
+- New seeder in `studio/supervisor/pattern-library.js` that loads each canonical template from disk, parses it, computes its shape, and upserts it.
+- `browse_templates` now supports `action: "search"` so Meph can search patterns by app shape plus plain-English query.
+- The compile tool now injects the closest trusted pattern matches into Meph's hint text.
+- Ghost Meph's MCP path seeds the same table, so both Studio chat paths share the library.
+
+Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
+
+Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, and `studio/meph-tools.test.js` green.
+
+---
+
 ## 2026-05-07 (Phase 4) — Agent × Policy bridge: `upholds all policies`
 
 Russell asked the load-bearing question: *"with enact tools + symbolic prover we should be able to prove that an agent can't take a specific bad action with tools it has access to — can we?"*

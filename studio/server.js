@@ -12,6 +12,7 @@ import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken, verifyLega
 import { wireDeploy, getDeployDeps } from './deploy.js';
 import { deploySource as deploySourceCloudflare } from './deploy-cloudflare.js';
 import { FactorDB } from './supervisor/factor-db.js';
+import { seedCoreTemplatePatterns } from './supervisor/pattern-library.js';
 import { classifyArchetype } from './supervisor/archetype.js';
 import { getOpenCapabilities, formatReportForMeph } from './supervisor/open-capabilities.js';
 import {
@@ -2076,8 +2077,18 @@ let _workerLastErrors = [];
 // Non-fatal: if the DB fails to open, sessions still work, just no logging.
 const FACTOR_DB_PATH = process.env.FACTOR_DB_PATH || join(__dirname, 'factor-db.sqlite');
 let _factorDB = null;
-try { _factorDB = new FactorDB(FACTOR_DB_PATH); }
+try {
+  _factorDB = new FactorDB(FACTOR_DB_PATH);
+}
 catch (err) { console.warn('[FACTOR_DB] disabled:', err.message); }
+if (_factorDB) {
+  try {
+    const seededPatterns = seedCoreTemplatePatterns(_factorDB, ROOT_DIR);
+    console.log(`[FACTOR_DB] seeded ${seededPatterns.seeded} canonical Clear patterns`);
+  } catch (err) {
+    console.warn('[FACTOR_DB] pattern seed skipped:', err.message);
+  }
+}
 
 function _sha1(str) {
   return createHash('sha1').update(str).digest('hex').slice(0, 16);
@@ -2726,12 +2737,14 @@ Rules: Only ONE task should be in_progress at a time. Mark tasks completed immed
   },
   {
     name: 'browse_templates',
-    description: 'Browse the template library. Use action="list" to see all available templates with descriptions. Use action="read" with a template name to get its full Clear source code. Great for learning patterns, finding examples of specific features, or starting from an existing app.',
+    description: 'Browse the template and pattern library. Use action="list" to see templates. Use action="read" with a template name to get full Clear source. Use action="search" with query/topK to search the curated pattern DB seeded from the 13 canonical apps.',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'read'], description: 'list = show all templates, read = get source code for a specific template' },
+        action: { type: 'string', enum: ['list', 'read', 'search'], description: 'list = show templates, read = get one template source, search = search canonical app patterns' },
         name: { type: 'string', description: 'Template name to read (e.g. "todo-fullstack", "crm-pro"). Only needed for action=read.' },
+        query: { type: 'string', description: 'Plain-English search text for action=search, e.g. "approval rules" or "agent with tools".' },
+        topK: { type: 'number', description: 'How many pattern matches to return for action=search. Default 3, max 5.' },
       },
       required: ['action'],
     },
@@ -3732,7 +3745,10 @@ app.post('/api/chat', async (req, res) => {
             case 'todo': return input.action === 'set' ? 'Updating task list' : 'Reading task list';
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
             case 'patch_code': return `Patching ${input.operations?.length || 0} operations`;
-            case 'browse_templates': return input.action === 'read' ? `Reading template: ${input.name}` : 'Browsing templates';
+            case 'browse_templates':
+              if (input.action === 'read') return `Reading template: ${input.name}`;
+              if (input.action === 'search') return `Searching pattern DB: ${input.query || 'current app shape'}`;
+              return 'Browsing templates';
             default: return tb.name;
           }
         })();
@@ -3874,7 +3890,7 @@ app.post('/api/chat', async (req, res) => {
               // Use the parsed fields directly.
               return `[tool] ✓ patch — ${res.applied || 0} applied, ${res.skipped || 0} skipped`;
             case 'browse_templates':
-              return `[tool] ✓ browse_templates — ${input.action} ${input.name || ''}`.trim();
+              return `[tool] ✓ browse_templates — ${input.action} ${input.name || input.query || ''}`.trim();
             default:
               return `[tool] ${tb.name}`;
           }

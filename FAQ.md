@@ -93,6 +93,21 @@ node scripts/factor-db-trace-summary.mjs --todo-probe   # "did Meph plan or thea
 
 ---
 
+## Where does Meph's programming-pattern DB live? Can Meph write to it? (2026-05-07)
+
+Meph's curated pattern memory lives in the Factor DB table `clear_programming_patterns`. Studio seeds it from the 13 canonical apps in `CLAUDE.md`: 8 core templates plus 5 Marcus workflow templates.
+
+**Main paths:**
+- `studio/supervisor/pattern-library.js` — canonical template list and seed loader
+- `studio/supervisor/factor-db.js` — table schema, upsert, list, and shape/text search
+- `studio/server.js` — seeds the table when Studio opens the Factor DB
+- `studio/meph-tools.js` — exposes search through `browse_templates` with `action: "search"` and injects closest trusted patterns into compile hints
+- `studio/ghost-meph/mcp-server/tools.js` — seeds the same table for Ghost Meph's MCP path
+
+**Write policy:** Meph should not raw-write this DB. Raw writes would let one bad session poison future sessions. The safe shape is: Meph proposes a candidate pattern, deterministic code compiles/tests it, then a promotion gate writes it only if the source is trusted and useful.
+
+---
+
 ## How much Python parity work is left? How do I check? (2026-05-07)
 
 **Two-command answer:**

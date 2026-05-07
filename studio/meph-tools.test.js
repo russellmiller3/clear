@@ -356,6 +356,37 @@ const bt5 = JSON.parse(browseTemplatesTool({ action: 'frobnicate' }, new MephCon
 assert(bt5.error?.includes('action must be'),
   'browseTemplatesTool with bad action surfaces "action must be"');
 
+// search action -- uses the curated pattern DB when wired
+let browsePatternCalls = 0;
+const browsePatternCtx = new MephContext({
+  rootDir: REPO_ROOT,
+  source: 'build for javascript backend\n\ncreate a Deals table:\n  amount is number\n',
+  factorDB: {
+    queryProgrammingPatterns: ({ query, source, topK }) => {
+      browsePatternCalls++;
+      assert(query === 'approval rules', `browse_templates search forwards query (got ${query})`);
+      assert(source.includes('Deals table'), 'browse_templates search forwards current source for shape matching');
+      assert(topK === 2, `browse_templates search forwards topK (got ${topK})`);
+      return [{
+        template_name: 'deal-desk',
+        pattern_set: 'marcus',
+        title: 'Discount approval with provable rules',
+        archetype: 'queue_workflow',
+        score: 1.7,
+        shape_score: 1.2,
+        source: "build for javascript backend\n\n# Deal Desk\n",
+      }];
+    },
+  },
+});
+const bt6 = JSON.parse(browseTemplatesTool({ action: 'search', query: 'approval rules', topK: 2 }, browsePatternCtx));
+assert(browsePatternCalls === 1,
+  `browseTemplatesTool search calls pattern DB exactly once (got ${browsePatternCalls})`);
+assert(bt6.count === 1 && bt6.patterns[0].name === 'deal-desk',
+  `browseTemplatesTool search returns pattern names (got ${JSON.stringify(bt6)})`);
+assert(bt6.patterns[0].source.includes('Deal Desk'),
+  'browseTemplatesTool search returns source snippets Meph can pull from');
+
 console.log('\n🌉 Bridge tools (click_element, fill_input, inspect_element, read_storage, read_dom)\n');
 
 // All 5 bridge tools share the same shape — when isAppRunning is false,
@@ -1252,6 +1283,43 @@ assert(hintCtx.hintState.hintsInjectedRowId === 888,
   `compileTool updates hintsInjectedRowId when hints attached (got ${hintCtx.hintState.hintsInjectedRowId})`);
 assert(hintCtx.hintState.hintsInjectedTier === 'exact_error_same_archetype',
   'compileTool records top-hint tier in hintState');
+
+// --- 7b. Curated pattern DB: compile hints include canonical app patterns
+let patternQueryCalls = 0;
+const fdbWithPatternDb = {
+  logAction: () => 889,
+  querySuggestions: () => [],
+  queryProgrammingPatterns: ({ source, topK }) => {
+    patternQueryCalls++;
+    assert(source.includes('Todos table'), 'compileTool pattern DB receives current source');
+    assert(topK === 2, `compileTool pattern DB asks for top 2 patterns (got ${topK})`);
+    return [{
+      template_name: 'todo-fullstack',
+      pattern_set: 'core',
+      title: 'CRUD basics',
+      description: 'Tables, endpoints, auth, validation, pages',
+      archetype: 'crud_app',
+      score: 1.8,
+      shape_score: 1.6,
+      source: "build for javascript backend\n\n# Todo Fullstack\ncreate a Todos table:\n  title is text\n",
+    }];
+  },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const patternCtx = new MephContext({
+  source: 'build for javascript backend\n\ncreate a Todos table:\n  title is text\n',
+  factorDB: fdbWithPatternDb,
+  sessionId: 'sess-pattern-db',
+});
+const compPattern = JSON.parse(compileTool({}, patternCtx, compileHelpers));
+assert(patternQueryCalls === 1,
+  `compileTool calls queryProgrammingPatterns once (got ${patternQueryCalls})`);
+assert(compPattern.hints?.pattern_count === 1,
+  `compileTool records pattern_count=1 (got ${compPattern.hints?.pattern_count})`);
+assert(compPattern.hints?.text?.includes('Pattern DB Match #1'),
+  'compileTool hint text includes Pattern DB match header');
+assert(compPattern.hints?.text?.includes('Todo Fullstack'),
+  'compileTool hint text includes source pulled from the canonical pattern DB');
 
 // --- 8. Reranker fallback: EBM used when pairwise fails / is absent
 const ebmCtx = new MephContext({

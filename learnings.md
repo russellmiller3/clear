@@ -2,6 +2,18 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-07: Meph pattern memory should be searchable, not self-writable
+
+Meph needed a database of clear programming patterns seeded from the canonical templates. The tempting shortcut was to let Meph write patterns directly as it learns. That would make the cookbook self-poisoning: one bad session could promote broken or overfit code, and every later session would retrieve it as trusted precedent.
+
+### Gotchas-as-rules
+
+- **Never let Meph raw-write trusted pattern memory.** Search/read access is safe. Write access needs a deterministic promotion gate.
+- **Promotion means compile/test first, then store.** A candidate pattern should come from a trusted template or a passing session with source hash, shape signature, and provenance.
+- **Keep curated patterns separate from empirical rows.** `clear_programming_patterns` is the trusted cookbook; `code_actions` is messy history. Mixing them would blur "known good" with "observed once."
+
+---
+
 ## Session 2026-05-05: OWASP Piece 1 cycle 5+6 — ctx-build site miss + substring-collision on `let`
 
 Two costly mid-cycle detours future Claude can avoid by reading these.
