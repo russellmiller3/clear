@@ -1,4 +1,17 @@
 import Database from 'better-sqlite3';
+import { createHash } from 'crypto';
+
+// Roles for the meph_turns trace table. Locked here so the test file and
+// the chat handler agree on what's valid.
+const VALID_TURN_ROLES = new Set([
+  'user',                // user prompt that started this turn
+  'assistant_text',      // Meph's prose reply
+  'assistant_thinking',  // Meph's thinking block (extended-thinking models)
+  'tool_use',            // Meph called a tool — input lives in tool_input
+  'tool_result',         // tool returned — output lives in tool_result
+  'snap_retry',          // snap-layer re-prompt event
+]);
+const TURN_TRUNC_BYTES = 4096;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS code_actions (
@@ -124,6 +137,32 @@ CREATE TABLE IF NOT EXISTS compiler_edits (
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_sha   ON compiler_edits(commit_sha);
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_kind  ON compiler_edits(edit_kind, authored_at);
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_file  ON compiler_edits(file_path, authored_at);
+
+-- Meph turn trace. One row per conversation event: user prompt, assistant
+-- prose, assistant thinking, tool_use, tool_result. Joins to code_actions
+-- via session_id. Lets research probes ask "did Meph plan with the todo
+-- tool before acting", "which tools correlate with success", etc., without
+-- needing to instrument fresh sweeps. Big payloads truncate at TURN_TRUNC_BYTES
+-- with truncated=1; full_hash is the SHA1 of the original untruncated content
+-- so we can dedupe and confirm a record matches a specific app source state.
+CREATE TABLE IF NOT EXISTS meph_turns (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id      TEXT NOT NULL,
+  turn_index      INTEGER NOT NULL,
+  role            TEXT NOT NULL,
+  tool_name       TEXT,
+  tool_use_id     TEXT,
+  tool_input      TEXT,
+  tool_result     TEXT,
+  message_text    TEXT,
+  full_hash       TEXT,
+  truncated       INTEGER NOT NULL DEFAULT 0,
+  created_at      INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_turns_session ON meph_turns(session_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_turns_tool    ON meph_turns(tool_name, created_at);
+CREATE INDEX IF NOT EXISTS idx_turns_use_id  ON meph_turns(tool_use_id);
 `;
 
 export class FactorDB {
@@ -449,6 +488,95 @@ export class FactorDB {
       ORDER BY received_at DESC
       LIMIT ?
     `).all(compileRowId, limit);
+  }
+
+  // Append one row to meph_turns. Each conversation event (user prompt,
+  // assistant text/thinking, tool_use, tool_result) is a separate row keyed
+  // by (session_id, turn_index). Big payloads truncate at TURN_TRUNC_BYTES;
+  // full_hash captures the original content so dedup + DB joins still work.
+  // Throws on unknown role so a typo in the chat handler surfaces immediately
+  // rather than silently logging junk rows.
+  logTurn({ session_id, turn_index, role, tool_name = null, tool_use_id = null,
+    tool_input = null, tool_result = null, message_text = null }) {
+    if (!session_id) throw new Error('logTurn: session_id required');
+    if (!Number.isFinite(turn_index)) throw new Error('logTurn: turn_index must be a number');
+    if (!VALID_TURN_ROLES.has(role)) {
+      throw new Error(`logTurn: unknown role "${role}" — valid: ${[...VALID_TURN_ROLES].join(', ')}`);
+    }
+
+    let truncated = 0;
+    const trunc = (val) => {
+      if (val == null) return null;
+      const str = typeof val === 'string' ? val : JSON.stringify(val);
+      if (str.length > TURN_TRUNC_BYTES) {
+        truncated = 1;
+        return str.slice(0, TURN_TRUNC_BYTES) + '...[TRUNCATED]';
+      }
+      return str;
+    };
+
+    const toolInputStr = trunc(tool_input);
+    const toolResultStr = trunc(tool_result);
+    const messageTextStr = trunc(message_text);
+
+    // Hash the FULL untruncated content so we can dedupe / join even when
+    // we only stored the truncated form. Empty payloads → null.
+    let full_hash = null;
+    const fullPayload = JSON.stringify({
+      tool_input: tool_input ?? null,
+      tool_result: tool_result ?? null,
+      message_text: message_text ?? null,
+    });
+    if (fullPayload.length > 2) { // not just '{}'
+      full_hash = createHash('sha1').update(fullPayload).digest('hex');
+    }
+
+    const result = this._db.prepare(`
+      INSERT INTO meph_turns
+        (session_id, turn_index, role, tool_name, tool_use_id,
+         tool_input, tool_result, message_text, full_hash, truncated, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      String(session_id), Number(turn_index), String(role),
+      tool_name ? String(tool_name) : null,
+      tool_use_id ? String(tool_use_id) : null,
+      toolInputStr, toolResultStr, messageTextStr,
+      full_hash, truncated, Date.now()
+    );
+    return result.lastInsertRowid;
+  }
+
+  // Read every turn for a session, ordered by turn_index then by row id.
+  // Used by the trace-summary script and downstream research probes.
+  getSessionTurns(session_id, { limit = 1000 } = {}) {
+    if (!session_id) return [];
+    return this._db.prepare(`
+      SELECT * FROM meph_turns
+      WHERE session_id = ?
+      ORDER BY turn_index ASC, id ASC
+      LIMIT ?
+    `).all(String(session_id), Number(limit));
+  }
+
+  // Aggregate stats across the whole turn log. For the "did Meph plan or
+  // theater" probe: count tool calls per role, plus how often `todo set`
+  // landed BEFORE any other tool in a session.
+  turnStats({ sinceMs = null } = {}) {
+    let where = '';
+    const params = [];
+    if (Number.isFinite(sinceMs)) { where = 'WHERE created_at >= ?'; params.push(sinceMs); }
+    const total = this._db.prepare(`SELECT COUNT(*) AS n FROM meph_turns ${where}`).get(...params).n;
+    const sessions = this._db.prepare(`SELECT COUNT(DISTINCT session_id) AS n FROM meph_turns ${where}`).get(...params).n;
+    const byRole = this._db.prepare(`
+      SELECT role, COUNT(*) AS n FROM meph_turns ${where}
+      GROUP BY role ORDER BY n DESC
+    `).all(...params);
+    const byTool = this._db.prepare(`
+      SELECT tool_name, COUNT(*) AS n FROM meph_turns
+      ${where ? where + ' AND' : 'WHERE'} role = 'tool_use' AND tool_name IS NOT NULL
+      GROUP BY tool_name ORDER BY n DESC
+    `).all(...params);
+    return { total, sessions, byRole, byTool };
   }
 
   close() {

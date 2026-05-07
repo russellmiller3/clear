@@ -329,4 +329,92 @@ describe('FactorDB', () => {
     db.close();
     cleanup();
   });
+
+  // meph_turns — full conversation trace (added 2026-05-06).
+  // Captures every assistant text, thinking, tool_use, and tool_result so
+  // downstream research can answer "did Meph plan before acting" / "which
+  // tools correlate with success" / "is the todo tool used or theater?"
+  it('logTurn writes a row and getSessionTurns reads it back', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const id = db.logTurn({
+      session_id: 's1',
+      turn_index: 0,
+      role: 'user',
+      message_text: 'build me a todo app',
+    });
+    expect(id).toBeTruthy();
+    const turns = db.getSessionTurns('s1');
+    expect(turns.length).toEqual(1);
+    expect(turns[0].role).toEqual('user');
+    expect(turns[0].message_text).toEqual('build me a todo app');
+    expect(turns[0].turn_index).toEqual(0);
+    expect(turns[0].truncated).toEqual(0);
+    db.close();
+    cleanup();
+  });
+
+  it('logTurn truncates large fields and flags truncated=1', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const big = 'x'.repeat(5000);
+    db.logTurn({
+      session_id: 's2',
+      turn_index: 0,
+      role: 'tool_result',
+      tool_name: 'compile',
+      tool_use_id: 'tu_123',
+      tool_result: big,
+    });
+    const turns = db.getSessionTurns('s2');
+    expect(turns.length).toEqual(1);
+    expect(turns[0].truncated).toEqual(1);
+    expect(turns[0].tool_result.length < big.length).toEqual(true);
+    expect(turns[0].full_hash).toBeTruthy();
+    db.close();
+    cleanup();
+  });
+
+  it('getSessionTurns returns rows in turn_index order across roles', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    // Insert out of order on purpose
+    db.logTurn({ session_id: 's3', turn_index: 2, role: 'tool_use', tool_name: 'todo', tool_use_id: 'tu_a', tool_input: { action: 'set', todos: [] } });
+    db.logTurn({ session_id: 's3', turn_index: 0, role: 'user', message_text: 'hi' });
+    db.logTurn({ session_id: 's3', turn_index: 1, role: 'assistant_text', message_text: 'planning' });
+    db.logTurn({ session_id: 's3', turn_index: 3, role: 'tool_result', tool_name: 'todo', tool_use_id: 'tu_a', tool_result: '{"ok":true}' });
+    const turns = db.getSessionTurns('s3');
+    expect(turns.length).toEqual(4);
+    expect(turns.map(t => t.turn_index)).toEqual([0, 1, 2, 3]);
+    expect(turns[2].role).toEqual('tool_use');
+    expect(turns[3].role).toEqual('tool_result');
+    expect(turns[3].tool_use_id).toEqual('tu_a');
+    db.close();
+    cleanup();
+  });
+
+  it('getSessionTurns isolates by session_id', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    db.logTurn({ session_id: 'a', turn_index: 0, role: 'user', message_text: 'a-prompt' });
+    db.logTurn({ session_id: 'b', turn_index: 0, role: 'user', message_text: 'b-prompt' });
+    db.logTurn({ session_id: 'a', turn_index: 1, role: 'assistant_text', message_text: 'a-reply' });
+    expect(db.getSessionTurns('a').length).toEqual(2);
+    expect(db.getSessionTurns('b').length).toEqual(1);
+    expect(db.getSessionTurns('b')[0].message_text).toEqual('b-prompt');
+    db.close();
+    cleanup();
+  });
+
+  it('logTurn rejects unknown role values', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    let threw = false;
+    try {
+      db.logTurn({ session_id: 's4', turn_index: 0, role: 'banana', message_text: 'no' });
+    } catch { threw = true; }
+    expect(threw).toEqual(true);
+    db.close();
+    cleanup();
+  });
 });
