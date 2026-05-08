@@ -516,6 +516,15 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 .tool-step .tool-icon { font-size: 11px; flex-shrink: 0; }
 .tool-step.active { color: var(--accent); }
 .tool-step.active .tool-icon { animation: spin 1s linear infinite; }
+.requirements-review { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid var(--bd); border-radius: 8px; background: var(--bg2); font-family: var(--font); max-width: 560px; }
+.requirements-review h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0; color: var(--tx2); }
+.requirements-review ol { margin: 0 0 10px 20px; padding: 0; color: var(--tx); font-size: 13px; line-height: 1.45; }
+.requirements-review li { margin: 4px 0; }
+.requirements-review .req-errors { margin: 8px 0; color: var(--red); font-size: 12px; }
+.requirements-review .req-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.requirements-review button { border: 1px solid var(--bd2); border-radius: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600; font-family: var(--font); cursor: pointer; background: var(--bg3); color: var(--tx); }
+.requirements-review button.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+.requirements-review button:disabled { opacity: .45; cursor: default; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
 .stream-cursor { animation: cursorBlink .7s step-end infinite; color: var(--accent); }
@@ -2058,6 +2067,7 @@ document.addEventListener('click', function(e) {
       const lang = lastCompiled.python ? 'Python' : 'Node.js';
       el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:1.8rem">⚙</div><div class="title">Starting ' + lang + ' server…</div><div class="hint">This happens automatically. Check Terminal for logs.</div></div>';
     }
+    if (m.requirementsReview) html += renderRequirementsReview(m.requirementsReview);
   } else {
     el.innerHTML = '<div class="empty-state"><div class="icon">&#9654;</div><div class="title">No output</div><div class="hint">No renderable output.</div></div>';
   }
@@ -4558,12 +4568,16 @@ let mephModelChoices = [];
 let selectedMephModel = localStorage.getItem('clear_meph_model') || '';
 let lastSentMephModel = selectedMephModel;
 let mephModelChangedSinceLastSend = false;
+let approvedRequirements = null;
+let approvedRequirementsId = null;
 
 let showingKeySetup = false;
 
 window.newChat = function() {
   if (currentAbort) currentAbort.abort();
   chatMessages = [];
+  approvedRequirements = null;
+  approvedRequirementsId = null;
   localStorage.removeItem('clear_chat_messages');
   showingKeySetup = false;
   document.getElementById('chat-messages').innerHTML = '';
@@ -5249,6 +5263,13 @@ function restoreChatOrWelcome() {
         delete m.streaming;
         return m;
       });
+      for (const m of chatMessages) {
+        const review = m.requirementsReview;
+        if (review?.approved && Array.isArray(review.requirements)) {
+          approvedRequirements = review.requirements.slice();
+          approvedRequirementsId = review.requirementsId || null;
+        }
+      }
       renderChat(true);
       return;
     } catch (_) {}
@@ -5272,10 +5293,11 @@ function updateContextMeter(percent, used, max) {
 function saveChatState() {
   try {
     const toSave = chatMessages
-      .map(({ role, content, toolSteps, timeline, streaming }) => ({
+      .map(({ role, content, toolSteps, timeline, streaming, requirementsReview }) => ({
         role, content,
         toolSteps: toolSteps || [],
         timeline: timeline || [],
+        ...(requirementsReview ? { requirementsReview } : {}),
         ...(streaming ? { interrupted: true } : {}),
       }));
     localStorage.setItem('clear_chat_messages', JSON.stringify(toSave));
@@ -5287,6 +5309,67 @@ function addChatMsg(role, content, toolSteps) {
   renderChat();
   saveChatState();
 }
+
+function escAttr(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderRequirementsReview(review) {
+  const reqs = Array.isArray(review?.requirements) ? review.requirements : [];
+  const errors = Array.isArray(review?.errors) ? review.errors : [];
+  const id = escAttr(review?.requirementsId || '');
+  const approved = review?.approved === true;
+  const valid = review?.valid !== false && reqs.length > 0;
+  const list = reqs.length
+    ? `<ol>${reqs.map(item => `<li>${escHtml(String(item))}</li>`).join('')}</ol>`
+    : '<div class="req-errors">No requirements drafted.</div>';
+  const errorHtml = errors.length
+    ? `<div class="req-errors">${errors.map(e => escHtml(String(e))).join('<br>')}</div>`
+    : '';
+  const approveLabel = approved ? 'Approved' : (valid ? 'Approve and continue' : 'Needs better requirements');
+  return `<div class="requirements-review" data-requirements-id="${id}">
+    <h4>Review requirements</h4>
+    ${list}
+    ${errorHtml}
+    <div class="req-actions">
+      <button class="primary" onclick="approveRequirements('${id}')" ${approved || !valid ? 'disabled' : ''}>${approveLabel}</button>
+      <button onclick="reviseRequirements('${id}')" ${approved ? 'disabled' : ''}>Revise</button>
+    </div>
+  </div>`;
+}
+
+function findRequirementsReview(id) {
+  for (const message of chatMessages) {
+    const review = message.requirementsReview;
+    if (review && review.requirementsId === id) return review;
+  }
+  return null;
+}
+
+window.approveRequirements = function(id) {
+  if (currentAbort) {
+    showToast('Wait for Meph to finish the requirements draft.');
+    return;
+  }
+  const review = findRequirementsReview(id);
+  if (!review || review.valid === false || !Array.isArray(review.requirements)) return;
+  approvedRequirements = review.requirements.slice();
+  approvedRequirementsId = review.requirementsId;
+  review.approved = true;
+  saveChatState();
+  renderChat(true);
+  const input = document.getElementById('chat-input');
+  input.value = 'Approved requirements. Build the app now using TDD. Start with tests, then write the Clear source.';
+  sendChat();
+};
+
+window.reviseRequirements = function(id) {
+  const review = findRequirementsReview(id);
+  const input = document.getElementById('chat-input');
+  const body = review?.requirements?.length ? '\n\n' + review.requirements.map(item => '- ' + item).join('\n') : '';
+  input.value = 'Revise these requirements to be more specific before building.' + body;
+  input.focus();
+};
 
 function renderMsgInner(m, isLast) {
   let html = '';
@@ -5598,6 +5681,8 @@ window.sendChat = async function() {
       errors: lastCompiled?.errors || [],
       testResults: testSnapshot,
       webTools: document.getElementById('web-tools-toggle')?.checked || false,
+      approvedRequirements,
+      approvedRequirementsId,
     });
 
     // Retry loop — 3 attempts with backoff for network/server errors
@@ -5715,6 +5800,16 @@ window.sendChat = async function() {
           if (activeTab === 'tests') showTests();
         } else if (ev.type === 'todo_update') {
           renderMephTodos(ev.todos);
+        } else if (ev.type === 'requirements_review') {
+          am.requirementsReview = {
+            requirements: Array.isArray(ev.requirements) ? ev.requirements : [],
+            requirementsId: ev.requirementsId || null,
+            valid: ev.valid !== false,
+            errors: Array.isArray(ev.errors) ? ev.errors : [],
+            approved: false,
+          };
+          updateLastMsg();
+          saveChatState();
         } else if (ev.type === 'undo') {
           if (undoCmd) undoCmd(editor);
           autoCompile();
