@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { createUsageLedgerRecorder, formatCostReport, summarizeModelUsage } from './meph-requirements-live-smoke.mjs';
 
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const nodeBin = process.execPath;
@@ -343,7 +344,7 @@ export function buildChatBody(prompt, {
   };
 }
 
-async function runChat(prompt, options = {}) {
+async function runChat(prompt, options = {}, { onModelUsage } = {}) {
   const body = buildChatBody(prompt, options);
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST',
@@ -361,6 +362,7 @@ async function runChat(prompt, options = {}) {
   let preflight = null;
   let source = '';
   let text = '';
+  const modelUsageEvents = [];
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
@@ -380,12 +382,16 @@ async function runChat(prompt, options = {}) {
       if (event.type === 'text') text += event.delta || '';
       if (event.type === 'tool_start' && event.name) toolNames.push(event.name);
       if (event.type === 'pattern_preflight') preflight = event;
+      if ((event.type === 'message_delta' || event.type === 'model_usage') && event.usage) {
+        modelUsageEvents.push(event);
+        if (typeof onModelUsage === 'function') onModelUsage(event);
+      }
       if (event.type === 'code_update' && typeof event.code === 'string') source = event.code;
       if (event.type === 'done' && typeof event.source === 'string') source = event.source;
       if (event.type === 'error') throw new Error(event.message || 'Studio emitted an error');
     }
   }
-  return { text, toolNames, preflight, source, events };
+  return { text, toolNames, preflight, source, events, modelUsageEvents };
 }
 
 export function scoreProbe(probe, result) {
@@ -588,6 +594,7 @@ export function providerBlockMessage(resultOrMessage) {
 export function summarizeRows(rows, { abMode = false } = {}) {
   const blockedRows = rows.filter(row => row.result?.blocked);
   const completedRows = rows.filter(row => !row.result?.blocked);
+  const usage = summarizeModelUsage(rows.flatMap(row => row.result?.modelUsageEvents || []));
   const passed = completedRows.filter(row => row.score.pass).length;
   const averageQuality = (items) => {
     const scored = items
@@ -604,6 +611,11 @@ export function summarizeRows(rows, { abMode = false } = {}) {
     total: completedRows.length,
     avgQuality: averageQuality(completedRows),
     aborted: blockedRows.length > 0,
+    modelInputTokens: usage.inputTokens,
+    modelOutputTokens: usage.outputTokens,
+    openRouterCostCredits: usage.openRouterCostCredits,
+    openRouterGenerationIds: usage.openRouterGenerationIds,
+    costAccountingReady: usage.eventCount > 0,
     ab: null,
   };
   if (abMode) {
@@ -659,6 +671,7 @@ async function main() {
   try {
     await waitForServer();
     console.log(`meph-pattern-live-probe: server=${base} backend=${backend} model=${model}`);
+    const usageLedger = createUsageLedgerRecorder({ model });
     const rows = [];
     const abMode = process.env.MEPH_PATTERN_PROBE_AB === '1';
     const variants = abMode
@@ -676,7 +689,7 @@ async function main() {
         let result;
         let score;
         try {
-          result = await runChat(probe.prompt, variant.options);
+          result = await runChat(probe.prompt, variant.options, { onModelUsage: usageLedger.record });
           const providerBlocked = providerBlockMessage(result);
           if (providerBlocked) {
             result.error = providerBlocked;
@@ -726,8 +739,16 @@ async function main() {
     }
 
     const summary = summarizeRows(rows, { abMode });
+    const costTotals = usageLedger.totals();
+    summary.openRouterSessionTotalCredits = costTotals.totalCostCredits;
+    summary.costReport = formatCostReport(costTotals);
     const avgQuality = summary.avgQuality === null ? 'n/a' : `${summary.avgQuality.toFixed(1)}/100`;
     console.log(`\nSUMMARY ${summary.passed}/${summary.total} completed trials passed; avg_quality=${avgQuality}`);
+    console.log(summary.costReport);
+    console.log(`TOKENS input=${summary.modelInputTokens} output=${summary.modelOutputTokens} generations=${summary.openRouterGenerationIds.join(',') || 'none'}`);
+    if (backend === 'openrouter' && !summary.costAccountingReady) {
+      console.log('COST ACCOUNTING FAILED: no OpenRouter usage events were observed.');
+    }
     if (summary.blockedRows.length) {
       console.log(`ABORTED provider blocked ${summary.blockedRows.length} trial(s): ${summary.blockedRows[0].result.error}`);
     }
@@ -744,7 +765,8 @@ async function main() {
       const qualityDelta = summary.ab.qualityDelta === null ? 'n/a' : `${summary.ab.qualityDelta >= 0 ? '+' : ''}${summary.ab.qualityDelta.toFixed(1)}`;
       console.log(`\nAB SUMMARY docs_only=${summary.ab.docs_only.passed}/${summary.ab.docs_only.total} quality=${docsQuality} full_hook=${summary.ab.full_hook.passed}/${summary.ab.full_hook.total} quality=${hookQuality} delta=${summary.ab.delta} quality_delta=${qualityDelta}`);
     }
-    if (summary.aborted) process.exitCode = 2;
+    if (backend === 'openrouter' && !summary.costAccountingReady) process.exitCode = 1;
+    else if (summary.aborted) process.exitCode = 2;
     else if (summary.passed !== summary.total) process.exitCode = 1;
   } finally {
     child.kill('SIGTERM');

@@ -403,6 +403,38 @@ page 'Create Request' at '/new':
     expect(summary.ab.qualityDelta).toEqual(22);
   });
 
+  it('summarizes OpenRouter cost from model usage events', () => {
+    const rows = [
+      {
+        probe: { id: 'a' },
+        variant: 'docs_only',
+        score: { pass: true },
+        result: {
+          modelUsageEvents: [
+            { usage: { input_tokens: 100, output_tokens: 20, openrouter_cost: 0.04, openrouter_generation_id: 'gen_a' } },
+          ],
+        },
+      },
+      {
+        probe: { id: 'a' },
+        variant: 'full_hook',
+        score: { pass: true },
+        result: {
+          modelUsageEvents: [
+            { usage: { prompt_tokens: 300, completion_tokens: 40, cost: 0.06, generation_id: 'gen_b' } },
+          ],
+        },
+      },
+    ];
+    const summary = summarizeRows(rows, { abMode: true });
+
+    expect(summary.modelInputTokens).toEqual(400);
+    expect(summary.modelOutputTokens).toEqual(60);
+    expect(summary.openRouterCostCredits).toEqual(0.1);
+    expect(summary.openRouterGenerationIds).toEqual(['gen_a', 'gen_b']);
+    expect(summary.costAccountingReady).toEqual(true);
+  });
+
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {
     const prompt = readFileSync(join(process.cwd(), 'studio', 'system-prompt.md'), 'utf8');
 
