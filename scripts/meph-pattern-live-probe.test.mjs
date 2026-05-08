@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildRequirementsRevisionChatBody, buildTrialArtifact, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildRequirementsRevisionChatBody, buildTrialArtifact, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeMaxIter, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -37,6 +37,21 @@ describe('meph pattern live probe harness', () => {
     expect(resolveProbePort({})).toEqual('3478');
     expect(resolveProbePort({ MEPH_PATTERN_PROBE_PORT: '3499' })).toEqual('3499');
     expect(resolveProbePort({ PORT: '3501' })).toEqual('3501');
+  });
+
+  it('caps live probe Meph iterations unless the probe explicitly opts higher', () => {
+    expect(resolveProbeMaxIter({})).toEqual('12');
+    expect(resolveProbeMaxIter({ MEPH_MAX_ITER: '25' })).toEqual('12');
+    expect(resolveProbeMaxIter({ MEPH_PATTERN_PROBE_MAX_ITER: '6' })).toEqual('6');
+
+    const env = buildProbeServerEnv({
+      processEnv: { OPENROUTER_API_KEY: 'sk-or-test', MEPH_MAX_ITER: '25' },
+      openRouterKey: 'sk-or-run-test',
+      model: 'google/gemini-3-flash-preview',
+      port: 3999,
+    });
+
+    expect(env.MEPH_MAX_ITER).toEqual('12');
   });
 
   it('forces the Ghost OpenRouter server to use the requested probe model', () => {

@@ -2511,3 +2511,4 @@ The decisive move is making intent machine-checkable. Requirements turn a vague 
 - **Prioritize contract quality before retrieval cleverness.** A perfect pattern search still fails if the user intent was never translated into checkable requirements.
 - **Judge workflows by evidence, not vocabulary.** If an app says "manager approval" but has no manager assignment, queue, role, or approver evidence, it is wrong.
 - **Research claims need the hierarchy stated.** Pattern DB and error DB are minor-to-moderate aids; requirements/Ralph is the main fail-closed mechanism.
+- **Paid app A/B probes need their own iteration cap.** Product Meph can keep a generous build loop, but research probes must default lower and require an explicit override for deeper runs.

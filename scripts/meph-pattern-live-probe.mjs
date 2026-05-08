@@ -8,8 +8,12 @@ import { createUsageLedgerRecorder, formatCostReport, summarizeModelUsage } from
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const nodeBin = process.execPath;
 export const DEFAULT_PATTERN_PROBE_PORT = '3478';
+export const DEFAULT_PATTERN_PROBE_MAX_ITER = '12';
 export function resolveProbePort(env = process.env) {
   return String(env.MEPH_PATTERN_PROBE_PORT || env.PORT || DEFAULT_PATTERN_PROBE_PORT);
+}
+export function resolveProbeMaxIter(env = process.env) {
+  return String(env.MEPH_PATTERN_PROBE_MAX_ITER || DEFAULT_PATTERN_PROBE_MAX_ITER);
 }
 const port = resolveProbePort();
 const base = `http://127.0.0.1:${port}`;
@@ -294,6 +298,7 @@ export function buildProbeServerEnv({
     ...processEnv,
     ...envFromFile,
     MEPH_MODEL: model,
+    MEPH_MAX_ITER: resolveProbeMaxIter(processEnv),
     PORT: port,
     CLEAR_ALLOW_SEED: '1',
     CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev',
@@ -807,7 +812,7 @@ async function main() {
 
   try {
     await waitForServer();
-    console.log(`meph-pattern-live-probe: server=${base} backend=${backend} model=${model}`);
+    console.log(`meph-pattern-live-probe: server=${base} backend=${backend} model=${model} max_iter=${resolveProbeMaxIter(process.env)}`);
     const artifactDir = process.env.MEPH_PATTERN_PROBE_ARTIFACT_DIR === '0'
       ? ''
       : (process.env.MEPH_PATTERN_PROBE_ARTIFACT_DIR || DEFAULT_ARTIFACT_DIR);
