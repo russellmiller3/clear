@@ -125,6 +125,20 @@ describe('requirements contract', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts rendered UI wording as observable requirements', () => {
+    const result = validateRequirements([
+      'logged-in users can search for rooms and create a booking for a specific room and time range from the Booking page',
+      'rooms, customers, and bookings data with relationships must be stored in the database',
+      'logged-in users can list their own upcoming bookings and view a room utilization chart on the Dashboard',
+      'logged-in users can cancel their own upcoming bookings via a backend action',
+      'the app must enforce that a room cannot be booked if an overlapping booking already exists for that time range',
+      'navigating to the Dashboard and seeing the Upcoming Bookings table with data proves the workflow is reachable',
+    ], 'Build a complete Clear app for a room booking workflow that prevents double booking.');
+
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   it('creates stable ids for normalized text', () => {
     const a = requirementsId([' Deal approvals route to VP  ']);
     const b = requirementsId(['deal approvals route to vp']);

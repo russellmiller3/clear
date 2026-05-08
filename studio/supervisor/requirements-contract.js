@@ -97,6 +97,14 @@ export const OBSERVABLE_VERBS = Object.freeze([
   'navigate',
   'contains',
   'contain',
+  'clicks',
+  'click',
+  'clicking',
+  'renders',
+  'render',
+  'rendering',
+  'navigating',
+  'seeing',
 ]);
 
 export function shouldRequireApproval(userText = '') {
