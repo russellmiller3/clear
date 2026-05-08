@@ -2491,3 +2491,9 @@ The durable split is: requirements are the per-app contract, pattern memory is r
 - **Live detector gaps become local red tests.** The Gemini Cycle 11 smoke compiled cleanly, then Ralph blocked 3 unverified requirements. Those misses became deterministic detector tests before another paid probe.
 - **Generated-app browser use is an evidence channel, not ceremony.** CLI checks can miss dead buttons, broken event wiring, and layout failures. Make click/fill/inspect/screenshot available by default, and require it only for UI-visible claims.
 - **Studio-button control must be allowlisted.** Generated app controls are test targets. Studio shell controls can publish, roll back, delete, expose secrets, or spend money, so deny arbitrary clicks by default.
+- **Approved requirements still need validation.** A user click should not bless vague or compound requirements; the server must rerun the deterministic requirements quality gate before mutation tools unlock.
+- **Complex-app requirements need CRUD/lifecycle coverage.** Good app contracts cover storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when UI matters.
+- **Parenthetical examples are not fields.** `stage (Draft, Pending, Approved, Rejected)` means one `stage` field with examples, not four required data fields.
+- **Pending status is not manager approval.** Approval routing needs role, reviewer assignment, queue, or approver evidence. A status string alone is workflow theater.
+- **Universal UI failures belong in the compiler.** Broken app API calls and dead nav/link routes should hard-error even when no requirement mentions them.
+- **Paid probes should stop on invalid requirements.** Do not spend the second build call when the first call produced requirements the server would reject.

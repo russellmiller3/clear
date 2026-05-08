@@ -15513,24 +15513,67 @@ describe('Phase 37 - endpoint must have response', () => {
 });
 
 describe('Phase 37 - fetch URL matches endpoints', () => {
-  it('warns when fetch URL does not match any endpoint', () => {
+  it('errors when a frontend fetch URL does not match any endpoint', () => {
     const src = `build for web and javascript backend
 when user calls GET /api/users:
   send back 'ok'
 page 'App' at '/':
   on page load get items from '/api/user'`;
     const result = compileProgram(src);
-    expect(result.warnings.some(w => w.includes("doesn't match any endpoint"))).toBe(true);
+    expect(result.errors.some(w => w.message.includes("doesn't match any endpoint"))).toBe(true);
   });
 
-  it('no warning when fetch URL matches endpoint', () => {
+  it('no error when fetch URL matches endpoint', () => {
     const src = `build for web and javascript backend
 when user calls GET /api/users:
   send back 'ok'
 page 'App' at '/':
   on page load get items from '/api/users'`;
     const result = compileProgram(src);
-    expect(result.warnings.filter(w => w.includes("doesn't match"))).toHaveLength(0);
+    expect(result.errors.filter(w => w.message.includes("doesn't match"))).toHaveLength(0);
+  });
+});
+
+describe('UI route safety', () => {
+  it('errors when a nav item points at a missing page', () => {
+    const src = `build for web
+page 'Home' at '/':
+  nav section 'Main':
+    nav item 'Approvals' to '/approvals'`;
+
+    const result = compileProgram(src);
+
+    expect(result.errors.some(e =>
+      e.message.includes("nav item 'Approvals'") &&
+      e.message.includes("missing page '/approvals'")
+    )).toBe(true);
+  });
+
+  it('errors when an internal link points at a missing page', () => {
+    const src = `build for web
+page 'Home' at '/':
+  link 'Approvals' to '/approvals'`;
+
+    const result = compileProgram(src);
+
+    expect(result.errors.some(e =>
+      e.message.includes("link 'Approvals'") &&
+      e.message.includes("missing page '/approvals'")
+    )).toBe(true);
+  });
+
+  it('accepts nav items and links that point at declared pages', () => {
+    const src = `build for web
+page 'Home' at '/':
+  nav section 'Main':
+    nav item 'Approvals' to '/approvals'
+  link 'Approvals' to '/approvals'
+page 'Approvals' at '/approvals':
+  heading 'Approvals'`;
+
+    const result = compileProgram(src);
+
+    expect(result.errors).toHaveLength(0);
   });
 });
 
@@ -17333,6 +17376,8 @@ describe('Stress R2: Web Page Structure Edge Cases', () => {
       "  link 'Home' to '/'",
       "  link 'About' to '/about'",
       "  link 'External' to 'https://example.com'",
+      "page 'About' at '/about':",
+      "  heading 'About'",
     ].join('\n');
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);

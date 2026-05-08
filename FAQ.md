@@ -173,13 +173,15 @@ They are four different layers. Do not merge them.
 
 **Ralph is the done checker.** After Meph writes code and the compile is clean, Ralph audits the generated source against the approved requirements. If a requirement is missing or only echoed in the `requirements:` text, Ralph sends Meph back for repair. If the retry budget is exhausted, Studio blocks the false "done."
 
+**The compiler owns universal UI failures.** Requirements should state the app's business contract. They should not need to say "every nav link should resolve" or "button fetches should hit real endpoints." Those are built-in compiler guarantees: internal app calls to missing `/api/...` endpoints now hard-error, and nav/link controls that point at missing pages hard-error before the app runs.
+
 The full flow:
 1. User asks for a complex app.
 2. Meph drafts `requirements:` only.
 3. User approves or revises the requirements in Studio.
 4. Server injects syntax docs, AI instructions, and pattern snippets retrieved from approved requirements.
 5. Meph writes tests and app code.
-6. Compiler and Snap fix syntax/runtime shape issues.
+6. Compiler and Snap fix syntax/runtime/UI-reachability issues.
 7. Ralph audits implementation evidence against requirements.
 8. Missing evidence triggers repair, not success.
 
@@ -189,11 +191,15 @@ The important boundary: requirements are customer intent, pattern memory is reus
 
 ## What did the Cycle 11 requirements smoke prove? (2026-05-08)
 
-The hard Gemini Flash smoke used the vague prompt "build me a deal approval app" instead of handing the model the answer. Meph drafted 7 requirements, built a compiled app, Ralph ran, retried once, and then blocked completion because only 4 of 7 requirements had implementation evidence.
+The first hard Gemini Flash smoke used the vague prompt "build me a deal approval app" instead of handing the model the answer. Meph drafted 7 requirements, built a compiled app, Ralph ran, retried once, and then blocked completion because only 4 of 7 requirements had implementation evidence.
 
 Cost: current run $0.21, total: $1.07.
 
 That is the right failure mode. The system did not pretend success. It exposed three detector gaps: deal creation evidence, VP-threshold evidence, and named-agent evidence. It also caught one false positive: email notification is not audit-trail storage. Those gaps now have local regression tests in `studio/supervisor/requirements-audit.test.js`.
+
+The follow-up Gemini Flash run forced smaller end-to-end requirements before the build. The first paid call produced only 3 chunky requirements and was rejected by the server. Cost: current run $0.39, total: $1.46. After the approval gate tightened, the second paid call produced 6 CRUD/lifecycle requirements, used screenshot/browser evidence, compiled cleanly, and Ralph blocked the app because "high-value deals require manager approval" had only `Pending` status evidence, not manager assignment/queue evidence. Cost: current run $0.33, total: $1.80.
+
+The implementation change: approved requirements must now pass the same deterministic quality gate the first draft uses. For a complex app, the gate demands end-to-end coverage: data storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability evidence. Compound semicolon requirements and vague non-e2e lines no longer get accepted just because the user clicked approve.
 
 The product lesson: the loop is useful when it fails closed. Requirements become a machine-checkable contract, and missing proof sends Meph back instead of producing a confident but wrong app.
 

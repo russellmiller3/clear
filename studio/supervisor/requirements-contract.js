@@ -49,8 +49,15 @@ export const OBSERVABLE_VERBS = Object.freeze([
   'must',
   'shows',
   'show',
+  'sees',
+  'see',
+  'views',
+  'view',
+  'lists',
+  'list',
   'routes',
   'route',
+  'routed',
   'requires',
   'require',
   'rejects',
@@ -65,12 +72,15 @@ export const OBSERVABLE_VERBS = Object.freeze([
   'create',
   'updates',
   'update',
+  'changes',
+  'change',
   'deletes',
   'delete',
   'filters',
   'filter',
   'notifies',
   'notify',
+  'notified',
   'exports',
   'export',
   'logs',
@@ -126,10 +136,18 @@ export function validateRequirements(items = [], userRequest = '') {
     if (!OBSERVABLE_VERBS.some(word => hasWord(item, word))) {
       errors.push(`${label} is not observable: "${items[index]}" needs an action Meph can test.`);
     }
+    if (isCompoundRequirement(item)) {
+      errors.push(`${label} is too broad: split "${items[index]}" into one observable claim per line.`);
+    }
   });
 
-  if (shouldRequireApproval(userRequest) && normalized.length < 3) {
-    errors.push('requirements need at least three observable lines for an underspecified app build.');
+  if (shouldRequireApproval(userRequest)) {
+    if (normalized.length < 6) {
+      errors.push('requirements need at least six e2e lines for an underspecified app build.');
+    }
+    for (const error of e2eCoverageErrors(normalized)) {
+      errors.push(error);
+    }
   }
 
   return {
@@ -145,12 +163,17 @@ export function buildRequirementsInstruction(userText = '') {
   return [
     'Do not write Clear source yet.',
     'First translate the user request into specific, observable requirements.',
+    'Requirements must be e2e. Cover the core CRUD/lifecycle path: data storage, create/submit, read/list/detail, update/decision, routing/roles, and visible UI reachability.',
+    'Write one observable claim per line. Do not combine multiple behaviors with semicolons.',
     'Return only a requirements block in this exact shape:',
     '',
     'requirements:',
-    '  who can do what, under what condition',
-    '  what data must be stored or shown',
-    '  what routing, approval, rejection, or notification rule must hold',
+    '  who can create or submit what, from which form or page',
+    '  what data must be stored',
+    '  who can read, list, or inspect the records',
+    '  who can update, approve, reject, delete, cancel, or archive records',
+    '  what routing, role, threshold, notification, audit, or edge-case rule must hold',
+    '  which visible UI page, button, form, table, or detail view proves the workflow is reachable',
     '',
     `User request: ${String(userText).trim()}`,
   ].join('\n');
@@ -193,6 +216,45 @@ function wordCount(text) {
 
 function hasWord(text, word) {
   return new RegExp(`\\b${escapeRegex(word)}\\b`, 'i').test(text);
+}
+
+function isCompoundRequirement(text) {
+  const normalized = normalizeText(text);
+  if (normalized.includes(';')) return true;
+  return false;
+}
+
+function e2eCoverageErrors(items) {
+  const joined = items.join('\n');
+  const checks = [
+    {
+      label: 'data storage',
+      test: /\b(store|stores|save|saves|field|fields|table|data)\b/.test(joined),
+    },
+    {
+      label: 'create/submit',
+      test: /\b(create|creates|submit|submits|add|adds|send|sends)\b/.test(joined),
+    },
+    {
+      label: 'read/list/detail',
+      test: /\b(read|reads|see|sees|show|shows|view|views|list|lists|display|displays|detail|queue|table)\b/.test(joined),
+    },
+    {
+      label: 'update/decision',
+      test: /\b(update|updates|approve|approves|reject|rejects|change|changes|delete|deletes|cancel|cancels|archive|archives|status)\b/.test(joined),
+    },
+    {
+      label: 'roles/routing/rules',
+      test: /\b(role|roles|route|routes|routing|requires|require|approval|approver|manager|admin|threshold|assigned)\b/.test(joined),
+    },
+    {
+      label: 'UI evidence',
+      test: /\b(ui|page|pages|button|buttons|form|forms|screen|screens|visible|reachable|table|detail|navigation|nav)\b/.test(joined),
+    },
+  ];
+  return checks
+    .filter(check => !check.test)
+    .map(check => `requirements need e2e coverage for ${check.label}.`);
 }
 
 function escapeRegex(text) {

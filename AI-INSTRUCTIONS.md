@@ -228,9 +228,13 @@ test:
 
 Rules:
 - Requirements are plain outcome statements, not implementation notes.
+- Complex-app requirements must be end-to-end: cover storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when the app has UI.
 - Every requirement should be testable by reading the app or running it.
 - Requirements must name actors, data, actions, and edge cases when they matter.
+- Write one observable claim per requirement. Do not combine multiple claims with semicolons.
 - Do not satisfy a requirement by echoing its text. Ralph checks implementation evidence.
+- "Pending" status alone is not approval routing. Manager/VP approval needs assignment, queue, reviewer role, or approver evidence.
+- Dead UI is a compiler problem, not a requirements problem. Internal app calls must hit real endpoints; nav and links must point at real pages.
 - After requirements are approved, use the pattern preflight results before choosing syntax.
 - If Ralph says a requirement is unverified, repair the app and keep going.
 

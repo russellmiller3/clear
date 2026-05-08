@@ -133,6 +133,25 @@ when user sends decision to /api/deals/decision:
     expect(audit.items[0].reason).toContain('Deals stores name, amount, close_date, and status');
   });
 
+  it('treats parenthesized status examples as examples, not required table fields', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  title, required
+  amount (number), required
+  status, default 'pending'
+  creator_id, required
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'deals must store title, amount, status (pending, approved, rejected), and the creator_id' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+  });
+
   it('verifies k-suffix approval routing like deals over $50k route to VP', () => {
     const source = `
 build for javascript backend
@@ -246,6 +265,60 @@ when user sends deal to /api/deals:
     expect(audit.ok).toBe(true);
     expect(audit.items[0].status).toBe('passed');
     expect(audit.items[0].reason).toContain('50000');
+  });
+
+  it('marks manager-threshold approval missing when source only sets pending status', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  amount (number), required
+  stage, default 'Draft'
+
+rule high-value-approval:
+  enforce that every deal with amount greater than 50000 has stage 'Pending', or fail with error message: 'High value deals require manager approval'
+
+when user sends deal to /api/deals:
+  if deal's amount is greater than 50000:
+    set deal's stage is 'Pending'
+  saved = save deal as new Deal
+  send back saved
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "deals over 50000 are automatically routed to 'Pending' and require manager approval" }],
+    });
+
+    expect(audit.ok).toBe(false);
+    expect(audit.items[0].status).toBe('missing');
+    expect(audit.items[0].reason).toContain('manager');
+  });
+
+  it('verifies manager-threshold approval when source assigns an approver role', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  amount (number), required
+  stage, default 'Draft'
+  approver_role, required
+
+when user sends deal to /api/deals:
+  if deal's amount is greater than 50000:
+    set deal's stage is 'Pending'
+    set deal's approver_role to 'Manager'
+  saved = save deal as new Deal
+  send back saved
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "deals over 50000 are automatically routed to 'Pending' and require manager approval" }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
   });
 
   it('does not treat email notifications as audit-trail storage', () => {

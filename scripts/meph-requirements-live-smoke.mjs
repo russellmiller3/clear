@@ -134,6 +134,19 @@ export function formatCostReport({ currentCostCredits = 0, totalCostCredits = 0 
   return `Cost: current run ${formatCostDollars(currentCostCredits)}, total: ${formatCostDollars(totalCostCredits)}.`;
 }
 
+export function requireValidRequirementsReview(review) {
+  if (!review || !Array.isArray(review.requirements) || review.requirements.length === 0) {
+    throw new Error('First turn did not produce requirements_review');
+  }
+  if (review.valid !== true) {
+    const errors = Array.isArray(review.errors) && review.errors.length > 0
+      ? review.errors.join('; ')
+      : 'no validation errors provided';
+    throw new Error(`Requirements review was invalid. Not auto-approving. ${errors}`);
+  }
+  return review;
+}
+
 export function createUsageLedgerRecorder({ model = null, path = COST_LEDGER_PATH } = {}) {
   const seenGenerationIds = new Set();
   let currentCostCredits = 0;
@@ -367,10 +380,7 @@ async function main() {
     console.log(`meph-requirements-live-smoke: server=${base} model=${model}`);
 
     const requirementsRun = await runChat(base, buildRequirementsChatBody(), { onModelUsage: usageLedger.record });
-    const review = requirementsRun.requirementsReview;
-    if (!review || !Array.isArray(review.requirements) || review.requirements.length === 0) {
-      throw new Error('First turn did not produce requirements_review');
-    }
+    const review = requireValidRequirementsReview(requirementsRun.requirementsReview);
 
     const buildRun = await runChat(base, buildApprovedChatBody({
       assistantText: requirementsRun.text,

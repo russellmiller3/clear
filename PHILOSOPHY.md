@@ -437,6 +437,7 @@ Every safety net belongs in the compiler, not in the prompt:
 - Auth on destructive endpoints? **Compiler error**, not "remember to add auth."
 - Input validation? **Compiler generates it** from the schema, not "don't forget to validate."
 - Test coverage? **Compiler writes the tests**, not "make sure you test this."
+- Dead app UI? **Compiler error**, not "remember to check every link and button."
 - SQL injection? **Impossible by construction**, not "use parameterized queries."
 - Mass assignment? **Auto-filtered**, not "only allow known fields."
 
@@ -778,15 +779,20 @@ The reader knows what data exists, what the API does, and what the user sees.
 
 ---
 
-## Rule 15: Meph Has Access to Everything
+## Rule 15: Meph Can Test Apps, Studio Control Is Allowlisted
 
-Meph (the Studio AI agent) should have tool access to everything in Studio:
-templates, docs, source maps, terminal, data, API testing, screenshots. The only
-things Meph cannot touch are the dark mode button, "New" (clearing the editor),
-and "Load" (loading a template) — those are user-initiated actions only.
+Meph (the Studio AI agent) should have tool access to the generated app preview:
+buttons, inputs, DOM inspection, network, terminal, source maps, API testing,
+screenshots, and browser actions. If a customer can click it in the generated app,
+Meph should be able to test it.
 
-If a feature exists in the IDE, Meph should be able to use it as a tool. If it
-can't, that's a gap to fix.
+Studio chrome is different. Publish, rollback, delete, secrets, account settings,
+model routing, filesystem-wide open/save, and anything that spends money are
+product controls, not test targets. Those need explicit allowlisted tools and
+must stay denied by default.
+
+The split is simple: generated apps are where Meph proves the build works; Studio
+itself is the user's cockpit.
 
 ## Rule 16: Error Messages Are First-Class
 

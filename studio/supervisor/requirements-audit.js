@@ -189,10 +189,10 @@ function detectApprovalRouting(text, normalized, ctx) {
 
   const thresholdLine = ctx.evidenceLines.find(line => line.normalized.includes(threshold.value));
   const targetLine = thresholdLine
-    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => line.normalized.includes(target))
-    : ctx.evidenceLines.find(line => line.normalized.includes(target));
+    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => isApprovalTargetEvidenceLine(line, target))
+    : ctx.evidenceLines.find(line => isApprovalTargetEvidenceLine(line, target));
   const routingLine = thresholdLine
-    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => /\b(route|approver|approval|queue|assign|assigned|is_vp_approval)\b/.test(line.normalized))
+    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => /\b(route|approver|approval|queue|assign|assigned|role|approver_role|approval_role|is_vp_approval)\b/.test(line.normalized) && !isFailureMessageLine(line))
     : null;
 
   if (thresholdLine && targetLine && routingLine) {
@@ -209,7 +209,7 @@ function detectApprovalRouting(text, normalized, ctx) {
 
   return {
     status: MISSING,
-    reason: `No route or conditional mentions ${threshold.phrase} ${threshold.value} and ${target} approval.`,
+    reason: `No route or conditional assigns ${threshold.phrase} ${threshold.value} deals to ${target} approval.`,
     evidence: uniqueEvidence([
       thresholdLine ? evidence(thresholdLine, 'source') : null,
       targetLine ? evidence(targetLine, 'source') : null,
@@ -447,6 +447,17 @@ function isDecisionActionLine(line, verb) {
   return /\b(button|action|when user sends|api|endpoint|route|decision)\b/.test(text);
 }
 
+function isApprovalTargetEvidenceLine(line, target) {
+  const text = line.normalized || '';
+  if (!text.includes(target)) return false;
+  if (isFailureMessageLine(line)) return false;
+  return /\b(approver|approval|queue|assign|assigned|role|reviewer|approver_role|approval_role|is_vp_approval)\b/.test(text);
+}
+
+function isFailureMessageLine(line) {
+  return /\b(fail with error message|error message|rejected|reject with)\b/.test(line.normalized || '');
+}
+
 function evidenceLinesFromSource(source) {
   const lines = String(source || '').split(/\r?\n/);
   const out = [];
@@ -533,6 +544,7 @@ function fieldNameFromLine(line) {
 
 function splitFields(text) {
   return text
+    .replace(/\([^)]*\)/g, '')
     .replace(/\.$/, '')
     .replace(/\band\b/gi, ',')
     .split(',')
@@ -556,8 +568,9 @@ function extractThreshold(text) {
 }
 
 function extractApprovalTarget(text) {
-  const match = text.match(/\bto\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\s+(?:approval|queue)\b/) ||
-    text.match(/\broute\s+to\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\b/);
+  const match = text.match(/\brequire(?:s|d)?\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\s+approval\b/) ||
+    text.match(/\bto\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\s+(?:approval|queue)\b/) ||
+    text.match(/\broute(?:d|s)?\s+to\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\b/);
   if (!match && /\b(vice president|vp)\b/.test(text)) return 'vp';
   return match ? normalizeIdentifier(match[1]) : null;
 }

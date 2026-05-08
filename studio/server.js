@@ -26,6 +26,7 @@ import {
   requirementsId,
   requirementsReviewEventFromAssistantText,
   shouldRequireApproval,
+  validateRequirements,
 } from './supervisor/requirements-contract.js';
 import { auditRequirements } from './supervisor/requirements-audit.js';
 import {
@@ -189,15 +190,21 @@ function buildChatRequirementsFlow({
     shouldRequireApproval(userText);
   const approvedList = Array.isArray(approvedRequirements) ? approvedRequirements : [];
   const computedApprovedId = approvedList.length > 0 ? requirementsId(approvedList) : null;
+  const approvedValidation = approvedList.length > 0
+    ? validateRequirements(approvedList, userText)
+    : { ok: false, errors: [] };
   const approved = approvalNeeded &&
     approvedList.length > 0 &&
     approvedRequirementsId &&
-    approvedRequirementsId === computedApprovedId;
+    approvedRequirementsId === computedApprovedId &&
+    approvedValidation.ok;
   let requirementsApproval = {
     required: approvalNeeded,
     approved: approved === true,
-    requirements: approved ? approvedList : [],
+    requirements: approvedList.length > 0 ? approvedList : [],
     id: approved ? approvedRequirementsId : computedApprovedId,
+    valid: approvedValidation.ok,
+    errors: approvedValidation.errors,
   };
 
   if (approvalNeeded && !approved) {

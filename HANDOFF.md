@@ -1,3 +1,43 @@
+# Handoff — 2026-05-08 (Meph requirements/Ralph loop + UI compiler gates)
+
+## Where you are
+
+- **Branch:** `feature/meph-requirements-ralph-loop`.
+- **Latest committed baseline:** `5072b55 Add Meph requirements Ralph loop`.
+- **Current wrap work:** requirements quality gate tightened, Ralph detector tightened, compiler UI dead-route gates added, docs updated.
+- **Paid probe spend:** latest run **$0.33**, running total **$1.80**. This turn spent **$0.72** of the $5 authorization.
+
+## What changed in this wrap
+
+- Complex-app requirements must now be end-to-end before approval unlocks mutation: storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when UI matters.
+- The server reruns requirement validation on user-approved requirements. Invalid chunky/compound requirements stay unapproved even if the approval ids match.
+- The live smoke now stops after the first paid call when requirements are invalid, instead of spending a second build call on junk.
+- Ralph no longer treats parenthesized status examples as separate fields.
+- Ralph no longer treats `Pending` status alone as manager approval. Approval routing needs manager/VP assignment, queue, role, or approver evidence.
+- The compiler now hard-errors internal app calls to missing `/api/...` endpoints and nav/link controls that point at missing pages.
+
+## Live smoke result
+
+The useful result was fail-closed, not "Gemini passed."
+
+- First follow-up Gemini Flash run: 3 chunky requirements, rejected by the tightened quality gate. Cost **$0.39**, total **$1.46**.
+- Second follow-up Gemini Flash run: 6 smaller CRUD/lifecycle requirements, compiled cleanly, used screenshot/browser evidence, then Ralph blocked the app because manager approval was only a `Pending` status string. Cost **$0.33**, total **$1.80**.
+
+That is the right product behavior: Meph can build a plausible app, but Ralph refuses false done when the app has no real approval assignment/queue.
+
+## Tests run
+
+- `node clear.test.js` — **3024/3024 passing** after the compiler UI gates.
+- Earlier in this wrap: requirements contract, requirements audit, live-smoke harness, and Studio server tests all passed after the gate changes.
+
+## Next critical path
+
+1. Commit this wrap on `feature/meph-requirements-ralph-loop`.
+2. Next feature lane: expand compiler-owned UI failures beyond static route checks into generated browser-walker failures for accordions, button event wiring, modal open/close, and layout overflow.
+3. Rerun one cheap live requirements smoke only after that next UI-walker lane lands. Do not spend more just to re-prove the current fail-closed result.
+
+---
+
 # Handoff — 2026-05-07 (marathon session, 9 commits, three Python parity gaps closed)
 
 ## Where you are

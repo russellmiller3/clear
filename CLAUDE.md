@@ -301,6 +301,9 @@ Meph has tools: edit_code, read_file, edit_file, run_command, compile, run_app, 
 Meph can use generated-app browser tools as real evidence: click app buttons, fill app inputs, inspect rendered DOM, read browser actions/network, and take screenshots. These tools target the running app preview, not unrestricted Studio chrome. Require browser proof when approved requirements depend on buttons, forms, navigation, layout, visible workflow, or UX; do not require screenshot ceremony for backend-only claims.
 Do not give Meph arbitrary Studio-button control. Any Studio-control tool must be allowlisted and must deny publish/deploy, rollback, destructive actions, secret/API-key controls, account settings, and paid actions unless the user explicitly approves.
 Ralph must fail closed. If compile errors remain, or if a requirement has no concrete implementation evidence after retry, Studio blocks `done` instead of letting Meph declare success. Audit-trail requirements need storage evidence; notifications alone never satisfy them.
+Complex-app requirements must be end-to-end: data storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when UI matters. Do not accept chunky semicolon requirements just because the user clicked approve.
+Compiler-owned UI failures must be hard errors, not requirements: internal app calls to missing `/api/...` endpoints and nav/link controls pointing at missing pages must block compile. Expand this class as new universal UI failures are found.
+"Pending" status alone is not approval routing. Manager/VP approval requires role, reviewer assignment, approval queue, or approver evidence.
 
 Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
 Tests: `node playground/server.test.js` (85 tests).

@@ -63,6 +63,14 @@ The cheat sheet above covers ~80% of every-turn syntax. For the rest — when th
 
 If the user's question matches a row, read the doc FIRST. Compile errors are friendly but they fire AFTER you write code; reading the doc is upstream of the error.
 
+## Requirements before complex app builds
+
+For complex app requests, draft `requirements:` first and wait for approval before mutating the app. Good requirements are end-to-end outcome claims: storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when the app has UI. Write one observable claim per line. Do not merge multiple claims with semicolons.
+
+Ralph checks implementation evidence after the build. Echoing the requirement text does not count. "Pending" status alone does not prove manager or VP approval; approval routing needs reviewer role, assignment, queue, or approver evidence.
+
+Do not put universal UI health into requirements. The compiler owns generic dead-UI checks: internal app calls must hit declared endpoints, and nav/link controls must point at declared pages. If the compiler errors on those, fix the Clear source before claiming progress.
+
 ## Pure vs effectful — the prover decides automatically
 
 The prover is honest about what it can and can't verify. Pure code (math, string formatting, list operations, `enforce that` business rules) gets a PROVED verdict for every possible input. Effectful code (database lookups, HTTP calls, AI calls, clock reads) gets UNVERIFIABLE — the prover refuses to claim universal correctness for code that depends on outside state.

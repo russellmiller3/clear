@@ -578,6 +578,27 @@ try {
   }
 
   {
+    const badReqs = [
+      'sales reps can create deals with an amount and stage; managers can review, approve, or reject deals above a $10,000 threshold',
+      'deals must store title, amount, status (pending, approved, rejected), and the creator_id',
+      "deals over $10,000 are automatically routed to a 'Manager' role for approval",
+    ];
+    const { status, data } = await post('/api/_test/chat-requirements-flow', {
+      messages: [{ role: 'user', content: 'build me a deal approval app' }],
+      editorContent: '',
+      requirementsMode: 'auto',
+      approvedRequirements: badReqs,
+      approvedRequirementsId: requirementsId(badReqs),
+    });
+
+    assert(status === 200, 'invalid-approved requirements flow endpoint returns 200');
+    assert(data.requirementsApproval?.approved === false,
+      'invalid e2e requirements cannot be approved just because the id matches');
+    assert(data.requirementsApproval?.errors?.some(e => e.includes('e2e') || e.includes('one observable claim')),
+      'invalid approved requirements expose quality errors');
+  }
+
+  {
     const { status, data } = await post('/api/_test/chat-ralph-flow', {
       editorContent: `requirements:
   deals at least 50000 route to VP approval

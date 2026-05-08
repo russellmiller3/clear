@@ -10,6 +10,7 @@ import {
   formatAuditItem,
   formatCostDollars,
   formatCostReport,
+  requireValidRequirementsReview,
   resolveSmokeModel,
   smokePassed,
   summarizeSmoke,
@@ -55,6 +56,24 @@ describe('Meph requirements live smoke harness', () => {
     expect(body.approvedRequirementsId).toEqual('req_123');
     expect(body.messages[2].content).toContain('Approved');
     expect(body.messages[2].content).toContain('Build the app now');
+  });
+
+  it('refuses to auto-approve invalid first-turn requirements', () => {
+    let message = '';
+    try {
+      requireValidRequirementsReview({
+        requirements: [
+          'sales reps can create deals; managers can approve deals',
+          'deals store title',
+        ],
+        valid: false,
+        errors: ['Requirement 1 is too broad: split into one observable claim per line.'],
+      });
+    } catch (err) {
+      message = err.message;
+    }
+
+    expect(message).toContain('Requirements review was invalid');
   });
 
   it('summarizes Ralph, compile, and requirements-review signals', () => {
