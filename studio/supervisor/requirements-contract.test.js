@@ -64,6 +64,39 @@ describe('requirements contract', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts broad dashboard requirements without approval-specific routing', () => {
+    const result = validateRequirements([
+      'logged in users can create companies, contacts, and deals via Add forms on the dashboard',
+      'companies store name, industry, and website',
+      'contacts store name, email, and relationship to a company',
+      'deals store title, value, stage, and relationship to a company',
+      'logged in users can read and list all companies, contacts, and deals',
+      'logged in users can update a deal stage or delete a deal from the pipeline',
+      'the dashboard aggregate pipeline value must sum all deal values and group stage counts',
+      'a dashboard page shows a searchable deals table, a pipeline stage chart, and a company detail panel',
+      'the company detail panel displays contacts and deals associated with the selected company record',
+    ], 'Build a complete Clear app for a revenue operations dashboard with companies, contacts, and deals.');
+
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts support-staff role wording when the app actually has roles', () => {
+    const result = validateRequirements([
+      'authenticated users can create conversations and post messages from the Chat page',
+      'conversations must store room name, status, handoff flag, and creator_id',
+      'messages must store content, sender_name, and conversation_id',
+      'support staff can read and list all conversations and their message history',
+      'current conversation creator can read their own message history',
+      'support staff can update conversation status to closed or toggle the agent handoff flag',
+      'real-time updates must broadcast new messages to all subscribers of a conversation room',
+      'the App page shows a sidebar with conversation lists and a detail view for the active chat',
+    ], 'Build a complete Clear app for a logged-in support chat room with support staff.');
+
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   it('creates stable ids for normalized text', () => {
     const a = requirementsId([' Deal approvals route to VP  ']);
     const b = requirementsId(['deal approvals route to vp']);
@@ -76,7 +109,7 @@ describe('requirements contract', () => {
 
     expect(text).toContain('Do not write Clear source yet');
     expect(text).toContain('requirements:');
-    expect(text).toContain('CRUD');
+    expect(text).toContain('core lifecycle');
     expect(text).toContain('UI');
   });
 

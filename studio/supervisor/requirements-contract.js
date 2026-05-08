@@ -55,6 +55,8 @@ export const OBSERVABLE_VERBS = Object.freeze([
   'view',
   'lists',
   'list',
+  'displays',
+  'display',
   'routes',
   'route',
   'routed',
@@ -145,7 +147,7 @@ export function validateRequirements(items = [], userRequest = '') {
     if (normalized.length < 6) {
       errors.push('requirements need at least six e2e lines for an underspecified app build.');
     }
-    for (const error of e2eCoverageErrors(normalized)) {
+    for (const error of e2eCoverageErrors(normalized, userRequest)) {
       errors.push(error);
     }
   }
@@ -163,7 +165,7 @@ export function buildRequirementsInstruction(userText = '') {
   return [
     'Do not write Clear source yet.',
     'First translate the user request into specific, observable requirements.',
-    'Requirements must be e2e. Cover the core CRUD/lifecycle path: data storage, create/submit, read/list/detail, update/decision, routing/roles, and visible UI reachability.',
+    'Requirements must be e2e. Cover the core lifecycle path: data storage, create/submit, read/list/detail, update/decision when the app changes existing records, domain roles/routing/rules when the request calls for them, and visible UI reachability.',
     'Write one observable claim per line. Do not combine multiple behaviors with semicolons.',
     'Return only a requirements block in this exact shape:',
     '',
@@ -171,8 +173,8 @@ export function buildRequirementsInstruction(userText = '') {
     '  who can create or submit what, from which form or page',
     '  what data must be stored',
     '  who can read, list, or inspect the records',
-    '  who can update, approve, reject, delete, cancel, or archive records',
-    '  what routing, role, threshold, notification, audit, or edge-case rule must hold',
+    '  who can update, approve, reject, delete, cancel, or archive records when the app needs those actions',
+    '  what routing, role, threshold, notification, audit, or edge-case rule must hold when the app needs one',
     '  which visible UI page, button, form, table, or detail view proves the workflow is reachable',
     '',
     `User request: ${String(userText).trim()}`,
@@ -224,8 +226,9 @@ function isCompoundRequirement(text) {
   return false;
 }
 
-function e2eCoverageErrors(items) {
+function e2eCoverageErrors(items, userRequest = '') {
   const joined = items.join('\n');
+  const roleOrRoutingRelevant = /\b(approval|approve|approver|route|routing|assign|assigned|manager|admin|support staff|staff|owner|creator|vp|cro|finance|revops|rule|threshold|role|permission|only)\b/.test(`${normalizeText(userRequest)}\n${joined}`);
   const checks = [
     {
       label: 'data storage',
@@ -245,7 +248,8 @@ function e2eCoverageErrors(items) {
     },
     {
       label: 'roles/routing/rules',
-      test: /\b(role|roles|route|routes|routing|requires|require|approval|approver|manager|admin|threshold|assigned)\b/.test(joined),
+      required: roleOrRoutingRelevant,
+      test: /\b(role|roles|route|routes|routing|requires|require|approval|approver|manager|admin|support staff|staff|owner|creator|threshold|assigned)\b/.test(joined),
     },
     {
       label: 'UI evidence',
@@ -253,7 +257,7 @@ function e2eCoverageErrors(items) {
     },
   ];
   return checks
-    .filter(check => !check.test)
+    .filter(check => check.required !== false && !check.test)
     .map(check => `requirements need e2e coverage for ${check.label}.`);
 }
 
