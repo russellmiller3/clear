@@ -19,6 +19,8 @@ The 2026-05-08 Gemini smoke made the hierarchy obvious. The model got enough pat
 
 The first capped broad-app A/B on Gemini Flash is also directionally positive, but still only n=1. On `revenue-ops-dashboard-app`, docs-only baseline failed at **42/100** and did not compile; full pattern preflight passed at **95/100** with a compiling app. Cost was **$0.43** for the paired trial, running total **$3.34**, artifact folder `studio/sessions/pattern-probes/2026-05-08T16-15-00-305Z/`. This proves the harness can produce a useful paired signal; it does not yet prove the effect generalizes across the seven broad app types.
 
+The next two capped probes made the lesson sharper. On the booking app, docs-only scored **58/100** and full hook scored **68/100**; both failed to compile because the app missed required customer data. On the expense analytics app, the provider aborted during the baseline after one paid call, so the run is blocked/inconclusive rather than a model-quality result. The latest probe cost was **$0.14**, bringing the live-probe running total to **$4.16** of the $5 cap.
+
 **Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
 
 The durable research frame is now:
@@ -33,6 +35,70 @@ Vague user intent
 ```
 
 This is more important than making the retriever cleverer. A perfect retriever still cannot know whether the generated app satisfied the user's specific request unless the request has become a machine-checkable contract.
+
+## How deterministic checks avoid regex explosion (2026-05-08)
+
+The brittle version of Ralph is "scan prose and source for enough magic words." That will collapse into regex soup. The durable version is two translation layers and one small comparison:
+
+```text
+requirement prose -> typed requirement facts
+generated app     -> typed app facts
+Ralph             -> compare facts to facts
+```
+
+Regex and synonym matching are allowed only at the edge, where loose language is normalized into a small controlled vocabulary. They are not the oracle. The oracle is set containment: every approved requirement fact needs matching implementation evidence from source, compiler output, tests, browser actions, or runtime state.
+
+Example normalized requirement fact:
+
+```json
+{
+  "kind": "domain_rule",
+  "actor": "seller",
+  "action": "create",
+  "object": "booking",
+  "condition": "overlaps existing booking for same room and time",
+  "expected": "reject",
+  "evidence": ["api_result", "browser_flow", "test"]
+}
+```
+
+Example app facts that could satisfy it:
+
+```json
+[
+  {
+    "kind": "api_result",
+    "endpoint": "POST /api/bookings",
+    "condition": "overlap",
+    "result": "400"
+  },
+  {
+    "kind": "test",
+    "name": "rejects overlapping room bookings",
+    "result": "pass"
+  }
+]
+```
+
+That is much less brittle than matching exact words like "double booking" or "overlap" forever. "Prevent double booking," "reject overlaps," and "block same-room conflicts" all normalize to the same `domain_rule` fact. Ralph does not care which phrase the model used once the fact exists.
+
+The controlled fact vocabulary should stay small:
+
+- `storage`: durable tables/records and required fields.
+- `create`: user can submit a new domain object.
+- `read`: user can list, filter, search, or inspect details.
+- `update`: user can edit, transition, approve, reject, cancel, or assign.
+- `delete`: user can remove or archive when the app needs it.
+- `role_rule`: access, ownership, approver, manager, VP, tenant, or reviewer restrictions.
+- `domain_rule`: thresholds, overlap prevention, uniqueness, limits, blocking saves, stale-submit guards.
+- `ui_reachability`: page, nav, link, modal, accordion, button, and visible state evidence.
+- `audit`: history row, actor, timestamp, old/new state, export.
+- `aggregate`: KPI, chart, rollup, dashboard, report, export.
+- `integration`: webhook, email, agent call, external API, scheduled job.
+
+The implementation rule is: add synonyms to the normalizer only when a real artifact proves the miss, then add the phrase as a fixture. Do not add one-off scoring regex to the final Ralph check. The Ralph check compares typed facts, not strings.
+
+This keeps the loop deterministic without pretending language is deterministic. The fuzzy part is deliberately tiny and regression-tested. The final grade is boring: does the app contain evidence for the contract or not?
 
 ## External benchmark -- the cutting-edge harness bar (2026-05-08)
 

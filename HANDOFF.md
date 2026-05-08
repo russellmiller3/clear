@@ -3,9 +3,9 @@
 ## Where you are
 
 - **Branch:** `feature/meph-requirements-ralph-loop`.
-- **Latest committed baseline:** `5da2a07 Cap live pattern probe iterations`.
+- **Latest committed code baseline:** `d401e38 Accept rendered UI requirements wording`.
 - **Current wrap work:** requirements quality gate tightened, Ralph detector tightened, compiler UI dead-route gates added, pattern-probe artifacts added, capped broad A/B harness added.
-- **Paid probe spend:** latest run **$0.43**, running total **$3.34** of the $5 authorization.
+- **Paid probe spend:** latest run **$0.14**, running total **$4.16** of the $5 authorization.
 
 ## What changed in this wrap
 
@@ -24,8 +24,24 @@ The useful result was fail-closed, not "Gemini passed."
 - First follow-up Gemini Flash run: 3 chunky requirements, rejected by the tightened quality gate. Cost **$0.39**, total **$1.46**.
 - Second follow-up Gemini Flash run: 6 smaller CRUD/lifecycle requirements, compiled cleanly, used screenshot/browser evidence, then Ralph blocked the app because manager approval was only a `Pending` status string. Cost **$0.33**, total **$1.80**.
 - Capped broad A/B smoke on `revenue-ops-dashboard-app`: docs-only failed (**42/100**, did not compile); full hook passed (**95/100**, compiled). Cost **$0.43**, total **$3.34**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-15-00-305Z/`.
+- Capped broad A/B smoke on booking: docs-only scored **58/100**, full hook scored **68/100**; both failed to compile because the app missed required customer data. Cost **$0.40**, total **$4.03**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-27-46-269Z/`.
+- Capped broad A/B smoke on expense analytics: provider aborted during docs-only baseline, so mark it blocked/inconclusive instead of a model-quality failure. Cost **$0.14**, total **$4.16**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-30-51-949Z/`.
 
 That is the right product behavior: Meph can build a plausible app, but Ralph refuses false done when the app has no real approval assignment/queue.
+
+## Deterministic checker direction
+
+Do not grow Ralph by adding more final-score regexes. That path turns into a brittle synonym swamp.
+
+The next architecture should normalize both sides into typed facts:
+
+```text
+requirement prose -> typed requirement facts
+generated app     -> typed app facts
+Ralph             -> compare facts to facts
+```
+
+Regex/synonym matching belongs only at the edge, where "prevent double booking," "reject overlaps," and "block same-room conflicts" become the same `domain_rule` fact. The final Ralph check should compare typed facts against typed evidence from source, compiler output, tests, browser actions, and runtime state.
 
 ## Tests run
 
@@ -34,9 +50,10 @@ That is the right product behavior: Meph can build a plausible app, but Ralph re
 
 ## Next critical path
 
-1. Run at most two more capped broad-app A/B pairs under the remaining budget, then stop and summarize. Do not run the full seven-app suite unless Russell raises the cap again.
-2. Next feature lane: expand compiler-owned UI failures beyond static route checks into generated browser-walker failures for accordions, button event wiring, modal open/close, and layout overflow.
+1. Stop paid probes for now. Only **$0.84** remains under the $5 cap, and the next useful work is local architecture, not another paid run.
+2. Build the typed requirement-fact normalizer and typed app-fact extractor. Keep the vocabulary small: storage, create, read, update, delete, role_rule, domain_rule, ui_reachability, audit, aggregate, integration.
 3. Promote browser/state evidence into the pattern-probe artifacts so the harness can score actual app behavior, not only source shape.
+4. Then rerun a small A/B with the new Ralph fact checker before broadening provider/model sweeps.
 
 ---
 
