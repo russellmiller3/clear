@@ -696,6 +696,10 @@ when user requests data from /api/health:
     assert(text.includes('requirements-review'), 'studio.html renders requirements review cards');
     assert(text.includes('approveRequirements'), 'studio.html can approve requirements from chat');
     assert(text.includes('approvedRequirementsId'), 'studio.html sends approved requirements back to Meph');
+    assert(text.includes('requirements-audit'), 'studio.html renders requirements audit cards');
+    assert(text.includes('renderRequirementsAudit'), 'studio.html formats Ralph audit results');
+    assert(text.includes('requirements_retry'), 'studio.html handles Ralph retry events');
+    assert(text.includes('requirements_blocked'), 'studio.html handles Ralph blocked events');
   }
 
   {

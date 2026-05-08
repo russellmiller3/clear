@@ -525,6 +525,18 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 .requirements-review button { border: 1px solid var(--bd2); border-radius: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600; font-family: var(--font); cursor: pointer; background: var(--bg3); color: var(--tx); }
 .requirements-review button.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
 .requirements-review button:disabled { opacity: .45; cursor: default; }
+.requirements-audit { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid var(--bd); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--bg2); max-width: 620px; }
+.requirements-audit.retry { border-left-color: var(--warning, #b7791f); }
+.requirements-audit.blocked { border-left-color: var(--red); }
+.requirements-audit.passed { border-left-color: var(--green, #2f9e44); }
+.requirements-audit h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0; color: var(--tx2); }
+.req-audit-summary { color: var(--tx); font-size: 13px; line-height: 1.4; margin-bottom: 8px; }
+.req-audit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.req-audit-item { border: 1px solid var(--bd); border-radius: 6px; padding: 7px 8px; background: var(--bg3); font-size: 12px; line-height: 1.35; }
+.req-audit-status { display: inline-block; min-width: 74px; font-weight: 700; text-transform: uppercase; font-size: 10px; color: var(--tx2); }
+.req-audit-item.passed .req-audit-status { color: var(--green, #2f9e44); }
+.req-audit-item.missing .req-audit-status, .req-audit-item.unverified .req-audit-status { color: var(--red); }
+.req-audit-reason { color: var(--tx3); margin-top: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
 .stream-cursor { animation: cursorBlink .7s step-end infinite; color: var(--accent); }
@@ -5293,11 +5305,12 @@ function updateContextMeter(percent, used, max) {
 function saveChatState() {
   try {
     const toSave = chatMessages
-      .map(({ role, content, toolSteps, timeline, streaming, requirementsReview }) => ({
+      .map(({ role, content, toolSteps, timeline, streaming, requirementsReview, requirementsAudit }) => ({
         role, content,
         toolSteps: toolSteps || [],
         timeline: timeline || [],
         ...(requirementsReview ? { requirementsReview } : {}),
+        ...(requirementsAudit ? { requirementsAudit } : {}),
         ...(streaming ? { interrupted: true } : {}),
       }));
     localStorage.setItem('clear_chat_messages', JSON.stringify(toSave));
@@ -5336,6 +5349,40 @@ function renderRequirementsReview(review) {
       <button onclick="reviseRequirements('${id}')" ${approved ? 'disabled' : ''}>Revise</button>
     </div>
   </div>`;
+}
+
+function renderRequirementsAudit(audit) {
+  const items = Array.isArray(audit?.items) ? audit.items : [];
+  const kind = audit?.kind === 'blocked' ? 'blocked' : audit?.kind === 'retry' ? 'retry' : audit?.ok ? 'passed' : 'audit';
+  const title = kind === 'blocked'
+    ? 'Requirements blocked'
+    : kind === 'retry'
+      ? 'Requirements need work'
+      : 'Requirements audit';
+  const summary = audit?.summary || (items.length ? `${items.length} requirements checked.` : 'No requirements checked.');
+  const retryText = kind === 'retry' && audit?.retryIndex
+    ? ` Retry ${escHtml(String(audit.retryIndex))}/${escHtml(String(audit.maxRetries || '?'))}.`
+    : '';
+  const itemHtml = items.length
+    ? `<ul class="req-audit-list">${items.map(renderRequirementAuditItem).join('')}</ul>`
+    : '';
+  return `<div class="requirements-audit ${kind}">
+    <h4>${title}</h4>
+    <div class="req-audit-summary">${escHtml(summary)}${retryText}</div>
+    ${itemHtml}
+  </div>`;
+}
+
+function renderRequirementAuditItem(item) {
+  const rawStatus = String(item?.status || 'unverified').toLowerCase();
+  const status = ['passed', 'missing', 'unverified', 'waived'].includes(rawStatus) ? rawStatus : 'unverified';
+  const text = escHtml(String(item?.text || 'Unnamed requirement'));
+  const reason = item?.reason ? `<div class="req-audit-reason">${escHtml(String(item.reason))}</div>` : '';
+  return `<li class="req-audit-item ${status}">
+    <span class="req-audit-status">${status}</span>
+    <span>${text}</span>
+    ${reason}
+  </li>`;
 }
 
 function findRequirementsReview(id) {
@@ -5430,6 +5477,8 @@ function renderMsgInner(m, isLast) {
       html += escHtml(m.content || '').replace(/\n/g, '<br>');
     }
   }
+  if (m.requirementsReview) html += renderRequirementsReview(m.requirementsReview);
+  if (m.requirementsAudit) html += renderRequirementsAudit(m.requirementsAudit);
   return html;
 }
 
@@ -5808,6 +5857,37 @@ window.sendChat = async function() {
             errors: Array.isArray(ev.errors) ? ev.errors : [],
             approved: false,
           };
+          updateLastMsg();
+          saveChatState();
+        } else if (ev.type === 'requirements_audit') {
+          am.requirementsAudit = {
+            kind: 'audit',
+            ok: ev.ok === true,
+            summary: ev.summary || '',
+            items: Array.isArray(ev.items) ? ev.items : [],
+          };
+          updateLastMsg();
+          saveChatState();
+        } else if (ev.type === 'requirements_retry') {
+          am.requirementsAudit = {
+            kind: 'retry',
+            ok: false,
+            summary: ev.summary || '',
+            items: Array.isArray(ev.items) ? ev.items : [],
+            retryIndex: ev.retry_index || 1,
+            maxRetries: ev.max_retries || '?',
+          };
+          updateLastMsg();
+          saveChatState();
+        } else if (ev.type === 'requirements_blocked') {
+          am.requirementsAudit = {
+            kind: 'blocked',
+            ok: false,
+            summary: ev.summary || 'Ralph could not verify the approved requirements.',
+            items: Array.isArray(ev.items) ? ev.items : [],
+            maxRetries: ev.max_retries || '?',
+          };
+          am.streaming = false;
           updateLastMsg();
           saveChatState();
         } else if (ev.type === 'undo') {
