@@ -537,6 +537,27 @@ try {
     assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
   }
 
+  {
+    const { status, data } = await post('/api/_test/chat-requirements-flow', {
+      messages: [{ role: 'user', content: 'build me a deal approval app' }],
+      editorContent: '',
+      requirementsMode: 'auto',
+      assistantText: `requirements:
+  logged-in sellers can submit deals
+  each deal stores customer, amount, status, and approver
+  deals under 50000 route to manager approval
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals`,
+    });
+
+    assert(status === 200, 'test requirements flow endpoint returns 200');
+    assert(Array.isArray(data.events), 'requirements flow returns events array');
+    assert(data.events.some(e => e.type === 'requirements_review'),
+      'chat emits requirements_review before app editing on complex app request');
+    assert(!data.events.some(e => e.type === 'code_update'),
+      'requirements review flow does not emit code_update before approval');
+  }
+
   // =========================================================================
   // SAVE ENDPOINT
   // =========================================================================

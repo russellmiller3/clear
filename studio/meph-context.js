@@ -35,6 +35,12 @@ export class MephContext {
     this.rootDir = options.rootDir || '.';
     this.source = options.source || '';
     this.errors = options.errors || [];
+    this.requirementsApproval = options.requirementsApproval || {
+      required: false,
+      approved: false,
+      requirements: [],
+      id: null,
+    };
 
     // Captured source state — populated by setSource() before each write
     // so subsequent compile/Factor-DB rows can reference what Meph edited

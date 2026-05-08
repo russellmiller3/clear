@@ -22,6 +22,12 @@ import {
   stripPatternSearchPromptGuard,
 } from './supervisor/meph-pattern-preflight.js';
 import {
+  buildRequirementsInstruction,
+  requirementsId,
+  requirementsReviewEventFromAssistantText,
+  shouldRequireApproval,
+} from './supervisor/requirements-contract.js';
+import {
   loadBundle as _loadEBM,
   rank as _rankEBM,
   featurizeFactorRow as _featurizeRow,
@@ -163,6 +169,62 @@ wireDeploy(app, { store: _cloudTenantStore, stripeWebhookMounted: true });
 function _allowTestCloudHooks() {
   return process.env.NODE_ENV === 'test' || process.env.CLEAR_ALLOW_SEED;
 }
+
+function buildChatRequirementsFlow({
+  messages = [],
+  editorContent = '',
+  assistantText = '',
+  approvedRequirements = null,
+  approvedRequirementsId = null,
+  requirementsMode = 'auto',
+} = {}) {
+  const currentMessages = Array.isArray(messages) ? [...messages] : [];
+  const userText = lastUserText(currentMessages);
+  const events = [];
+  const modeOff = requirementsMode === false || requirementsMode === 'off';
+  const approvalNeeded = !modeOff &&
+    !String(editorContent || '').trim() &&
+    shouldRequireApproval(userText);
+  const approvedList = Array.isArray(approvedRequirements) ? approvedRequirements : [];
+  const computedApprovedId = approvedList.length > 0 ? requirementsId(approvedList) : null;
+  const approved = approvalNeeded &&
+    approvedList.length > 0 &&
+    approvedRequirementsId &&
+    approvedRequirementsId === computedApprovedId;
+  let requirementsApproval = {
+    required: approvalNeeded,
+    approved: approved === true,
+    requirements: approved ? approvedList : [],
+    id: approved ? approvedRequirementsId : computedApprovedId,
+  };
+
+  if (approvalNeeded && !approved) {
+    const instruction = buildRequirementsInstruction(userText);
+    if (instruction) currentMessages.push({ role: 'user', content: instruction });
+  }
+
+  if (assistantText) {
+    const reviewEvent = requirementsReviewEventFromAssistantText(assistantText, userText);
+    if (reviewEvent.requirements.length > 0) {
+      events.push(reviewEvent);
+      requirementsApproval = {
+        required: true,
+        approved: false,
+        requirements: reviewEvent.requirements,
+        id: reviewEvent.requirementsId,
+        valid: reviewEvent.valid,
+        errors: reviewEvent.errors,
+      };
+    }
+  }
+
+  return { events, currentMessages, requirementsApproval, userText };
+}
+
+app.post('/api/_test/chat-requirements-flow', (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  return res.json(buildChatRequirementsFlow(req.body || {}));
+});
 
 app.post('/api/_test/live-edit-cloud-uat-setup', async (req, res) => {
   if (!_allowTestCloudHooks()) return res.status(404).end();
@@ -3133,7 +3195,7 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSou
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged, patternPreflight: patternPreflightRequest, disablePatternSearchPromptGuard, disablePatternSearchTool } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged, patternPreflight: patternPreflightRequest, disablePatternSearchPromptGuard, disablePatternSearchTool, requirementsMode, approvedRequirements, approvedRequirementsId } = req.body;
   // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
   // A step "passes" if ALL its sourceMatches regexes appear in the current source.
   // currentStep = the highest-index step whose regexes all match. This lets us
@@ -3335,6 +3397,7 @@ app.post('/api/chat', async (req, res) => {
     const ctx = new MephContext({
       source: currentSource,
       errors: currentErrors,
+      requirementsApproval,
       sourceBeforeEdit: _sourceBeforeEdit || '',
       lastCompileResult,
       send,
@@ -3425,6 +3488,24 @@ app.post('/api/chat', async (req, res) => {
   // we don't send). Either way, the effective cap here is 200k.
   const MEPH_CTX_MAX = 200000;
   let currentMessages = selectChatMessagesForModel(messages, { modelChanged: !!modelChanged, limit: 50 });
+  const requirementsFlow = buildChatRequirementsFlow({
+    messages: currentMessages,
+    editorContent: currentSource,
+    approvedRequirements,
+    approvedRequirementsId,
+    requirementsMode,
+  });
+  currentMessages = requirementsFlow.currentMessages;
+  let requirementsApproval = requirementsFlow.requirementsApproval;
+  const requirementsUserText = requirementsFlow.userText || lastUserText(currentMessages);
+  if (requirementsApproval.required) {
+    send({
+      type: 'requirements_gate',
+      required: true,
+      approved: requirementsApproval.approved === true,
+      requirements_id: requirementsApproval.id || null,
+    });
+  }
   const patternPreflightMode =
     patternPreflightRequest === false || patternPreflightRequest === 'off' || process.env.MEPH_PATTERN_PREFLIGHT === '0'
       ? 'off'
@@ -3432,7 +3513,7 @@ app.post('/api/chat', async (req, res) => {
   const patternPreflightEnabled = patternPreflightRequest !== false && patternPreflightMode !== 'off';
   const patternPreflightResult = patternPreflightEnabled
     ? buildPatternPreflight({
-      userText: lastUserText(currentMessages),
+      userText: requirementsUserText,
       currentSource,
       factorDB: _factorDB,
       rootDir: ROOT_DIR,
@@ -3709,6 +3790,20 @@ app.post('/api/chat', async (req, res) => {
       // measure thinking-vs-text ratios per tool call.
       if (accThinking) _logTurn({ role: 'assistant_thinking', message_text: accThinking });
       if (accText) _logTurn({ role: 'assistant_text', message_text: accText });
+      if (requirementsApproval.required && requirementsApproval.approved !== true && accText) {
+        const reviewEvent = requirementsReviewEventFromAssistantText(accText, requirementsUserText);
+        if (reviewEvent.requirements.length > 0) {
+          requirementsApproval = {
+            required: true,
+            approved: false,
+            requirements: reviewEvent.requirements,
+            id: reviewEvent.requirementsId,
+            valid: reviewEvent.valid,
+            errors: reviewEvent.errors,
+          };
+          send(reviewEvent);
+        }
+      }
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
         // Snap layer: if Meph stopped with compile errors still on screen,

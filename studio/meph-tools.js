@@ -426,6 +426,11 @@ export function highlightCodeTool(input) {
  * @param {function} compileProgram - the Clear compiler entry point
  * @returns {string} JSON-stringified result
  */
+function requirementsWriteBlocked(ctx) {
+  return ctx?.requirementsApproval?.required === true &&
+    ctx.requirementsApproval.approved !== true;
+}
+
 export function editCodeTool(input, ctx, helpersOrCompileProgram) {
   // Accept either the full helpers bag (preferred — needed for hint pipeline
   // attach below) or a bare compileProgram function (backward-compatible with
@@ -434,6 +439,13 @@ export function editCodeTool(input, ctx, helpersOrCompileProgram) {
     ? helpersOrCompileProgram
     : null;
   const compileProgram = fullHelpers ? fullHelpers.compileProgram : helpersOrCompileProgram;
+  if (input.action === 'write' && requirementsWriteBlocked(ctx)) {
+    return JSON.stringify({
+      error: 'Requirements must be reviewed and approved before Meph can edit Clear source.',
+      code: 'REQUIREMENTS_NOT_APPROVED',
+      requirementsApproval: ctx.requirementsApproval,
+    });
+  }
   if (input.action === 'read') {
     return JSON.stringify({ source: ctx.source, errors: ctx.errors });
   }
@@ -1636,6 +1648,13 @@ export function listEvalsTool(input, ctx, compileForEval) {
  */
 export function patchCodeTool(input, ctx, patch) {
   if (!ctx.source) return JSON.stringify({ error: 'No code in editor. Write code first.' });
+  if (requirementsWriteBlocked(ctx)) {
+    return JSON.stringify({
+      error: 'Requirements must be reviewed and approved before Meph can patch Clear source.',
+      code: 'REQUIREMENTS_NOT_APPROVED',
+      requirementsApproval: ctx.requirementsApproval,
+    });
+  }
   const ops = input.operations;
   if (!Array.isArray(ops) || ops.length === 0) {
     return JSON.stringify({ error: 'Need an operations array. Example: [{ op: "fix_line", line: 5, replacement: "  send back user" }]' });

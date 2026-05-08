@@ -213,6 +213,30 @@ const ec1 = JSON.parse(editCodeTool({ action: 'read' }, new MephContext({ source
 assert(ec1.source === 'foo bar', 'editCodeTool read returns ctx.source');
 assert(ec1.errors.length === 1, 'editCodeTool read returns ctx.errors');
 
+// requirements gate blocks writes but not reads
+const blockedCtx = new MephContext({
+  requirementsApproval: { required: true, approved: false },
+});
+const blockedWrite = JSON.parse(await dispatchTool(
+  'edit_code',
+  { action: 'write', code: 'build for javascript backend' },
+  blockedCtx,
+  { compileProgram: () => ({ errors: [], warnings: [] }) },
+));
+assert(blockedWrite.code === 'REQUIREMENTS_NOT_APPROVED',
+  'edit_code write is blocked until requirements are approved');
+assert(blockedWrite.applied === undefined,
+  'blocked edit_code write does not report applied=true');
+
+const allowedRead = JSON.parse(await dispatchTool(
+  'edit_code',
+  { action: 'read' },
+  blockedCtx,
+  { compileProgram: () => ({ errors: [], warnings: [] }) },
+));
+assert(allowedRead.source === '',
+  'edit_code read still works while requirements approval is pending');
+
 // write action — mutates source via setSource (captures sourceBeforeEdit)
 let sourceChangeFired = null;
 let errorsChangeFired = null;
@@ -258,6 +282,20 @@ console.log('\n🩹 patchCodeTool\n');
 const pc1 = JSON.parse(patchCodeTool({ operations: [{ op: 'fix_line', line: 1, replacement: 'x' }] }, new MephContext(), patch));
 assert(pc1.error?.includes('No code in editor'),
   'patchCodeTool with empty source returns "No code in editor"');
+
+const blockedPatchCtx = new MephContext({
+  source: 'old line\nsecond line',
+  requirementsApproval: { required: true, approved: false },
+});
+const blockedPatch = JSON.parse(patchCodeTool(
+  { operations: [{ op: 'fix_line', line: 1, replacement: 'new line' }] },
+  blockedPatchCtx,
+  patch,
+));
+assert(blockedPatch.code === 'REQUIREMENTS_NOT_APPROVED',
+  'patch_code is blocked until requirements are approved');
+assert(blockedPatchCtx.source === 'old line\nsecond line',
+  'blocked patch_code does not mutate ctx.source');
 
 // Empty ops array → error
 const pc2 = JSON.parse(patchCodeTool({ operations: [] }, new MephContext({ source: 'x' }), patch));

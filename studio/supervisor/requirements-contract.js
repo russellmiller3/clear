@@ -59,6 +59,8 @@ export const OBSERVABLE_VERBS = Object.freeze([
   'approve',
   'saves',
   'save',
+  'stores',
+  'store',
   'creates',
   'create',
   'updates',
@@ -133,6 +135,35 @@ export function validateRequirements(items = [], userRequest = '') {
     errors,
     requirements: normalized,
     id: requirementsId(normalized),
+  };
+}
+
+export function buildRequirementsInstruction(userText = '') {
+  if (!shouldRequireApproval(userText)) return null;
+  return [
+    'Do not write Clear source yet.',
+    'First translate the user request into specific, observable requirements.',
+    'Return only a requirements block in this exact shape:',
+    '',
+    'requirements:',
+    '  who can do what, under what condition',
+    '  what data must be stored or shown',
+    '  what routing, approval, rejection, or notification rule must hold',
+    '',
+    `User request: ${String(userText).trim()}`,
+  ].join('\n');
+}
+
+export function requirementsReviewEventFromAssistantText(text = '', userRequest = '') {
+  const requirements = extractRequirementsDraft(text);
+  const validation = validateRequirements(requirements, userRequest);
+  return {
+    type: 'requirements_review',
+    needsApproval: true,
+    requirements,
+    requirementsId: validation.id,
+    valid: validation.ok,
+    errors: validation.errors,
   };
 }
 
