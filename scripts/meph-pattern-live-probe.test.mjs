@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, buildProbeServerEnv, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -140,6 +140,7 @@ describe('meph pattern live probe harness', () => {
     expect(isProviderQuotaError('openrouter HTTP 403: Key limit exceeded')).toEqual(true);
     expect(isProviderQuotaError('[openrouter network error: fetch failed]')).toEqual(true);
     expect(isProviderQuotaError('The operation was aborted due to timeout')).toEqual(true);
+    expect(providerBlockMessage({ text: 'partial answer [openrouter network error: fetch failed]' })).toContain('openrouter network error');
     expect(isProviderQuotaError('syntax compile failed')).toEqual(false);
 
     const rows = [

@@ -388,6 +388,7 @@ This repo is often driven from Windows PowerShell. Treat avoidable Windows tool 
 - Use PowerShell-native commands by default. If `rg` has not passed a same-session smoke check, use `Get-ChildItem` plus `Select-String`.
 - Before reading multiple paths, verify the paths exist or pipe discovered files from `Get-ChildItem`. Do not let a missing path blow up the whole command.
 - Never print `.env` directly. Use masked output: key name, whether it is set, and length only.
+- Do not use reserved automatic variables such as `$PID`, `$Host`, `$HOME`, `$Error`, `$Args`, or `$Input` as scratch or loop variables.
 - Use the bundled Node executable or `process.execPath`; do not rely on bare `node` or Windows shims.
 - For process command-line inspection, start with `Get-Process`. If command lines require `Get-CimInstance`, escalate the narrow command once.
 - If Git cannot create `.git/index.lock`, rerun the same Git action with sandbox permission instead of trying unrelated workarounds.

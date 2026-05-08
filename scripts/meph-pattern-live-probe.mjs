@@ -346,6 +346,15 @@ export function isProviderQuotaError(message) {
   return /key limit exceeded|insufficient credits|quota exceeded|credit limit|billing limit|openrouter network error|fetch failed|request timed out|aborted due to timeout|econnreset|etimedout|enotfound|eai_again/i.test(String(message || ''));
 }
 
+export function providerBlockMessage(resultOrMessage) {
+  const text = typeof resultOrMessage === 'string'
+    ? resultOrMessage
+    : [resultOrMessage?.error, resultOrMessage?.text].filter(Boolean).join('\n');
+  if (!isProviderQuotaError(text)) return '';
+  const match = String(text).match(/\[?openrouter network error:[^\]\n]+]?|key limit exceeded|insufficient credits|quota exceeded|credit limit|billing limit|request timed out|aborted due to timeout|fetch failed|econnreset|etimedout|enotfound|eai_again/i);
+  return match ? match[0] : String(text).slice(0, 300);
+}
+
 export function summarizeRows(rows, { abMode = false } = {}) {
   const blockedRows = rows.filter(row => row.result?.blocked);
   const completedRows = rows.filter(row => !row.result?.blocked);
@@ -419,12 +428,21 @@ async function main() {
         let score;
         try {
           result = await runChat(probe.prompt, variant.options);
-          if (probe.requiredSourceTerms) {
+          const providerBlocked = providerBlockMessage(result);
+          if (providerBlocked) {
+            result.error = providerBlocked;
+            result.blocked = true;
+            result.compile = { errors: [{ message: providerBlocked }] };
+            score = probe.requiredSourceTerms
+              ? scoreGeneratedApp(probe, result)
+              : { pass: false, usedSearch: false, usedToolSearch: false, usedPreflightSearch: false, foundExpectedKind: false, foundExpectedTerm: false };
+            abortProbe = true;
+          } else if (probe.requiredSourceTerms) {
             result.compile = await compileSource(result.source);
+            score = scoreGeneratedApp(probe, result);
+          } else {
+            score = scoreProbe(probe, result);
           }
-          score = probe.requiredSourceTerms
-            ? scoreGeneratedApp(probe, result)
-            : scoreProbe(probe, result);
         } catch (err) {
           const message = err?.message || String(err);
           const blocked = isProviderQuotaError(message);

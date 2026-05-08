@@ -2464,3 +2464,7 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Obvious next step is a stop gate, not a suggestion.** If the agent can name a safe approved next action, it must run it before final; otherwise Russell has to re-prompt the same work.
 - **Secret inspection must be masked.** Checking `.env` for model/backend settings should print key names and set/length metadata only, never API key values.
 - **Windows command errors need a guardrail, not tolerance.** On this machine, `rg`, missing `Select-String` paths, bare `node`, blocked process inspection, and Git lock creation can all fail noisily; use the PowerShell-native fallbacks and narrow escalation path first.
+- **Provider blocks are not failed apps.** If OpenRouter returns network or quota text inside an otherwise completed Meph answer, mark the trial blocked/inconclusive instead of scoring it as a bad generated app.
+- **Cheap model smoke tests must match the real loop.** DeepSeek, Kimi, GLM, and Grok can answer tiny OpenRouter tool calls while still hanging or failing on the full Clear app-building loop. Validate one full app call before launching an A/B batch.
+- **Direct Haiku is the reliable fallback for live app probes.** In the approval-queue smoke, docs-only Haiku compiled but misrouted approvals; hook-on Haiku compiled with the right threshold-routing shape and one remaining form warning.
+- **PowerShell automatic variables are not scratch names.** `$PID` is read-only; use names like `$serverId` in loops.
