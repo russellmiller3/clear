@@ -1,0 +1,128 @@
+import { describe, it, expect, run } from '../lib/testUtils.js';
+import {
+  RALPH_DEFAULTS,
+  formatRalphMessage,
+  readRalphConfig,
+  shouldRalphRetry,
+} from './ralph-layer.js';
+
+describe('ralph-layer.shouldRalphRetry', () => {
+  it('retries when approved requirements are missing', () => {
+    const decision = shouldRalphRetry({
+      audit: {
+        ok: false,
+        items: [{ text: 'deals route to VP approval', status: 'missing', reason: 'No VP route found.' }],
+      },
+      retryCount: 0,
+      maxRetries: 2,
+    });
+
+    expect(decision.retry).toBe(true);
+    expect(decision.blocked).toBe(false);
+  });
+
+  it('does not retry when the audit passed', () => {
+    const decision = shouldRalphRetry({
+      audit: { ok: true, items: [{ status: 'passed' }] },
+      retryCount: 0,
+      maxRetries: 2,
+    });
+
+    expect(decision.retry).toBe(false);
+    expect(decision.blocked).toBe(false);
+  });
+
+  it('stops after retry cap', () => {
+    const decision = shouldRalphRetry({
+      audit: { ok: false, items: [{ status: 'missing' }] },
+      retryCount: 2,
+      maxRetries: 2,
+    });
+
+    expect(decision.retry).toBe(false);
+    expect(decision.blocked).toBe(true);
+  });
+
+  it('can treat unverified requirements as non-blocking when configured', () => {
+    const decision = shouldRalphRetry({
+      audit: { ok: false, items: [{ status: 'unverified' }] },
+      retryCount: 0,
+      maxRetries: 2,
+      blockOnUnverified: false,
+    });
+
+    expect(decision.retry).toBe(false);
+    expect(decision.blocked).toBe(false);
+  });
+
+  it('respects the kill switch', () => {
+    const decision = shouldRalphRetry({
+      audit: { ok: false, items: [{ status: 'missing' }] },
+      retryCount: 0,
+      maxRetries: 2,
+      layerOff: true,
+    });
+
+    expect(decision.retry).toBe(false);
+    expect(decision.blocked).toBe(false);
+  });
+});
+
+describe('ralph-layer.formatRalphMessage', () => {
+  it('formats concrete gap feedback', () => {
+    const message = formatRalphMessage({
+      audit: {
+        items: [{
+          text: 'approval actions use optimistic lock protection',
+          status: 'unverified',
+          reason: 'No stale-update evidence.',
+        }],
+      },
+      retryIndex: 1,
+      maxRetries: 2,
+    });
+
+    expect(message).toContain('You are not done yet');
+    expect(message).toContain('optimistic lock protection');
+    expect(message).toContain('No stale-update evidence');
+    expect(message).toContain('ralph-retry 1/2');
+  });
+
+  it('limits the listed gaps so the retry message stays readable', () => {
+    const items = Array.from({ length: 8 }, (_, index) => ({
+      text: `requirement ${index + 1}`,
+      status: 'missing',
+      reason: `gap ${index + 1}`,
+    }));
+    const message = formatRalphMessage({ audit: { items }, retryIndex: 1, maxRetries: 2 });
+
+    expect(message).toContain('requirement 1');
+    expect(message).toContain('requirement 5');
+    expect(message).not.toContain('requirement 6');
+    expect(message).toContain('3 more');
+  });
+});
+
+describe('ralph-layer.readRalphConfig', () => {
+  it('defaults to enabled, two retries, and blocking unverified requirements', () => {
+    const config = readRalphConfig({});
+
+    expect(config.layerOff).toBe(false);
+    expect(config.maxRetries).toBe(2);
+    expect(config.blockOnUnverified).toBe(true);
+  });
+
+  it('reads env overrides', () => {
+    const config = readRalphConfig({
+      [RALPH_DEFAULTS.ENABLED_ENV]: '0',
+      [RALPH_DEFAULTS.MAX_RETRIES_ENV]: '4',
+      [RALPH_DEFAULTS.BLOCK_UNVERIFIED_ENV]: '0',
+    });
+
+    expect(config.layerOff).toBe(true);
+    expect(config.maxRetries).toBe(4);
+    expect(config.blockOnUnverified).toBe(false);
+  });
+});
+
+run();
