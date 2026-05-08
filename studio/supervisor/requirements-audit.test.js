@@ -81,6 +81,246 @@ when user requests data from /api/health:
     expect(audit.ok).toBe(false);
     expect(audit.items[0].status).not.toBe('passed');
   });
+
+  it('does not treat approved/rejected status values as approve/reject row actions', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  status, required
+
+when user sends deal to /api/deals:
+  set deal's status to 'approved'
+  saved = save deal as new Deal
+  send back saved
+
+when user sends update to /api/deals/status:
+  set update's status to 'rejected'
+  send back update
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'managers can approve or reject pending deals' }],
+    });
+
+    expect(audit.ok).toBe(false);
+    expect(audit.items[0].status).toBe('missing');
+    expect(audit.items[0].reason).toContain('approve and reject');
+  });
+
+  it('verifies must-store data-shape requirements without falling through to row actions', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  amount, number, required
+  close_date, required
+  status, required
+
+when user sends decision to /api/deals/decision:
+  set decision's status to 'approved'
+  send back decision
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'deals must store: name, amount, close_date, and status' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('Deals stores name, amount, close_date, and status');
+  });
+
+  it('verifies k-suffix approval routing like deals over $50k route to VP', () => {
+    const source = `
+build for javascript backend
+when user sends deal to /api/deals:
+  if deal's amount is greater than 50000:
+    set deal's approver to 'VP'
+  otherwise:
+    set deal's approver to 'Sales Manager'
+  saved = save deal as new Deal
+  send back saved
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'auto-route deals for approval: deals > $50k route to a VP, others route to a Sales Manager' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('50000');
+  });
+
+  it('verifies email notification requirements from concrete send-email evidence', () => {
+    const source = `
+build for javascript backend
+when user sends decision to /api/deals/decision:
+  set decision's status to 'approved'
+  send email to decision's rep_email with subject 'Deal approved'
+  send back decision
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "notify the rep via email when a deal status changes to 'approved' or 'rejected'" }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('email');
+  });
+
+  it('verifies dashboard queue/list requirements from page and display evidence', () => {
+    const source = `
+build for web
+page 'Manager Dashboard':
+  heading 'Deals Queue'
+  display pending_deals as table
+
+page 'Rep Dashboard':
+  heading 'My Deals'
+  display my_deals as table
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "show a dashboard with a 'Deals Queue' for managers and a 'My Deals' list for reps" }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('dashboard');
+  });
+
+  it('verifies sales-rep deal creation requirements from table and create endpoint evidence', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  amount (number), required
+  status, default 'draft'
+  owner_email, required
+
+when user sends deal to /api/deals:
+  requires login
+  deal's owner_email is caller's email
+  deal's status is 'pending'
+  saved = save deal as new Deal
+  send back saved
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'sales reps can create deals with an amount, name, and status (draft/pending)' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('create');
+  });
+
+  it('verifies VP approval requirements from threshold flag evidence', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  amount (number), required
+  is_vp_approval, boolean, default false
+
+when user sends deal to /api/deals:
+  if deal's amount is greater than 50000:
+    deal's is_vp_approval is true
+  saved = save deal as new Deal
+  send back saved
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'deals over 50000 require vice president (VP) approval' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('50000');
+  });
+
+  it('does not treat email notifications as audit-trail storage', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  name, required
+  status, default 'pending'
+  finance_email, required
+
+email finance when deal's status changes to 'approved':
+  subject is 'Approved'
+  body is 'Approved deal'
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "an audit trail must store every status change with the actor's email and timestamp" }],
+    });
+
+    expect(audit.ok).toBe(false);
+    expect(audit.items[0].status).toBe('missing');
+    expect(audit.items[0].reason).toContain('audit');
+  });
+
+  it('verifies audit-trail storage with actor email and timestamp evidence', () => {
+    const source = `
+build for javascript backend
+create an AuditLogs table:
+  deal_id, required
+  actor_email, required
+  old_status, required
+  new_status, required
+  changed_at, required
+
+when user sends decision to /api/deals/:id/approve:
+  create audit:
+    actor_email is caller's email
+    new_status is 'approved'
+    changed_at is now
+  save audit as new AuditLog
+  send back decision
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "an audit trail must store every status change with the actor's email and timestamp" }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('audit');
+  });
+
+  it('verifies named agent requirements from agent declaration evidence', () => {
+    const source = `
+build for javascript backend
+agent 'Deal Drafter' receives notes:
+  description = ask claude 'Write a deal description' with notes
+  send back description
+
+when user sends draft_req to /api/draft:
+  description = ask agent 'Deal Drafter' with draft_req's notes
+  send back { description: description }
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "an automated agent 'Deal Drafter' can help reps generate deal descriptions from raw notes" }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('agent');
+  });
 });
 
 run();

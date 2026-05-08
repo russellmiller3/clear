@@ -1,13 +1,42 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
 describe('meph pattern live probe harness', () => {
   it('defaults to a cheap OpenRouter model and blocks accidental Sonnet spend', () => {
+    expect(resolveProbeBackend({})).toEqual('openrouter');
     expect(resolveProbeModel({})).toEqual('deepseek/deepseek-v4-flash');
     expect(isExpensiveProbeModel('~anthropic/claude-sonnet-latest')).toEqual(true);
     expect(isExpensiveProbeModel('deepseek/deepseek-v4-flash')).toEqual(false);
+  });
+
+  it('can run direct Haiku probes without routing through OpenRouter', () => {
+    expect(resolveProbeBackend({ MEPH_PATTERN_PROBE_BACKEND: 'anthropic' })).toEqual('anthropic');
+    expect(resolveProbeModel({ MEPH_PATTERN_PROBE_BACKEND: 'anthropic' })).toEqual('claude-haiku-4-5-20251001');
+    expect(isExpensiveAnthropicModel('claude-sonnet-4-5-20250929')).toEqual(true);
+    expect(isExpensiveAnthropicModel('claude-haiku-4-5-20251001')).toEqual(false);
+
+    const env = buildProbeServerEnv({
+      processEnv: { OPENROUTER_API_KEY: 'sk-or-test', MEPH_BRAIN: 'openrouter' },
+      envFromFile: { ANTHROPIC_API_KEY: 'sk-ant-file-test' },
+      backend: 'anthropic',
+      anthropicKey: 'sk-ant-run-test',
+      openRouterKey: 'sk-or-run-test',
+      model: 'claude-haiku-4-5-20251001',
+      port: 3998,
+    });
+
+    expect(env.MEPH_BRAIN).toEqual(undefined);
+    expect(env.ANTHROPIC_API_KEY).toEqual('sk-ant-run-test');
+    expect(env.MEPH_MODEL).toEqual('claude-haiku-4-5-20251001');
+    expect(env.PORT).toEqual(3998);
+  });
+
+  it('defaults live probes away from the studio server-test port', () => {
+    expect(resolveProbePort({})).toEqual('3478');
+    expect(resolveProbePort({ MEPH_PATTERN_PROBE_PORT: '3499' })).toEqual('3499');
+    expect(resolveProbePort({ PORT: '3501' })).toEqual('3501');
   });
 
   it('forces the Ghost OpenRouter server to use the requested probe model', () => {
@@ -42,15 +71,28 @@ describe('meph pattern live probe harness', () => {
     }
   });
 
-  it('keeps a full-app approval suite for the hook A/B outcome test', () => {
-    const fullApps = probeSuites.approvalQueueFullApps;
+  it('keeps a broad full-app suite for the hook A/B outcome test', () => {
+    const fullApps = probeSuites.broadFunctionalApps;
 
     expect(fullApps.length).toEqual(7);
+    expect(fullApps.map(probe => probe.id)).toEqual([
+      'revenue-ops-dashboard-app',
+      'realtime-support-room-app',
+      'helpdesk-rag-agent-app',
+      'booking-workflow-app',
+      'expense-analytics-app',
+      'ecom-support-agent-app',
+      'deal-desk-rules-app',
+    ]);
     for (const probe of fullApps) {
       expect(probe.prompt).toContain('Build a complete Clear app');
+      expect(probe.minQualityPercent >= 70).toEqual(true);
+      expect(probe.qualityCriteria.length).toBeGreaterThan(5);
       expect(probe.prompt).not.toContain('pattern DB');
-      expect(probe.requiredSourceTerms.length).toBeGreaterThan(2);
+      expect(probe.requiredSourceTerms.length).toBeGreaterThan(5);
     }
+    const approvalish = fullApps.filter(probe => /approval queue/i.test(probe.prompt));
+    expect(approvalish.length).toEqual(0);
   });
 
   it('can select a suite and then narrow it by probe id', () => {
@@ -109,6 +151,8 @@ describe('meph pattern live probe harness', () => {
     expect(on.disablePatternSearchPromptGuard).toEqual(true);
     expect(off.disablePatternSearchTool).toEqual(true);
     expect(on.disablePatternSearchTool).toEqual(false);
+    expect(off.disableFactorHints).toEqual(true);
+    expect(on.disableFactorHints).toEqual(false);
     expect(off.messages[0].content).toContain('Call edit_code with the complete .clear source');
     expect(off.messages[0].content).not.toContain('pattern DB');
   });
@@ -135,6 +179,73 @@ describe('meph pattern live probe harness', () => {
     expect(passed.compiles).toEqual(true);
     expect(passed.usedEditor).toEqual(true);
     expect(passed.quality.percent).toBeGreaterThan(0);
+  });
+
+  it('requires usable quality for full-app builds, not just keyword presence', () => {
+    const probe = {
+      requiredSourceTerms: ['approval', '50000', 'manager', 'vp', 'approve', 'reject'],
+      minQualityPercent: 70,
+    };
+    const weakKeywordApp = {
+      source: `
+build for web and javascript backend
+allow signup and login
+create a Requests table:
+  amount (number), required
+  status, default 'pending'
+  approval_tier
+when user calls GET /api/requests/pending:
+  requires login
+  pending = get all Requests where status is 'pending'
+  send back pending
+page "Approval Queue":
+  display pending as table showing amount, status, approval_tier
+  button "Approve":
+    show "approve"
+  button "Reject":
+    show "reject"
+# manager vp 50000 approval
+`,
+      toolNames: ['edit_code'],
+      compile: { errors: [], warnings: [] },
+    };
+    const score = scoreGeneratedApp(probe, weakKeywordApp);
+
+    expect(score.missingRequired).toEqual([]);
+    expect(score.quality.percent).toBeLessThan(70);
+    expect(score.pass).toEqual(false);
+  });
+
+  it('scores broad full-app builds with per-domain rubrics', () => {
+    const probe = {
+      requiredSourceTerms: ['companies', 'contacts', 'deals', 'chart'],
+      minQualityPercent: 70,
+      qualityCriteria: [
+        { id: 'crm_tables', label: 'CRM tables exist', points: 25, all: [/create a Companies table/i, /create a Contacts table/i, /create a Deals table/i] },
+        { id: 'chart', label: 'Chart exists', points: 25, all: [/chart/i, /stage/i] },
+        { id: 'search', label: 'Search exists', points: 25, any: [/search/i, /filter/i] },
+      ],
+    };
+    const score = scoreGeneratedApp(probe, {
+      source: `
+build for web and javascript backend
+create a Companies table:
+  name, required
+create a Contacts table:
+  name, required
+create a Deals table:
+  stage, required
+  amount (number), required
+page "Revenue":
+  search deals by stage
+  chart "Deals by stage" as bar from deals grouped by stage
+`,
+      toolNames: ['edit_code'],
+      compile: { errors: [], warnings: [] },
+    });
+
+    expect(score.quality.percent >= 70).toEqual(true);
+    expect(score.pass).toEqual(true);
   });
 
   it('scores approval-queue quality beyond compile success and catches misrouting', () => {

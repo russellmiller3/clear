@@ -30,6 +30,9 @@
 - If Git cannot create `.git/index.lock`, immediately rerun the exact Git action with the required sandbox permission.
 - Do not anchor patches on non-ASCII punctuation copied from terminal output. PowerShell encoding can mangle dashes and quotes.
 - After a Windows command fails, switch to the known fallback or escalate once. Do not retry the same broken shape.
+- J Paul Getty rule: make any mistake once, but never the same mistake twice. If a command shape fails twice, stop hand-rolling it and add a tested helper, script, or rule before continuing.
+- Do not launch long Windows background jobs with inline PowerShell `Start-Process -Command` blocks. Use a checked-in Node runner that writes pid/out/err/exit files and has tests.
+- Do not inspect UTF-8-heavy logs with PowerShell `Get-Content` when output shows mojibake. Use `node scripts/mojibake-hygiene.mjs --tail=<path>` so logs render as ASCII and the diagnosis stays real.
 
 ## Branch Discipline
 

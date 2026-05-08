@@ -298,6 +298,9 @@ Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, and meph-memory.md. Meph can only write .clear files and requests.md.
 
 Meph has tools: edit_code, read_file, edit_file, run_command, compile, run_app, stop_app, http_request, read_terminal, run_tests, eval tools, browser tools, todo, source_map, patch_code, and browse_templates.
+Meph can use generated-app browser tools as real evidence: click app buttons, fill app inputs, inspect rendered DOM, read browser actions/network, and take screenshots. These tools target the running app preview, not unrestricted Studio chrome. Require browser proof when approved requirements depend on buttons, forms, navigation, layout, visible workflow, or UX; do not require screenshot ceremony for backend-only claims.
+Do not give Meph arbitrary Studio-button control. Any Studio-control tool must be allowlisted and must deny publish/deploy, rollback, destructive actions, secret/API-key controls, account settings, and paid actions unless the user explicitly approves.
+Ralph must fail closed. If compile errors remain, or if a requirement has no concrete implementation evidence after retry, Studio blocks `done` instead of letting Meph declare success. Audit-trail requirements need storage evidence; notifications alone never satisfy them.
 
 Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
 Tests: `node playground/server.test.js` (85 tests).
@@ -535,6 +538,8 @@ Before kicking any sweep, Meph eval, or multi-call research operation:
 
 **The structural backstop:** set a daily spending cap at console.anthropic.com/settings/limits. This rule depends on Claude's discipline; the console cap depends on nothing.
 
+**Report live-provider cost as you go.** Any OpenRouter, Anthropic, Gemini, or other paid live probe must print BOTH the current-run cost and the running total cost, formatted in dollars and cents. Required chat shape: `Cost: current run $0.40, total: $3.40.` Include provider tokens when available. For OpenRouter, `scripts/meph-requirements-live-smoke.mjs` must show `openRouterCostCredits`, token counts, generation ids, and `costReport`; if cost accounting is missing, treat the probe as failed instrumentation, not "probably cheap."
+
 ## Compiler error fixes are data-driven (MANDATORY)
 
 **Never rewrite a compiler error message based on a hunch that it "feels confusing."** Run `node scripts/top-friction-errors.mjs --top=10 --min-count=3` first and pick from the ranked list.
@@ -689,6 +694,19 @@ Every Clear session reads `FAQ.md` and `learnings.md` before changing files. `FA
 ## Learnings As You Go (MANDATORY)
 
 Update `learnings.md` during the work, not at some vague end-of-session moment. After each meaningful fix, completed phase, or repeated mistake, append the concrete lesson while the evidence is fresh.
+
+## J Paul Getty Rule: Dry Repeated Errors (MANDATORY - added 2026-05-07)
+
+**Make any mistake you want. Never make the same mistake twice.**
+
+- If the same command shape, Windows quirk, provider failure, test failure, or process mistake happens twice, stop repeating it.
+- Turn the mistake into a checked-in rule, helper, script, hook, or regression test before continuing.
+- Do not narrate the same failure as if noticing it were enough. Dry the error so the next agent cannot step in it.
+- Windows background jobs: never hand-roll long inline PowerShell launch blocks. Use a tested runner that writes pid/out/err/exit files.
+- Mojibake: do not trust terminal-rendered UTF-8 when PowerShell output looks corrupted. Verify file bytes and use the mojibake hygiene tailer for logs.
+- API/provider failures: if a provider or model path fails twice, add preflight or fallback before spending more probe calls.
+
+**Why:** 2026-05-07 - repeated Windows launch and UTF-8 display mistakes cost live debugging time during Meph pattern probes. The fix is not another promise. The fix is a guardrail.
 
 ## Browser Regression For Launch (MANDATORY)
 

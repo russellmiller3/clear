@@ -11,6 +11,7 @@ import {
 describe('requirements contract', () => {
   it('requires approval for vague app-build requests', () => {
     expect(shouldRequireApproval('build me a deal approval app')).toBe(true);
+    expect(shouldRequireApproval('Build a complete Clear app for a deal approval queue. Use approved requirements and retrieved patterns before choosing syntax.')).toBe(true);
     expect(shouldRequireApproval('what syntax routes approval by amount?')).toBe(false);
   });
 

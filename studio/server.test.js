@@ -538,6 +538,22 @@ try {
     assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
     assert(serverSrc.includes('approvedRequirements: requirementsApproval.approved'),
       'chat path feeds approved requirements into pattern preflight');
+    assert(serverSrc.includes('finalizeChatDoneWithRalph'),
+      'chat finalization runs the Ralph requirements gate before done');
+    assert(serverSrc.includes('finalizeChatDoneWithRalph({ forceBlock: true })'),
+      'chat iteration-limit finalization blocks instead of skipping Ralph');
+    assert(serverSrc.includes("type: 'model_usage'"),
+      'chat path forwards provider usage so live probes can account for spend');
+    assert(serverSrc.includes('Returns a PNG image content block'),
+      'screenshot_output tool description tells Meph it can inspect rendered layout visually');
+    assert(!serverSrc.includes('screenshot_output\',\n    description: \'Fetch the rendered HTML'),
+      'screenshot_output tool description no longer claims it returns HTML');
+    for (const toolName of ['click_element', 'fill_input', 'read_dom', 'read_actions', 'read_network', 'screenshot_output']) {
+      assert(serverSrc.includes(`name: '${toolName}'`) || serverSrc.includes(`case '${toolName}'`),
+        `${toolName} stays available as a generated-app browser tool`);
+    }
+    assert(serverSrc.includes('const activeTools = enableWebTools ? [...baseTools, ...WEB_TOOLS] : baseTools'),
+      'generated-app browser tools stay in baseTools; webTools only adds outside web search/fetch');
   }
 
   {
@@ -583,6 +599,30 @@ when user requests data from /api/health:
       'chat emits a Ralph retry event when approved requirements are missing');
     assert(data.message && data.message.includes('You are not done yet'),
       'Ralph retry flow returns concrete repair message');
+  }
+
+  {
+    const reqs = ['sales reps can submit deals'];
+    const { status, data } = await post('/api/_test/chat-ralph-flow', {
+      editorContent: `requirements:
+  sales reps can submit deals
+
+build for javascript backend
+when user sends deal to /api/deals:
+  if deal's amount is greater than 50000:
+`,
+      currentErrors: [{ line: 6, message: 'The if-block is empty -- add indented code below it.' }],
+      approvedRequirements: reqs,
+      approvedRequirementsId: requirementsId(reqs),
+      ralphRetryCount: 99,
+    });
+
+    assert(status === 200, 'compile-error Ralph flow endpoint returns 200');
+    assert(data.skipped === 'compile_errors', 'Ralph flow labels compile-error skip');
+    assert(data.decision?.blocked === true,
+      'Ralph flow blocks done when compile errors remain');
+    assert(data.events.some(e => e.type === 'requirements_blocked' && e.reason === 'compile_errors'),
+      'Ralph flow emits blocked event for remaining compile errors');
   }
 
   // =========================================================================

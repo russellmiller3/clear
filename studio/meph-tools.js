@@ -119,7 +119,7 @@ export async function dispatchTool(name, input, ctx, helpers) {
       return highlightCodeTool(input);
 
     case 'patch_code':
-      return patchCodeTool(input, ctx, helpers.patch);
+      return patchCodeTool(input, ctx, helpers);
 
     case 'run_tests': {
       const testResult = runTestsTool(input, ctx, helpers.parseTestOutput);
@@ -1055,7 +1055,8 @@ export function runTestsTool(input, ctx, parseTestOutput) {
  *
  * Mutates `result.hints` (text-match block + shape-search additive layer) and
  * `ctx.hintState` (so the post-turn HINT_APPLIED parser can find the right row).
- * No-op when ctx.factorDB is null OR CLEAR_HINT_DISABLE=1 OR hint retrieval
+ * No-op when ctx.factorDB is null, ctx.disableFactorHints is true,
+ * CLEAR_HINT_DISABLE=1, OR hint retrieval
  * raises (every block is wrapped in try/catch — non-fatal by design).
  *
  * Inputs:
@@ -1070,11 +1071,11 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
   const { sha1, safeArchetype, currentStep, classifyErrorCategory, rankPairwise, rankEBM, featurizeRow } = helpers;
 
   // ── Factor DB suggestion injection (flywheel closes here) ──
-  // CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
+  // ctx.disableFactorHints/CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
   // honest A/B measurement of hint effect on Meph's live pass rate.
   // The off-arm pays zero DB-query cost so the A/B measures hint *effect*,
   // not hint *compute overhead*.
-  const hintsDisabled = process.env.CLEAR_HINT_DISABLE === '1';
+  const hintsDisabled = ctx.disableFactorHints === true || process.env.CLEAR_HINT_DISABLE === '1';
   if (ctx.factorDB && r.errors.length > 0 && source && !hintsDisabled) {
     try {
       const archetype = safeArchetype(source);
@@ -1646,8 +1647,12 @@ export function listEvalsTool(input, ctx, compileForEval) {
  * @param {function} patch - the patch.js entry point (source, ops) => {applied, skipped, errors, source}
  * @returns {string} JSON-stringified result
  */
-export function patchCodeTool(input, ctx, patch) {
-  if (!ctx.source) return JSON.stringify({ error: 'No code in editor. Write code first.' });
+export function patchCodeTool(input, ctx, helpersOrPatch) {
+  const fullHelpers = typeof helpersOrPatch === 'object' && helpersOrPatch !== null
+    ? helpersOrPatch
+    : null;
+  const patch = fullHelpers ? fullHelpers.patch : helpersOrPatch;
+  const compileProgram = fullHelpers?.compileProgram;
   if (requirementsWriteBlocked(ctx)) {
     return JSON.stringify({
       error: 'Requirements must be reviewed and approved before Meph can patch Clear source.',
@@ -1655,6 +1660,7 @@ export function patchCodeTool(input, ctx, patch) {
       requirementsApproval: ctx.requirementsApproval,
     });
   }
+  if (!ctx.source) return JSON.stringify({ error: 'No code in editor. Write code first.' });
   const ops = input.operations;
   if (!Array.isArray(ops) || ops.length === 0) {
     return JSON.stringify({ error: 'Need an operations array. Example: [{ op: "fix_line", line: 5, replacement: "  send back user" }]' });
@@ -1664,12 +1670,20 @@ export function patchCodeTool(input, ctx, patch) {
     ctx.setSource(result.source);
     ctx.send({ type: 'code_update', code: result.source });
   }
-  return JSON.stringify({
+  const out = {
     applied: result.applied,
     skipped: result.skipped,
     errors: result.errors,
     totalLines: result.source.split('\n').length,
-  });
+  };
+  if (result.applied > 0 && typeof compileProgram === 'function') {
+    const compiled = compileProgram(result.source);
+    ctx.setErrors(compiled.errors || []);
+    ctx.setLastCompileResult(compiled);
+    out.compileErrors = compiled.errors || [];
+    out.warnings = compiled.warnings || [];
+  }
+  return JSON.stringify(out);
 }
 
 /**

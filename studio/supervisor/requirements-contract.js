@@ -81,9 +81,11 @@ export function shouldRequireApproval(userText = '') {
   const text = normalizeText(userText);
   if (!text) return false;
   if (QUESTION_WORDS.some(word => text.startsWith(`${word} `))) return false;
-  if (/\b(syntax|shape|pattern|example|snippet|how to)\b/.test(text)) return false;
-  return BUILD_VERBS.some(word => hasWord(text, word)) &&
+  const explicitBuild = BUILD_VERBS.some(word => hasWord(text, word)) &&
     APP_BUILD_WORDS.some(word => hasWord(text, word));
+  if (explicitBuild) return true;
+  if (/\b(syntax|shape|pattern|example|snippet|how to)\b/.test(text)) return false;
+  return false;
 }
 
 export function extractRequirementsDraft(text = '') {

@@ -2469,6 +2469,8 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Direct Haiku is the reliable fallback for live app probes.** In the approval-queue smoke, docs-only Haiku compiled but misrouted approvals; hook-on Haiku compiled with the right threshold-routing shape and one remaining form warning.
 - **PowerShell automatic variables are not scratch names.** `$PID` is read-only; use names like `$serverId` in loops.
 - **Pattern A/Bs need a rubric, not only pass/fail/time.** A compiled app can still be product-wrong. Score schema, create flow, routing, queue reads, actions, stale-submit guards, UI reachability, warnings, and auth as separate dimensions.
+- **Repeated Windows and mojibake errors need machinery, not tolerance.** If inline PowerShell or UTF-8 log display fails twice, stop using that path. Use the checked-in sweep runner and `scripts/mojibake-hygiene.mjs --tail=<path>` instead.
+- **Live probes must not squat on the studio test port.** Pattern sweeps default to 3478; server tests default to 3462. If they collide, rerun tests with `CLEAR_SERVER_TEST_PORT`, then fix the default.
 
 ## Session 2026-05-08: Requirements Need Approval Before Meph Builds
 
@@ -2483,3 +2485,9 @@ The durable split is: requirements are the per-app contract, pattern memory is r
 - **Pattern search should use approved requirements, not only the user's vague prompt.** The approved contract is the best retrieval query.
 - **Ralph must ignore requirement text as evidence.** Echoing "VP approval" in a `requirements:` block does not prove the app routes VP approvals.
 - **False done is worse than red.** If Ralph cannot verify a requirement after retries, block completion instead of letting Meph declare success.
+- **Compile errors must block done even when Ralph cannot run.** A clean "done" event with compile errors is a false positive. Treat remaining compiler errors as a hard requirements block.
+- **Patch tools must refresh compile state after mutating source.** If a tool edits the app, it must recompile immediately and update the shared error state before Meph can claim progress.
+- **Audit trails require storage evidence.** Emailing someone about a status change is not an audit log. Ralph needs an audit/log/history table plus actor, status, timestamp, and save evidence.
+- **Live detector gaps become local red tests.** The Gemini Cycle 11 smoke compiled cleanly, then Ralph blocked 3 unverified requirements. Those misses became deterministic detector tests before another paid probe.
+- **Generated-app browser use is an evidence channel, not ceremony.** CLI checks can miss dead buttons, broken event wiring, and layout failures. Make click/fill/inspect/screenshot available by default, and require it only for UI-visible claims.
+- **Studio-button control must be allowlisted.** Generated app controls are test targets. Studio shell controls can publish, roll back, delete, expose secrets, or spend money, so deny arbitrary clicks by default.

@@ -52,10 +52,15 @@ function auditRequirement(requirement, ctx) {
   const normalized = normalizeText(text);
   const detectors = [
     detectDataShape,
+    detectDealCreation,
     detectApprovalRouting,
+    detectAuditTrail,
+    detectNamedAgent,
     detectOptimisticLock,
     detectLoginSubmit,
     detectApproveReject,
+    detectNotification,
+    detectDashboardList,
   ];
 
   for (const detector of detectors) {
@@ -79,11 +84,11 @@ function auditRequirement(requirement, ctx) {
 }
 
 function detectDataShape(text, normalized, ctx) {
-  const match = normalized.match(/\beach\s+([a-z][a-z0-9_-]*)s?\s+stores\s+(.+)$/);
-  if (!match) return null;
+  const shape = parseDataShapeRequirement(text, normalized);
+  if (!shape) return null;
 
-  const entity = singularize(match[1]);
-  const fields = splitFields(match[2]);
+  const entity = singularize(shape.entity);
+  const fields = shape.fields;
   const tables = extractTableBlocks(ctx.evidenceLines);
   const table = tables.find(candidate => tableMatchesEntity(candidate.name, entity));
 
@@ -117,8 +122,67 @@ function detectDataShape(text, normalized, ctx) {
   };
 }
 
+function detectDealCreation(text, normalized, ctx) {
+  if (!/\b(create|submit|add)\b/.test(normalized) || !/\bdeals?\b/.test(normalized)) return null;
+  const fields = extractFieldsAfterWith(text);
+  const table = extractTableBlocks(ctx.evidenceLines)
+    .find(candidate => tableMatchesEntity(candidate.name, 'deal'));
+  const endpointLine = ctx.evidenceLines.find(line =>
+    /\bwhen user sends\b/.test(line.normalized) &&
+    /\bdeals?\b/.test(line.normalized) &&
+    /\/api\//.test(line.normalized)
+  );
+  const saveLine = ctx.evidenceLines.find(line => /\bsave\b/.test(line.normalized) && /\bnew deal\b/.test(line.normalized));
+  const loginLine = /\bsales reps?\b/.test(normalized)
+    ? ctx.evidenceLines.find(line => /\b(requires login|requires auth|caller|owner_email|rep_email)\b/.test(line.normalized))
+    : null;
+  const statusLine = /\bstatus\b/.test(normalized)
+    ? ctx.evidenceLines.find(line => /\b(status|pending|draft)\b/.test(line.normalized))
+    : null;
+
+  const missingFields = table && fields.length > 0
+    ? fields.filter(field => !table.fields.some(candidate => candidate.name === field))
+    : [];
+
+  if (table && endpointLine && saveLine && missingFields.length === 0) {
+    return {
+      status: PASS,
+      reason: 'Found deal create flow with matching stored fields.',
+      evidence: uniqueEvidence([
+        table.evidence[0],
+        ...fields.map(field => {
+          const found = table.fields.find(candidate => candidate.name === field);
+          return found ? found.evidence : null;
+        }),
+        evidence(endpointLine, 'source'),
+        evidence(saveLine, 'source'),
+        loginLine ? evidence(loginLine, 'source') : null,
+        statusLine ? evidence(statusLine, 'source') : null,
+      ]),
+    };
+  }
+
+  const missing = [];
+  if (!table) missing.push('deal table');
+  if (missingFields.length > 0) missing.push(`${joinEnglish(missingFields)} field${missingFields.length === 1 ? '' : 's'}`);
+  if (!endpointLine) missing.push('create endpoint');
+  if (!saveLine) missing.push('new deal save');
+
+  return {
+    status: MISSING,
+    reason: `No complete deal create flow found; missing ${joinEnglish(missing)}.`,
+    evidence: uniqueEvidence([
+      table ? table.evidence[0] : null,
+      endpointLine ? evidence(endpointLine, 'source') : null,
+      saveLine ? evidence(saveLine, 'source') : null,
+      loginLine ? evidence(loginLine, 'source') : null,
+      statusLine ? evidence(statusLine, 'source') : null,
+    ]),
+  };
+}
+
 function detectApprovalRouting(text, normalized, ctx) {
-  if (!normalized.includes('route') || !normalized.includes('approval')) return null;
+  if (!normalized.includes('route') && !normalized.includes('approval')) return null;
   const threshold = extractThreshold(normalized);
   const target = extractApprovalTarget(normalized);
   if (!threshold || !target) return null;
@@ -128,7 +192,7 @@ function detectApprovalRouting(text, normalized, ctx) {
     ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => line.normalized.includes(target))
     : ctx.evidenceLines.find(line => line.normalized.includes(target));
   const routingLine = thresholdLine
-    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => /\b(route|approver|approval|queue|assign|assigned)\b/.test(line.normalized))
+    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => /\b(route|approver|approval|queue|assign|assigned|is_vp_approval)\b/.test(line.normalized))
     : null;
 
   if (thresholdLine && targetLine && routingLine) {
@@ -150,6 +214,81 @@ function detectApprovalRouting(text, normalized, ctx) {
       thresholdLine ? evidence(thresholdLine, 'source') : null,
       targetLine ? evidence(targetLine, 'source') : null,
     ].filter(Boolean)),
+  };
+}
+
+function detectAuditTrail(text, normalized, ctx) {
+  const asksForAudit = /\b(audit|audit trail|audit log)\b/.test(normalized);
+  const asksForStatusHistory = /\b(store|record|track)\b/.test(normalized) && /\bstatus\b/.test(normalized) && /\b(change|changes|changed)\b/.test(normalized);
+  if (!asksForAudit && !asksForStatusHistory) return null;
+
+  const tables = extractTableBlocks(ctx.evidenceLines);
+  const auditTable = tables.find(table => /\baudit|log|history/.test(table.normalizedName));
+  const fieldNames = auditTable ? auditTable.fields.map(field => field.name) : [];
+  const hasActor = fieldNames.some(field => /\b(actor|user|approver|changed_by|rep)_?email\b/.test(field) || /\bactor\b/.test(field));
+  const hasTimestamp = fieldNames.some(field => /\b(changed_at|timestamp|created_at|time|date)\b/.test(field));
+  const hasStatus = fieldNames.some(field => /\b(status|old_status|new_status)\b/.test(field));
+  const writeLine = ctx.evidenceLines.find(line => /\b(save|create)\b/.test(line.normalized) && /\b(audit|log|history)\b/.test(line.normalized));
+  const actorLine = ctx.evidenceLines.find(line => /\b(actor|caller|email)\b/.test(line.normalized) && /\b(audit|actor_email|caller)\b/.test(line.normalized));
+  const timestampLine = ctx.evidenceLines.find(line => /\b(changed_at|timestamp|now|time)\b/.test(line.normalized));
+
+  if (auditTable && hasActor && hasTimestamp && hasStatus && writeLine) {
+    return {
+      status: PASS,
+      reason: 'Found audit-trail storage with actor, status, timestamp, and write evidence.',
+      evidence: uniqueEvidence([
+        auditTable.evidence[0],
+        ...auditTable.fields.map(field => field.evidence),
+        evidence(writeLine, 'source'),
+        actorLine ? evidence(actorLine, 'source') : null,
+        timestampLine ? evidence(timestampLine, 'source') : null,
+      ]),
+    };
+  }
+
+  return {
+    status: MISSING,
+    reason: 'No audit-trail storage found with actor email, status change, timestamp, and save evidence.',
+    evidence: uniqueEvidence([
+      auditTable ? auditTable.evidence[0] : null,
+      writeLine ? evidence(writeLine, 'source') : null,
+      actorLine ? evidence(actorLine, 'source') : null,
+      timestampLine ? evidence(timestampLine, 'source') : null,
+    ]),
+  };
+}
+
+function detectNamedAgent(text, normalized, ctx) {
+  if (!/\bagent\b/.test(normalized)) return null;
+  const names = extractQuotedPhrases(text).filter(phrase => phrase.trim().length > 0);
+  const agentName = names[0] || null;
+  const normalizedName = agentName ? normalizeText(agentName) : null;
+  const agentLine = normalizedName
+    ? ctx.evidenceLines.find(line => /\bagent\b/.test(line.normalized) && line.normalized.includes(normalizedName))
+    : ctx.evidenceLines.find(line => /\bagent\b/.test(line.normalized));
+  const callLine = normalizedName
+    ? ctx.evidenceLines.find(line => /\bask agent\b/.test(line.normalized) && line.normalized.includes(normalizedName))
+    : ctx.evidenceLines.find(line => /\bask agent\b/.test(line.normalized));
+  const outputLine = ctx.evidenceLines.find(line => /\b(description|draft|notes|generate)\b/.test(line.normalized));
+
+  if (agentLine && callLine && outputLine) {
+    return {
+      status: PASS,
+      reason: 'Found named agent declaration and call evidence.',
+      evidence: uniqueEvidence([
+        evidence(agentLine, 'source'),
+        evidence(callLine, 'source'),
+        evidence(outputLine, 'source'),
+      ]),
+    };
+  }
+
+  return {
+    status: MISSING,
+    reason: agentName
+      ? `No implemented agent named ${agentName} with a concrete call was found.`
+      : 'No implemented agent declaration with a concrete call was found.',
+    evidence: uniqueEvidence([agentLine, callLine, outputLine].filter(Boolean).map(line => evidence(line, 'source'))),
   };
 }
 
@@ -197,10 +336,10 @@ function detectLoginSubmit(text, normalized, ctx) {
 }
 
 function detectApproveReject(text, normalized, ctx) {
-  if (!normalized.includes('approve') || !normalized.includes('reject')) return null;
+  if (!/\bapprove\b/.test(normalized) || !/\breject\b/.test(normalized)) return null;
 
-  const approveLine = ctx.evidenceLines.find(line => /\bapprove(d)?\b/.test(line.normalized));
-  const rejectLine = ctx.evidenceLines.find(line => /\breject(ed)?\b/.test(line.normalized));
+  const approveLine = ctx.evidenceLines.find(line => isDecisionActionLine(line, 'approve'));
+  const rejectLine = ctx.evidenceLines.find(line => isDecisionActionLine(line, 'reject'));
   const statusLine = ctx.evidenceLines.find(line => /\b(status|pending)\b/.test(line.normalized));
 
   if (approveLine && rejectLine && statusLine) {
@@ -216,6 +355,96 @@ function detectApproveReject(text, normalized, ctx) {
     reason: 'No approve and reject status actions found outside the requirements block.',
     evidence: uniqueEvidence([approveLine, rejectLine, statusLine].filter(Boolean).map(line => evidence(line, 'source'))),
   };
+}
+
+function detectNotification(text, normalized, ctx) {
+  if (!/\b(notify|notification|email)\b/.test(normalized)) return null;
+
+  const emailLine = ctx.evidenceLines.find(line => /\b(send email|email to|notify)\b/.test(line.normalized));
+  const statusLine = ctx.evidenceLines.find(line => /\b(status|approved|rejected|changes?)\b/.test(line.normalized));
+  const recipient = extractNotificationRecipient(normalized);
+  const recipientLine = recipient
+    ? ctx.evidenceLines.find(line => line.normalized.includes(recipient))
+    : null;
+
+  if (emailLine && statusLine && (!recipient || recipientLine)) {
+    return {
+      status: PASS,
+      reason: 'Found status-change email notification evidence.',
+      evidence: uniqueEvidence([
+        evidence(emailLine, 'source'),
+        evidence(statusLine, 'source'),
+        recipientLine ? evidence(recipientLine, 'source') : null,
+      ]),
+    };
+  }
+
+  return {
+    status: MISSING,
+    reason: 'No concrete email or notification action found for this requirement.',
+    evidence: uniqueEvidence([emailLine, statusLine, recipientLine].filter(Boolean).map(line => evidence(line, 'source'))),
+  };
+}
+
+function detectDashboardList(text, normalized, ctx) {
+  if (!/\b(show|dashboard|queue|list)\b/.test(normalized)) return null;
+  const labelPhrases = extractQuotedPhrases(text).filter(phrase => /\b(queue|deals|dashboard)\b/i.test(phrase));
+  if (labelPhrases.length === 0 && !/\b(dashboard|queue|list)\b/.test(normalized)) return null;
+
+  const pageLine = ctx.evidenceLines.find(line => /\b(page|dashboard)\b/.test(line.normalized));
+  const displayLine = ctx.evidenceLines.find(line => /\b(display|table|list)\b/.test(line.normalized));
+  const missingLabels = labelPhrases.filter(phrase => {
+    const normalizedPhrase = normalizeText(phrase);
+    return !ctx.evidenceLines.some(line => line.normalized.includes(normalizedPhrase));
+  });
+
+  if (pageLine && displayLine && missingLabels.length === 0) {
+    return {
+      status: PASS,
+      reason: 'Found dashboard/list display evidence.',
+      evidence: uniqueEvidence([
+        evidence(pageLine, 'source'),
+        evidence(displayLine, 'source'),
+        ...labelPhrases.map(phrase => {
+          const normalizedPhrase = normalizeText(phrase);
+          const line = ctx.evidenceLines.find(candidate => candidate.normalized.includes(normalizedPhrase));
+          return line ? evidence(line, 'source') : null;
+        }),
+      ]),
+    };
+  }
+
+  return {
+    status: MISSING,
+    reason: missingLabels.length > 0
+      ? `Dashboard/list evidence is missing ${joinEnglish(missingLabels)}.`
+      : 'No dashboard/list display evidence found.',
+    evidence: uniqueEvidence([pageLine, displayLine].filter(Boolean).map(line => evidence(line, 'source'))),
+  };
+}
+
+function parseDataShapeRequirement(text, normalized) {
+  const direct = normalized.match(/\beach\s+([a-z][a-z0-9_-]*)s?\s+stores\s+(.+)$/);
+  if (direct) return { entity: direct[1], fields: splitFields(direct[2]) };
+
+  const mustStore = String(text || '').trim().match(/^([A-Za-z][A-Za-z0-9_-]*)s?\s+must\s+store:?\s+(.+)$/i);
+  if (mustStore) return { entity: mustStore[1], fields: splitFields(mustStore[2]) };
+
+  return null;
+}
+
+function extractFieldsAfterWith(text) {
+  const match = String(text || '').match(/\bwith\s+(.+)$/i);
+  if (!match) return [];
+  return splitFields(match[1].replace(/\([^)]*\)/g, ''));
+}
+
+function isDecisionActionLine(line, verb) {
+  const text = line.normalized || '';
+  const action = verb === 'approve' ? /\bapprove\b/.test(text) : /\breject\b/.test(text);
+  if (!action) return false;
+  if (/\b(status|approved|rejected|pending)\b/.test(text)) return false;
+  return /\b(button|action|when user sends|api|endpoint|route|decision)\b/.test(text);
 }
 
 function evidenceLinesFromSource(source) {
@@ -287,7 +516,7 @@ function extractTableBlocks(lines) {
 }
 
 function tableNameFromLine(line) {
-  const createMatch = line.match(/^create\s+a\s+(.+?)\s+table\s*:\s*$/i);
+  const createMatch = line.match(/^create\s+an?\s+(.+?)\s+table\s*:\s*$/i);
   if (createMatch) return createMatch[1].trim();
   const tableMatch = line.match(/^table\s+(.+?)\s*:\s*$/i);
   if (tableMatch) return tableMatch[1].trim();
@@ -312,17 +541,38 @@ function splitFields(text) {
 }
 
 function extractThreshold(text) {
-  const match = text.match(/\b(at least|over|above|greater than|greater than or equal to|under|below|less than)\s+\$?([0-9][0-9,]*)\b/);
+  const wordMatch = text.match(/\b(at least|over|above|greater than|greater than or equal to|under|below|less than)\s+\$?([0-9][0-9,]*)(k)?\b/);
+  const symbolOrBareMatch = wordMatch ? null : text.match(/\$?([0-9][0-9,]*)(k)\b/);
+  const match = wordMatch || symbolOrBareMatch;
   if (!match) return null;
+  const phrase = wordMatch ? match[1] : 'greater than';
+  const rawValue = wordMatch ? match[2] : match[1];
+  const suffix = wordMatch ? match[3] : match[2];
+  const numeric = Number(String(rawValue).replace(/,/g, '')) * (suffix === 'k' ? 1000 : 1);
   return {
-    phrase: match[1],
-    value: match[2].replace(/,/g, ''),
+    phrase,
+    value: String(numeric),
   };
 }
 
 function extractApprovalTarget(text) {
-  const match = text.match(/\bto\s+(?:the\s+)?([a-z][a-z0-9_-]*)\s+(?:approval|queue)\b/);
+  const match = text.match(/\bto\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\s+(?:approval|queue)\b/) ||
+    text.match(/\broute\s+to\s+(?:a\s+|the\s+)?([a-z][a-z0-9_-]*)\b/);
+  if (!match && /\b(vice president|vp)\b/.test(text)) return 'vp';
   return match ? normalizeIdentifier(match[1]) : null;
+}
+
+function extractNotificationRecipient(normalized) {
+  const match = normalized.match(/\b(?:notify|email)\s+(?:the\s+)?([a-z][a-z0-9_-]*)\b/);
+  return match ? normalizeIdentifier(match[1]) : null;
+}
+
+function extractQuotedPhrases(text) {
+  const out = [];
+  for (const match of String(text || '').matchAll(/['"]([^'"]+)['"]/g)) {
+    if (match[1]) out.push(match[1]);
+  }
+  return out;
 }
 
 function nearbyLines(lines, lineNumber, radius) {
@@ -367,6 +617,7 @@ function normalizeIdentifier(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
+    .replace(/^(?:a|an|the)\s+/, '')
     .replace(/['"]/g, '')
     .replace(/[^a-z0-9_-]+/g, ' ')
     .trim()

@@ -247,12 +247,20 @@ function buildChatRalphFlow({
     };
   }
 
-  if (Array.isArray(currentErrors) && currentErrors.length > 0) {
+  const activeErrors = Array.isArray(currentErrors) && currentErrors.length > 0
+    ? currentErrors
+    : null;
+  if (activeErrors) {
     return {
       audit: null,
-      decision: { retry: false, blocked: false, gaps: [] },
-      events,
-      message: null,
+      decision: { retry: false, blocked: true, gaps: activeErrors },
+      events: [{
+        type: 'requirements_blocked',
+        reason: 'compile_errors',
+        summary: 'Cannot finish while compile errors remain.',
+        items: activeErrors,
+      }],
+      message: 'Cannot finish while compile errors remain. Fix the compiler errors before finalizing.',
       skipped: 'compile_errors',
     };
   }
@@ -261,9 +269,14 @@ function buildChatRalphFlow({
   if (Array.isArray(compiled.errors) && compiled.errors.length > 0) {
     return {
       audit: null,
-      decision: { retry: false, blocked: false, gaps: [] },
-      events,
-      message: null,
+      decision: { retry: false, blocked: true, gaps: compiled.errors },
+      events: [{
+        type: 'requirements_blocked',
+        reason: 'compile_errors',
+        summary: 'Cannot finish while compile errors remain.',
+        items: compiled.errors,
+      }],
+      message: 'Cannot finish while compile errors remain. Fix the compiler errors before finalizing.',
       skipped: 'compile_errors',
     };
   }
@@ -2752,7 +2765,7 @@ You can modify .clear files and requests.md. You can create new files of any all
   },
   {
     name: 'screenshot_output',
-    description: 'Fetch the rendered HTML from the running app to verify UI changes. Returns the full HTML document so you can check structure, content, and class names. Use this after UI changes to confirm they took effect.',
+    description: 'Capture the running app visually. Returns a PNG image content block so you can inspect rendered layout, spacing, overflow, broken chrome, and UX problems. Use after UI changes and after click/fill flows. Requires app to be running.',
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -3299,7 +3312,7 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSou
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged, patternPreflight: patternPreflightRequest, disablePatternSearchPromptGuard, disablePatternSearchTool, requirementsMode, approvedRequirements, approvedRequirementsId } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged, patternPreflight: patternPreflightRequest, disablePatternSearchPromptGuard, disablePatternSearchTool, disableFactorHints, requirementsMode, approvedRequirements, approvedRequirementsId } = req.body;
   // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
   // A step "passes" if ALL its sourceMatches regexes appear in the current source.
   // currentStep = the highest-index step whose regexes all match. This lets us
@@ -3546,6 +3559,7 @@ app.post('/api/chat', async (req, res) => {
       sessionSteps,
       pairwiseBundle: _pairwiseBundle,
       ebmBundle: _ebmBundle,
+      disableFactorHints: disableFactorHints === true,
       hintState: {
         lastFactorRowId: _lastFactorRowId,
         hintsInjectedRowId: _hintsInjectedRowId,
@@ -3640,6 +3654,7 @@ app.post('/api/chat', async (req, res) => {
     required: !!patternPreflightResult.required,
     docs: patternPreflightResult.docs?.map(doc => doc.filename) || [],
     pattern_count: patternPreflightResult.patterns?.length || 0,
+    factor_hints_disabled: disableFactorHints === true,
   });
   let toolResults = [];
   const baseTools = disablePatternSearchTool === true
@@ -3669,10 +3684,25 @@ app.post('/api/chat', async (req, res) => {
     // Disable with SNAP_LAYER_OFF=1; override cap with SNAP_MAX_RETRIES.
     const snapConfig = readSnapConfig(process.env);
     let snapRetryCount = 0;
-
-    for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
     const ralphConfig = readRalphConfig(process.env);
     let ralphRetryCount = 0;
+    function finalizeChatDoneWithRalph({ forceBlock = false } = {}) {
+      const effectiveRetryCount = forceBlock
+        ? Math.max(ralphRetryCount, ralphConfig.maxRetries)
+        : ralphRetryCount;
+      const ralphFlow = buildChatRalphFlow({
+        editorContent: currentSource,
+        currentErrors,
+        approvedRequirements: requirementsApproval.approved ? requirementsApproval.requirements : [],
+        approvedRequirementsId: requirementsApproval.approved ? requirementsApproval.id : null,
+        ralphRetryCount: effectiveRetryCount,
+        ralphConfig,
+      });
+      for (const event of ralphFlow.events) send(event);
+      return ralphFlow;
+    }
+
+    for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
       // Bail out the moment the user clicks Stop. The response close
       // handler set this flag and already aborted the in-flight fetch;
       // checking here ensures we don't fire ANOTHER tool iteration after
@@ -3858,6 +3888,7 @@ app.post('/api/chat', async (req, res) => {
             // If cache_read stays at 0 across iterations, we have a silent
             // cache invalidator (timestamps/UUIDs in system, tool reorder, etc.).
             if (ev.usage) {
+              send({ type: 'model_usage', usage: ev.usage });
               const cr = ev.usage.cache_read_input_tokens || 0;
               const cw = ev.usage.cache_creation_input_tokens || 0;
               const it = ev.usage.input_tokens || 0;
@@ -3946,17 +3977,7 @@ app.post('/api/chat', async (req, res) => {
           continue; // re-enter the iteration loop with the augmented messages
         }
 
-        _captureHintUsage('end_turn');
-        writeSessionQuality();
-        const ralphFlow = buildChatRalphFlow({
-          editorContent: currentSource,
-          currentErrors,
-          approvedRequirements: requirementsApproval.approved ? requirementsApproval.requirements : [],
-          approvedRequirementsId: requirementsApproval.approved ? requirementsApproval.id : null,
-          ralphRetryCount,
-          ralphConfig,
-        });
-        for (const event of ralphFlow.events) send(event);
+        const ralphFlow = finalizeChatDoneWithRalph();
         if (ralphFlow.decision.retry) {
           ralphRetryCount++;
           currentMessages.push({ role: 'assistant', content: assistantContent });
@@ -3984,6 +4005,8 @@ app.post('/api/chat', async (req, res) => {
           return;
         }
 
+        _captureHintUsage('end_turn');
+        writeSessionQuality();
         send({ type: 'done', toolResults, source: currentSource });
         res.end();
         return;
@@ -4206,6 +4229,13 @@ app.post('/api/chat', async (req, res) => {
     }
 
     send({ type: 'context_usage', ...estimateContextUsage() });
+    const ralphFlow = finalizeChatDoneWithRalph({ forceBlock: true });
+    if (ralphFlow.decision.retry || ralphFlow.decision.blocked) {
+      _captureHintUsage('iter_limit');
+      writeSessionQuality();
+      res.end();
+      return;
+    }
     _captureHintUsage('iter_limit');
     writeSessionQuality();
     send({ type: 'done', toolResults, source: currentSource });

@@ -42,6 +42,10 @@ export function resolveOpenRouterModel(opts = {}, env = process.env) {
 }
 
 /** Public entry — called from router.js when MEPH_BRAIN starts with 'openrouter'. */
+export function buildOpenRouterRequestBody(openAIPayload = {}) {
+  return { ...openAIPayload, stream: true };
+}
+
 export async function chatViaOpenRouter(payload, opts = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -62,7 +66,7 @@ export async function chatViaOpenRouter(payload, opts = {}) {
         'HTTP-Referer': REFERER,
         'X-Title': 'Clear Studio (Ghost Meph)',
       },
-      body: JSON.stringify({ ...openAIPayload, stream: true }),
+      body: JSON.stringify(buildOpenRouterRequestBody(openAIPayload)),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
@@ -83,7 +87,8 @@ export async function chatViaOpenRouter(payload, opts = {}) {
     }
     return errorResponse(`[openrouter HTTP ${r.status}: ${detail || 'no body'}]`);
   }
-  return wrapOpenAIStreamAsAnthropicSSE(r.body, model);
+  const generationId = r.headers?.get?.('x-generation-id') || null;
+  return wrapOpenAIStreamAsAnthropicSSE(r.body, model, { generationId });
 }
 
 function formatNetworkError(err) {

@@ -6,15 +6,34 @@ import { fileURLToPath } from 'url';
 
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const nodeBin = process.execPath;
-const port = process.env.PORT || '3462';
+export const DEFAULT_PATTERN_PROBE_PORT = '3478';
+export function resolveProbePort(env = process.env) {
+  return String(env.MEPH_PATTERN_PROBE_PORT || env.PORT || DEFAULT_PATTERN_PROBE_PORT);
+}
+const port = resolveProbePort();
 const base = `http://127.0.0.1:${port}`;
 const CHEAP_DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v4-flash';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+export function resolveProbeBackend(env = process.env) {
+  const backend = String(env.MEPH_PATTERN_PROBE_BACKEND || 'openrouter').toLowerCase();
+  if (!['openrouter', 'anthropic'].includes(backend)) {
+    throw new Error(`Unknown probe backend "${backend}". Use openrouter or anthropic.`);
+  }
+  return backend;
+}
 export function resolveProbeModel(env = process.env) {
+  if (resolveProbeBackend(env) === 'anthropic') {
+    return env.MEPH_PATTERN_PROBE_MODEL || env.MEPH_MODEL || DEFAULT_ANTHROPIC_MODEL;
+  }
   return env.MEPH_PATTERN_PROBE_MODEL || env.OPENROUTER_MODEL || CHEAP_DEFAULT_OPENROUTER_MODEL;
 }
 export function isExpensiveProbeModel(modelName) {
   return /\banthropic\/claude-(?:sonnet|opus)\b|claude-sonnet|claude-opus/i.test(String(modelName || ''));
 }
+export function isExpensiveAnthropicModel(modelName) {
+  return /claude-(?:sonnet|opus)/i.test(String(modelName || ''));
+}
+const backend = resolveProbeBackend();
 const model = resolveProbeModel();
 const chatTimeoutMs = Number(process.env.MEPH_PATTERN_PROBE_TIMEOUT_MS || 600_000);
 const TRIAL_BUILD_INSTRUCTION = [
@@ -102,58 +121,129 @@ const narrowApprovalQueueProbes = [
   },
 ];
 
-const approvalQueueFullAppProbes = [
+const broadFunctionalAppProbes = [
   {
-    id: 'threshold-routing-app',
-    prompt: 'Build a complete Clear app for an approval queue where requests under 50000 go to a manager and requests 50000 or above go to a VP. Include the queue screen, request data, routing behavior, and approve/reject actions.',
-    requiredSourceTerms: ['approval', '50000', 'manager', 'vp', 'approve', 'reject'],
-    optionalSourceTerms: ['route', 'display', 'table', 'endpoint'],
+    id: 'revenue-ops-dashboard-app',
+    prompt: 'Build a complete Clear app for a revenue operations dashboard. It needs companies, contacts, and deals with relationships; logged-in users can add deals and contacts; the dashboard must show a searchable/filterable sales pipeline, aggregate pipeline value, stage counts, a chart by stage, and a selected company detail panel with that company\'s contacts and deals.',
+    requiredSourceTerms: ['companies', 'contacts', 'deals', 'requires login', 'search', 'filter', 'chart', 'selected'],
+    optionalSourceTerms: ['has many', 'belongs to', 'sum', 'count', 'display'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'crm_tables', label: 'Companies, contacts, and deals are real tables', points: 12, all: [/create\s+a\s+companies\s+table/i, /create\s+a\s+contacts\s+table/i, /create\s+a\s+deals\s+table/i] },
+      { id: 'relationships', label: 'Records model company/contact/deal relationships', points: 10, any: [/has many/i, /belongs to/i, /\bcompany_id\b/i, /\bcontact_id\b/i] },
+      { id: 'write_flows', label: 'Users can create deals and contacts through endpoints or buttons', points: 10, all: [/deals/i, /contacts/i, /(?:save|send|post)/i] },
+      { id: 'search_filter', label: 'Pipeline is searchable or filterable', points: 10, any: [/\bsearch\b/i, /\bfilter\b/i, /where\s+\w+.*stage/i] },
+      { id: 'aggregates', label: 'Dashboard computes pipeline value and stage counts', points: 12, all: [/\b(?:sum|total|pipeline_value)\b/i, /\b(?:count|stage_count|by stage)\b/i] },
+      { id: 'chart', label: 'Dashboard includes a chart by stage', points: 10, all: [/\bchart\b/i, /\bstage\b/i] },
+      { id: 'selected_detail', label: 'Selected company detail shows related rows', points: 10, all: [/\bselected/i, /display\s+\w+[\s\S]{0,100}as table/i] },
+    ],
   },
   {
-    id: 'my-pending-queue-app',
-    prompt: 'Build a complete Clear app for an approval queue where the current approver only sees pending requests assigned to them. Include login protection, pending filtering, and row actions.',
-    requiredSourceTerms: ['approval', 'pending', 'approver', 'requires login', 'approve', 'reject'],
-    optionalSourceTerms: ['current user', 'display', 'table', 'endpoint'],
+    id: 'realtime-support-room-app',
+    prompt: 'Build a complete Clear app for a logged-in support chat room. It needs conversations and messages, a chat UI, a backend endpoint for posting messages, real-time updates using subscribe/broadcast, an agent handoff flag, open/closed status, and a sidebar/table where support staff can select a conversation and see its message history.',
+    requiredSourceTerms: ['conversations', 'messages', 'requires login', 'subscribe', 'broadcast', 'chat', 'selected'],
+    optionalSourceTerms: ['display as chat', 'status', 'handoff', 'table', 'endpoint'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'chat_tables', label: 'Conversations and messages are persisted', points: 12, all: [/create\s+a\s+conversations\s+table/i, /create\s+a\s+messages\s+table/i] },
+      { id: 'auth', label: 'Chat is login-protected', points: 8, all: [/allow signup and login/i, /requires login/i] },
+      { id: 'post_message', label: 'Posting a message goes through a backend path', points: 10, all: [/when user (?:sends|calls)/i, /\/api\/messages|\/api\/chat|\/api\/conversations/i, /save\s+\w+\s+as\s+new\s+messages?/i] },
+      { id: 'realtime', label: 'Realtime update primitive is used', points: 16, all: [/subscribe to/i, /broadcast to all/i] },
+      { id: 'chat_ui', label: 'Messages render as chat or message history', points: 12, any: [/display\s+\w+\s+as chat/i, /message history/i, /display\s+\w+[\s\S]{0,100}as table/i] },
+      { id: 'triage_state', label: 'Conversation tracks open/closed and handoff state', points: 10, all: [/\bstatus\b/i, /\b(?:handoff|agent)\b/i] },
+      { id: 'selected_thread', label: 'Staff can select a conversation and inspect it', points: 8, all: [/\bselected/i, /\bconversation/i] },
+    ],
   },
   {
-    id: 'row-actions-app',
-    prompt: 'Build a complete Clear app for an approval queue table where each row has approve and reject actions that update that request through the backend. Include seed request data and a visible queue screen.',
-    requiredSourceTerms: ['approval', 'approve', 'reject', 'request', 'table', 'endpoint'],
-    optionalSourceTerms: ['with actions', 'status', 'pending'],
+    id: 'helpdesk-rag-agent-app',
+    prompt: 'Build a complete Clear app for an AI helpdesk assistant. It needs products, knowledge articles, and support tickets; a user can ask a question in chat; the Helpdesk agent must know about the products and articles, use tools to look things up and create tickets, remember the conversation, block unsafe argument patterns, and show a ticket queue for unresolved issues.',
+    requiredSourceTerms: ['agent', 'ask claude', 'has tools', 'knows about', 'remember conversation', 'block arguments matching', 'tickets'],
+    optionalSourceTerms: ['products', 'articles', 'display as chat', 'queue', 'requires login'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'knowledge_tables', label: 'Products/articles/tickets are modeled as data', points: 12, all: [/create\s+a\s+products\s+table/i, /create\s+a\s+(?:knowledge\s+)?articles\s+table/i, /create\s+a\s+tickets\s+table/i] },
+      { id: 'agent_defined', label: 'Helpdesk agent is explicitly defined', points: 12, all: [/\bagent\s+['"]?helpdesk/i, /ask claude/i] },
+      { id: 'agent_tools', label: 'Agent has lookup and ticket tools', points: 12, all: [/has tools/i, /lookup/i, /(?:create|open).*ticket|ticket/i] },
+      { id: 'rag_context', label: 'Agent knows about knowledge data', points: 10, all: [/knows about/i, /products/i, /articles/i] },
+      { id: 'memory', label: 'Agent remembers conversation context', points: 8, all: [/remember conversation/i] },
+      { id: 'guardrail', label: 'Unsafe tool arguments are blocked', points: 10, all: [/block arguments matching/i] },
+      { id: 'ticket_queue', label: 'Unresolved tickets are visible in the app', points: 10, all: [/display\s+\w+[\s\S]{0,100}as table/i, /unresolved|open|pending/i] },
+    ],
   },
   {
-    id: 'stale-submit-app',
-    prompt: 'Build a complete Clear app for an approval queue that prevents double-processing when two approvers click approve on the same pending request. Include the concurrency protection in the backend update path.',
-    requiredSourceTerms: ['approval', 'pending', 'approve', 'status', 'with optimistic lock'],
-    optionalSourceTerms: ['409', 'reject', 'request'],
+    id: 'booking-workflow-app',
+    prompt: 'Build a complete Clear app for a room booking workflow. It needs rooms, customers, and bookings with relationships; logged-in users can search available rooms, create a booking for a time range, prevent double booking, show upcoming bookings in a table, show room utilization as a chart, and allow canceling a booking through a backend action.',
+    requiredSourceTerms: ['rooms', 'customers', 'bookings', 'requires login', 'available', 'cancel', 'chart'],
+    optionalSourceTerms: ['belongs to', 'has many', 'time', 'date', 'with optimistic lock'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'booking_tables', label: 'Rooms, customers, and bookings are modeled', points: 12, all: [/create\s+a\s+rooms\s+table/i, /create\s+a\s+customers\s+table/i, /create\s+a\s+bookings\s+table/i] },
+      { id: 'relationships', label: 'Bookings connect to rooms and customers', points: 10, any: [/belongs to/i, /\broom_id\b/i, /\bcustomer_id\b/i] },
+      { id: 'availability_search', label: 'Users can search/filter available rooms', points: 10, all: [/available/i, /(?:search|filter|where)/i] },
+      { id: 'create_booking', label: 'Booking creation validates and saves a booking', points: 12, all: [/when user (?:sends|calls)/i, /\/api\/bookings/i, /save\s+\w+\s+as\s+new\s+bookings?/i] },
+      { id: 'double_booking_guard', label: 'Double-booking is explicitly guarded', points: 12, any: [/double/i, /overlap/i, /already booked/i, /with optimistic lock/i] },
+      { id: 'cancel_action', label: 'Cancel action updates booking state through backend', points: 8, all: [/cancel/i, /\/api\/bookings\/:id/i] },
+      { id: 'utilization_chart', label: 'Utilization appears as a chart', points: 10, all: [/chart/i, /utilization|bookings by room|room/i] },
+    ],
   },
   {
-    id: 'legal-review-app',
-    prompt: 'Build a complete Clear app for an approval queue where requests with a contract flag go to legal review before final approval. Include routing, queue visibility, and approve/reject actions.',
-    requiredSourceTerms: ['approval', 'contract', 'legal', 'review', 'approve', 'reject'],
-    optionalSourceTerms: ['route', 'pending', 'table'],
+    id: 'expense-analytics-app',
+    prompt: 'Build a complete Clear app for expense analytics. It needs categories and expenses; logged-in users can add expenses, filter by category and date, see total monthly spend, see spending by category as a chart, export expenses to CSV, and inspect a selected expense with merchant, amount, category, and notes.',
+    requiredSourceTerms: ['categories', 'expenses', 'requires login', 'filter', 'chart', 'CSV', 'selected'],
+    optionalSourceTerms: ['sum', 'total', 'month', 'display as table', 'export'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'expense_tables', label: 'Categories and expenses are modeled', points: 12, all: [/create\s+a\s+categories\s+table/i, /create\s+a\s+expenses\s+table/i] },
+      { id: 'create_expense', label: 'Users can add expenses through UI/backend', points: 10, all: [/amount/i, /merchant/i, /save\s+\w+\s+as\s+new\s+expenses?/i] },
+      { id: 'filters', label: 'Expense list filters by category and date/month', points: 12, all: [/filter|where/i, /category/i, /date|month/i] },
+      { id: 'aggregates', label: 'Monthly total spend is computed', points: 10, all: [/total|sum/i, /month|monthly/i] },
+      { id: 'chart', label: 'Spending by category chart exists', points: 12, all: [/chart/i, /category/i] },
+      { id: 'csv_export', label: 'CSV export path exists', points: 10, all: [/csv/i, /export|download/i] },
+      { id: 'selected_detail', label: 'Selected expense detail includes notes', points: 8, all: [/selected/i, /notes/i] },
+    ],
   },
   {
-    id: 'selected-detail-app',
-    prompt: 'Build a complete Clear app for an approval queue where clicking a row shows that request amount, owner, and notes beside the table. Include approve/reject actions for the selected request.',
-    requiredSourceTerms: ['approval', 'selected', 'amount', 'owner', 'notes', 'approve', 'reject'],
-    optionalSourceTerms: ['detail', 'table', 'request'],
+    id: 'ecom-support-agent-app',
+    prompt: 'Build a complete Clear app for an e-commerce support assistant. It needs products, orders, returns, and inventory; a customer can chat with an agent; the agent routes intents for order lookup, return creation, stock checking, and product recommendations; it remembers conversation context; and an admin dashboard shows open returns, low-stock products, and a chart of support intents.',
+    requiredSourceTerms: ['products', 'orders', 'returns', 'inventory', 'agent', 'ask claude', 'has tools', 'remember conversation', 'chart'],
+    optionalSourceTerms: ['intent', 'lookup', 'stock', 'display as chat', 'dashboard'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'commerce_tables', label: 'Commerce data covers products, orders, returns, and inventory', points: 12, all: [/products/i, /orders/i, /returns/i, /inventory|stock/i] },
+      { id: 'agent_defined', label: 'Customer support agent is defined', points: 10, all: [/agent\s+['"]?(?:customer support|support)/i, /ask claude/i] },
+      { id: 'agent_tools', label: 'Agent has tools for order, return, stock, and recommendation flows', points: 14, all: [/has tools/i, /order/i, /return/i, /stock|inventory/i, /recommend/i] },
+      { id: 'intent_routing', label: 'Intent routing branches by support task', points: 10, all: [/intent|route/i, /order/i, /return/i] },
+      { id: 'memory', label: 'Conversation memory is enabled', points: 8, all: [/remember conversation/i] },
+      { id: 'chat_ui', label: 'Customer chat UI is present', points: 8, any: [/display\s+\w+\s+as chat/i, /chat/i] },
+      { id: 'admin_dashboard', label: 'Admin dashboard shows returns, low stock, and intent chart', points: 12, all: [/dashboard|page/i, /low.?stock|inventory/i, /chart/i] },
+    ],
   },
   {
-    id: 'manager-gated-app',
-    prompt: 'Build a complete Clear app for an approval queue where only approval managers can load the queue screen. Include login protection, manager-only access, and approve/reject actions.',
-    requiredSourceTerms: ['approval', 'manager', 'requires login', 'approve', 'reject'],
-    optionalSourceTerms: ['role', 'guard', 'page'],
+    id: 'deal-desk-rules-app',
+    prompt: 'Build a complete Clear app for a regulated deal desk. It needs deals with discount, amount, segment, and status; logged-in sellers can submit deals; business rules enforce a discount cap and positive price floor; deals route by size or discount to RevOps, finance, or CRO; approvers get a pending queue with selected deal detail; approve/reject/counter actions update status with optimistic lock protection; and reports show approval mix charts.',
+    requiredSourceTerms: ['deals', 'discount', 'rule', 'route', 'RevOps', 'finance', 'CRO', 'approve', 'reject', 'counter', 'with optimistic lock', 'chart'],
+    optionalSourceTerms: ['queue', 'selected', 'requires login', 'status', 'report'],
+    minQualityPercent: 70,
+    qualityCriteria: [
+      { id: 'deal_table', label: 'Deals table has discount, amount, segment, and status', points: 10, all: [/create\s+a\s+deals\s+table/i, /discount/i, /amount/i, /segment/i, /status/i] },
+      { id: 'rules', label: 'Named business rules enforce discount and price constraints', points: 14, all: [/\brule\b/i, /discount/i, /price|amount/i, /enforce/i] },
+      { id: 'routing', label: 'Routing sends deals to RevOps, finance, or CRO', points: 14, all: [/\broute\b/i, /revops/i, /finance/i, /cro/i] },
+      { id: 'submit_flow', label: 'Sellers can submit deals through backend/UI', points: 8, all: [/when user (?:sends|calls)/i, /\/api\/deals/i, /save\s+\w+\s+as\s+new\s+deals?/i] },
+      { id: 'decision_actions', label: 'Approve, reject, and counter actions update deal status', points: 12, all: [/approve/i, /reject/i, /counter/i, /status/i] },
+      { id: 'optimistic_lock', label: 'Decision actions use optimistic locking', points: 8, all: [/with optimistic lock/i] },
+      { id: 'reports', label: 'Reports include approval mix chart', points: 8, all: [/chart/i, /approval mix|status mix|report/i] },
+    ],
   },
 ];
 
 export const probeSuites = {
   baselineApprovalQueue: baselineApprovalQueueProbes,
   narrowApprovalQueue: narrowApprovalQueueProbes,
-  approvalQueueFullApps: approvalQueueFullAppProbes,
+  approvalQueueFullApps: broadFunctionalAppProbes,
+  broadFunctionalApps: broadFunctionalAppProbes,
 };
 
-export function selectProbes({ suiteName = 'approvalQueueFullApps', only = '' } = {}) {
+export function selectProbes({ suiteName = 'broadFunctionalApps', only = '' } = {}) {
   const suite = probeSuites[suiteName];
   if (!suite) {
     throw new Error(`Unknown probe suite "${suiteName}". Choose one of: ${Object.keys(probeSuites).join(', ')}`);
@@ -191,20 +281,32 @@ function loadEnvFile() {
 export function buildProbeServerEnv({
   processEnv = process.env,
   envFromFile = {},
+  backend = resolveProbeBackend(processEnv),
+  anthropicKey,
   openRouterKey,
   model,
   port,
 } = {}) {
-  return {
+  const baseEnv = {
     ...processEnv,
     ...envFromFile,
-    OPENROUTER_API_KEY: openRouterKey,
-    OPENROUTER_MODEL: model,
     MEPH_MODEL: model,
-    MEPH_BRAIN: 'openrouter',
     PORT: port,
     CLEAR_ALLOW_SEED: '1',
     CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev',
+  };
+  if (backend === 'anthropic') {
+    delete baseEnv.MEPH_BRAIN;
+    return {
+      ...baseEnv,
+      ANTHROPIC_API_KEY: anthropicKey,
+    };
+  }
+  return {
+    ...baseEnv,
+    OPENROUTER_API_KEY: openRouterKey,
+    OPENROUTER_MODEL: model,
+    MEPH_BRAIN: 'openrouter',
   };
 }
 
@@ -224,6 +326,7 @@ export function buildChatBody(prompt, {
   patternPreflight = true,
   disablePatternSearchPromptGuard = false,
   disablePatternSearchTool = false,
+  disableFactorHints = disablePatternSearchTool === true && patternPreflight === 'docs',
 } = {}) {
   const content = `${prompt}\n\n${TRIAL_BUILD_INSTRUCTION}`;
   return {
@@ -236,6 +339,7 @@ export function buildChatBody(prompt, {
     patternPreflight,
     disablePatternSearchPromptGuard,
     disablePatternSearchTool,
+    disableFactorHints,
   };
 }
 
@@ -314,7 +418,53 @@ function criterion(id, label, points, passed, evidence) {
   return { id, label, points, earned: passed ? points : 0, passed: !!passed, evidence };
 }
 
+function qualityPatternMatches(source, pattern) {
+  if (pattern instanceof RegExp) return pattern.test(source);
+  return source.toLowerCase().includes(String(pattern).toLowerCase());
+}
+
+function qualityCheckMatches(source, check) {
+  const all = check.all || [];
+  const any = check.any || [];
+  const none = check.none || [];
+  return all.every(pattern => qualityPatternMatches(source, pattern))
+    && (any.length === 0 || any.some(pattern => qualityPatternMatches(source, pattern)))
+    && none.every(pattern => !qualityPatternMatches(source, pattern));
+}
+
+function scoreCustomQualityRubric(probe, result) {
+  const source = String(result.source || '');
+  const compileErrors = Array.isArray(result.compile?.errors) ? result.compile.errors : [];
+  const compileWarnings = Array.isArray(result.compile?.warnings) ? result.compile.warnings : [];
+  const usedEditor = (result.toolNames || []).includes('edit_code') || source.trim().length > 0;
+  const criteria = [
+    criterion('source_written', 'Model wrote complete Clear source', 5, usedEditor, usedEditor ? 'edit_code/source present' : 'no source'),
+    criterion('compiles', 'Compiler accepts the app', 15, compileErrors.length === 0, `${compileErrors.length} compiler error(s)`),
+    criterion('warning_budget', 'Compiler warnings stay reviewable', 5, compileWarnings.length <= 1, `${compileWarnings.length} warning(s)`),
+    ...(probe.qualityCriteria || []).map(check => criterion(
+      check.id,
+      check.label,
+      check.points,
+      qualityCheckMatches(source, check),
+      `all=${(check.all || []).length} any=${(check.any || []).length} none=${(check.none || []).length}`
+    )),
+  ];
+  const earned = criteria.reduce((sum, item) => sum + item.earned, 0);
+  const total = criteria.reduce((sum, item) => sum + item.points, 0);
+  const percent = total > 0 ? Math.round((earned / total) * 100) : 0;
+  return {
+    earned,
+    total,
+    percent,
+    band: percent >= 85 ? 'strong' : percent >= 70 ? 'usable' : percent >= 50 ? 'partial' : 'weak',
+    criteria,
+  };
+}
+
 export function scoreAppQualityRubric(probe, result) {
+  if (Array.isArray(probe.qualityCriteria) && probe.qualityCriteria.length > 0) {
+    return scoreCustomQualityRubric(probe, result);
+  }
   const source = String(result.source || '');
   const compileErrors = Array.isArray(result.compile?.errors) ? result.compile.errors : [];
   const compileWarnings = Array.isArray(result.compile?.warnings) ? result.compile.warnings : [];
@@ -408,13 +558,17 @@ export function scoreGeneratedApp(probe, result) {
   const usedEditor = result.toolNames.includes('edit_code') || source.trim().length > 0;
   const compiles = compileErrors.length === 0;
   const quality = scoreAppQualityRubric(probe, result);
+  const minQualityPercent = Number.isFinite(Number(probe.minQualityPercent))
+    ? Number(probe.minQualityPercent)
+    : 0;
   return {
     usedEditor,
     compiles,
     missingRequired,
     optionalHits,
     quality,
-    pass: usedEditor && compiles && missingRequired.length === 0,
+    minQualityPercent,
+    pass: usedEditor && compiles && missingRequired.length === 0 && quality.percent >= minQualityPercent,
   };
 }
 
@@ -473,21 +627,28 @@ export function summarizeRows(rows, { abMode = false } = {}) {
 
 async function main() {
   const selectedProbes = selectProbes({
-    suiteName: process.env.MEPH_PATTERN_PROBE_SUITE || 'approvalQueueFullApps',
+    suiteName: process.env.MEPH_PATTERN_PROBE_SUITE || 'broadFunctionalApps',
     only: process.env.MEPH_PATTERN_PROBE_ONLY || '',
   });
   const envFromFile = loadEnvFile();
   const openRouterKey = process.env.OPENROUTER_API_KEY || envFromFile.OPENROUTER_API_KEY;
-  if (!openRouterKey) {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || envFromFile.ANTHROPIC_API_KEY;
+  if (backend === 'openrouter' && !openRouterKey) {
     throw new Error('OPENROUTER_API_KEY missing from environment and .env');
   }
-  if (isExpensiveProbeModel(model) && process.env.MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE !== '1') {
+  if (backend === 'anthropic' && !anthropicKey) {
+    throw new Error('ANTHROPIC_API_KEY missing from environment and .env');
+  }
+  if (backend === 'openrouter' && isExpensiveProbeModel(model) && process.env.MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE !== '1') {
     throw new Error(`Refusing expensive probe model "${model}". Set MEPH_PATTERN_PROBE_MODEL=${CHEAP_DEFAULT_OPENROUTER_MODEL} or MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1.`);
+  }
+  if (backend === 'anthropic' && isExpensiveAnthropicModel(model) && process.env.MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE !== '1') {
+    throw new Error(`Refusing expensive Anthropic probe model "${model}". Set MEPH_PATTERN_PROBE_MODEL=${DEFAULT_ANTHROPIC_MODEL} or MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1.`);
   }
 
   const child = spawn(nodeBin, ['studio/server.js'], {
     cwd: repoRoot,
-    env: buildProbeServerEnv({ processEnv: process.env, envFromFile, openRouterKey, model, port }),
+    env: buildProbeServerEnv({ processEnv: process.env, envFromFile, backend, anthropicKey, openRouterKey, model, port }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -497,15 +658,15 @@ async function main() {
 
   try {
     await waitForServer();
-    console.log(`meph-pattern-live-probe: server=${base} model=${model}`);
+    console.log(`meph-pattern-live-probe: server=${base} backend=${backend} model=${model}`);
     const rows = [];
     const abMode = process.env.MEPH_PATTERN_PROBE_AB === '1';
     const variants = abMode
       ? [
-        { label: 'docs_only', options: { patternPreflight: 'docs', disablePatternSearchPromptGuard: true, disablePatternSearchTool: true } },
-        { label: 'full_hook', options: { patternPreflight: 'full', disablePatternSearchPromptGuard: true, disablePatternSearchTool: false } },
+        { label: 'docs_only', options: { patternPreflight: 'docs', disablePatternSearchPromptGuard: true, disablePatternSearchTool: true, disableFactorHints: true } },
+        { label: 'full_hook', options: { patternPreflight: 'full', disablePatternSearchPromptGuard: true, disablePatternSearchTool: false, disableFactorHints: false } },
       ]
-      : [{ label: 'default', options: { patternPreflight: 'full', disablePatternSearchPromptGuard: false, disablePatternSearchTool: false } }];
+      : [{ label: 'default', options: { patternPreflight: 'full', disablePatternSearchPromptGuard: false, disablePatternSearchTool: false, disableFactorHints: false } }];
 
     for (const probe of selectedProbes) {
       let abortProbe = false;
@@ -551,7 +712,7 @@ async function main() {
         rows.push({ probe, variant: variant.label, result, score });
         console.log(`tools: ${result.toolNames.join(', ') || '(none)'}`);
         if (result.error) console.log(`error: ${result.error}`);
-        console.log(`preflight: mode=${result.preflight?.mode || 'unknown'} required=${result.preflight?.required ? 'yes' : 'no'} patterns=${result.preflight?.pattern_count ?? 0}`);
+        console.log(`preflight: mode=${result.preflight?.mode || 'unknown'} required=${result.preflight?.required ? 'yes' : 'no'} patterns=${result.preflight?.pattern_count ?? 0} factor_hints=${result.preflight?.factor_hints_disabled ? 'off' : 'on'}`);
         if (probe.requiredSourceTerms) {
           const quality = score.quality ? `${score.quality.earned}/${score.quality.total} (${score.quality.band})` : 'n/a';
           console.log(`pass: ${score.pass ? 'yes' : 'no'} quality=${quality} edited=${score.usedEditor ? 'yes' : 'no'} compiles=${score.compiles ? 'yes' : 'no'} missing=${score.missingRequired.join('|') || 'none'} optional=${score.optionalHits.join('|') || 'none'}`);
@@ -572,7 +733,7 @@ async function main() {
     }
     for (const row of rows) {
       const detail = row.probe.requiredSourceTerms
-        ? `quality=${row.score.quality ? row.score.quality.percent + '/100' : 'n/a'} compiles=${row.score.compiles ? 'yes' : 'no'} missing=${row.score.missingRequired.join('|') || 'none'}`
+        ? `quality=${row.score.quality ? row.score.quality.percent + '/100' : 'n/a'} min_quality=${row.score.minQualityPercent || 0} compiles=${row.score.compiles ? 'yes' : 'no'} missing=${row.score.missingRequired.join('|') || 'none'}`
         : `tools=${row.result.toolNames.join('|') || 'none'} preflight=${row.score.usedPreflightSearch ? 'yes' : 'no'}`;
       const label = row.result.blocked ? 'BLOCKED' : (row.score.pass ? 'PASS' : 'FAIL');
       console.log(`- ${row.probe.id} ${row.variant}: ${label} ${detail}`);

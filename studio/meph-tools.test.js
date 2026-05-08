@@ -324,6 +324,27 @@ assert(pcSourceFired === ctxPatch.source,
 assert(pcCodeUpdate && pcCodeUpdate.type === 'code_update',
   'patchCodeTool emits ctx.send({type:"code_update"}) on successful apply');
 
+let pcCompileErrorsFired = null;
+const ctxPatchCompile = new MephContext({
+  source: 'line one\nline two',
+  onErrorsChange: (e) => { pcCompileErrorsFired = e; },
+});
+const pc4 = JSON.parse(patchCodeTool({
+  operations: [{ op: 'fix_line', line: 2, replacement: 'BROKEN LINE' }],
+}, ctxPatchCompile, {
+  patch,
+  compileProgram: (source) => ({
+    errors: source.includes('BROKEN') ? [{ line: 2, message: 'compiled after patch' }] : [],
+    warnings: [{ message: 'patch warning' }],
+  }),
+}));
+assert(Array.isArray(pc4.compileErrors) && pc4.compileErrors[0]?.message === 'compiled after patch',
+  'patchCodeTool returns compile errors after applying a patch');
+assert(pcCompileErrorsFired?.[0]?.message === 'compiled after patch',
+  'patchCodeTool refreshes ctx errors after applying a patch');
+assert(ctxPatchCompile.lastCompileResult?.errors?.[0]?.message === 'compiled after patch',
+  'patchCodeTool stores lastCompileResult after applying a patch');
+
 console.log('\n📺 readTerminalTool\n');
 
 // Empty buffers
@@ -1441,6 +1462,29 @@ assert(disabledCtx.hintState.hintsInjectedRowId === null,
   'CLEAR_HINT_DISABLE=1 leaves hintState clean (no injection recorded)');
 if (origHintDisable === undefined) delete process.env.CLEAR_HINT_DISABLE;
 else process.env.CLEAR_HINT_DISABLE = origHintDisable;
+
+let requestDisabledQueryCalls = 0;
+let requestDisabledPatternCalls = 0;
+const fdbRequestDisabled = {
+  logAction: () => 903,
+  querySuggestions: () => { requestDisabledQueryCalls++; return [hintRow]; },
+  queryProgrammingPatterns: () => { requestDisabledPatternCalls++; return [patternPrimitiveRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const requestDisabledCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbRequestDisabled,
+  sessionId: 'sess-request-disabled',
+  pairwiseBundle: { weights: 'fake' },
+  disableFactorHints: true,
+});
+const compRequestDisabled = JSON.parse(compileTool({}, requestDisabledCtx, compileHelpers));
+assert(!compRequestDisabled.hints,
+  `disableFactorHints strips hints from compile result (got ${compRequestDisabled.hints ? JSON.stringify(compRequestDisabled.hints).slice(0, 80) : 'none'})`);
+assert(requestDisabledQueryCalls === 0,
+  `disableFactorHints skips querySuggestions entirely (got ${requestDisabledQueryCalls} calls)`);
+assert(requestDisabledPatternCalls === 0,
+  `disableFactorHints skips queryProgrammingPatterns entirely (got ${requestDisabledPatternCalls} calls)`);
 
 // And: when the flag is back off (unset or != '1'), hints flow normally.
 // Guards against a regression where the flag check accidentally inverts.

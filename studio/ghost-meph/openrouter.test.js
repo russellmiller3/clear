@@ -1,4 +1,4 @@
-import { resolveOpenRouterModel } from './openrouter.js';
+import { buildOpenRouterRequestBody, resolveOpenRouterModel } from './openrouter.js';
 
 let passed = 0;
 let failed = 0;
@@ -27,6 +27,15 @@ assert(
   resolveOpenRouterModel({ model: '~anthropic/claude-sonnet-latest' }, {}) === '~anthropic/claude-sonnet-latest',
   'explicit caller model still wins',
 );
+{
+  const body = buildOpenRouterRequestBody({
+    model: 'google/gemini-3-flash-preview',
+    messages: [{ role: 'user', content: 'hi' }],
+  });
+  assert(body.stream === true, 'OpenRouter requests stream mode');
+  assert(body.usage === undefined, 'OpenRouter does not send deprecated usage include parameter');
+  assert(body.stream_options === undefined, 'OpenRouter does not send deprecated stream_options include_usage parameter');
+}
 
 console.log(`\nPassed: ${passed}`);
 console.log(`Failed: ${failed}`);

@@ -187,6 +187,47 @@ The important boundary: requirements are customer intent, pattern memory is reus
 
 ---
 
+## What did the Cycle 11 requirements smoke prove? (2026-05-08)
+
+The hard Gemini Flash smoke used the vague prompt "build me a deal approval app" instead of handing the model the answer. Meph drafted 7 requirements, built a compiled app, Ralph ran, retried once, and then blocked completion because only 4 of 7 requirements had implementation evidence.
+
+Cost: current run $0.21, total: $1.07.
+
+That is the right failure mode. The system did not pretend success. It exposed three detector gaps: deal creation evidence, VP-threshold evidence, and named-agent evidence. It also caught one false positive: email notification is not audit-trail storage. Those gaps now have local regression tests in `studio/supervisor/requirements-audit.test.js`.
+
+The product lesson: the loop is useful when it fails closed. Requirements become a machine-checkable contract, and missing proof sends Meph back instead of producing a confident but wrong app.
+
+---
+
+## Can Meph click buttons and inspect the app visually? (2026-05-08)
+
+Yes for the generated app preview. The capability should be available by default. CLI tests are often enough for backend/API claims, but browser evidence is the stronger check for UI claims. Meph should reach for it when the prompt or approved requirements mention buttons, forms, navigation, layout, visible workflow, or UX. Backend-only changes do not need a screenshot ceremony.
+
+The key tools are `run_app`, `click_element`, `fill_input`, `read_dom`, `read_actions`, `read_network`, and `screenshot_output`. `screenshot_output` returns a PNG image block, not rendered HTML text. Use it to catch layout overflow, missing chrome, broken spacing, and "it technically works but looks wrong" failures when visual evidence matters.
+
+Studio chrome is different. Meph should not get unrestricted permission to click every Studio button. Safe future Studio-control tools should be allowlisted: run, stop, compile, switch preview/source tabs, approve requirements, and maybe choose templates. Risky or irreversible controls stay off limits unless the user explicitly approves them: publish/deploy, rollback, delete, secret/API-key controls, filesystem-wide open/save, account settings, and anything that spends money.
+
+Current boundary: Meph's browser interaction tools target the running app iframe, not the Studio shell. That is the right default.
+
+---
+
+## How do OpenRouter live probes report spend? (2026-05-08)
+
+OpenRouter calls must capture usage accounting and print actual spend in the probe summary.
+
+**Where it is wired:**
+- `studio/ghost-meph/openrouter.js` sends streamed `/api/v1/chat/completions` requests.
+- `studio/ghost-meph/format-bridge.js` preserves streamed `usage.cost`, token counts, and generation ids in Anthropic-shaped `message_delta` events.
+- `scripts/meph-requirements-live-smoke.mjs` sums those events into `openRouterCostCredits`, `modelInputTokens`, `modelOutputTokens`, and `openRouterGenerationIds`.
+
+**Why this exists:** live probes can silently spend money. If the stream does not include usage, the run is not properly instrumented.
+
+**OpenRouter docs:** usage accounting is documented at [openrouter.ai/docs/use-cases/usage-accounting](https://openrouter.ai/docs/use-cases/usage-accounting). Their generation API can also retrieve final cost by generation id after the call: [openrouter.ai/docs/api-reference/get-a-generation](https://openrouter.ai/docs/api-reference/get-a-generation). If the stream path fails, query `/api/v1/generation?id=<generation_id>` with the same API key.
+
+**Rule:** every OpenRouter probe must print actual spend or fail the cost-accounting check. Do not accept "unmeasured, probably cheap" as the final state.
+
+---
+
 ## How much Python parity work is left? How do I check? (2026-05-07)
 
 **Two-command answer:**
