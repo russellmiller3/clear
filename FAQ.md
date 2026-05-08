@@ -161,6 +161,34 @@ The important bit: a docs-only app can compile and still score lower if it route
 
 ---
 
+## How do deterministic Ralph checks avoid regex explosion? (2026-05-08)
+
+Ralph does not try to make raw prose deterministic. The durable shape is:
+
+```text
+requirement prose -> typed requirement facts
+generated app     -> typed app facts
+Ralph             -> compare facts to facts
+```
+
+Loose wording is normalized only at the edge. For example, "prevent double booking," "reject overlaps," and "block same-room conflicts" all become the same fact:
+
+```text
+domain_rule: booking overlap -> reject
+```
+
+Then Ralph looks for implementation evidence with the same fact shape. It can pass from a source-level overlap guard, a test, a runtime API result, or browser/state evidence. The final comparison is deterministic set matching, not a growing pile of score regexes.
+
+**Where it lives.**
+- `studio/supervisor/requirements-facts.js` - requirement/app fact normalization.
+- `studio/supervisor/requirements-audit.js` - Ralph audit integration.
+- `studio/supervisor/meph-pattern-preflight.js` - injects machine-readable requirement facts into full-hook preflight.
+- `scripts/meph-pattern-live-probe.mjs` - saves requirement facts, app facts, browser evidence, and state evidence in trial artifacts.
+
+**Current slice.** Booking overlap prevention is the first fact-backed Ralph detector. The vocabulary is intentionally small and should grow by fixtures, not one-off regexes.
+
+---
+
 ## How do requirements, pattern memory, repair hints, and Ralph fit together? (2026-05-08)
 
 They are four different layers. Do not merge them.

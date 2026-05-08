@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { normalizeRequirementFacts } from './requirements-facts.js';
 
 const COMPLEX_REQUEST_RE = /\b(what|how|build|create|make|add|modify|change|implement|wire|show|guard|route|filter|approve|reject|deploy)\b/i;
 const CLEAR_SHAPE_RE = /\b(app|feature|shape|syntax|pattern|primitive|queue|approval|routing|route|workflow|agent|dashboard|table|endpoint|auth|login|manager|detail|selected-row|selected row|concurrency|optimistic lock|tenant|policy|rule)\b/i;
@@ -60,7 +61,44 @@ function searchTextForRequirements(userText, approvedRequirements = []) {
   const requirements = Array.isArray(approvedRequirements)
     ? approvedRequirements.map(item => String(item || '').trim()).filter(Boolean)
     : [];
-  return [String(userText || '').trim(), ...requirements].filter(Boolean).join('\n');
+  const facts = formatRequirementFactsForSearch(approvedRequirements);
+  return [String(userText || '').trim(), ...requirements, facts].filter(Boolean).join('\n');
+}
+
+function formatRequirementFactsForSearch(approvedRequirements = []) {
+  const facts = normalizeRequirementFacts(approvedRequirements);
+  return facts.map(formatRequirementFact).filter(Boolean).join('\n');
+}
+
+function formatRequirementFact(fact) {
+  if (fact.kind === 'domain_rule') {
+    return `${fact.kind} ${fact.object} ${fact.condition} ${fact.expected}`;
+  }
+  if (fact.kind === 'storage') {
+    const fields = Array.isArray(fact.fields) && fact.fields.length > 0
+      ? ` fields ${fact.fields.join(' ')}`
+      : '';
+    return `${fact.kind} ${fact.object}${fields}`;
+  }
+  if (fact.kind === 'update') {
+    return `${fact.kind} ${fact.object} ${fact.action}`;
+  }
+  if (fact.kind === 'ui_reachability') {
+    return `${fact.kind} ${fact.object} ${fact.action}`;
+  }
+  return '';
+}
+
+function formatRequirementFactsForPrompt(approvedRequirements = []) {
+  const facts = normalizeRequirementFacts(approvedRequirements);
+  const lines = facts.map(fact => {
+    if (fact.kind === 'domain_rule') return `- ${fact.kind}: ${fact.object} ${fact.condition} -> ${fact.expected}`;
+    if (fact.kind === 'storage') return `- ${fact.kind}: ${fact.object}${fact.fields?.length ? ` (${fact.fields.join(', ')})` : ''}`;
+    if (fact.kind === 'update') return `- ${fact.kind}: ${fact.object} ${fact.action}`;
+    if (fact.kind === 'ui_reachability') return `- ${fact.kind}: ${fact.object} ${fact.action}`;
+    return '';
+  }).filter(Boolean);
+  return lines.length ? lines.join('\n') : 'No typed facts extracted.';
 }
 
 function formatPattern(row, index) {
@@ -147,6 +185,7 @@ export function buildPatternPreflight({
   const requirementText = Array.isArray(approvedRequirements) && approvedRequirements.length > 0
     ? approvedRequirements.map(item => `- ${item}`).join('\n')
     : 'No approved requirements were supplied.';
+  const requirementFactText = formatRequirementFactsForPrompt(approvedRequirements);
 
   return {
     required,
@@ -164,6 +203,9 @@ export function buildPatternPreflight({
       '',
       '### Approved requirements',
       requirementText,
+      '',
+      '### Machine-readable requirement facts',
+      requirementFactText,
       '',
       '### Required pattern DB search results',
       patternText,

@@ -1,3 +1,9 @@
+import {
+  compareRequirementFacts,
+  extractAppFacts,
+  normalizeRequirementFacts,
+} from './requirements-facts.js';
+
 const PASS = 'passed';
 const MISSING = 'missing';
 const UNVERIFIED = 'unverified';
@@ -14,6 +20,7 @@ export function auditRequirements({
       ast,
       compileResult,
       evidenceLines: evidenceLinesFromSource(source),
+      appFacts: extractAppFacts({ source }),
       index,
     }));
 
@@ -51,6 +58,7 @@ function auditRequirement(requirement, ctx) {
   const text = requirement.text.trim();
   const normalized = normalizeText(text);
   const detectors = [
+    detectTypedFacts,
     detectDataShape,
     detectDealCreation,
     detectApprovalRouting,
@@ -80,6 +88,31 @@ function auditRequirement(requirement, ctx) {
     status: UNVERIFIED,
     reason: 'No Ralph detector can verify this requirement yet.',
     evidence: [],
+  };
+}
+
+function detectTypedFacts(text, normalized, ctx) {
+  const requirementFacts = normalizeRequirementFacts([{ id: `req_${ctx.index + 1}`, text }])
+    .filter(fact => fact.kind === 'domain_rule');
+  if (requirementFacts.length === 0) return null;
+
+  const comparisons = compareRequirementFacts(requirementFacts, ctx.appFacts || []);
+  if (comparisons.length === 0) return null;
+  const failed = comparisons.filter(item => item.status !== PASS);
+  if (failed.length === 0) {
+    return {
+      status: PASS,
+      reason: `Found typed domain rule evidence for ${joinEnglish(requirementFacts.map(fact => fact.object))}.`,
+      evidence: uniqueEvidence(comparisons.flatMap(item => item.evidence || [])),
+      facts: requirementFacts,
+    };
+  }
+
+  return {
+    status: MISSING,
+    reason: failed[0]?.reason || 'No typed domain-rule evidence found outside the requirements block.',
+    evidence: uniqueEvidence(comparisons.flatMap(item => item.evidence || [])),
+    facts: requirementFacts,
   };
 }
 

@@ -2514,3 +2514,6 @@ The decisive move is making intent machine-checkable. Requirements turn a vague 
 - **Paid app A/B probes need their own iteration cap.** Product Meph can keep a generous build loop, but research probes must default lower and require an explicit override for deeper runs.
 - **Requirements detectors must count domain constraints as rules.** Approval routing is not the only rules lane; double-booking prevention, overlap checks, uniqueness, limits, and blocked saves are also e2e rule coverage.
 - **Do not let Ralph become regex soup.** Normalize requirement prose and generated apps into typed facts, then compare facts to facts; regex belongs only in the tested edge normalizer.
+- **Source-backed provider failures are salvageable.** If a provider drops after Meph edits source, score the source with a provider warning; only no-source failures should block the trial.
+- **Preflight should show typed facts, not only prose.** Approved requirements like "rooms, customers, bookings must be stored" need explicit `storage` facts so Meph cannot miss the entity hidden in a sentence.
+- **Pattern hooks can hurt when retrieval is poorly aimed.** A full hook that retrieves generic auth/KPI-ish context for a booking app can perform worse than docs-only; add local retrieval assertions before spending on another A/B.

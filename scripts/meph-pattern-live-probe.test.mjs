@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildRequirementsRevisionChatBody, buildTrialArtifact, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeMaxIter, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildRequirementsRevisionChatBody, buildTrialArtifact, providerBlockMessage, shouldBlockProviderFailure, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeMaxIter, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -446,6 +446,17 @@ page 'Create Request' at '/new':
     expect(summary.aborted).toEqual(true);
   });
 
+  it('does not block source-backed trials just because the provider failed after editing', () => {
+    expect(shouldBlockProviderFailure({
+      text: '[openrouter network error: fetch failed]',
+      source: '',
+    })).toEqual(true);
+    expect(shouldBlockProviderFailure({
+      text: '[openrouter network error: fetch failed]',
+      source: 'build for web',
+    })).toEqual(false);
+  });
+
   it('summarizes quality deltas for completed A/B app rows', () => {
     const rows = [
       { probe: { id: 'a' }, variant: 'docs_only', score: { pass: true, quality: { percent: 60 } }, result: {} },
@@ -497,13 +508,16 @@ page 'Create Request' at '/new':
       variant: 'full_hook',
       result: {
         text: 'done',
-        source: 'build for web',
-        toolNames: ['edit_code'],
+        source: `build for web
+page 'Deals':
+  button 'Approve':
+    update selected_deal at /api/deals/:id/approve`,
+        toolNames: ['edit_code', 'run_app', 'click_element', 'read_dom', 'screenshot_output'],
         preflight: { mode: 'full', pattern_count: 3 },
         firstTurnPreflight: { mode: 'docs', pattern_count: 0 },
         requirementsReview: {
           valid: true,
-          requirements: ['logged in users can create deals'],
+          requirements: ['logged in users can approve deals from a visible Deals page'],
           requirementsId: 'req_123',
         },
         compile: { errors: [], warnings: [] },
@@ -522,7 +536,10 @@ page 'Create Request' at '/new':
     expect(artifact.score.pass).toEqual(true);
     expect(artifact.cost.openRouterCostCredits).toEqual(0.04);
     expect(artifact.cost.openRouterGenerationIds).toEqual(['gen_a']);
-    expect(artifact.source).toEqual('build for web');
+    expect(artifact.evidence.requirementFacts.length).toBeGreaterThan(0);
+    expect(artifact.evidence.appFacts.length).toBeGreaterThan(0);
+    expect(artifact.evidence.browser.hasScreenshot).toEqual(true);
+    expect(artifact.source).toContain("page 'Deals'");
   });
 
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {

@@ -97,6 +97,40 @@ describe('Meph pattern preflight hook', () => {
     }
   });
 
+  it('adds typed requirement facts to the search query and preflight text', () => {
+    const root = mkdtempSync(join(tmpdir(), 'meph-preflight-facts-'));
+    try {
+      writeFileSync(join(root, 'SYNTAX.md'), 'booking syntax\ncreate a Customers table:');
+      writeFileSync(join(root, 'AI-INSTRUCTIONS.md'), 'Use the approved requirements before writing.');
+      let querySeen = '';
+      const approvedRequirements = [
+        'rooms, customers, and bookings must be stored in the database',
+        'the system enforces that a room cannot be booked if an existing booking overlaps the requested time range',
+        "logged in users can cancel a booking using a 'Cancel' button which triggers a backend delete",
+      ];
+
+      const preflight = buildPatternPreflight({
+        userText: 'Build a complete room booking app',
+        approvedRequirements,
+        factorDB: {
+          queryProgrammingPatterns({ query }) {
+            querySeen = query;
+            return [];
+          },
+        },
+        rootDir: root,
+      });
+
+      expect(querySeen).toContain('storage customer');
+      expect(querySeen).toContain('domain_rule booking overlap reject');
+      expect(preflight.text).toContain('Machine-readable requirement facts');
+      expect(preflight.text).toContain('storage: customer');
+      expect(preflight.text).toContain('domain_rule: booking overlap -> reject');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('can build a docs-only baseline without mentioning the pattern database', () => {
     const root = mkdtempSync(join(tmpdir(), 'meph-preflight-docs-'));
     try {

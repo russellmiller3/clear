@@ -3,9 +3,9 @@
 ## Where you are
 
 - **Branch:** `feature/meph-requirements-ralph-loop`.
-- **Latest committed code baseline:** `d401e38 Accept rendered UI requirements wording`.
-- **Current wrap work:** requirements quality gate tightened, Ralph detector tightened, compiler UI dead-route gates added, pattern-probe artifacts added, capped broad A/B harness added.
-- **Paid probe spend:** latest run **$0.14**, running total **$4.16** of the $5 authorization.
+- **Latest committed baseline before this wrap:** `d14517b docs: define deterministic Ralph fact checks`.
+- **Current wrap work:** typed requirement/app facts added, Ralph uses fact evidence for booking overlap rules, pattern preflight injects machine-readable requirement facts, probe artifacts save fact/browser/state evidence, and source-backed provider failures are salvaged instead of thrown away.
+- **Paid probe spend:** latest completed run **$0.26**, running total **$4.52** of the $5 authorization.
 
 ## What changed in this wrap
 
@@ -26,8 +26,11 @@ The useful result was fail-closed, not "Gemini passed."
 - Capped broad A/B smoke on `revenue-ops-dashboard-app`: docs-only failed (**42/100**, did not compile); full hook passed (**95/100**, compiled). Cost **$0.43**, total **$3.34**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-15-00-305Z/`.
 - Capped broad A/B smoke on booking: docs-only scored **58/100**, full hook scored **68/100**; both failed to compile because the app missed required customer data. Cost **$0.40**, total **$4.03**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-27-46-269Z/`.
 - Capped broad A/B smoke on expense analytics: provider aborted during docs-only baseline, so mark it blocked/inconclusive instead of a model-quality failure. Cost **$0.14**, total **$4.16**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-30-51-949Z/`.
+- Typed-fact follow-up on booking: docs-only compiled and scored **83/100** but still missed `customers`; full hook scored **58/100**, failed compile, and missed `customers` plus `available`. Cost **$0.26**, total **$4.52**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T17-24-11-967Z/`.
 
 That is the right product behavior: Meph can build a plausible app, but Ralph refuses false done when the app has no real approval assignment/queue.
+
+The latest booking result is also the right research behavior: the harness did not hide a negative result. Pattern preflight can hurt when it gives Meph generic or poorly aimed context. The local fix already landed: full-hook preflight now includes machine-readable facts like `storage: customer` and `domain_rule: booking overlap -> reject` alongside the prose requirements.
 
 ## Deterministic checker direction
 
@@ -43,17 +46,27 @@ Ralph             -> compare facts to facts
 
 Regex/synonym matching belongs only at the edge, where "prevent double booking," "reject overlaps," and "block same-room conflicts" become the same `domain_rule` fact. The final Ralph check should compare typed facts against typed evidence from source, compiler output, tests, browser actions, and runtime state.
 
+Current shipped slice:
+
+- Requirement prose normalizes into typed facts.
+- Generated Clear source normalizes into app facts.
+- Ralph uses typed facts for booking overlap rejection.
+- Pattern preflight injects typed facts into the full-hook context.
+- Probe artifacts include requirement facts, app facts, browser tool evidence, and state tool evidence.
+- Provider failures after source exists are scored with a warning; provider failures before source exists still block.
+
 ## Tests run
 
 - `node clear.test.js` — **3024/3024 passing** after the compiler UI gates.
 - Earlier in this wrap: requirements contract, requirements audit, live-smoke harness, and Studio server tests all passed after the gate changes.
+- Latest focused tests: `requirements-facts.test.js` **3/3**, `requirements-audit.test.js` **17/17**, `meph-pattern-preflight.test.js` **7/7**, `meph-pattern-live-probe.test.mjs` **22/22**.
 
 ## Next critical path
 
-1. Stop paid probes for now. Only **$0.84** remains under the $5 cap, and the next useful work is local architecture, not another paid run.
-2. Build the typed requirement-fact normalizer and typed app-fact extractor. Keep the vocabulary small: storage, create, read, update, delete, role_rule, domain_rule, ui_reachability, audit, aggregate, integration.
-3. Promote browser/state evidence into the pattern-probe artifacts so the harness can score actual app behavior, not only source shape.
-4. Then rerun a small A/B with the new Ralph fact checker before broadening provider/model sweeps.
+1. Stop paid probes for now. Only **$0.48** remains under the $5 cap.
+2. Improve retrieval aim locally before any more spend: assert that booking prompts retrieve booking/customer/availability primitives instead of generic auth/KPI snippets.
+3. Add retrieved-pattern metadata to artifacts so every negative run shows exactly what the hook handed Meph.
+4. Then rerun a small booking A/B only after the local retrieval test proves the right snippets are selected.
 
 ---
 

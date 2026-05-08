@@ -373,6 +373,33 @@ when user sends decision to /api/deals/:id/approve:
     expect(audit.items[0].reason).toContain('audit');
   });
 
+  it('uses typed facts to verify booking overlap rejection without exact requirement wording', () => {
+    const source = `
+build for javascript backend
+create a Bookings table:
+  room_id, required
+  start_time, required
+  end_time, required
+  status, default 'active'
+
+when user sends reservation to /api/bookings:
+  existing_booking = look up Booking where room_id is reservation's room_id
+  if existing_booking's start_time is before reservation's end_time and existing_booking's end_time is after reservation's start_time:
+    fail with error message 'Room is unavailable'
+  saved = save reservation as new Booking
+  send back saved
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'calling POST /api/bookings with an overlapping room reservation returns a 400 error' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('domain rule');
+  });
+
   it('verifies named agent requirements from agent declaration evidence', () => {
     const source = `
 build for javascript backend

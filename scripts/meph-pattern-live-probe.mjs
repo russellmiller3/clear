@@ -4,6 +4,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { createUsageLedgerRecorder, formatCostReport, summarizeModelUsage } from './meph-requirements-live-smoke.mjs';
+import {
+  extractAppFacts,
+  normalizeRequirementFacts,
+} from '../studio/supervisor/requirements-facts.js';
 
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const nodeBin = process.execPath;
@@ -668,6 +672,12 @@ export function providerBlockMessage(resultOrMessage) {
   return match ? match[0] : String(text).slice(0, 300);
 }
 
+export function shouldBlockProviderFailure(result = {}) {
+  const providerBlocked = providerBlockMessage(result);
+  if (!providerBlocked) return false;
+  return String(result.source || '').trim().length === 0;
+}
+
 export function summarizeRows(rows, { abMode = false } = {}) {
   const blockedRows = rows.filter(row => row.result?.blocked);
   const completedRows = rows.filter(row => !row.result?.blocked);
@@ -721,6 +731,7 @@ export function buildTrialArtifact(row = {}) {
   const compile = result.compile || {};
   const preflight = result.preflight || null;
   const firstTurnPreflight = result.firstTurnPreflight || null;
+  const evidenceSummary = buildEvidenceSummary(result, review);
   return {
     probe: {
       id: row.probe?.id || '',
@@ -748,6 +759,7 @@ export function buildTrialArtifact(row = {}) {
       patternCount: Number(firstTurnPreflight.pattern_count || 0),
       factorHintsDisabled: firstTurnPreflight.factor_hints_disabled ?? null,
     } : null,
+    evidence: evidenceSummary,
     tools: result.toolNames || [],
     compile: {
       errors: Array.isArray(compile.errors) ? compile.errors.length : null,
@@ -758,9 +770,39 @@ export function buildTrialArtifact(row = {}) {
     score: row.score || null,
     cost: usage,
     blocked: !!result.blocked,
+    providerWarning: result.providerWarning || null,
     error: result.error || null,
     text: result.text || '',
     source: result.source || '',
+  };
+}
+
+function buildEvidenceSummary(result = {}, review = {}) {
+  const requirementFacts = normalizeRequirementFacts(
+    Array.isArray(review.requirements) ? review.requirements : []
+  );
+  const appFacts = extractAppFacts({
+    source: result.source || '',
+    runtimeEvidence: { tools: result.toolNames || [] },
+  });
+  const browserFacts = appFacts.filter(fact => fact.kind === 'browser_evidence');
+  const stateFacts = appFacts.filter(fact => fact.kind === 'state_evidence');
+
+  return {
+    requirementFacts,
+    appFacts,
+    browser: {
+      tools: browserFacts.map(fact => fact.evidence?.[0]?.text).filter(Boolean),
+      hasRun: browserFacts.some(fact => fact.action === 'running_app'),
+      hasClick: browserFacts.some(fact => fact.action === 'click'),
+      hasDom: browserFacts.some(fact => fact.action === 'dom'),
+      hasScreenshot: browserFacts.some(fact => fact.action === 'screenshot'),
+    },
+    state: {
+      tools: stateFacts.map(fact => fact.evidence?.[0]?.text).filter(Boolean),
+      hasApiRequest: stateFacts.some(fact => fact.action === 'api_request'),
+      hasDatabaseRead: stateFacts.some(fact => fact.action === 'state_read'),
+    },
   };
 }
 
@@ -882,7 +924,7 @@ async function main() {
             };
           }
           const providerBlocked = providerBlockMessage(result);
-          if (providerBlocked) {
+          if (providerBlocked && shouldBlockProviderFailure(result)) {
             result.error = providerBlocked;
             result.blocked = true;
             result.compile = { errors: [{ message: providerBlocked }] };
@@ -890,6 +932,14 @@ async function main() {
               ? scoreGeneratedApp(probe, result)
               : { pass: false, usedSearch: false, usedToolSearch: false, usedPreflightSearch: false, foundExpectedKind: false, foundExpectedTerm: false };
             abortProbe = true;
+          } else if (providerBlocked) {
+            result.providerWarning = providerBlocked;
+            if (probe.requiredSourceTerms) {
+              result.compile = await compileSource(result.source);
+              score = scoreGeneratedApp(probe, result);
+            } else {
+              score = scoreProbe(probe, result);
+            }
           } else if (probe.requiredSourceTerms) {
             result.compile = await compileSource(result.source);
             score = scoreGeneratedApp(probe, result);

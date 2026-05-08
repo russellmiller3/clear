@@ -21,6 +21,10 @@ The first capped broad-app A/B on Gemini Flash is also directionally positive, b
 
 The next two capped probes made the lesson sharper. On the booking app, docs-only scored **58/100** and full hook scored **68/100**; both failed to compile because the app missed required customer data. On the expense analytics app, the provider aborted during the baseline after one paid call, so the run is blocked/inconclusive rather than a model-quality result. The latest probe cost was **$0.14**, bringing the live-probe running total to **$4.16** of the $5 cap.
 
+The typed-fact Ralph slice shipped immediately after that. Requirements now normalize into small facts, generated apps emit app facts, Ralph can verify a booking overlap rule without exact wording, and probe artifacts now save requirement facts, app facts, browser-tool evidence, and state-tool evidence. The follow-up Gemini Flash booking A/B is the honest warning label: docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100** and failed compile while missing `customers` and `available`. Cost was **$0.26**, running total **$4.52** of the $5 cap, artifact folder `studio/sessions/pattern-probes/2026-05-08T17-24-11-967Z/`.
+
+That result does not say "patterns are bad." It says retrieval can hurt when the hook gives Meph generic or mis-aimed context. The local fix from the result is that preflight now injects machine-readable requirement facts alongside prose, so "rooms, customers, bookings stored" becomes explicit `storage` facts and "overlap must be blocked" becomes a `domain_rule` fact before pattern search and before Meph writes code.
+
 **Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
 
 The durable research frame is now:
@@ -99,6 +103,14 @@ The controlled fact vocabulary should stay small:
 The implementation rule is: add synonyms to the normalizer only when a real artifact proves the miss, then add the phrase as a fixture. Do not add one-off scoring regex to the final Ralph check. The Ralph check compares typed facts, not strings.
 
 This keeps the loop deterministic without pretending language is deterministic. The fuzzy part is deliberately tiny and regression-tested. The final grade is boring: does the app contain evidence for the contract or not?
+
+Implementation status after the first slice:
+
+- `studio/supervisor/requirements-facts.js` normalizes requirement prose and generated source into typed facts.
+- `studio/supervisor/requirements-audit.js` uses typed facts for booking overlap domain-rule verification before falling back to older detectors.
+- `studio/supervisor/meph-pattern-preflight.js` injects machine-readable requirement facts into full-hook preflight context.
+- `scripts/meph-pattern-live-probe.mjs` stores requirement facts, app facts, browser evidence, and state evidence in per-trial artifacts.
+- The harness now salvages source-backed trials when a provider flakes after editing; no-source provider failures still block.
 
 ## External benchmark -- the cutting-edge harness bar (2026-05-08)
 

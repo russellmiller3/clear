@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-08 - Typed Ralph facts and capped booking retest
+
+Ralph now has its first typed-fact layer. Requirement prose normalizes into small facts, generated source normalizes into app facts, and the audit compares facts to facts for the booking-overlap domain-rule slice. This avoids making the final checker a pile of brittle regexes.
+
+What shipped:
+- New `studio/supervisor/requirements-facts.js` normalizes requirements and source evidence into typed facts.
+- Ralph uses the fact layer to verify booking overlap rejection without exact wording.
+- Pattern preflight injects machine-readable requirement facts into the full-hook context.
+- Probe artifacts now include requirement facts, app facts, browser-tool evidence, and state-tool evidence.
+- The live-probe harness salvages source-backed provider failures instead of blocking a usable trial.
+
+Live retest: one capped Gemini Flash booking A/B under the existing $5 limit. Docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100**, failed compile, and missed `customers` plus `available`. Cost **$0.26**, running total **$4.52**. The negative result is useful: retrieval can hurt when it gives generic or mis-aimed context. The next local step is a retrieval assertion that booking prompts select booking/customer/availability primitives before spending again.
+
+Verification: `node studio/supervisor/requirements-facts.test.js`, `node studio/supervisor/requirements-audit.test.js`, `node studio/supervisor/meph-pattern-preflight.test.js`, `node scripts/meph-pattern-live-probe.test.mjs`, and `node clear.test.js` all pass. Full suite: **3024/3024**.
+
+---
+
 ## 2026-05-07 — Meph curated pattern DB from the 13 canonical apps
 
 Meph now has a trusted programming-pattern database separate from the empirical `code_actions` flywheel rows. Studio seeds `factor-db.sqlite` with the 13 canonical apps named in `CLAUDE.md`: the 8 core templates plus the 5 Marcus workflow templates.
