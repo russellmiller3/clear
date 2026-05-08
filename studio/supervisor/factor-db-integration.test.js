@@ -14,9 +14,12 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
 import { FactorDB } from './factor-db.js';
 import { classifyArchetype } from './archetype.js';
+import { CORE_TEMPLATE_SPECS, LANGUAGE_PRIMITIVE_SPECS, extractTemplatePrimitivePatterns, seedCoreTemplatePatterns } from './pattern-library.js';
+import { probeSuites } from '../../scripts/meph-pattern-live-probe.mjs';
 import { parse } from '../../parser.js';
 import { compileProgram } from '../../index.js';
 import { readFileSync, unlinkSync } from 'fs';
+import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
@@ -24,8 +27,12 @@ import { createHash } from 'crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APPS_DIR = join(__dirname, '..', '..', 'apps');
 
-const TEST_DB = '/tmp/factor-integration-test.db';
-function cleanup() { try { unlinkSync(TEST_DB); } catch {} }
+const TEST_DB = join(tmpdir(), 'factor-integration-test.db');
+function cleanup() {
+  for (const path of [TEST_DB, `${TEST_DB}-wal`, `${TEST_DB}-shm`]) {
+    try { unlinkSync(path); } catch {}
+  }
+}
 function sha1(s) { return createHash('sha1').update(s).digest('hex').slice(0, 16); }
 
 describe('Factor DB compile integration', () => {
@@ -119,6 +126,132 @@ describe('Factor DB compile integration', () => {
     expect(db.querySimilar({ archetype: 'crud_app' }).length).toEqual(1);
     expect(db.querySimilar({ archetype: 'realtime_app' }).length).toEqual(1);
     expect(db.querySimilar({ archetype: 'booking_app' }).length).toEqual(1);
+
+    db.close();
+    cleanup();
+  });
+
+  it('seeds the 13 canonical app patterns plus their primitive patterns from disk for Meph retrieval', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const result = seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
+
+    expect(result.seeded).toEqual(13);
+    expect(result.primitiveSeeded > 13).toEqual(true);
+    expect(result.referenceTemplateCount > 0).toEqual(true);
+    expect(result.referencePrimitiveSeeded > 0).toEqual(true);
+    expect(result.languagePrimitiveSeeded).toEqual(LANGUAGE_PRIMITIVE_SPECS.length);
+    expect(CORE_TEMPLATE_SPECS.length).toEqual(13);
+
+    const coreRows = db.listProgrammingPatterns({ pattern_set: 'core' });
+    const marcusRows = db.listProgrammingPatterns({ pattern_set: 'marcus' });
+    expect(coreRows.length).toEqual(8);
+    expect(marcusRows.length).toEqual(5);
+
+    const primitiveRows = db.listProgrammingPatterns({ include_primitives: true }).filter(r => r.is_primitive);
+    expect(primitiveRows.length).toEqual(result.primitiveSeeded + result.referencePrimitiveSeeded + result.languagePrimitiveSeeded);
+    const canonicalPrimitiveParents = new Set(primitiveRows.filter(r => r.pattern_set === 'core' || r.pattern_set === 'marcus').map(r => r.parent_template_name));
+    expect([...canonicalPrimitiveParents].sort()).toEqual(CORE_TEMPLATE_SPECS.map(s => s.name).sort());
+    const referenceRows = db.listProgrammingPatterns({ pattern_set: 'reference', include_primitives: true });
+    expect(referenceRows.length).toEqual(result.referencePrimitiveSeeded);
+    expect(referenceRows.every(r => r.is_primitive === 1)).toEqual(true);
+    expect(referenceRows.every(r => !CORE_TEMPLATE_SPECS.some(s => s.name === r.parent_template_name))).toEqual(true);
+
+    const names = [...coreRows, ...marcusRows].map(r => r.template_name).sort();
+    expect(names).toEqual(CORE_TEMPLATE_SPECS.map(s => s.name).sort());
+
+    const agentSource = readFileSync(join(APPS_DIR, 'ecom-agent', 'main.clear'), 'utf8');
+    const matches = db.queryProgrammingPatterns({ source: agentSource, topK: 3 });
+    expect(matches[0].template_name).toEqual('ecom-agent');
+    expect(matches[0].source).toContain('agent');
+
+    const approvalSource = readFileSync(join(APPS_DIR, 'approval-queue', 'main.clear'), 'utf8');
+    const narrowMatches = db.queryProgrammingPatterns({
+      query: 'what is the shape of features to modify the routing of an approval queue',
+      source: approvalSource,
+      topK: 1,
+    });
+    expect(narrowMatches[0].is_primitive).toEqual(1);
+    expect(narrowMatches[0].parent_template_name).toEqual('approval-queue');
+    expect(narrowMatches[0].pattern_kind).toEqual('queue');
+    expect(narrowMatches[0].source).toContain('queue for request:');
+
+    const concurrencyMatches = db.queryProgrammingPatterns({
+      query: 'avoid double processing approval optimistic lock',
+      topK: 1,
+    });
+    expect(concurrencyMatches[0].is_primitive).toEqual(1);
+    expect(concurrencyMatches[0].pattern_kind).toEqual('concurrency');
+    expect(concurrencyMatches[0].source).toContain('with optimistic lock');
+    expect(concurrencyMatches[0].source).toContain("status from 'pending' to 'approved'");
+
+    db.close();
+    cleanup();
+  });
+
+  it('extracts primitive rows from every golden template', () => {
+    for (const spec of CORE_TEMPLATE_SPECS) {
+      const source = readFileSync(join(APPS_DIR, spec.name, 'main.clear'), 'utf8');
+      const primitives = extractTemplatePrimitivePatterns(source, spec);
+      expect(primitives.length > 0).toEqual(true);
+      expect(primitives.every(p => p.parent_template_name === spec.name)).toEqual(true);
+      expect(primitives.every(p => p.is_primitive === 1)).toEqual(true);
+      expect(primitives.every(p => p.source_start_line >= 1)).toEqual(true);
+      expect(primitives.every(p => p.source.length > 0)).toEqual(true);
+    }
+  });
+
+  it('retrieves useful primitives for narrow approval-queue questions', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
+    const failures = [];
+
+    for (const probe of probeSuites.narrowApprovalQueue) {
+      const matches = db.queryProgrammingPatterns({ query: probe.prompt, topK: 5 });
+      const haystack = matches
+        .map(row => `${row.template_name} ${row.parent_template_name || ''} ${row.pattern_kind || ''} ${row.source || ''}`)
+        .join('\n')
+        .toLowerCase();
+      const foundKind = probe.expectKinds.some(kind =>
+        haystack.includes(kind.replace(/_/g, ' ')) || haystack.includes(kind)
+      );
+      const foundTerm = probe.expectTerms.some(term => haystack.includes(term.toLowerCase()));
+      if (!foundKind || !foundTerm) {
+        failures.push(`${probe.id}: expected kind ${probe.expectKinds.join('/')} and terms ${probe.expectTerms.join('/')} but got ${matches.map(row => `${row.template_name}:${row.pattern_kind}`).join(', ')}`);
+      }
+    }
+
+    expect(failures).toEqual([]);
+    db.close();
+    cleanup();
+  });
+
+  it('retrieves a booking/customer/availability primitive for hard booking workflow prompts', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
+    const query = [
+      'Build a complete room booking workflow',
+      'storage room',
+      'storage customer',
+      'storage booking',
+      'domain_rule booking overlap reject',
+      'available rooms search',
+      'cancel booking',
+    ].join('\n');
+
+    const matches = db.queryProgrammingPatterns({ query, topK: 5 });
+    const haystack = matches
+      .map(row => `${row.template_name} ${row.parent_template_name || ''} ${row.pattern_kind || ''} ${row.title || ''} ${row.description || ''} ${Array.isArray(row.feature_tags) ? row.feature_tags.join(' ') : row.feature_tags || ''} ${row.source || ''}`)
+      .join('\n')
+      .toLowerCase();
+
+    expect(matches[0].template_name).toEqual('clear-language::workflow::booking-customer-availability-overlap');
+    expect(haystack).toContain('customers table');
+    expect(haystack).toContain('available rooms');
+    expect(haystack).toContain('overlap');
+    expect(haystack).toContain('fail with error message');
 
     db.close();
     cleanup();

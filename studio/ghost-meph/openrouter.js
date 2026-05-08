@@ -3,7 +3,7 @@
  *
  * `MEPH_BRAIN=openrouter` routes /api/chat
  * through OpenRouter's OpenAI-compatible /v1/chat/completions endpoint.
- * Default model: ~anthropic/claude-sonnet-latest. Override with
+ * Default model: deepseek/deepseek-v4-flash. Override with
  * `OPENROUTER_MODEL`. API key required: `OPENROUTER_API_KEY`.
  *
  * Supports Meph tool calls through format-bridge.js.
@@ -14,7 +14,7 @@
  * Setup:
  *   1. Create account at openrouter.ai
  *   2. export OPENROUTER_API_KEY=sk-or-v1-...
- *   3. (optional) export OPENROUTER_MODEL=~anthropic/claude-sonnet-latest
+ *   3. (optional) export OPENROUTER_MODEL=deepseek/deepseek-v4-flash
  *   4. MEPH_BRAIN=openrouter node studio/server.js
  *
  * Quirks (per plans/plan-ghost-meph-openrouter-ollama-...):
@@ -35,9 +35,17 @@ import { buildSSEEvents } from './router.js';
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const REFERER = 'https://buildclear.dev';
 const REQUEST_TIMEOUT_MS = 60_000;
-const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
+const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
+
+export function resolveOpenRouterModel(opts = {}, env = process.env) {
+  return opts.model || env.OPENROUTER_MODEL || DEFAULT_MODEL;
+}
 
 /** Public entry — called from router.js when MEPH_BRAIN starts with 'openrouter'. */
+export function buildOpenRouterRequestBody(openAIPayload = {}) {
+  return { ...openAIPayload, stream: true };
+}
+
 export async function chatViaOpenRouter(payload, opts = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -45,7 +53,7 @@ export async function chatViaOpenRouter(payload, opts = {}) {
       '[openrouter: OPENROUTER_API_KEY not set. Get one at openrouter.ai/keys, then `export OPENROUTER_API_KEY=sk-or-v1-...`. Drop MEPH_BRAIN to fall back to the real Anthropic API.]'
     );
   }
-  const model = opts.model || process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+  const model = resolveOpenRouterModel(opts, process.env);
   const openAIPayload = anthropicToOpenAI({ ...payload, model });
 
   let r;
@@ -58,7 +66,7 @@ export async function chatViaOpenRouter(payload, opts = {}) {
         'HTTP-Referer': REFERER,
         'X-Title': 'Clear Studio (Ghost Meph)',
       },
-      body: JSON.stringify({ ...openAIPayload, stream: true }),
+      body: JSON.stringify(buildOpenRouterRequestBody(openAIPayload)),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
@@ -79,7 +87,8 @@ export async function chatViaOpenRouter(payload, opts = {}) {
     }
     return errorResponse(`[openrouter HTTP ${r.status}: ${detail || 'no body'}]`);
   }
-  return wrapOpenAIStreamAsAnthropicSSE(r.body, model);
+  const generationId = r.headers?.get?.('x-generation-id') || null;
+  return wrapOpenAIStreamAsAnthropicSSE(r.body, model, { generationId });
 }
 
 function formatNetworkError(err) {

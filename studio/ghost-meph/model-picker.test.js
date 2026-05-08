@@ -50,7 +50,7 @@ console.log('\nGhost Meph model picker');
   assert(glm.openRouterModel === 'z-ai/glm-4.5', 'openrouter-glm uses GLM 4.5');
 
   const deepseek = resolveMephModelChoice('openrouter-deepseek');
-  assert(deepseek.openRouterModel === 'deepseek/deepseek-v4-pro', 'openrouter-deepseek uses DeepSeek V4 Pro');
+  assert(deepseek.openRouterModel === 'deepseek/deepseek-v4-flash', 'openrouter-deepseek uses DeepSeek V4 Flash');
 
   const kimi = resolveMephModelChoice('openrouter-kimi');
   assert(kimi.openRouterModel === '~moonshotai/kimi-latest', 'openrouter-kimi uses Kimi latest');
@@ -62,8 +62,8 @@ console.log('\nGhost Meph model picker');
     'default stays direct Anthropic when Anthropic key exists',
   );
   assert(
-    resolveDefaultMephModelChoice({ OPENROUTER_API_KEY: 'sk-or' }) === 'openrouter-claude',
-    'default switches to OpenRouter Claude when only OpenRouter key exists',
+    resolveDefaultMephModelChoice({ OPENROUTER_API_KEY: 'sk-or' }) === 'openrouter-deepseek',
+    'default switches to cheap OpenRouter DeepSeek when only OpenRouter key exists',
   );
   assert(
     resolveMephModelChoice('not-a-choice').id === 'anthropic-haiku',

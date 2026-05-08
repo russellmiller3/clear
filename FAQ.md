@@ -93,6 +93,177 @@ node scripts/factor-db-trace-summary.mjs --todo-probe   # "did Meph plan or thea
 
 ---
 
+## Where does Meph's programming-pattern DB live? Can Meph write to it? (2026-05-07)
+
+Meph's curated pattern memory lives in the Factor DB table `clear_programming_patterns`. Studio seeds it from the 13 canonical apps in `CLAUDE.md`: 8 core templates plus 5 Marcus workflow templates.
+
+Each canonical app gets one whole-app row plus deterministic primitive rows extracted from the Clear source. Primitive rows are the small reusable shapes Meph usually needs: tables, queues, rules, validations, endpoints, auth guards, pages, detail panels, displays, buttons, row actions, inputs, agents, realtime blocks, background jobs, tests, and components.
+
+Non-golden templates in `apps/` also contribute `reference` primitive rows. They do **not** contribute whole-app rows. That keeps the 13 golden templates as trusted full examples while still mining useful source shapes from the rest of the repo.
+
+Language primitives that are too important to wait for a template can also be seeded as `language` rows. Current examples: optimistic-lock approval updates, amount-threshold approval routing, and approve/reject row actions.
+
+`browse_templates` with `action: "search"` returns the best matching excerpt, not the whole file. A narrow question like "route approvals under 50000 to a manager and 50000+ to a VP" should return the language routing primitive. A generic approval-queue shape question should still return the `approval-queue` queue primitive with `queue for request:` and its reviewer/actions block. Use `action: "read"` only when Meph explicitly needs a full template file.
+
+For complex app, feature-shape, syntax-shape, or reusable-pattern questions, `/api/chat` now runs a pattern preflight before Meph answers. The hook treats the system prompt as already loaded, injects relevant excerpts from `SYNTAX.md` and `AI-INSTRUCTIONS.md`, searches `clear_programming_patterns`, and appends those snippets to the last user message. This is mechanical; it does not depend on Meph remembering to call a tool.
+
+**Main paths:**
+- `studio/supervisor/pattern-library.js` — canonical template list, seed loader, and primitive extractor
+- `studio/supervisor/factor-db.js` — table schema, primitive metadata, upsert, list, and shape/text search
+- `studio/server.js` — seeds the table when Studio opens the Factor DB
+- `studio/meph-tools.js` — exposes search through `browse_templates` with `action: "search"` and injects closest trusted patterns into compile hints
+- `studio/ghost-meph/mcp-server/tools.js` — seeds the same table for Ghost Meph's MCP path
+- `scripts/primitive-audit.mjs` — reports primitive counts by set, kind, parent template, examples, and review flags
+
+- `scripts/meph-pattern-live-probe.mjs` - runs the live probe harness; defaults to seven full approval-queue app builds
+
+- `studio/supervisor/meph-pattern-preflight.js` - detects complex requests, reads doc excerpts, searches patterns, and injects the preflight context into `/api/chat`
+
+**Audit it:**
+```bash
+node scripts/primitive-audit.mjs
+node scripts/primitive-audit.mjs --json
+```
+
+**A/B the hook, with prompt-only search guidance stripped from both arms:**
+```bash
+MEPH_PATTERN_PROBE_AB=1 node scripts/meph-pattern-live-probe.mjs
+```
+
+The A arm is docs-only: system prompt with pattern-search guidance stripped, `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts injected, and the pattern-search tool removed. The B arm is the full hook: the same docs plus forced pattern DB retrieval. The scorer compiles the generated full app and checks required app behavior, rather than merely checking whether Meph answered a shape question. The harness defaults to `deepseek/deepseek-v4-flash`; Sonnet/Opus are blocked unless `MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1` is set.
+
+Current audit snapshot after mining the rest of `apps/` and adding four language primitives: 13 whole-app rows, 1,224 primitive rows, 62 parent templates, 25 primitive kinds, 0 review flags.
+
+The fourth language primitive covers hard booking workflows: rooms, customers, bookings, available-room search, overlap rejection, and cancellation. A local integration test now requires a hard booking prompt to retrieve that primitive first before any paid booking A/B rerun.
+
+**One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
+
+**Old hint setup vs pattern preflight:** the older Claude-built hint path was a repair loop. It fired after a compile result, searched `code_actions` for past fixes to similar errors, and asked Meph to emit `HINT_APPLIED` so we could track whether the repair hint was used. That is still useful for "I hit this compiler error, what fixed it before?" It is weaker for first-draft app quality because it waits until Meph has already written the wrong shape.
+
+The pattern preflight is a planning loop. It fires before Meph answers complex Clear app or feature-shape requests, injects syntax docs, and searches trusted primitives. It is the right path for "what shape should this app have before code exists?" The two systems are not equal competitors: repair hints are post-error memory; pattern preflight is pre-write design memory.
+
+**Live probe quality rubric:** full-app pattern probes now score generated apps beyond time and compile/pass. `scoreAppQualityRubric()` gives a 100-point deterministic score:
+- 5 source written
+- 20 compiler accepts the app
+- 5 warning budget
+- 10 request data model
+- 10 create-request flow
+- 15 threshold routing correctness
+- 8 pending queue read path
+- 10 approve/reject decision actions
+- 5 stale-submit guard
+- 8 queue UI workflow
+- 4 login protection
+
+The important bit: a docs-only app can compile and still score lower if it routes approvals wrong. In the 2026-05-07 smoke, the docs-only Haiku app compiled but stored the routed owner as pending; the hook-on app compiled with the right approval-tier shape. The rubric catches that difference.
+
+**Write policy:** Meph should not raw-write this DB. Raw writes would let one bad session poison future sessions. The safe shape is: Meph proposes a candidate pattern, deterministic code compiles/tests it, then a promotion gate writes it only if the source is trusted and useful.
+
+**Future learned primitives:** candidates go into `clear_programming_pattern_candidates` first with source kind, source reference, compile/test evidence, status, and review notes. Only `promoteProgrammingPatternCandidate()` writes a passing reviewed candidate into `clear_programming_patterns` as a trusted `learned` primitive.
+
+---
+
+## How do deterministic Ralph checks avoid regex explosion? (2026-05-08)
+
+Ralph does not try to make raw prose deterministic. The durable shape is:
+
+```text
+requirement prose -> typed requirement facts
+generated app     -> typed app facts
+Ralph             -> compare facts to facts
+```
+
+Loose wording is normalized only at the edge. For example, "prevent double booking," "reject overlaps," and "block same-room conflicts" all become the same fact:
+
+```text
+domain_rule: booking overlap -> reject
+```
+
+Then Ralph looks for implementation evidence with the same fact shape. It can pass from a source-level overlap guard, a test, a runtime API result, or browser/state evidence. The final comparison is deterministic set matching, not a growing pile of score regexes.
+
+**Where it lives.**
+- `studio/supervisor/requirements-facts.js` - requirement/app fact normalization.
+- `studio/supervisor/requirements-audit.js` - Ralph audit integration.
+- `studio/supervisor/meph-pattern-preflight.js` - injects machine-readable requirement facts into full-hook preflight.
+- `scripts/meph-pattern-live-probe.mjs` - saves requirement facts, app facts, browser evidence, and state evidence in trial artifacts.
+
+**Current slice.** Booking overlap prevention is the first fact-backed Ralph detector. The vocabulary is intentionally small and should grow by fixtures, not one-off regexes.
+
+---
+
+## How do requirements, pattern memory, repair hints, and Ralph fit together? (2026-05-08)
+
+They are four different layers. Do not merge them.
+
+**Requirements are the per-app contract.** For complex app requests, Meph first drafts a `requirements:` block in Clear source and Studio asks the user to approve or revise it. Mutating editor tools stay blocked until the requirements are approved. This turns "build me a deal approval app" into a reviewable contract before code exists.
+
+**Pattern memory is the reusable example library.** After requirements are approved, the pattern preflight searches `clear_programming_patterns` using both the user request and the approved requirements. Meph gets the relevant snippets, not the whole template, unless it explicitly reads a full template.
+
+**Repair hints are post-error memory.** Exact-error hints from `code_actions` still fire after compile results. They answer "what fixed this compiler error before?" They do not define the app's contract and they are not a second pattern DB.
+
+**Ralph is the done checker.** After Meph writes code and the compile is clean, Ralph audits the generated source against the approved requirements. If a requirement is missing or only echoed in the `requirements:` text, Ralph sends Meph back for repair. If the retry budget is exhausted, Studio blocks the false "done."
+
+**The compiler owns universal UI failures.** Requirements should state the app's business contract. They should not need to say "every nav link should resolve" or "button fetches should hit real endpoints." Those are built-in compiler guarantees: internal app calls to missing `/api/...` endpoints now hard-error, and nav/link controls that point at missing pages hard-error before the app runs.
+
+The full flow:
+1. User asks for a complex app.
+2. Meph drafts `requirements:` only.
+3. User approves or revises the requirements in Studio.
+4. Server injects syntax docs, AI instructions, and pattern snippets retrieved from approved requirements.
+5. Meph writes tests and app code.
+6. Compiler and Snap fix syntax/runtime/UI-reachability issues.
+7. Ralph audits implementation evidence against requirements.
+8. Missing evidence triggers repair, not success.
+
+The important boundary: requirements are customer intent, pattern memory is reusable language shape, repair hints are compiler-error history, and Ralph is outcome verification.
+
+---
+
+## What did the Cycle 11 requirements smoke prove? (2026-05-08)
+
+The first hard Gemini Flash smoke used the vague prompt "build me a deal approval app" instead of handing the model the answer. Meph drafted 7 requirements, built a compiled app, Ralph ran, retried once, and then blocked completion because only 4 of 7 requirements had implementation evidence.
+
+Cost: current run $0.21, total: $1.07.
+
+That is the right failure mode. The system did not pretend success. It exposed three detector gaps: deal creation evidence, VP-threshold evidence, and named-agent evidence. It also caught one false positive: email notification is not audit-trail storage. Those gaps now have local regression tests in `studio/supervisor/requirements-audit.test.js`.
+
+The follow-up Gemini Flash run forced smaller end-to-end requirements before the build. The first paid call produced only 3 chunky requirements and was rejected by the server. Cost: current run $0.39, total: $1.46. After the approval gate tightened, the second paid call produced 6 CRUD/lifecycle requirements, used screenshot/browser evidence, compiled cleanly, and Ralph blocked the app because "high-value deals require manager approval" had only `Pending` status evidence, not manager assignment/queue evidence. Cost: current run $0.33, total: $1.80.
+
+The implementation change: approved requirements must now pass the same deterministic quality gate the first draft uses. For a complex app, the gate demands end-to-end coverage: data storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability evidence. Compound semicolon requirements and vague non-e2e lines no longer get accepted just because the user clicked approve.
+
+The product lesson: the loop is useful when it fails closed. Requirements become a machine-checkable contract, and missing proof sends Meph back instead of producing a confident but wrong app.
+
+---
+
+## Can Meph click buttons and inspect the app visually? (2026-05-08)
+
+Yes for the generated app preview. The capability should be available by default. CLI tests are often enough for backend/API claims, but browser evidence is the stronger check for UI claims. Meph should reach for it when the prompt or approved requirements mention buttons, forms, navigation, layout, visible workflow, or UX. Backend-only changes do not need a screenshot ceremony.
+
+The key tools are `run_app`, `click_element`, `fill_input`, `read_dom`, `read_actions`, `read_network`, and `screenshot_output`. `screenshot_output` returns a PNG image block, not rendered HTML text. Use it to catch layout overflow, missing chrome, broken spacing, and "it technically works but looks wrong" failures when visual evidence matters.
+
+Studio chrome is different. Meph should not get unrestricted permission to click every Studio button. Safe future Studio-control tools should be allowlisted: run, stop, compile, switch preview/source tabs, approve requirements, and maybe choose templates. Risky or irreversible controls stay off limits unless the user explicitly approves them: publish/deploy, rollback, delete, secret/API-key controls, filesystem-wide open/save, account settings, and anything that spends money.
+
+Current boundary: Meph's browser interaction tools target the running app iframe, not the Studio shell. That is the right default.
+
+---
+
+## How do OpenRouter live probes report spend? (2026-05-08)
+
+OpenRouter calls must capture usage accounting and print actual spend in the probe summary.
+
+**Where it is wired:**
+- `studio/ghost-meph/openrouter.js` sends streamed `/api/v1/chat/completions` requests.
+- `studio/ghost-meph/format-bridge.js` preserves streamed `usage.cost`, token counts, and generation ids in Anthropic-shaped `message_delta` events.
+- `scripts/meph-requirements-live-smoke.mjs` sums those events into `openRouterCostCredits`, `modelInputTokens`, `modelOutputTokens`, and `openRouterGenerationIds`.
+
+**Why this exists:** live probes can silently spend money. If the stream does not include usage, the run is not properly instrumented.
+
+**OpenRouter docs:** usage accounting is documented at [openrouter.ai/docs/use-cases/usage-accounting](https://openrouter.ai/docs/use-cases/usage-accounting). Their generation API can also retrieve final cost by generation id after the call: [openrouter.ai/docs/api-reference/get-a-generation](https://openrouter.ai/docs/api-reference/get-a-generation). If the stream path fails, query `/api/v1/generation?id=<generation_id>` with the same API key.
+
+**Rule:** every OpenRouter probe must print actual spend or fail the cost-accounting check. Do not accept "unmeasured, probably cheap" as the final state.
+
+---
+
 ## How much Python parity work is left? How do I check? (2026-05-07)
 
 **Two-command answer:**
@@ -1012,7 +1183,7 @@ Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live emai
 | `model-picker.js` | Declares the Studio picker choices, default selection, selected-model resolution, and "send full chat history when the model changes" rule. |
 | `cc-agent.js` | `MEPH_BRAIN=cc-agent` - spawns Claude Code. Tool mode is available through the MCP bridge when enabled. |
 | `ollama.js` | `MEPH_BRAIN=ollama:<model>` - POSTs to local Ollama daemon at `OLLAMA_HOST`. OpenAI-compatible tool calls flow through the shared bridge when the model supports them. |
-| `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is OpenRouter Claude; picker options also include GLM, DeepSeek, and Kimi. |
+| `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is cheap DeepSeek V4 Flash; picker options also include Claude, GLM, and Kimi. |
 | `format-bridge.js` | Anthropic <-> OpenAI translation, including tool definitions, assistant tool calls, tool results, text deltas, and tool-call SSE back into Anthropic shape. |
 
 Tests: `node playground/ghost-meph.test.js`, `node playground/ghost-meph/model-picker.test.js`, and `node playground/ghost-meph/format-bridge.test.js`. The live smoke test for this feature used `openrouter-glm` and verified tool calls, `meph-memory.md`, `requests.md`, editor read, compile, todos, terminal access, personality override, and the full-history marker on model switch.
@@ -1181,15 +1352,17 @@ Bundle file: `playground/supervisor/reranker.json` (created manually after train
 2. If `r.errors.length > 0`, server computes `archetype` + `error_sig`
 3. `factorDB.querySuggestions()` returns top-10 candidates via tiered BM25 (same error in this archetype → same error anywhere → same-archetype gold rows)
 4. If EBM bundle loaded: `rank(bundle, candidates, featurizeFactorRow)` rescores + resorts
-5. Top 3 returned in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
+5. Top 3 repair hints return in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
 6. Meph reads them in the tool result of his next turn
+
+Reusable pattern snippets are separate from repair hints but now use the same Factor DB-backed hint payload. `factorDB.queryProgrammingPatterns()` adds `result.hints.pattern_text` from `clear_programming_patterns`. The old markdown shape-match hint layer is retired from Meph.
 
 2026-05-01 verification tightened the boundary. The regression test now asserts the dispatcher returns a compile-tool result string containing the `HINT_APPLIED` protocol and the worked source snippet. That is the string `/api/chat` sends back to Meph, so the test proves delivery at the agent-visible boundary rather than only inside helper state.
 
 Telemetry notes:
 
 - `scripts/factor-db-summary.mjs` counts text labels: `yes`, `partial`, and `inferred`.
-- `playground/supervisor/verify-hint-flow.js` reports shape-match hints as `shape_match:<archetype>`, not `none`.
+- `playground/supervisor/verify-hint-flow.js` should distinguish exact-error repair hints, pattern DB snippets, and no hint. Do not collapse a weak delivered hint into `none`.
 - A rejected hint still proves delivery. It means Meph saw the hint and said it did not help.
 
 ### How do we know whether hints make Meph better?

@@ -112,6 +112,39 @@ console.log('\nGhost Meph format bridge');
   assert(events.some(ev => ev.type === 'message_delta' && ev.delta.stop_reason === 'tool_use'), 'Anthropic SSE stop reason is tool_use');
 }
 
+{
+  const raw = [
+    'data:{"choices":[{"delta":{"content":"No-space stream. "}}]}',
+    '',
+    'data:[DONE]',
+    '',
+  ].join('\n');
+  const result = await accumulateOpenAITextAndToolCalls(streamFromText(raw));
+
+  assert(result.text === 'No-space stream. ', 'OpenAI data lines without a space still accumulate');
+}
+
+{
+  const raw = [
+    'data: {"id":"gen_123","choices":[{"delta":{"content":"Costed answer."}}]}',
+    '',
+    'data: {"id":"gen_123","choices":[],"usage":{"prompt_tokens":111,"completion_tokens":22,"total_tokens":133,"cost":0.0042}}',
+    '',
+    'data: [DONE]',
+    '',
+  ].join('\n');
+  const result = await accumulateOpenAITextAndToolCalls(streamFromText(raw));
+  const events = parseSSEEvents(openAIResultToAnthropicSSEEvents(result, 'google/gemini-3-flash-preview'));
+  const usageEvent = events.find(ev => ev.type === 'message_delta');
+
+  assert(result.generationId === 'gen_123', 'OpenRouter generation id is preserved');
+  assert(result.usage?.cost === 0.0042, 'OpenRouter cost is preserved from streaming usage');
+  assert(usageEvent?.usage?.input_tokens === 111, 'Anthropic-shaped usage carries prompt tokens');
+  assert(usageEvent?.usage?.output_tokens === 22, 'Anthropic-shaped usage carries completion tokens');
+  assert(usageEvent?.usage?.openrouter_cost === 0.0042, 'Anthropic-shaped usage carries OpenRouter cost');
+  assert(usageEvent?.usage?.openrouter_generation_id === 'gen_123', 'Anthropic-shaped usage carries generation id');
+}
+
 console.log(`\nPassed: ${passed}`);
 console.log(`Failed: ${failed}`);
 if (failed > 0) process.exit(1);

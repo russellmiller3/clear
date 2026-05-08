@@ -298,6 +298,12 @@ Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, and meph-memory.md. Meph can only write .clear files and requests.md.
 
 Meph has tools: edit_code, read_file, edit_file, run_command, compile, run_app, stop_app, http_request, read_terminal, run_tests, eval tools, browser tools, todo, source_map, patch_code, and browse_templates.
+Meph can use generated-app browser tools as real evidence: click app buttons, fill app inputs, inspect rendered DOM, read browser actions/network, and take screenshots. These tools target the running app preview, not unrestricted Studio chrome. Require browser proof when approved requirements depend on buttons, forms, navigation, layout, visible workflow, or UX; do not require screenshot ceremony for backend-only claims.
+Do not give Meph arbitrary Studio-button control. Any Studio-control tool must be allowlisted and must deny publish/deploy, rollback, destructive actions, secret/API-key controls, account settings, and paid actions unless the user explicitly approves.
+Ralph must fail closed. If compile errors remain, or if a requirement has no concrete implementation evidence after retry, Studio blocks `done` instead of letting Meph declare success. Audit-trail requirements need storage evidence; notifications alone never satisfy them.
+Complex-app requirements must be end-to-end: data storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when UI matters. Do not accept chunky semicolon requirements just because the user clicked approve.
+Compiler-owned UI failures must be hard errors, not requirements: internal app calls to missing `/api/...` endpoints and nav/link controls pointing at missing pages must block compile. Expand this class as new universal UI failures are found.
+"Pending" status alone is not approval routing. Manager/VP approval requires role, reviewer assignment, approval queue, or approver evidence.
 
 Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
 Tests: `node playground/server.test.js` (85 tests).
@@ -342,7 +348,16 @@ When debugging any browser/UI issue, **always check console errors first** befor
 Proactively do what makes sense. Don't wait to be told. If something obviously needs doing — fix it, build it, clean it up. Act on judgment, not just instructions.
 
 ## Next Steps Rule
-At the end of every task, come up with the next relevant tasks and suggest them. Don't stop at "done" — show what's next and offer to keep going.
+At the end of every task, come up with the next relevant task and do it when it is safe, approved, and directly advances the user's goal. Don't stop at "done" and don't merely offer to keep going when the next move is obvious.
+
+Before any final response, run the obvious-next-step gate:
+- Is there a safe next command, edit, test, retry, commit, or doc update that I already know should happen?
+- Has Russell already approved the external data, API spend, or live probe needed for that next move?
+- Would stopping now force Russell to restate the same instruction or spend energy re-prompting me?
+
+If the answer is yes, keep working in the same turn. A final answer is allowed only after the next step is done, or when the blocker is real: destructive action, irreversible cleanup, missing credential, explicit spend threshold, or a user command to stop.
+
+When blocked, say the concrete blocker and the exact unlock. Do not end with "want me to", "should I", "let me know", or "I can next" when the obvious step is safe to execute.
 
 ## Strong Opinion Rule
 Always have an opinionated take on the right way to do things, backed by facts or best practices. Don't hedge with "it depends" or "you could go either way." State the best approach, explain why, and do it. If the user disagrees, they'll say so.
@@ -372,6 +387,19 @@ Scan `learnings.md` TOC before starting any work — not just at session start, 
 
 ## Test in Clear Studio (MANDATORY)
 Do all testing by running the app in Clear Studio — compile, run, click Run Tests, click Run Evals — and verify the output in the actual UI. Don't rely on harness scripts or compiler tests alone. The real errors Russell sees come from the Studio environment (Windows paths, spawn timeouts, live compilation, browser rendering). If you skip Studio, you miss the same bugs he'll hit.
+
+## Windows Command Hygiene (MANDATORY)
+This repo is often driven from Windows PowerShell. Treat avoidable Windows tool errors as process bugs, not harmless noise.
+
+- Use PowerShell-native commands by default. If `rg` has not passed a same-session smoke check, use `Get-ChildItem` plus `Select-String`.
+- Before reading multiple paths, verify the paths exist or pipe discovered files from `Get-ChildItem`. Do not let a missing path blow up the whole command.
+- Never print `.env` directly. Use masked output: key name, whether it is set, and length only.
+- Do not use reserved automatic variables such as `$PID`, `$Host`, `$HOME`, `$Error`, `$Args`, or `$Input` as scratch or loop variables.
+- Use the bundled Node executable or `process.execPath`; do not rely on bare `node` or Windows shims.
+- For process command-line inspection, start with `Get-Process`. If command lines require `Get-CimInstance`, escalate the narrow command once.
+- If Git cannot create `.git/index.lock`, rerun the same Git action with sandbox permission instead of trying unrelated workarounds.
+- Do not anchor patches on non-ASCII punctuation copied from terminal output. PowerShell can display smart punctuation incorrectly.
+- After a Windows command fails, change tactic immediately: known fallback, verified path, or one narrow escalation. Do not retry the same broken command shape.
 
 ## Known Issues
 - Browser server may 404 on some routes (untested in real browser)
@@ -512,6 +540,8 @@ Before kicking any sweep, Meph eval, or multi-call research operation:
 **Separate BUILDING sessions from MEASURING sessions.** Building = code changes, $0 API. Measuring = API spend, capped at $10-20 per session, with ONE specific falsifiable hypothesis. Never stack multiple interventions and measure them in sequential sweeps — that's where the compounding waste came from.
 
 **The structural backstop:** set a daily spending cap at console.anthropic.com/settings/limits. This rule depends on Claude's discipline; the console cap depends on nothing.
+
+**Report live-provider cost as you go.** Any OpenRouter, Anthropic, Gemini, or other paid live probe must print BOTH the current-run cost and the running total cost, formatted in dollars and cents. Required chat shape: `Cost: current run $0.40, total: $3.40.` Include provider tokens when available. For OpenRouter, `scripts/meph-requirements-live-smoke.mjs` must show `openRouterCostCredits`, token counts, generation ids, and `costReport`; if cost accounting is missing, treat the probe as failed instrumentation, not "probably cheap."
 
 ## Compiler error fixes are data-driven (MANDATORY)
 
@@ -667,6 +697,19 @@ Every Clear session reads `FAQ.md` and `learnings.md` before changing files. `FA
 ## Learnings As You Go (MANDATORY)
 
 Update `learnings.md` during the work, not at some vague end-of-session moment. After each meaningful fix, completed phase, or repeated mistake, append the concrete lesson while the evidence is fresh.
+
+## J Paul Getty Rule: Dry Repeated Errors (MANDATORY - added 2026-05-07)
+
+**Make any mistake you want. Never make the same mistake twice.**
+
+- If the same command shape, Windows quirk, provider failure, test failure, or process mistake happens twice, stop repeating it.
+- Turn the mistake into a checked-in rule, helper, script, hook, or regression test before continuing.
+- Do not narrate the same failure as if noticing it were enough. Dry the error so the next agent cannot step in it.
+- Windows background jobs: never hand-roll long inline PowerShell launch blocks. Use a tested runner that writes pid/out/err/exit files.
+- Mojibake: do not trust terminal-rendered UTF-8 when PowerShell output looks corrupted. Verify file bytes and use the mojibake hygiene tailer for logs.
+- API/provider failures: if a provider or model path fails twice, add preflight or fallback before spending more probe calls.
+
+**Why:** 2026-05-07 - repeated Windows launch and UTF-8 display mistakes cost live debugging time during Meph pattern probes. The fix is not another promise. The fix is a guardrail.
 
 ## Browser Regression For Launch (MANDATORY)
 

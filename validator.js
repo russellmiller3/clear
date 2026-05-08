@@ -24,7 +24,9 @@
 //   │  ERRORS (block compilation):                          │
 //   │    ├─ validateForwardReferences ... undeclared vars    │
 //   │    ├─ validateTypes .............. type mismatches     │
-//   │    └─ validateSecurity .......... missing auth guards  │
+//   │    ├─ validateSecurity .......... missing auth guards  │
+//   │    ├─ validateFetchURLsMatch .... frontend→backend URL │
+//   │    └─ validateUIRouteTargets ..... nav/link dead ends  │
 //   │                                                       │
 //   │  WARNINGS (quality + safety):                         │
 //   │    ├─ validateConfig ............ env var usage        │
@@ -33,7 +35,6 @@
 //   │    ├─ validateDuplicateEndpoints  same route twice     │
 //   │    ├─ validateDisplayActions .... edit/delete on table │
 //   │    ├─ validateEndpointResponses . missing send back    │
-//   │    ├─ validateFetchURLsMatch .... frontend→backend URL │
 //   │    ├─ validateArithmetic ........ balance subtraction  │
 //   │    ├─ validateCapacity .......... overflow risk        │
 //   │    ├─ validateFieldMismatch ..... form↔schema names    │
@@ -112,7 +113,8 @@ export function validate(ast) {
   validateDuplicateEndpoints(ast.body, warnings);
   validateDisplayActions(ast.body, warnings);
   validateEndpointResponses(ast.body, warnings);
-  validateFetchURLsMatchEndpoints(ast.body, warnings);
+  validateFetchURLsMatchEndpoints(ast.body, errors);
+  validateUIRouteTargets(ast.body, errors);
   validateArithmetic(ast.body, warnings);
   validateCapacity(ast.body, warnings);
   validateFieldMismatch(ast.body, warnings);
@@ -2302,15 +2304,17 @@ function validateEndpointResponses(body, warnings) {
 }
 
 /**
- * FETCH URL MATCHING: Warn if a frontend fetch targets a URL that doesn't
+ * FETCH URL MATCHING: Error if an app fetch targets a URL that doesn't
  * match any declared endpoint. Catches typos like '/api/user' when the
  * endpoint is '/api/users'.
  */
-function validateFetchURLsMatchEndpoints(body, warnings) {
+function validateFetchURLsMatchEndpoints(body, errors) {
+  const asNodeList = value => Array.isArray(value) ? value : value ? [value] : [];
+
   // Collect all declared endpoint paths
   const endpoints = new Map();
   function collectEndpoints(nodes) {
-    for (const n of nodes) {
+    for (const n of asNodeList(nodes)) {
       if (n.type === NodeType.ENDPOINT) {
         // Normalize: strip :param segments for matching
         const normalized = n.path.replace(/:[\w]+/g, ':id');
@@ -2319,6 +2323,8 @@ function validateFetchURLsMatchEndpoints(body, warnings) {
         endpoints.set(`GET ${n.path.split('/:')[0]}`, n.line);
       }
       if (n.body) collectEndpoints(n.body);
+      if (n.thenBranch) collectEndpoints(n.thenBranch);
+      if (n.otherwiseBranch) collectEndpoints(n.otherwiseBranch);
     }
   }
   collectEndpoints(body);
@@ -2328,7 +2334,7 @@ function validateFetchURLsMatchEndpoints(body, warnings) {
 
   // Collect all fetch URLs from API_CALL nodes
   function checkFetches(nodes) {
-    for (const n of nodes) {
+    for (const n of asNodeList(nodes)) {
       if (n.type === NodeType.API_CALL && n.url && n.url.startsWith('/api/')) {
         const method = n.method || 'GET';
         const url = n.url.split('?')[0]; // strip query params
@@ -2348,15 +2354,88 @@ function validateFetchURLsMatchEndpoints(body, warnings) {
             if (dist < closestDist) { closestDist = dist; closest = key; }
           }
           const suggestion = closest ? ` Did you mean ${closest}?` : '';
-          warnings.push(
-            `Line ${n.line}: ${method} ${url} doesn't match any endpoint.${suggestion}`
-          );
+          errors.push({
+            line: n.line || 0,
+            message: `Line ${n.line}: ${method} ${url} doesn't match any endpoint.${suggestion}`
+          });
         }
       }
       if (n.body) checkFetches(n.body);
+      if (n.thenBranch) checkFetches(n.thenBranch);
+      if (n.otherwiseBranch) checkFetches(n.otherwiseBranch);
     }
   }
   checkFetches(body);
+}
+
+/**
+ * UI ROUTE TARGETS: Error if internal nav or link controls point at no page.
+ * The generated browser walker can still prove dynamic behavior, but static
+ * dead routes are cheap to catch before the app ever runs.
+ */
+function validateUIRouteTargets(body, errors) {
+  if (!Array.isArray(body)) return;
+  const asNodeList = value => Array.isArray(value) ? value : value ? [value] : [];
+
+  const pages = new Set(['/']);
+  const hasAuth = body.some(n => n && n.type === NodeType.AUTH_SCAFFOLD);
+  if (hasAuth) {
+    pages.add('/login');
+    pages.add('/signup');
+  }
+
+  function normalizeRoute(path) {
+    if (typeof path !== 'string') return '';
+    let value = path.trim();
+    if (!value || value === '#') return '';
+    if (/^(?:https?:|mailto:|tel:)/i.test(value)) return '';
+    if (value.startsWith('#')) value = value.slice(1);
+    value = value.split('?')[0].split('#')[0];
+    if (!value.startsWith('/')) return '';
+    if (value.length > 1) value = value.replace(/\/+$/, '');
+    return value || '/';
+  }
+
+  function collectPages(nodes) {
+    for (const n of asNodeList(nodes)) {
+      if (n.type === NodeType.PAGE) {
+        const route = normalizeRoute(n.route || n.path);
+        if (route) pages.add(route);
+      }
+      if (n.body) collectPages(n.body);
+      if (n.thenBranch) collectPages(n.thenBranch);
+      if (n.otherwiseBranch) collectPages(n.otherwiseBranch);
+    }
+  }
+
+  function checkTargets(nodes) {
+    for (const n of asNodeList(nodes)) {
+      if (n.type === NodeType.NAV_ITEM) {
+        const route = normalizeRoute(n.path);
+        if (route && !pages.has(route)) {
+          errors.push({
+            line: n.line || 0,
+            message: `Line ${n.line}: nav item '${n.title}' points to missing page '${route}'. Add a page at '${route}' or change the destination.`
+          });
+        }
+      }
+      if (n.type === NodeType.CONTENT && (n.contentType === 'link' || n.ui?.contentType === 'link')) {
+        const route = normalizeRoute(n.href || n.ui?.href);
+        if (route && !pages.has(route)) {
+          errors.push({
+            line: n.line || 0,
+            message: `Line ${n.line}: link '${n.text}' points to missing page '${route}'. Add a page at '${route}' or change the destination.`
+          });
+        }
+      }
+      if (n.body) checkTargets(n.body);
+      if (n.thenBranch) checkTargets(n.thenBranch);
+      if (n.otherwiseBranch) checkTargets(n.otherwiseBranch);
+    }
+  }
+
+  collectPages(body);
+  checkTargets(body);
 }
 
 // =============================================================================

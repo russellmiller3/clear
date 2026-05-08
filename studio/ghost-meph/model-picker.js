@@ -1,4 +1,5 @@
 const DEFAULT_DIRECT_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_OPENROUTER_CHEAP_MODEL = 'deepseek/deepseek-v4-flash';
 
 const MODEL_CHOICES = [
   {
@@ -26,7 +27,7 @@ const MODEL_CHOICES = [
     id: 'openrouter-deepseek',
     label: 'OpenRouter DeepSeek',
     backend: 'openrouter',
-    openRouterModel: 'deepseek/deepseek-v4-pro',
+    openRouterModel: DEFAULT_OPENROUTER_CHEAP_MODEL,
     needs: 'OPENROUTER_API_KEY',
   },
   {
@@ -53,7 +54,7 @@ export function resolveMephModelChoice(id) {
 
 export function resolveDefaultMephModelChoice(env = process.env) {
   if (env.ANTHROPIC_API_KEY) return 'anthropic-haiku';
-  if (env.OPENROUTER_API_KEY) return 'openrouter-claude';
+  if (env.OPENROUTER_API_KEY) return 'openrouter-deepseek';
   return 'anthropic-haiku';
 }
 

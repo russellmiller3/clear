@@ -437,6 +437,7 @@ Every safety net belongs in the compiler, not in the prompt:
 - Auth on destructive endpoints? **Compiler error**, not "remember to add auth."
 - Input validation? **Compiler generates it** from the schema, not "don't forget to validate."
 - Test coverage? **Compiler writes the tests**, not "make sure you test this."
+- Dead app UI? **Compiler error**, not "remember to check every link and button."
 - SQL injection? **Impossible by construction**, not "use parameterized queries."
 - Mass assignment? **Auto-filtered**, not "only allow known fields."
 
@@ -778,15 +779,20 @@ The reader knows what data exists, what the API does, and what the user sees.
 
 ---
 
-## Rule 15: Meph Has Access to Everything
+## Rule 15: Meph Can Test Apps, Studio Control Is Allowlisted
 
-Meph (the Studio AI agent) should have tool access to everything in Studio:
-templates, docs, source maps, terminal, data, API testing, screenshots. The only
-things Meph cannot touch are the dark mode button, "New" (clearing the editor),
-and "Load" (loading a template) — those are user-initiated actions only.
+Meph (the Studio AI agent) should have tool access to the generated app preview:
+buttons, inputs, DOM inspection, network, terminal, source maps, API testing,
+screenshots, and browser actions. If a customer can click it in the generated app,
+Meph should be able to test it.
 
-If a feature exists in the IDE, Meph should be able to use it as a tool. If it
-can't, that's a gap to fix.
+Studio chrome is different. Publish, rollback, delete, secrets, account settings,
+model routing, filesystem-wide open/save, and anything that spends money are
+product controls, not test targets. Those need explicit allowlisted tools and
+must stay denied by default.
+
+The split is simple: generated apps are where Meph proves the build works; Studio
+itself is the user's cockpit.
 
 ## Rule 16: Error Messages Are First-Class
 
@@ -929,3 +935,35 @@ Reader processes one beat at a time. Cognitive load per line stays below the 14-
 - Multi-clause prepositional chains (`call API with X using Y as Z within W`). If you find yourself reaching for three+ qualifier words in one line, you have a structured argument — make it a block.
 
 **When in doubt, the test is:** can a 14-year-old read this line out loud in one breath and explain what it does? If they pause, split.
+
+## Rule 23: Requirements Are Claims Before Code
+
+A complex app starts with explicit requirements before tests and implementation. The user may say "build me a deal approval app." Meph's job is to translate that into clear, reviewable claims before writing the app.
+
+**The anti-pattern this kills:** code-first guessing. A plausible app can compile, look professional, and still miss the business rule. That is worse than a compile error because the product lies quietly.
+
+**Requirements are not a second programming language.** They are outcome claims in plain Clear source:
+
+```clear
+requirements:
+  logged-in sellers can submit deals
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals
+```
+
+**What makes a good requirement:**
+- It names the actor when permissions matter.
+- It names the data when persistence matters.
+- It names the state change when actions matter.
+- It names the threshold, exception, or edge case when correctness depends on it.
+- It can be checked by a test, static audit, browser run, or human review.
+
+This is the Clear version of "define the outcome before the agent loops." The requirement is the claim. Tests and app source are the evidence. Ralph is the checker that refuses to call the app done when the evidence is missing.
+
+**The separation matters:**
+- Requirements are per-app customer intent.
+- Pattern memory is reusable syntax and app-shape examples.
+- Repair hints are historical fixes for compiler errors.
+- Ralph is the outcome grader.
+
+Mixing those into one "hint" system creates mush. Keeping them separate creates a real build contract: ask, translate, approve, build, check, repair.

@@ -294,6 +294,7 @@ cc-agent / ollama / openrouter backends and the Studio model picker shipped (see
 
 | # | Item | Scope |
 |---|---|---|
+| GM-4 | Requirements/Ralph loop — complex app builds start with approved e2e requirements, pattern preflight uses them, Ralph blocks false done after build | Shipped 2026-05-08; next lane is deeper browser-walker UI assertions |
 | GM-5 | Calibration harness — `curriculum-sweep.js --calibrate` runs N tasks on Ghost + same N on real Haiku, compares Factor DB row distributions, flags drift | 2 days |
 
 Privacy: curriculum tasks are synthetic. Ghost Meph must NEVER touch real customer apps.

@@ -1,7 +1,149 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-05-01 (flywheel hint delivery verified; browser launch regression wired into the suite; hard hint-effect sweep preset shipped)**.
+Updated: **2026-05-08 (requirements/Ralph loop is now the primary quality lever; pattern/error DBs are useful retrieval aids, but deterministic contracts are what prevent false success)**.
+
+## Latest meta-lesson — retrieval helps Meph aim, Ralph changes the game (2026-05-08)
+
+**The big learning:** pattern memory and error memory are not the main moat by themselves. They help Meph choose a better starting shape or repair a known compile failure. They do not decide whether the finished app actually satisfies the user's intent.
+
+Ralph plus approved requirements is the bigger move because it changes the success condition. Before Ralph, Meph could produce a plausible app, run some tests, and say "done" while missing the business workflow. After Ralph, "done" means the generated Clear source has concrete evidence for each approved requirement. If evidence is missing, the loop continues or blocks.
+
+The databases still matter, but as **supporting context**, not as the oracle:
+
+- **Pattern DB:** useful before writing code. It gives Meph trusted Clear shapes: approval queues, routing, selected-row details, optimistic locking, agents, tests. It reduces guessing and syntax drift.
+- **Error DB:** useful after a compile failure. It gives Meph examples of past fixes for the same error class. It reduces repeated syntax/debug cycles.
+- **Ralph requirements loop:** useful after the app exists. It asks the load-bearing question: "did the app actually implement what we agreed it should do?"
+
+The 2026-05-08 Gemini smoke made the hierarchy obvious. The model got enough pattern/context to build a plausible deal approval app. It compiled. It used browser/screenshot tools. But it represented "manager approval" as only `Pending` status. The app looked close, yet had no manager assignment, no reviewer queue, and no approver role evidence. Ralph blocked it. That is the product working.
+
+The first capped broad-app A/B on Gemini Flash is also directionally positive, but still only n=1. On `revenue-ops-dashboard-app`, docs-only baseline failed at **42/100** and did not compile; full pattern preflight passed at **95/100** with a compiling app. Cost was **$0.43** for the paired trial, running total **$3.34**, artifact folder `studio/sessions/pattern-probes/2026-05-08T16-15-00-305Z/`. This proves the harness can produce a useful paired signal; it does not yet prove the effect generalizes across the seven broad app types.
+
+The next two capped probes made the lesson sharper. On the booking app, docs-only scored **58/100** and full hook scored **68/100**; both failed to compile because the app missed required customer data. On the expense analytics app, the provider aborted during the baseline after one paid call, so the run is blocked/inconclusive rather than a model-quality result. The latest probe cost was **$0.14**, bringing the live-probe running total to **$4.16** of the $5 cap.
+
+The typed-fact Ralph slice shipped immediately after that. Requirements now normalize into small facts, generated apps emit app facts, Ralph can verify a booking overlap rule without exact wording, and probe artifacts now save requirement facts, app facts, browser-tool evidence, and state-tool evidence. The follow-up Gemini Flash booking A/B is the honest warning label: docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100** and failed compile while missing `customers` and `available`. Cost was **$0.26**, running total **$4.52** of the $5 cap, artifact folder `studio/sessions/pattern-probes/2026-05-08T17-24-11-967Z/`.
+
+That result does not say "patterns are bad." It says retrieval can hurt when the hook gives Meph generic or mis-aimed context. The local fix from the result is that preflight now injects machine-readable requirement facts alongside prose, so "rooms, customers, bookings stored" becomes explicit `storage` facts and "overlap must be blocked" becomes a `domain_rule` fact before pattern search and before Meph writes code. The pattern library also now has a trusted booking workflow primitive, and the local retrieval test proves that a hard booking prompt returns it first before any more paid A/B.
+
+**Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
+
+The durable research frame is now:
+
+```text
+Vague user intent
+  -> requirements contract
+  -> pattern retrieval for better first draft
+  -> compiler/test/browser checks for universal correctness
+  -> Ralph audit against the contract
+  -> done only if evidence exists
+```
+
+This is more important than making the retriever cleverer. A perfect retriever still cannot know whether the generated app satisfied the user's specific request unless the request has become a machine-checkable contract.
+
+## How deterministic checks avoid regex explosion (2026-05-08)
+
+The brittle version of Ralph is "scan prose and source for enough magic words." That will collapse into regex soup. The durable version is two translation layers and one small comparison:
+
+```text
+requirement prose -> typed requirement facts
+generated app     -> typed app facts
+Ralph             -> compare facts to facts
+```
+
+Regex and synonym matching are allowed only at the edge, where loose language is normalized into a small controlled vocabulary. They are not the oracle. The oracle is set containment: every approved requirement fact needs matching implementation evidence from source, compiler output, tests, browser actions, or runtime state.
+
+Example normalized requirement fact:
+
+```json
+{
+  "kind": "domain_rule",
+  "actor": "seller",
+  "action": "create",
+  "object": "booking",
+  "condition": "overlaps existing booking for same room and time",
+  "expected": "reject",
+  "evidence": ["api_result", "browser_flow", "test"]
+}
+```
+
+Example app facts that could satisfy it:
+
+```json
+[
+  {
+    "kind": "api_result",
+    "endpoint": "POST /api/bookings",
+    "condition": "overlap",
+    "result": "400"
+  },
+  {
+    "kind": "test",
+    "name": "rejects overlapping room bookings",
+    "result": "pass"
+  }
+]
+```
+
+That is much less brittle than matching exact words like "double booking" or "overlap" forever. "Prevent double booking," "reject overlaps," and "block same-room conflicts" all normalize to the same `domain_rule` fact. Ralph does not care which phrase the model used once the fact exists.
+
+The controlled fact vocabulary should stay small:
+
+- `storage`: durable tables/records and required fields.
+- `create`: user can submit a new domain object.
+- `read`: user can list, filter, search, or inspect details.
+- `update`: user can edit, transition, approve, reject, cancel, or assign.
+- `delete`: user can remove or archive when the app needs it.
+- `role_rule`: access, ownership, approver, manager, VP, tenant, or reviewer restrictions.
+- `domain_rule`: thresholds, overlap prevention, uniqueness, limits, blocking saves, stale-submit guards.
+- `ui_reachability`: page, nav, link, modal, accordion, button, and visible state evidence.
+- `audit`: history row, actor, timestamp, old/new state, export.
+- `aggregate`: KPI, chart, rollup, dashboard, report, export.
+- `integration`: webhook, email, agent call, external API, scheduled job.
+
+The implementation rule is: add synonyms to the normalizer only when a real artifact proves the miss, then add the phrase as a fixture. Do not add one-off scoring regex to the final Ralph check. The Ralph check compares typed facts, not strings.
+
+This keeps the loop deterministic without pretending language is deterministic. The fuzzy part is deliberately tiny and regression-tested. The final grade is boring: does the app contain evidence for the contract or not?
+
+Implementation status after the first slice:
+
+- `studio/supervisor/requirements-facts.js` normalizes requirement prose and generated source into typed facts.
+- `studio/supervisor/requirements-audit.js` uses typed facts for booking overlap domain-rule verification before falling back to older detectors.
+- `studio/supervisor/meph-pattern-preflight.js` injects machine-readable requirement facts into full-hook preflight context.
+- `scripts/meph-pattern-live-probe.mjs` stores requirement facts, app facts, browser evidence, and state evidence in per-trial artifacts.
+- The harness now salvages source-backed trials when a provider flakes after editing; no-source provider failures still block.
+- `studio/supervisor/pattern-library.js` includes the booking/customer/availability/overlap workflow primitive that the latest failed booking run needed.
+- `studio/supervisor/factor-db-integration.test.js` guards that hard booking prompts retrieve that primitive first at $0.
+
+## External benchmark -- the cutting-edge harness bar (2026-05-08)
+
+The Lenny / Claire Vo Code with Claude recap is useful because it names the same product direction from Anthropic's side: routines, Outcomes, multi-agent orchestration, Dreams memory, and higher Claude Code limits. The official docs make the benchmark sharper:
+
+- **Outcomes:** Anthropic's managed-agent loop asks the user to define what done means, provisions a separate grader context, scores against a rubric, and feeds gaps back to the agent for another iteration. This validates Ralph's loop shape, but Clear should keep Ralph deterministic wherever possible instead of turning the grader into another LLM judge. Source: [Anthropic Define Outcomes](https://platform.claude.com/docs/en/managed-agents/define-outcomes).
+- **Dreams:** Anthropic now treats memory cleanup as a first-class async job: read past sessions and an existing memory store, produce a separate cleaned output store, and let the user review it. This is the right analogy for our pattern/error DBs: never raw-write trusted memory; stage candidates, dedupe contradictions, and promote only reviewed, test-backed memories. Source: [Anthropic Dreams](https://platform.claude.com/docs/en/managed-agents/dreams).
+- **Multi-agent orchestration:** Anthropic's multi-agent sessions use isolated context threads, specialized agents, and parallel work where each agent has its own tools and prompt. For Clear evals, this means the harness should support specialized evaluator roles, but only as secondary critics; deterministic compile/test/Ralph signals stay primary. Source: [Anthropic Multiagent Sessions](https://platform.claude.com/docs/en/managed-agents/multi-agent).
+- **Routines:** scheduled/API/GitHub-triggered Claude Code routines are autonomous cloud sessions with explicit repo, environment, connector, and permission scope. Clear's analogue should be nightly/triggered regression sweeps with strict cost caps, branch isolation, and written artifacts. Source: [Claude Code Routines](https://code.claude.com/docs/en/routines).
+
+Nous Hermes sets a different bar. Hermes is closer to an agent operating system than a coding benchmark: toolsets can be enabled/disabled, skills use progressive disclosure, memory persists across sessions, checkpoints protect work, subagents run in isolated contexts, hooks intercept lifecycle events, batch processing emits trajectories, provider routing/fallback/credential pools are built in, and browser automation can route public URLs to cloud browsers while keeping localhost private. Sources: [Hermes features](https://hermes-agent.nousresearch.com/docs/user-guide/features/overview) and [Hermes browser automation](https://hermes-agent.nousresearch.com/docs/user-guide/features/browser).
+
+The deeper Hermes benchmark lesson is its environment layer. Hermes environments define tasks, run an agent loop, and score outputs. Reward functions can inspect the same sandbox the model used: terminal, files, web, browser, and arbitrary tools. Hermes also has benchmark/data-generation/RL paths through Atropos, TerminalBench2, TBLite, YC-Bench, and SWE-style environments. Source: [Hermes Environments, Benchmarks & Data Generation](https://hermes-agent.nousresearch.com/docs/developer-guide/environments/).
+
+The broader eval ecosystem points the same way:
+
+- **tau-bench:** useful north star for realistic tool-agent-user interaction because it grades final database state against a goal state, not just the assistant's text. That maps directly to Clear: build app, drive app, inspect app state. Source: [tau-bench paper page](https://huggingface.co/papers/2406.12045).
+- **Inspect AI:** useful harness pattern: tasks, datasets, solvers, scorers, logs, sandboxes, agents, multi-agent, and external-agent bridges. Clear should export enough structured logs that a future Inspect wrapper is trivial. Source: [Inspect docs](https://inspect.aisi.org.uk/).
+- **METR Task Standard:** useful packaging target: each task has an environment, instructions, and optional automatic scoring over submission plus environment state. Clear's broad app prompts should eventually be task-family definitions, not ad hoc arrays in one script. Source: [METR task-standard](https://github.com/METR/task-standard).
+
+**What this means for our harness:** the current `broadFunctionalApps` A/B is a good start, not the finish line. It has broad prompts, docs-only vs hook-on arms, app-quality rubrics, requirements approval, and cost accounting. The missing cutting-edge pieces are:
+
+1. **Environment snapshots:** partially shipped. The probe now saves source, requirements, retrieved snippets/preflight metadata, model events, compile result, score, and cost as per-trial artifacts; browser/state evidence still needs first-class capture.
+2. **State-based scoring:** for each app type, create seeded user flows and inspect final app/database state, tau-bench style.
+3. **Trajectory metrics:** partially shipped. The probe records requirements attempts, tool names, retrieval hits, quality, and cost; next step is explicit turn/tool-error/browser-action scoring.
+4. **Hermes-style task definitions:** move broad app prompts into reusable task-family objects with prompt, setup, allowed tools, scorer, timeout, and cost budget.
+5. **Provider matrix:** same tasks across Gemini Flash, Haiku, DeepSeek/Kimi/GLM, and one strong reference model, with provider failures separated from model failures.
+6. **Memory hygiene loop:** periodically audit pattern/error DB candidates like Dreams: dedupe, reject stale/contradictory rows, and promote only reviewed passing examples.
+7. **Export path:** emit JSONL compatible enough for offline analysis, Inspect-style wrappers, and future fine-tuning/RL data.
+
+**Opinion:** Ralph plus requirements is still the main differentiated bet. Hermes is ahead on general agent infrastructure; Anthropic is validating rubric-driven outcome loops; tau-bench validates state-based scoring. Clear's strongest version combines all three but keeps the load-bearing grade deterministic: requirements contract, compiled app, browser/state evidence, Ralph audit, then only optional LLM critique.
 
 ## Capability surface — provable named business rules (2026-05-02)
 
@@ -84,6 +226,8 @@ The document below is structured **theory → architecture → current state →
 
 **What's the point of all this?** To make Meph get better at building apps over time, without needing access to re-train Claude itself.
 
+**The new hierarchy after the requirements/Ralph probe.** The databases help Meph write a better attempt. They are not the grader. The main quality lever is turning the user's intent into approved requirements, then making Ralph audit the final app against those requirements. Pattern DB and error DB are accelerators; Ralph is the gate.
+
 **How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. A small ranking model — **EBM (Explainable Boosting Machine)**, not a language model — picks the best examples more intelligently than keyword match. EBM is a glass-box algorithm: you can literally plot each feature's contribution and see why a hint was picked. Matches Clear's "no magic, readable source" philosophy. **Phase-1 detail (Session 38):** at <1000 passing rows, the trainer runs a 2-stage **Lasso → EBM** pipeline — Lasso auto-selects the features that actually matter (L1 regularization drops the noise), then EBM fits shape functions + interactions only on the survivors. Current measured: Lasso alone hits val R² 0.39 on our 182 passing rows; we'll switch to Stage-2 EBM around 1000 rows when interactions start earning their keep.
 
 **What's actually live right now:**
@@ -97,7 +241,10 @@ The document below is structured **theory → architecture → current state →
 - Haiku 4.5 is the default model — 3× cheaper per training row than Sonnet at ~94% of Sonnet's completion rate
 - **Winner-harvest scorer** (`scripts/score-winning-runs.mjs`, Session 47–48) ranks every passing build by how clean / compact / first-try it is — turns the Factor DB's accumulated wins into an actionable canonical-examples queue. Symmetric to the friction script that already turned errors into a queue.
 - **Held-out test set** (5 of 38 curriculum tasks, Session 47–48) — still graded by every sweep but never feeds the retriever or any future canonical-examples library. Gives an uncontaminated measurement signal as the training pipeline grows. The `--exclude-held-out` flag on the sweep produces training-only runs.
-- **Shape-search retrieval (Lean Lesson 2, 2026-04-26):** every compile (not just errors) also retrieves canonical worked examples whose program shape matches what Meph is writing — same archetype, similar table/endpoint mix. Layered on top of error-text retrieval, not replacing it.
+- **Shape-search retrieval (Lean Lesson 2, 2026-04-26, retired from Meph hints 2026-05-07):** the original markdown `canonical-examples.md` path proved that program shape is a useful retrieval key, but it is no longer a separate Meph compile-hint layer.
+- **Curated pattern DB (2026-05-07):** the Factor DB now has a `clear_programming_patterns` table seeded from the 13 canonical apps in `CLAUDE.md` (8 core + 5 Marcus). Each golden template is stored both as a whole-app row and as deterministic primitive rows for reusable Clear shapes like tables, queues, rules, endpoints, pages, actions, agents, and tests. Non-golden app templates add `reference` primitive rows only, while critical language primitives cover approval routing, row actions, and optimistic locking before a full template exists. `scripts/primitive-audit.mjs` reports the library shape; current repo snapshot is 13 app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags. A seven-question narrow approval retrieval guard keeps this focused on realistic Marcus-style questions. `/api/chat` also runs a preflight hook for complex app and feature-shape requests: system prompt is already loaded, relevant `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts are injected, and the pattern DB is searched before Meph answers. This is trusted premise memory: Meph can search it and receive small pattern snippets with parent/kind metadata, but writes must go through deterministic compile/test promotion so one bad session cannot poison the library.
+- **Learned primitive promotion queue (2026-05-07):** user sessions and test runs can stage candidate snippets in `clear_programming_pattern_candidates` with source provenance, compile/test evidence, and review notes. Trusted retrieval ignores that table until a passing reviewed row is promoted into `clear_programming_patterns` as a `learned` primitive.
+- **Requirements/Ralph loop (2026-05-08):** complex app requests now draft approved requirements before Meph mutates source. The server rejects vague or compound requirements. Pattern retrieval uses the approved contract. After the build, Ralph audits implementation evidence and blocks false done. The key live probe result: a plausible deal-approval app compiled and used browser tools, but Ralph blocked it because manager approval was only a status string, not reviewer/queue/role evidence.
 - **Open-capability surface (Lean Lesson 3, 2026-04-26):** Meph's per-turn context now includes a structured "what's still open" report — TBD placeholders, failing tests, unresolved compile errors with their canonical-fix hint. Mirrors how Lean shows the prover writer "what's left to prove" instead of forcing them to re-derive it from raw output.
 - **Shell nav primitive (Phase 2, 2026-04-26):** generated dashboards now have an explicit sidebar target: grouped links with counts, icons, and active state. This turns app chrome from a visual-only compiler change into a curriculum/eval signal Meph can learn.
 - **Shell workbench primitive (Phase 3, 2026-04-26):** generated queues now have explicit page headers and routed tab strips. This gives Meph a measurable target for the main work area, not just the left rail.
@@ -309,11 +456,13 @@ The mechanical quality signals bootstrap this loop. They produce deterministic q
 
 Lean's prover always shows the writer "what's left to prove" — a structured to-do of unmet goals. Clear today made Meph re-derive that himself from raw test output every cycle: parse the failures, remember which compile errors haven't been fixed, scan for `TBD` placeholders, decide where to focus. Slow and error-prone. The fix is a pure surface change — no new grammar, no compiler change — that collects three sources of "still open" work into one structured block in Meph's per-turn system prompt: TBD placeholders (from Lesson 1's `result.placeholders`), failing tests (from the most recent test snapshot), and unresolved compile errors paired with their canonical-fix hint (text-matched against the curated INTENT_HINTS keyword table). The summary line picks ONE focal item by priority — errors block compilation entirely, so they go first; failing tests next; placeholders last. Stays under 200 chars when nothing is open, under 1KB when the program is fully red. Lives in a separate volatile prompt block so the stable-prefix cache stays hot. The hypothesis: Meph's wasted-work cycles drop because he stops re-deriving "what's still missing" every turn — same A/B framing as the rest of the flywheel work. Module + 18 unit tests live at `playground/supervisor/open-capabilities.{js,test.js}`; wire-up is in `playground/server.js` `buildSystemWithContext`. Implements Lesson 3 of `plans/plan-lean-lessons-04-26-2026.md`. Measurement (Phase 3.3) deferred until budgeted.
 
-### Shape-search retrieval (Lean Lesson 2 — additive layer, 2026-04-26)
+### Shape-search retrieval (Lean Lesson 2 — superseded by pattern DB for Meph hints, 2026-05-07)
+
+Current status: the markdown `canonical-examples.md` shape-search path remains as a CLI/reference experiment, but Meph compile hints no longer use it. The curated pattern DB now owns reusable pattern retrieval so Meph sees one pattern library instead of both markdown examples and database snippets.
 
 The flywheel diagram above shows hint retrieval triggered on compile errors — text-match (BM25 over `error_sig`) finds past sessions that hit the same error and fixed it. That misses a class of bad code that **never errors** — programs that compile and run but don't match the spec. Lean's `library_search` / premise selection has the same shape: given a partial proof, search the whole library for lemmas whose *type signature* matches what's needed, BEFORE the compile checker fires. Lean's lesson is that the type lattice is the right index for retrieval in a deterministic-grader system.
 
-The Clear translation: every compile (success or failure) computes a small deterministic signature of the program — `archetype`, node-type histogram (endpoints, tables, agents, pages, charts, validate, guard, service calls, websockets), presence flags (auth, db, charts, agents, realtime, cron, external services), leading feature path. Jaccard similarity over a sparse-binary token set; same-archetype gets a +1.0 gate bonus so the retrieval respects archetype boundaries (an `agent_workflow` query never returns an `api_service` example as #1, even when keywords overlap). The top 2 canonical examples are layered onto whatever the text-match path returned. Both layers run; combined cap stays at 5 hints; the shape signal lands in `result.hints.shape_*` so observability can track it independently. CLI driver at `scripts/match-shape.mjs` doubles as the importable `loadCanonicalExamples()` + `matchShape()` for the wiring in `playground/meph-tools.js`. Disabled by `CLEAR_HINT_DISABLE=1` for clean A/B against the hint-off arm.
+The original Clear translation computed a deterministic signature of the program — `archetype`, node-type histogram (endpoints, tables, agents, pages, charts, validate, guard, service calls, websockets), presence flags (auth, db, charts, agents, realtime, cron, external services), leading feature path. Jaccard similarity over a sparse-binary token set; same-archetype got a +1.0 gate bonus so retrieval respected archetype boundaries. That experiment now informs the pattern DB ranker, but Meph no longer receives `result.hints.shape_*` from the markdown path. Reusable shape hints come from `clear_programming_patterns`.
 
 This is Phase 2 of the Lean Lessons plan — shipped before the A/B sweep that would prove lift on time-to-green. The plan's decision rule (kill if no signal, layer-only if mixed, ship if >10% time-to-green improvement at <30% prompt-cost increase) gates the next step, not this commit.
 

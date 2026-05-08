@@ -213,6 +213,30 @@ const ec1 = JSON.parse(editCodeTool({ action: 'read' }, new MephContext({ source
 assert(ec1.source === 'foo bar', 'editCodeTool read returns ctx.source');
 assert(ec1.errors.length === 1, 'editCodeTool read returns ctx.errors');
 
+// requirements gate blocks writes but not reads
+const blockedCtx = new MephContext({
+  requirementsApproval: { required: true, approved: false },
+});
+const blockedWrite = JSON.parse(await dispatchTool(
+  'edit_code',
+  { action: 'write', code: 'build for javascript backend' },
+  blockedCtx,
+  { compileProgram: () => ({ errors: [], warnings: [] }) },
+));
+assert(blockedWrite.code === 'REQUIREMENTS_NOT_APPROVED',
+  'edit_code write is blocked until requirements are approved');
+assert(blockedWrite.applied === undefined,
+  'blocked edit_code write does not report applied=true');
+
+const allowedRead = JSON.parse(await dispatchTool(
+  'edit_code',
+  { action: 'read' },
+  blockedCtx,
+  { compileProgram: () => ({ errors: [], warnings: [] }) },
+));
+assert(allowedRead.source === '',
+  'edit_code read still works while requirements approval is pending');
+
 // write action — mutates source via setSource (captures sourceBeforeEdit)
 let sourceChangeFired = null;
 let errorsChangeFired = null;
@@ -259,6 +283,20 @@ const pc1 = JSON.parse(patchCodeTool({ operations: [{ op: 'fix_line', line: 1, r
 assert(pc1.error?.includes('No code in editor'),
   'patchCodeTool with empty source returns "No code in editor"');
 
+const blockedPatchCtx = new MephContext({
+  source: 'old line\nsecond line',
+  requirementsApproval: { required: true, approved: false },
+});
+const blockedPatch = JSON.parse(patchCodeTool(
+  { operations: [{ op: 'fix_line', line: 1, replacement: 'new line' }] },
+  blockedPatchCtx,
+  patch,
+));
+assert(blockedPatch.code === 'REQUIREMENTS_NOT_APPROVED',
+  'patch_code is blocked until requirements are approved');
+assert(blockedPatchCtx.source === 'old line\nsecond line',
+  'blocked patch_code does not mutate ctx.source');
+
 // Empty ops array → error
 const pc2 = JSON.parse(patchCodeTool({ operations: [] }, new MephContext({ source: 'x' }), patch));
 assert(pc2.error?.includes('operations array'),
@@ -285,6 +323,27 @@ assert(pcSourceFired === ctxPatch.source,
   'patchCodeTool fires onSourceChange on successful apply');
 assert(pcCodeUpdate && pcCodeUpdate.type === 'code_update',
   'patchCodeTool emits ctx.send({type:"code_update"}) on successful apply');
+
+let pcCompileErrorsFired = null;
+const ctxPatchCompile = new MephContext({
+  source: 'line one\nline two',
+  onErrorsChange: (e) => { pcCompileErrorsFired = e; },
+});
+const pc4 = JSON.parse(patchCodeTool({
+  operations: [{ op: 'fix_line', line: 2, replacement: 'BROKEN LINE' }],
+}, ctxPatchCompile, {
+  patch,
+  compileProgram: (source) => ({
+    errors: source.includes('BROKEN') ? [{ line: 2, message: 'compiled after patch' }] : [],
+    warnings: [{ message: 'patch warning' }],
+  }),
+}));
+assert(Array.isArray(pc4.compileErrors) && pc4.compileErrors[0]?.message === 'compiled after patch',
+  'patchCodeTool returns compile errors after applying a patch');
+assert(pcCompileErrorsFired?.[0]?.message === 'compiled after patch',
+  'patchCodeTool refreshes ctx errors after applying a patch');
+assert(ctxPatchCompile.lastCompileResult?.errors?.[0]?.message === 'compiled after patch',
+  'patchCodeTool stores lastCompileResult after applying a patch');
 
 console.log('\n📺 readTerminalTool\n');
 
@@ -355,6 +414,51 @@ assert(bt4.error?.includes('not found'),
 const bt5 = JSON.parse(browseTemplatesTool({ action: 'frobnicate' }, new MephContext({ rootDir: REPO_ROOT })));
 assert(bt5.error?.includes('action must be'),
   'browseTemplatesTool with bad action surfaces "action must be"');
+
+// search action -- uses the curated pattern DB when wired
+let browsePatternCalls = 0;
+const browsePatternCtx = new MephContext({
+  rootDir: REPO_ROOT,
+  source: 'build for javascript backend\n\ncreate a Deals table:\n  amount is number\n',
+  factorDB: {
+    queryProgrammingPatterns: ({ query, source, topK }) => {
+      browsePatternCalls++;
+      assert(query === 'approval rules', `browse_templates search forwards query (got ${query})`);
+      assert(source.includes('Deals table'), 'browse_templates search forwards current source for shape matching');
+      assert(topK === 2, `browse_templates search forwards topK (got ${topK})`);
+      return [{
+        template_name: 'deal-desk::rule::42::discount-cap',
+        parent_template_name: 'deal-desk',
+        pattern_kind: 'rule',
+        is_primitive: 1,
+        pattern_set: 'marcus',
+        title: 'Discount approval with provable rules',
+        archetype: 'queue_workflow',
+        tier: 'canonical_primitive',
+        score: 1.7,
+        shape_score: 1.2,
+        source: "build for javascript backend\n\n# Deal Desk top of file\n",
+        source_excerpt: "rule 'Discount cap':\n  enforce that discount is less than 20\n",
+        source_excerpt_start_line: 42,
+      }];
+    },
+  },
+});
+const bt6 = JSON.parse(browseTemplatesTool({ action: 'search', query: 'approval rules', topK: 2 }, browsePatternCtx));
+assert(browsePatternCalls === 1,
+  `browseTemplatesTool search calls pattern DB exactly once (got ${browsePatternCalls})`);
+assert(bt6.count === 1 && bt6.patterns[0].name === 'deal-desk::rule::42::discount-cap',
+  `browseTemplatesTool search returns pattern names (got ${JSON.stringify(bt6)})`);
+assert(bt6.patterns[0].parent_template_name === 'deal-desk' && bt6.patterns[0].pattern_kind === 'rule',
+  'browseTemplatesTool search returns primitive parent and kind metadata');
+assert(bt6.patterns[0].is_primitive === true && bt6.patterns[0].tier === 'canonical_primitive',
+  'browseTemplatesTool search marks primitive matches explicitly');
+assert(bt6.patterns[0].source.includes("rule 'Discount cap'"),
+  'browseTemplatesTool search returns source snippets Meph can pull from');
+assert(bt6.patterns[0].source.includes("rule 'Discount cap'"),
+  'browseTemplatesTool search prefers the relevant pattern excerpt over the file prefix');
+assert(bt6.patterns[0].source_start_line === 42,
+  `browseTemplatesTool search returns excerpt line number (got ${bt6.patterns[0].source_start_line})`);
 
 console.log('\n🌉 Bridge tools (click_element, fill_input, inspect_element, read_storage, read_dom)\n');
 
@@ -1145,6 +1249,8 @@ assert(Array.isArray(comp1.errors) && comp1.errors.length === 0,
   `compileTool clean compile returns empty errors array (got ${JSON.stringify(comp1.errors)})`);
 assert(typeof comp1.hasServerJS === 'boolean' && typeof comp1.hasHTML === 'boolean',
   'compileTool returns hasServerJS + hasHTML boolean flags');
+assert(!comp1.hints,
+  'compileTool without Factor DB does not attach legacy shape-search hints');
 assert(comp1.serverJS === undefined && comp1.javascript === undefined,
   'compileTool clean compile WITHOUT include_compiled omits compiled source from payload');
 
@@ -1253,6 +1359,57 @@ assert(hintCtx.hintState.hintsInjectedRowId === 888,
 assert(hintCtx.hintState.hintsInjectedTier === 'exact_error_same_archetype',
   'compileTool records top-hint tier in hintState');
 
+// --- 7b. Curated pattern DB: compile hints include canonical app patterns
+let patternQueryCalls = 0;
+const fdbWithPatternDb = {
+  logAction: () => 889,
+  querySuggestions: () => [],
+  queryProgrammingPatterns: ({ source, topK }) => {
+    patternQueryCalls++;
+    assert(source.includes('Todos table'), 'compileTool pattern DB receives current source');
+    assert(topK === 2, `compileTool pattern DB asks for top 2 patterns (got ${topK})`);
+    return [{
+      template_name: 'todo-fullstack::data_table::3::create-a-todos-table',
+      parent_template_name: 'todo-fullstack',
+      pattern_kind: 'data_table',
+      is_primitive: 1,
+      pattern_set: 'core',
+      title: 'CRUD basics',
+      description: 'Tables, endpoints, auth, validation, pages',
+      archetype: 'crud_app',
+      tier: 'canonical_primitive',
+      score: 1.8,
+      shape_score: 1.6,
+      source: "build for javascript backend\n\n# Todo Fullstack top of file\n",
+      source_excerpt: "create a Todos table:\n  title is text\n\nwhen user calls GET /api/todos:\n  send back all Todos\n",
+      source_excerpt_start_line: 18,
+    }];
+  },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const patternCtx = new MephContext({
+  source: 'build for javascript backend\n\ncreate a Todos table:\n  title is text\n',
+  factorDB: fdbWithPatternDb,
+  sessionId: 'sess-pattern-db',
+});
+const compPattern = JSON.parse(compileTool({}, patternCtx, compileHelpers));
+assert(patternQueryCalls === 1,
+  `compileTool calls queryProgrammingPatterns once (got ${patternQueryCalls})`);
+assert(compPattern.hints?.pattern_count === 1,
+  `compileTool records pattern_count=1 (got ${compPattern.hints?.pattern_count})`);
+assert(compPattern.hints?.text?.includes('Pattern DB Match #1'),
+  'compileTool hint text includes Pattern DB match header');
+assert(compPattern.hints?.text?.includes('todo-fullstack'),
+  'compileTool hint text includes the canonical pattern name');
+assert(compPattern.hints?.text?.includes('todo-fullstack / data_table'),
+  'compileTool hint text names the primitive parent and kind');
+assert(compPattern.hints?.text?.includes('canonical_primitive'),
+  'compileTool hint text labels primitive matches');
+assert(compPattern.hints?.text?.includes('create a Todos table'),
+  'compileTool hint text prefers the relevant pattern excerpt over the file prefix');
+assert(compPattern.hints?.text?.includes('starts at line 18'),
+  'compileTool hint text names the excerpt start line');
+
 // --- 8. Reranker fallback: EBM used when pairwise fails / is absent
 const ebmCtx = new MephContext({
   source: 'database:\n  bogus garbage\n',
@@ -1305,6 +1462,29 @@ assert(disabledCtx.hintState.hintsInjectedRowId === null,
   'CLEAR_HINT_DISABLE=1 leaves hintState clean (no injection recorded)');
 if (origHintDisable === undefined) delete process.env.CLEAR_HINT_DISABLE;
 else process.env.CLEAR_HINT_DISABLE = origHintDisable;
+
+let requestDisabledQueryCalls = 0;
+let requestDisabledPatternCalls = 0;
+const fdbRequestDisabled = {
+  logAction: () => 903,
+  querySuggestions: () => { requestDisabledQueryCalls++; return [hintRow]; },
+  queryProgrammingPatterns: () => { requestDisabledPatternCalls++; return [patternPrimitiveRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const requestDisabledCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbRequestDisabled,
+  sessionId: 'sess-request-disabled',
+  pairwiseBundle: { weights: 'fake' },
+  disableFactorHints: true,
+});
+const compRequestDisabled = JSON.parse(compileTool({}, requestDisabledCtx, compileHelpers));
+assert(!compRequestDisabled.hints,
+  `disableFactorHints strips hints from compile result (got ${compRequestDisabled.hints ? JSON.stringify(compRequestDisabled.hints).slice(0, 80) : 'none'})`);
+assert(requestDisabledQueryCalls === 0,
+  `disableFactorHints skips querySuggestions entirely (got ${requestDisabledQueryCalls} calls)`);
+assert(requestDisabledPatternCalls === 0,
+  `disableFactorHints skips queryProgrammingPatterns entirely (got ${requestDisabledPatternCalls} calls)`);
 
 // And: when the flag is back off (unset or != '1'), hints flow normally.
 // Guards against a regression where the flag check accidentally inverts.

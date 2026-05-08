@@ -35,6 +35,12 @@ export class MephContext {
     this.rootDir = options.rootDir || '.';
     this.source = options.source || '';
     this.errors = options.errors || [];
+    this.requirementsApproval = options.requirementsApproval || {
+      required: false,
+      approved: false,
+      requirements: [],
+      id: null,
+    };
 
     // Captured source state — populated by setSource() before each write
     // so subsequent compile/Factor-DB rows can reference what Meph edited
@@ -151,6 +157,7 @@ export class MephContext {
     // both are null, hint rows stay in BM25 order from querySuggestions.
     this.pairwiseBundle = options.pairwiseBundle || null;
     this.ebmBundle = options.ebmBundle || null;
+    this.disableFactorHints = options.disableFactorHints === true;
     // hintState: mutable object the tool reads + writes to track hint
     // injection across compile-turn boundaries. The inference fallback needs
     // these to map later error counts back to the hint-serve that caused

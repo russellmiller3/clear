@@ -2,6 +2,18 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-07: Meph pattern memory should be searchable, not self-writable
+
+Meph needed a database of clear programming patterns seeded from the canonical templates. The tempting shortcut was to let Meph write patterns directly as it learns. That would make the cookbook self-poisoning: one bad session could promote broken or overfit code, and every later session would retrieve it as trusted precedent.
+
+### Gotchas-as-rules
+
+- **Never let Meph raw-write trusted pattern memory.** Search/read access is safe. Write access needs a deterministic promotion gate.
+- **Promotion means compile/test first, then store.** A candidate pattern should come from a trusted template or a passing session with source hash, shape signature, and provenance.
+- **Keep curated patterns separate from empirical rows.** `clear_programming_patterns` is the trusted cookbook; `code_actions` is messy history. Mixing them would blur "known good" with "observed once."
+
+---
+
 ## Session 2026-05-05: OWASP Piece 1 cycle 5+6 — ctx-build site miss + substring-collision on `let`
 
 Two costly mid-cycle detours future Claude can avoid by reading these.
@@ -2426,3 +2438,84 @@ contract is: Meph asks what to build first; source is reachable, not primary.
 - **Default mode is not the same as first screen.** Test the visible first load: prompt, editor hidden, source toggle reachable.
 - **Do not auto-open source for onboarding.** The old first-three-publishes rule taught Clear, but it made the editor the front door.
 - **Browser harnesses should wait on HTTP readiness, not stdout.** A "server ready" log can be a timeout path; probe the actual URL before opening the browser.
+
+## Session 2026-05-07: Pattern Libraries Need One Trusted Path
+
+The first pattern DB slice risked recreating the old hint sprawl: exact-error fixes from `code_actions`, markdown shape-search from `canonical-examples.md`, and curated pattern snippets from `clear_programming_patterns` all showing up as "hints." That makes Meph harder to steer because two different systems can answer the same "what shape should I use?" question.
+
+The split that holds is: exact-error fixes are empirical repair memory, while reusable Clear shapes belong in the curated pattern DB. The markdown shape-search path stays as a reference CLI, but Meph's compile hints now pull reusable shapes from the DB only.
+
+Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates can be whole-app rows. Non-golden templates contribute `reference` primitives only. User/test-run discoveries stage in `clear_programming_pattern_candidates` until compile/test evidence plus review promotes them into trusted retrieval.
+
+### Gotchas-as-rules
+
+- **Do not run two reusable-pattern hint systems.** If both answer "what shape should I write?", consolidate them before adding more data.
+- **Separate repair memory from pattern memory.** Exact-error fixes are not the same thing as reusable app primitives.
+- **Reference templates should not become trusted whole-app rows by accident.** Mine their snippets, preserve their provenance, and keep the golden app set small.
+- **Query-only pattern search must not get empty-source shape points.** If the user asks in plain English without current source, rank by text first; otherwise generic pages beat the useful primitive.
+- **Critical language primitives should not wait for an app template.** If live probes show a compiler feature Meph needs, seed it as a `language` primitive with evidence and provenance.
+- **Pattern probes must use narrow builder questions.** Broad "what is the shape" prompts can pass while real asks fail. Keep probes phrased like a Marcus builder changing one queue behavior.
+- **Pattern availability is not pattern use.** A live probe can prove the DB has the right snippet and still fail if Meph answers from docs or memory. Search-before-answer needs an explicit prompt guard and a test.
+- **For complex Clear requests, make retrieval a server preflight, not a model habit.** The reliable flow is system prompt already loaded, syntax and AI-instruction excerpts injected, pattern DB searched, then Meph answers.
+- **Pattern A/Bs must measure built apps, not shape answers.** A prompt that asks "what shape" can pass while the actual builder still fails. The baseline should get prompt+syntax+AI instructions with no pattern DB mention, and the treatment should add forced pattern retrieval. Judge the generated app after compile.
+- **Never let live probes default to premium models.** A Sonnet default burned about $18 before the quota wall. Probes and OpenRouter fallbacks must default cheap, and Sonnet/Opus need an explicit allow-expensive flag.
+- **Learned primitives need a staging queue.** Meph and user sessions may propose; only deterministic evidence plus review promotes.
+- **Audit the library before trusting the library.** Counts by kind, parent, set, and noisy-row flags are the minimum dashboard for a pattern DB.
+- **Obvious next step is a stop gate, not a suggestion.** If the agent can name a safe approved next action, it must run it before final; otherwise Russell has to re-prompt the same work.
+- **Secret inspection must be masked.** Checking `.env` for model/backend settings should print key names and set/length metadata only, never API key values.
+- **Windows command errors need a guardrail, not tolerance.** On this machine, `rg`, missing `Select-String` paths, bare `node`, blocked process inspection, and Git lock creation can all fail noisily; use the PowerShell-native fallbacks and narrow escalation path first.
+- **Provider blocks are not failed apps.** If OpenRouter returns network or quota text inside an otherwise completed Meph answer, mark the trial blocked/inconclusive instead of scoring it as a bad generated app.
+- **Cheap model smoke tests must match the real loop.** DeepSeek, Kimi, GLM, and Grok can answer tiny OpenRouter tool calls while still hanging or failing on the full Clear app-building loop. Validate one full app call before launching an A/B batch.
+- **Direct Haiku is the reliable fallback for live app probes.** In the approval-queue smoke, docs-only Haiku compiled but misrouted approvals; hook-on Haiku compiled with the right threshold-routing shape and one remaining form warning.
+- **PowerShell automatic variables are not scratch names.** `$PID` is read-only; use names like `$serverId` in loops.
+- **Pattern A/Bs need a rubric, not only pass/fail/time.** A compiled app can still be product-wrong. Score schema, create flow, routing, queue reads, actions, stale-submit guards, UI reachability, warnings, and auth as separate dimensions.
+- **Repeated Windows and mojibake errors need machinery, not tolerance.** If inline PowerShell or UTF-8 log display fails twice, stop using that path. Use the checked-in sweep runner and `scripts/mojibake-hygiene.mjs --tail=<path>` instead.
+- **Live probes must not squat on the studio test port.** Pattern sweeps default to 3478; server tests default to 3462. If they collide, rerun tests with `CLEAR_SERVER_TEST_PORT`, then fix the default.
+
+## Session 2026-05-08: Requirements Need Approval Before Meph Builds
+
+Pattern retrieval solved "show Meph the right Clear shape," but it did not solve "what exactly is this app supposed to prove?" A vague user prompt like "build me a deal approval app" needs a translation step before TDD. Otherwise Meph can write tests for the wrong app and pass them.
+
+The durable split is: requirements are the per-app contract, pattern memory is reusable examples, repair hints are post-error memory, and Ralph is the done checker. Enact's intent-first lesson maps cleanly here: state the outcome claim before the agent loops.
+
+### Gotchas-as-rules
+
+- **Do not let Meph mutate complex apps before requirements are approved.** If the request has workflow, roles, routing, approvals, or multiple screens, draft requirements first.
+- **Requirements must be outcome claims, not implementation notes.** Good requirements name actor, data, state change, and edge case.
+- **Pattern search should use approved requirements, not only the user's vague prompt.** The approved contract is the best retrieval query.
+- **Ralph must ignore requirement text as evidence.** Echoing "VP approval" in a `requirements:` block does not prove the app routes VP approvals.
+- **False done is worse than red.** If Ralph cannot verify a requirement after retries, block completion instead of letting Meph declare success.
+- **Compile errors must block done even when Ralph cannot run.** A clean "done" event with compile errors is a false positive. Treat remaining compiler errors as a hard requirements block.
+- **Patch tools must refresh compile state after mutating source.** If a tool edits the app, it must recompile immediately and update the shared error state before Meph can claim progress.
+- **Audit trails require storage evidence.** Emailing someone about a status change is not an audit log. Ralph needs an audit/log/history table plus actor, status, timestamp, and save evidence.
+- **Live detector gaps become local red tests.** The Gemini Cycle 11 smoke compiled cleanly, then Ralph blocked 3 unverified requirements. Those misses became deterministic detector tests before another paid probe.
+- **Generated-app browser use is an evidence channel, not ceremony.** CLI checks can miss dead buttons, broken event wiring, and layout failures. Make click/fill/inspect/screenshot available by default, and require it only for UI-visible claims.
+- **Studio-button control must be allowlisted.** Generated app controls are test targets. Studio shell controls can publish, roll back, delete, expose secrets, or spend money, so deny arbitrary clicks by default.
+- **Approved requirements still need validation.** A user click should not bless vague or compound requirements; the server must rerun the deterministic requirements quality gate before mutation tools unlock.
+- **Complex-app requirements need CRUD/lifecycle coverage.** Good app contracts cover storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when UI matters.
+- **Parenthetical examples are not fields.** `stage (Draft, Pending, Approved, Rejected)` means one `stage` field with examples, not four required data fields.
+- **Pending status is not manager approval.** Approval routing needs role, reviewer assignment, queue, or approver evidence. A status string alone is workflow theater.
+- **Universal UI failures belong in the compiler.** Broken app API calls and dead nav/link routes should hard-error even when no requirement mentions them.
+- **Paid probes should stop on invalid requirements.** Do not spend the second build call when the first call produced requirements the server would reject.
+
+## Session 2026-05-08: Retrieval Is Context; Ralph Is The Gate
+
+The pattern DB and error DB are useful, but the live requirements probe showed they are not the decisive quality lever. Retrieval can help Meph start from a better shape or recover from a known compiler failure. It cannot prove the finished app matches the user's intent.
+
+The decisive move is making intent machine-checkable. Requirements turn a vague prompt into a contract. Ralph audits the implementation against that contract. If evidence is missing, the loop blocks. That changes "done" from a model assertion into a measured state.
+
+### Gotchas-as-rules
+
+- **Do not confuse better context with a correctness oracle.** Pattern/error retrieval can improve attempts; it cannot certify the result.
+- **Treat DB hints as accelerators, not gates.** They help Meph aim and repair. They should not be the thing that says an app is done.
+- **Prioritize contract quality before retrieval cleverness.** A perfect pattern search still fails if the user intent was never translated into checkable requirements.
+- **Judge workflows by evidence, not vocabulary.** If an app says "manager approval" but has no manager assignment, queue, role, or approver evidence, it is wrong.
+- **Research claims need the hierarchy stated.** Pattern DB and error DB are minor-to-moderate aids; requirements/Ralph is the main fail-closed mechanism.
+- **Paid app A/B probes need their own iteration cap.** Product Meph can keep a generous build loop, but research probes must default lower and require an explicit override for deeper runs.
+- **Requirements detectors must count domain constraints as rules.** Approval routing is not the only rules lane; double-booking prevention, overlap checks, uniqueness, limits, and blocked saves are also e2e rule coverage.
+- **Do not let Ralph become regex soup.** Normalize requirement prose and generated apps into typed facts, then compare facts to facts; regex belongs only in the tested edge normalizer.
+- **Source-backed provider failures are salvageable.** If a provider drops after Meph edits source, score the source with a provider warning; only no-source failures should block the trial.
+- **Preflight should show typed facts, not only prose.** Approved requirements like "rooms, customers, bookings must be stored" need explicit `storage` facts so Meph cannot miss the entity hidden in a sentence.
+- **Pattern hooks can hurt when retrieval is poorly aimed.** A full hook that retrieves generic auth/KPI-ish context for a booking app can perform worse than docs-only; add local retrieval assertions before spending on another A/B.
+- **When a golden template lacks the hard prompt's primitive, seed a trusted language primitive.** Do not hope retrieval composes the missing behavior from adjacent snippets.
+- **Every negative paid retrieval result needs a zero-cost guard before the next paid run.** Add the primitive, assert the top match, then reopen the meter.

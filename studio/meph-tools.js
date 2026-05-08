@@ -27,11 +27,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync, spawn } from 'child_process';
-// Shape-search retrieval (Lean Lesson 2): finds canonical worked examples
-// whose program shape matches Meph's current source — additive layer next to
-// the existing text-match (querySuggestions) hint pipeline below. Defers the
-// canonical-examples.md read until first use so module load stays cheap.
-import { loadCanonicalExamples, matchShape } from '../scripts/match-shape.mjs';
 
 /**
  * Top-level tool dispatcher. Routes a validated tool_use to the right
@@ -124,7 +119,7 @@ export async function dispatchTool(name, input, ctx, helpers) {
       return highlightCodeTool(input);
 
     case 'patch_code':
-      return patchCodeTool(input, ctx, helpers.patch);
+      return patchCodeTool(input, ctx, helpers);
 
     case 'run_tests': {
       const testResult = runTestsTool(input, ctx, helpers.parseTestOutput);
@@ -320,7 +315,9 @@ export function describeMephTool(name, input) {
     case 'fill_input': return `fill_input → ${input.selector || ''} = ${JSON.stringify(String(input.value || '').slice(0, 60))}`;
     case 'screenshot_output': return 'screenshot_output';
     case 'highlight_code': return `highlight_code ${input.start_line || ''}-${input.end_line || ''}`;
-    case 'browse_templates': return `browse_templates ${input.template || ''}`;
+    case 'browse_templates': return input.action === 'search'
+      ? `browse_templates search ${input.query || ''}`
+      : `browse_templates ${input.name || input.template || input.action || ''}`;
     case 'source_map': return `source_map`;
     case 'read_actions': return 'read_actions';
     case 'read_dom': return 'read_dom';
@@ -429,6 +426,11 @@ export function highlightCodeTool(input) {
  * @param {function} compileProgram - the Clear compiler entry point
  * @returns {string} JSON-stringified result
  */
+function requirementsWriteBlocked(ctx) {
+  return ctx?.requirementsApproval?.required === true &&
+    ctx.requirementsApproval.approved !== true;
+}
+
 export function editCodeTool(input, ctx, helpersOrCompileProgram) {
   // Accept either the full helpers bag (preferred — needed for hint pipeline
   // attach below) or a bare compileProgram function (backward-compatible with
@@ -437,6 +439,13 @@ export function editCodeTool(input, ctx, helpersOrCompileProgram) {
     ? helpersOrCompileProgram
     : null;
   const compileProgram = fullHelpers ? fullHelpers.compileProgram : helpersOrCompileProgram;
+  if (input.action === 'write' && requirementsWriteBlocked(ctx)) {
+    return JSON.stringify({
+      error: 'Requirements must be reviewed and approved before Meph can edit Clear source.',
+      code: 'REQUIREMENTS_NOT_APPROVED',
+      requirementsApproval: ctx.requirementsApproval,
+    });
+  }
   if (input.action === 'read') {
     return JSON.stringify({ source: ctx.source, errors: ctx.errors });
   }
@@ -662,7 +671,8 @@ export function websocketLogTool(input, ctx) {
  */
 export function browseTemplatesTool(input, ctx) {
   const TEMPLATE_DIR = join(ctx.rootDir, 'apps');
-  if (input.action === 'list') {
+  const action = input.action || 'list';
+  if (action === 'list') {
     try {
       const dirs = readdirSync(TEMPLATE_DIR).filter(d => {
         try { return statSync(join(TEMPLATE_DIR, d)).isDirectory(); } catch { return false; }
@@ -678,14 +688,48 @@ export function browseTemplatesTool(input, ctx) {
       return JSON.stringify({ templates, count: templates.length });
     } catch (e) { return JSON.stringify({ error: e.message }); }
   }
-  if (input.action === 'read') {
+  if (action === 'search') {
+    if (!ctx.factorDB || typeof ctx.factorDB.queryProgrammingPatterns !== 'function') {
+      return JSON.stringify({ error: 'Pattern database is not available in this Meph session.' });
+    }
+    const topK = Math.min(Math.max(Number(input.topK) || 3, 1), 5);
+    try {
+      const rows = ctx.factorDB.queryProgrammingPatterns({
+        query: input.query || '',
+        source: input.source || ctx.source || '',
+        topK,
+      });
+      const patterns = rows.map(row => {
+        const src = String(row.source_excerpt || row.source || '');
+        return {
+          name: row.template_name,
+          parent_template_name: row.parent_template_name || null,
+          pattern_kind: row.pattern_kind || 'app',
+          is_primitive: !!row.is_primitive,
+          tier: row.tier || (row.is_primitive ? 'canonical_primitive' : 'canonical_pattern'),
+          pattern_set: row.pattern_set,
+          title: row.title,
+          archetype: row.archetype,
+          score: row.score,
+          shape_score: row.shape_score,
+          query_score: row.query_score,
+          source: src.slice(0, 2000),
+          source_truncated: src.length > 2000,
+          source_start_line: row.source_excerpt_start_line || 1,
+          source_end_line: row.source_excerpt_end_line || null,
+        };
+      });
+      return JSON.stringify({ patterns, count: patterns.length });
+    } catch (e) { return JSON.stringify({ error: e.message }); }
+  }
+  if (action === 'read') {
     if (!input.name) return JSON.stringify({ error: 'Need a template name. Use action="list" first to see available templates.' });
     const safeName = input.name.replace(/[^a-zA-Z0-9_-]/g, '');
     const mainFile = join(TEMPLATE_DIR, safeName, 'main.clear');
     if (!existsSync(mainFile)) return JSON.stringify({ error: `Template "${safeName}" not found. Use action="list" to see available templates.` });
     return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
   }
-  return JSON.stringify({ error: 'action must be "list" or "read"' });
+  return JSON.stringify({ error: 'action must be "list", "read", or "search"' });
 }
 
 /**
@@ -1011,7 +1055,8 @@ export function runTestsTool(input, ctx, parseTestOutput) {
  *
  * Mutates `result.hints` (text-match block + shape-search additive layer) and
  * `ctx.hintState` (so the post-turn HINT_APPLIED parser can find the right row).
- * No-op when ctx.factorDB is null OR CLEAR_HINT_DISABLE=1 OR hint retrieval
+ * No-op when ctx.factorDB is null, ctx.disableFactorHints is true,
+ * CLEAR_HINT_DISABLE=1, OR hint retrieval
  * raises (every block is wrapped in try/catch — non-fatal by design).
  *
  * Inputs:
@@ -1026,11 +1071,11 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
   const { sha1, safeArchetype, currentStep, classifyErrorCategory, rankPairwise, rankEBM, featurizeRow } = helpers;
 
   // ── Factor DB suggestion injection (flywheel closes here) ──
-  // CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
+  // ctx.disableFactorHints/CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
   // honest A/B measurement of hint effect on Meph's live pass rate.
   // The off-arm pays zero DB-query cost so the A/B measures hint *effect*,
   // not hint *compute overhead*.
-  const hintsDisabled = process.env.CLEAR_HINT_DISABLE === '1';
+  const hintsDisabled = ctx.disableFactorHints === true || process.env.CLEAR_HINT_DISABLE === '1';
   if (ctx.factorDB && r.errors.length > 0 && source && !hintsDisabled) {
     try {
       const archetype = safeArchetype(source);
@@ -1138,48 +1183,42 @@ export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
     } catch { /* non-fatal */ }
   }
 
-  // ── Shape-search retrieval (Lean Lesson 2 — additive layer) ──
-  // Fires on EVERY compile (success or failure) because Meph's program shape
-  // changes as he writes; shape-matched examples teach pre-emptively.
-  // Layered ON TOP of the text-match hints — does not replace them.
-  if (source && !hintsDisabled) {
+  // Curated app-pattern DB (13 canonical apps): Meph gets examples from the
+  // same SQLite memory as the flywheel instead of only the markdown fallback.
+  if (ctx.factorDB && typeof ctx.factorDB.queryProgrammingPatterns === 'function' && source && !hintsDisabled) {
     try {
-      if (!ctx._canonicalExamplesLoaded) {
-        try {
-          ctx._canonicalExamples = loadCanonicalExamples();
-        } catch {
-          ctx._canonicalExamples = [];
+      const patternMatches = ctx.factorDB.queryProgrammingPatterns({ source, topK: 2 });
+      if (patternMatches.length > 0) {
+        const patternBlocks = patternMatches.map((row, i) => {
+          const startLine = row.source_excerpt_start_line ? ` (excerpt starts at line ${row.source_excerpt_start_line})` : '';
+          const raw = String(row.source_excerpt || row.source || '').slice(0, 900);
+          const trimmed = raw.lastIndexOf('\n') > 650 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
+          const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
+          const score = typeof row.score === 'number' ? row.score.toFixed(3) : 'n/a';
+          const shapeScore = typeof row.shape_score === 'number' ? row.shape_score.toFixed(3) : 'n/a';
+          const tier = row.tier || (row.is_primitive ? 'canonical_primitive' : 'canonical_pattern');
+          const label = row.is_primitive
+            ? `${row.parent_template_name || row.template_name} / ${row.pattern_kind || 'primitive'}`
+            : row.template_name;
+          const header = `── Pattern DB Match #${i + 1} [${tier}, ${row.pattern_set || 'pattern'}, ${row.archetype || 'general'}, score=${score}, shape=${shapeScore}] — ${label}: ${row.title || ''}${startLine} ──`;
+          const desc = row.description ? `Why it matters: ${row.description}` : '';
+          return [header, desc, code].filter(Boolean).join('\n');
+        }).join('\n\n');
+        const patternNote = 'Curated Clear pattern database matches (canonical app patterns Meph can pull from):';
+        const patternText = `${patternNote}\n\n${patternBlocks}`;
+        if (!result.hints) {
+          result.hints = { note: patternNote, reranked_by: 'pattern_db', text: patternText };
+        } else {
+          result.hints.text = (result.hints.text || '') + '\n\n' + patternText;
         }
-        ctx._canonicalExamplesLoaded = true;
+        result.hints.pattern_text = patternText;
+        result.hints.pattern_count = patternMatches.length;
+        result.hints.pattern_top_template = patternMatches[0].template_name;
+        console.log(`[hints] pattern_db retrieved=${patternMatches.length} top_template=${patternMatches[0].template_name} top_score=${Number(patternMatches[0].score || 0).toFixed(3)}`);
       }
-      const examples = ctx._canonicalExamples;
-      if (examples && examples.length > 0) {
-        const shapeMatches = matchShape(source, { top: 2, examples });
-        if (shapeMatches.length > 0) {
-          const shapeBlocks = shapeMatches.map(m => {
-            const ex = m.example;
-            const arch = m.signature.archetype;
-            const trimmed = (ex.source || '').slice(0, 600);
-            const code = trimmed ? `\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
-            const header = `── Canonical Example #${ex.number} [${arch}, shape_score=${m.score.toFixed(3)}] — ${ex.title} ──`;
-            return `${header}${code}`;
-          }).join('\n\n');
-          const shapeNote = `Shape-matched canonical examples (your program looks like these — reference for idiomatic Clear):`;
-          const shapeText = `${shapeNote}\n\n${shapeBlocks}`;
-
-          if (!result.hints) {
-            result.hints = { note: shapeNote, reranked_by: 'shape', text: shapeText };
-          } else {
-            result.hints.text = (result.hints.text || '') + '\n\n' + shapeText;
-          }
-          result.hints.shape_text = shapeText;
-          result.hints.shape_count = shapeMatches.length;
-          result.hints.shape_top_archetype = shapeMatches[0].signature.archetype;
-          console.log(`[hints] shape_match retrieved=${shapeMatches.length} top_archetype=${shapeMatches[0].signature.archetype} top_score=${shapeMatches[0].score.toFixed(3)}`);
-        }
-      }
-    } catch { /* non-fatal — shape-search is additive, never blocks compile */ }
+    } catch { /* non-fatal */ }
   }
+
 }
 
 /**
@@ -1608,7 +1647,19 @@ export function listEvalsTool(input, ctx, compileForEval) {
  * @param {function} patch - the patch.js entry point (source, ops) => {applied, skipped, errors, source}
  * @returns {string} JSON-stringified result
  */
-export function patchCodeTool(input, ctx, patch) {
+export function patchCodeTool(input, ctx, helpersOrPatch) {
+  const fullHelpers = typeof helpersOrPatch === 'object' && helpersOrPatch !== null
+    ? helpersOrPatch
+    : null;
+  const patch = fullHelpers ? fullHelpers.patch : helpersOrPatch;
+  const compileProgram = fullHelpers?.compileProgram;
+  if (requirementsWriteBlocked(ctx)) {
+    return JSON.stringify({
+      error: 'Requirements must be reviewed and approved before Meph can patch Clear source.',
+      code: 'REQUIREMENTS_NOT_APPROVED',
+      requirementsApproval: ctx.requirementsApproval,
+    });
+  }
   if (!ctx.source) return JSON.stringify({ error: 'No code in editor. Write code first.' });
   const ops = input.operations;
   if (!Array.isArray(ops) || ops.length === 0) {
@@ -1619,12 +1670,20 @@ export function patchCodeTool(input, ctx, patch) {
     ctx.setSource(result.source);
     ctx.send({ type: 'code_update', code: result.source });
   }
-  return JSON.stringify({
+  const out = {
     applied: result.applied,
     skipped: result.skipped,
     errors: result.errors,
     totalLines: result.source.split('\n').length,
-  });
+  };
+  if (result.applied > 0 && typeof compileProgram === 'function') {
+    const compiled = compileProgram(result.source);
+    ctx.setErrors(compiled.errors || []);
+    ctx.setLastCompileResult(compiled);
+    out.compileErrors = compiled.errors || [];
+    out.warnings = compiled.warnings || [];
+  }
+  return JSON.stringify(out);
 }
 
 /**

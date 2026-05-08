@@ -6,6 +6,53 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-08 - Typed Ralph facts and capped booking retest
+
+Ralph now has its first typed-fact layer. Requirement prose normalizes into small facts, generated source normalizes into app facts, and the audit compares facts to facts for the booking-overlap domain-rule slice. This avoids making the final checker a pile of brittle regexes.
+
+What shipped:
+- New `studio/supervisor/requirements-facts.js` normalizes requirements and source evidence into typed facts.
+- Ralph uses the fact layer to verify booking overlap rejection without exact wording.
+- Pattern preflight injects machine-readable requirement facts into the full-hook context.
+- Probe artifacts now include requirement facts, app facts, browser-tool evidence, and state-tool evidence.
+- The live-probe harness salvages source-backed provider failures instead of blocking a usable trial.
+- Pattern DB now has a booking/customer/availability/overlap workflow primitive plus a local retrieval assertion that requires hard booking prompts to select it first.
+
+Live retest: one capped Gemini Flash booking A/B under the existing $5 limit. Docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100**, failed compile, and missed `customers` plus `available`. Cost **$0.26**, running total **$4.52**. The negative result is useful: retrieval can hurt when it gives generic or mis-aimed context. The local fix now proves booking prompts select the trusted booking/customer/availability primitive before spending again.
+
+Verification: `node studio/supervisor/requirements-facts.test.js`, `node studio/supervisor/requirements-audit.test.js`, `node studio/supervisor/meph-pattern-preflight.test.js`, `node scripts/meph-pattern-live-probe.test.mjs`, and `node clear.test.js` all pass. Full suite: **3024/3024**.
+
+---
+
+## 2026-05-07 — Meph curated pattern DB from the 13 canonical apps
+
+Meph now has a trusted programming-pattern database separate from the empirical `code_actions` flywheel rows. Studio seeds `factor-db.sqlite` with the 13 canonical apps named in `CLAUDE.md`: the 8 core templates plus the 5 Marcus workflow templates.
+
+What shipped:
+- New `clear_programming_patterns` table in Factor DB with shape signatures, tags, descriptions, source hashes, and source text.
+- New primitive metadata in that table: parent template, primitive kind, primitive flag, and source line span.
+- New seeder in `studio/supervisor/pattern-library.js` that loads each canonical template from disk, parses it, computes its shape, upserts the app row, extracts primitive source blocks, and upserts those rows too.
+- The current 13-template seed produces 523 primitive rows across all 13 golden templates.
+- The rest of `apps/` is mined for `reference` primitive rows only. Current audit: 1,223 total primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
+- Critical language primitives can be seeded even before a template uses them. Current `language` primitives cover optimistic-lock approval updates, amount-threshold approval routing, and approve/reject row actions.
+- New `scripts/primitive-audit.mjs` report shows counts by pattern set, primitive kind, parent template, examples, and review flags.
+- `browse_templates` now supports `action: "search"` so Meph can search patterns by app shape plus plain-English query. Search returns the relevant snippet with parent/kind metadata, not a whole template by default.
+- The compile tool now injects the closest trusted pattern matches into Meph's hint text and labels primitive matches explicitly.
+- The legacy markdown shape-search hint layer was removed from Meph compile hints. Exact-error fix hints remain; reusable shape hints now come from the pattern DB.
+- New `clear_programming_pattern_candidates` table stages learned primitive candidates from test runs or user sessions. Promotion into trusted retrieval requires compile/test evidence and an explicit promotion call.
+- Ghost Meph's MCP path seeds the same table, so both Studio chat paths share the library.
+- New narrow approval probe suite asks seven realistic Marcus-style questions, not broad template questions, and the local retrieval test now guards that those questions return useful primitives.
+- New `/api/chat` pattern preflight hook detects complex app/feature/shape requests, injects relevant `SYNTAX.md` + `AI-INSTRUCTIONS.md` excerpts, runs a pattern DB search, and appends the snippets before Meph answers.
+- The live probe harness now supports the corrected A/B: docs-only baseline with no pattern DB mention or tool exposure versus full forced retrieval. It builds complete approval-queue apps, compiles the generated source, and scores required behavior instead of grading snippet answers.
+- First corrected live attempt exposed a harness flaw: the prompt allowed Meph to spend the turn reading docs and never write the app. The harness now gives both arms the same explicit build instruction and continues through per-row failures instead of aborting the whole A/B.
+- The probe and raw OpenRouter backend no longer default to Sonnet. They default to `deepseek/deepseek-v4-flash`; Sonnet/Opus probes require `MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1`.
+
+Write policy: Meph can search and propose patterns, but it cannot raw-write this DB. Future promotion should compile/test a candidate first, then write through a deterministic gate.
+
+Verification: `studio/supervisor/factor-db.test.js`, `studio/supervisor/factor-db-integration.test.js`, `studio/supervisor/meph-pattern-preflight.test.js`, `scripts/meph-pattern-live-probe.test.mjs`, and `studio/meph-tools.test.js` green. The narrow approval-routing probe returns a useful routing primitive, row-action questions find approve/reject behavior, and stale approval questions find the optimistic-lock primitive. A five-question OpenRouter live probe caught the missing double-processing primitive; retrieval and prompt rules were tightened from that miss. A seven-question OpenRouter narrow approval probe then passed 4/7; the three misses answered from docs or memory without calling pattern search, so the system prompt now makes `browse_templates` search mandatory before answering narrow Clear shape questions and the server preflight hook now forces retrieval mechanically.
+
+---
+
 ## 2026-05-07 (Phase 4) — Agent × Policy bridge: `upholds all policies`
 
 Russell asked the load-bearing question: *"with enact tools + symbolic prover we should be able to prove that an agent can't take a specific bad action with tools it has access to — can we?"*

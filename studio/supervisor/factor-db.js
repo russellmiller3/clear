@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3';
 import { createHash } from 'crypto';
+import { parse } from '../../parser.js';
+import { computeShape, shapeSimilarity } from './program-shape.js';
 
 // Roles for the meph_turns trace table. Locked here so the test file and
 // the chat handler agree on what's valid.
@@ -12,6 +14,139 @@ const VALID_TURN_ROLES = new Set([
   'snap_retry',          // snap-layer re-prompt event
 ]);
 const TURN_TRUNC_BYTES = 4096;
+const SNIPPET_STOP_WORDS = new Set([
+  'build', 'clear', 'javascript', 'backend', 'python', 'web', 'for', 'with',
+  'the', 'and', 'that', 'this', 'when', 'user', 'calls', 'sends', 'send',
+  'back', 'create', 'table', 'page', 'section', 'text', 'required', 'default',
+  'login', 'api', 'get', 'post', 'put', 'delete', 'all', 'new', 'save',
+]);
+
+function sha1Short(str) {
+  return createHash('sha1').update(String(str || '')).digest('hex').slice(0, 16);
+}
+
+function parseJson(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function safeShapeFromSource(source) {
+  try { return computeShape(parse(String(source || ''))); }
+  catch { return computeShape(null); }
+}
+
+function normalizeTokens(text) {
+  return String(text || '')
+    .toLowerCase()
+    .split(/[^a-z0-9_/-]+/)
+    .filter(t => t.length > 1);
+}
+
+function canonicalToken(token) {
+  const t = String(token || '').toLowerCase();
+  if (t.endsWith('ies') && t.length > 4) return `${t.slice(0, -3)}y`;
+  if (t.endsWith('es') && t.length > 4) return t.slice(0, -2);
+  if (t.endsWith('s') && t.length > 3) return t.slice(0, -1);
+  return t;
+}
+
+function snippetTerms(query, querySource) {
+  const raw = [
+    ...normalizeTokens(query),
+    ...normalizeTokens(querySource).filter(t => !['is', 'to', 'as', 'of'].includes(t)),
+  ];
+  const terms = new Set();
+  for (const token of raw) {
+    const term = canonicalToken(token);
+    if (!SNIPPET_STOP_WORDS.has(term) && term.length >= 3) terms.add(term);
+  }
+  return [...terms].slice(0, 32);
+}
+
+function pickSourceExcerpt(source, { query = '', querySource = '', maxChars = 1200, radius = 5 } = {}) {
+  const src = String(source || '');
+  const lines = src.split(/\r?\n/);
+  if (lines.length === 0) return { source_excerpt: '', source_excerpt_start_line: 1, source_excerpt_end_line: 1 };
+  const terms = snippetTerms(query, querySource);
+  let bestIndex = 0;
+  let bestScore = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const lineTokens = new Set(normalizeTokens(lines[i]).map(canonicalToken));
+    let score = 0;
+    for (const term of terms) {
+      if (lineTokens.has(term)) score += 2;
+      else if (lines[i].toLowerCase().includes(term)) score += 1;
+    }
+    if (/^\s*(rule|agent|queue|when user|display|detail panel|create a .+ table)\b/i.test(lines[i])) score += 0.5;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+  let start = Math.max(0, bestIndex - radius);
+  let end = Math.min(lines.length - 1, bestIndex + radius);
+  while (end > start && lines.slice(start, end + 1).join('\n').length > maxChars) {
+    if (bestIndex - start > end - bestIndex) start++;
+    else end--;
+  }
+  return {
+    source_excerpt: lines.slice(start, end + 1).join('\n'),
+    source_excerpt_start_line: start + 1,
+    source_excerpt_end_line: end + 1,
+  };
+}
+
+function textMatchScore(row, query) {
+  const terms = snippetTerms(query, '');
+  if (terms.length === 0) return 0;
+  const haystackText = [
+    row.template_name,
+    row.parent_template_name,
+    row.pattern_kind,
+    row.pattern_set,
+    row.title,
+    row.description,
+    row.archetype,
+    Array.isArray(row.feature_tags) ? row.feature_tags.join(' ') : row.feature_tags,
+    row.is_primitive ? row.source : '',
+  ].join(' ');
+  const haystack = normalizeTokens(haystackText);
+  const bag = new Set(haystack.map(canonicalToken));
+  let hits = 0;
+  const lowerHaystack = haystackText.toLowerCase();
+  for (const term of terms) {
+    if (bag.has(term)) hits += 1;
+    else if (lowerHaystack.includes(term)) hits += 0.5;
+  }
+  return hits / terms.length;
+}
+
+function shapeFromInput({ source = '', shape_signature = null } = {}) {
+  if (shape_signature) {
+    if (typeof shape_signature === 'string') return parseJson(shape_signature, safeShapeFromSource(source));
+    return shape_signature;
+  }
+  return safeShapeFromSource(source);
+}
+
+function normalizePatternRow(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    shape_signature: parseJson(row.shape_signature, null),
+    feature_tags: parseJson(row.feature_tags, []),
+    is_primitive: row.is_primitive ? 1 : 0,
+  };
+}
+
+function normalizePatternCandidateRow(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    feature_tags: parseJson(row.feature_tags, []),
+  };
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS code_actions (
@@ -138,6 +273,63 @@ CREATE INDEX IF NOT EXISTS idx_compiler_edits_sha   ON compiler_edits(commit_sha
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_kind  ON compiler_edits(edit_kind, authored_at);
 CREATE INDEX IF NOT EXISTS idx_compiler_edits_file  ON compiler_edits(file_path, authored_at);
 
+-- Curated Clear programming-pattern memory. Seeded from the 13 canonical
+-- app templates (8 core + 5 Marcus). Meph searches this table by program
+-- shape and plain-English query, then pulls the matching Clear source.
+CREATE TABLE IF NOT EXISTS clear_programming_patterns (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_name    TEXT NOT NULL UNIQUE,
+  parent_template_name TEXT,
+  pattern_kind     TEXT NOT NULL DEFAULT 'app',
+  is_primitive     INTEGER NOT NULL DEFAULT 0,
+  pattern_set      TEXT NOT NULL,           -- core | marcus | future curated set
+  title            TEXT NOT NULL,
+  description      TEXT,
+  archetype        TEXT,
+  shape_signature  TEXT NOT NULL,           -- JSON from program-shape.js
+  feature_tags     TEXT NOT NULL DEFAULT '[]',
+  source           TEXT NOT NULL,
+  source_hash      TEXT NOT NULL,
+  source_start_line INTEGER NOT NULL DEFAULT 1,
+  source_end_line INTEGER,
+  line_count       INTEGER NOT NULL DEFAULT 0,
+  updated_at       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_clear_patterns_set ON clear_programming_patterns(pattern_set, archetype);
+CREATE INDEX IF NOT EXISTS idx_clear_patterns_archetype ON clear_programming_patterns(archetype);
+
+-- Staging queue for learned pattern primitives. Meph and test runs may propose
+-- rows here, but trusted retrieval only reads clear_programming_patterns.
+-- Promotion is a separate reviewed operation after compile/test evidence.
+CREATE TABLE IF NOT EXISTS clear_programming_pattern_candidates (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_kind        TEXT NOT NULL DEFAULT 'unknown', -- test_run | user_session | manual | other
+  source_ref         TEXT,
+  parent_template_name TEXT,
+  pattern_kind       TEXT NOT NULL DEFAULT 'unknown',
+  pattern_set        TEXT NOT NULL DEFAULT 'candidate',
+  title              TEXT NOT NULL,
+  description        TEXT,
+  feature_tags       TEXT NOT NULL DEFAULT '[]',
+  source             TEXT NOT NULL,
+  source_hash        TEXT NOT NULL,
+  source_start_line  INTEGER NOT NULL DEFAULT 1,
+  source_end_line    INTEGER,
+  compile_ok         INTEGER NOT NULL DEFAULT 0,
+  test_pass          INTEGER NOT NULL DEFAULT 0,
+  test_score         REAL NOT NULL DEFAULT 0.0,
+  status             TEXT NOT NULL DEFAULT 'needs_evidence',
+  review_notes       TEXT,
+  promoted_pattern_name TEXT,
+  created_at         INTEGER NOT NULL,
+  promoted_at        INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_pattern_candidates_status ON clear_programming_pattern_candidates(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_pattern_candidates_kind ON clear_programming_pattern_candidates(pattern_kind, test_pass, test_score DESC);
+CREATE INDEX IF NOT EXISTS idx_pattern_candidates_source ON clear_programming_pattern_candidates(source_kind, source_ref);
+
 -- Meph turn trace. One row per conversation event: user prompt, assistant
 -- prose, assistant thinking, tool_use, tool_result. Joins to code_actions
 -- via session_id. Lets research probes ask "did Meph plan with the todo
@@ -197,6 +389,25 @@ export class FactorDB {
       this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_helpful TEXT');
       this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_reason TEXT');
     }
+    const patternCols = this._db.prepare('PRAGMA table_info(clear_programming_patterns)').all();
+    const hasPatternCol = (name) => patternCols.some(c => c.name === name);
+    if (!hasPatternCol('parent_template_name')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN parent_template_name TEXT');
+    }
+    if (!hasPatternCol('pattern_kind')) {
+      this._db.exec("ALTER TABLE clear_programming_patterns ADD COLUMN pattern_kind TEXT NOT NULL DEFAULT 'app'");
+    }
+    if (!hasPatternCol('is_primitive')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN is_primitive INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!hasPatternCol('source_start_line')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN source_start_line INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!hasPatternCol('source_end_line')) {
+      this._db.exec('ALTER TABLE clear_programming_patterns ADD COLUMN source_end_line INTEGER');
+    }
+    this._db.exec('CREATE INDEX IF NOT EXISTS idx_clear_patterns_parent ON clear_programming_patterns(parent_template_name, pattern_kind)');
+    this._db.exec('CREATE INDEX IF NOT EXISTS idx_clear_patterns_kind ON clear_programming_patterns(pattern_kind, is_primitive)');
   }
 
   // Update hint-usage columns on an existing row. Called by the server after
@@ -213,6 +424,237 @@ export class FactorDB {
       reason,
       rowId
     );
+  }
+
+  upsertProgrammingPattern({
+    template_name,
+    parent_template_name = null,
+    pattern_kind = 'app',
+    is_primitive = 0,
+    pattern_set = 'core',
+    title = '',
+    description = '',
+    archetype = null,
+    shape_signature = null,
+    feature_tags = [],
+    source = '',
+    source_start_line = 1,
+    source_end_line = null,
+  } = {}) {
+    const name = String(template_name || '').trim();
+    const src = String(source || '');
+    if (!name || src.length === 0) return null;
+    const shape = shape_signature || safeShapeFromSource(src);
+    const normalizedArchetype = archetype || shape?.archetype || 'general';
+    const tags = Array.isArray(feature_tags) ? feature_tags : normalizeTokens(feature_tags);
+    const lineCount = src.split('\n').filter(l => l.trim()).length;
+    const result = this._db.prepare(`
+      INSERT INTO clear_programming_patterns
+        (template_name, parent_template_name, pattern_kind, is_primitive,
+         pattern_set, title, description, archetype, shape_signature,
+         feature_tags, source, source_hash, source_start_line, source_end_line,
+         line_count, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(template_name) DO UPDATE SET
+        parent_template_name = excluded.parent_template_name,
+        pattern_kind = excluded.pattern_kind,
+        is_primitive = excluded.is_primitive,
+        pattern_set = excluded.pattern_set,
+        title = excluded.title,
+        description = excluded.description,
+        archetype = excluded.archetype,
+        shape_signature = excluded.shape_signature,
+        feature_tags = excluded.feature_tags,
+        source = excluded.source,
+        source_hash = excluded.source_hash,
+        source_start_line = excluded.source_start_line,
+        source_end_line = excluded.source_end_line,
+        line_count = excluded.line_count,
+        updated_at = excluded.updated_at
+    `).run(
+      name,
+      parent_template_name ? String(parent_template_name) : null,
+      String(pattern_kind || 'app'),
+      is_primitive ? 1 : 0,
+      String(pattern_set || 'core'),
+      String(title || name),
+      String(description || ''),
+      String(normalizedArchetype || 'general'),
+      JSON.stringify(shape),
+      JSON.stringify(tags),
+      src,
+      sha1Short(src),
+      Math.max(1, Number(source_start_line) || 1),
+      source_end_line == null ? null : Math.max(1, Number(source_end_line) || 1),
+      lineCount,
+      Date.now()
+    );
+    return result.lastInsertRowid || this._db.prepare(
+      'SELECT id FROM clear_programming_patterns WHERE template_name = ?'
+    ).get(name)?.id || null;
+  }
+
+  listProgrammingPatterns({ pattern_set = null, include_primitives = false, parent_template_name = null, pattern_kind = null } = {}) {
+    let sql = 'SELECT * FROM clear_programming_patterns';
+    const params = [];
+    const where = [];
+    if (pattern_set) {
+      where.push('pattern_set = ?');
+      params.push(String(pattern_set));
+    }
+    if (!include_primitives) where.push('is_primitive = 0');
+    if (parent_template_name) {
+      where.push('parent_template_name = ?');
+      params.push(String(parent_template_name));
+    }
+    if (pattern_kind) {
+      where.push('pattern_kind = ?');
+      params.push(String(pattern_kind));
+    }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ');
+    sql += ' ORDER BY pattern_set, parent_template_name, is_primitive, pattern_kind, template_name';
+    return this._db.prepare(sql).all(...params).map(normalizePatternRow);
+  }
+
+  queryProgrammingPatterns({ source = '', shape_signature = null, query = '', topK = 3, pattern_set = null } = {}) {
+    const queryShape = shapeFromInput({ source, shape_signature });
+    const hasShapeSignal = !!shape_signature || String(source || '').trim().length > 0;
+    let sql = 'SELECT * FROM clear_programming_patterns';
+    const params = [];
+    if (pattern_set) {
+      sql += ' WHERE pattern_set = ?';
+      params.push(String(pattern_set));
+    }
+    const rows = this._db.prepare(sql).all(...params).map(normalizePatternRow);
+    const scored = rows.map(row => {
+      const shapeScore = hasShapeSignal ? shapeSimilarity(queryShape, row.shape_signature) : 0;
+      const queryScore = textMatchScore(row, query);
+      const excerpt = pickSourceExcerpt(row.source, { query, querySource: source });
+      const lineOffset = Math.max(1, Number(row.source_start_line) || 1) - 1;
+      return {
+        ...row,
+        ...excerpt,
+        source_excerpt_start_line: lineOffset + excerpt.source_excerpt_start_line,
+        source_excerpt_end_line: lineOffset + excerpt.source_excerpt_end_line,
+        tier: row.is_primitive ? 'canonical_primitive' : 'canonical_pattern',
+        shape_score: shapeScore,
+        query_score: queryScore,
+        score: shapeScore + queryScore,
+      };
+    });
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.shape_score !== a.shape_score) return b.shape_score - a.shape_score;
+      if (String(query || '').trim() && b.is_primitive !== a.is_primitive) return b.is_primitive - a.is_primitive;
+      if (!String(query || '').trim() && b.is_primitive !== a.is_primitive) return a.is_primitive - b.is_primitive;
+      return String(a.template_name).localeCompare(String(b.template_name));
+    });
+    return scored.slice(0, Math.max(1, Number(topK) || 3));
+  }
+
+  logProgrammingPatternCandidate({
+    source_kind = 'unknown',
+    source_ref = null,
+    parent_template_name = null,
+    pattern_kind = 'unknown',
+    pattern_set = 'candidate',
+    title = '',
+    description = '',
+    feature_tags = [],
+    source = '',
+    source_start_line = 1,
+    source_end_line = null,
+    compile_ok = 0,
+    test_pass = 0,
+    test_score = 0,
+    status = null,
+    review_notes = null,
+  } = {}) {
+    const src = String(source || '');
+    if (!src.trim()) return null;
+    const tags = Array.isArray(feature_tags) ? feature_tags : normalizeTokens(feature_tags);
+    const ready = compile_ok && test_pass;
+    const candidateStatus = status || (ready ? 'ready_for_review' : 'needs_evidence');
+    const result = this._db.prepare(`
+      INSERT INTO clear_programming_pattern_candidates
+        (source_kind, source_ref, parent_template_name, pattern_kind, pattern_set,
+         title, description, feature_tags, source, source_hash, source_start_line,
+         source_end_line, compile_ok, test_pass, test_score, status, review_notes,
+         created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      String(source_kind || 'unknown'),
+      source_ref ? String(source_ref) : null,
+      parent_template_name ? String(parent_template_name) : null,
+      String(pattern_kind || 'unknown'),
+      String(pattern_set || 'candidate'),
+      String(title || pattern_kind || 'Candidate pattern'),
+      String(description || ''),
+      JSON.stringify(tags),
+      src,
+      sha1Short(src),
+      Math.max(1, Number(source_start_line) || 1),
+      source_end_line == null ? null : Math.max(1, Number(source_end_line) || 1),
+      compile_ok ? 1 : 0,
+      test_pass ? 1 : 0,
+      Number(test_score) || 0,
+      candidateStatus,
+      review_notes ? String(review_notes) : null,
+      Date.now()
+    );
+    return result.lastInsertRowid;
+  }
+
+  listProgrammingPatternCandidates({ status = null, pattern_kind = null, limit = 100 } = {}) {
+    let sql = 'SELECT * FROM clear_programming_pattern_candidates';
+    const params = [];
+    const where = [];
+    if (status) {
+      where.push('status = ?');
+      params.push(String(status));
+    }
+    if (pattern_kind) {
+      where.push('pattern_kind = ?');
+      params.push(String(pattern_kind));
+    }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ');
+    sql += ' ORDER BY test_pass DESC, test_score DESC, created_at DESC LIMIT ?';
+    params.push(Math.max(1, Number(limit) || 100));
+    return this._db.prepare(sql).all(...params).map(normalizePatternCandidateRow);
+  }
+
+  promoteProgrammingPatternCandidate(id, {
+    template_name,
+    pattern_set = 'learned',
+    parent_template_name = null,
+    review_notes = null,
+  } = {}) {
+    const row = this._db.prepare('SELECT * FROM clear_programming_pattern_candidates WHERE id = ?').get(id);
+    if (!row || !row.compile_ok || !row.test_pass) return null;
+    const name = String(template_name || '').trim();
+    if (!name) return null;
+    const patternId = this.upsertProgrammingPattern({
+      template_name: name,
+      parent_template_name: parent_template_name || row.parent_template_name,
+      pattern_kind: row.pattern_kind,
+      is_primitive: 1,
+      pattern_set,
+      title: row.title,
+      description: row.description,
+      feature_tags: parseJson(row.feature_tags, []),
+      source: row.source,
+      source_start_line: row.source_start_line,
+      source_end_line: row.source_end_line,
+    });
+    this._db.prepare(`
+      UPDATE clear_programming_pattern_candidates
+      SET status = 'promoted',
+          promoted_pattern_name = ?,
+          review_notes = COALESCE(?, review_notes),
+          promoted_at = ?
+      WHERE id = ?
+    `).run(name, review_notes ? String(review_notes) : null, Date.now(), id);
+    return patternId;
   }
 
   logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,

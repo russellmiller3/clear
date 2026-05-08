@@ -39,6 +39,7 @@ import {
   classifyErrorCategory,
 } from '../../supervisor/ebm-scorer.js';
 import { classifyArchetype } from '../../supervisor/archetype.js';
+import { seedCoreTemplatePatterns } from '../../supervisor/pattern-library.js';
 import { dispatchTool, validateToolInput } from '../../meph-tools.js';
 import { MephContext } from '../../meph-context.js';
 import { parseTestOutput, compileForEval as _compileForEval } from '../../meph-helpers.js';
@@ -142,6 +143,7 @@ function getFactorDb() {
   try {
     if (!existsSync(path)) return null;
     _factorDb = new FactorDB(path);
+    try { seedCoreTemplatePatterns(_factorDb, REPO_ROOT); } catch {}
     return _factorDb;
   } catch {
     return null;
@@ -324,7 +326,7 @@ const MEPH_TOOLS = [
   { name: 'highlight_code',    desc: 'Highlight a line range in the editor. Input: { start_line, end_line?, message? }.' },
   { name: 'patch_code',        desc: 'Apply structured edit operations to the source. Input: { operations: [{op, ...}] }.' },
   { name: 'todo',              desc: 'Get or set Meph\'s todo list. Input: { action: "get"|"set", todos?: [...] }.' },
-  { name: 'browse_templates',  desc: 'List or read Clear example templates. Input: { action: "list"|"read", name? }.' },
+  { name: 'browse_templates',  desc: 'List/read Clear templates or search the curated pattern DB. Input: { action: "list"|"read"|"search", name?, query?, topK? }.' },
 ];
 
 /**

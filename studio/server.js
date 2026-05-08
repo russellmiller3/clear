@@ -12,8 +12,23 @@ import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken, verifyLega
 import { wireDeploy, getDeployDeps } from './deploy.js';
 import { deploySource as deploySourceCloudflare } from './deploy-cloudflare.js';
 import { FactorDB } from './supervisor/factor-db.js';
+import { seedCoreTemplatePatterns } from './supervisor/pattern-library.js';
 import { classifyArchetype } from './supervisor/archetype.js';
 import { getOpenCapabilities, formatReportForMeph } from './supervisor/open-capabilities.js';
+import {
+  appendPatternPreflightToMessages,
+  buildPatternPreflight,
+  lastUserText,
+  stripPatternSearchPromptGuard,
+} from './supervisor/meph-pattern-preflight.js';
+import {
+  buildRequirementsInstruction,
+  requirementsId,
+  requirementsReviewEventFromAssistantText,
+  shouldRequireApproval,
+  validateRequirements,
+} from './supervisor/requirements-contract.js';
+import { auditRequirements } from './supervisor/requirements-audit.js';
 import {
   loadBundle as _loadEBM,
   rank as _rankEBM,
@@ -39,6 +54,7 @@ import {
   selectChatMessagesForModel,
 } from './ghost-meph/model-picker.js';
 import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
+import { shouldRalphRetry, formatRalphMessage, readRalphConfig } from './ralph-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
 // UI button) bypasses dispatchTool — it doesn't want the Meph-facing tab-
@@ -156,6 +172,183 @@ wireDeploy(app, { store: _cloudTenantStore, stripeWebhookMounted: true });
 function _allowTestCloudHooks() {
   return process.env.NODE_ENV === 'test' || process.env.CLEAR_ALLOW_SEED;
 }
+
+function buildChatRequirementsFlow({
+  messages = [],
+  editorContent = '',
+  assistantText = '',
+  approvedRequirements = null,
+  approvedRequirementsId = null,
+  requirementsMode = 'auto',
+} = {}) {
+  const currentMessages = Array.isArray(messages) ? [...messages] : [];
+  const userText = lastUserText(currentMessages);
+  const events = [];
+  const modeOff = requirementsMode === false || requirementsMode === 'off';
+  const approvalNeeded = !modeOff &&
+    !String(editorContent || '').trim() &&
+    shouldRequireApproval(userText);
+  const approvedList = Array.isArray(approvedRequirements) ? approvedRequirements : [];
+  const computedApprovedId = approvedList.length > 0 ? requirementsId(approvedList) : null;
+  const approvedValidation = approvedList.length > 0
+    ? validateRequirements(approvedList, userText)
+    : { ok: false, errors: [] };
+  const approved = approvalNeeded &&
+    approvedList.length > 0 &&
+    approvedRequirementsId &&
+    approvedRequirementsId === computedApprovedId &&
+    approvedValidation.ok;
+  let requirementsApproval = {
+    required: approvalNeeded,
+    approved: approved === true,
+    requirements: approvedList.length > 0 ? approvedList : [],
+    id: approved ? approvedRequirementsId : computedApprovedId,
+    valid: approvedValidation.ok,
+    errors: approvedValidation.errors,
+  };
+
+  if (approvalNeeded && !approved) {
+    const instruction = buildRequirementsInstruction(userText);
+    if (instruction) currentMessages.push({ role: 'user', content: instruction });
+  }
+
+  if (assistantText) {
+    const reviewEvent = requirementsReviewEventFromAssistantText(assistantText, userText);
+    if (reviewEvent.requirements.length > 0) {
+      events.push(reviewEvent);
+      requirementsApproval = {
+        required: true,
+        approved: false,
+        requirements: reviewEvent.requirements,
+        id: reviewEvent.requirementsId,
+        valid: reviewEvent.valid,
+        errors: reviewEvent.errors,
+      };
+    }
+  }
+
+  return { events, currentMessages, requirementsApproval, userText };
+}
+
+function buildChatRalphFlow({
+  editorContent = '',
+  currentErrors = [],
+  approvedRequirements = null,
+  approvedRequirementsId = null,
+  ralphRetryCount = 0,
+  ralphConfig = readRalphConfig(process.env),
+  compileResult = null,
+} = {}) {
+  const approvedList = Array.isArray(approvedRequirements) ? approvedRequirements : [];
+  const computedId = approvedList.length > 0 ? requirementsId(approvedList) : null;
+  const approved = approvedList.length > 0 && approvedRequirementsId && approvedRequirementsId === computedId;
+  const events = [];
+
+  if (!approved) {
+    return {
+      audit: null,
+      decision: { retry: false, blocked: false, gaps: [] },
+      events,
+      message: null,
+      skipped: 'requirements_not_approved',
+    };
+  }
+
+  const activeErrors = Array.isArray(currentErrors) && currentErrors.length > 0
+    ? currentErrors
+    : null;
+  if (activeErrors) {
+    return {
+      audit: null,
+      decision: { retry: false, blocked: true, gaps: activeErrors },
+      events: [{
+        type: 'requirements_blocked',
+        reason: 'compile_errors',
+        summary: 'Cannot finish while compile errors remain.',
+        items: activeErrors,
+      }],
+      message: 'Cannot finish while compile errors remain. Fix the compiler errors before finalizing.',
+      skipped: 'compile_errors',
+    };
+  }
+
+  const compiled = compileResult || compileProgram(editorContent || '');
+  if (Array.isArray(compiled.errors) && compiled.errors.length > 0) {
+    return {
+      audit: null,
+      decision: { retry: false, blocked: true, gaps: compiled.errors },
+      events: [{
+        type: 'requirements_blocked',
+        reason: 'compile_errors',
+        summary: 'Cannot finish while compile errors remain.',
+        items: compiled.errors,
+      }],
+      message: 'Cannot finish while compile errors remain. Fix the compiler errors before finalizing.',
+      skipped: 'compile_errors',
+    };
+  }
+
+  const requirements = approvedList.map((text, index) => ({ id: `req_${index + 1}`, text }));
+  const audit = auditRequirements({
+    source: editorContent || '',
+    ast: compiled.ast,
+    compileResult: compiled,
+    requirements,
+  });
+  const decision = shouldRalphRetry({
+    audit,
+    retryCount: ralphRetryCount,
+    maxRetries: ralphConfig.maxRetries,
+    layerOff: ralphConfig.layerOff,
+    blockOnUnverified: ralphConfig.blockOnUnverified,
+  });
+
+  events.push({
+    type: 'requirements_audit',
+    ok: audit.ok,
+    summary: audit.summary,
+    items: audit.items,
+  });
+
+  const message = decision.retry ? formatRalphMessage({
+    audit,
+    retryIndex: ralphRetryCount + 1,
+    maxRetries: ralphConfig.maxRetries,
+    blockOnUnverified: ralphConfig.blockOnUnverified,
+  }) : null;
+
+  if (decision.retry) {
+    events.push({
+      type: 'requirements_retry',
+      retry_index: ralphRetryCount + 1,
+      max_retries: ralphConfig.maxRetries,
+      message,
+      summary: audit.summary,
+      items: decision.gaps,
+    });
+  }
+
+  if (decision.blocked) {
+    events.push({
+      type: 'requirements_blocked',
+      max_retries: ralphConfig.maxRetries,
+      summary: audit.summary,
+      items: decision.gaps,
+    });
+  }
+
+  return { audit, decision, events, message, skipped: null };
+}
+
+app.post('/api/_test/chat-requirements-flow', (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  return res.json(buildChatRequirementsFlow(req.body || {}));
+});
+
+app.post('/api/_test/chat-ralph-flow', (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  return res.json(buildChatRalphFlow(req.body || {}));
+});
 
 app.post('/api/_test/live-edit-cloud-uat-setup', async (req, res) => {
   if (!_allowTestCloudHooks()) return res.status(404).end();
@@ -2076,8 +2269,18 @@ let _workerLastErrors = [];
 // Non-fatal: if the DB fails to open, sessions still work, just no logging.
 const FACTOR_DB_PATH = process.env.FACTOR_DB_PATH || join(__dirname, 'factor-db.sqlite');
 let _factorDB = null;
-try { _factorDB = new FactorDB(FACTOR_DB_PATH); }
+try {
+  _factorDB = new FactorDB(FACTOR_DB_PATH);
+}
 catch (err) { console.warn('[FACTOR_DB] disabled:', err.message); }
+if (_factorDB) {
+  try {
+    const seededPatterns = seedCoreTemplatePatterns(_factorDB, ROOT_DIR);
+    console.log(`[FACTOR_DB] seeded ${seededPatterns.seeded} canonical Clear patterns`);
+  } catch (err) {
+    console.warn('[FACTOR_DB] pattern seed skipped:', err.message);
+  }
+}
 
 function _sha1(str) {
   return createHash('sha1').update(str).digest('hex').slice(0, 16);
@@ -2569,7 +2772,7 @@ You can modify .clear files and requests.md. You can create new files of any all
   },
   {
     name: 'screenshot_output',
-    description: 'Fetch the rendered HTML from the running app to verify UI changes. Returns the full HTML document so you can check structure, content, and class names. Use this after UI changes to confirm they took effect.',
+    description: 'Capture the running app visually. Returns a PNG image content block so you can inspect rendered layout, spacing, overflow, broken chrome, and UX problems. Use after UI changes and after click/fill flows. Requires app to be running.',
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -2726,12 +2929,14 @@ Rules: Only ONE task should be in_progress at a time. Mark tasks completed immed
   },
   {
     name: 'browse_templates',
-    description: 'Browse the template library. Use action="list" to see all available templates with descriptions. Use action="read" with a template name to get its full Clear source code. Great for learning patterns, finding examples of specific features, or starting from an existing app.',
+    description: 'Browse the template and pattern library. Use action="list" to see templates. Use action="read" with a template name to get full Clear source. Use action="search" with query/topK to search the curated pattern DB for whole-app patterns and primitive snippets.',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'read'], description: 'list = show all templates, read = get source code for a specific template' },
+        action: { type: 'string', enum: ['list', 'read', 'search'], description: 'list = show templates, read = get one template source, search = search canonical app patterns and primitive snippets' },
         name: { type: 'string', description: 'Template name to read (e.g. "todo-fullstack", "crm-pro"). Only needed for action=read.' },
+        query: { type: 'string', description: 'Plain-English search text for action=search, e.g. "approval rules" or "agent with tools".' },
+        topK: { type: 'number', description: 'How many pattern matches to return for action=search. Default 3, max 5.' },
       },
       required: ['action'],
     },
@@ -3114,7 +3319,7 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot, editorSou
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps, mephModel, modelChanged, patternPreflight: patternPreflightRequest, disablePatternSearchPromptGuard, disablePatternSearchTool, disableFactorHints, requirementsMode, approvedRequirements, approvedRequirementsId } = req.body;
   // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
   // A step "passes" if ALL its sourceMatches regexes appear in the current source.
   // currentStep = the highest-index step whose regexes all match. This lets us
@@ -3141,7 +3346,9 @@ app.post('/api/chat', async (req, res) => {
   }
 
   // Mid-stream stop support — when the user clicks Stop in Studio, the
-  // client aborts its fetch which fires `req.on('close')` here. Without
+  // client aborts the response stream, which fires `res.on('close')`.
+  // `req.on('close')` also fires after a normal POST body finishes, so using
+  // it here makes every non-browser probe look like a disconnect. Without
   // this handler, the per-attempt watchdog AbortController INSIDE the
   // retry loop kept running, the cc-agent subprocess kept spawning new
   // tool calls, and Meph appeared to ignore the Stop button until his
@@ -3151,7 +3358,8 @@ app.post('/api/chat', async (req, res) => {
   let clientClosed = false;
   let activeAbortCtrl = null;        // mirrored from per-attempt ctrl below
   let activeChildProcess = null;     // mirrored from cc-agent / OpenRouter spawn
-  req.on('close', () => {
+  res.on('close', () => {
+    if (res.writableEnded) return;
     clientClosed = true;
     try { activeAbortCtrl && activeAbortCtrl.abort(new Error('client disconnected')); } catch {}
     try { activeChildProcess && activeChildProcess.kill && activeChildProcess.kill('SIGTERM'); } catch {}
@@ -3313,6 +3521,7 @@ app.post('/api/chat', async (req, res) => {
     const ctx = new MephContext({
       source: currentSource,
       errors: currentErrors,
+      requirementsApproval,
       sourceBeforeEdit: _sourceBeforeEdit || '',
       lastCompileResult,
       send,
@@ -3357,6 +3566,7 @@ app.post('/api/chat', async (req, res) => {
       sessionSteps,
       pairwiseBundle: _pairwiseBundle,
       ebmBundle: _ebmBundle,
+      disableFactorHints: disableFactorHints === true,
       hintState: {
         lastFactorRowId: _lastFactorRowId,
         hintsInjectedRowId: _hintsInjectedRowId,
@@ -3403,12 +3613,66 @@ app.post('/api/chat', async (req, res) => {
   // we don't send). Either way, the effective cap here is 200k.
   const MEPH_CTX_MAX = 200000;
   let currentMessages = selectChatMessagesForModel(messages, { modelChanged: !!modelChanged, limit: 50 });
+  const requirementsFlow = buildChatRequirementsFlow({
+    messages: currentMessages,
+    editorContent: currentSource,
+    approvedRequirements,
+    approvedRequirementsId,
+    requirementsMode,
+  });
+  currentMessages = requirementsFlow.currentMessages;
+  let requirementsApproval = requirementsFlow.requirementsApproval;
+  const requirementsUserText = requirementsFlow.userText || lastUserText(currentMessages);
+  if (requirementsApproval.required) {
+    send({
+      type: 'requirements_gate',
+      required: true,
+      approved: requirementsApproval.approved === true,
+      requirements_id: requirementsApproval.id || null,
+    });
+  }
+  const patternPreflightMode =
+    patternPreflightRequest === false || patternPreflightRequest === 'off' || process.env.MEPH_PATTERN_PREFLIGHT === '0'
+      ? 'off'
+      : (patternPreflightRequest === 'docs' || process.env.MEPH_PATTERN_PREFLIGHT === 'docs' ? 'docs' : 'full');
+  const patternPreflightEnabled = patternPreflightRequest !== false && patternPreflightMode !== 'off';
+  const patternPreflightResult = patternPreflightEnabled
+    ? buildPatternPreflight({
+      userText: requirementsUserText,
+      approvedRequirements: requirementsApproval.approved ? requirementsApproval.requirements : [],
+      currentSource,
+      factorDB: _factorDB,
+      rootDir: ROOT_DIR,
+      topK: 5,
+      mode: patternPreflightMode,
+    })
+    : { required: false, docs: [], patterns: [], text: '' };
+  if (patternPreflightResult.required) {
+    currentMessages = appendPatternPreflightToMessages(currentMessages, patternPreflightResult.text);
+  }
+  const effectiveSystemPrompt =
+    (disablePatternSearchPromptGuard === true || process.env.MEPH_PATTERN_PROMPT_GUARD === '0')
+      ? stripPatternSearchPromptGuard(systemPrompt)
+      : systemPrompt;
+  send({
+    type: 'pattern_preflight',
+    enabled: patternPreflightEnabled,
+    mode: patternPreflightMode,
+    required: !!patternPreflightResult.required,
+    docs: patternPreflightResult.docs?.map(doc => doc.filename) || [],
+    pattern_count: patternPreflightResult.patterns?.length || 0,
+    factor_hints_disabled: disableFactorHints === true,
+  });
   let toolResults = [];
+  const baseTools = disablePatternSearchTool === true
+    ? TOOLS.filter(tool => tool.name !== 'browse_templates')
+    : TOOLS;
+  const activeTools = enableWebTools ? [...baseTools, ...WEB_TOOLS] : baseTools;
 
   // Estimate context usage (rough: ~4 chars per token)
   function estimateContextUsage() {
-    const systemChars = (systemPrompt.length + (personality || '').length);
-    const toolChars = JSON.stringify(enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS).length;
+    const systemChars = (effectiveSystemPrompt.length + (personality || '').length);
+    const toolChars = JSON.stringify(activeTools).length;
     const msgChars = currentMessages.reduce((sum, m) => sum + JSON.stringify(m.content || '').length, 0);
     const totalTokens = Math.round((systemChars + toolChars + msgChars) / 4);
     return { used: totalTokens, max: MEPH_CTX_MAX, percent: Math.round((totalTokens / MEPH_CTX_MAX) * 100) };
@@ -3427,9 +3691,26 @@ app.post('/api/chat', async (req, res) => {
     // Disable with SNAP_LAYER_OFF=1; override cap with SNAP_MAX_RETRIES.
     const snapConfig = readSnapConfig(process.env);
     let snapRetryCount = 0;
+    const ralphConfig = readRalphConfig(process.env);
+    let ralphRetryCount = 0;
+    function finalizeChatDoneWithRalph({ forceBlock = false } = {}) {
+      const effectiveRetryCount = forceBlock
+        ? Math.max(ralphRetryCount, ralphConfig.maxRetries)
+        : ralphRetryCount;
+      const ralphFlow = buildChatRalphFlow({
+        editorContent: currentSource,
+        currentErrors,
+        approvedRequirements: requirementsApproval.approved ? requirementsApproval.requirements : [],
+        approvedRequirementsId: requirementsApproval.approved ? requirementsApproval.id : null,
+        ralphRetryCount: effectiveRetryCount,
+        ralphConfig,
+      });
+      for (const event of ralphFlow.events) send(event);
+      return ralphFlow;
+    }
 
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
-      // Bail out the moment the user clicks Stop. The req.on('close')
+      // Bail out the moment the user clicks Stop. The response close
       // handler set this flag and already aborted the in-flight fetch;
       // checking here ensures we don't fire ANOTHER tool iteration after
       // the client gave up.
@@ -3479,8 +3760,8 @@ app.post('/api/chat', async (req, res) => {
         model: MEPH_MODEL,
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
-        system: buildSystemWithContext(systemPrompt, personality, testSnapshot, currentSource, lastCompileResult),
-        tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
+        system: buildSystemWithContext(effectiveSystemPrompt, personality, testSnapshot, currentSource, lastCompileResult),
+        tools: activeTools,
         stream: true,
         messages: cachedMessages,
       };
@@ -3614,6 +3895,7 @@ app.post('/api/chat', async (req, res) => {
             // If cache_read stays at 0 across iterations, we have a silent
             // cache invalidator (timestamps/UUIDs in system, tool reorder, etc.).
             if (ev.usage) {
+              send({ type: 'model_usage', usage: ev.usage });
               const cr = ev.usage.cache_read_input_tokens || 0;
               const cw = ev.usage.cache_creation_input_tokens || 0;
               const it = ev.usage.input_tokens || 0;
@@ -3653,6 +3935,20 @@ app.post('/api/chat', async (req, res) => {
       // measure thinking-vs-text ratios per tool call.
       if (accThinking) _logTurn({ role: 'assistant_thinking', message_text: accThinking });
       if (accText) _logTurn({ role: 'assistant_text', message_text: accText });
+      if (requirementsApproval.required && requirementsApproval.approved !== true && accText) {
+        const reviewEvent = requirementsReviewEventFromAssistantText(accText, requirementsUserText);
+        if (reviewEvent.requirements.length > 0) {
+          requirementsApproval = {
+            required: true,
+            approved: false,
+            requirements: reviewEvent.requirements,
+            id: reviewEvent.requirementsId,
+            valid: reviewEvent.valid,
+            errors: reviewEvent.errors,
+          };
+          send(reviewEvent);
+        }
+      }
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
         // Snap layer: if Meph stopped with compile errors still on screen,
@@ -3666,8 +3962,8 @@ app.post('/api/chat', async (req, res) => {
           layerOff: snapConfig.layerOff,
         })) {
           snapRetryCount++;
-          messages.push({ role: 'assistant', content: assistantContent });
-          messages.push({
+          currentMessages.push({ role: 'assistant', content: assistantContent });
+          currentMessages.push({
             role: 'user',
             content: formatSnapMessage({
               errors: currentErrors,
@@ -3686,6 +3982,34 @@ app.post('/api/chat', async (req, res) => {
           }
           console.log(`[snap-layer] retry ${snapRetryCount}/${snapConfig.maxRetries} — ${currentErrors.length} compile error${currentErrors.length === 1 ? '' : 's'} remained at end_turn`);
           continue; // re-enter the iteration loop with the augmented messages
+        }
+
+        const ralphFlow = finalizeChatDoneWithRalph();
+        if (ralphFlow.decision.retry) {
+          ralphRetryCount++;
+          currentMessages.push({ role: 'assistant', content: assistantContent });
+          currentMessages.push({ role: 'user', content: ralphFlow.message });
+          if (_factorDB) {
+            try {
+              _factorDB.logEvent?.({
+                kind: 'requirements_ralph_retry',
+                session_id: sessionId,
+                payload: {
+                  retry_index: ralphRetryCount,
+                  max_retries: ralphConfig.maxRetries,
+                  summary: ralphFlow.audit?.summary || '',
+                },
+              });
+            } catch { /* telemetry best-effort */ }
+          }
+          console.log(`[ralph-layer] retry ${ralphRetryCount}/${ralphConfig.maxRetries} - ${ralphFlow.audit?.summary || 'requirements missing'}`);
+          continue;
+        }
+        if (ralphFlow.decision.blocked) {
+          _captureHintUsage('end_turn');
+          writeSessionQuality();
+          res.end();
+          return;
         }
 
         _captureHintUsage('end_turn');
@@ -3732,7 +4056,10 @@ app.post('/api/chat', async (req, res) => {
             case 'todo': return input.action === 'set' ? 'Updating task list' : 'Reading task list';
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
             case 'patch_code': return `Patching ${input.operations?.length || 0} operations`;
-            case 'browse_templates': return input.action === 'read' ? `Reading template: ${input.name}` : 'Browsing templates';
+            case 'browse_templates':
+              if (input.action === 'read') return `Reading template: ${input.name}`;
+              if (input.action === 'search') return `Searching pattern DB: ${input.query || 'current app shape'}`;
+              return 'Browsing templates';
             default: return tb.name;
           }
         })();
@@ -3874,7 +4201,7 @@ app.post('/api/chat', async (req, res) => {
               // Use the parsed fields directly.
               return `[tool] ✓ patch — ${res.applied || 0} applied, ${res.skipped || 0} skipped`;
             case 'browse_templates':
-              return `[tool] ✓ browse_templates — ${input.action} ${input.name || ''}`.trim();
+              return `[tool] ✓ browse_templates — ${input.action} ${input.name || input.query || ''}`.trim();
             default:
               return `[tool] ${tb.name}`;
           }
@@ -3909,6 +4236,13 @@ app.post('/api/chat', async (req, res) => {
     }
 
     send({ type: 'context_usage', ...estimateContextUsage() });
+    const ralphFlow = finalizeChatDoneWithRalph({ forceBlock: true });
+    if (ralphFlow.decision.retry || ralphFlow.decision.blocked) {
+      _captureHintUsage('iter_limit');
+      writeSessionQuality();
+      res.end();
+      return;
+    }
     _captureHintUsage('iter_limit');
     writeSessionQuality();
     send({ type: 'done', toolResults, source: currentSource });

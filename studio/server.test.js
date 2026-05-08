@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
+import { requirementsId } from './supervisor/requirements-contract.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -161,7 +162,7 @@ const server = spawn(process.execPath, ['studio/server.js'], {
   // smoke test below seeds a tenant, injects a fake CF api wrapper, ships the
   // deal-desk source, and verifies the multi-tenant subdomain binding landed.
   // CLEAR_CLOUD_ROOT_DOMAIN pins the deploy URL so we can assert it exactly.
-  env: { ...process.env, PORT, CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev' },
+  env: { ...process.env, PORT, CLEAR_ALLOW_SEED: '1', CLEAR_CLOUD_ROOT_DOMAIN: 'buildclear.dev', MEPH_BRAIN: 'haiku-dev' },
   stdio: 'pipe',
 });
 
@@ -512,6 +513,139 @@ try {
     assert(status === 400 || status === 200, 'chat with empty messages returns 400 or streams');
   }
 
+  {
+    const r = await fetch(BASE + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'hello' }],
+        editorContent: "show 'hi'",
+        webTools: false,
+      }),
+    });
+    const text = await r.text();
+    assert(r.status === 200, 'chat with a normal POST body streams');
+    assert(text.includes('Ghost Meph stub'), 'chat stream is not killed when the request body closes normally');
+  }
+
+  {
+    const serverSrc = readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes('buildPatternPreflight'), 'chat path builds required pattern preflight');
+    assert(serverSrc.includes('appendPatternPreflightToMessages'), 'chat path injects pattern preflight into messages');
+    assert(serverSrc.includes("type: 'pattern_preflight'"), 'chat path emits pattern_preflight telemetry');
+    assert(serverSrc.includes('patternPreflightRequest !== false'), 'chat path can disable preflight for A/B trials');
+    assert(serverSrc.includes('stripPatternSearchPromptGuard'), 'chat path can strip prompt-only search guard for A/B trials');
+    assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
+    assert(serverSrc.includes('approvedRequirements: requirementsApproval.approved'),
+      'chat path feeds approved requirements into pattern preflight');
+    assert(serverSrc.includes('finalizeChatDoneWithRalph'),
+      'chat finalization runs the Ralph requirements gate before done');
+    assert(serverSrc.includes('finalizeChatDoneWithRalph({ forceBlock: true })'),
+      'chat iteration-limit finalization blocks instead of skipping Ralph');
+    assert(serverSrc.includes("type: 'model_usage'"),
+      'chat path forwards provider usage so live probes can account for spend');
+    assert(serverSrc.includes('Returns a PNG image content block'),
+      'screenshot_output tool description tells Meph it can inspect rendered layout visually');
+    assert(!serverSrc.includes('screenshot_output\',\n    description: \'Fetch the rendered HTML'),
+      'screenshot_output tool description no longer claims it returns HTML');
+    for (const toolName of ['click_element', 'fill_input', 'read_dom', 'read_actions', 'read_network', 'screenshot_output']) {
+      assert(serverSrc.includes(`name: '${toolName}'`) || serverSrc.includes(`case '${toolName}'`),
+        `${toolName} stays available as a generated-app browser tool`);
+    }
+    assert(serverSrc.includes('const activeTools = enableWebTools ? [...baseTools, ...WEB_TOOLS] : baseTools'),
+      'generated-app browser tools stay in baseTools; webTools only adds outside web search/fetch');
+  }
+
+  {
+    const { status, data } = await post('/api/_test/chat-requirements-flow', {
+      messages: [{ role: 'user', content: 'build me a deal approval app' }],
+      editorContent: '',
+      requirementsMode: 'auto',
+      assistantText: `requirements:
+  logged-in sellers can submit deals
+  each deal stores customer, amount, status, and approver
+  deals under 50000 route to manager approval
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals`,
+    });
+
+    assert(status === 200, 'test requirements flow endpoint returns 200');
+    assert(Array.isArray(data.events), 'requirements flow returns events array');
+    assert(data.events.some(e => e.type === 'requirements_review'),
+      'chat emits requirements_review before app editing on complex app request');
+    assert(!data.events.some(e => e.type === 'code_update'),
+      'requirements review flow does not emit code_update before approval');
+  }
+
+  {
+    const badReqs = [
+      'sales reps can create deals with an amount and stage; managers can review, approve, or reject deals above a $10,000 threshold',
+      'deals must store title, amount, status (pending, approved, rejected), and the creator_id',
+      "deals over $10,000 are automatically routed to a 'Manager' role for approval",
+    ];
+    const { status, data } = await post('/api/_test/chat-requirements-flow', {
+      messages: [{ role: 'user', content: 'build me a deal approval app' }],
+      editorContent: '',
+      requirementsMode: 'auto',
+      approvedRequirements: badReqs,
+      approvedRequirementsId: requirementsId(badReqs),
+    });
+
+    assert(status === 200, 'invalid-approved requirements flow endpoint returns 200');
+    assert(data.requirementsApproval?.approved === false,
+      'invalid e2e requirements cannot be approved just because the id matches');
+    assert(data.requirementsApproval?.errors?.some(e => e.includes('e2e') || e.includes('one observable claim')),
+      'invalid approved requirements expose quality errors');
+  }
+
+  {
+    const { status, data } = await post('/api/_test/chat-ralph-flow', {
+      editorContent: `requirements:
+  deals at least 50000 route to VP approval
+
+build for javascript backend
+when user requests data from /api/health:
+  send back 'ok'
+`,
+      approvedRequirements: ['deals at least 50000 route to VP approval'],
+      approvedRequirementsId: requirementsId(['deals at least 50000 route to VP approval']),
+      ralphRetryCount: 0,
+    });
+
+    assert(status === 200, 'test Ralph flow endpoint returns 200');
+    assert(Array.isArray(data.events), 'Ralph flow returns events array');
+    assert(data.events.some(e => e.type === 'requirements_audit'),
+      'chat runs Ralph before done when approved requirements exist');
+    assert(data.events.some(e => e.type === 'requirements_retry'),
+      'chat emits a Ralph retry event when approved requirements are missing');
+    assert(data.message && data.message.includes('You are not done yet'),
+      'Ralph retry flow returns concrete repair message');
+  }
+
+  {
+    const reqs = ['sales reps can submit deals'];
+    const { status, data } = await post('/api/_test/chat-ralph-flow', {
+      editorContent: `requirements:
+  sales reps can submit deals
+
+build for javascript backend
+when user sends deal to /api/deals:
+  if deal's amount is greater than 50000:
+`,
+      currentErrors: [{ line: 6, message: 'The if-block is empty -- add indented code below it.' }],
+      approvedRequirements: reqs,
+      approvedRequirementsId: requirementsId(reqs),
+      ralphRetryCount: 99,
+    });
+
+    assert(status === 200, 'compile-error Ralph flow endpoint returns 200');
+    assert(data.skipped === 'compile_errors', 'Ralph flow labels compile-error skip');
+    assert(data.decision?.blocked === true,
+      'Ralph flow blocks done when compile errors remain');
+    assert(data.events.some(e => e.type === 'requirements_blocked' && e.reason === 'compile_errors'),
+      'Ralph flow emits blocked event for remaining compile errors');
+  }
+
   // =========================================================================
   // SAVE ENDPOINT
   // =========================================================================
@@ -620,6 +754,13 @@ try {
     assert(text.includes('CodeMirror') || text.includes('codemirror'), 'studio.html references CodeMirror');
     assert(text.includes('Copy compiler error'), 'studio.html labels trace button as Copy compiler error');
     assert(!text.includes('Copy trace for Codex'), 'studio.html does not use Codex-specific trace label');
+    assert(text.includes('requirements-review'), 'studio.html renders requirements review cards');
+    assert(text.includes('approveRequirements'), 'studio.html can approve requirements from chat');
+    assert(text.includes('approvedRequirementsId'), 'studio.html sends approved requirements back to Meph');
+    assert(text.includes('requirements-audit'), 'studio.html renders requirements audit cards');
+    assert(text.includes('renderRequirementsAudit'), 'studio.html formats Ralph audit results');
+    assert(text.includes('requirements_retry'), 'studio.html handles Ralph retry events');
+    assert(text.includes('requirements_blocked'), 'studio.html handles Ralph blocked events');
   }
 
   {
@@ -722,6 +863,8 @@ try {
     const fs = await import('fs');
     const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
     assert(serverSrc.includes("name: 'browse_templates'"), 'server.js has browse_templates tool');
+    assert(serverSrc.includes("enum: ['list', 'read', 'search']"), 'browse_templates tool schema exposes pattern search');
+    assert(serverSrc.includes('search canonical app patterns and primitive snippets'), 'browse_templates tool schema explains pattern search');
     assert(serverSrc.includes("case 'browse_templates'"), 'server.js has browse_templates dispatch');
   }
 

@@ -246,6 +246,9 @@ export const NodeType = Object.freeze({
   // App-level policies (Enact guard types)
   POLICY: 'policy',
 
+  // App-level contract that Meph must satisfy before tests/code.
+  REQUIREMENTS: 'requirements',
+
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
 
@@ -797,6 +800,10 @@ function crudNode(operation, variable, target, condition, line) {
 
 function testDefNode(name, body, line) {
   return { type: NodeType.TEST_DEF, name, body, line };
+}
+
+function requirementsNode(items, line) {
+  return { type: NodeType.REQUIREMENTS, items, line };
 }
 
 function expectNode(expression, line) {
@@ -2807,6 +2814,25 @@ CANONICAL_DISPATCH.set('script', (ctx) => {
       ctx.errors.push({ line: ctx.line, message: "script: block is empty — add indented JavaScript code below it" });
     } else {
       ctx.body.push({ type: NodeType.SCRIPT, code: scriptLines.join('\n'), line: ctx.line });
+    }
+    return j;
+});
+CANONICAL_DISPATCH.set('requirements', (ctx) => {
+    const items = [];
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+      const child = ctx.lines[j];
+      if (child.tokens.length > 0 && child.tokens[0].type !== TokenType.COMMENT) {
+        const raw = child.raw || child.tokens.map(t => t.value).join(' ');
+        const text = raw.replace(/^([-*]\s+|\d+[.)]\s+)/, '').trim();
+        if (text) items.push({ text, line: child.tokens[0].line });
+      }
+      j++;
+    }
+    if (items.length === 0) {
+      ctx.errors.push({ line: ctx.line, message: "requirements: needs at least one requirement line. Example:\nrequirements:\n  users can submit deals" });
+    } else {
+      ctx.body.push(requirementsNode(items, ctx.line));
     }
     return j;
 });

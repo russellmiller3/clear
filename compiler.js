@@ -2140,7 +2140,16 @@ export function compile(ast, options = {}) {
   const emitCloudflare = target === 'cloudflare';
   const runtimeTarget = emitCloudflare ? 'both' : target;
 
-  const result = { errors, warnings };
+  const requirements = collectRequirements(ast);
+  if (requirements.length > 0 && !hasUserTestBlocks(ast)) {
+    warnings.push({
+      kind: 'requirements-without-tests',
+      line: requirements[0].line,
+      message: 'requirements should have tests: add user-written test: blocks that prove each requirement before shipping.',
+    });
+  }
+
+  const result = { errors, warnings, requirements };
   const needsWeb = ['web', 'both', 'web_and_js_backend', 'web_and_python_backend'].includes(runtimeTarget);
   const needsJSBackend = ['backend', 'both', 'web_and_js_backend', 'js_backend'].includes(runtimeTarget);
   const needsPythonBackend = ['backend', 'both', 'web_and_python_backend', 'python_backend'].includes(runtimeTarget);
@@ -2275,6 +2284,43 @@ export function compile(ast, options = {}) {
   }
 
   return result;
+}
+
+export function collectRequirements(ast) {
+  const found = [];
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (node.type === NodeType.REQUIREMENTS) {
+      for (const item of node.items || []) {
+        found.push({ text: item.text, line: item.line, blockLine: node.line });
+      }
+    }
+    for (const key of Object.keys(node)) {
+      const value = node[key];
+      if (value && typeof value === 'object') walk(value);
+    }
+  }
+  walk(ast.body || []);
+  return found.sort((a, b) => a.line - b.line);
+}
+
+function hasUserTestBlocks(ast) {
+  let found = false;
+  function walk(node) {
+    if (found || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (node.type === NodeType.TEST_DEF) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      const value = node[key];
+      if (value && typeof value === 'object') walk(value);
+    }
+  }
+  walk(ast.body || []);
+  return found;
 }
 
 /**
@@ -7501,6 +7547,7 @@ function _compileNodeInner(node, ctx) {
     }
 
     case NodeType.TARGET:
+    case NodeType.REQUIREMENTS:
     case NodeType.THEME:
       return null;
 

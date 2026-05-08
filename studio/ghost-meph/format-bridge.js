@@ -145,8 +145,9 @@ function stringifyToolResult(content) {
  * Read an OpenAI streaming response body and return an Anthropic-shaped
  * Response-like object whose body streams Anthropic SSE.
  */
-export async function wrapOpenAIStreamAsAnthropicSSE(openaiBody, modelLabel) {
+export async function wrapOpenAIStreamAsAnthropicSSE(openaiBody, modelLabel, opts = {}) {
   const result = await accumulateOpenAITextAndToolCalls(openaiBody);
+  if (opts.generationId && !result.generationId) result.generationId = opts.generationId;
   const events = openAIResultToAnthropicSSEEvents(result, modelLabel);
   const stream = new ReadableStream({
     start(controller) {
@@ -181,6 +182,8 @@ export async function accumulateOpenAITextAndToolCalls(stream) {
     text: '',
     toolCalls: [],
     stopReason: 'end_turn',
+    generationId: null,
+    usage: null,
   };
   let buf = '';
 
@@ -200,8 +203,8 @@ export async function accumulateOpenAITextAndToolCalls(stream) {
 }
 
 function processOpenAISSELine(line, result) {
-  if (!line.startsWith('data: ')) return;
-  const raw = line.slice(6).trim();
+  if (!line.startsWith('data:')) return;
+  const raw = line.slice('data:'.length).trim();
   if (!raw || raw === '[DONE]') return;
 
   let chunk;
@@ -210,6 +213,9 @@ function processOpenAISSELine(line, result) {
   } catch {
     return;
   }
+
+  if (chunk.id && !result.generationId) result.generationId = chunk.id;
+  if (chunk.usage) result.usage = normalizeOpenAIUsage(chunk.usage);
 
   const choice = chunk?.choices?.[0] || {};
   const delta = choice.delta || {};
@@ -234,6 +240,20 @@ function processOpenAISSELine(line, result) {
   }
 }
 
+function normalizeOpenAIUsage(usage = {}) {
+  const promptTokens = usage.prompt_tokens ?? usage.input_tokens ?? 0;
+  const completionTokens = usage.completion_tokens ?? usage.output_tokens ?? 0;
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: usage.total_tokens ?? (promptTokens + completionTokens),
+    cost: typeof usage.cost === 'number' ? usage.cost : null,
+    cost_details: usage.cost_details || null,
+    prompt_tokens_details: usage.prompt_tokens_details || null,
+    completion_tokens_details: usage.completion_tokens_details || null,
+  };
+}
+
 function mergeToolCallDelta(toolCalls, delta) {
   const index = Number.isInteger(delta.index) ? delta.index : toolCalls.length;
   if (!toolCalls[index]) {
@@ -250,6 +270,7 @@ function mergeToolCallDelta(toolCalls, delta) {
 export function openAIResultToAnthropicSSEEvents(result, modelLabel = 'openai-compatible') {
   const sse = (type, data) =>
     `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+  const usage = usageForAnthropicSSE(result);
   const events = [
     sse('message_start', {
       message: {
@@ -260,7 +281,7 @@ export function openAIResultToAnthropicSSEEvents(result, modelLabel = 'openai-co
         content: [],
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
+        usage,
       },
     }),
   ];
@@ -309,11 +330,29 @@ export function openAIResultToAnthropicSSEEvents(result, modelLabel = 'openai-co
   events.push(
     sse('message_delta', {
       delta: { stop_reason: stopReason, stop_sequence: null },
-      usage: { input_tokens: 0, output_tokens: (result.text || '').length },
+      usage,
     }),
     sse('message_stop', {}),
   );
   return events;
+}
+
+function usageForAnthropicSSE(result = {}) {
+  const openAIUsage = result.usage || {};
+  const inputTokens = openAIUsage.prompt_tokens ?? 0;
+  const outputTokens = openAIUsage.completion_tokens ?? (result.text || '').length;
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    prompt_tokens: inputTokens,
+    completion_tokens: outputTokens,
+    total_tokens: openAIUsage.total_tokens ?? (inputTokens + outputTokens),
+    openrouter_cost: openAIUsage.cost,
+    openrouter_generation_id: result.generationId || null,
+    openrouter_cost_details: openAIUsage.cost_details || null,
+    openrouter_prompt_tokens_details: openAIUsage.prompt_tokens_details || null,
+    openrouter_completion_tokens_details: openAIUsage.completion_tokens_details || null,
+  };
 }
 
 /**

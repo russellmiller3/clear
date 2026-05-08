@@ -190,6 +190,54 @@ before committing.
 4. Adding parallel execution? Show the fork and join in the diagram
 5. The compiled output auto-generates a text version — but the source diagram is richer and is the source of truth
 
+## Requirements Before Tests (MANDATORY for complex apps)
+
+For complex app builds, do not write code first. Draft a `requirements:` block after the architecture diagram, ask for user approval in Studio, then write tests and implementation.
+
+Use requirements when the user asks for a whole app, workflow, queue, CRM, dashboard, approval process, role-based system, agent tool surface, billing flow, audit flow, or anything with multiple moving parts.
+
+Do not use requirements for a tiny syntax question, a one-line fix, or a narrow local edit where the requested behavior is already explicit.
+
+Canonical order:
+1. Architecture diagram in `/* ... */`
+2. `requirements:` block
+3. `test:` blocks for those requirements
+4. App source
+
+Example:
+
+```clear
+/*
+DATAFLOW:
+Seller -> Deal form -> Deals table -> Approval queue -> Approver action
+*/
+
+requirements:
+  logged-in sellers can submit deals
+  each deal stores customer, amount, status, and approver
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals
+  simultaneous approvals cannot overwrite each other
+
+test:
+  deals at least 50000 route to VP approval
+
+test:
+  approvers can approve or reject pending deals
+```
+
+Rules:
+- Requirements are plain outcome statements, not implementation notes.
+- Complex-app requirements must be end-to-end: cover storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when the app has UI.
+- Every requirement should be testable by reading the app or running it.
+- Requirements must name actors, data, actions, and edge cases when they matter.
+- Write one observable claim per requirement. Do not combine multiple claims with semicolons.
+- Do not satisfy a requirement by echoing its text. Ralph checks implementation evidence.
+- "Pending" status alone is not approval routing. Manager/VP approval needs assignment, queue, reviewer role, or approver evidence.
+- Dead UI is a compiler problem, not a requirements problem. Internal app calls must hit real endpoints; nav and links must point at real pages.
+- After requirements are approved, use the pattern preflight results before choosing syntax.
+- If Ralph says a requirement is unverified, repair the app and keep going.
+
 ## Minimize Cognitive Load (First Principle)
 
 Every Clear program should be readable in one pass without backtracking.
