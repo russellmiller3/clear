@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { createUsageLedgerRecorder, formatCostReport, summarizeModelUsage } from './meph-requirements-live-smoke.mjs';
@@ -37,6 +37,7 @@ export function isExpensiveAnthropicModel(modelName) {
 const backend = resolveProbeBackend();
 const model = resolveProbeModel();
 const chatTimeoutMs = Number(process.env.MEPH_PATTERN_PROBE_TIMEOUT_MS || 600_000);
+const DEFAULT_ARTIFACT_DIR = join(repoRoot, 'studio', 'sessions', 'pattern-probes', new Date().toISOString().replace(/[:.]/g, '-'));
 const TRIAL_BUILD_INSTRUCTION = [
   'Trial instruction: build the app in the Clear editor.',
   'Call edit_code with the complete .clear source before your final answer.',
@@ -668,6 +669,69 @@ export function summarizeRows(rows, { abMode = false } = {}) {
   return summary;
 }
 
+export function buildTrialArtifact(row = {}) {
+  const result = row.result || {};
+  const usage = summarizeModelUsage(result.modelUsageEvents || []);
+  const review = result.requirementsReview || {};
+  const compile = result.compile || {};
+  const preflight = result.preflight || null;
+  const firstTurnPreflight = result.firstTurnPreflight || null;
+  return {
+    probe: {
+      id: row.probe?.id || '',
+      prompt: row.probe?.prompt || '',
+      minQualityPercent: row.probe?.minQualityPercent || null,
+    },
+    variant: row.variant || '',
+    requirements: {
+      valid: review.valid ?? null,
+      id: review.requirementsId || null,
+      count: Array.isArray(review.requirements) ? review.requirements.length : 0,
+      items: Array.isArray(review.requirements) ? review.requirements : [],
+    },
+    preflight: {
+      mode: preflight?.mode || null,
+      required: preflight?.required ?? null,
+      patternCount: Number(preflight?.pattern_count || 0),
+      factorHintsDisabled: preflight?.factor_hints_disabled ?? null,
+    },
+    firstTurnPreflight: firstTurnPreflight ? {
+      mode: firstTurnPreflight.mode || null,
+      required: firstTurnPreflight.required ?? null,
+      patternCount: Number(firstTurnPreflight.pattern_count || 0),
+      factorHintsDisabled: firstTurnPreflight.factor_hints_disabled ?? null,
+    } : null,
+    tools: result.toolNames || [],
+    compile: {
+      errors: Array.isArray(compile.errors) ? compile.errors.length : null,
+      warnings: Array.isArray(compile.warnings) ? compile.warnings.length : null,
+      errorMessages: (compile.errors || []).map(err => err?.message || String(err)).slice(0, 10),
+      warningMessages: (compile.warnings || []).map(warn => warn?.message || String(warn)).slice(0, 10),
+    },
+    score: row.score || null,
+    cost: usage,
+    blocked: !!result.blocked,
+    error: result.error || null,
+    text: result.text || '',
+    source: result.source || '',
+  };
+}
+
+function safeArtifactName(value = '') {
+  return String(value || 'trial').replace(/[^a-z0-9_.-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 120) || 'trial';
+}
+
+function writeTrialArtifact(row, { dir, index }) {
+  if (!dir) return null;
+  mkdirSync(dir, { recursive: true });
+  const probeId = safeArtifactName(row.probe?.id || 'probe');
+  const variant = safeArtifactName(row.variant || 'variant');
+  const ordinal = String(index + 1).padStart(2, '0');
+  const path = join(dir, `${ordinal}-${probeId}-${variant}.json`);
+  writeFileSync(path, JSON.stringify(buildTrialArtifact(row), null, 2));
+  return path;
+}
+
 async function main() {
   const selectedProbes = selectProbes({
     suiteName: process.env.MEPH_PATTERN_PROBE_SUITE || 'broadFunctionalApps',
@@ -702,6 +766,10 @@ async function main() {
   try {
     await waitForServer();
     console.log(`meph-pattern-live-probe: server=${base} backend=${backend} model=${model}`);
+    const artifactDir = process.env.MEPH_PATTERN_PROBE_ARTIFACT_DIR === '0'
+      ? ''
+      : (process.env.MEPH_PATTERN_PROBE_ARTIFACT_DIR || DEFAULT_ARTIFACT_DIR);
+    if (artifactDir) console.log(`artifacts=${artifactDir}`);
     const usageLedger = createUsageLedgerRecorder({ model });
     const rows = [];
     const abMode = process.env.MEPH_PATTERN_PROBE_AB === '1';
@@ -779,6 +847,8 @@ async function main() {
           if (blocked) abortProbe = true;
         }
         rows.push({ probe, variant: variant.label, result, score });
+        const artifactPath = writeTrialArtifact(rows[rows.length - 1], { dir: artifactDir, index: rows.length - 1 });
+        if (artifactPath) console.log(`artifact: ${artifactPath}`);
         console.log(`tools: ${result.toolNames.join(', ') || '(none)'}`);
         if (result.error) console.log(`error: ${result.error}`);
         console.log(`preflight: mode=${result.preflight?.mode || 'unknown'} required=${result.preflight?.required ? 'yes' : 'no'} patterns=${result.preflight?.pattern_count ?? 0} factor_hints=${result.preflight?.factor_hints_disabled ? 'off' : 'on'}`);
@@ -798,6 +868,9 @@ async function main() {
     const costTotals = usageLedger.totals();
     summary.openRouterSessionTotalCredits = costTotals.totalCostCredits;
     summary.costReport = formatCostReport(costTotals);
+    if (artifactDir) {
+      writeFileSync(join(artifactDir, 'summary.json'), JSON.stringify(summary, null, 2));
+    }
     const avgQuality = summary.avgQuality === null ? 'n/a' : `${summary.avgQuality.toFixed(1)}/100`;
     console.log(`\nSUMMARY ${summary.passed}/${summary.total} completed trials passed; avg_quality=${avgQuality}`);
     console.log(summary.costReport);

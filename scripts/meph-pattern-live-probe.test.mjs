@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildTrialArtifact, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -455,6 +455,40 @@ page 'Create Request' at '/new':
     expect(summary.openRouterCostCredits).toEqual(0.1);
     expect(summary.openRouterGenerationIds).toEqual(['gen_a', 'gen_b']);
     expect(summary.costAccountingReady).toEqual(true);
+  });
+
+  it('builds a durable per-trial artifact for research analysis', () => {
+    const artifact = buildTrialArtifact({
+      probe: { id: 'crm', prompt: 'Build a CRM app' },
+      variant: 'full_hook',
+      result: {
+        text: 'done',
+        source: 'build for web',
+        toolNames: ['edit_code'],
+        preflight: { mode: 'full', pattern_count: 3 },
+        firstTurnPreflight: { mode: 'docs', pattern_count: 0 },
+        requirementsReview: {
+          valid: true,
+          requirements: ['logged in users can create deals'],
+          requirementsId: 'req_123',
+        },
+        compile: { errors: [], warnings: [] },
+        modelUsageEvents: [
+          { usage: { input_tokens: 100, output_tokens: 20, openrouter_cost: 0.04, openrouter_generation_id: 'gen_a' } },
+        ],
+      },
+      score: { pass: true, quality: { percent: 88 } },
+    });
+
+    expect(artifact.probe.id).toEqual('crm');
+    expect(artifact.variant).toEqual('full_hook');
+    expect(artifact.requirements.count).toEqual(1);
+    expect(artifact.preflight.patternCount).toEqual(3);
+    expect(artifact.compile.errors).toEqual(0);
+    expect(artifact.score.pass).toEqual(true);
+    expect(artifact.cost.openRouterCostCredits).toEqual(0.04);
+    expect(artifact.cost.openRouterGenerationIds).toEqual(['gen_a']);
+    expect(artifact.source).toEqual('build for web');
   });
 
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {
