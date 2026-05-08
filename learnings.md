@@ -2497,3 +2497,17 @@ The durable split is: requirements are the per-app contract, pattern memory is r
 - **Pending status is not manager approval.** Approval routing needs role, reviewer assignment, queue, or approver evidence. A status string alone is workflow theater.
 - **Universal UI failures belong in the compiler.** Broken app API calls and dead nav/link routes should hard-error even when no requirement mentions them.
 - **Paid probes should stop on invalid requirements.** Do not spend the second build call when the first call produced requirements the server would reject.
+
+## Session 2026-05-08: Retrieval Is Context; Ralph Is The Gate
+
+The pattern DB and error DB are useful, but the live requirements probe showed they are not the decisive quality lever. Retrieval can help Meph start from a better shape or recover from a known compiler failure. It cannot prove the finished app matches the user's intent.
+
+The decisive move is making intent machine-checkable. Requirements turn a vague prompt into a contract. Ralph audits the implementation against that contract. If evidence is missing, the loop blocks. That changes "done" from a model assertion into a measured state.
+
+### Gotchas-as-rules
+
+- **Do not confuse better context with a correctness oracle.** Pattern/error retrieval can improve attempts; it cannot certify the result.
+- **Treat DB hints as accelerators, not gates.** They help Meph aim and repair. They should not be the thing that says an app is done.
+- **Prioritize contract quality before retrieval cleverness.** A perfect pattern search still fails if the user intent was never translated into checkable requirements.
+- **Judge workflows by evidence, not vocabulary.** If an app says "manager approval" but has no manager assignment, queue, role, or approver evidence, it is wrong.
+- **Research claims need the hierarchy stated.** Pattern DB and error DB are minor-to-moderate aids; requirements/Ralph is the main fail-closed mechanism.

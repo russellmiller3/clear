@@ -1,7 +1,36 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-05-07 (curated pattern DB now indexes primitive Clear shapes across templates, includes critical language primitives, forces complex-request preflight retrieval, and stages learned primitives before promotion; flywheel hint delivery remains boundary-tested)**.
+Updated: **2026-05-08 (requirements/Ralph loop is now the primary quality lever; pattern/error DBs are useful retrieval aids, but deterministic contracts are what prevent false success)**.
+
+## Latest meta-lesson — retrieval helps Meph aim, Ralph changes the game (2026-05-08)
+
+**The big learning:** pattern memory and error memory are not the main moat by themselves. They help Meph choose a better starting shape or repair a known compile failure. They do not decide whether the finished app actually satisfies the user's intent.
+
+Ralph plus approved requirements is the bigger move because it changes the success condition. Before Ralph, Meph could produce a plausible app, run some tests, and say "done" while missing the business workflow. After Ralph, "done" means the generated Clear source has concrete evidence for each approved requirement. If evidence is missing, the loop continues or blocks.
+
+The databases still matter, but as **supporting context**, not as the oracle:
+
+- **Pattern DB:** useful before writing code. It gives Meph trusted Clear shapes: approval queues, routing, selected-row details, optimistic locking, agents, tests. It reduces guessing and syntax drift.
+- **Error DB:** useful after a compile failure. It gives Meph examples of past fixes for the same error class. It reduces repeated syntax/debug cycles.
+- **Ralph requirements loop:** useful after the app exists. It asks the load-bearing question: "did the app actually implement what we agreed it should do?"
+
+The 2026-05-08 Gemini smoke made the hierarchy obvious. The model got enough pattern/context to build a plausible deal approval app. It compiled. It used browser/screenshot tools. But it represented "manager approval" as only `Pending` status. The app looked close, yet had no manager assignment, no reviewer queue, and no approver role evidence. Ralph blocked it. That is the product working.
+
+**Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
+
+The durable research frame is now:
+
+```text
+Vague user intent
+  -> requirements contract
+  -> pattern retrieval for better first draft
+  -> compiler/test/browser checks for universal correctness
+  -> Ralph audit against the contract
+  -> done only if evidence exists
+```
+
+This is more important than making the retriever cleverer. A perfect retriever still cannot know whether the generated app satisfied the user's specific request unless the request has become a machine-checkable contract.
 
 ## Capability surface — provable named business rules (2026-05-02)
 
@@ -84,6 +113,8 @@ The document below is structured **theory → architecture → current state →
 
 **What's the point of all this?** To make Meph get better at building apps over time, without needing access to re-train Claude itself.
 
+**The new hierarchy after the requirements/Ralph probe.** The databases help Meph write a better attempt. They are not the grader. The main quality lever is turning the user's intent into approved requirements, then making Ralph audit the final app against those requirements. Pattern DB and error DB are accelerators; Ralph is the gate.
+
 **How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. A small ranking model — **EBM (Explainable Boosting Machine)**, not a language model — picks the best examples more intelligently than keyword match. EBM is a glass-box algorithm: you can literally plot each feature's contribution and see why a hint was picked. Matches Clear's "no magic, readable source" philosophy. **Phase-1 detail (Session 38):** at <1000 passing rows, the trainer runs a 2-stage **Lasso → EBM** pipeline — Lasso auto-selects the features that actually matter (L1 regularization drops the noise), then EBM fits shape functions + interactions only on the survivors. Current measured: Lasso alone hits val R² 0.39 on our 182 passing rows; we'll switch to Stage-2 EBM around 1000 rows when interactions start earning their keep.
 
 **What's actually live right now:**
@@ -100,6 +131,7 @@ The document below is structured **theory → architecture → current state →
 - **Shape-search retrieval (Lean Lesson 2, 2026-04-26, retired from Meph hints 2026-05-07):** the original markdown `canonical-examples.md` path proved that program shape is a useful retrieval key, but it is no longer a separate Meph compile-hint layer.
 - **Curated pattern DB (2026-05-07):** the Factor DB now has a `clear_programming_patterns` table seeded from the 13 canonical apps in `CLAUDE.md` (8 core + 5 Marcus). Each golden template is stored both as a whole-app row and as deterministic primitive rows for reusable Clear shapes like tables, queues, rules, endpoints, pages, actions, agents, and tests. Non-golden app templates add `reference` primitive rows only, while critical language primitives cover approval routing, row actions, and optimistic locking before a full template exists. `scripts/primitive-audit.mjs` reports the library shape; current repo snapshot is 13 app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags. A seven-question narrow approval retrieval guard keeps this focused on realistic Marcus-style questions. `/api/chat` also runs a preflight hook for complex app and feature-shape requests: system prompt is already loaded, relevant `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts are injected, and the pattern DB is searched before Meph answers. This is trusted premise memory: Meph can search it and receive small pattern snippets with parent/kind metadata, but writes must go through deterministic compile/test promotion so one bad session cannot poison the library.
 - **Learned primitive promotion queue (2026-05-07):** user sessions and test runs can stage candidate snippets in `clear_programming_pattern_candidates` with source provenance, compile/test evidence, and review notes. Trusted retrieval ignores that table until a passing reviewed row is promoted into `clear_programming_patterns` as a `learned` primitive.
+- **Requirements/Ralph loop (2026-05-08):** complex app requests now draft approved requirements before Meph mutates source. The server rejects vague or compound requirements. Pattern retrieval uses the approved contract. After the build, Ralph audits implementation evidence and blocks false done. The key live probe result: a plausible deal-approval app compiled and used browser tools, but Ralph blocked it because manager approval was only a status string, not reviewer/queue/role evidence.
 - **Open-capability surface (Lean Lesson 3, 2026-04-26):** Meph's per-turn context now includes a structured "what's still open" report — TBD placeholders, failing tests, unresolved compile errors with their canonical-fix hint. Mirrors how Lean shows the prover writer "what's left to prove" instead of forcing them to re-derive it from raw output.
 - **Shell nav primitive (Phase 2, 2026-04-26):** generated dashboards now have an explicit sidebar target: grouped links with counts, icons, and active state. This turns app chrome from a visual-only compiler change into a curriculum/eval signal Meph can learn.
 - **Shell workbench primitive (Phase 3, 2026-04-26):** generated queues now have explicit page headers and routed tab strips. This gives Meph a measurable target for the main work area, not just the left rail.
