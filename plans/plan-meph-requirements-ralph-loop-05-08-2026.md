@@ -111,6 +111,54 @@ max_iterations                RALPH_MAX_RETRIES
 
 The cookbook's most important warning is that weak graders approve everything. Ralph must require evidence: source lines, AST nodes, compiler output, test results, or pattern hits.
 
+## Enact Intent Lessons
+
+Enact has a useful `.internal/enact-intent.md`, but Clear should not copy it wholesale.
+
+What to steal:
+
+- **Invariants first.** Enact starts with promises the system must always keep. Clear's `intent.md` should do the same for new compiler/runtime subsystems.
+- **Error contracts.** Enact lists public methods and exact raised errors. Clear's `intent.md` should add this for `requirements:` parsing, approval validation, and Ralph blocking.
+- **Shapes/state/derives/actions/effects.** Enact separates data, mutable state, computed truth, allowed mutations, and I/O. That is a better mental model than burying everything in a node table.
+- **Drift discipline.** Enact treats intent as current truth, not future aspiration. Clear should keep `intent.md` authoritative for shipped syntax only.
+
+What not to steal:
+
+- Enact's intent file is an **application/SDK map**. Clear's `intent.md` is a **language/compiler map**.
+- Do not turn Clear's `intent.md` into a giant product roadmap.
+- Do not mix per-app requirements into `intent.md`. A user's approved requirements belong in their Clear source, not the language spec.
+
+Concrete change for this plan:
+
+When Cycle 2 updates `intent.md`, add a small requirements subsection with this shape:
+
+```markdown
+### Requirements Contracts
+
+#### Invariants
+- `requirements:` is metadata only. It never emits runtime code.
+- `compileProgram(source).requirements` reflects the normalized source block.
+- Requirements are per-program contracts, not reusable pattern rows.
+
+#### Error Contracts
+- Empty `requirements:` block -> parse error with repair example.
+- Approved requirements id mismatch -> server rejects approval.
+- Ralph max retries reached -> `requirements_blocked`, not `done`.
+
+#### Shape
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `REQUIREMENTS` | `requirements:` + indented lines | Metadata only |
+```
+
+That keeps the useful Enact discipline without confusing three separate things:
+
+```text
+requirements:   per-app promise
+intent.md       language promise
+pattern DB      reusable implementation example
+```
+
 ## Clear-Est Syntax
 
 Use this syntax in generated Clear source:
