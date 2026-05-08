@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeModel, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -134,6 +134,128 @@ describe('meph pattern live probe harness', () => {
     expect(passed.pass).toEqual(true);
     expect(passed.compiles).toEqual(true);
     expect(passed.usedEditor).toEqual(true);
+    expect(passed.quality.percent).toBeGreaterThan(0);
+  });
+
+  it('scores approval-queue quality beyond compile success and catches misrouting', () => {
+    const probe = { requiredSourceTerms: ['approval', '50000', 'manager', 'vp', 'approve', 'reject'] };
+    const docsOnlyMisroute = `
+build for web and javascript backend
+allow signup and login
+create a Requests table:
+  title, required
+  amount (number), required
+  status, default 'pending'
+  routed_to_role, text
+
+when user sends new_request to /api/requests:
+  requires login
+  validate new_request:
+    title is text, required
+    amount is number, required
+  route new_request by amount:
+    'manager' to manager when amount is less than 50000
+    'vp' to vp when amount is greater than or equal to 50000
+  new_request's routed_to_role is 'pending'
+  saved = save new_request as new Request
+  send back saved
+
+when user calls GET /api/requests/pending:
+  requires login
+  pending = get all Requests where status is 'pending'
+  send back pending
+
+when user updates request at /api/requests/:id/approve:
+  requires login
+  request_item = look up Request where id is this id
+  change request_item's status from 'pending' to 'approved'
+  save request_item to Requests
+
+when user updates request at /api/requests/:id/reject:
+  requires login
+  request_item = look up Request where id is this id
+  change request_item's status from 'pending' to 'rejected'
+  save request_item to Requests
+
+page 'Approvals' at '/approvals':
+  section 'Requests':
+    display pending as table showing title, amount, routed_to_role, status
+    detail panel for selected_request:
+      button 'Approve':
+        update selected_request at /api/requests/:id/approve
+      button 'Reject':
+        update selected_request at /api/requests/:id/reject
+`;
+    const hookOnShape = `
+build for web and javascript backend
+allow signup and login
+create a Requests table:
+  title, required
+  amount (number), required
+  status, default 'pending'
+  approval_tier, required
+
+when user sends request to /api/requests:
+  requires login
+  validate request:
+    title is text, required
+    amount is number, required
+  request's approval_tier is 'manager' when request's amount is less than 50000
+  request's approval_tier is 'vp' otherwise
+  saved = save request as new Request
+  send back saved
+
+when user calls GET /api/requests/queue:
+  requires login
+  pending = get all Requests where status is 'pending'
+  send back pending
+
+when user updates request at /api/requests/:id/approve:
+  requires login
+  with optimistic lock
+  req = look up Request where id is this id
+  change req's status from 'pending' to 'approved'
+  save req to Requests
+
+when user updates request at /api/requests/:id/reject:
+  requires login
+  with optimistic lock
+  req = look up Request where id is this id
+  change req's status from 'pending' to 'rejected'
+  save req to Requests
+
+page 'Approval Queue' at '/':
+  on page load get pending from '/api/requests/queue'
+  section 'Requests Table':
+    display pending as table showing title, amount, approval_tier, status
+    detail panel for selected_request:
+      button 'Approve':
+        update selected_request at /api/requests/:id/approve
+      button 'Reject':
+        update selected_request at /api/requests/:id/reject
+
+page 'Create Request' at '/new':
+  button 'Submit Request':
+    send request to '/api/requests' with title is request_title and amount is request_amount
+`;
+
+    const bad = scoreGeneratedApp(probe, {
+      source: docsOnlyMisroute,
+      toolNames: ['edit_code'],
+      compile: { errors: [], warnings: [{ message: 'first' }, { message: 'second' }] },
+    });
+    const good = scoreGeneratedApp(probe, {
+      source: hookOnShape,
+      toolNames: ['edit_code'],
+      compile: { errors: [], warnings: [] },
+    });
+    const badRouting = bad.quality.criteria.find(item => item.id === 'threshold_routing');
+    const goodRouting = good.quality.criteria.find(item => item.id === 'threshold_routing');
+
+    expect(bad.pass).toEqual(true);
+    expect(badRouting.passed).toEqual(false);
+    expect(goodRouting.passed).toEqual(true);
+    expect(scoreAppQualityRubric(probe, { source: hookOnShape, toolNames: ['edit_code'], compile: { errors: [], warnings: [] } }).percent).toBeGreaterThan(bad.quality.percent);
   });
 
   it('does not count provider quota or network blocks as failed app trials', () => {
@@ -152,8 +274,22 @@ describe('meph pattern live probe harness', () => {
     expect(summary.completedRows.length).toEqual(1);
     expect(summary.blockedRows.length).toEqual(1);
     expect(summary.passed).toEqual(1);
+    expect(summary.avgQuality).toEqual(null);
     expect(summary.ab.full_hook.total).toEqual(0);
     expect(summary.aborted).toEqual(true);
+  });
+
+  it('summarizes quality deltas for completed A/B app rows', () => {
+    const rows = [
+      { probe: { id: 'a' }, variant: 'docs_only', score: { pass: true, quality: { percent: 60 } }, result: {} },
+      { probe: { id: 'a' }, variant: 'full_hook', score: { pass: true, quality: { percent: 82 } }, result: {} },
+    ];
+    const summary = summarizeRows(rows, { abMode: true });
+
+    expect(summary.avgQuality).toEqual(71);
+    expect(summary.ab.docs_only.avgQuality).toEqual(60);
+    expect(summary.ab.full_hook.avgQuality).toEqual(82);
+    expect(summary.ab.qualityDelta).toEqual(22);
   });
 
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {

@@ -306,6 +306,80 @@ export function scoreProbe(probe, result) {
   };
 }
 
+function regexAny(source, patterns) {
+  return patterns.some(pattern => pattern.test(source));
+}
+
+function criterion(id, label, points, passed, evidence) {
+  return { id, label, points, earned: passed ? points : 0, passed: !!passed, evidence };
+}
+
+export function scoreAppQualityRubric(probe, result) {
+  const source = String(result.source || '');
+  const compileErrors = Array.isArray(result.compile?.errors) ? result.compile.errors : [];
+  const compileWarnings = Array.isArray(result.compile?.warnings) ? result.compile.warnings : [];
+  const usedEditor = (result.toolNames || []).includes('edit_code') || source.trim().length > 0;
+
+  const hasRequestTable =
+    /create\s+a\s+requests?\s+table/i.test(source)
+    && /\bamount\b/i.test(source)
+    && /\bstatus\b/i.test(source)
+    && /\bpending\b/i.test(source);
+  const hasRoutingField = /\b(?:approval_tier|routed_to_role|approver_role|assigned_to)\b/i.test(source);
+  const hasCreateEndpoint = /when user sends\b[\s\S]{0,120}\/api\/requests/i.test(source);
+  const hasCreateSave = /save\s+\w+\s+as\s+new\s+requests?/i.test(source);
+  const hasCreateUi = /button\b[\s\S]{0,180}(?:send|post)\s+(?:request|new_request|new_req)[\s\S]{0,120}\/api\/requests/i.test(source);
+  const badPendingRoute = /\b(?:approval_tier|routed_to_role|approver_role|assigned_to)\b[^\n]{0,40}\bis\s+['"](?:pending|tbd)['"]/i.test(source);
+  const managerThreshold = regexAny(source, [
+    /\b(?:approval_tier|routed_to_role|approver_role|assigned_to)\b[^\n]{0,80}\bis\s+['"]manager['"][^\n]{0,160}\bamount\b[^\n]{0,80}\b(?:less than|under|<)\s*50000/i,
+    /\b(?:amount|deal_size)\b[^\n]{0,80}\b(?:less than|under|<)\s*50000[\s\S]{0,180}\bmanager\b/i,
+  ]);
+  const vpThreshold = regexAny(source, [
+    /\b(?:approval_tier|routed_to_role|approver_role|assigned_to)\b[^\n]{0,80}\bis\s+['"]vp['"][^\n]{0,120}\b(?:otherwise|else)\b/i,
+    /\b(?:approval_tier|routed_to_role|approver_role|assigned_to)\b[^\n]{0,80}\bis\s+['"]vp['"][^\n]{0,160}\bamount\b[^\n]{0,80}\b(?:greater than or equal to|at least|>=)\s*50000/i,
+    /\b(?:amount|deal_size)\b[^\n]{0,80}\b(?:greater than or equal to|at least|>=)\s*50000[\s\S]{0,180}\bvp\b/i,
+  ]);
+  const hasQueueRead = /when user calls\s+GET\s+\/api\/requests\/(?:queue|pending)/i.test(source)
+    && /get all Requests where status is ['"]pending['"]/i.test(source);
+  const hasApproveEndpoint = /\/api\/requests\/:id\/approve/i.test(source)
+    && /status from ['"]pending['"] to ['"]approved['"]/i.test(source);
+  const hasRejectEndpoint = /\/api\/requests\/:id\/reject/i.test(source)
+    && /status from ['"]pending['"] to ['"]rejected['"]/i.test(source);
+  const hasOptimisticLock = /\bwith optimistic lock\b/i.test(source);
+  const hasQueueUi = /\bpage\b/i.test(source)
+    && /display\s+\w+[\s\S]{0,80}as table/i.test(source)
+    && /\bdetail panel\b/i.test(source)
+    && /\bbutton\s+['"]Approve['"]/i.test(source)
+    && /\bbutton\s+['"]Reject['"]/i.test(source);
+  const hasAuthGuard = /allow signup and login/i.test(source)
+    && /requires login/i.test(source);
+
+  const criteria = [
+    criterion('source_written', 'Model wrote complete Clear source', 5, usedEditor, usedEditor ? 'edit_code/source present' : 'no source'),
+    criterion('compiles', 'Compiler accepts the app', 20, compileErrors.length === 0, `${compileErrors.length} compiler error(s)`),
+    criterion('warning_budget', 'Compiler warnings stay reviewable', 5, compileWarnings.length <= 1, `${compileWarnings.length} warning(s)`),
+    criterion('request_data_model', 'Request data model carries amount, status, pending state, and routing field', 10, hasRequestTable && hasRoutingField, hasRequestTable && hasRoutingField ? 'Requests table + routing field' : 'missing request table or routing field'),
+    criterion('create_request_flow', 'User can create a request through endpoint and UI', 10, hasCreateEndpoint && hasCreateSave && hasCreateUi, `endpoint=${hasCreateEndpoint} save=${hasCreateSave} ui=${hasCreateUi}`),
+    criterion('threshold_routing', 'Under-50000 routes manager and 50000-plus routes VP', 15, managerThreshold && vpThreshold && !badPendingRoute, `manager=${managerThreshold} vp=${vpThreshold} bad_pending_route=${badPendingRoute}`),
+    criterion('pending_queue_read', 'Queue reads pending request rows', 8, hasQueueRead, hasQueueRead ? 'pending queue endpoint' : 'missing pending queue endpoint/filter'),
+    criterion('decision_actions', 'Approve and reject update pending request status', 10, hasApproveEndpoint && hasRejectEndpoint, `approve=${hasApproveEndpoint} reject=${hasRejectEndpoint}`),
+    criterion('stale_submit_guard', 'Decision path has concurrency protection', 5, hasOptimisticLock, hasOptimisticLock ? 'with optimistic lock' : 'no optimistic lock'),
+    criterion('queue_ui_workflow', 'Queue UI has table, selected detail, and approve/reject controls', 8, hasQueueUi, hasQueueUi ? 'table + detail + actions' : 'missing table/detail/actions'),
+    criterion('auth_guard', 'Approval app has login protection', 4, hasAuthGuard, hasAuthGuard ? 'login scaffold + protected endpoints' : 'missing login scaffold or guards'),
+  ];
+
+  const earned = criteria.reduce((sum, item) => sum + item.earned, 0);
+  const total = criteria.reduce((sum, item) => sum + item.points, 0);
+  const percent = total > 0 ? Math.round((earned / total) * 100) : 0;
+  return {
+    earned,
+    total,
+    percent,
+    band: percent >= 85 ? 'strong' : percent >= 70 ? 'usable' : percent >= 50 ? 'partial' : 'weak',
+    criteria,
+  };
+}
+
 async function compileSource(source) {
   if (!String(source || '').trim()) {
     return { errors: [{ message: 'No source produced' }], warnings: [] };
@@ -333,11 +407,13 @@ export function scoreGeneratedApp(probe, result) {
   const optionalHits = optionalTerms.filter(term => lower.includes(String(term).toLowerCase()));
   const usedEditor = result.toolNames.includes('edit_code') || source.trim().length > 0;
   const compiles = compileErrors.length === 0;
+  const quality = scoreAppQualityRubric(probe, result);
   return {
     usedEditor,
     compiles,
     missingRequired,
     optionalHits,
+    quality,
     pass: usedEditor && compiles && missingRequired.length === 0,
   };
 }
@@ -359,12 +435,20 @@ export function summarizeRows(rows, { abMode = false } = {}) {
   const blockedRows = rows.filter(row => row.result?.blocked);
   const completedRows = rows.filter(row => !row.result?.blocked);
   const passed = completedRows.filter(row => row.score.pass).length;
+  const averageQuality = (items) => {
+    const scored = items
+      .map(row => row.score?.quality?.percent)
+      .filter(value => typeof value === 'number');
+    if (scored.length === 0) return null;
+    return scored.reduce((sum, value) => sum + value, 0) / scored.length;
+  };
   const summary = {
     rows,
     completedRows,
     blockedRows,
     passed,
     total: completedRows.length,
+    avgQuality: averageQuality(completedRows),
     aborted: blockedRows.length > 0,
     ab: null,
   };
@@ -375,9 +459,13 @@ export function summarizeRows(rows, { abMode = false } = {}) {
       byVariant[label] = {
         passed: variantRows.filter(row => row.score.pass).length,
         total: variantRows.length,
+        avgQuality: averageQuality(variantRows),
       };
     }
     byVariant.delta = byVariant.full_hook.passed - byVariant.docs_only.passed;
+    byVariant.qualityDelta = byVariant.full_hook.avgQuality === null || byVariant.docs_only.avgQuality === null
+      ? null
+      : byVariant.full_hook.avgQuality - byVariant.docs_only.avgQuality;
     summary.ab = byVariant;
   }
   return summary;
@@ -465,7 +553,8 @@ async function main() {
         if (result.error) console.log(`error: ${result.error}`);
         console.log(`preflight: mode=${result.preflight?.mode || 'unknown'} required=${result.preflight?.required ? 'yes' : 'no'} patterns=${result.preflight?.pattern_count ?? 0}`);
         if (probe.requiredSourceTerms) {
-          console.log(`pass: ${score.pass ? 'yes' : 'no'} edited=${score.usedEditor ? 'yes' : 'no'} compiles=${score.compiles ? 'yes' : 'no'} missing=${score.missingRequired.join('|') || 'none'} optional=${score.optionalHits.join('|') || 'none'}`);
+          const quality = score.quality ? `${score.quality.earned}/${score.quality.total} (${score.quality.band})` : 'n/a';
+          console.log(`pass: ${score.pass ? 'yes' : 'no'} quality=${quality} edited=${score.usedEditor ? 'yes' : 'no'} compiles=${score.compiles ? 'yes' : 'no'} missing=${score.missingRequired.join('|') || 'none'} optional=${score.optionalHits.join('|') || 'none'}`);
         } else {
           console.log(`pass: ${score.pass ? 'yes' : 'no'} search=${score.usedSearch ? 'yes' : 'no'} tool=${score.usedToolSearch ? 'yes' : 'no'} preflight=${score.usedPreflightSearch ? 'yes' : 'no'} kind=${score.foundExpectedKind ? 'yes' : 'no'} term=${score.foundExpectedTerm ? 'yes' : 'no'}`);
         }
@@ -476,19 +565,23 @@ async function main() {
     }
 
     const summary = summarizeRows(rows, { abMode });
-    console.log(`\nSUMMARY ${summary.passed}/${summary.total} completed trials passed`);
+    const avgQuality = summary.avgQuality === null ? 'n/a' : `${summary.avgQuality.toFixed(1)}/100`;
+    console.log(`\nSUMMARY ${summary.passed}/${summary.total} completed trials passed; avg_quality=${avgQuality}`);
     if (summary.blockedRows.length) {
       console.log(`ABORTED provider blocked ${summary.blockedRows.length} trial(s): ${summary.blockedRows[0].result.error}`);
     }
     for (const row of rows) {
       const detail = row.probe.requiredSourceTerms
-        ? `compiles=${row.score.compiles ? 'yes' : 'no'} missing=${row.score.missingRequired.join('|') || 'none'}`
+        ? `quality=${row.score.quality ? row.score.quality.percent + '/100' : 'n/a'} compiles=${row.score.compiles ? 'yes' : 'no'} missing=${row.score.missingRequired.join('|') || 'none'}`
         : `tools=${row.result.toolNames.join('|') || 'none'} preflight=${row.score.usedPreflightSearch ? 'yes' : 'no'}`;
       const label = row.result.blocked ? 'BLOCKED' : (row.score.pass ? 'PASS' : 'FAIL');
       console.log(`- ${row.probe.id} ${row.variant}: ${label} ${detail}`);
     }
     if (summary.ab) {
-      console.log(`\nAB SUMMARY docs_only=${summary.ab.docs_only.passed}/${summary.ab.docs_only.total} full_hook=${summary.ab.full_hook.passed}/${summary.ab.full_hook.total} delta=${summary.ab.delta}`);
+      const docsQuality = summary.ab.docs_only.avgQuality === null ? 'n/a' : summary.ab.docs_only.avgQuality.toFixed(1);
+      const hookQuality = summary.ab.full_hook.avgQuality === null ? 'n/a' : summary.ab.full_hook.avgQuality.toFixed(1);
+      const qualityDelta = summary.ab.qualityDelta === null ? 'n/a' : `${summary.ab.qualityDelta >= 0 ? '+' : ''}${summary.ab.qualityDelta.toFixed(1)}`;
+      console.log(`\nAB SUMMARY docs_only=${summary.ab.docs_only.passed}/${summary.ab.docs_only.total} quality=${docsQuality} full_hook=${summary.ab.full_hook.passed}/${summary.ab.full_hook.total} quality=${hookQuality} delta=${summary.ab.delta} quality_delta=${qualityDelta}`);
     }
     if (summary.aborted) process.exitCode = 2;
     else if (summary.passed !== summary.total) process.exitCode = 1;

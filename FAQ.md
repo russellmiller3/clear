@@ -136,6 +136,25 @@ Current audit snapshot after mining the rest of `apps/` and adding three languag
 
 **One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
 
+**Old hint setup vs pattern preflight:** the older Claude-built hint path was a repair loop. It fired after a compile result, searched `code_actions` for past fixes to similar errors, and asked Meph to emit `HINT_APPLIED` so we could track whether the repair hint was used. That is still useful for "I hit this compiler error, what fixed it before?" It is weaker for first-draft app quality because it waits until Meph has already written the wrong shape.
+
+The pattern preflight is a planning loop. It fires before Meph answers complex Clear app or feature-shape requests, injects syntax docs, and searches trusted primitives. It is the right path for "what shape should this app have before code exists?" The two systems are not equal competitors: repair hints are post-error memory; pattern preflight is pre-write design memory.
+
+**Live probe quality rubric:** full-app pattern probes now score generated apps beyond time and compile/pass. `scoreAppQualityRubric()` gives a 100-point deterministic score:
+- 5 source written
+- 20 compiler accepts the app
+- 5 warning budget
+- 10 request data model
+- 10 create-request flow
+- 15 threshold routing correctness
+- 8 pending queue read path
+- 10 approve/reject decision actions
+- 5 stale-submit guard
+- 8 queue UI workflow
+- 4 login protection
+
+The important bit: a docs-only app can compile and still score lower if it routes approvals wrong. In the 2026-05-07 smoke, the docs-only Haiku app compiled but stored the routed owner as pending; the hook-on app compiled with the right approval-tier shape. The rubric catches that difference.
+
 **Write policy:** Meph should not raw-write this DB. Raw writes would let one bad session poison future sessions. The safe shape is: Meph proposes a candidate pattern, deterministic code compiles/tests it, then a promotion gate writes it only if the source is trusted and useful.
 
 **Future learned primitives:** candidates go into `clear_programming_pattern_candidates` first with source kind, source reference, compile/test evidence, status, and review notes. Only `promoteProgrammingPatternCandidate()` writes a passing reviewed candidate into `clear_programming_patterns` as a trusted `learned` primitive.

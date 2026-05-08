@@ -2468,3 +2468,4 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Cheap model smoke tests must match the real loop.** DeepSeek, Kimi, GLM, and Grok can answer tiny OpenRouter tool calls while still hanging or failing on the full Clear app-building loop. Validate one full app call before launching an A/B batch.
 - **Direct Haiku is the reliable fallback for live app probes.** In the approval-queue smoke, docs-only Haiku compiled but misrouted approvals; hook-on Haiku compiled with the right threshold-routing shape and one remaining form warning.
 - **PowerShell automatic variables are not scratch names.** `$PID` is read-only; use names like `$serverId` in loops.
+- **Pattern A/Bs need a rubric, not only pass/fail/time.** A compiled app can still be product-wrong. Score schema, create flow, routing, queue reads, actions, stale-submit guards, UI reachability, warnings, and auth as separate dimensions.
