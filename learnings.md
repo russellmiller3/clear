@@ -2469,3 +2469,17 @@ Mining the rest of `apps/` also needed a trust boundary. The 13 golden templates
 - **Direct Haiku is the reliable fallback for live app probes.** In the approval-queue smoke, docs-only Haiku compiled but misrouted approvals; hook-on Haiku compiled with the right threshold-routing shape and one remaining form warning.
 - **PowerShell automatic variables are not scratch names.** `$PID` is read-only; use names like `$serverId` in loops.
 - **Pattern A/Bs need a rubric, not only pass/fail/time.** A compiled app can still be product-wrong. Score schema, create flow, routing, queue reads, actions, stale-submit guards, UI reachability, warnings, and auth as separate dimensions.
+
+## Session 2026-05-08: Requirements Need Approval Before Meph Builds
+
+Pattern retrieval solved "show Meph the right Clear shape," but it did not solve "what exactly is this app supposed to prove?" A vague user prompt like "build me a deal approval app" needs a translation step before TDD. Otherwise Meph can write tests for the wrong app and pass them.
+
+The durable split is: requirements are the per-app contract, pattern memory is reusable examples, repair hints are post-error memory, and Ralph is the done checker. Enact's intent-first lesson maps cleanly here: state the outcome claim before the agent loops.
+
+### Gotchas-as-rules
+
+- **Do not let Meph mutate complex apps before requirements are approved.** If the request has workflow, roles, routing, approvals, or multiple screens, draft requirements first.
+- **Requirements must be outcome claims, not implementation notes.** Good requirements name actor, data, state change, and edge case.
+- **Pattern search should use approved requirements, not only the user's vague prompt.** The approved contract is the best retrieval query.
+- **Ralph must ignore requirement text as evidence.** Echoing "VP approval" in a `requirements:` block does not prove the app routes VP approvals.
+- **False done is worse than red.** If Ralph cannot verify a requirement after retries, block completion instead of letting Meph declare success.

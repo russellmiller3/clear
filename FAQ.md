@@ -161,6 +161,32 @@ The important bit: a docs-only app can compile and still score lower if it route
 
 ---
 
+## How do requirements, pattern memory, repair hints, and Ralph fit together? (2026-05-08)
+
+They are four different layers. Do not merge them.
+
+**Requirements are the per-app contract.** For complex app requests, Meph first drafts a `requirements:` block in Clear source and Studio asks the user to approve or revise it. Mutating editor tools stay blocked until the requirements are approved. This turns "build me a deal approval app" into a reviewable contract before code exists.
+
+**Pattern memory is the reusable example library.** After requirements are approved, the pattern preflight searches `clear_programming_patterns` using both the user request and the approved requirements. Meph gets the relevant snippets, not the whole template, unless it explicitly reads a full template.
+
+**Repair hints are post-error memory.** Exact-error hints from `code_actions` still fire after compile results. They answer "what fixed this compiler error before?" They do not define the app's contract and they are not a second pattern DB.
+
+**Ralph is the done checker.** After Meph writes code and the compile is clean, Ralph audits the generated source against the approved requirements. If a requirement is missing or only echoed in the `requirements:` text, Ralph sends Meph back for repair. If the retry budget is exhausted, Studio blocks the false "done."
+
+The full flow:
+1. User asks for a complex app.
+2. Meph drafts `requirements:` only.
+3. User approves or revises the requirements in Studio.
+4. Server injects syntax docs, AI instructions, and pattern snippets retrieved from approved requirements.
+5. Meph writes tests and app code.
+6. Compiler and Snap fix syntax/runtime shape issues.
+7. Ralph audits implementation evidence against requirements.
+8. Missing evidence triggers repair, not success.
+
+The important boundary: requirements are customer intent, pattern memory is reusable language shape, repair hints are compiler-error history, and Ralph is outcome verification.
+
+---
+
 ## How much Python parity work is left? How do I check? (2026-05-07)
 
 **Two-command answer:**

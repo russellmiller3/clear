@@ -70,6 +70,53 @@ When NOT to use it:
   decision that is genuinely open, not a way to hide a piece you do not want
   to write. Programs with leftover `TBD`s in shipped code are a smell.
 
+## Requirements
+
+`requirements:` records the app contract in source. It is metadata for Studio,
+Meph, tests, and Ralph. It does not emit runtime code.
+
+Put it near the top of complex apps, after the architecture diagram and before
+tests or implementation.
+
+```clear
+/*
+DATAFLOW:
+Seller -> Deal form -> Deals table -> Approval queue -> Approver action
+*/
+
+requirements:
+  logged-in sellers can submit deals
+  each deal stores customer, amount, status, and approver
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals
+  simultaneous approvals cannot overwrite each other
+
+test:
+  deals at least 50000 route to VP approval
+```
+
+Use one requirement per line. Prefer observable outcomes:
+- who can do something
+- what data is stored
+- which rule routes or blocks work
+- what state changes after an action
+- what edge case must stay safe
+
+Avoid vague goals:
+
+```clear
+# Bad
+requirements:
+  make approval good
+  build a dashboard
+
+# Good
+requirements:
+  managers can see pending deals assigned to them
+  deals under 50000 route to manager approval
+  deals at least 50000 route to VP approval
+```
+
 ## Math
 
 ```clear

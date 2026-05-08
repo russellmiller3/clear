@@ -929,3 +929,35 @@ Reader processes one beat at a time. Cognitive load per line stays below the 14-
 - Multi-clause prepositional chains (`call API with X using Y as Z within W`). If you find yourself reaching for three+ qualifier words in one line, you have a structured argument — make it a block.
 
 **When in doubt, the test is:** can a 14-year-old read this line out loud in one breath and explain what it does? If they pause, split.
+
+## Rule 23: Requirements Are Claims Before Code
+
+A complex app starts with explicit requirements before tests and implementation. The user may say "build me a deal approval app." Meph's job is to translate that into clear, reviewable claims before writing the app.
+
+**The anti-pattern this kills:** code-first guessing. A plausible app can compile, look professional, and still miss the business rule. That is worse than a compile error because the product lies quietly.
+
+**Requirements are not a second programming language.** They are outcome claims in plain Clear source:
+
+```clear
+requirements:
+  logged-in sellers can submit deals
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals
+```
+
+**What makes a good requirement:**
+- It names the actor when permissions matter.
+- It names the data when persistence matters.
+- It names the state change when actions matter.
+- It names the threshold, exception, or edge case when correctness depends on it.
+- It can be checked by a test, static audit, browser run, or human review.
+
+This is the Clear version of "define the outcome before the agent loops." The requirement is the claim. Tests and app source are the evidence. Ralph is the checker that refuses to call the app done when the evidence is missing.
+
+**The separation matters:**
+- Requirements are per-app customer intent.
+- Pattern memory is reusable syntax and app-shape examples.
+- Repair hints are historical fixes for compiler errors.
+- Ralph is the outcome grader.
+
+Mixing those into one "hint" system creates mush. Keeping them separate creates a real build contract: ask, translate, approve, build, check, repair.
