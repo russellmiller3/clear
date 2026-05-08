@@ -141,6 +141,7 @@ section.
 - Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
 - Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
 - Curated programming-pattern search lets Meph pull small trusted Clear snippets instead of whole templates. Complex app and feature-shape questions now trigger a server preflight that injects syntax docs plus pattern DB matches before Meph answers.
+- The pattern library includes trusted language primitives for approval routing, approval row actions, optimistic-lock approval updates, and booking/customer/availability overlap workflows; local retrieval tests guard the approval and booking queries before paid probes run.
 - Requirements/Ralph loop: complex app requests start with approved end-to-end requirements before Meph mutates source. Ralph audits implementation evidence and blocks false "done" when proof is missing.
 - Ralph now checks typed requirement facts against typed app facts for the first domain-rule slice, so wording like "prevent double booking" and "reject overlaps" maps to one deterministic contract.
 - Flywheel hint telemetry proves whether hints reached Meph and whether he used, rejected, or partially used them.

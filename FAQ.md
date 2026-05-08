@@ -132,7 +132,9 @@ MEPH_PATTERN_PROBE_AB=1 node scripts/meph-pattern-live-probe.mjs
 
 The A arm is docs-only: system prompt with pattern-search guidance stripped, `SYNTAX.md` and `AI-INSTRUCTIONS.md` excerpts injected, and the pattern-search tool removed. The B arm is the full hook: the same docs plus forced pattern DB retrieval. The scorer compiles the generated full app and checks required app behavior, rather than merely checking whether Meph answered a shape question. The harness defaults to `deepseek/deepseek-v4-flash`; Sonnet/Opus are blocked unless `MEPH_PATTERN_PROBE_ALLOW_EXPENSIVE=1` is set.
 
-Current audit snapshot after mining the rest of `apps/` and adding three language primitives: 13 whole-app rows, 1,223 primitive rows, 62 parent templates, 24 primitive kinds, 0 review flags.
+Current audit snapshot after mining the rest of `apps/` and adding four language primitives: 13 whole-app rows, 1,224 primitive rows, 62 parent templates, 25 primitive kinds, 0 review flags.
+
+The fourth language primitive covers hard booking workflows: rooms, customers, bookings, available-room search, overlap rejection, and cancellation. A local integration test now requires a hard booking prompt to retrieve that primitive first before any paid booking A/B rerun.
 
 **One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
 

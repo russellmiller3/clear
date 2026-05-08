@@ -16,8 +16,9 @@ What shipped:
 - Pattern preflight injects machine-readable requirement facts into the full-hook context.
 - Probe artifacts now include requirement facts, app facts, browser-tool evidence, and state-tool evidence.
 - The live-probe harness salvages source-backed provider failures instead of blocking a usable trial.
+- Pattern DB now has a booking/customer/availability/overlap workflow primitive plus a local retrieval assertion that requires hard booking prompts to select it first.
 
-Live retest: one capped Gemini Flash booking A/B under the existing $5 limit. Docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100**, failed compile, and missed `customers` plus `available`. Cost **$0.26**, running total **$4.52**. The negative result is useful: retrieval can hurt when it gives generic or mis-aimed context. The next local step is a retrieval assertion that booking prompts select booking/customer/availability primitives before spending again.
+Live retest: one capped Gemini Flash booking A/B under the existing $5 limit. Docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100**, failed compile, and missed `customers` plus `available`. Cost **$0.26**, running total **$4.52**. The negative result is useful: retrieval can hurt when it gives generic or mis-aimed context. The local fix now proves booking prompts select the trusted booking/customer/availability primitive before spending again.
 
 Verification: `node studio/supervisor/requirements-facts.test.js`, `node studio/supervisor/requirements-audit.test.js`, `node studio/supervisor/meph-pattern-preflight.test.js`, `node scripts/meph-pattern-live-probe.test.mjs`, and `node clear.test.js` all pass. Full suite: **3024/3024**.
 

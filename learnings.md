@@ -2517,3 +2517,5 @@ The decisive move is making intent machine-checkable. Requirements turn a vague 
 - **Source-backed provider failures are salvageable.** If a provider drops after Meph edits source, score the source with a provider warning; only no-source failures should block the trial.
 - **Preflight should show typed facts, not only prose.** Approved requirements like "rooms, customers, bookings must be stored" need explicit `storage` facts so Meph cannot miss the entity hidden in a sentence.
 - **Pattern hooks can hurt when retrieval is poorly aimed.** A full hook that retrieves generic auth/KPI-ish context for a booking app can perform worse than docs-only; add local retrieval assertions before spending on another A/B.
+- **When a golden template lacks the hard prompt's primitive, seed a trusted language primitive.** Do not hope retrieval composes the missing behavior from adjacent snippets.
+- **Every negative paid retrieval result needs a zero-cost guard before the next paid run.** Add the primitive, assert the top match, then reopen the meter.

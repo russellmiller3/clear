@@ -23,7 +23,7 @@ The next two capped probes made the lesson sharper. On the booking app, docs-onl
 
 The typed-fact Ralph slice shipped immediately after that. Requirements now normalize into small facts, generated apps emit app facts, Ralph can verify a booking overlap rule without exact wording, and probe artifacts now save requirement facts, app facts, browser-tool evidence, and state-tool evidence. The follow-up Gemini Flash booking A/B is the honest warning label: docs-only compiled and scored **83/100** while missing `customers`; full hook scored **58/100** and failed compile while missing `customers` and `available`. Cost was **$0.26**, running total **$4.52** of the $5 cap, artifact folder `studio/sessions/pattern-probes/2026-05-08T17-24-11-967Z/`.
 
-That result does not say "patterns are bad." It says retrieval can hurt when the hook gives Meph generic or mis-aimed context. The local fix from the result is that preflight now injects machine-readable requirement facts alongside prose, so "rooms, customers, bookings stored" becomes explicit `storage` facts and "overlap must be blocked" becomes a `domain_rule` fact before pattern search and before Meph writes code.
+That result does not say "patterns are bad." It says retrieval can hurt when the hook gives Meph generic or mis-aimed context. The local fix from the result is that preflight now injects machine-readable requirement facts alongside prose, so "rooms, customers, bookings stored" becomes explicit `storage` facts and "overlap must be blocked" becomes a `domain_rule` fact before pattern search and before Meph writes code. The pattern library also now has a trusted booking workflow primitive, and the local retrieval test proves that a hard booking prompt returns it first before any more paid A/B.
 
 **Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
 
@@ -111,6 +111,8 @@ Implementation status after the first slice:
 - `studio/supervisor/meph-pattern-preflight.js` injects machine-readable requirement facts into full-hook preflight context.
 - `scripts/meph-pattern-live-probe.mjs` stores requirement facts, app facts, browser evidence, and state evidence in per-trial artifacts.
 - The harness now salvages source-backed trials when a provider flakes after editing; no-source provider failures still block.
+- `studio/supervisor/pattern-library.js` includes the booking/customer/availability/overlap workflow primitive that the latest failed booking run needed.
+- `studio/supervisor/factor-db-integration.test.js` guards that hard booking prompts retrieve that primitive first at $0.
 
 ## External benchmark -- the cutting-edge harness bar (2026-05-08)
 

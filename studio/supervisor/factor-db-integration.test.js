@@ -226,4 +226,34 @@ describe('Factor DB compile integration', () => {
     db.close();
     cleanup();
   });
+
+  it('retrieves a booking/customer/availability primitive for hard booking workflow prompts', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    seedCoreTemplatePatterns(db, join(__dirname, '..', '..'));
+    const query = [
+      'Build a complete room booking workflow',
+      'storage room',
+      'storage customer',
+      'storage booking',
+      'domain_rule booking overlap reject',
+      'available rooms search',
+      'cancel booking',
+    ].join('\n');
+
+    const matches = db.queryProgrammingPatterns({ query, topK: 5 });
+    const haystack = matches
+      .map(row => `${row.template_name} ${row.parent_template_name || ''} ${row.pattern_kind || ''} ${row.title || ''} ${row.description || ''} ${Array.isArray(row.feature_tags) ? row.feature_tags.join(' ') : row.feature_tags || ''} ${row.source || ''}`)
+      .join('\n')
+      .toLowerCase();
+
+    expect(matches[0].template_name).toEqual('clear-language::workflow::booking-customer-availability-overlap');
+    expect(haystack).toContain('customers table');
+    expect(haystack).toContain('available rooms');
+    expect(haystack).toContain('overlap');
+    expect(haystack).toContain('fail with error message');
+
+    db.close();
+    cleanup();
+  });
 });

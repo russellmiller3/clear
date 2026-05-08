@@ -4,7 +4,7 @@
 
 - **Branch:** `feature/meph-requirements-ralph-loop`.
 - **Latest committed baseline before this wrap:** `d14517b docs: define deterministic Ralph fact checks`.
-- **Current wrap work:** typed requirement/app facts added, Ralph uses fact evidence for booking overlap rules, pattern preflight injects machine-readable requirement facts, probe artifacts save fact/browser/state evidence, and source-backed provider failures are salvaged instead of thrown away.
+- **Current wrap work:** typed requirement/app facts added, Ralph uses fact evidence for booking overlap rules, pattern preflight injects machine-readable requirement facts, probe artifacts save fact/browser/state evidence, source-backed provider failures are salvaged, and booking/customer/availability retrieval now has a local guard.
 - **Paid probe spend:** latest completed run **$0.26**, running total **$4.52** of the $5 authorization.
 
 ## What changed in this wrap
@@ -16,6 +16,8 @@
 - Ralph no longer treats `Pending` status alone as manager approval. Approval routing needs manager/VP assignment, queue, role, or approver evidence.
 - The compiler now hard-errors internal app calls to missing `/api/...` endpoints and nav/link controls that point at missing pages.
 - The broad pattern-probe harness now writes durable per-trial artifacts, revises invalid requirements before spending the build turn, and caps paid Meph build loops at 12 iterations by default (`MEPH_PATTERN_PROBE_MAX_ITER` overrides).
+- The pattern DB now includes a trusted booking workflow primitive for rooms, customers, bookings, available rooms, overlap rejection, and cancellation.
+- The local integration test now proves a hard booking prompt retrieves that booking primitive first before any paid A/B rerun.
 
 ## Live smoke result
 
@@ -30,7 +32,7 @@ The useful result was fail-closed, not "Gemini passed."
 
 That is the right product behavior: Meph can build a plausible app, but Ralph refuses false done when the app has no real approval assignment/queue.
 
-The latest booking result is also the right research behavior: the harness did not hide a negative result. Pattern preflight can hurt when it gives Meph generic or poorly aimed context. The local fix already landed: full-hook preflight now includes machine-readable facts like `storage: customer` and `domain_rule: booking overlap -> reject` alongside the prose requirements.
+The latest booking result is also the right research behavior: the harness did not hide a negative result. Pattern preflight can hurt when it gives Meph generic or poorly aimed context. The local fix now has two pieces: full-hook preflight includes machine-readable facts like `storage: customer` and `domain_rule: booking overlap -> reject`, and the pattern DB has a booking workflow primitive that the local retrieval test requires as the top match.
 
 ## Deterministic checker direction
 
@@ -54,19 +56,20 @@ Current shipped slice:
 - Pattern preflight injects typed facts into the full-hook context.
 - Probe artifacts include requirement facts, app facts, browser tool evidence, and state tool evidence.
 - Provider failures after source exists are scored with a warning; provider failures before source exists still block.
+- Pattern retrieval has a no-spend guard for the hard booking workflow miss.
 
 ## Tests run
 
 - `node clear.test.js` — **3024/3024 passing** after the compiler UI gates.
 - Earlier in this wrap: requirements contract, requirements audit, live-smoke harness, and Studio server tests all passed after the gate changes.
-- Latest focused tests: `requirements-facts.test.js` **3/3**, `requirements-audit.test.js` **17/17**, `meph-pattern-preflight.test.js` **7/7**, `meph-pattern-live-probe.test.mjs` **22/22**.
+- Latest focused tests: `requirements-facts.test.js` **3/3**, `requirements-audit.test.js` **17/17**, `meph-pattern-preflight.test.js` **7/7**, `meph-pattern-live-probe.test.mjs` **22/22**, `factor-db-integration.test.js` **7/7**.
 
 ## Next critical path
 
 1. Stop paid probes for now. Only **$0.48** remains under the $5 cap.
-2. Improve retrieval aim locally before any more spend: assert that booking prompts retrieve booking/customer/availability primitives instead of generic auth/KPI snippets.
-3. Add retrieved-pattern metadata to artifacts so every negative run shows exactly what the hook handed Meph.
-4. Then rerun a small booking A/B only after the local retrieval test proves the right snippets are selected.
+2. Add retrieved-pattern metadata to artifacts so every negative run shows exactly what the hook handed Meph.
+3. Then rerun a small booking A/B only after the artifact metadata is visible.
+4. Grow the typed-fact vocabulary from real misses, not guesses: storage/read/update/domain-rule facts next.
 
 ---
 
