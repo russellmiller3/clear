@@ -97,6 +97,20 @@ describe('requirements contract', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts booking workflow requirements where double-booking is the domain rule', () => {
+    const result = validateRequirements([
+      'logged in users can create a booking for a specific room and time range from the Room Detail page',
+      'the app must store Rooms with name and capacity, Customers with name and email, and Bookings with start_time, end_time, room_id, and user_id',
+      'any logged in user can list all rooms, search available rooms by date, and view their own upcoming bookings',
+      'any logged in user can cancel their own pending bookings via a button action on the My Bookings table',
+      'the app must prevent double bookings by enforcing a rule that blocks saves if any existing booking for that room overlaps the requested time range',
+      'a dashboard page shows room utilization as a chart and a table of upcoming reservations proves the workflow is reachable',
+    ], 'Build a complete Clear app for a room booking workflow that prevents double booking.');
+
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   it('creates stable ids for normalized text', () => {
     const a = requirementsId([' Deal approvals route to VP  ']);
     const b = requirementsId(['deal approvals route to vp']);

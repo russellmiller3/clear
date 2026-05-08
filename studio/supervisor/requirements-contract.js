@@ -228,7 +228,7 @@ function isCompoundRequirement(text) {
 
 function e2eCoverageErrors(items, userRequest = '') {
   const joined = items.join('\n');
-  const roleOrRoutingRelevant = /\b(approval|approve|approver|route|routing|assign|assigned|manager|admin|support staff|staff|owner|creator|vp|cro|finance|revops|rule|threshold|role|permission|only)\b/.test(`${normalizeText(userRequest)}\n${joined}`);
+  const roleOrRoutingRelevant = /\b(approval|approve|approver|route|routing|assign|assigned|manager|admin|support staff|staff|owner|creator|vp|cro|finance|revops|rule|rules|threshold|role|permission|only|prevent|prevents|block|blocks|overlap|overlapping|double booking)\b/.test(`${normalizeText(userRequest)}\n${joined}`);
   const checks = [
     {
       label: 'data storage',
@@ -249,7 +249,7 @@ function e2eCoverageErrors(items, userRequest = '') {
     {
       label: 'roles/routing/rules',
       required: roleOrRoutingRelevant,
-      test: /\b(role|roles|route|routes|routing|requires|require|approval|approver|manager|admin|support staff|staff|owner|creator|threshold|assigned)\b/.test(joined),
+      test: /\b(role|roles|route|routes|routing|requires|require|approval|approver|manager|admin|support staff|staff|owner|creator|threshold|assigned|rule|rules|enforce|enforces|enforcing|prevent|prevents|block|blocks|overlap|overlapping|double booking)\b/.test(joined),
     },
     {
       label: 'UI evidence',
