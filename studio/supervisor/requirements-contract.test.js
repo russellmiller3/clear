@@ -111,6 +111,20 @@ describe('requirements contract', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts endpoint-return and navigation wording as observable requirements', () => {
+    const result = validateRequirements([
+      'logged-in users can search available rooms and create new bookings from the Bookings page',
+      'the app must store Rooms, Customers, and Bookings with room_id, customer_id, start_date, end_date, status, and creator_id',
+      'logged-in users can list all rooms and view their own upcoming bookings in a table on the Dashboard page',
+      "logged-in users can change a booking's status to cancelled by clicking a Cancel button on the booking detail panel",
+      'calling POST /api/bookings with a room_id and date range that overlaps an existing active booking returns a 400 error',
+      "clicking the Bookings link in the sidebar navigates to a Bookings page containing a search form and a table of existing bookings",
+    ], 'Build a complete Clear app for a room booking workflow that prevents double booking.');
+
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   it('creates stable ids for normalized text', () => {
     const a = requirementsId([' Deal approvals route to VP  ']);
     const b = requirementsId(['deal approvals route to vp']);
