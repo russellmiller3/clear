@@ -217,6 +217,7 @@ const SYNONYM_TABLE = Object.freeze({
   where: Object.freeze(['where']),
 
   // Testing (Phase 11)
+  requirements: Object.freeze(['requirements']),
   test: Object.freeze(['test']),
   eval_block: Object.freeze(['eval']),
   expect: Object.freeze(['expect']),

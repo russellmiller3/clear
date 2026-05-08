@@ -26714,6 +26714,51 @@ describe('cron — scheduled task blocks', () => {
 });
 
 // ============================================================
+// Requirements contracts
+// ============================================================
+describe('requirements: blocks', () => {
+  it('parses top-level requirement prose as contract lines', () => {
+    expect(NodeType.REQUIREMENTS).toBe('requirements');
+
+    const ast = parse(`requirements:
+  logged-in sellers can submit deals
+  deals at least 50000 route to VP approval`);
+
+    const req = ast.body.find(node => node.type === 'requirements');
+    expect(ast.errors).toHaveLength(0);
+    expect(req).toBeTruthy();
+    expect(req.items).toHaveLength(2);
+    expect(req.items[0].text).toBe('logged-in sellers can submit deals');
+    expect(req.items[0].line).toBe(2);
+    expect(req.items[1].text).toBe('deals at least 50000 route to VP approval');
+    expect(req.items[1].line).toBe(3);
+  });
+
+  it('strips optional bullet and numbered list markers', () => {
+    const ast = parse(`requirements:
+  - every deal has an owner
+  * approvers see only their queue
+  1. rejected deals keep a reason`);
+
+    const req = ast.body.find(node => node.type === 'requirements');
+    expect(ast.errors).toHaveLength(0);
+    expect(req.items.map(item => item.text)).toEqual([
+      'every deal has an owner',
+      'approvers see only their queue',
+      'rejected deals keep a reason',
+    ]);
+  });
+
+  it('rejects an empty requirements block', () => {
+    const ast = parse(`requirements:
+show "ready"`);
+
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('requirements:');
+  });
+});
+
+// ============================================================
 // P5 — HTTP Test Assertions in Clear
 // ============================================================
 // =============================================================================
