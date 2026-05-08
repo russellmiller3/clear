@@ -32,6 +32,37 @@ Vague user intent
 
 This is more important than making the retriever cleverer. A perfect retriever still cannot know whether the generated app satisfied the user's specific request unless the request has become a machine-checkable contract.
 
+## External benchmark -- the cutting-edge harness bar (2026-05-08)
+
+The Lenny / Claire Vo Code with Claude recap is useful because it names the same product direction from Anthropic's side: routines, Outcomes, multi-agent orchestration, Dreams memory, and higher Claude Code limits. The official docs make the benchmark sharper:
+
+- **Outcomes:** Anthropic's managed-agent loop asks the user to define what done means, provisions a separate grader context, scores against a rubric, and feeds gaps back to the agent for another iteration. This validates Ralph's loop shape, but Clear should keep Ralph deterministic wherever possible instead of turning the grader into another LLM judge. Source: [Anthropic Define Outcomes](https://platform.claude.com/docs/en/managed-agents/define-outcomes).
+- **Dreams:** Anthropic now treats memory cleanup as a first-class async job: read past sessions and an existing memory store, produce a separate cleaned output store, and let the user review it. This is the right analogy for our pattern/error DBs: never raw-write trusted memory; stage candidates, dedupe contradictions, and promote only reviewed, test-backed memories. Source: [Anthropic Dreams](https://platform.claude.com/docs/en/managed-agents/dreams).
+- **Multi-agent orchestration:** Anthropic's multi-agent sessions use isolated context threads, specialized agents, and parallel work where each agent has its own tools and prompt. For Clear evals, this means the harness should support specialized evaluator roles, but only as secondary critics; deterministic compile/test/Ralph signals stay primary. Source: [Anthropic Multiagent Sessions](https://platform.claude.com/docs/en/managed-agents/multi-agent).
+- **Routines:** scheduled/API/GitHub-triggered Claude Code routines are autonomous cloud sessions with explicit repo, environment, connector, and permission scope. Clear's analogue should be nightly/triggered regression sweeps with strict cost caps, branch isolation, and written artifacts. Source: [Claude Code Routines](https://code.claude.com/docs/en/routines).
+
+Nous Hermes sets a different bar. Hermes is closer to an agent operating system than a coding benchmark: toolsets can be enabled/disabled, skills use progressive disclosure, memory persists across sessions, checkpoints protect work, subagents run in isolated contexts, hooks intercept lifecycle events, batch processing emits trajectories, provider routing/fallback/credential pools are built in, and browser automation can route public URLs to cloud browsers while keeping localhost private. Sources: [Hermes features](https://hermes-agent.nousresearch.com/docs/user-guide/features/overview) and [Hermes browser automation](https://hermes-agent.nousresearch.com/docs/user-guide/features/browser).
+
+The deeper Hermes benchmark lesson is its environment layer. Hermes environments define tasks, run an agent loop, and score outputs. Reward functions can inspect the same sandbox the model used: terminal, files, web, browser, and arbitrary tools. Hermes also has benchmark/data-generation/RL paths through Atropos, TerminalBench2, TBLite, YC-Bench, and SWE-style environments. Source: [Hermes Environments, Benchmarks & Data Generation](https://hermes-agent.nousresearch.com/docs/developer-guide/environments/).
+
+The broader eval ecosystem points the same way:
+
+- **tau-bench:** useful north star for realistic tool-agent-user interaction because it grades final database state against a goal state, not just the assistant's text. That maps directly to Clear: build app, drive app, inspect app state. Source: [tau-bench paper page](https://huggingface.co/papers/2406.12045).
+- **Inspect AI:** useful harness pattern: tasks, datasets, solvers, scorers, logs, sandboxes, agents, multi-agent, and external-agent bridges. Clear should export enough structured logs that a future Inspect wrapper is trivial. Source: [Inspect docs](https://inspect.aisi.org.uk/).
+- **METR Task Standard:** useful packaging target: each task has an environment, instructions, and optional automatic scoring over submission plus environment state. Clear's broad app prompts should eventually be task-family definitions, not ad hoc arrays in one script. Source: [METR task-standard](https://github.com/METR/task-standard).
+
+**What this means for our harness:** the current `broadFunctionalApps` A/B is a good start, not the finish line. It has broad prompts, docs-only vs hook-on arms, app-quality rubrics, requirements approval, and cost accounting. The missing cutting-edge pieces are:
+
+1. **Environment snapshots:** save source, requirements, retrieved snippets, model events, compile result, Ralph audit, browser/state evidence, and cost as a durable per-trial artifact.
+2. **State-based scoring:** for each app type, create seeded user flows and inspect final app/database state, tau-bench style.
+3. **Trajectory metrics:** score not just pass/fail, but turns, tool errors, requirements quality, retrieval hits, repair loops, browser actions, and cost per usable app.
+4. **Hermes-style task definitions:** move broad app prompts into reusable task-family objects with prompt, setup, allowed tools, scorer, timeout, and cost budget.
+5. **Provider matrix:** same tasks across Gemini Flash, Haiku, DeepSeek/Kimi/GLM, and one strong reference model, with provider failures separated from model failures.
+6. **Memory hygiene loop:** periodically audit pattern/error DB candidates like Dreams: dedupe, reject stale/contradictory rows, and promote only reviewed passing examples.
+7. **Export path:** emit JSONL compatible enough for offline analysis, Inspect-style wrappers, and future fine-tuning/RL data.
+
+**Opinion:** Ralph plus requirements is still the main differentiated bet. Hermes is ahead on general agent infrastructure; Anthropic is validating rubric-driven outcome loops; tau-bench validates state-based scoring. Clear's strongest version combines all three but keeps the load-bearing grade deterministic: requirements contract, compiled app, browser/state evidence, Ralph audit, then only optional LLM critique.
+
 ## Capability surface — provable named business rules (2026-05-02)
 
 Clear now has a `rule <name>:` keyword that names business policies and gives the prover a per-rule attribution surface.
