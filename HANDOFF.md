@@ -3,9 +3,9 @@
 ## Where you are
 
 - **Branch:** `feature/meph-requirements-ralph-loop`.
-- **Latest committed baseline:** `5072b55 Add Meph requirements Ralph loop`.
-- **Current wrap work:** requirements quality gate tightened, Ralph detector tightened, compiler UI dead-route gates added, docs updated.
-- **Paid probe spend:** latest run **$0.33**, running total **$1.80**. This turn spent **$0.72** of the $5 authorization.
+- **Latest committed baseline:** `5da2a07 Cap live pattern probe iterations`.
+- **Current wrap work:** requirements quality gate tightened, Ralph detector tightened, compiler UI dead-route gates added, pattern-probe artifacts added, capped broad A/B harness added.
+- **Paid probe spend:** latest run **$0.43**, running total **$3.34** of the $5 authorization.
 
 ## What changed in this wrap
 
@@ -15,6 +15,7 @@
 - Ralph no longer treats parenthesized status examples as separate fields.
 - Ralph no longer treats `Pending` status alone as manager approval. Approval routing needs manager/VP assignment, queue, role, or approver evidence.
 - The compiler now hard-errors internal app calls to missing `/api/...` endpoints and nav/link controls that point at missing pages.
+- The broad pattern-probe harness now writes durable per-trial artifacts, revises invalid requirements before spending the build turn, and caps paid Meph build loops at 12 iterations by default (`MEPH_PATTERN_PROBE_MAX_ITER` overrides).
 
 ## Live smoke result
 
@@ -22,6 +23,7 @@ The useful result was fail-closed, not "Gemini passed."
 
 - First follow-up Gemini Flash run: 3 chunky requirements, rejected by the tightened quality gate. Cost **$0.39**, total **$1.46**.
 - Second follow-up Gemini Flash run: 6 smaller CRUD/lifecycle requirements, compiled cleanly, used screenshot/browser evidence, then Ralph blocked the app because manager approval was only a `Pending` status string. Cost **$0.33**, total **$1.80**.
+- Capped broad A/B smoke on `revenue-ops-dashboard-app`: docs-only failed (**42/100**, did not compile); full hook passed (**95/100**, compiled). Cost **$0.43**, total **$3.34**. Artifact folder: `studio/sessions/pattern-probes/2026-05-08T16-15-00-305Z/`.
 
 That is the right product behavior: Meph can build a plausible app, but Ralph refuses false done when the app has no real approval assignment/queue.
 
@@ -32,9 +34,9 @@ That is the right product behavior: Meph can build a plausible app, but Ralph re
 
 ## Next critical path
 
-1. Commit this wrap on `feature/meph-requirements-ralph-loop`.
+1. Run at most two more capped broad-app A/B pairs under the remaining budget, then stop and summarize. Do not run the full seven-app suite unless Russell raises the cap again.
 2. Next feature lane: expand compiler-owned UI failures beyond static route checks into generated browser-walker failures for accordions, button event wiring, modal open/close, and layout overflow.
-3. Rerun one cheap live requirements smoke only after that next UI-walker lane lands. Do not spend more just to re-prove the current fail-closed result.
+3. Promote browser/state evidence into the pattern-probe artifacts so the harness can score actual app behavior, not only source shape.
 
 ---
 

@@ -17,6 +17,8 @@ The databases still matter, but as **supporting context**, not as the oracle:
 
 The 2026-05-08 Gemini smoke made the hierarchy obvious. The model got enough pattern/context to build a plausible deal approval app. It compiled. It used browser/screenshot tools. But it represented "manager approval" as only `Pending` status. The app looked close, yet had no manager assignment, no reviewer queue, and no approver role evidence. Ralph blocked it. That is the product working.
 
+The first capped broad-app A/B on Gemini Flash is also directionally positive, but still only n=1. On `revenue-ops-dashboard-app`, docs-only baseline failed at **42/100** and did not compile; full pattern preflight passed at **95/100** with a compiling app. Cost was **$0.43** for the paired trial, running total **$3.34**, artifact folder `studio/sessions/pattern-probes/2026-05-08T16-15-00-305Z/`. This proves the harness can produce a useful paired signal; it does not yet prove the effect generalizes across the seven broad app types.
+
 **Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
 
 The durable research frame is now:
@@ -53,9 +55,9 @@ The broader eval ecosystem points the same way:
 
 **What this means for our harness:** the current `broadFunctionalApps` A/B is a good start, not the finish line. It has broad prompts, docs-only vs hook-on arms, app-quality rubrics, requirements approval, and cost accounting. The missing cutting-edge pieces are:
 
-1. **Environment snapshots:** save source, requirements, retrieved snippets, model events, compile result, Ralph audit, browser/state evidence, and cost as a durable per-trial artifact.
+1. **Environment snapshots:** partially shipped. The probe now saves source, requirements, retrieved snippets/preflight metadata, model events, compile result, score, and cost as per-trial artifacts; browser/state evidence still needs first-class capture.
 2. **State-based scoring:** for each app type, create seeded user flows and inspect final app/database state, tau-bench style.
-3. **Trajectory metrics:** score not just pass/fail, but turns, tool errors, requirements quality, retrieval hits, repair loops, browser actions, and cost per usable app.
+3. **Trajectory metrics:** partially shipped. The probe records requirements attempts, tool names, retrieval hits, quality, and cost; next step is explicit turn/tool-error/browser-action scoring.
 4. **Hermes-style task definitions:** move broad app prompts into reusable task-family objects with prompt, setup, allowed tools, scorer, timeout, and cost budget.
 5. **Provider matrix:** same tasks across Gemini Flash, Haiku, DeepSeek/Kimi/GLM, and one strong reference model, with provider failures separated from model failures.
 6. **Memory hygiene loop:** periodically audit pattern/error DB candidates like Dreams: dedupe, reject stale/contradictory rows, and promote only reviewed passing examples.
