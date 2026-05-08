@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-08: Browser UAT should fail on app errors, not internet noise
+
+The Marcus browser push gate failed after the app checks were already working because Playwright treated third-party font CORS failures, generic resource-load console noise, and navigation-abort request failures as app failures. The right fix was not to weaken the UAT contract. The right fix was to classify noise at the browser boundary while keeping same-origin app request failures fatal.
+
+### Gotchas-as-rules
+
+- **Never make browser UAT pass by ignoring all console or network failures.** Filter known external font/resource noise only.
+- **Same-origin request failures stay fatal.** If the generated app's own API fails, the push gate should still block.
+- **Navigation aborts are not app failures.** Browser navigation can cancel in-flight setup requests; ignore only the explicit aborted-request class.
+- **Add the filter test before changing the gate.** The test must prove both sides: external noise ignored, app errors still captured.
+
+---
+
 ## Session 2026-05-07: Meph pattern memory should be searchable, not self-writable
 
 Meph needed a database of clear programming patterns seeded from the canonical templates. The tempting shortcut was to let Meph write patterns directly as it learns. That would make the cookbook self-poisoning: one bad session could promote broken or overfit code, and every later session would retrieve it as trusted precedent.

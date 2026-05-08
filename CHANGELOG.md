@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-08 - Browser UAT resource-noise gate
+
+The Marcus browser push gate now ignores external font/resource/navigation-abort noise while keeping generated-app request failures fatal. This fixes the push blocker where the app checks passed but external font CORS failures made the launch gate fail.
+
+What shipped:
+- Generated browser UAT scripts filter known external font hosts and generic browser resource-load noise.
+- Same-origin app request failures are still recorded with method, URL, and failure text.
+- Navigation-aborted requests are ignored only for the explicit browser abort class.
+- A focused generator test locks the distinction so the gate does not drift into "ignore every error."
+
+Verification: `node lib/uat-contract.test.js` passes **34/34** and `node scripts/run-marcus-uat.mjs` passes **150/150** across 5 Marcus apps.
+
+---
+
 ## 2026-05-08 - Typed Ralph facts and capped booking retest
 
 Ralph now has its first typed-fact layer. Requirement prose normalizes into small facts, generated source normalizes into app facts, and the audit compares facts to facts for the booking-overlap domain-rule slice. This avoids making the final checker a pile of brittle regexes.
