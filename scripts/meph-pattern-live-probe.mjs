@@ -37,6 +37,7 @@ export function isExpensiveAnthropicModel(modelName) {
 const backend = resolveProbeBackend();
 const model = resolveProbeModel();
 const chatTimeoutMs = Number(process.env.MEPH_PATTERN_PROBE_TIMEOUT_MS || 600_000);
+const requirementsRevisionLimit = Number(process.env.MEPH_PATTERN_PROBE_REQUIREMENTS_RETRIES || 2);
 const DEFAULT_ARTIFACT_DIR = join(repoRoot, 'studio', 'sessions', 'pattern-probes', new Date().toISOString().replace(/[:.]/g, '-'));
 const TRIAL_BUILD_INSTRUCTION = [
   'Trial instruction: build the app in the Clear editor.',
@@ -364,6 +365,36 @@ export function buildApprovedAppChatBody(prompt, options = {}, {
   };
 }
 
+export function buildRequirementsRevisionChatBody(prompt, options = {}, {
+  assistantText = '',
+  errors = [],
+  attempt = 1,
+} = {}) {
+  const body = buildChatBody(prompt, options);
+  const errorLines = (errors || []).map(error => `- ${error}`).join('\n') || '- requirements were invalid';
+  return {
+    ...body,
+    messages: [
+      { role: 'user', content: `${prompt}\n\n${TRIAL_BUILD_INSTRUCTION}` },
+      { role: 'assistant', content: assistantText || 'requirements:' },
+      {
+        role: 'user',
+        content: [
+          `The requirements were not approved by the deterministic validator on attempt ${attempt}.`,
+          'Do not build yet.',
+          'Fix the requirements so they are specific, observable, and cover the missing app lifecycle evidence.',
+          'Validator errors:',
+          errorLines,
+          '',
+          'Return only a corrected requirements block.',
+          '',
+          `Original user request: ${prompt}`,
+        ].join('\n'),
+      },
+    ],
+  };
+}
+
 async function runChatBody(body, { onModelUsage } = {}) {
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST',
@@ -423,6 +454,15 @@ async function runChat(prompt, options = {}, { onModelUsage, approvedRequirement
       requirementsId: approvedRequirementsRun.requirementsReview?.requirementsId,
     })
     : buildChatBody(prompt, options);
+  return runChatBody(body, { onModelUsage });
+}
+
+async function runRequirementsRevision(prompt, options, previousRun, { onModelUsage, attempt } = {}) {
+  const body = buildRequirementsRevisionChatBody(prompt, options, {
+    assistantText: previousRun?.text || '',
+    errors: previousRun?.requirementsReview?.errors || [],
+    attempt,
+  });
   return runChatBody(body, { onModelUsage });
 }
 
@@ -688,6 +728,8 @@ export function buildTrialArtifact(row = {}) {
       id: review.requirementsId || null,
       count: Array.isArray(review.requirements) ? review.requirements.length : 0,
       items: Array.isArray(review.requirements) ? review.requirements : [],
+      errors: Array.isArray(review.errors) ? review.errors : [],
+      attempts: result.requirementsAttempts || 1,
     },
     preflight: {
       mode: preflight?.mode || null,
@@ -789,7 +831,17 @@ async function main() {
         let score;
         try {
           result = await runChat(probe.prompt, variant.options, { onModelUsage: usageLedger.record });
-          const review = result.requirementsReview;
+          let review = result.requirementsReview;
+          const requirementsAttempts = [result];
+          for (let revision = 1; review && review.valid !== true && revision <= requirementsRevisionLimit; revision++) {
+            console.log(`requirements: invalid; revision ${revision}/${requirementsRevisionLimit}: ${(review.errors || []).join(' | ') || 'no errors provided'}`);
+            result = await runRequirementsRevision(probe.prompt, variant.options, result, {
+              onModelUsage: usageLedger.record,
+              attempt: revision,
+            });
+            requirementsAttempts.push(result);
+            review = result.requirementsReview;
+          }
           if (!result.source && review?.valid === true && Array.isArray(review.requirements) && review.requirements.length > 0) {
             console.log(`requirements: valid ${review.requirements.length}; auto-approving for build turn`);
             const requirementsRun = result;
@@ -800,18 +852,28 @@ async function main() {
             result = {
               ...buildResult,
               requirementsReview: review,
+              requirementsAttempts: requirementsAttempts.length,
               firstTurnPreflight: requirementsRun.preflight,
               preflight: buildResult.preflight || requirementsRun.preflight,
-              text: [requirementsRun.text, buildResult.text].filter(Boolean).join('\n\n'),
-              toolNames: [...requirementsRun.toolNames, ...buildResult.toolNames],
+              text: [...requirementsAttempts.map(run => run.text), buildResult.text].filter(Boolean).join('\n\n'),
+              toolNames: [...requirementsAttempts.flatMap(run => run.toolNames), ...buildResult.toolNames],
               modelUsageEvents: [
-                ...(requirementsRun.modelUsageEvents || []),
+                ...requirementsAttempts.flatMap(run => run.modelUsageEvents || []),
                 ...(buildResult.modelUsageEvents || []),
               ],
               events: [
-                ...(requirementsRun.events || []),
+                ...requirementsAttempts.flatMap(run => run.events || []),
                 ...(buildResult.events || []),
               ],
+            };
+          } else if (requirementsAttempts.length > 1) {
+            result = {
+              ...result,
+              requirementsAttempts: requirementsAttempts.length,
+              toolNames: requirementsAttempts.flatMap(run => run.toolNames),
+              modelUsageEvents: requirementsAttempts.flatMap(run => run.modelUsageEvents || []),
+              events: requirementsAttempts.flatMap(run => run.events || []),
+              text: requirementsAttempts.map(run => run.text).filter(Boolean).join('\n\n'),
             };
           }
           const providerBlocked = providerBlockMessage(result);

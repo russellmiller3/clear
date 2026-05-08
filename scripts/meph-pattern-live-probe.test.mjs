@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildTrialArtifact, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, buildRequirementsRevisionChatBody, buildTrialArtifact, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -177,6 +177,25 @@ describe('meph pattern live probe harness', () => {
     expect(body.approvedRequirementsId).toEqual('req_123');
     expect(body.patternPreflight).toEqual('full');
     expect(body.disablePatternSearchTool).toEqual(false);
+  });
+
+  it('builds a requirements revision body with deterministic validation errors', () => {
+    const body = buildRequirementsRevisionChatBody('Build a CRM dashboard', {
+      patternPreflight: 'full',
+      disablePatternSearchPromptGuard: true,
+      disablePatternSearchTool: false,
+    }, {
+      assistantText: 'requirements:\n  users can create deals',
+      errors: ['requirements need e2e coverage for update/decision.'],
+      attempt: 1,
+    });
+
+    expect(body.messages.length).toEqual(3);
+    expect(body.messages[1].content).toContain('users can create deals');
+    expect(body.messages[2].content).toContain('not approved');
+    expect(body.messages[2].content).toContain('update/decision');
+    expect(body.messages[2].content).toContain('Return only a corrected requirements block');
+    expect(body.requirementsMode).toEqual('auto');
   });
 
   it('scores full-app builds with compile success and required source behavior', () => {
