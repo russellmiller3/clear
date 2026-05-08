@@ -27,7 +27,7 @@
 
 import { tokenize, tokenizeLine, TokenType } from './tokenizer.js';
 import { parse, NodeType } from './parser.js';
-import { compile, resolveModules, generateEvalEndpoints } from './compiler.js';
+import { compile, resolveModules, generateEvalEndpoints, collectRequirements } from './compiler.js';
 import { validate } from './validator.js';
 import { SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './synonyms.js';
 import { generateUATContract, generateBrowserUAT } from './lib/uat-contract.js';
@@ -109,6 +109,7 @@ function compileProgram(source, options = {}) {
   result.errors = [...moduleErrors, ...validationErrors, ...result.errors];
   result.warnings = [...(result.warnings || []), ...warnings];
   result.ast = ast;
+  result.requirements = collectRequirements(ast);
   // Expose database backend so CLI commands (package, deploy) can pick the right adapter
   result.dbBackend = ast.body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
   // Lean Lesson 1 — collect every TBD line in the program so the test runner,

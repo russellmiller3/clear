@@ -26758,6 +26758,32 @@ show "ready"`);
   });
 });
 
+describe('requirements compile metadata', () => {
+  it('exposes requirements without emitting runtime code', () => {
+    const result = compileProgram(`requirements:
+  logged-in sellers can submit deals
+
+build for javascript backend
+when user calls GET /health:
+  send back 'ok'`);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.requirements.map(r => r.text)).toEqual([
+      'logged-in sellers can submit deals',
+    ]);
+    expect(result.serverJS).not.toContain('logged-in sellers can submit deals');
+  });
+
+  it('warns when requirements exist without user-written test blocks', () => {
+    const result = compileProgram(`requirements:
+  logged-in sellers can submit deals
+
+build for javascript backend`);
+
+    expect(result.warnings.some(w => String(w.message).includes('requirements should have tests'))).toBe(true);
+  });
+});
+
 // ============================================================
 // P5 — HTTP Test Assertions in Clear
 // ============================================================

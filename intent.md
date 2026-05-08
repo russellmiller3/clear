@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (172 total)
+## Node Types (173 total)
 
 ### Core Language
 
@@ -53,6 +53,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `THROW` | `send error 'message'` / `throw error` / `fail with` / `raise error` | `throw new Error('message')` (JS) / `raise Exception('message')` (Python) — custom errors from any context |
 | `LITERAL_STRING` (interpolated) | `'Hello, {name}!'` | `` `Hello, ${name}!` `` (JS) / `f"Hello, {name}!"` (Python) |
 | `USE` | `use 'helpers'` / `use double from 'helpers'` / `use everything from 'helpers'` / `use 'lib' from './lib.js'` | Module import (namespaced, selective, inline-all, or external JS) |
+| `REQUIREMENTS` | `requirements:` + indented prose lines | Build metadata only. Exposed as `result.requirements` for Meph, graders, and Studio review. Emits no runtime code. Compiler warns when requirements exist without user-written `test:` blocks. |
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |
 | `STORE` | `store settings` / `store settings as 'prefs'` | Save to localStorage (JSON) |
 | `RESTORE` | `restore settings` / `restore settings as 'prefs'` | Load from localStorage (JSON) |
