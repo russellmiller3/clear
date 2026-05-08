@@ -2,9 +2,9 @@
 
 ## Where you are
 
-- **Branch:** `feature/meph-requirements-ralph-loop`.
-- **Latest committed baseline before this wrap:** `d14517b docs: define deterministic Ralph fact checks`.
-- **Current wrap work:** typed requirement/app facts added, Ralph uses fact evidence for booking overlap rules, pattern preflight injects machine-readable requirement facts, probe artifacts save fact/browser/state evidence, source-backed provider failures are salvaged, and booking/customer/availability retrieval now has a local guard.
+- **Branch:** feature work merged locally; final push-gate fix is on `fix/marcus-uat-font-noise` until it lands back on `main`.
+- **Latest committed baseline before this wrap:** `1f51069 Merge feature/meph-requirements-ralph-loop`.
+- **Current wrap work:** typed requirement/app facts added, Ralph uses fact evidence for booking overlap rules, pattern preflight injects machine-readable requirement facts, probe artifacts save fact/browser/state evidence, source-backed provider failures are salvaged, booking/customer/availability retrieval now has a local guard, and the Marcus browser push gate now filters external resource noise without hiding real generated-app failures.
 - **Paid probe spend:** latest completed run **$0.26**, running total **$4.52** of the $5 authorization.
 
 ## What changed in this wrap
