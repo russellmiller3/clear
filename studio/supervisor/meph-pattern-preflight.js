@@ -56,6 +56,13 @@ function readDocExcerpt(rootDir, filename, query) {
   return excerpt ? { filename, excerpt } : null;
 }
 
+function searchTextForRequirements(userText, approvedRequirements = []) {
+  const requirements = Array.isArray(approvedRequirements)
+    ? approvedRequirements.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+  return [String(userText || '').trim(), ...requirements].filter(Boolean).join('\n');
+}
+
 function formatPattern(row, index) {
   const source = row.source_excerpt || row.source || '';
   const parent = row.parent_template_name ? ` parent=${row.parent_template_name}` : '';
@@ -77,6 +84,7 @@ export function shouldRunPatternPreflight(userText) {
 
 export function buildPatternPreflight({
   userText = '',
+  approvedRequirements = [],
   currentSource = '',
   factorDB = null,
   rootDir = process.cwd(),
@@ -84,19 +92,20 @@ export function buildPatternPreflight({
   mode = 'full',
 } = {}) {
   const text = String(userText || '');
-  const required = shouldRunPatternPreflight(text);
+  const searchText = searchTextForRequirements(text, approvedRequirements);
+  const required = shouldRunPatternPreflight(searchText);
   const normalizedMode = mode === 'docs' ? 'docs' : 'full';
   if (!required) return { required: false, mode: normalizedMode, text: '', docs: [], patterns: [] };
 
   const docs = ['SYNTAX.md', 'AI-INSTRUCTIONS.md']
-    .map(filename => readDocExcerpt(rootDir, filename, text))
+    .map(filename => readDocExcerpt(rootDir, filename, searchText))
     .filter(Boolean);
 
   let patterns = [];
   if (normalizedMode === 'full' && factorDB && typeof factorDB.queryProgrammingPatterns === 'function') {
     try {
       patterns = factorDB.queryProgrammingPatterns({
-        query: text,
+        query: searchText,
         source: currentSource,
         topK,
       }) || [];
@@ -135,6 +144,9 @@ export function buildPatternPreflight({
   const patternText = patterns.length
     ? patterns.map(formatPattern).join('\n\n')
     : 'No pattern DB matches were available. Say that explicitly before proceeding.';
+  const requirementText = Array.isArray(approvedRequirements) && approvedRequirements.length > 0
+    ? approvedRequirements.map(item => `- ${item}`).join('\n')
+    : 'No approved requirements were supplied.';
 
   return {
     required,
@@ -149,6 +161,9 @@ export function buildPatternPreflight({
       '',
       '### Required doc excerpts',
       docText || 'No SYNTAX.md / AI-INSTRUCTIONS.md excerpts found.',
+      '',
+      '### Approved requirements',
+      requirementText,
       '',
       '### Required pattern DB search results',
       patternText,

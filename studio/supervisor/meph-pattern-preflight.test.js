@@ -65,6 +65,38 @@ describe('Meph pattern preflight hook', () => {
     }
   });
 
+  it('uses approved requirements as the concrete pattern search query', () => {
+    const root = mkdtempSync(join(tmpdir(), 'meph-preflight-requirements-'));
+    try {
+      writeFileSync(join(root, 'SYNTAX.md'), 'approval queue syntax\nroute request by amount:');
+      writeFileSync(join(root, 'AI-INSTRUCTIONS.md'), 'Search for the exact app shape first.');
+      let querySeen = '';
+      const approvedRequirements = [
+        'logged-in sellers can submit deals',
+        'deals under 50000 route to manager approval',
+        'deals at least 50000 route to VP approval',
+        'approvers can approve or reject pending deals',
+      ];
+
+      buildPatternPreflight({
+        userText: 'build me an app',
+        approvedRequirements,
+        factorDB: {
+          queryProgrammingPatterns({ query }) {
+            querySeen = query;
+            return [];
+          },
+        },
+        rootDir: root,
+      });
+
+      expect(querySeen).toContain('50000');
+      expect(querySeen).toContain('approve or reject');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('can build a docs-only baseline without mentioning the pattern database', () => {
     const root = mkdtempSync(join(tmpdir(), 'meph-preflight-docs-'));
     try {

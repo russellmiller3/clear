@@ -535,6 +535,8 @@ try {
     assert(serverSrc.includes('patternPreflightRequest !== false'), 'chat path can disable preflight for A/B trials');
     assert(serverSrc.includes('stripPatternSearchPromptGuard'), 'chat path can strip prompt-only search guard for A/B trials');
     assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
+    assert(serverSrc.includes('approvedRequirements: requirementsApproval.approved'),
+      'chat path feeds approved requirements into pattern preflight');
   }
 
   {

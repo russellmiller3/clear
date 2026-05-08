@@ -3514,6 +3514,7 @@ app.post('/api/chat', async (req, res) => {
   const patternPreflightResult = patternPreflightEnabled
     ? buildPatternPreflight({
       userText: requirementsUserText,
+      approvedRequirements: requirementsApproval.approved ? requirementsApproval.requirements : [],
       currentSource,
       factorDB: _factorDB,
       rootDir: ROOT_DIR,
