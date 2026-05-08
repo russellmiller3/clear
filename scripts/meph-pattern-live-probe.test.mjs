@@ -1,5 +1,5 @@
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
+import { buildApprovedAppChatBody, buildChatBody, buildProbeServerEnv, providerBlockMessage, isExpensiveAnthropicModel, isExpensiveProbeModel, isProviderQuotaError, probeSuites, resolveProbeBackend, resolveProbeModel, resolveProbePort, summarizeRows, scoreAppQualityRubric, scoreGeneratedApp, selectProbes, scoreProbe } from './meph-pattern-live-probe.mjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -153,8 +153,30 @@ describe('meph pattern live probe harness', () => {
     expect(on.disablePatternSearchTool).toEqual(false);
     expect(off.disableFactorHints).toEqual(true);
     expect(on.disableFactorHints).toEqual(false);
+    expect(on.requirementsMode).toEqual('auto');
     expect(off.messages[0].content).toContain('Call edit_code with the complete .clear source');
     expect(off.messages[0].content).not.toContain('pattern DB');
+  });
+
+  it('builds the second-turn body that approves valid requirements before app scoring', () => {
+    const body = buildApprovedAppChatBody('Build a CRM dashboard', {
+      patternPreflight: 'full',
+      disablePatternSearchPromptGuard: true,
+      disablePatternSearchTool: false,
+      disableFactorHints: false,
+    }, {
+      assistantText: 'requirements:\n  logged in users can create deals',
+      requirements: ['logged in users can create deals'],
+      requirementsId: 'req_123',
+    });
+
+    expect(body.messages.length).toEqual(3);
+    expect(body.messages[2].content).toContain('Approved');
+    expect(body.messages[2].content).toContain('Build the app now');
+    expect(body.approvedRequirements).toEqual(['logged in users can create deals']);
+    expect(body.approvedRequirementsId).toEqual('req_123');
+    expect(body.patternPreflight).toEqual('full');
+    expect(body.disablePatternSearchTool).toEqual(false);
   });
 
   it('scores full-app builds with compile success and required source behavior', () => {

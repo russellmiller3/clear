@@ -337,6 +337,7 @@ export function buildChatBody(prompt, {
     editorContent: '',
     errors: [],
     webTools: false,
+    requirementsMode: 'auto',
     patternPreflight,
     disablePatternSearchPromptGuard,
     disablePatternSearchTool,
@@ -344,8 +345,25 @@ export function buildChatBody(prompt, {
   };
 }
 
-async function runChat(prompt, options = {}, { onModelUsage } = {}) {
+export function buildApprovedAppChatBody(prompt, options = {}, {
+  assistantText = '',
+  requirements = [],
+  requirementsId,
+} = {}) {
   const body = buildChatBody(prompt, options);
+  return {
+    ...body,
+    messages: [
+      { role: 'user', content: `${prompt}\n\n${TRIAL_BUILD_INSTRUCTION}` },
+      { role: 'assistant', content: assistantText || `requirements:\n${requirements.map(item => `  ${item}`).join('\n')}` },
+      { role: 'user', content: 'Approved. Build the app now from the approved requirements.' },
+    ],
+    approvedRequirements: requirements,
+    approvedRequirementsId: requirementsId,
+  };
+}
+
+async function runChatBody(body, { onModelUsage } = {}) {
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -363,6 +381,7 @@ async function runChat(prompt, options = {}, { onModelUsage } = {}) {
   let source = '';
   let text = '';
   const modelUsageEvents = [];
+  let requirementsReview = null;
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
@@ -382,6 +401,7 @@ async function runChat(prompt, options = {}, { onModelUsage } = {}) {
       if (event.type === 'text') text += event.delta || '';
       if (event.type === 'tool_start' && event.name) toolNames.push(event.name);
       if (event.type === 'pattern_preflight') preflight = event;
+      if (event.type === 'requirements_review') requirementsReview = event;
       if ((event.type === 'message_delta' || event.type === 'model_usage') && event.usage) {
         modelUsageEvents.push(event);
         if (typeof onModelUsage === 'function') onModelUsage(event);
@@ -391,7 +411,18 @@ async function runChat(prompt, options = {}, { onModelUsage } = {}) {
       if (event.type === 'error') throw new Error(event.message || 'Studio emitted an error');
     }
   }
-  return { text, toolNames, preflight, source, events, modelUsageEvents };
+  return { text, toolNames, preflight, source, events, modelUsageEvents, requirementsReview };
+}
+
+async function runChat(prompt, options = {}, { onModelUsage, approvedRequirementsRun } = {}) {
+  const body = approvedRequirementsRun
+    ? buildApprovedAppChatBody(prompt, options, {
+      assistantText: approvedRequirementsRun.text,
+      requirements: approvedRequirementsRun.requirementsReview?.requirements || [],
+      requirementsId: approvedRequirementsRun.requirementsReview?.requirementsId,
+    })
+    : buildChatBody(prompt, options);
+  return runChatBody(body, { onModelUsage });
 }
 
 export function scoreProbe(probe, result) {
@@ -690,6 +721,31 @@ async function main() {
         let score;
         try {
           result = await runChat(probe.prompt, variant.options, { onModelUsage: usageLedger.record });
+          const review = result.requirementsReview;
+          if (!result.source && review?.valid === true && Array.isArray(review.requirements) && review.requirements.length > 0) {
+            console.log(`requirements: valid ${review.requirements.length}; auto-approving for build turn`);
+            const requirementsRun = result;
+            const buildResult = await runChat(probe.prompt, variant.options, {
+              onModelUsage: usageLedger.record,
+              approvedRequirementsRun: requirementsRun,
+            });
+            result = {
+              ...buildResult,
+              requirementsReview: review,
+              firstTurnPreflight: requirementsRun.preflight,
+              preflight: buildResult.preflight || requirementsRun.preflight,
+              text: [requirementsRun.text, buildResult.text].filter(Boolean).join('\n\n'),
+              toolNames: [...requirementsRun.toolNames, ...buildResult.toolNames],
+              modelUsageEvents: [
+                ...(requirementsRun.modelUsageEvents || []),
+                ...(buildResult.modelUsageEvents || []),
+              ],
+              events: [
+                ...(requirementsRun.events || []),
+                ...(buildResult.events || []),
+              ],
+            };
+          }
           const providerBlocked = providerBlockMessage(result);
           if (providerBlocked) {
             result.error = providerBlocked;
