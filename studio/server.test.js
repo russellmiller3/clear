@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
+import { requirementsId } from './supervisor/requirements-contract.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -558,6 +559,30 @@ try {
       'chat emits requirements_review before app editing on complex app request');
     assert(!data.events.some(e => e.type === 'code_update'),
       'requirements review flow does not emit code_update before approval');
+  }
+
+  {
+    const { status, data } = await post('/api/_test/chat-ralph-flow', {
+      editorContent: `requirements:
+  deals at least 50000 route to VP approval
+
+build for javascript backend
+when user requests data from /api/health:
+  send back 'ok'
+`,
+      approvedRequirements: ['deals at least 50000 route to VP approval'],
+      approvedRequirementsId: requirementsId(['deals at least 50000 route to VP approval']),
+      ralphRetryCount: 0,
+    });
+
+    assert(status === 200, 'test Ralph flow endpoint returns 200');
+    assert(Array.isArray(data.events), 'Ralph flow returns events array');
+    assert(data.events.some(e => e.type === 'requirements_audit'),
+      'chat runs Ralph before done when approved requirements exist');
+    assert(data.events.some(e => e.type === 'requirements_retry'),
+      'chat emits a Ralph retry event when approved requirements are missing');
+    assert(data.message && data.message.includes('You are not done yet'),
+      'Ralph retry flow returns concrete repair message');
   }
 
   // =========================================================================

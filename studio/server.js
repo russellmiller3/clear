@@ -27,6 +27,7 @@ import {
   requirementsReviewEventFromAssistantText,
   shouldRequireApproval,
 } from './supervisor/requirements-contract.js';
+import { auditRequirements } from './supervisor/requirements-audit.js';
 import {
   loadBundle as _loadEBM,
   rank as _rankEBM,
@@ -52,6 +53,7 @@ import {
   selectChatMessagesForModel,
 } from './ghost-meph/model-picker.js';
 import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
+import { shouldRalphRetry, formatRalphMessage, readRalphConfig } from './ralph-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
 // UI button) bypasses dispatchTool — it doesn't want the Meph-facing tab-
@@ -221,9 +223,111 @@ function buildChatRequirementsFlow({
   return { events, currentMessages, requirementsApproval, userText };
 }
 
+function buildChatRalphFlow({
+  editorContent = '',
+  currentErrors = [],
+  approvedRequirements = null,
+  approvedRequirementsId = null,
+  ralphRetryCount = 0,
+  ralphConfig = readRalphConfig(process.env),
+  compileResult = null,
+} = {}) {
+  const approvedList = Array.isArray(approvedRequirements) ? approvedRequirements : [];
+  const computedId = approvedList.length > 0 ? requirementsId(approvedList) : null;
+  const approved = approvedList.length > 0 && approvedRequirementsId && approvedRequirementsId === computedId;
+  const events = [];
+
+  if (!approved) {
+    return {
+      audit: null,
+      decision: { retry: false, blocked: false, gaps: [] },
+      events,
+      message: null,
+      skipped: 'requirements_not_approved',
+    };
+  }
+
+  if (Array.isArray(currentErrors) && currentErrors.length > 0) {
+    return {
+      audit: null,
+      decision: { retry: false, blocked: false, gaps: [] },
+      events,
+      message: null,
+      skipped: 'compile_errors',
+    };
+  }
+
+  const compiled = compileResult || compileProgram(editorContent || '');
+  if (Array.isArray(compiled.errors) && compiled.errors.length > 0) {
+    return {
+      audit: null,
+      decision: { retry: false, blocked: false, gaps: [] },
+      events,
+      message: null,
+      skipped: 'compile_errors',
+    };
+  }
+
+  const requirements = approvedList.map((text, index) => ({ id: `req_${index + 1}`, text }));
+  const audit = auditRequirements({
+    source: editorContent || '',
+    ast: compiled.ast,
+    compileResult: compiled,
+    requirements,
+  });
+  const decision = shouldRalphRetry({
+    audit,
+    retryCount: ralphRetryCount,
+    maxRetries: ralphConfig.maxRetries,
+    layerOff: ralphConfig.layerOff,
+    blockOnUnverified: ralphConfig.blockOnUnverified,
+  });
+
+  events.push({
+    type: 'requirements_audit',
+    ok: audit.ok,
+    summary: audit.summary,
+    items: audit.items,
+  });
+
+  const message = decision.retry ? formatRalphMessage({
+    audit,
+    retryIndex: ralphRetryCount + 1,
+    maxRetries: ralphConfig.maxRetries,
+    blockOnUnverified: ralphConfig.blockOnUnverified,
+  }) : null;
+
+  if (decision.retry) {
+    events.push({
+      type: 'requirements_retry',
+      retry_index: ralphRetryCount + 1,
+      max_retries: ralphConfig.maxRetries,
+      message,
+      summary: audit.summary,
+      items: decision.gaps,
+    });
+  }
+
+  if (decision.blocked) {
+    events.push({
+      type: 'requirements_blocked',
+      max_retries: ralphConfig.maxRetries,
+      summary: audit.summary,
+      items: decision.gaps,
+    });
+  }
+
+  return { audit, decision, events, message, skipped: null };
+}
+
 app.post('/api/_test/chat-requirements-flow', (req, res) => {
   if (!_allowTestCloudHooks()) return res.status(404).end();
   return res.json(buildChatRequirementsFlow(req.body || {}));
+});
+
+app.post('/api/_test/chat-ralph-flow', (req, res) => {
+  if (!_allowTestCloudHooks()) return res.status(404).end();
+  return res.json(buildChatRalphFlow(req.body || {}));
 });
 
 app.post('/api/_test/live-edit-cloud-uat-setup', async (req, res) => {
@@ -3567,6 +3671,8 @@ app.post('/api/chat', async (req, res) => {
     let snapRetryCount = 0;
 
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
+    const ralphConfig = readRalphConfig(process.env);
+    let ralphRetryCount = 0;
       // Bail out the moment the user clicks Stop. The response close
       // handler set this flag and already aborted the in-flight fetch;
       // checking here ensures we don't fire ANOTHER tool iteration after
@@ -3818,8 +3924,8 @@ app.post('/api/chat', async (req, res) => {
           layerOff: snapConfig.layerOff,
         })) {
           snapRetryCount++;
-          messages.push({ role: 'assistant', content: assistantContent });
-          messages.push({
+          currentMessages.push({ role: 'assistant', content: assistantContent });
+          currentMessages.push({
             role: 'user',
             content: formatSnapMessage({
               errors: currentErrors,
@@ -3842,6 +3948,42 @@ app.post('/api/chat', async (req, res) => {
 
         _captureHintUsage('end_turn');
         writeSessionQuality();
+        const ralphFlow = buildChatRalphFlow({
+          editorContent: currentSource,
+          currentErrors,
+          approvedRequirements: requirementsApproval.approved ? requirementsApproval.requirements : [],
+          approvedRequirementsId: requirementsApproval.approved ? requirementsApproval.id : null,
+          ralphRetryCount,
+          ralphConfig,
+        });
+        for (const event of ralphFlow.events) send(event);
+        if (ralphFlow.decision.retry) {
+          ralphRetryCount++;
+          currentMessages.push({ role: 'assistant', content: assistantContent });
+          currentMessages.push({ role: 'user', content: ralphFlow.message });
+          if (_factorDB) {
+            try {
+              _factorDB.logEvent?.({
+                kind: 'requirements_ralph_retry',
+                session_id: sessionId,
+                payload: {
+                  retry_index: ralphRetryCount,
+                  max_retries: ralphConfig.maxRetries,
+                  summary: ralphFlow.audit?.summary || '',
+                },
+              });
+            } catch { /* telemetry best-effort */ }
+          }
+          console.log(`[ralph-layer] retry ${ralphRetryCount}/${ralphConfig.maxRetries} - ${ralphFlow.audit?.summary || 'requirements missing'}`);
+          continue;
+        }
+        if (ralphFlow.decision.blocked) {
+          _captureHintUsage('end_turn');
+          writeSessionQuality();
+          res.end();
+          return;
+        }
+
         send({ type: 'done', toolResults, source: currentSource });
         res.end();
         return;
