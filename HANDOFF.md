@@ -1,5 +1,12 @@
 # Handoff — 2026-05-08 (Meph requirements/Ralph loop + UI compiler gates)
 
+## 2026-05-09 prompt follow-up
+
+- Meph's system prompt now tells him to translate vague app asks into checkable requirement types before tests/code.
+- New `requirements-sample.md` carries the longer examples; keep the prompt short and point there for depth.
+- `AI-INSTRUCTIONS.md`, `FAQ.md`, and `CHANGELOG.md` now point at the same sample so the rule is findable outside the prompt.
+- The prompt guard lives in `scripts/meph-pattern-live-probe.test.mjs`.
+
 ## Where you are
 
 - **Branch:** feature work merged locally; final push-gate fix is on `fix/marcus-uat-font-noise` until it lands back on `main`.

@@ -71,6 +71,27 @@ Ralph checks implementation evidence after the build. Echoing the requirement te
 
 Do not put universal UI health into requirements. The compiler owns generic dead-UI checks: internal app calls must hit declared endpoints, and nav/link controls must point at declared pages. If the compiler errors on those, fix the Clear source before claiming progress.
 
+### Checkable requirement types
+
+For vague app asks, translate the ask into checkable requirement types before writing tests or code. Use these categories: data shape, CRUD lifecycle, roles and permissions, routing, domain rule, concurrency, audit, navigation and UI reachability, and runtime evidence. For more examples, read `requirements-sample.md`.
+
+Vague user ask -> checkable requirements:
+
+```text
+User: build me a deal approval app
+
+requirements:
+  sellers can submit deals with customer, amount, notes, and status
+  deals below 50000 route to manager approval
+  deals at least 50000 route to VP approval
+  approvers can approve or reject pending deals
+  two simultaneous approval actions cannot overwrite each other
+  status changes are recorded with actor and timestamp
+  submit-deal and approval-queue pages are reachable
+```
+
+Bad requirements: "the workflow is robust", "users have a dashboard", "approvals work well". Rewrite those into actor + data + action + rule + observable evidence.
+
 ## Pure vs effectful — the prover decides automatically
 
 The prover is honest about what it can and can't verify. Pure code (math, string formatting, list operations, `enforce that` business rules) gets a PROVED verdict for every possible input. Effectful code (database lookups, HTTP calls, AI calls, clock reads) gets UNVERIFIABLE — the prover refuses to claim universal correctness for code that depends on outside state.
