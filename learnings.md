@@ -2,6 +2,18 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-09: Meph eval fixtures must compile before spending
+
+The paid Meph tool eval flagged DOM/tool issues after the prompt guidance ship. Root cause was not the new prompt. The shared eval app had stale Clear syntax: an untitled `section:` no longer compiles. That made app-dependent scenarios noisy and spent real API money on a bad fixture.
+
+### Gotchas-as-rules
+
+- **Never run paid Meph evals against an unguarded fixture.** The demo source must compile cleanly first.
+- **Tool eval failures can be fixture failures.** Check the scenario app before blaming Meph or the prompt.
+- **Add a no-spend fixture test before rerunning a paid eval.** A one-test guard is cheaper than another live sweep.
+
+---
+
 ## Session 2026-05-08: Browser UAT should fail on app errors, not internet noise
 
 The Marcus browser push gate failed after the app checks were already working because Playwright treated third-party font CORS failures, generic resource-load console noise, and navigation-abort request failures as app failures. The right fix was not to weaken the UAT contract. The right fix was to classify noise at the browser boundary while keeping same-origin app request failures fatal.
