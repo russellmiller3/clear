@@ -15,6 +15,14 @@ Short rule: each requirement should name actor, data, action/rule, and observabl
 
 ---
 
+## Where does the Meph tool-eval demo source live? (2026-05-09)
+
+`studio/eval-scenarios.js` exports `DEMO_SOURCE`, the shared Clear app used by `studio/eval-meph.js`. If tool evals fail in app-dependent scenarios, first run `node studio/meph-eval-scenarios.test.js` to prove the fixture still compiles.
+
+This avoids spending live LLM money on a broken demo app instead of testing Meph.
+
+---
+
 ## How do I prove that an agent cannot do action X? (2026-05-07)
 
 Five top-level proof obligations on agent tool use, each with its own verdict in the `clear prove` output. Phases 1-2 ship as pattern-match static analysis; Phases 3-4 use the existing symbolic prover (`lib/prover/symbolic.js`) — the same engine that proves business rules.

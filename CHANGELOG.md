@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-09 - Meph eval fixture freshness guard
+
+The Meph live eval fixture now compiles cleanly under current Clear syntax. A new guard test prevents the tool-eval harness from silently rotting when syntax rules change.
+
+What shipped:
+- `studio/eval-scenarios.js` now uses canonical titled section syntax.
+- New `studio/meph-eval-scenarios.test.js` compiles the shared eval source before tool evals rely on it.
+
+Verification: `node studio/meph-eval-scenarios.test.js`, `node studio/ghost-meph.test.js`, and `node scripts/meph-pattern-live-probe.test.mjs` pass.
+
+---
+
 ## 2026-05-09 - Checkable requirements guidance for Meph
 
 Meph now gets explicit guidance to translate vague app requests into Ralph-checkable requirement types before writing tests or code.

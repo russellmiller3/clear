@@ -31,7 +31,7 @@ when user calls DELETE /api/todos/:id:
 
 page 'Todo App':
   heading 'My Todos'
-  section:
+  section 'Add Todo':
     'Title' as text input saves to new_title
     button 'Add':
       send new_title to '/api/todos'
