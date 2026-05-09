@@ -229,6 +229,8 @@ test:
 Rules:
 - Requirements are plain outcome statements, not implementation notes.
 - Complex-app requirements must be end-to-end: cover storage, create/submit, read/list/detail, update/decision actions, roles/routing/rules, and UI reachability when the app has UI.
+- Translate vague app asks into checkable requirement types: data shape, CRUD lifecycle, roles and permissions, routing, domain rule, concurrency, audit, navigation/UI reachability, and runtime evidence.
+- For more examples, read `requirements-sample.md` before drafting requirements for a broad app.
 - Every requirement should be testable by reading the app or running it.
 - Requirements must name actors, data, actions, and edge cases when they matter.
 - Write one observable claim per requirement. Do not combine multiple claims with semicolons.

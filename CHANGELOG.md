@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-09 - Checkable requirements guidance for Meph
+
+Meph now gets explicit guidance to translate vague app requests into Ralph-checkable requirement types before writing tests or code.
+
+What shipped:
+- `studio/system-prompt.md` now includes checkable requirement categories and a vague-to-checkable deal approval example.
+- New `requirements-sample.md` gives longer examples for approval queues, booking calendars, and internal request trackers.
+- `AI-INSTRUCTIONS.md` and `FAQ.md` now point future agents to the same sample file.
+- A prompt guard test requires the prompt and sample file to keep this guidance visible.
+
+Verification: `node scripts/meph-pattern-live-probe.test.mjs` covers the prompt/sample contract.
+
+---
+
 ## 2026-05-08 - Browser UAT resource-noise gate
 
 The Marcus browser push gate now ignores external font/resource/navigation-abort noise while keeping generated-app request failures fatal. This fixes the push blocker where the app checks passed but external font CORS failures made the launch gate fail.

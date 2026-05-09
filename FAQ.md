@@ -7,6 +7,14 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where are good `requirements:` examples for Meph? (2026-05-09)
+
+Use `requirements-sample.md`. It shows how to turn vague user asks into checkable requirements for Ralph: data shape, CRUD lifecycle, roles/permissions, routing, domain rules, concurrency, audit, UI reachability, and runtime evidence.
+
+Short rule: each requirement should name actor, data, action/rule, and observable evidence. Bad requirements like "make it robust" or "dashboard should be useful" must be rewritten before Meph builds.
+
+---
+
 ## How do I prove that an agent cannot do action X? (2026-05-07)
 
 Five top-level proof obligations on agent tool use, each with its own verdict in the `clear prove` output. Phases 1-2 ship as pattern-match static analysis; Phases 3-4 use the existing symbolic prover (`lib/prover/symbolic.js`) — the same engine that proves business rules.

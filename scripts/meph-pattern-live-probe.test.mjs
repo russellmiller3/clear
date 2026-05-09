@@ -550,6 +550,24 @@ page 'Deals':
     expect(prompt).toContain('selected-row detail');
     expect(prompt).toContain('approval manager gate');
   });
+
+  it('teaches Meph to emit checkable requirements before complex app builds', () => {
+    const prompt = readFileSync(join(process.cwd(), 'studio', 'system-prompt.md'), 'utf8');
+    const sample = readFileSync(join(process.cwd(), 'requirements-sample.md'), 'utf8');
+
+    expect(prompt).toContain('requirements-sample.md');
+    expect(prompt).toContain('Checkable requirement types');
+    expect(prompt).toContain('Vague user ask -> checkable requirements');
+    expect(prompt).toContain('CRUD lifecycle');
+    expect(prompt).toContain('domain rule');
+    expect(prompt).toContain('runtime evidence');
+
+    expect(sample).toContain('requirements:');
+    expect(sample).toContain('CRUD lifecycle');
+    expect(sample).toContain('Approval queue');
+    expect(sample).toContain('Booking calendar');
+    expect(sample).toContain('Bad requirements');
+  });
 });
 
 run();
