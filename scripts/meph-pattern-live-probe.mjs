@@ -724,6 +724,28 @@ export function summarizeRows(rows, { abMode = false } = {}) {
   return summary;
 }
 
+const PATTERN_EXCERPT_MAX_CHARS = 1500;
+
+function compactPatternRow(row = {}) {
+  const rawExcerpt = String(row.source_excerpt ?? row.source ?? '');
+  const trimmed = rawExcerpt.trim();
+  const excerpt = trimmed.length > PATTERN_EXCERPT_MAX_CHARS
+    ? trimmed.slice(0, PATTERN_EXCERPT_MAX_CHARS)
+    : trimmed;
+  return {
+    template_name: row.template_name || '',
+    parent_template_name: row.parent_template_name || null,
+    pattern_kind: row.pattern_kind || null,
+    pattern_set: row.pattern_set || null,
+    source_excerpt: excerpt,
+  };
+}
+
+function compactPatternRows(patterns) {
+  if (!Array.isArray(patterns)) return [];
+  return patterns.map(compactPatternRow);
+}
+
 export function buildTrialArtifact(row = {}) {
   const result = row.result || {};
   const usage = summarizeModelUsage(result.modelUsageEvents || []);
@@ -752,12 +774,14 @@ export function buildTrialArtifact(row = {}) {
       required: preflight?.required ?? null,
       patternCount: Number(preflight?.pattern_count || 0),
       factorHintsDisabled: preflight?.factor_hints_disabled ?? null,
+      patterns: compactPatternRows(preflight?.patterns),
     },
     firstTurnPreflight: firstTurnPreflight ? {
       mode: firstTurnPreflight.mode || null,
       required: firstTurnPreflight.required ?? null,
       patternCount: Number(firstTurnPreflight.pattern_count || 0),
       factorHintsDisabled: firstTurnPreflight.factor_hints_disabled ?? null,
+      patterns: compactPatternRows(firstTurnPreflight.patterns),
     } : null,
     evidence: evidenceSummary,
     tools: result.toolNames || [],

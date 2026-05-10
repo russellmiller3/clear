@@ -542,6 +542,88 @@ page 'Deals':
     expect(artifact.source).toContain("page 'Deals'");
   });
 
+  it('captures retrieved pattern metadata in the artifact so negative trials are diagnosable', () => {
+    const longSource = 'a'.repeat(4000);
+    const artifact = buildTrialArtifact({
+      probe: { id: 'booking', prompt: 'Build a booking app' },
+      variant: 'full_hook',
+      result: {
+        text: 'done',
+        source: 'build for web',
+        toolNames: ['edit_code'],
+        preflight: {
+          mode: 'full',
+          required: true,
+          pattern_count: 2,
+          patterns: [
+            {
+              template_name: 'clear-language::booking::overlap-rejection',
+              parent_template_name: 'clear-language-primitives',
+              pattern_kind: 'workflow',
+              pattern_set: 'language',
+              source_excerpt: 'enforce that booking does not overlap',
+              source: longSource,
+            },
+            {
+              template_name: 'clear-language::booking::cancel-action',
+              parent_template_name: 'clear-language-primitives',
+              pattern_kind: 'row_action',
+              pattern_set: 'language',
+              source: longSource,
+            },
+          ],
+        },
+        firstTurnPreflight: {
+          mode: 'docs',
+          required: true,
+          pattern_count: 1,
+          patterns: [
+            {
+              template_name: 'clear-language::booking::seed-rooms',
+              pattern_kind: 'seed',
+              source: 'create a Rooms table:\n  name, required',
+            },
+          ],
+        },
+        compile: { errors: [], warnings: [] },
+      },
+      score: { pass: false },
+    });
+
+    expect(Array.isArray(artifact.preflight.patterns)).toEqual(true);
+    expect(artifact.preflight.patterns.length).toEqual(2);
+    expect(artifact.preflight.patterns[0].template_name).toEqual('clear-language::booking::overlap-rejection');
+    expect(artifact.preflight.patterns[0].parent_template_name).toEqual('clear-language-primitives');
+    expect(artifact.preflight.patterns[0].pattern_kind).toEqual('workflow');
+    expect(artifact.preflight.patterns[0].pattern_set).toEqual('language');
+    expect(artifact.preflight.patterns[0].source_excerpt).toEqual('enforce that booking does not overlap');
+    expect(artifact.preflight.patterns[1].template_name).toEqual('clear-language::booking::cancel-action');
+    expect(artifact.preflight.patterns[1].source_excerpt.length).toBeLessThan(2000);
+    expect(artifact.preflight.patterns[1].source_excerpt.length).toBeGreaterThan(0);
+    expect(artifact.firstTurnPreflight).not.toEqual(null);
+    expect(artifact.firstTurnPreflight.patterns.length).toEqual(1);
+    expect(artifact.firstTurnPreflight.patterns[0].template_name).toEqual('clear-language::booking::seed-rooms');
+  });
+
+  it('defaults preflight patterns to an empty array when none were retrieved', () => {
+    const artifact = buildTrialArtifact({
+      probe: { id: 'docs-only', prompt: 'Build something' },
+      variant: 'docs_only',
+      result: {
+        text: 'done',
+        source: '',
+        toolNames: [],
+        preflight: { mode: 'docs', required: true, pattern_count: 0 },
+        compile: { errors: [], warnings: [] },
+      },
+      score: { pass: false },
+    });
+
+    expect(Array.isArray(artifact.preflight.patterns)).toEqual(true);
+    expect(artifact.preflight.patterns.length).toEqual(0);
+    expect(artifact.firstTurnPreflight).toEqual(null);
+  });
+
   it('keeps Meph instructed to search before answering narrow Clear shape questions', () => {
     const prompt = readFileSync(join(process.cwd(), 'studio', 'system-prompt.md'), 'utf8');
 
