@@ -456,6 +456,43 @@ written instructions, would the compiled output still be secure, correct,
 and tested? If yes, the system is working. If no, something important is
 living in the AI's head instead of in the compiler or the docs.
 
+### 17. Closed-World Tool Dispatch (Soundness Foundation)
+
+When a Clear program declares an agent with `has tools: fn1, fn2` (and
+optionally `uses skills: '...'` which adds skill-declared tools), the set
+of functions the AI can invoke is **fixed at compile time** and never
+extended at runtime.
+
+The runtime tool-use loop (`_askAIWithTools` in `compiler.js`) builds a
+dictionary of available functions from the agent's static closure. When
+the AI returns a `tool_use` block requesting a function by name, the
+runtime looks the name up in that dictionary. **A miss returns `"Unknown
+tool"` to the AI and the loop continues — there is no `eval`, no string
+lookup of globals, no dynamic registration, no escape hatch.**
+
+This property — closed-world tool dispatch — is the soundness foundation
+for every static claim the prover makes about agent behavior:
+
+- `prove that agent 'X' cannot call <fn>` is sound BECAUSE the closure
+  walked at compile time IS the runtime dispatch surface.
+- `prove that agent 'X' cannot delete from <Entity>` walks every tool
+  body in the closure transitively; the closure is finite and complete.
+- `prove that agent 'X' cannot call <fn> with <arg> > <value>` evaluates
+  arguments symbolically at every reachable call site; the set of call
+  sites is bounded by the closure plus the source-level call graph.
+
+If this property ever changes — dynamic tool registration, runtime tool
+loading, AI-controlled function dispatch — every PROVED verdict in the
+audit bundle becomes potentially unsound. Any future feature that wants
+to extend the tool surface at runtime must either preserve the closed-
+world property at the boundary or explicitly retract the prover's
+soundness claim with the same gravity that retiring the type system
+would deserve.
+
+**The bar:** the runtime tool-dispatch site (compiler.js around line
+695 in the JS emit, near line 15947 in the Python emit) is load-bearing
+for every agent prover claim. Touch it carefully.
+
 ## Productive Disagreement
 
 Claude should push back when a syntax suggestion has a readability or consistency

@@ -2,6 +2,25 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-07: Agent tool-bound prover — three load-bearing soundness lessons
+
+Shipped four phases of `prove that agent 'X' cannot ...` claims. Three engineering misses surfaced and fixed during the build — each one a structural soundness issue, not a typo:
+
+1. **Singular/plural normalization on entity matching.** Clear's CRUD AST uses the singular record name (`target: 'User'` for a `delete the User with this id`), but the table is declared as `create a Users table:` (plural). A developer writing `prove that agent 'X' cannot delete from Users` correctly uses the plural form. Without normalization, the walker mismatched and falsely PROVED. Fix: `_entitiesMatch(a, b)` accepts case-insensitive equality OR an `s` suffix difference on either side. The mismatch was caught only because the test used the plural form a real developer would write.
+
+2. **Soundness gate when the constrained function is itself a tool.** Phase 3 (symbolic argument bounds) walks source-level call sites. If the constrained function is in the agent's `has tools:` closure, Claude can dispatch to it directly — there's no source-level call site for the prover to read. The walker would find zero call sites and falsely PROVE. Fix: before walking, check whether the constrained function is in the agent's tool closure; if yes, unconditionally DISPROVED with the developer-actionable suggestion (forbid the call OR add an enforce inside the function body). The gap was caught only because the demo file deliberately put the constrained function in the closure.
+
+3. **Honest UNVERIFIABLE beats a false PROVED.** Phase 4 (policy bridge) dispatches each `policy:` rule into its appropriate static checker. Some policy rules — `block_prompt_injection`, `code_freeze_active`, `maintenance_window`, `require_role`, `require_clearance`, `contractor_cannot_write_pii` — are runtime-only checks with no source-level structure to walk. The wrong move would be to silently mark them PROVED (the audit bundle would lie). The right move is UNVERIFIABLE with an honest reason: *"enforced at runtime, not by static analysis — the prover cannot claim what the runtime check will refuse."* The audit reads two distinct halves: what the build catches at compile time vs what depends on runtime gates being in place.
+
+### Gotchas-as-rules
+
+- **Never trust pattern matching when names normalize differently between AST and source.** Add a tolerant matcher (case-insensitive, singular/plural) and a test that uses the developer-facing form, not the AST form.
+- **Static analysis must check whether the analyzed primitive is itself a free-variable input.** When something can be controlled by an opaque runtime hop (Claude's tool dispatch, a remote call, an env var), the static walker doesn't see it. Add a soundness gate that explicitly recognizes the case and returns the conservative verdict.
+- **An audit bundle that lies is worse than one that admits limits.** PROVED on a runtime-only check teaches the auditor to distrust the bundle. UNVERIFIABLE with an honest reason teaches them where to look for the runtime evidence.
+- **Closed-world tool dispatch is THE soundness property** for the agent prover. The whole stack rests on `_askAIWithTools` looking up tool names in a compile-time-built dict and returning "Unknown tool" for misses. If that ever changes (e.g. someone adds dynamic tool registration), every PROVED verdict in the audit bundle becomes potentially unsound. Document the property explicitly so future contributors know what they'd be breaking.
+
+---
+
 ## Session 2026-05-09: Meph eval fixtures must compile before spending
 
 The paid Meph tool eval flagged DOM/tool issues after the prompt guidance ship. Root cause was not the new prompt. The shared eval app had stale Clear syntax: an untitled `section:` no longer compiles. That made app-dependent scenarios noisy and spent real API money on a bad fixture.

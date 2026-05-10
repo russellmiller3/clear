@@ -19,6 +19,21 @@ rule discount-cap-thirty:
 
 The body parses with the same statement parser as endpoints — `guard`, `validate`, `if` all work inside. Quoted-string names dasherize (`rule 'Discount cap':` → `discount-cap`). `clear prove` and `clear test --prove` render a "Business rules in this file:" section with a per-rule badge — `[PROVED]`, `[DISPROVED]`, or `[UNVERIFIABLE]` — so auditors see verdicts attributed by name. Hard rules: names must be unique per file, body must have at least one statement, rules must live at the top level (no nesting). See `examples/rule-keyword-tour.clear` for one-of-each-verdict demo. Use `rule:` when the policy has a name a non-engineer would say; use raw `guard` for one-off checks inside an endpoint.
 
+## Provable agent tool-bound claims — `prove that agent 'X' cannot ...`
+For agents that hold real tools (charge cards, delete rows, send emails), the prover lets you ASSERT what the agent cannot do — and proves the assertion at compile time. Five top-level claim forms, each rendering a verdict in the same `clear prove` bundle as rule and test verdicts:
+
+```clear
+prove that agent 'Refund Bot' cannot call charge_card                                # 1. Direct closure walk
+prove that agent 'Refund Bot' cannot delete from Deals                               # 2. Transitive — walks reachable tool bodies
+prove that agent 'Refund Bot' cannot modify Refunds                                  # 2. Transitive — save/remove/upsert/update
+prove that agent 'Refund Bot' cannot call charge_card with amount is greater than 10000  # 3. Symbolic argument bound
+prove that agent 'Refund Bot' upholds all policies                                   # 4. Bridge — composes 1-3 with policy: blocks
+```
+
+Direct PROVED iff the function isn't in the agent's tool closure (own `has tools:` plus the recursive `uses skills:` closure). Transitive walks the agent body plus every reachable tool body's CRUD ops; PROVED iff none touches the named entity in the matching way. Symbolic uses Clear's `evaluateSymbolic` engine to bound argument values at every reachable static call site; literal small values prove against `> 1000` constraints. The Bridge dispatches each `policy:` rule to its appropriate static checker — runtime-only rules (block_prompt_injection, code_freeze_active, role/clearance checks) are honestly marked UNVERIFIABLE rather than falsely PROVED. See USER-GUIDE Chapter 12b "Provable Agent Bounds (Math for Agents Too)" for the deal-desk-anchored Refund Bot walkthrough, and `examples/proofs/agent-bounds-demo.clear` for runnable PROVED + DISPROVED examples.
+
+When a user asks for an agent that touches money, deletes data, or sends external messages, ALWAYS pair the dangerous tool with at least one `prove that agent 'X' cannot ...` claim. The build's exit code goes to 1 if any claim is DISPROVED — that's the CI gate that catches scope creep when a developer adds a tool later.
+
 ## Canonical Syntax Cheat Sheet (READ FIRST — covers ~80% of avoidable mistakes)
 
 The full reference is in SYNTAX.md and AI-INSTRUCTIONS.md. Read those when you need detail. But these 12 rules cover the patterns that bite most often. Internalize them so you don't have to look them up every turn.
@@ -55,6 +70,7 @@ The cheat sheet above covers ~80% of every-turn syntax. For the rest — when th
 | Approval queues / triggered email | `SYNTAX.md` (Approval Queues) + `apps/deal-desk/main.clear` |
 | Routing — `route X by FIELD:` | `SYNTAX.md` (Routing) — getting the LHS-quoting + before-save rules wrong is a HARD error |
 | Provable business rules — `rule <name>:` | `SYNTAX.md` (Named Business Rules) + `examples/rule-keyword-tour.clear` |
+| Provable agent bounds — `prove that agent 'X' cannot ...` | `SYNTAX.md` (Agent Tool-Bound Claims) + `USER-GUIDE.md` Chapter 12b + `examples/proofs/agent-bounds-demo.clear` |
 | Charts / dashboards / styling / layout | `SYNTAX.md` (Web Pages, Styles) + `apps/deal-desk/main.clear` for full app shell |
 | Tests + `clear prove` | `USER-GUIDE.md` Chapters 17, 23, 24, 24b |
 | "Where does X live in the compiler?" | `FAQ.md` (search-first) |
