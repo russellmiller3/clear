@@ -1,3 +1,28 @@
+# Handoff — 2026-05-09 evening (Ralph metadata in probe artifacts)
+
+## What landed this stretch
+
+- Pattern-retrieval metadata is now captured in probe artifacts. Both halves wired:
+  - **Server side** (`studio/server.js`): the `pattern_preflight` SSE event now carries every retrieved row in a compact shape (`template_name`, `parent_template_name`, `pattern_kind`, `pattern_set`, `source_excerpt` capped at 1500 chars). Two source-string assertions in `studio/server.test.js` lock the contract.
+  - **Artifact side** (`scripts/meph-pattern-live-probe.mjs`): `buildTrialArtifact` reads `preflight.patterns` and `firstTurnPreflight.patterns` and writes them to per-trial JSON. Defaults to `[]` when no patterns came back.
+- 25/25 probe tests + 320/320 server tests + full compiler suite green via pre-commit hook on each of the two commits (`92a0bcf`, `34de6b2`).
+- Branch: `feature/probe-pattern-metadata` (not yet merged or pushed; phase boundary).
+
+## Why this matters for launch
+
+The 2026-05-08 booking A/B that read "full hook hurt vs docs-only" was unfalsifiable — we couldn't tell whether bad retrieval or bad model was to blame. Now the next failed run records exactly which patterns the hook handed Meph, so retrieval quality is separately debuggable. Compounds with the typed-fact slice that already records requirement facts and app facts in the same artifact folder.
+
+## Next critical path
+
+1. **Merge `feature/probe-pattern-metadata` to main and push.** Phase complete; ship before the next epic so the working tree is clean for LAE Phase C.
+2. **LAE Phase C cycle 1.** Plan locked at `plans/plan-lae-phase-c-04-25-2026.md` (254 lines, 7 cycles). Read first, then start TDD. ROADMAP names this as the load-bearing piece for Marcus week-1 ("3+ live edits without a single rollback-due-to-breakage"). Hardest-First default for the next session.
+3. **Hartl reference-track light rewrites (batch 1: Chapters 13, 13b, 14).** ~30-45 min/chapter. Customer-facing docs.
+4. **Multi-user-per-tenant invite endpoints on Python.** Mirror the JS scaffold's `POST /auth/invite` + `GET /auth/invite` + signup-with-invite-token. ~1 session.
+
+Re-running paid probes is still gated on Russell re-authorizing budget ($0.48 left of prior $5 cap). Item 1 unblocks honest diagnosis when probes do run again.
+
+---
+
 # Handoff — 2026-05-08 (Meph requirements/Ralph loop + UI compiler gates)
 
 ## 2026-05-09 prompt follow-up

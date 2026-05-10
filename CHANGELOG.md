@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-09 - Pattern-retrieval metadata in probe artifacts
+
+Every negative pattern-probe trial used to record only `pattern_count`, so "full hook hurt vs docs-only" results were unfalsifiable: there was no way to tell whether bad retrieval or bad model was to blame. Both halves now wired so the next failed A/B is debuggable.
+
+What shipped:
+- `scripts/meph-pattern-live-probe.mjs` `buildTrialArtifact` now emits a compact pattern row (`template_name`, `parent_template_name`, `pattern_kind`, `pattern_set`, `source_excerpt` capped at 1500 chars) for both the build-turn preflight and the requirements-turn `firstTurnPreflight`. Defaults to `[]` when no patterns came back.
+- `studio/server.js` `pattern_preflight` SSE event now carries the same compact row shape so the harness has something to record. Two `studio/server.test.js` source-string assertions lock the contract.
+
+Verification: `node scripts/meph-pattern-live-probe.test.mjs` (25/25), `node studio/server.test.js` (320/320). Pre-commit hook ran the full compiler suite green on each commit.
+
+---
+
 ## 2026-05-09 - Meph eval fixture freshness guard
 
 The Meph live eval fixture now compiles cleanly under current Clear syntax. A new guard test prevents the tool-eval harness from silently rotting when syntax rules change.

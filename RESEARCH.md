@@ -113,6 +113,7 @@ Implementation status after the first slice:
 - The harness now salvages source-backed trials when a provider flakes after editing; no-source provider failures still block.
 - `studio/supervisor/pattern-library.js` includes the booking/customer/availability/overlap workflow primitive that the latest failed booking run needed.
 - `studio/supervisor/factor-db-integration.test.js` guards that hard booking prompts retrieve that primitive first at $0.
+- `scripts/meph-pattern-live-probe.mjs` per-trial artifacts now record exactly which patterns the hook handed Meph (template name, parent, kind, set, source excerpt capped at 1500 chars) for both the build-turn preflight and the requirements-turn `firstTurnPreflight`. The `studio/server.js` `pattern_preflight` SSE event carries the same compact shape. Closes the diagnosis gap that made the 2026-05-08 booking A/B unfalsifiable: the next "full hook hurt vs docs-only" result will name the rows that did the harm. Shipped 2026-05-09 (commits `92a0bcf` artifact-side, `34de6b2` server-side).
 
 ## External benchmark -- the cutting-edge harness bar (2026-05-08)
 
