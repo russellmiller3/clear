@@ -139,7 +139,7 @@ Eight hooks in this repo as of 2026-05-03. Each fires automatically on a specifi
 
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
-_Last refresh: 2026-05-03_
+_Last refresh: 2026-05-10_
 
 ### CLAUDE.md rules (project-level, this repo)
 
@@ -154,7 +154,7 @@ _Last refresh: 2026-05-03_
 - **Key Files** — `index.js` -- public API, `compileProgram(source)` is the entry point
 - **CLI (for AI agents)** — The CLI is designed for machines first. Every command supports `--json`.
 - **Core Design Principles (from PHILOSOPHY.md)** — Compiled JS/Python is build output. Never edit output.
-- **Core 8 Templates** — These are the showcase apps — each archetype exercises a different feature slice.
+- **13 Canonical Apps (HARD RULE — Studio dropdown shows EXACTLY these 13)** — Two nets of apps that exercise the language end-to-end. Studio's app-picker
 - **No Self-Assignment Rule** — Never write `x is x` in Clear code. When building records from function arguments, the argument names must differ from the field names: `…
 - **No Backward Compatibility** — There are no users yet. Do not preserve backward compatibility. Always do things the right way.
 - **File TOC Rule (MANDATORY)** — Both `parser.js` and `compiler.js` have a TABLE OF CONTENTS at the top.
@@ -177,10 +177,12 @@ _Last refresh: 2026-05-03_
 - **periodic-introspect.mjs** — UserPromptSubmit hook — nudges Claude to invoke /introspect every 20 user
 - **propose-new-hooks.mjs** — .claude/hooks/propose-new-hooks.mjs
 - **propose-new-tools.mjs** — .claude/hooks/propose-new-tools.mjs
+- **python-first-class.mjs** — .claude/hooks/python-first-class.mjs
 - **require-branch-work.mjs** — Block file-changing work on main.
 - **require-branch-work.test.mjs** — (no top-comment description in require-branch-work.test.mjs)
 - **require-plan-read.mjs** — .claude/hooks/require-plan-read.mjs
 - **screenshot-ui-work.mjs** — Match UI surfaces.
+- **ship-docs-cascade-gate.mjs** — File patterns that count as substantive code changes — if any of
 - **starting-protocol.mjs** — .claude/hooks/starting-protocol.mjs
 - **validator-friction.mjs** — .claude/hooks/validator-friction.mjs
 - **verify-real-remote.mjs** — Block any git push or git commit when origin points at a sandbox-local
@@ -191,6 +193,7 @@ _Last refresh: 2026-05-03_
 - **/bigpicture** — Narrate what was built in this session and why it matters. Step back from the diff, explain significance in plain English, connect to whe…
 - **/debug** — >
 - **/docs** — Update all documentation files to match current compiler state. Narrates what was built and why it matters, then ensures intent.md, SYNTA…
+- **/enq** — Enqueue a new item to the in-session work queue at .claude/state/priority-queue.md. Use when the user types "/enq [text]" — appends the i…
 - **/eval-meph** — Run the Meph tool eval as a regression net. Trigger when changes touch playground/server.js (especially TOOLS array, executeTool, validat…
 - **/execute-plan** — Use when executing a multi-phase implementation plan. Trigger when user says "execute this plan", "implement this plan", "start building"…
 - **/handoff** — Create or update HANDOFF.md to pass context between sessions. Use when ending a session, switching tasks, or when the user says "handoff"…
@@ -208,8 +211,10 @@ _Last refresh: 2026-05-03_
 ### `scripts/` — helper utilities (safe to run on demand)
 
 - **audit-bundle.mjs** — scripts/audit-bundle.mjs
+- **build-codemirror-bundle.mjs** — Build script for the playground's CodeMirror bundle.
 - **build-playground-bundle.mjs** — Build script for the in-browser playground compiler bundle.
 - **check-doc-drift.cjs** — Files we care about — the canonical docs that must agree with each other.
+- **codemirror-entry.mjs** — Entry file for the playground's CodeMirror bundle.
 - **cross-target-smoke.mjs** — scripts/cross-target-smoke.mjs
 - **decidable-core-replay.mjs** — scripts/decidable-core-replay.mjs
 - **doc-drift.mjs** — scripts/doc-drift.mjs
@@ -217,6 +222,7 @@ _Last refresh: 2026-05-03_
 - **factor-db-summary-helpers.mjs** — (no top-comment description in factor-db-summary-helpers.mjs)
 - **factor-db-summary.mjs** — Quick read-only summary of the Factor DB.
 - **factor-db-summary.test.mjs** — (no top-comment description in factor-db-summary.test.mjs)
+- **factor-db-trace-summary.mjs** — Pretty-print the meph_turns trace for one session, or aggregate stats.
 - **hint-effect-report-helpers.mjs** — (no top-comment description in hint-effect-report-helpers.mjs)
 - **hint-effect-report.mjs** — Read-only A/B artifact analyzer for the Meph hint flywheel.
 - **hint-effect-report.test.mjs** — (no top-comment description in hint-effect-report.test.mjs)
@@ -229,9 +235,22 @@ _Last refresh: 2026-05-03_
 - **marcus-landing.test.mjs** — (no top-comment description in marcus-landing.test.mjs)
 - **match-shape.mjs** — Shape-search retrieval over canonical-examples.md.
 - **match-shape.test.mjs** — Tests for shape-search retrieval (Lean Lesson 2).
+- **meph-pattern-live-probe.mjs** — (no top-comment description in meph-pattern-live-probe.mjs)
+- **meph-pattern-live-probe.test.mjs** — manager vp 50000 approval
+- **meph-pattern-sweep-runner.mjs** — (no top-comment description in meph-pattern-sweep-runner.mjs)
+- **meph-pattern-sweep-runner.test.mjs** — (no top-comment description in meph-pattern-sweep-runner.test.mjs)
+- **meph-requirements-live-smoke.mjs** — (no top-comment description in meph-requirements-live-smoke.mjs)
+- **meph-requirements-live-smoke.test.mjs** — (no top-comment description in meph-requirements-live-smoke.test.mjs)
 - **merge-keep-both.mjs** — Resolves merge conflicts in doc files by keeping BOTH sides.
+- **mojibake-hygiene.mjs** — Catches real mojibake and provides ASCII-safe log tails for Windows shells.
+- **mojibake-hygiene.test.mjs** — (no top-comment description in mojibake-hygiene.test.mjs)
+- **primitive-audit-helpers.mjs** — (no top-comment description in primitive-audit-helpers.mjs)
+- **primitive-audit.mjs** — (no top-comment description in primitive-audit.mjs)
+- **primitive-audit.test.mjs** — (no top-comment description in primitive-audit.test.mjs)
+- **python-parity-audit.mjs** — scripts/python-parity-audit.mjs
 - **reconcile-wfp.js** — Weekly reconcile job.
 - **rename-guard-to-enforce.cjs** — One-shot script to rename `guard` keyword → `enforce that` in test files
+- **reorder-user-guide.mjs** — Reorders USER-GUIDE.md so the chapter sequence in the body matches
 - **rewrite-enforce-that-msg.mjs** — One-shot rewrite: `enforce that X or 'msg'` → `enforce that X, or fail with error message: 'msg'`
 - **run-marcus-uat.mjs** — The 5 Marcus apps per the canonical list
 - **score-winning-runs.mjs** — score-winning-runs — rank every test_pass=1 row in the Factor DB by an
