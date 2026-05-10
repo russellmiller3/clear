@@ -2,6 +2,21 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-09: Audit a multi-cycle epic before starting "cycle 1"
+
+LAE Phase C was a 7-cycle TDD plan locked 2026-04-25. ROADMAP said "Not started, ~1.5 weeks." After Phase 2 of the session shipped (cycle 7's pure function), an audit pass — three Grep calls + two file existence checks — discovered cycles 1, 3, 4 (helper), 5 had already shipped in past sessions. The only real gap in the load-bearing functionality was cycle 6 (cloud destructive `via:'widget-destructive'` tag), which was a one-line plumbing change. Total work to "Phase C functionally complete" was about 30 minutes after the audit, not 1.5 weeks.
+
+Without the audit, I would have re-implemented `proposeRemoveField` from scratch (cycle 1), shipped it as a duplicate of `lib/edit-tools-phase-c.js` (which already exists), and only noticed when test names collided. ROADMAP's status text drifts faster than the code does.
+
+### Gotchas-as-rules
+
+- **Before starting cycle 1 of a multi-cycle plan, audit what's already shipped.** Three Grep calls + a couple of `ls` checks against the plan's named file list catches duplicate work before TDD begins.
+- **ROADMAP status text is not authoritative.** If the plan names file paths, the file system is authoritative. If the plan names tests, run the tests — green tests are the strongest signal that a cycle is done.
+- **Multi-session epics drift the most between intent and reality.** A plan locked 2 weeks ago has had multiple opportunities for someone to ship pieces of it under a different epic name or as side-quests during another feature.
+- **The audit pass belongs in the in-flight item itself, not as a separate ROADMAP entry.** When picking up a multi-cycle epic, the first deliverable IS the audit. Convert ROADMAP claims into evidence of file existence + green tests before adding new code.
+
+---
+
 ## Session 2026-05-07: Agent tool-bound prover — three load-bearing soundness lessons
 
 Shipped four phases of `prove that agent 'X' cannot ...` claims. Three engineering misses surfaced and fixed during the build — each one a structural soundness issue, not a typo:
