@@ -7,6 +7,35 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## Where does Live App Editing Phase C live, and is destructive editing safe? (2026-05-09)
+
+LAE Phase C ships destructive ships — drop a field, drop a table, change a type, drop an endpoint or page — through the Meph widget on a running app, with audit-first ordering and typed-confirmation as the safety gate. **Functionally complete 2026-05-09.**
+
+**Safety chain (in execution order):**
+1. **Tool layer** (`lib/edit-tools-phase-c.js`) — `proposeRemoveField` splices a field's source line, re-parses, and rejects if the classifier reports anything other than a single `remove_field` change. Refuses to remove primary-key-like fields outright.
+2. **Confirmation phrase** (`lib/destructive-confirm.js`) — `requiredConfirmation(classification)` produces the canonical phrase the owner must type verbatim: `DELETE field <name>`, `DELETE endpoint <method> <path>`, `DELETE page "<title>"`, `DELETE table <name>`, `COERCE <table>.<field> from X to Y`. Plain English, not SQL jargon (locked-in decision #1).
+3. **Audit-first ship gate** (`lib/edit-api.js` `/__meph__/api/ship`) — when classification is destructive, the server (a) requires non-empty `confirmation` matching the canonical phrase, (b) requires non-empty `reason`, (c) writes a `pending` audit row FIRST via `appendAuditEntry`, (d) only then calls `applyShip`, (e) marks the row `shipped` (with versionId) or `ship-failed` (with error). If the audit store throws or returns `ok:false`, the ship is REFUSED with 503 — no row, no ship (locked-in decision #4).
+4. **Audit log store** (`studio/tenants.js`) — `appendAuditEntry` + `markAuditEntry` + `getAuditLog` capped at `MAX_AUDIT_PER_APP=200`. Trim happens on append only, never on mark, so a `pending` row in flight can't disappear before the ship outcome lands. Both in-memory and Postgres backends ship parity.
+5. **Cloud `via` tag** (`studio/server.js` `applyShip` + `lib/edit-api.js` cloudContext) — destructive ships record `via:'widget-destructive'` on the version row so the deploy ledger is queryable for "show me every destructive change in the last 30 days" without diff archaeology.
+6. **Widget destructive UX** (`runtime/meph-widget.js`) — when classification is destructive, the widget renders a red `Destructive · permanent` chip, the canonical phrase as the input placeholder, a required reason textarea, and the red `clear-meph-btn-danger` button labeled "I understand — ship and destroy" (long copy = reading-friction safety, locked-in decision #3). Button stays disabled until the typed phrase exact-matches AND reason is non-empty.
+
+**Rollback:** restores the code via the same `versions[]` ladder as Phase B, but **does NOT recover dropped data**. The audit row is the GDPR/CCPA/HIPAA accountability surface that replaces the data snapshot — see ROADMAP "no data snapshot on destructive delete."
+
+**Open follow-up (cycle 7 wiring):** `lib/migration-planner.js` `planRename` detects when a remove_field + add_field pair on the same table looks like a rename. Pure function ships standalone (6/6 tests). Wiring into `/propose` response + widget UX to surface the keep/discard radio is the named in-flight item in `.claude/state/priority-queue.md`.
+
+---
+
+## Where do retrieved patterns get logged in probe artifacts? (2026-05-09)
+
+Per-trial JSON artifacts written by `scripts/meph-pattern-live-probe.mjs` `buildTrialArtifact` now record exactly which patterns the hook handed Meph. Two surfaces wired:
+
+- **Server-side** (`studio/server.js` `pattern_preflight` SSE event) carries a compact row per retrieved pattern: `{ template_name, parent_template_name, pattern_kind, pattern_set, source_excerpt }` capped at 1500 chars.
+- **Artifact-side** (`buildTrialArtifact`) reads `preflight.patterns` and `firstTurnPreflight.patterns` and writes them to per-trial `*.json` files under `studio/sessions/pattern-probes/<timestamp>/`. Defaults to `[]` when no patterns came back.
+
+Why it matters: the 2026-05-08 booking A/B that read "full hook hurt vs docs-only" was previously unfalsifiable — only `pattern_count` was logged, so we couldn't tell whether bad retrieval or bad model was to blame. The next failed run names the rows that did the harm.
+
+---
+
 ## Where are good `requirements:` examples for Meph? (2026-05-09)
 
 Use `requirements-sample.md`. It shows how to turn vague user asks into checkable requirements for Ralph: data shape, CRUD lifecycle, roles/permissions, routing, domain rules, concurrency, audit, UI reachability, and runtime evidence.
