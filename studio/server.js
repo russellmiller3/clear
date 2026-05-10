@@ -3661,6 +3661,13 @@ app.post('/api/chat', async (req, res) => {
     required: !!patternPreflightResult.required,
     docs: patternPreflightResult.docs?.map(doc => doc.filename) || [],
     pattern_count: patternPreflightResult.patterns?.length || 0,
+    patterns: (patternPreflightResult.patterns || []).map(row => ({
+      template_name: row.template_name || '',
+      parent_template_name: row.parent_template_name || null,
+      pattern_kind: row.pattern_kind || null,
+      pattern_set: row.pattern_set || null,
+      source_excerpt: String(row.source_excerpt ?? row.source ?? '').trim().slice(0, 1500),
+    })),
     factor_hints_disabled: disableFactorHints === true,
   });
   let toolResults = [];

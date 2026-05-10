@@ -533,6 +533,10 @@ try {
     assert(serverSrc.includes('buildPatternPreflight'), 'chat path builds required pattern preflight');
     assert(serverSrc.includes('appendPatternPreflightToMessages'), 'chat path injects pattern preflight into messages');
     assert(serverSrc.includes("type: 'pattern_preflight'"), 'chat path emits pattern_preflight telemetry');
+    assert(/pattern_preflight[\s\S]{0,800}patterns:\s*\(patternPreflightResult\.patterns/.test(serverSrc),
+      'pattern_preflight event carries the retrieved pattern rows so probe artifacts can record what the hook handed Meph');
+    assert(serverSrc.includes('template_name:') && serverSrc.includes('source_excerpt:'),
+      'pattern_preflight event maps each row to a compact shape with template_name and source_excerpt');
     assert(serverSrc.includes('patternPreflightRequest !== false'), 'chat path can disable preflight for A/B trials');
     assert(serverSrc.includes('stripPatternSearchPromptGuard'), 'chat path can strip prompt-only search guard for A/B trials');
     assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
