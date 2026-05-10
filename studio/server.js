@@ -453,7 +453,11 @@ createEditApi(app, {
               appSlug: cloudContext.appSlug,
               mode: 'update',
               lastRecord,
-              via: 'widget',
+              // LAE Phase C cycle 6 — when the widget classified the change as
+              // destructive, edit-api passed cloudContext.via='widget-destructive'.
+              // Default to plain 'widget' for additive/reversible ships and any
+              // legacy callers that don't set the field.
+              via: (cloudContext && cloudContext.via) || 'widget',
               confirmMigration: true,
               secrets: {},
               api: deps.api,

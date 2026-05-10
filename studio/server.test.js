@@ -542,6 +542,8 @@ try {
     assert(serverSrc.includes('disablePatternSearchTool'), 'chat path can remove pattern search tool for no-pattern baseline trials');
     assert(serverSrc.includes('approvedRequirements: requirementsApproval.approved'),
       'chat path feeds approved requirements into pattern preflight');
+    assert(serverSrc.includes('via: (cloudContext && cloudContext.via) || \'widget\''),
+      'applyShip forwards cloudContext.via to deploySourceCloudflare so destructive ships record via:\'widget-destructive\' (LAE Phase C cycle 6)');
     assert(serverSrc.includes('finalizeChatDoneWithRalph'),
       'chat finalization runs the Ralph requirements gate before done');
     assert(serverSrc.includes('finalizeChatDoneWithRalph({ forceBlock: true })'),
