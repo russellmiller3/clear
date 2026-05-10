@@ -179,7 +179,7 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 **Parallel track (Dave):** keep `landing/for-developers.html`, `clear-lsp`, the VSCode extension, and the Compiler API. Don't bet on D-6 (HN launch) until Marcus revenue lands. After first Marcus customer, evaluate whether to push Dave-first as expansion or keep it as a parallel hobby track.
 
 **Other open work that doesn't block launch:**
-- LAE Phase C (destructive ships) — plan locked 2026-04-25, 7-cycle TDD. Compounds the "edit live app" pitch but isn't on the critical path.
+- LAE Phase C (destructive ships) — **functionally complete 2026-05-09**. Cycles 1, 3, 4, 5, 6 + cycle 7's pure function shipped to main. Cycle 7's wiring into `/propose` response + widget UX is the only follow-up.
 - LAE Phase D — LAE-9 concurrent-edit guard, LAE-10 dry-run mode. Phase D's audit log write path shipped today.
 - Builder Mode default flip (1 day, ships Builder Mode as the new-user default).
 - Charts T2#8 — donut/scatter/gauge/sparkline (6-cycle plan locked).
@@ -258,7 +258,7 @@ Phase A (additive edits) + Phase B (reversible: hide/rename/relabel/reorder) shi
 
 | Phase | Items | Status | Effort |
 |-------|-------|--------|--------|
-| **Phase C** | LAE-5 schema migration planner; LAE-3 destructive changes (explicit permanent-delete + unavoidable type coercion). **No data snapshot on destructive delete** — audit trail replaces it as the accountability surface (GDPR/CCPA/HIPAA erasure compliance). | Not started | ~1.5 weeks |
+| **Phase C** | LAE-5 schema migration planner; LAE-3 destructive changes (explicit permanent-delete + unavoidable type coercion). **No data snapshot on destructive delete** — audit trail replaces it as the accountability surface (GDPR/CCPA/HIPAA erasure compliance). | **Functionally complete 2026-05-09** — cycles 1, 3, 4, 5, 6 + cycle 7 pure fn shipped to main. Only cycle 7's `/propose` + widget wiring remains. | done |
 | **Phase D** | LAE-9 concurrent-edit guard (block/queue, never silent overwrite); LAE-10 dry-run mode (private staging URL for 10-min preview before shipping to employees) | Not started | ~3 days remaining |
 
 **Still needed before any multi-user demo:**

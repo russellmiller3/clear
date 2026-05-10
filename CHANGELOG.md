@@ -6,6 +6,29 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-09 - LAE Phase C functionally complete (cloud destructive via tag)
+
+The remaining structural gap in Live App Editing Phase C closes: destructive ships now record `via:'widget-destructive'` on the version row so the deploy ledger can distinguish destructive from additive ships after the fact (the audit row was already capturing the destruction story; this tag is the cheap way to find destructive ships in version history without re-deriving intent from each diff).
+
+What shipped:
+- `lib/edit-api.js` `cloudContext` now carries `via:'widget-destructive'` when `req.body.classification.type === 'destructive'`, else `'widget'`.
+- `studio/server.js` `applyShip` closure forwards `cloudContext.via` to `deploySourceCloudflare` (defaults to `'widget'` for legacy callers).
+- 2 new `lib/edit-api.test.js` cases lock the cloudContext-side contract; 1 source-string assertion in `studio/server.test.js` prevents a future refactor from silently dropping the plumb.
+
+With cycle 6 in, Phase C is functionally complete — cycle 1 (propose tool), 3 (audit log destructive extension), 4 (ship gate + audit-first ordering), 5 (widget destructive UX), 6 (cloud `via` tag), 7 (rename-detection pure fn). Cycle 7's wiring into `/propose` response is the only remaining behind-the-scenes follow-up.
+
+**Why for Marcus:** the regulated-tier "we own your destructive change history" pitch goes from aspirational to demonstrable. Marcus can now delete fields and rename tables on a running app without losing customer data, AND the destructive ships are findable in the deploy ledger by version-history queries without diff archaeology.
+
+Verification: `node lib/edit-api.test.js` (43/43), `node studio/server.test.js` (321/321), full compiler suite green via pre-commit hook. Commit `660c1ab`.
+
+---
+
+## 2026-05-09 - LAE Phase C cycle 7 (rename-detection pure function)
+
+`lib/migration-planner.js` `planRename({beforeProgram, afterProgram})` ships. Pure function. When the classifier reports `remove_field` paired with `add_field` on the same table, returns `{detected:'rename', from, to, table, options:[keep|discard]}` plus a type-mismatch warning when types differ. 6/6 new tests in `lib/migration-planner.test.js`. Wider negotiation (split / coerce / archive) is Phase D-or-later. The wiring into `/propose` response and into the widget UX is a small follow-up; the pure function ships standalone (zero callers can't break anything). Commit `8ac831b`.
+
+---
+
 ## 2026-05-09 - Pattern-retrieval metadata in probe artifacts
 
 Every negative pattern-probe trial used to record only `pattern_count`, so "full hook hurt vs docs-only" results were unfalsifiable: there was no way to tell whether bad retrieval or bad model was to blame. Both halves now wired so the next failed A/B is debuggable.

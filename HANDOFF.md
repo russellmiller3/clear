@@ -1,3 +1,16 @@
+# Handoff — 2026-05-09 night (Ralph metadata + LAE Phase C functionally complete)
+
+## Update — Phase C cycle 6 shipped, Phase C now functionally complete
+
+After the cycle 7 pure fn merged, an audit pass on cycles 3 / 5 / 6 confirmed:
+- ✅ Cycle 3 — `appendAuditEntry` + `markAuditEntry` + `MAX_AUDIT_PER_APP=200` already shipped in `studio/tenants.js` (in-memory + Postgres parity).
+- ✅ Cycle 5 — widget destructive UX (typed-confirm input, reason textarea, red `clear-meph-btn-danger` button) already shipped in `runtime/meph-widget.js`.
+- ❌ Cycle 6 — cloud `via:'widget-destructive'` tag was the only real gap. Now shipped: `lib/edit-api.js` cloudContext sets the tag from `req.body.classification.type`, `studio/server.js` `applyShip` forwards it to `deploySourceCloudflare`. Two new edit-api.test.js cases (43/43 green) + one server.test.js source-string assertion (321/321 green) lock the contract. Commit `660c1ab` on `feature/lae-phase-c-cycle-6-via-tag`.
+
+Phase C is now functionally complete. Only the cycle 7 wiring (the migration planner pure fn into `/propose` response + into the widget destructive UX) remains, and that's a small follow-up that doesn't unlock any new launch capability — destructive ships work end-to-end with audit-first ordering and ledger-tagged version history today.
+
+---
+
 # Handoff — 2026-05-09 evening (Ralph metadata + LAE Phase C cycle 7 pure fn)
 
 ## What landed this stretch
