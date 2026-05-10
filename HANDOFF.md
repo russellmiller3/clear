@@ -1,12 +1,30 @@
-# Handoff — 2026-05-09 evening (Ralph metadata in probe artifacts)
+# Handoff — 2026-05-09 evening (Ralph metadata + LAE Phase C cycle 7 pure fn)
 
 ## What landed this stretch
+
+**Phase 1 — Ralph metadata in probe artifacts (shipped to origin/main)**
 
 - Pattern-retrieval metadata is now captured in probe artifacts. Both halves wired:
   - **Server side** (`studio/server.js`): the `pattern_preflight` SSE event now carries every retrieved row in a compact shape (`template_name`, `parent_template_name`, `pattern_kind`, `pattern_set`, `source_excerpt` capped at 1500 chars). Two source-string assertions in `studio/server.test.js` lock the contract.
   - **Artifact side** (`scripts/meph-pattern-live-probe.mjs`): `buildTrialArtifact` reads `preflight.patterns` and `firstTurnPreflight.patterns` and writes them to per-trial JSON. Defaults to `[]` when no patterns came back.
-- 25/25 probe tests + 320/320 server tests + full compiler suite green via pre-commit hook on each of the two commits (`92a0bcf`, `34de6b2`).
-- Branch: `feature/probe-pattern-metadata` (not yet merged or pushed; phase boundary).
+- 25/25 probe tests + 320/320 server tests + full compiler suite green. Three commits live on `origin/main` (`92a0bcf`, `34de6b2`, `2a25756`).
+
+**Phase 2 — LAE Phase C cycle 7 pure function (on feature branch, not merged)**
+
+- `lib/migration-planner.js` `planRename({beforeProgram, afterProgram})` ships. Pure function. When the classifier reports `remove_field` paired with `add_field` on the same table, returns `{detected:'rename', from, to, table, options:[keep|discard]}` plus a type-mismatch warning when types differ. 6/6 new tests in `lib/migration-planner.test.js`.
+- Branch: `feature/lae-phase-c-migration-planner-rename` (commit `8ac831b`). NOT merged or pushed — wiring depends on cycle 5 verification (see Phase C audit below).
+
+**Phase C audit reality (correcting stale ROADMAP)**
+
+ROADMAP claimed Phase C "Not started." That was wrong. Audit shows partial state:
+
+- ✅ Cycle 1 — `lib/edit-tools-phase-c.js` `proposeRemoveField` (3/3 tests)
+- ⚠️  Cycle 2 — only `propose_remove_field` is in `lib/proposal.js` dispatcher; `propose_drop_endpoint` and `propose_change_type` stubs not found
+- ❓ Cycle 3 — audit log destructive extension in `studio/tenants.js` not verified this session
+- ✅ Cycle 4 helper — `lib/destructive-confirm.js` ships with 8/8 tests; full `/ship` endpoint gate not verified
+- ❓ Cycle 5 — `runtime/meph-widget.js` mentions destructive but typed-confirm UX not verified
+- ❌ Cycle 6 — `widget-destructive` `via:` tag not found in any deploy code
+- ✅ Cycle 7 (pure fn) — shipped this session; wiring into `/propose` response + widget UI still missing
 
 ## Why this matters for launch
 
@@ -14,12 +32,12 @@ The 2026-05-08 booking A/B that read "full hook hurt vs docs-only" was unfalsifi
 
 ## Next critical path
 
-1. **Merge `feature/probe-pattern-metadata` to main and push.** Phase complete; ship before the next epic so the working tree is clean for LAE Phase C.
-2. **LAE Phase C cycle 1.** Plan locked at `plans/plan-lae-phase-c-04-25-2026.md` (254 lines, 7 cycles). Read first, then start TDD. ROADMAP names this as the load-bearing piece for Marcus week-1 ("3+ live edits without a single rollback-due-to-breakage"). Hardest-First default for the next session.
+1. **LAE Phase C audit-and-finish.** Verify cycles 3, 5, 6 by reading `studio/tenants.js`, `runtime/meph-widget.js`, and the deploy code. Plug whichever gaps are real (likely cycle 6 cloud `via:'widget-destructive'` tag, cycle 2's missing `propose_drop_endpoint` / `propose_change_type` stubs, cycle 7 wiring into `/propose`'s response). Goal: full Phase C green so destructive ships round-trip end-to-end with audit-first ordering. *Multi-cycle, ~1-2 sessions for the gaps.*
+2. **Merge + push `feature/lae-phase-c-migration-planner-rename`.** Once cycle 7 wiring lands or the audit confirms the pure fn is independently safe to ship, fast-forward to main and push. Until then the branch sits clean with `8ac831b` cycle-7 commit.
 3. **Hartl reference-track light rewrites (batch 1: Chapters 13, 13b, 14).** ~30-45 min/chapter. Customer-facing docs.
 4. **Multi-user-per-tenant invite endpoints on Python.** Mirror the JS scaffold's `POST /auth/invite` + `GET /auth/invite` + signup-with-invite-token. ~1 session.
 
-Re-running paid probes is still gated on Russell re-authorizing budget ($0.48 left of prior $5 cap). Item 1 unblocks honest diagnosis when probes do run again.
+Re-running paid probes is still gated on Russell re-authorizing budget ($0.48 left of prior $5 cap). Phase 1's pattern-metadata capture unblocks honest diagnosis when probes do run again.
 
 ---
 
