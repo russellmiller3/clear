@@ -9253,7 +9253,7 @@ ${pad}}`;
     // P13: Native AI streaming in endpoints
     case NodeType.STREAM_AI: {
       const prompt = exprToCode(node.prompt, ctx);
-      const context = node.context ? exprToCode(node.context, ctx) : 'null';
+      const context = node.context ? exprToCode(node.context, ctx) : (ctx.lang === 'python' ? 'None' : 'null');
       // Opt-out: `ask claude '...' with X without streaming` → single JSON
       // response (waits for the full answer, returns it once). Useful when
       // downstream consumers need the complete text (summaries, validation).

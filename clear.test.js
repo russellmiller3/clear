@@ -23998,6 +23998,30 @@ agent 'Bot' receiving msg:
     expect(result.python).not.toContain('async def _ask_ai_stream(');
     expect(result.python).toContain('import httpx');
   });
+
+  it('Python streaming agent with no context does not emit JS null literal', () => {
+    // Regression: STREAM_AI handler used 'null' as the no-context fallback.
+    // Python has no `null` — it needs `None`. Any bare `null` in Python output
+    // would cause NameError at runtime.
+    const src = `build for python backend
+agent 'Helper' receives question:
+  ask claude question
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).not.toContain(', null)');
+    expect(result.python).not.toContain(', null,');
+  });
+
+  it('Python streaming endpoint with no context does not emit JS null literal', () => {
+    const src = `build for python backend
+when user calls GET /api/chat:
+  ask claude 'Hello'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).not.toContain(', null)');
+    expect(result.python).not.toContain(', null,');
+  });
 });
 
 describe('Python workflow compilation', () => {
