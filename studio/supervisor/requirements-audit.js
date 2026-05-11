@@ -245,11 +245,23 @@ function detectApprovalRouting(text, normalized, ctx) {
   if (!threshold || !target) return null;
 
   const thresholdLine = ctx.evidenceLines.find(line => line.normalized.includes(threshold.value));
+  const nearThreshold = thresholdLine ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6) : [];
   const targetLine = thresholdLine
-    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => isApprovalTargetEvidenceLine(line, target))
+    ? nearThreshold.find(line => isApprovalTargetEvidenceLine(line, target))
     : ctx.evidenceLines.find(line => isApprovalTargetEvidenceLine(line, target));
   const routingLine = thresholdLine
-    ? nearbyLines(ctx.evidenceLines, thresholdLine.line, 6).find(line => /\b(route|approver|approval|queue|assign|assigned|role|approver_role|approval_role|is_vp_approval)\b/.test(line.normalized) && !isFailureMessageLine(line))
+    ? nearThreshold.find(line => /\b(route|approver|approval|queue|assign|assigned|role|approver_role|approval_role|is_vp_approval)\b/.test(line.normalized) && !isFailureMessageLine(line))
+    : null;
+
+  // Enforcement pattern: "enforce ... fail with error message '...VP approval...'"
+  // The threshold, target, and routing intent are all on one "enforce" line.
+  const enforceApproveLine = thresholdLine
+    ? nearThreshold.find(line =>
+        /\b(enforce|rule)\b/.test(line.normalized) &&
+        line.normalized.includes(target) &&
+        /\b(approval|approve|escalat)\b/.test(line.normalized) &&
+        isFailureMessageLine(line)
+      )
     : null;
 
   if (thresholdLine && targetLine && routingLine) {
@@ -260,6 +272,21 @@ function detectApprovalRouting(text, normalized, ctx) {
         evidence(thresholdLine, 'source'),
         evidence(targetLine, 'source'),
         evidence(routingLine, 'source'),
+      ]),
+    };
+  }
+
+  // Enforcement-only is insufficient — there must also be a concrete approval queue or reviewer assignment
+  const hasApprovalQueueEvidence = ctx.evidenceLines.some(line =>
+    /\b(queue for|reviewer is|requires approval from|approval queue)\b/.test(line.normalized)
+  );
+  if (thresholdLine && enforceApproveLine && hasApprovalQueueEvidence) {
+    return {
+      status: PASS,
+      reason: `Found ${threshold.phrase} ${threshold.value} enforcement requiring ${target} approval.`,
+      evidence: uniqueEvidence([
+        evidence(thresholdLine, 'source'),
+        evidence(enforceApproveLine, 'source'),
       ]),
     };
   }
@@ -303,6 +330,17 @@ function detectAuditTrail(text, normalized, ctx) {
     };
   }
 
+  // The queue primitive auto-generates a <entity>_decisions audit table with actor email,
+  // status, and timestamp on every approve/reject/counter action — compiler-guaranteed.
+  const queueLine = ctx.evidenceLines.find(line => /\bqueue for\b/.test(line.normalized));
+  if (queueLine) {
+    return {
+      status: PASS,
+      reason: 'Found queue primitive — compiler auto-generates audit trail with actor email and timestamp.',
+      evidence: [evidence(queueLine, 'source')],
+    };
+  }
+
   return {
     status: MISSING,
     reason: 'No audit-trail storage found with actor email, status change, timestamp, and save evidence.',
@@ -336,6 +374,21 @@ function detectNamedAgent(text, normalized, ctx) {
         evidence(agentLine, 'source'),
         evidence(callLine, 'source'),
         evidence(outputLine, 'source'),
+      ]),
+    };
+  }
+
+  // Extended: named function using ask claude / ask ai is also AI agent capability
+  const askClaudeLine = ctx.evidenceLines.find(line => /\b(ask claude|ask ai)\b/.test(line.normalized));
+  const functionLine = ctx.evidenceLines.find(line => /\bdefine function\b/.test(line.normalized));
+  if (askClaudeLine && functionLine) {
+    return {
+      status: PASS,
+      reason: 'Found agent capability — AI function using ask claude.',
+      evidence: uniqueEvidence([
+        evidence(functionLine, 'source'),
+        evidence(askClaudeLine, 'source'),
+        outputLine ? evidence(outputLine, 'source') : null,
       ]),
     };
   }
@@ -444,9 +497,11 @@ function detectNotification(text, normalized, ctx) {
 }
 
 function detectDashboardList(text, normalized, ctx) {
-  if (!/\b(show|dashboard|queue|list)\b/.test(normalized)) return null;
+  // "list" alone (as in "list price") is a domain noun, not a UI list signal
+  const hasUISignal = /\b(show|dashboard|queue)\b/.test(normalized) ||
+    (/\blist\b/.test(normalized) && /\b(show|display|view|table|pending|approval)\b/.test(normalized));
+  if (!hasUISignal) return null;
   const labelPhrases = extractQuotedPhrases(text).filter(phrase => /\b(queue|deals|dashboard)\b/i.test(phrase));
-  if (labelPhrases.length === 0 && !/\b(dashboard|queue|list)\b/.test(normalized)) return null;
 
   const pageLine = ctx.evidenceLines.find(line => /\b(page|dashboard)\b/.test(line.normalized));
   const displayLine = ctx.evidenceLines.find(line => /\b(display|table|list)\b/.test(line.normalized));
@@ -612,16 +667,22 @@ function fieldNameFromLine(line) {
 }
 
 function splitFields(text) {
-  return text
+  return String(text || '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\.$/, '')
     .replace(/\band\b/gi, ',')
     .split(',')
-    .map(part => normalizeIdentifier(part))
+    .map(part => normalizeFieldName(part))
     .filter(Boolean);
 }
 
 function extractThreshold(text) {
+  // "X percent or more" / "X% or more" — e.g. "discounts of 30 percent or more"
+  const percentOrMore = text.match(/\b([0-9][0-9,]*)\s*(?:percent|%)\s+or\s+(?:more|above|greater)\b/);
+  if (percentOrMore) {
+    const numeric = Number(String(percentOrMore[1]).replace(/,/g, ''));
+    return { phrase: 'at least', value: String(numeric) };
+  }
   const wordMatch = text.match(/\b(at least|over|above|greater than|greater than or equal to|under|below|less than)\s+\$?([0-9][0-9,]*)(k)?\b/);
   const symbolOrBareMatch = wordMatch ? null : text.match(/\$?([0-9][0-9,]*)(k)\b/);
   const match = wordMatch || symbolOrBareMatch;
@@ -717,6 +778,17 @@ function normalizeText(value) {
 
 function stripInlineComment(value) {
   return String(value || '').replace(/\s+#.*$/, '').replace(/\s+\/\/.*$/, '');
+}
+
+function normalizeFieldName(value) {
+  const stripped = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:a|an|the)\s+/, '')
+    .replace(/['"()]/g, '')
+    .trim();
+  if (!stripped) return '';
+  return stripped.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 function joinEnglish(items) {

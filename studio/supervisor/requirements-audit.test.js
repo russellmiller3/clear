@@ -478,6 +478,71 @@ when user sends decision to /api/deals/:id/approve:
     expect(audit.items[0].status).toBe('passed');
   });
 
+  it('does not treat "list price" domain noun as a dashboard list requirement', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  list_price (number), required
+  status, default 'pending'
+
+rule price-floor-positive:
+  enforce that deal's list_price is greater than 0, or fail with error message: 'List price must be positive'
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'the list price must be greater than zero' }],
+    });
+
+    expect(audit.items[0].status).not.toBe('passed');
+    expect(audit.items[0].reason).not.toContain('dashboard');
+  });
+
+  it('verifies AI agent requirement from ask-claude function definition', () => {
+    const source = `
+build for javascript backend
+define function draft_summary(deal_data):
+  summary = ask claude 'Write a one-paragraph deal summary for the CRO' with deal_data
+  send back summary
+
+when user sends deal to /api/deals/draft:
+  result = draft_summary(deal)
+  send back result
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'an AI agent can draft a deal summary from the deal details' }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('agent');
+  });
+
+  it('verifies audit-trail requirement from queue primitive (compiler auto-generates audit table)', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  customer, required
+  status, default 'pending'
+
+queue for deal:
+  reviewer is 'CRO'
+  on approve: set deal's status to 'approved'
+  on reject: set deal's status to 'rejected'
+`;
+
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: "an audit trail must store every status change with the actor's email and timestamp" }],
+    });
+
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('audit');
+  });
+
   it('verifies named agent requirements from agent declaration evidence', () => {
     const source = `
 build for javascript backend

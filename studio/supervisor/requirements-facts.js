@@ -131,7 +131,7 @@ function factsFromRequirement(item) {
   }
 
   // role_rule: "only admins can approve", "managers must review", "reps cannot approve own" — proven miss 2026-05-11
-  const roleMatch = /\b(admins?|managers?|sales\s+reps?|reps?|directors?|vps?|owners?)\b/.exec(text);
+  const roleMatch = /\b(admins?|managers?|sales\s+reps?|reps?|directors?|vps?|owners?|cros?)\b/.exec(text);
   const roleRestriction = /\b(only|must|cannot|cant|may not)\b/.test(text);
   const roleAction = /\b(approve|reject|cancel|archive|delete|update|change|review|access|create|edit)\b/.exec(text);
   const roleObject = objectFromText(text);
@@ -287,6 +287,19 @@ function approvalRuleFactsFromLines(lines) {
 function roleRuleFactsFromLines(lines) {
   const facts = [];
   for (const line of lines) {
+    // Pattern: "reviewer is 'CRO'" inside a queue block — implies CRO is the approval role
+    const reviewerMatch = line.normalized.match(/\breview?er\s+is\s+([a-z][a-z0-9_-]*)\b/);
+    if (reviewerMatch) {
+      facts.push({
+        kind: 'role_rule',
+        role: singularize(reviewerMatch[1]),
+        action: 'approve',
+        object: objectFromText(line.normalized) || 'deal',
+        evidence: [evidence(line, 'source')],
+      });
+      continue;
+    }
+
     const roleMatch = line.normalized.match(/\brequires role\s+([a-z][a-z0-9_-]*)\b/);
     if (!roleMatch) continue;
     const role = singularize(roleMatch[1]);
@@ -589,8 +602,20 @@ function splitFields(text) {
     .replace(/\.$/, '')
     .replace(/\band\b/gi, ',')
     .split(',')
-    .map(part => normalizeIdentifier(part))
+    .map(part => normalizeFieldName(part))
     .filter(Boolean);
+}
+
+function normalizeFieldName(value) {
+  const stripped = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:a|an|the)\s+/, '')
+    .replace(/['"()]/g, '')
+    .trim();
+  if (!stripped) return '';
+  // join multi-word aliases with underscores: "discount percent" → "discount_percent"
+  return stripped.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 function nearbyLines(lines, lineNumber, radius) {
