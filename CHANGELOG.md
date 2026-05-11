@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-10 - LAE Phase C cycle 7 wiring complete (Phase C fully done)
+
+`planRename` is now live in the propose flow and the widget renders the migration choice UI.
+
+What shipped:
+- `lib/edit-api.js` — after a successful destructive proposal, parses before/after ASTs and calls `planRename`. If `detected:'rename'`, attaches `migrationPlan` to the propose response. `planRename` is injectable as an optional dep (real implementation is the default) so the wiring is fully unit-tested without hitting the parser.
+- `lib/edit-api.test.js` — 3 new tests: rename attached when injection returns rename, omitted when not a rename, `planRename` not called for additive proposals.
+- `runtime/meph-widget.js` — destructive branch now checks `proposal.migrationPlan`. When present, renders a "Looks like a rename — what should happen to existing data?" section with radio buttons (keep: copy values, discard: start empty) above the typed-confirmation input. Selected choice forwarded to ship body as `migrationChoice` for Phase D server-side handling.
+
+Phase C is now **fully complete** — all 7 cycles shipped to main.
+
+**Why for Marcus:** the widget now distinguishes "you're deleting this field permanently" from "you're renaming this field" — and asks what to do with the data before making it irreversible. That's the difference between a tool Marcus trusts with customer data and one he doesn't.
+
+Verification: `node lib/edit-api.test.js` (all passing, 3 new), `node lib/migration-planner.test.js` (6/6). Pre-commit compiler suite green on both commits.
+
+---
+
 ## 2026-05-09 - LAE Phase C functionally complete (cloud destructive via tag)
 
 The remaining structural gap in Live App Editing Phase C closes: destructive ships now record `via:'widget-destructive'` on the version row so the deploy ledger can distinguish destructive from additive ships after the fact (the audit row was already capturing the destruction story; this tag is the cheap way to find destructive ships in version history without re-deriving intent from each diff).
