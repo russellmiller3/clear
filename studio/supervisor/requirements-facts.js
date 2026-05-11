@@ -434,6 +434,18 @@ function extractStoredObjects(text) {
     'company',
     'contact',
     'message',
+    'user',
+    'invoice',
+    'order',
+    'lead',
+    'opportunity',
+    'task',
+    'report',
+    'payment',
+    'product',
+    'account',
+    'project',
+    'approval',
   ]);
   const seen = new Set();
   const out = [];
@@ -459,6 +471,18 @@ function objectFromText(text) {
     'contact',
     'message',
     'room',
+    'user',
+    'invoice',
+    'order',
+    'lead',
+    'opportunity',
+    'task',
+    'report',
+    'payment',
+    'product',
+    'account',
+    'project',
+    'approval',
   ];
   for (const candidate of candidates) {
     if (new RegExp(`\\b${candidate}s?\\b`).test(normalized)) {
