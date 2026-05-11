@@ -1,6 +1,16 @@
-# Handoff — 2026-05-11 (compliance checker real-app probe — 14/17 passing)
+# Handoff — 2026-05-11 (docs: Stripe-style FEATURES.md + Chapter 27 + clean reading copy)
 
 ## What shipped this session
+
+**Docs rewrite — three pieces, one commit (`a84039c`).**
+
+- **FEATURES.md** — rewritten Stripe-style. Was 755 lines of internal developer tables organized by compiler subsystem. Now opens with 8 use-case sections ("Data Apps," "Approval Workflows," "AI Agents," "Real-Time Apps," "Live Editing," "Safety," "Provable Rules," "Studio") each with 3-5 sentences + a code example. Reference tables preserved at the bottom intact.
+
+- **USER-GUIDE.md Chapter 27** — "Meph + Ralph (The AI That Checks Its Own Work)" added just before the "You Did It" closing. Covers: why AI builds fail silently, the four-question checkability test, what Ralph blocking looks like, the "Pending is not a workflow" anti-pattern, and three exercises. Chapter 26 (Live App Editing) was already complete — no change needed.
+
+- **`docs/clear-guide.md`** — clean reading copy of USER-GUIDE.md (323KB). No internal scaffolding to strip — the file was already clean. Exists at `docs/` for Russell to open and read without repo noise. `scripts/sync-user-guide.sh` keeps it current (`cp USER-GUIDE.md docs/clear-guide.md`).
+
+## Previous session: compliance checker real-app probe — 14/17 passing
 
 **Compliance checker vocabulary expanded — 8/17 to 14/17 on real deal-desk app.**
 
