@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-11 - Python invite endpoints (multi-user tenant parity)
+
+Python backend now emits the full invite flow when `database is shared with tenant scope` is declared. Closes the last Python parity gap for multi-user tenants.
+
+What shipped:
+- `compiler.js` / `compileAuthScaffoldPython` — `POST /auth/invite` (generates a single-use token bound to the caller's tenant), `GET /auth/invite` (lists caller's invites with used/unused status), `_auth_invites` table creation, `invite_token` handling in `/auth/signup`, and `tenant_id` stamped into JWT claims on both signup and login. All gated on `tenantScope`; non-tenant apps are untouched.
+- `lib/invite-multi-user-witness.test.js` — 3 new compile-output sanity checks confirming Python emits the invite routes with tenant scope and omits them without it.
+
+**Why for Marcus:** any team app built on Clear Python target can now invite teammates. The invite → signup → shared-tenant flow is identical to the JS path, so a customer switching runtimes gets the same behavior.
+
+---
+
 ## 2026-05-10 - LAE Phase C cycle 7 wiring complete (Phase C fully done)
 
 `planRename` is now live in the propose flow and the widget renders the migration choice UI.
