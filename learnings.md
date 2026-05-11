@@ -2,6 +2,19 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-10: Studio shortcut must repair missing Node packages before hiding the server
+
+The Windows `start-clear.bat` shortcut rebuilt the Marcus apps, opened a minimized server window, then waited for port 3456. When `node_modules` was empty, Studio crashed immediately with `ERR_MODULE_NOT_FOUND: Cannot find package 'express'`, but the visible launcher only reported "Studio did not come up within 30 seconds." The real error was hidden in the minimized server window.
+
+### Gotchas-as-rules
+
+- **Never start a hidden local server before proving its package folder is usable.** A visible dependency check belongs before the hidden window starts.
+- **A launcher timeout is not a root cause.** Capture or reproduce the server command directly and read the first crash.
+- **Shortcut scripts need their own regression tests.** `scripts/start-clear-launcher.test.mjs` now proves dependency repair runs before Studio starts.
+- **Dependency repair should be deterministic and visible.** `scripts/ensure-node-deps.mjs` checks declared packages, runs `npm install` only when something is missing, and fails before Studio starts if repair fails.
+
+---
+
 ## Session 2026-05-09: Audit a multi-cycle epic before starting "cycle 1"
 
 LAE Phase C was a 7-cycle TDD plan locked 2026-04-25. ROADMAP said "Not started, ~1.5 weeks." After Phase 2 of the session shipped (cycle 7's pure function), an audit pass — three Grep calls + two file existence checks — discovered cycles 1, 3, 4 (helper), 5 had already shipped in past sessions. The only real gap in the load-bearing functionality was cycle 6 (cloud destructive `via:'widget-destructive'` tag), which was a one-line plumbing change. Total work to "Phase C functionally complete" was about 30 minutes after the audit, not 1.5 weeks.

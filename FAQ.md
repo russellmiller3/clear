@@ -3,6 +3,22 @@
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 
+## Why does the Clear Studio shortcut say "Studio did not come up within 30 seconds"? (2026-05-10)
+
+The visible launcher waits for Studio to listen on port 3456. If the hidden server crashes first, the old symptom was only a timeout.
+
+First check dependencies:
+
+```powershell
+node scripts\ensure-node-deps.mjs
+```
+
+Then rerun `start-clear.bat`. The shortcut now runs that dependency check before starting the hidden server, so missing packages like `express` get repaired while the launcher is still visible.
+
+Regression guards:
+- `node scripts\ensure-node-deps.test.mjs`
+- `node scripts\start-clear-launcher.test.mjs`
+
 **For RL, self-play, re-ranker architecture, and the oracle problem — see [RESEARCH.md](RESEARCH.md).**
 
 ---
