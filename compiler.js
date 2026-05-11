@@ -6494,6 +6494,9 @@ function compileAuthScaffoldPython(pad, tenantScope = false) {
   lines.push(`${pad}from datetime import datetime as _audit_datetime, timezone as _audit_tz, timedelta as _audit_td`);
   lines.push(`${pad}from fastapi.responses import Response as _AuditResponse`);
   lines.push(`${pad}db.create_table("_auth_users", {"email": {"type": "text", "required": True, "unique": True}, "password_hash": {"type": "text", "required": True}, "role": {"type": "text"}, "created_at": {"type": "text"}})`);
+  if (tenantScope) {
+    lines.push(`${pad}db.create_table("_auth_invites", {"token": {"type": "text", "required": True, "unique": True}, "created_by_user_id": {"type": "number"}, "created_by_email": {"type": "text"}, "created_at": {"type": "text"}, "used_at": {"type": "text"}, "used_by_user_id": {"type": "number"}, "used_by_email": {"type": "text"}})`);
+  }
   // Audit log table (Python parity, 2026-05-06): mirrors the JS scaffold's
   // audit_log emission at compiler.js:14503. Captures every state-changing
   // request with caller (user_id + email), what (method + path), when
@@ -6702,18 +6705,42 @@ function compileAuthScaffoldPython(pad, tenantScope = false) {
   lines.push('');
   lines.push(`${pad}@app.post("/auth/signup")`);
   lines.push(`${pad}async def _auth_signup(request: Request):`);
+  lines.push(`${pad}    import secrets as _secrets_mod`);
   lines.push(`${pad}    incoming = await request.json()`);
   lines.push(`${pad}    email = incoming.get("email")`);
   lines.push(`${pad}    password = incoming.get("password")`);
+  if (tenantScope) {
+    lines.push(`${pad}    invite_token = incoming.get("invite_token")`);
+  }
   lines.push(`${pad}    if not email or not password:`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
   lines.push(`${pad}    if db.find_one("_auth_users", {"email": email}):`);
   lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email already registered")`);
   lines.push(`${pad}    password_hash = hash_password(password)`);
-  lines.push(`${pad}    user_record = {"email": email, "password_hash": password_hash, "role": "user"}`);
-  lines.push(`${pad}    user = db.insert("_auth_users", user_record)`);
-  lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": "user"})`);
-  lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": "user"}}`);
+  if (tenantScope) {
+    lines.push(`${pad}    _new_tenant_id = None`);
+    lines.push(`${pad}    _consumed_invite = None`);
+    lines.push(`${pad}    if invite_token:`);
+    lines.push(`${pad}        _consumed_invite = db.find_one("_auth_invites", {"token": invite_token})`);
+    lines.push(`${pad}        if not _consumed_invite or _consumed_invite.get("used_at"):`);
+    lines.push(`${pad}            raise HTTPException(status_code=400, detail="Invalid or already-used invite token")`);
+    lines.push(`${pad}        _new_tenant_id = _consumed_invite["tenant_id"]`);
+    lines.push(`${pad}    user_record = {"email": email, "password_hash": password_hash, "role": "user", "tenant_id": _new_tenant_id}`);
+    lines.push(`${pad}    user = db.insert("_auth_users", user_record)`);
+    lines.push(`${pad}    if _new_tenant_id is None:`);
+    lines.push(`${pad}        db.update("_auth_users", {"id": user["id"]}, {"tenant_id": user["id"]})`);
+    lines.push(`${pad}        user["tenant_id"] = user["id"]`);
+    lines.push(`${pad}    if _consumed_invite:`);
+    lines.push(`${pad}        import datetime as _dt`);
+    lines.push(`${pad}        db.update("_auth_invites", {"id": _consumed_invite["id"]}, {"used_at": _dt.datetime.now(_dt.timezone.utc).isoformat(), "used_by_email": email, "used_by_user_id": user["id"]})`);
+    lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": "user", "tenant_id": user["tenant_id"]})`);
+    lines.push(`${pad}    return JSONResponse(status_code=201, content={"token": token, "user": {"id": user["id"], "email": email, "role": "user", "tenant_id": user["tenant_id"]}})`);
+  } else {
+    lines.push(`${pad}    user_record = {"email": email, "password_hash": password_hash, "role": "user"}`);
+    lines.push(`${pad}    user = db.insert("_auth_users", user_record)`);
+    lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": "user"})`);
+    lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": "user"}}`);
+  }
   lines.push('');
   lines.push(`${pad}@app.post("/auth/login", dependencies=[Depends(_login_throttle)])`);
   lines.push(`${pad}async def _auth_login(request: Request):`);
@@ -6725,8 +6752,13 @@ function compileAuthScaffoldPython(pad, tenantScope = false) {
   lines.push(`${pad}    user = db.find_one("_auth_users", {"email": email})`);
   lines.push(`${pad}    if not user or not check_password(password, user["password_hash"]):`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid email or password")`);
-  lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": user["role"]})`);
-  lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": user["role"]}}`);
+  if (tenantScope) {
+    lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": user["role"], "tenant_id": user.get("tenant_id")})`);
+    lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": user["role"], "tenant_id": user.get("tenant_id")}}`);
+  } else {
+    lines.push(`${pad}    token = create_token({"id": user["id"], "email": email, "role": user["role"]})`);
+    lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": user["role"]}}`);
+  }
   lines.push('');
   lines.push(`${pad}@app.get("/auth/me")`);
   lines.push(`${pad}async def _auth_me(request: Request):`);
@@ -6742,6 +6774,50 @@ function compileAuthScaffoldPython(pad, tenantScope = false) {
   lines.push(`${pad}        raise`);
   lines.push(`${pad}    except Exception:`);
   lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  lines.push('');
+  if (tenantScope) {
+    // POST /auth/invite — authenticated, tenant-scoped. Mirrors JS at compiler.js:15021.
+    lines.push(`${pad}@app.post("/auth/invite")`);
+    lines.push(`${pad}async def _auth_invite_post(request: Request):`);
+    lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+    lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
+    lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
+    lines.push(`${pad}    try:`);
+    lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
+    lines.push(`${pad}        if not payload:`);
+    lines.push(`${pad}            raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+    lines.push(`${pad}    except HTTPException:`);
+    lines.push(`${pad}        raise`);
+    lines.push(`${pad}    except Exception:`);
+    lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+    lines.push(`${pad}    if payload.get("tenant_id") is None:`);
+    lines.push(`${pad}        raise HTTPException(status_code=400, detail="Inviting user has no tenant_id")`);
+    lines.push(`${pad}    import secrets as _sec`);
+    lines.push(`${pad}    import datetime as _dt`);
+    lines.push(`${pad}    token = _sec.token_hex(16)`);
+    lines.push(`${pad}    now = _dt.datetime.now(_dt.timezone.utc).isoformat()`);
+    lines.push(`${pad}    invite = db.insert("_auth_invites", {"token": token, "created_by_user_id": payload["id"], "created_by_email": payload["email"], "created_at": now})`);
+    lines.push(`${pad}    db.update("_auth_invites", {"id": invite["id"]}, {"tenant_id": payload["tenant_id"]})`);
+    lines.push(`${pad}    return JSONResponse(status_code=201, content={"token": invite["token"], "tenant_id": payload["tenant_id"], "created_at": invite["created_at"]})`);
+    lines.push('');
+    // GET /auth/invite — list invites the caller created. Mirrors JS at compiler.js:15048.
+    lines.push(`${pad}@app.get("/auth/invite")`);
+    lines.push(`${pad}async def _auth_invite_list(request: Request):`);
+    lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+    lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
+    lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
+    lines.push(`${pad}    try:`);
+    lines.push(`${pad}        payload = verify_token(auth_header[7:])`);
+    lines.push(`${pad}        if not payload:`);
+    lines.push(`${pad}            raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+    lines.push(`${pad}    except HTTPException:`);
+    lines.push(`${pad}        raise`);
+    lines.push(`${pad}    except Exception:`);
+    lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+    lines.push(`${pad}    mine = db.find_all("_auth_invites", {"created_by_user_id": payload["id"]})`);
+    lines.push(`${pad}    return [{"token": inv["token"], "tenant_id": inv.get("tenant_id"), "created_at": inv.get("created_at"), "used_at": inv.get("used_at"), "used_by_email": inv.get("used_by_email")} for inv in mine]`);
+    lines.push('');
+  }
   return lines.join('\n');
 }
 
