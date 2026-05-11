@@ -15986,7 +15986,8 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
       n.type === NodeType.ASK_AI ||
       (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) ||
       (n.type === NodeType.ENDPOINT && n.body && pyNeedsAskAI(n.body)) ||
-      (n.type === NodeType.CRON && n.body && pyNeedsAskAI(n.body))
+      (n.type === NodeType.CRON && n.body && pyNeedsAskAI(n.body)) ||
+      (n.type === NodeType.FUNCTION_DEF && n.body && pyNeedsAskAI(n.body))
     );
   }
   const hasAgents = pyNeedsAskAI(body);

@@ -8167,6 +8167,25 @@ when user sends question to /api/ask:
     // Retry logic — exponential backoff
     expect(r.python).toMatch(/_attempt|backoff|retry/i);
   });
+
+  it('ask claude inside define function emits _ask_ai helper and defines function correctly', () => {
+    // Regression: pyNeedsAskAI was not recursing into FUNCTION_DEF bodies,
+    // so _ask_ai was called but never defined when ask claude lived inside
+    // a named function rather than an endpoint or agent block.
+    const r = compileProgram(`target: python backend
+define function draft_approval(deal_data):
+  drafted = ask claude 'Write a one-paragraph deal summary' with deal_data
+  send back drafted
+
+when user sends deal to /api/deals/draft:
+  result = draft_approval(deal)
+  send back result`);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('async def draft_approval(deal_data):');
+    // The helper must be defined — calling an undefined _ask_ai crashes at runtime
+    expect(r.python).toContain('async def _ask_ai(prompt');
+    expect(r.python).toContain('ANTHROPIC_API_KEY');
+  });
 });
 
 // =============================================================================
