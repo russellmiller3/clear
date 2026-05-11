@@ -71,6 +71,59 @@ page 'Bookings' at '/bookings':
     expect(appFacts.some(fact => fact.kind === 'ui_reachability' && fact.action === 'accordion')).toEqual(true);
     expect(appFacts.some(fact => fact.kind === 'browser_evidence' && fact.action === 'screenshot')).toEqual(true);
   });
+
+  // READ VOCABULARY — red-first TDD (2026-05-11)
+  // Proven miss: "reps can view deals" returns 0 facts from normalizeRequirementFacts
+  it('normalizes view/list/see phrases into read facts', () => {
+    const phrases = [
+      { id: 'r1', text: 'sales reps can view all deals' },
+      { id: 'r2', text: 'managers can list pending requests' },
+      { id: 'r3', text: 'admins can see every submitted expense' },
+    ];
+    for (const phrase of phrases) {
+      const facts = normalizeRequirementFacts([phrase]);
+      const readFact = facts.find(f => f.kind === 'read');
+      if (!readFact) throw new Error(`Expected read fact from "${phrase.text}" — got ${JSON.stringify(facts)}`);
+    }
+  });
+
+  it('extracts read facts from "when user requests data from" source lines', () => {
+    const appFacts = extractAppFacts({
+      source: `
+build for javascript backend
+create a Deals table:
+  title, required
+
+when user requests data from /api/deals:
+  requires login
+  found = look up all Deals
+  send back found
+`,
+    });
+    const readFact = appFacts.find(f => f.kind === 'read');
+    if (!readFact) throw new Error(`Expected read fact from "when user requests data from" — got ${JSON.stringify(appFacts)}`);
+    expect(readFact.endpoint).toContain('/api/deals');
+  });
+
+  it('read requirement fact matches read app fact via compareRequirementFacts', () => {
+    const requirementFacts = normalizeRequirementFacts([{ id: 'r1', text: 'sales reps can view all deals' }]);
+    const appFacts = extractAppFacts({
+      source: `
+build for javascript backend
+create a Deals table:
+  title, required
+
+when user requests data from /api/deals:
+  requires login
+  found = look up all Deals
+  send back found
+`,
+    });
+    const readReq = requirementFacts.find(f => f.kind === 'read');
+    if (!readReq) throw new Error('normalizer did not emit read fact');
+    const comparisons = compareRequirementFacts([readReq], appFacts);
+    expect(comparisons[0].status).toEqual('passed');
+  });
 });
 
 run();

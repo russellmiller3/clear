@@ -93,16 +93,17 @@ function auditRequirement(requirement, ctx) {
 
 function detectTypedFacts(text, normalized, ctx) {
   const requirementFacts = normalizeRequirementFacts([{ id: `req_${ctx.index + 1}`, text }])
-    .filter(fact => fact.kind === 'domain_rule');
+    .filter(fact => fact.kind === 'domain_rule' || fact.kind === 'read');
   if (requirementFacts.length === 0) return null;
 
   const comparisons = compareRequirementFacts(requirementFacts, ctx.appFacts || []);
   if (comparisons.length === 0) return null;
   const failed = comparisons.filter(item => item.status !== PASS);
+  const kindLabel = requirementFacts[0]?.kind === 'read' ? 'read-access' : 'domain rule';
   if (failed.length === 0) {
     return {
       status: PASS,
-      reason: `Found typed domain rule evidence for ${joinEnglish(requirementFacts.map(fact => fact.object))}.`,
+      reason: `Found typed ${kindLabel} evidence for ${joinEnglish(requirementFacts.map(fact => fact.object))}.`,
       evidence: uniqueEvidence(comparisons.flatMap(item => item.evidence || [])),
       facts: requirementFacts,
     };
@@ -110,7 +111,7 @@ function detectTypedFacts(text, normalized, ctx) {
 
   return {
     status: MISSING,
-    reason: failed[0]?.reason || 'No typed domain-rule evidence found outside the requirements block.',
+    reason: failed[0]?.reason || `No typed ${kindLabel} evidence found outside the requirements block.`,
     evidence: uniqueEvidence(comparisons.flatMap(item => item.evidence || [])),
     facts: requirementFacts,
   };

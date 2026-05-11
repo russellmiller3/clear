@@ -96,6 +96,20 @@ function factsFromRequirement(item) {
     });
   }
 
+  // read: "can view", "can list", "can see", "can search" — proven miss 2026-05-11
+  const readAction = /\b(view|list|see|search|browse|find|read|access)\b/.exec(text);
+  const canClause = /\b(can|may|should be able to)\b/.test(text);
+  const readObject = objectFromText(text);
+  if (readAction && canClause && readObject) {
+    facts.push({
+      id: item.id,
+      text: item.text,
+      kind: 'read',
+      action: readAction[1],
+      object: readObject,
+    });
+  }
+
   const decisionAction = /\b(approve|reject|cancel|archive|delete|update|change)\b/.exec(text);
   const decisionObject = objectFromText(text);
   if (decisionAction && decisionObject) {
@@ -149,7 +163,7 @@ function storageFactsFromLines(lines) {
 function endpointFactsFromLines(lines) {
   const facts = [];
   for (const line of lines) {
-    const endpoint = line.normalized.match(/\bwhen user (?:sends|calls|updates|deletes)\b.*\s(\/api\/[a-z0-9_/:.-]+)/);
+    const endpoint = line.normalized.match(/\bwhen user (?:sends|calls|updates|deletes|requests data from)\b.*\s(\/api\/[a-z0-9_/:.-]+)/);
     if (!endpoint) continue;
     const verb = endpointVerb(line.normalized);
     facts.push({
@@ -270,6 +284,11 @@ function matchingAppFacts(requirement, appFacts) {
     }
     if (requirement.kind === 'ui_reachability') {
       return fact.kind === 'ui_reachability' || fact.kind === 'browser_evidence';
+    }
+    if (requirement.kind === 'read') {
+      if (fact.kind !== 'read') return false;
+      if (requirement.object) return sameValue(requirement.object, fact.object) || normalizeText(fact.endpoint || '').includes(requirement.object || '');
+      return true;
     }
     return false;
   });
