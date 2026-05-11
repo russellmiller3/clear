@@ -1684,56 +1684,56 @@ This is the **reference track**. The tutorial is over — you've built deal-desk
 
 You met the basic CRUD shape in Chapters 5–9 (create, read, update, delete on the Deals table). This chapter covers the rest of the data toolkit: foreign keys with `belongs to`, parent-child auto-endpoints with `has many`, full-text search, server-side aggregates, and env-var access. Open it like a glossary — find the section you need, copy the pattern, get back to building.
 
-All CRUD operations happen inside endpoint bodies. Here's the full pattern:
+All CRUD operations happen inside endpoint bodies. Here's the full pattern, using a Deals table like the one deal-desk built in Chapters 5–9:
 
 ```clear
 build for javascript backend
 database is local memory
-create a Users table:
-  name, required
-  email, required
+create a Deals table:
+  customer_name, required
+  discount_percent, required
+  status, default is 'pending'
 
-when user calls POST /api/users sending user:
-  new_user = save user as new User
-  send back new_user with success message
+when user calls POST /api/deals sending deal:
+  new_deal = save deal as new Deal
+  send back new_deal with success message
 
-when user calls GET /api/users:
-  all_users = get all Users
-  send back all_users
+when user calls GET /api/deals:
+  all_deals = get all Deals
+  send back all_deals
 
-when user calls PUT /api/users/:id sending changes:
+when user calls PUT /api/deals/:id sending changes:
   requires login
-  save user to Users
-  send back update_data with success message
+  save deal to Deals
+  send back changes with success message
 
-when user calls DELETE /api/users/:id:
+when user calls DELETE /api/deals/:id:
   requires login
-  delete the User with this id
+  delete the Deal with this id
   send back 'deleted' with success message
 ```
 
 ### DB Relationships
 
-Use `belongs to` to declare foreign key relationships between tables:
+Use `belongs to` to declare foreign key relationships between tables. In deal-desk, a comment on a deal would look like this:
 
 ```clear
 build for javascript backend
 
-create a Users table:
-  name
-  email, unique
+create a Deals table:
+  customer_name
+  discount_percent
 
-create a Posts table:
-  title
+create a Comments table:
   body
-  author belongs to Users
+  deal belongs to Deals
 
-when user calls GET /api/posts:
-  all_posts = get all Posts
-  send back all_posts
+when user calls GET /api/comments:
+  all_comments = get all Comments
+  send back all_comments
 ```
 
-When you `get all Posts`, the compiler auto-loads the related User for each post's `author` field.
+When you `get all Comments`, the compiler auto-loads the related Deal for each comment's `deal` field.
 
 ### Has Many Relationships
 
@@ -1741,28 +1741,27 @@ The inverse of `belongs to`. Declare that a parent table has many children,
 and the compiler auto-generates nested endpoints:
 
 ```clear
-create a Users table:
-  name
-  email, unique
+create a Deals table:
+  customer_name
+  discount_percent
 
-create a Posts table:
-  title
+create a Comments table:
   body
-  author belongs to Users
+  deal belongs to Deals
 
-Users has many Posts
+Deals has many Comments
 ```
 
-This auto-generates `GET /api/users/:id/posts` — returns all posts belonging
-to a specific user. You don't need to write the endpoint yourself.
+This auto-generates `GET /api/deals/:id/comments` — returns all comments belonging
+to a specific deal. You don't need to write the endpoint yourself.
 
 ### Full Text Search
 
-Search across all fields of a table with one line:
+Search across all fields of a table with one line. In deal-desk, a CRO might want to search deals by customer name or notes:
 
 ```clear
-when user calls GET /api/posts/search sending search:
-  results = search Posts for search's query
+when user calls GET /api/deals/search sending search:
+  results = search Deals for search's query
   send back results
 ```
 
@@ -1771,13 +1770,13 @@ when user calls GET /api/posts/search sending search:
 
 ### Aggregate Field Extraction
 
-Extract and aggregate a field from a list of records:
+Extract and aggregate a field from a list of records. In deal-desk, you'd compute average discount across pending deals on the CRO dashboard:
 
 ```clear
-total_revenue = sum of amount in orders
-avg_price = average of price in products
-highest_score = max of score in results
-lowest_score = min of score in results
+total_value = sum of amount in deals
+avg_discount = average of discount_percent in deals
+highest_discount = max of discount_percent in deals
+lowest_discount = min of discount_percent in deals
 ```
 
 Without `in`, aggregates work on flat arrays as before: `total = sum of prices`.
@@ -1855,38 +1854,38 @@ area chart 'Growth Over Time' showing quarterly_data
 
 ### Pie Chart with Grouping
 
-Use `by field` to group your data and count occurrences:
+Use `by field` to group your data and count occurrences. In deal-desk you'd group pending deals by their assigned reviewer:
 
 ```clear
-pie chart 'Issues by Status' showing issues by status
+pie chart 'Deals by Status' showing deals by status
 ```
 
-This counts how many issues have each status value and renders a donut chart.
+This counts how many deals have each status value and renders a donut chart.
 
 ### Bar Chart with Grouping
 
 `by field` works on all chart types, not just pie:
 
 ```clear
-bar chart 'Issues by Project' showing issues by project
+bar chart 'Deals by Segment' showing deals by customer_segment
 ```
 
-This groups all issues by their `project` field, counts each group, and renders
-a bar chart with project names on x-axis and counts on y-axis.
+This groups all deals by their `customer_segment` field, counts each group, and renders
+a bar chart with segment names on x-axis and counts on y-axis.
 
 ### Putting It Together
 
-Here's a dashboard with stat cards and charts:
+Here's a CRO dashboard with stat cards and charts — the kind the deal-desk app would show at the top of its pipeline view:
 
 ```clear
 section 'Stats' as 4 columns:
-  section 'Open' with style metric_card:
-    small text 'Open Issues'
+  section 'Pending' with style metric_card:
+    small text 'Pending Approval'
     heading '12'
     text '+3 this week'
 
-bar chart 'Weekly Trends' showing weekly_data
-pie chart 'By Priority' showing issues by priority
+bar chart 'Weekly Deal Volume' showing weekly_data
+pie chart 'By Status' showing deals by status
 ```
 
 The `+3` in the stat card automatically renders in green with an up-arrow icon.
@@ -1907,9 +1906,9 @@ Both forms compile to the same thing. Use whichever reads better to you.
 Add a subtitle below the chart title, or stack bars on top of each other:
 
 ```clear
-bar chart 'Weekly Trends' subtitle 'Opened vs closed issues' showing weekly_stats
+bar chart 'Weekly Deals' subtitle 'Approved vs rejected' showing weekly_stats
 
-bar chart 'Weekly Trends' subtitle 'Last 4 weeks' showing weekly_stats stacked
+bar chart 'Weekly Deals' subtitle 'Last 4 weeks' showing weekly_stats stacked
 ```
 
 ---
@@ -4629,9 +4628,11 @@ different attack. Skip any one and your app has a hole.
 
 ## Chapter 14: Error Handling (Because Things Go Wrong)
 
-Reference chapter. You met the canonical refusal form in Chapter 12 (`enforce that X, or fail with error message: '...'`) — that's how *business rules* fail. This chapter is about how *infrastructure* fails: the AI service times out, the email provider rate-limits you, the database deadlocks, the customer's browser hangs up mid-request. Different failure mode, different toolkit.
+Reference chapter. This assumes you've built the deal-desk app from Chapters 1–12.
 
-The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense into every field. Clear gives you clean ways to handle all of it.
+You met the canonical refusal form in Chapter 12 (`enforce that X, or fail with error message: '...'`) — that's how *business rules* fail. This chapter is about how *infrastructure* fails: the AI service times out, the email provider rate-limits you, the database deadlocks, the customer's browser hangs up mid-request. Different failure mode, different toolkit.
+
+The deal-desk agent in Chapter 11 calls Claude to draft an approval summary. What happens if Claude is slow to respond? What if the email provider in Chapter 10 drops the connection? The internet is unreliable. APIs go down. Databases hiccup. Clear gives you clean ways to handle all of it.
 
 ```clear
 try:
