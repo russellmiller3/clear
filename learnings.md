@@ -2,6 +2,17 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-11: Meph prompt examples must name saved input variables
+
+The compiler accepted natural syntax, but Meph still had a source-generation smell:
+visible field labels were being reused as payload values.
+
+### Gotchas-as-rules
+
+- **Every Meph-facing input example should use `saved as`.** Labels can contain spaces or punctuation; payloads need stable variables.
+- **Prompt tests should lock the behavior, not just the wording.** Assert the examples include stable variable names and the warning-preventing auth setup.
+- **Auth examples need request logging beside login.** If the app says `allow signup and login`, the prompt should also show `log every request`.
+
 ## Session 2026-05-11: Natural English parser aliases should preserve canonical syntax
 
 Meph generated `first item of settings` and `link to '/compose' with label 'New'`.

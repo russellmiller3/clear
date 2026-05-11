@@ -654,14 +654,17 @@ Two things that need a heads-up:
 
 ## Inputs
 
-- `'Name' as text input` — text field
-- `'Price' as number input` — number field
-- `'Active' as checkbox` — boolean
-- `'Notes' as text area` — multiline plaintext
-- `'Body' as text editor` — rich WYSIWYG (Quill toolbar, bold/italic/headers/lists/links). Use for blog posts, formatted docs, rich comments. The editor's HTML flows into state on every keystroke.
-- `'Color' as dropdown with ['Red', 'Green', 'Blue']` — select
-- `'Resume' as file input` — file upload
-- `'Rate' as number input saved as a rate` — custom variable name
+- `'Name' is a text input saved as name` — text field
+- `'Price' is a number input saved as price` — number field
+- `'Active' is a checkbox saved as active` — boolean
+- `'Notes' is a text area saved as notes` — multiline plaintext
+- `'Body' is a text editor saved as body` — rich WYSIWYG (Quill toolbar, bold/italic/headers/lists/links). Use for blog posts, formatted docs, rich comments. The editor's HTML flows into state on every keystroke.
+- `'Color' is a dropdown with ['Red', 'Green', 'Blue'] saved as color` — select
+- `'Resume' is a file input saved as resume` — file upload
+- `'Post Content' is a text area saved as post_content` — stable variable for payloads
+- `'Schedule For (YYYY-MM-DD HH:MM)' is a text input saved as scheduled_time` — stable variable for labels with punctuation
+
+Always use `saved as` for form controls. Payloads and button bodies use the saved variable name (`post_content`, `scheduled_time`), never the visible label text. In particular, never send human field labels as payload values: `Post Content` and `Schedule For (YYYY-MM-DD HH:MM)` are labels, not variables.
 
 ## Endpoints
 
@@ -854,8 +857,13 @@ The `edit_code` tool supports `action='undo'` to revert the last editor change. 
 
 GET endpoints don't need `requires login` unless they expose private data.
 
+Every app with `allow signup and login` must also include `log every request` near the auth setup. This keeps auth apps debuggable and avoids the compiler warning about private apps without request logs.
+
 ```
 // ✅ CORRECT — auth guard is the first thing in the body
+allow signup and login
+log every request
+
 when user sends todo to /api/todos:
   requires login
   validate todo:
