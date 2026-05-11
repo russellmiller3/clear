@@ -1,11 +1,19 @@
-# Clear Language — What's Built
+# Clear — What You Can Build
 
-Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
+Clear is a programming language for building real web apps in plain English. One `.clear` file gives you a database, a server, a browser UI, and an AI assistant — no configuration, no boilerplate, no framework to learn.
 
-## Table of Contents
+## Jump to a use case
 
-**The 30-second scan**
-- [Exec summary — what Clear can do today, in plain English](#exec-summary--what-clear-can-do-today-in-plain-english)
+- [Data Apps (CRMs, Deal Desks, Dashboards)](#data-apps-crms-deal-desks-dashboards)
+- [Approval Workflows](#approval-workflows)
+- [AI Agents and Assistants](#ai-agents-and-assistants)
+- [Real-Time Apps (Chat, Live Updates)](#real-time-apps-chat-live-updates)
+- [Edit Your Live App While People Are Using It](#edit-your-live-app-while-people-are-using-it)
+- [Safety Built In — Not Bolted On](#safety-built-in--not-bolted-on)
+- [Provable Business Rules](#provable-business-rules)
+- [Studio — The Browser IDE + AI Builder](#studio--the-browser-ide--ai-builder)
+
+## Jump to the reference tables
 
 **Language**
 - [Core Language](#core-language)
@@ -15,7 +23,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 - [Web Frontend](#web-frontend)
 - [Backend (JS + Python)](#backend-js--python)
 - [Database & CRUD](#database--crud)
-- [Service Integrations (SERVICE_CALL)](#service-integrations-service_call)
+- [Service Integrations](#service-integrations-service_call)
 - [Data Operations](#data-operations)
 
 **AI**
@@ -31,155 +39,142 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 
 **Tooling and shipping**
 - [Studio IDE](#studio-ide)
-- [Live App Editing (LAE — Phase A + B shipped)](#live-app-editing-lae--phase-a--b-shipped)
-- [Clear Cloud (buildclear.dev — login + multi-tenant runtime)](#clear-cloud-buildclear.dev--login--multi-tenant-runtime)
-- [Developer Tooling (Dave-first wedge — shipped 2026-04-24)](#developer-tooling-dave-first-wedge--shipped-2026-04-24)
+- [Live App Editing](#live-app-editing-lae--phase-a--b-shipped)
+- [Clear Cloud](#clear-cloud-buildcleardev--login--multi-tenant-runtime)
+- [Developer Tooling](#developer-tooling-dave-first-wedge--shipped-2026-04-24)
 
 **Compile targets**
 - [Compile Targets](#compile-targets)
-- [Compiler Guarantees — Bug Classes Eliminated at Compile Time](#compiler-guarantees--bug-classes-eliminated-at-compile-time)
+- [Compiler Guarantees](#compiler-guarantees--bug-classes-eliminated-at-compile-time)
 
-**What you can build (the tier list)**
-- [What You Can Build](#what-you-can-build)
+**What you can build**
+- [Apps by Tier](#what-you-can-build)
 - [Not Building (and Why)](#not-building-and-why)
 
-**Cross-target parity:** the Python parity status block in the exec summary above tracks whether Python lags JS. Hook + audit script keep it honest. See FAQ entry "How much Python parity work is left? How do I check?" for the two-command audit.
+---
 
-**Headline numbers:** 169 node types. 2,817 broad compiler/helper checks after the 2026-05-02 merge consolidation. Zero npm dependencies in the compiler.
-**Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4), Cloudflare Workers (D1 + Workflows + Cron Triggers).
+## Data Apps (CRMs, Deal Desks, Dashboards)
 
-**Python parity status (2026-05-07):** **substantially closed.** Five runtime helpers shipped (encrypt-at-rest, login + JWT, persistent SQLite, auto login rate-limit, Postgres adapter — all with byte-for-byte interop on shared on-disk formats so a JS-saved row reads correctly under Python and vice versa). Compile-emit wired for: `database is local file` / `local memory` / `postgres`, `allow signup and login` (durable storage on Python — no more in-memory `_users` list), audit log table + middleware + GET /audit + GET /audit.csv + retention helper, multi-customer separation auto-injection on every CRUD operation, and the audit log is tenant-scoped on read (no cross-tenant leak). **`ask claude`, agents, pipelines, and workflows already work on Python end-to-end** — the python-parity audit had been false-flagging these because their case bodies emit universal `await fn(arg)` syntax with no `ctx.lang === 'python'` branch needed; audit script's slice detection sharpened 2026-05-07 to recognize universal-emit cases.
+A table of records, a form to add them, filters and charts to understand them. Declare the table, the page, and the display in one block — Clear generates the server, the database, and the browser UI, including a search bar on every table, sortable columns, and a right-side detail panel when you click a row.
 
-**Audit script:** `node scripts/python-parity-audit.mjs` — runs in <1 second, exits 0 today. Current state: **0 HIGH-severity gaps** (down from 21 at the start of the closure pass). **2 MEDIUM-severity gaps** remain, both genuine but non-launch-relevant: `SERVICE_CALL` (Stripe/SendGrid/Twilio adapters Python doesn't yet emit; each provider needs its Python library) and `CLASSIFY` (audit doesn't yet detect its exprToCode path). Runtime helper file gaps: 0 of 5. The slice-detection recognizes universal-emit cases (RUN_AGENT, RUN_PIPELINE, RUN_WORKFLOW, LITERAL_NUMBER, LITERAL_LIST, MAP_EXISTS) and no-op-on-both cases (TARGET, THEME, MOCK_AI, SKILL, DEPLOY, FIELD_RULE, ON_PAGE_LOAD, etc.) so it stops false-flagging.
+```clear
+create a Deals table:
+  customer
+  list_price (number)
+  discount_percent (number)
+  status is 'pending'
 
-**The "Python doesn't fall behind JS" backstop:** `.claude/hooks/python-first-class.mjs` (PostToolUse on edits to `runtime/*.js`, `compiler.js`, `parser.js`, `synonyms.js`) — runs the audit and surfaces the HIGH-severity gap count + the rule. Not a hard block; a visible nudge that pre-commit can't be skipped past. Override with `PYTHON_LATER=1` in env when an explicit JS-only follow-up is intentional.
+page 'Deals' at '/deals':
+  display deals as table showing customer, list_price, status
+```
 
-**The "is parity true today?" check, in two commands:**
-```bash
-node scripts/python-parity-audit.mjs        # human report
-node scripts/python-parity-audit.mjs --csv  # CSV at the bottom
+Add `allow signup and login` and each user only sees their own records. Add `database is shared with tenant scope` and each company only sees their own data — auto-enforced at the database layer.
+
+---
+
+## Approval Workflows
+
+A deal needs VP sign-off. An IT request needs manager review. A refund needs a second pair of eyes. Clear has a built-in approval primitive: declare the queue, the approver, and the notification — Clear generates the queue page, the action buttons, the email alerts, and the audit trail.
+
+```clear
+queue for deal:
+  pending review by 'vp@company.com'
+  on approve: send email to deal's rep subject 'Approved — {deal's customer}'
+  on reject: send email to deal's rep subject 'Rejected' body 'Reason: {reason}'
+```
+
+Every approval action writes to an audit log. The VP gets a login-gated review page. The rep gets an email. The compliance buyer gets a paper trail that answers "who approved deal #47, when, and why."
+
+---
+
+## AI Agents and Assistants
+
+Ask Claude a question in one line. Give an agent tools — the ability to look up records, send emails, or call your own functions — and it becomes an AI assistant that knows your data. Agents can remember conversations across sessions, run on a schedule, and chain into multi-step pipelines.
+
+```clear
+agent 'Deal Drafter' receives deal:
+  has tool: look up Customer from Customers where id is deal's customer_id
+  response = ask claude 'Write a one-paragraph summary for this deal: {deal}'
+  send back response
+```
+
+Clear handles retries on rate limits, responses that arrive word by word, and routing between tools. You write what the agent should do; Clear handles the plumbing.
+
+---
+
+## Real-Time Apps (Chat, Live Updates)
+
+Subscribe to a data source and every browser updates automatically when the data changes. Build a live chat room in six lines — scrolling history, typing indicator, and message input included.
+
+```clear
+when user sends message to /api/chat:
+  save message as new Message
+  broadcast to all: message
+
+page 'Chat' at '/':
+  display messages as chat
+  'Message' is a text input saved as message that sends to '/api/chat'
 ```
 
 ---
 
-## Exec summary — what Clear can do today, in plain English
+## Edit Your Live App While People Are Using It
 
-Scan this in 30 seconds. If you remember Clear can do something but can't remember the syntax, this list points you at the section below.
+Your app is deployed. Marcus is using it. He needs to add a field. In most tools: database migration, coordinated restart, hope nothing breaks mid-request. In Clear: Marcus types a plain-English request into a widget pinned to his running app, reviews the proposed change, and clicks Ship. The change is live in about three seconds. No terminal. No downtime.
 
-**OWASP Top 10 — closed by construction (2026-05-05 / 2026-05-06).** The
-compiler refuses to ship the OWASP Top 10. Five small primitives close the
-whole list:
+Additive changes (new field, new page, new route) ship with one click — they can't break existing data. Destructive changes (removing a field) require typing a confirmation phrase, writing a reason, and clicking a red button — and an audit row is written before anything ships.
 
-- **Per-row access rules.** `the deal's creator can read, change, or delete`
-  in the table body. The JS and Python compilers auto-inject the ownership
-  check on every read, write, update, and delete. SQLite AND Postgres
-  runtimes auto-add the `user_id` column. A stolen session token cannot
-  read another user's rows. **Strict cycle 2b:** in any file with security
-  context (auth, tenant scope, rule keyword, another policied table), a
-  table without access rules is a hard compile error.
-- **SSRF allowlist.** Top-of-file `allow outgoing requests to: 'host', ...`.
-  Variable URLs (the classic SSRF vector) won't compile; literal URLs
-  outside the allowlist won't compile.
-- **`sensitive` field tag — encrypt at rest.** `ssn is text, sensitive`
-  encrypts on disk with AES-256-GCM (per-row IV, GCM auth tag, scrypt-
-  derived key from `SENSITIVE_KEY`). Inserts FAIL CLOSED if the env var
-  is unset — Clear refuses to write plaintext. Stripped from API
-  responses by default; opt back in with `can return sensitive data`.
-- **Auto login rate-limit.** When `allow signup and login` is declared,
-  the compiler auto-wires rate-limit middleware on `/auth/login` (10
-  attempts/minute/IP). Brute-force throttling is structural.
-- **Hardcoded-secrets linter.** Source containing a recognizable Stripe
-  / AWS / GitHub / Anthropic / OpenAI key shape fails to compile with a
-  plain-English error suggesting the right env var.
+```clear
+owner is 'marcus@acme.com'
+```
 
-The Marcus pitch can claim **"Clear refuses to compile any of the OWASP
-Top 10. The compiler writes the safe version for you, or the build fails."**
-with no asterisks. See CHANGELOG.md 2026-05-05 / 2026-05-06 entries for
-the full picture; landing/marcus.html ships the customer-facing pitch
-section.
+One line enables the editing widget for the owner. Everyone else sees nothing.
 
-**Build full apps by writing English**
-- Write a working web app — frontend + backend + database — in one `.clear` file.
-- Add login + signup in one line; get JWT auth + bcrypt + role-based access for free.
-- Make pages with forms, tables, charts, dashboards — reactive, no React/Vue/build step.
-- Save, look up, search, paginate, aggregate — all CRUD compiles to safe parameterized SQL.
-- Validation, rate limiting, CORS, file uploads, signed cookies — one-liners.
-- App shell compiles to polished real app chrome — sidebar groups, route-aware nav, workbench headers, routed tabs, KPI stat cards, and right-side record panels.
-- **Shell-page router for multi-page apps with a sidebar.** Declare `app_layout` once on the page that owns the chrome (typically `/`). When the user navigates to another route, the compiler-emitted router parks the shell's default content and mounts the new page's content into the shell's outlet — sidebar persists, page mount lifecycle re-runs, tables re-bind to already-loaded data. No double-sidebar, no empty-table-after-click failure mode. (Compiled emit only — no new syntax to learn.)
-- **Approval queues with audit + notifications in one block.** `queue for deal:` + 4 lines generates the audit table, the outbound notification queue, the filtered queue view, and a login-gated URL for every action. ~150 lines of hand-rolled approval pipeline collapse to 5 lines of declaration.
+---
 
-**Talk to Claude inside your code**
-- Ask Claude for an answer in one line; auto-retries on rate limits, no plumbing.
-- Give an agent tools (call your own functions), memory (cross-session), and a knowledge base (RAG over your tables, files, or URLs).
-- Stream responses by default; opt-out with one phrase.
-- Multi-step workflows with conditional branches and parallel steps.
-- Schedule agents to run every hour, every day at 9am, etc.
+## Safety Built In — Not Bolted On
 
-**Test by writing English**
-- Auto-generated tests from your source — every endpoint, every page, every agent gets probed.
-- Write your own tests in plain English (`can user create a todo`).
-- Run evals on agents from Studio — cost-gated modal, per-row chips, real-time streaming.
-- Launch browser regressions run from one command across the Marcus app set.
+The Clear compiler refuses to generate code with the OWASP Top 10 vulnerabilities. Five guarantees apply to every app, automatically:
 
-**Run anywhere**
-- Same Clear file → Node + Express, or Python + FastAPI, or Cloudflare Workers + D1.
-- Cloudflare target gets cron triggers, Workflows for durable agents, Web Crypto auth automatically.
-- Deploy to Fly with one click from Studio; rollback to any prior version.
-- After the first deploy, every Publish click is an incremental update — new bundle live in ~2s, schema changes ask before reshaping the database, rollback to any of the last 20 versions is one click.
+- **Per-row ownership** — `the deal's creator can read, change, or delete`. No stolen session can access another user's records. Auto-injected on every read, write, update, and delete.
+- **Sensitive fields encrypted at rest** — `ssn is text, sensitive`. AES-256 encryption, per-row. The app refuses to start if the encryption key is missing.
+- **No SQL injection possible** — every database operation uses parameterized queries by construction. There is no way to write a Clear app that puts user input directly into a SQL query.
+- **Login brute-force throttled automatically** — when you add `allow signup and login`, the app rate-limits login attempts to 10 per minute per IP address, with no extra code.
+- **Hardcoded secrets fail to compile** — paste an API key directly into your source and you get a compile error suggesting the right environment variable.
 
-**Edit your live app while users are using it (LAE)**
-- Open your deployed app in the browser → 🔧 widget → "add a region field" → ship in 4 seconds.
-- Existing users keep their unsaved form data; new fields appear empty.
-- Owner-only; non-owners see no edit surface.
-- Phase A (additive) + Phase B (reversible — hide, rename, reorder, with cloud rollback) shipped.
+For multi-customer SaaS, `database is shared with tenant scope` auto-injects the tenant filter on every database operation — plus generates Postgres row-level security policies so that even a future bug can't leak one customer's data to another.
 
-**Studio IDE + Meph the AI builder**
-- Three-panel: editor + preview + Meph chat. Meph writes Clear, compiles, runs, tests, fixes errors.
-- Builder Mode (`?studio-mode=builder`) — preview hero (60vh), chat-first, click-to-edit, branded Publish button.
-- 43 template apps in dropdown; first-visit onboarding card; route selector + multi-page nav.
-- Ghost Meph: route /api/chat to Claude Code, Ollama, Anthropic, or OpenRouter models through the Studio model picker, with tool use preserved.
-- Compile failures expose a one-click compiler-error packet with source context, diagnostics, and repair instructions.
-- Open-capability panel: every Meph turn includes a structured "what's still missing" list — TBD stubs, failing tests, unresolved compile errors with canonical-fix hints. Meph reads one tight summary instead of inferring open work from raw test output.
-- Curated programming-pattern search lets Meph pull small trusted Clear snippets instead of whole templates. Complex app and feature-shape questions now trigger a server preflight that injects syntax docs plus pattern DB matches before Meph answers.
-- The pattern library includes trusted language primitives for approval routing, approval row actions, optimistic-lock approval updates, and booking/customer/availability overlap workflows; local retrieval tests guard the approval and booking queries before paid probes run.
-- Requirements/Ralph loop: complex app requests start with approved end-to-end requirements before Meph mutates source. Ralph audits implementation evidence and blocks false "done" when proof is missing.
-- Ralph now checks typed requirement facts against typed app facts for the first domain-rule slice, so wording like "prevent double booking" and "reject overlaps" maps to one deterministic contract.
-- Flywheel hint telemetry proves whether hints reached Meph and whether he used, rejected, or partially used them.
-- Hint-effect reports say whether the flywheel evidence is significant, inconclusive, negative, or underpowered.
-- Conversation trace logger captures every Meph turn (user prompt, reasoning, visible reply, each tool call, each tool result) into `factor-db.sqlite`'s `meph_turns` table. Default ON; disable with `MEPH_TRACE_LOG=0`. The companion script `scripts/factor-db-trace-summary.mjs` answers research probes like "did Meph plan with the todo tool before acting?" in five-minute queries against accumulated session data — no fresh sweeps needed. Currently scoped to Anthropic-direct sessions; cc-agent mode is a follow-up.
+---
 
-**Developer tooling (Dave-first wedge)**
-- VSCode + Cursor extension with autocomplete + live diagnostics.
-- Zero-dep `clear-lsp` Language Server (stdio JSON-RPC).
-- Compiler-as-API on Cloudflare Workers (`POST /compile` returns JSON).
-- Namespaced module imports: `use 'ui'` then `show ui's Card('Revenue')`.
+## Provable Business Rules
 
-**Hostile to bugs by construction**
-- 30+ bug classes blocked at compile time: SQL injection, auth bypass, mass assignment, missing rate limits, sensitive-field exposure, undefined variables, type mismatches, frontend-backend URL drift, etc.
-- Every CRUD = parameterized; every error response = PII-redacted; every `display X` = XSS-escaped.
-- Termination bounds: every `while` capped at 100 iterations, every recursive function capped at 1000 depth, every `send email` 30s timeout, every `ask claude` retries on transients.
-- **Concurrent-write races flagged at compile time (Phase 1, 2026-05-02).** Every endpoint that reads a record, changes a field, and saves the record back gets a warning unless the author declares `with optimistic lock` (version-checked save) or `safe to retry` (idempotent). The honest sentence: "we flag every endpoint where a race can happen in plain sight."
-- **Optimistic locking actually prevents the race (Phase 2, 2026-05-03).** When an endpoint declares `with optimistic lock`, the compiler emits a version-checked UPDATE that returns 409 Conflict on a version mismatch. Every table auto-gets a `_version` column. The CRO sentence Marcus's compliance buyer can hear: "the second writer cannot accidentally clobber the first writer's change — they get a 409 with a `VERSION_CONFLICT` marker telling them to re-read and retry." Backed by `lib/concurrency-witness.test.js` which proves stale-version saves throw 409 and the first writer's value persists.
-- **`clear test --concurrency N` runs each test N times in parallel (Phase 3, 2026-05-03).** Every test reports either "(N/N parallel runs OK)" or "(K/N parallel runs OK, M conflicted — expected for optimistic-lock endpoints)". Useful for verifying optimistic-lock endpoints under load.
-- **Row-level tenant isolation (Phase 1+2, 2026-05-03).** Declare `database is shared with tenant scope` once; the compiler auto-injects `tenant_id` into every CRUD operation. Lookups filter by `tenant_id = req.user.tenant_id`; inserts auto-set `tenant_id` from the caller; updates set `tenant_id` on the record; removes include `tenant_id` in the WHERE clause. Customer A genuinely cannot read, modify, or delete customer B's records — by construction, not by author discipline. Marcus's compliance buyer can run `node lib/tenant-isolation-witness.test.js` to see the auto-injection reach the compiled output.
-- **API-call audit trail (2026-05-03 night, extended 2026-05-04 with CSV + retention).** When `allow signup and login` is declared, every state-changing request (POST/PUT/PATCH/DELETE) is captured to a durable `audit_log` SQL table with the caller's user_id + email + tenant_id, the route, the method, the response status, an ISO timestamp, AND a sanitized `body_summary` of the request payload (sensitive fields like `password` / `token` / `secret` / `api_key` / `jwt` / `auth` are redacted to `[redacted]`; full body capped at 1KB). `GET /audit` (authenticated) returns the log as JSON; `GET /audit.csv` returns the same data as RFC-4180 CSV with a `Content-Disposition: attachment; filename="audit.csv"` header so SOC 2 evidence collectors and other compliance tools that prefer CSV ingest it natively. Both routes filter by tenant under shared scope. Read-only requests (GET/HEAD/OPTIONS) are skipped. **Retention policy (2026-05-04):** the compiler also emits a 90-day cleanup helper that runs once at server boot and again on demand via `POST /audit/cleanup`. Configure via `AUDIT_RETENTION_DAYS` env var (set to 0 to disable cleanup and keep audit data forever). Compliance buyers ask "how long do you retain audit data?" — there's now a documented policy and a runtime knob. The compliance buyer's four questions — who, when, what, how-long — all answerable in one row.
-- **Studio Prove button now hands you the audit PDF (2026-05-03 late night).** Clicking the toolbar Prove button used to dump the prover's raw math journal into the terminal pane — useful for the developer, useless for the compliance buyer. Now Prove → POST `/api/prove-pdf` → audit.pdf downloads. Same navy/amber compliance artifact the CLI workflow produces (`scripts/audit-bundle.mjs` + `scripts/audit-pdf.py`), wrapped behind one click. Per-request tmpdir isolation, 60s+30s stage timeouts, helpful hints when Python/reportlab aren't installed. The math-journal output stays accessible via the planned right-click drilldown (HANDOFF 4c). Marcus's CRO clicks one button and gets the artifact their auditor reads.
-- **Durable user accounts and invites (2026-05-03 night).** The auth scaffold now stores users in an `_auth_users` SQL table and (under tenant scope) invites in `_auth_invites` — replacing the previous `_users = []` / `_invites = []` in-memory arrays. Process restart no longer wipes accounts or pending invites. Combined with the durable audit log, "your app survives a restart" is true end-to-end at the auth layer. Witness tests run with `CLEAR_DB_PATH` per-test isolation so SQLite's WAL file-lock on Windows can't cross-contaminate between cases. End-to-end HTTP results: tenant-isolation 3/3, invite 4/4, audit-trail 7/7.
-- **Multi-user-per-tenant via invite tokens (2026-05-03 night).** The default behavior — every signup creates a brand-new tenant — meant teammates landed in separate silos and couldn't see each other's records. The new invite flow fixes that. When `database is shared with tenant scope` AND `allow signup and login` are both declared, the compiled app exposes `POST /auth/invite` (authenticated; returns a 32-hex-char single-use token bound to the caller's tenant) and `GET /auth/invite` (lists invites the caller created, with `used_at` and `used_by_email` for audit). The signup endpoint accepts an optional `invite_token` in the body — with it, the new user joins the inviter's tenant; without it, the brand-new-tenant default is preserved. Reuse of a consumed token returns 400. End-to-end HTTP proof in `lib/invite-multi-user-witness.test.js` runs the full Alice→Bob→Carol scenario: Alice invites Bob, Bob joins, both see the same row; Carol signs up plain, sees nothing. The CRO sentence: "your team signs up by passing around a one-click invite link, just like Slack or Linear."
-- **Postgres database-level row security (defense in depth, 2026-05-03 night).** When the same `shared with tenant scope` declaration runs against `database is postgres`, the compiler ALSO emits real Postgres `ROW LEVEL SECURITY` policies on every shared-scope table plus a per-request `SET LOCAL app.current_tenant_id` so the policies fire on every read, write, update, and delete. Two layers now: the application filter PLUS the database itself refusing cross-tenant queries. Even a future bug or raw-SQL slip that bypasses the application filter cannot return another tenant's rows because Postgres physically rejects them at the database layer. The CRO sentence Marcus's compliance buyer can hear: "tenant separation is enforced both in the application and inside Postgres — two independent layers, either of which alone is sufficient." Backed by `runtime/db-postgres-rls.test.js` (22 cases on the runtime helpers) and `lib/postgres-rls-compile.test.js` (28 cases on the compile-emit shape).
-- Compiles deterministically: same input → byte-for-byte identical output, every time.
+Write a named rule, prove it holds for every possible input, hand the PDF to your compliance buyer.
 
-### Maintenance rule for this exec summary
+```clear
+rule discount-cap-thirty:
+  enforce that deal's discount_percent is less than 30,
+    or fail with error message: 'Discounts of 30%+ require VP approval'
+```
 
-**When you ship a new substantive capability, add ONE plain-English line here.** Group it under whichever heading fits, or add a new heading if it's a genuinely new category. Test for inclusion: "would Russell scan this list and feel a 30-second hell-yes about Clear?" If yes, add. If no — it's a syntax variant or alias, just add a row to the table below, not the exec summary.
+`clear prove deal-desk.clear` returns: **"discount-cap-thirty PROVED for every possible deal."** Not "we tested it." Proved, as a mathematical guarantee, for every input that could ever exist. The proof downloads as a PDF ready for an auditor.
 
-**Plain English means:**
-- 14-year-old test — no jargon ("HMAC", "JWT", "bcrypt", "Promise.race"), no node-type names, no function names.
-- Say what it DOES, not what it's CALLED. Not "`set signed cookie 'name' to value`" — say "Tamper-proof cookies in one line."
-- Hide the syntax. The rows below carry the exact form. The exec summary is for "yes Clear does X."
-- Keep each line under ~20 words.
+Agent rules work the same way: `prove that agent 'Refund Bot' cannot call charge_card` — PROVED if that action is unreachable from the agent's tool list, DISPROVED with the exact call chain if it is.
 
-**When in doubt, write it both ways and pick the one a stranger would understand.**
+---
+
+## Studio — The Browser IDE + AI Builder
+
+Open Clear Studio at `http://localhost:3456`. Three panels: a code editor, a live preview of your running app, and a chat with Meph — Clear's built-in AI app builder.
+
+Meph writes Clear code, builds the app, runs tests, and fixes errors. For complex apps, Meph first writes a structured checklist of requirements and waits for your approval before touching any code. After building, a checking system called Ralph audits the result against those approved requirements and blocks Meph from declaring "done" if the evidence doesn't match — no more AI that says it's done but isn't.
+
+Thirteen template apps in the dropdown. One-click deploy to Fly.io. Rollback to any of the last 20 versions from inside the IDE.
+
+---
+
+## Reference Tables
+
+The tables below cover every feature in the language with exact syntax. Jump to the section you need using the navigation at the top of this file.
 
 ---
 
