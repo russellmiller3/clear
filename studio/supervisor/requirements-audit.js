@@ -465,6 +465,14 @@ function parseDataShapeRequirement(text, normalized) {
   const mustStore = String(text || '').trim().match(/^([A-Za-z][A-Za-z0-9_-]*)s?\s+must\s+store:?\s+(.+)$/i);
   if (mustStore) return { entity: mustStore[1], fields: splitFields(mustStore[2]) };
 
+  // "X data must be stored with Y" / "X information must be stored with Y"
+  const storedWith = normalized.match(/\b([a-z][a-z0-9_-]*)s?\s+(?:data|information|info|details?)\s+must\s+be\s+stored?\s+(?:with\s+)?(.+)$/);
+  if (storedWith) return { entity: storedWith[1], fields: splitFields(storedWith[2]) };
+
+  // "X records must store Y" / "X records must be stored with Y"
+  const recordsMustStore = normalized.match(/\b([a-z][a-z0-9_-]*)s?\s+records?\s+must\s+(?:be\s+)?stored?\s*(?:with\s+)?(.+)$/);
+  if (recordsMustStore) return { entity: recordsMustStore[1], fields: splitFields(recordsMustStore[2]) };
+
   return null;
 }
 

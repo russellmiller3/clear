@@ -400,6 +400,42 @@ when user sends reservation to /api/bookings:
     expect(audit.items[0].reason).toContain('domain rule');
   });
 
+  // STORAGE PATTERN GAPS — red-first TDD (2026-05-11)
+  // Proven miss: "booking data must be stored with room_id, start_time, end_time" → unverified
+  it('verifies "X data must be stored with fields" storage requirement pattern', () => {
+    const source = `
+build for javascript backend
+create a Bookings table:
+  room_id, required
+  start_time, required
+  end_time, required
+`;
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'booking data must be stored with room_id, start_time, and end_time' }],
+    });
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).toContain('room_id');
+  });
+
+  it('verifies "X records must store fields" storage requirement and does not misroute to notification', () => {
+    const source = `
+build for javascript backend
+create a Customers table:
+  name, required
+  email, required
+  company, required
+`;
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'customer records must store name, email, and company' }],
+    });
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+    expect(audit.items[0].reason).not.toContain('notification');
+  });
+
   it('verifies named agent requirements from agent declaration evidence', () => {
     const source = `
 build for javascript backend
