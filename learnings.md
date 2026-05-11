@@ -13,6 +13,18 @@ visible field labels were being reused as payload values.
 - **Prompt tests should lock the behavior, not just the wording.** Assert the examples include stable variable names and the warning-preventing auth setup.
 - **Auth examples need request logging beside login.** If the app says `allow signup and login`, the prompt should also show `log every request`.
 
+## Session 2026-05-11: Natural syntax repairs should use the synonym table
+
+The first pass for `first <noun phrase> of rows` worked behaviorally, but it put
+a private phrase rule in the parser instead of using the existing collection
+selector synonyms.
+
+### Gotchas-as-rules
+
+- **Natural phrase repairs should keep the synonym table as the owner.** If the phrase extends an existing Clear concept, derive it from `SYNONYM_TABLE`.
+- **Do not make a one-off branch when sibling synonyms exist.** `first`, `last`, and `rest` now share the selector phrase path.
+- **Regression tests should catch architectural shortcuts, not just the reported phrase.** The test now covers all selector noun phrases.
+
 ## Session 2026-05-11: Natural English parser aliases should preserve canonical syntax
 
 Meph generated `first item of settings` and `link to '/compose' with label 'New'`.
@@ -20,7 +32,7 @@ Both were understandable Clear, but only the terser canonical forms compiled.
 
 ### Gotchas-as-rules
 
-- **Accept harmless noun phrases at the parser edge.** `first <noun phrase> of list` should compile like `first of list`; docs can still teach the canonical form.
+- **Accept harmless noun phrases at the parser edge.** `first/last/rest <noun phrase> of list` should compile like `first/last/rest of list`; docs can still teach the canonical form.
 - **Treat reversed link label syntax as an alias, not a new canonical form.** `link to '/path' with label 'Text'` is unambiguous and maps to `link 'Text' to '/path'`.
 - **Do not repair generated Clear by editing around syntax the compiler can safely understand.** A root parser fix compounds across every app.
 

@@ -234,7 +234,7 @@ section.
 | String interpolation | `'Hello, {name}!'` | Any expression inside `{}` |
 | String concat | `'Hello, ' + name` | |
 | Lists | `['a', 'b', 'c']` | Add, remove, sort, length |
-| First item | `first of rows` | Also accepts natural noun phrases like `first item of rows` and `first setting row of settings`; canonical form stays short. |
+| Collection selectors | `first of rows` / `last of rows` / `rest of rows` | Also accepts natural noun phrases like `first item of rows` and `last setting row of settings`; canonical form stays short. |
 | Records | `create person:` + indented fields | |
 | Possessive access | `user's name` | Also dot: `user.name` |
 | Map operations | `get key from scope` / `set key in scope to value` | Also `exists in`, `keys of`, `values of` |

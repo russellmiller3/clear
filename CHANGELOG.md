@@ -8,9 +8,9 @@ Newest entries at the top.
 
 ## 2026-05-11 - Natural collection and link phrases
 
-Clear now accepts two natural phrases that showed up in Studio-generated app code without making them the preferred style:
+Clear now accepts two natural phrase families that showed up in Studio-generated app code without making them the preferred style:
 
-- `first <noun phrase> of rows` compiles like `first of rows`. Examples: `first item of all_settings`, `first setting row of settings`.
+- Collection selector noun phrases compile through the existing selector synonyms. Examples: `first item of all_settings`, `last setting row of settings`, `rest scheduled posts of due_posts`.
 - `link to '/path' with label 'Text'` compiles like `link 'Text' to '/path'`.
 
 Docs now call these aliases out in `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `intent.md`, and the Studio prompt so Meph can repair them without teaching them as canonical.

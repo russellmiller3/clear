@@ -374,8 +374,9 @@ for each deal in pending_deals:
 
 This is the **don't repeat yourself** rule in action. The same logic, written once, runs for every item — whether the list has 3 entries or 3,000.
 
-Clear also understands natural first-item phrases like `first pending deal of deals`.
-Use the shorter `first of deals` when the noun is already obvious.
+Clear also understands natural selector phrases like `first pending deal of deals`
+or `last pending deal of deals`. Use the shorter `first of deals` when the
+noun is already obvious.
 
 Run it:
 

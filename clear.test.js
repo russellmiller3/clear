@@ -7628,6 +7628,23 @@ describe('Syntax - collection operations', () => {
     expect(node.expression.name).toBe('_first');
   });
 
+  it('uses collection selector synonyms for natural noun phrase expressions', () => {
+    const cases = [
+      ['define first_setting as: first setting row of all_settings', '_first'],
+      ['define last_post as: last queued post of posts', '_last'],
+      ['define remaining_posts as: rest scheduled posts of due_posts', '_rest'],
+    ];
+
+    for (const [source, expectedName] of cases) {
+      const ast = parse(source);
+      expect(ast.errors).toHaveLength(0);
+      const node = ast.body.find(n => n.type === 'assign');
+      expect(node).toBeDefined();
+      expect(node.expression.type).toBe('call');
+      expect(node.expression.name).toBe(expectedName);
+    }
+  });
+
   it('parses last of expression', () => {
     const ast = parse('define last_item as: last of items');
     expect(ast.errors).toHaveLength(0);

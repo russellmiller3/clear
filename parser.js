@@ -121,6 +121,7 @@
 // =============================================================================
 
 import { tokenize, tokenizeLine, TokenType } from './tokenizer.js';
+import { REVERSE_LOOKUP, SYNONYM_TABLE } from './synonyms.js';
 import { normalizeThirdPersonInteractionAction } from './lib/verb-agreement.js';
 
 // =============================================================================
@@ -10922,6 +10923,63 @@ function parseStringParts(rawStr, lineNum) {
   return parts.length > 0 ? parts : null;
 }
 
+const COLLECTION_OPS = Object.freeze({
+  sum_of: 'sum',
+  avg_of: 'avg',
+  count_of: 'count',
+  max_of: 'max',
+  min_of: 'min',
+  first_of: '_first',
+  last_of: '_last',
+  rest_of: '_rest',
+});
+
+const NATURAL_COLLECTION_SELECTOR_PHRASES = Object.freeze(
+  Object.entries(COLLECTION_OPS).flatMap(([canonical, fnName]) => {
+    // Only selector helpers accept an ignored noun phrase.
+    // Aggregates keep their stricter "sum of field in rows" shape.
+    if (!fnName.startsWith('_')) return [];
+    return (SYNONYM_TABLE[canonical] || [])
+      .map(phrase => {
+        const words = phrase.trim().toLowerCase().split(/\s+/);
+        if (words.length !== 2) return null;
+        const [head, connector] = words;
+        return {
+          fnName,
+          head,
+          connectorCanonical: REVERSE_LOOKUP[connector] || connector,
+        };
+      })
+      .filter(Boolean);
+  })
+);
+
+function tokenMatchesNaturalCollectionHead(token, head) {
+  if (!token) return false;
+  const raw = String(token.rawValue || token.value || '').toLowerCase();
+  return raw === head || token.canonical === (REVERSE_LOOKUP[head] || head);
+}
+
+function parseNaturalCollectionSelector(tokens, pos, line, maxPos) {
+  const tok = tokens[pos];
+  for (const phrase of NATURAL_COLLECTION_SELECTOR_PHRASES) {
+    if (!tokenMatchesNaturalCollectionHead(tok, phrase.head)) continue;
+    let connectorPos = -1;
+    for (let k = pos + 1; k < maxPos; k++) {
+      if (tokens[k].canonical === phrase.connectorCanonical) {
+        connectorPos = k;
+        break;
+      }
+    }
+    if (connectorPos > pos + 1) {
+      const operand = parsePrimary(tokens, connectorPos + 1, line, maxPos);
+      if (operand.error) return operand;
+      return { node: callNode(phrase.fnName, [operand.node], line), nextPos: operand.nextPos };
+    }
+  }
+  return null;
+}
+
 function parsePrimary(tokens, pos, line, end) {
   const maxPos = end || tokens.length;
   if (pos >= maxPos) {
@@ -11132,29 +11190,12 @@ function parsePrimary(tokens, pos, line, end) {
     }
   }
 
-  if (tok.canonical === 'first') {
-    let connectorPos = -1;
-    for (let k = pos + 1; k < maxPos; k++) {
-      if (tokens[k].canonical === 'in') {
-        connectorPos = k;
-        break;
-      }
-    }
-    if (connectorPos > pos + 1) {
-      const operand = parsePrimary(tokens, connectorPos + 1, line, maxPos);
-      if (operand.error) return operand;
-      return { node: callNode('_first', [operand.node], line), nextPos: operand.nextPos };
-    }
-  }
+  const naturalCollection = parseNaturalCollectionSelector(tokens, pos, line, maxPos);
+  if (naturalCollection) return naturalCollection;
 
   // Collection operations: "sum of X", "first of X", "count of X", etc.
-  const collectionOps = {
-    sum_of: 'sum', avg_of: 'avg', count_of: 'count',
-    max_of: 'max', min_of: 'min',
-    first_of: '_first', last_of: '_last', rest_of: '_rest',
-  };
-  if (collectionOps[tok.canonical]) {
-    const fnName = collectionOps[tok.canonical];
+  if (COLLECTION_OPS[tok.canonical]) {
+    const fnName = COLLECTION_OPS[tok.canonical];
     const operand = parsePrimary(tokens, pos + 1, line, maxPos);
     if (operand.error) return operand;
     // NEW: "sum of field from Table" -> SQL_AGGREGATE. Must come BEFORE the

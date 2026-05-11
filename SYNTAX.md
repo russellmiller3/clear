@@ -211,9 +211,10 @@ first_item = first of items
 last_item = last of items
 remaining = rest of items
 
-# Natural noun phrases are accepted for first-item reads:
+# Natural noun phrases are accepted for selector reads:
 first_setting = first setting row of all_settings
-first_post = first scheduled post of due_posts
+last_post = last scheduled post of due_posts
+remaining_posts = rest scheduled posts of due_posts
 
 all_names = each user's name in users
 merged = combine defaults with overrides

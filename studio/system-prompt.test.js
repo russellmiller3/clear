@@ -16,7 +16,7 @@ describe('Meph system prompt source hygiene', () => {
   });
 
   it('documents natural syntax aliases without making them canonical', () => {
-    expect(prompt).toContain('Use `first of rows`; `first <noun phrase> of rows` is accepted');
+    expect(prompt).toContain('Use `first of rows`; selector noun phrases like `first <noun phrase> of rows`');
     expect(prompt).toContain("Use `link 'Text' to '/path'`; destination-first links still compile");
   });
 });

@@ -471,7 +471,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `send back all Users where active is true` | `x = get all Users where active is true; send back x` | Inline filtered list |
 | `this id` (in expression position) | `incoming?.id` | URL path param access, works anywhere in expressions |
 | `this user_id` | `incoming?.user_id` | Same pattern for any named URL param |
-| `first setting row of all_settings` | `first of all_settings` | Natural noun phrase before `of` is accepted; use the short canonical form in fresh code. |
+| `first setting row of all_settings` / `last setting row of all_settings` | `first of all_settings` / `last of all_settings` | Natural noun phrase before `of` is accepted for collection selectors; use the short canonical form in fresh code. |
 | `get todos from '/api/url'` | `get from '/api/url'` (into magic response) | Named state target |
 | `sending article` | `receiving article` | User perspective canonical |
 | `saved as a todo` | `saves to todo` | With optional article |
