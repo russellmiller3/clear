@@ -4813,6 +4813,20 @@ policy:
 These three rules prevent the most common AI agent failure modes. They cost
 nothing to add and they'll save you the first time an agent goes off-script.
 
+### Proving Your Agents Actually Respect the Policies
+
+Writing policies is step one. Step two is proving your agent can't route around them.
+
+Clear's prover can verify that a specific agent upholds every policy in the block — not at runtime, but mathematically, before you deploy:
+
+```clear
+prove that agent 'Refund Bot' upholds all policies
+```
+
+The prover walks every path the agent can take (every tool it might call, every endpoint it can reach) and checks each one against the policy rules. You get a per-policy verdict: PROVED, DISPROVED, or UNVERIFIABLE (runtime-dependent check — passes at compile time, enforced at runtime).
+
+For the full walkthrough — including what the output looks like, what UNVERIFIABLE means, and how to audit agents across multiple policy rules — see **Chapter 12b: Provable Agent Bounds**.
+
 ---
 
 You just learned an entire programming language. Not bad for one sitting.
