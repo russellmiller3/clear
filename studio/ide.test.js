@@ -36,13 +36,13 @@ await new Promise(resolve => {
 console.log('Server ready. Launching browser...\n');
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage();
+const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
 
 const consoleErrors = [];
 page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 page.on('pageerror', err => consoleErrors.push(err.message));
 
-await page.goto(BASE, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
 
 try {
   // ==========================================================================
@@ -91,6 +91,18 @@ try {
   assert(await page.locator('button[onclick="doStop()"]').count() === 1, 'Stop button present');
   assert(await page.locator('button[onclick="doSave()"]').isVisible(), 'Save button visible');
   assert(await page.locator('#theme-toggle').isVisible(), 'theme toggle visible');
+  await page.evaluate(() => {
+    for (const id of ['run-btn', 'stop-btn', 'direct-edit-btn', 'download-btn']) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = '';
+    }
+  });
+  const clippedToolbarLabels = await page.locator('#toolbar .toolbar-btn').evaluateAll(buttons =>
+    buttons
+      .filter(button => button.offsetWidth + 0.5 < button.scrollWidth)
+      .map(button => button.textContent.trim())
+  );
+  assert(clippedToolbarLabels.length === 0, `toolbar labels fit at laptop width (clipped: ${clippedToolbarLabels.join(', ') || 'none'})`);
 
   // ==========================================================================
   // MODE SWITCHER (regression net for the 2026-05-03 setStudioMode bug)

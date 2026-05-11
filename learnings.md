@@ -2,6 +2,16 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-11: Studio toolbar buttons must not flex-shrink under their labels
+
+The Studio toolbar buttons were allowed to shrink like normal flex children, then the ripple rule hid overflow. On laptop-width screens, labels like "Download" and "Syntax" compressed to "Do" and "Sy" even though the buttons were visible.
+
+### Gotchas-as-rules
+
+- **Never let text buttons shrink below their label width.** Pair `flex: 0 0 auto` with `white-space: nowrap` on shared toolbar buttons.
+- **Overflow-hidden visual effects can hide layout bugs.** Ripple/shimmer effects need a label-fit test when they clip child content.
+- **Laptop-width browser tests should assert no text clipping, not only visibility.** A visible button with half a label is still broken UI.
+
 ## Session 2026-05-10: Studio shortcut must repair missing Node packages before hiding the server
 
 The Windows `start-clear.bat` shortcut rebuilt the Marcus apps, opened a minimized server window, then waited for port 3456. When `node_modules` was empty, Studio crashed immediately with `ERR_MODULE_NOT_FOUND: Cannot find package 'express'`, but the visible launcher only reported "Studio did not come up within 30 seconds." The real error was hidden in the minimized server window.
