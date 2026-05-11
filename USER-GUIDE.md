@@ -5713,6 +5713,130 @@ if error:
 
 ---
 
+## Chapter 26: Live App Editing (Change a Running App Without Breaking It)
+
+Your app is live. Marcus is using it. His team opened 47 deals today and the approval queue is humming. Then Marcus realizes: the `notes` field on Deals should be called `internal_notes`, and he wants to add a `contract_value` column.
+
+In most tools, that means: deploy a migration, coordinate a restart, hope nothing breaks mid-request. In Clear, Marcus types in a chat box and the change is live in three seconds — no terminal, no coordination, no downtime.
+
+That's Live App Editing (LAE).
+
+### What LAE Is
+
+LAE is a widget pinned to the corner of your running app. It's invisible to regular users — only the owner can see it. The owner types a plain-English request ("add a contract_value field to Deals"), and the widget talks to an AI model that understands your Clear source. The model proposes the change, shows you a diff, and waits for your click before touching anything.
+
+Two things make it safe:
+
+**Additive changes ship instantly.** Adding a field, adding an endpoint, adding a page — these can't break existing rows or break existing code, so they go through a single "Ship it" button.
+
+**Destructive changes require confirmation.** Removing a field, changing a type — these could lose customer data. The widget shows you a permanent warning, the exact phrase you must type (like `DELETE field notes`), a reason field, and a red button that's disabled until both match. There's also an audit log row written before the change ships, so you have a paper trail even if something goes wrong.
+
+### Enabling the Widget
+
+Add one line to your app:
+
+```clear
+build for javascript backend
+owner is 'marcus@acme.com'
+allow signup and login
+
+create a Deals table:
+  customer
+  list_price (number)
+  discount_percent (number)
+  notes
+```
+
+The `owner is` line is all it takes. When Marcus logs in with that email, he sees an "Edit this app" badge in the bottom corner. Everyone else sees nothing.
+
+The badge opens the Meph chat widget — Meph is short for Mephistopheles, Clear's built-in AI app builder. Marcus types a request; Meph proposes the change in structured form; Marcus reviews and ships.
+
+### Making an Additive Change
+
+Marcus opens the widget and types:
+
+> "Add a contract_value field to the Deals table"
+
+Meph reads the current source, proposes `add field contract_value to Deals`, and sends back a proposal card:
+
+```
+✅ Additive   1× add field
++ contract_value
+```
+
+The card shows:
+- **Green chip** — additive, safe to ship instantly.
+- **What changed** — the diff showing the new line.
+- **Ship it / Cancel** — two buttons.
+
+Marcus clicks **Ship it**. Clear rewrites the source, recompiles, and reloads the server in the background. The Deals table now has a `contract_value` column. No existing rows break — the column is empty until Marcus or his team fills it in. Total time: about 3 seconds.
+
+**Nothing to type. Nothing to confirm.** Additive changes are safe by construction: you can always roll back by removing the new field, and no existing data is touched.
+
+### Making a Destructive Change
+
+Marcus decides the `notes` field was a mistake from day one — nobody uses it and it's cluttering the form. He types:
+
+> "Remove the notes field from Deals"
+
+Meph proposes the change. But this time the card is different:
+
+```
+⚠️  Destructive   1× remove field
+- notes
+```
+
+**Red chip. Permanent warning banner.** Below the diff:
+
+> Permanent. Rolling back will restore the field, but not the data inside it.
+
+And below that, a form with three parts:
+
+1. **Confirmation phrase** — a text input with placeholder `DELETE field notes`. Marcus must type this exactly (case-sensitive) before the red button enables.
+2. **Reason** — a textarea. Marcus writes: `"Field is unused — confirmed with the sales team."`
+3. **I understand — ship and destroy** — red, disabled until both fields match.
+
+Marcus types `DELETE field notes`, fills in his reason, and clicks the red button. The server:
+1. Writes a `pending` audit row with the actor, reason, timestamp, and what changed.
+2. Ships the change (recompile + server restart).
+3. Updates the audit row to `shipped` with the version ID.
+
+If the server restart fails, the audit row flips to `ship-failed` — the record exists either way. Marcus can't take an action without a paper trail.
+
+### When It Looks Like a Rename
+
+Marcus realizes `notes` should actually be called `internal_notes`, not deleted. He adds `internal_notes` first (additive, instant ship). Then he types:
+
+> "Remove the notes field from Deals"
+
+The widget sees that `notes` was just removed AND `internal_notes` was just added on the same table. Instead of jumping straight to the deletion form, it shows a **rename detection** panel above the confirmation gate:
+
+```
+Looks like a rename — what should happen to existing data?
+
+○  Copy notes values into internal_notes, then drop notes
+○  Drop notes, leave internal_notes empty
+```
+
+The first option is pre-selected. Marcus picks it (copy the values), then proceeds through the normal destructive confirmation: type `DELETE field notes`, fill in a reason, click the red button. The migration choice travels with the ship request so the right data strategy runs before the column is dropped.
+
+**Why this matters:** without rename detection, Marcus deletes the field, ships in three seconds, and realizes three days later that 847 rows of notes data are gone. The rename prompt is the difference between "I didn't know I needed to think about that" and "the tool made me think about it."
+
+### What the Audit Log Captures
+
+Every destructive ship writes a row with:
+- **Actor** — who did it (email from the login session)
+- **Action / verdict** — `ship / destructive`
+- **Kind** — `remove_field`
+- **Before / After** — compact snippets (`- notes`, `(removed)`)
+- **Reason** — Marcus's free-text explanation
+- **Status** — `pending` → `shipped` (or `ship-failed` if the restart failed)
+- **Version ID** — the deployed version this change produced
+
+This is what you hand a compliance auditor: "Show me every field deletion in the last 90 days, who authorized it, and why." Every row is there. The server refuses to ship destructive changes when the audit store is unreachable — no row, no ship.
+
+---
+
 ## You Did It
 
 You started Chapter 1 with `show 'Discount: 18%'`. You finished Chapter 12 with a math-proved business rule, an audit log, an AI summary, and a one-page CRO-signed PDF. Twelve chapters, one app, every primitive in the language.
