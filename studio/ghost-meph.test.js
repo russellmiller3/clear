@@ -222,8 +222,10 @@ function parseSSE(text) {
   const ccArgsWithPrompt = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json', 'Hello world');
   assert(ccArgsWithPrompt[ccArgsWithPrompt.length - 1] === 'Hello world',
     'cc-agent spawn args pass prompt as final positional arg (Windows stdin race fix)');
-  assert(ccArgsWithPrompt.length === ccArgs.length + 1,
-    'passing prompt adds exactly one arg to the argv');
+  assert(ccArgsWithPrompt[ccArgsWithPrompt.length - 2] === '--',
+    'cc-agent spawn args separate flags from the prompt');
+  assert(ccArgsWithPrompt.length === ccArgs.length + 2,
+    'passing prompt adds separator plus prompt to the argv');
   const ccArgsEmpty = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json', '');
   assert(ccArgsEmpty.length === ccArgs.length,
     'empty prompt does NOT add a trailing arg (empty string would confuse claude)');
@@ -274,6 +276,8 @@ function parseSSE(text) {
     'cc-agent --system-prompt-file points at the provided path');
   assert(ccArgsWithSys[ccArgsWithSys.length - 1] === 'Build something',
     'user prompt stays as final positional arg even when system-prompt-file is set');
+  assert(ccArgsWithSys[ccArgsWithSys.length - 2] === '--',
+    'system-prompt-file mode still separates flags from the prompt');
   const ccArgsNoSys = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json', 'Build something');
   assert(!ccArgsNoSys.includes('--system-prompt-file'),
     'cc-agent omits --system-prompt-file when no path given (uses claude default)');

@@ -397,6 +397,25 @@ export function writeMcpConfigOrNull() {
   }
 }
 
+export function formatClaudeCliExitError(code, stdout = '', stderr = '') {
+  const stderrTail = (stderr || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !/no stdin data received/i.test(line))
+    .slice(-5)
+    .join(' | ')
+    .slice(0, 400);
+  const stdoutTail = (stdout || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(-5)
+    .join(' | ')
+    .slice(0, 400);
+  const detail = [stderrTail, stdoutTail].filter(Boolean).join(' | ');
+  return `\`claude\` exited with code ${code}: ${detail || '(no output)'}`;
+}
+
 /**
  * Run `claude --print` with the given prompt (text mode). Captures stdout,
  * returns the trimmed text. Rejects on timeout, on non-zero exit code, or
@@ -447,8 +466,7 @@ export function runClaudeCli(prompt) {
     child.on('close', code => {
       clearTimeout(timer);
       if (code !== 0) {
-        const tail = (stderr || '').split('\n').slice(-5).join('\n').trim();
-        finish(reject, new Error(`\`claude\` exited with code ${code}: ${tail || '(no stderr)'}`));
+        finish(reject, new Error(formatClaudeCliExitError(code, stdout, stderr)));
         return;
       }
       finish(resolve, stdout.trim());
@@ -527,7 +545,7 @@ export function buildClaudeStreamJsonSpawnArgs(configPath, prompt, systemPromptP
   if (typeof systemPromptPath === 'string' && systemPromptPath.length > 0) {
     args.push('--system-prompt-file', systemPromptPath);
   }
-  if (typeof prompt === 'string' && prompt.length > 0) args.push(prompt);
+  if (typeof prompt === 'string' && prompt.length > 0) args.push('--', prompt);
   return args;
 }
 
@@ -608,11 +626,7 @@ export function runClaudeCliStreamJson(prompt, configPath, systemPromptPath, abo
         // Filter the benign "no stdin data received in 3s" warning — it's
         // emitted when stdin is ignored AND claude ran fine via positional
         // arg, so we don't want it surfaced as an error tail.
-        const tail = (stderr || '')
-          .split('\n')
-          .filter(l => !/no stdin data received/i.test(l))
-          .slice(-5).join('\n').trim();
-        finish(reject, new Error(`\`claude\` exited with code ${code}: ${tail || '(no stderr)'}`));
+        finish(reject, new Error(formatClaudeCliExitError(code, stdout, stderr)));
         return;
       }
       // Return raw NDJSON — parser handles empty/malformed lines.

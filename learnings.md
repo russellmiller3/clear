@@ -2,6 +2,17 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-11: Meph model picker must not be bypassed by the launcher
+
+The Studio shortcut forced Meph through the local Claude Code backend. That made the model dropdown cosmetic: Anthropic, OpenRouter, GLM, DeepSeek, and Kimi all still went through the same local command. When that local command was not usable, every model looked dead.
+
+### Gotchas-as-rules
+
+- **Never hardwire a Meph backend in the launcher when the UI has a model picker.** Load provider keys and let Studio route the selected model.
+- **Launcher env overrides can make UI controls lie.** If every option fails the same way, inspect the parent process before debugging each provider.
+- **Claude Code flags can swallow the prompt.** Put `--` before the positional prompt when `--tools` is present.
+- **Nonzero CLI exits can explain themselves on stdout, not stderr.** Surface both tails so auth failures are visible in Studio.
+
 ## Session 2026-05-11: Studio toolbar buttons must not flex-shrink under their labels
 
 The Studio toolbar buttons were allowed to shrink like normal flex children, then the ripple rule hid overflow. On laptop-width screens, labels like "Download" and "Syntax" compressed to "Do" and "Sy" even though the buttons were visible.

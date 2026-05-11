@@ -68,14 +68,15 @@ for %%A in (deal-desk lead-router approval-queue onboarding-tracker internal-req
 )
 
 REM ---- Step 5: start fresh Studio server (minimized) ----
-REM Route Meph through your Claude Code subscription instead of an Anthropic
-REM API key. cc-agent spawns the local `claude` CLI, which bills against your
-REM Claude Code plan. No x-api-key needed; no 401 even if the API key is empty
-REM or capped. GHOST_MEPH_CC_TOOLS=1 turns on the tool-dispatch mode (28 Meph
-REM tools auto-routed through the MCP server) — text-only mode is the older
-REM fallback.
-echo [5/6] Starting Studio server with latest code (Meph via Claude Code)...
-start "Clear Studio Server" /min cmd /c "set MEPH_BRAIN=cc-agent && set GHOST_MEPH_CC_TOOLS=1 && node studio\server.js"
+REM Load local provider keys before Studio starts so Meph's model picker can
+REM route through the selected backend. Do not hardwire MEPH_BRAIN here; that
+REM makes the picker cosmetic and sends every model choice through one backend.
+if exist ".env" (
+  for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do set "%%A=%%B"
+)
+
+echo [5/6] Starting Studio server with model picker routing...
+start "Clear Studio Server" /min cmd /c "node studio\server.js"
 
 REM Wait up to 30 seconds for the port to come alive
 set /a WAIT_TRIES=0

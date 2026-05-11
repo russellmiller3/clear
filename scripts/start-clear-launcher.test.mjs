@@ -10,6 +10,7 @@ const gitAttributes = readFileSync(join(rootDir, '.gitattributes'), 'utf8');
 
 const dependencyGuard = 'node scripts\\ensure-node-deps.mjs';
 const serverStart = 'node studio\\server.js';
+const envLoad = 'for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do set "%%A=%%B"';
 
 assert(
   launcher.includes(dependencyGuard),
@@ -18,6 +19,14 @@ assert(
 assert(
   launcher.indexOf(dependencyGuard) < launcher.indexOf(serverStart),
   'dependency repair must happen before the hidden Studio server starts',
+);
+assert(
+  launcher.includes(envLoad),
+  'start-clear.bat must load .env provider keys before starting Studio',
+);
+assert(
+  !launcher.includes('set MEPH_BRAIN=cc-agent &&'),
+  'start-clear.bat must not hardwire cc-agent and bypass the model picker',
 );
 
 for (let i = 0; i < launcherBytes.length; i += 1) {
