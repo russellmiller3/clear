@@ -4008,6 +4008,15 @@ describe('Static Content Elements', () => {
     expect(node.href).toBe('/about');
   });
 
+  it('parses link destination before label', () => {
+    const ast = parse(`link to '/compose' with label '+ New Post'`);
+    expect(ast.errors).toHaveLength(0);
+    const node = ast.body.find(n => n.type === 'content');
+    expect(node.contentType).toBe('link');
+    expect(node.text).toBe('+ New Post');
+    expect(node.href).toBe('/compose');
+  });
+
   it('parses divider', () => {
     const ast = parse(`divider`);
     expect(ast.errors).toHaveLength(0);
@@ -7610,6 +7619,15 @@ describe('Syntax - collection operations', () => {
     expect(node.expression.type).toBe('call');
   });
 
+  it('parses first noun phrase of expression', () => {
+    const ast = parse('define first_setting as: first setting row of all_settings');
+    expect(ast.errors).toHaveLength(0);
+    const node = ast.body.find(n => n.type === 'assign');
+    expect(node).toBeDefined();
+    expect(node.expression.type).toBe('call');
+    expect(node.expression.name).toBe('_first');
+  });
+
   it('parses last of expression', () => {
     const ast = parse('define last_item as: last of items');
     expect(ast.errors).toHaveLength(0);
@@ -7654,6 +7672,16 @@ how_many = count of users
 build for web
 first_item = first of items
     `);
+    expect(result.javascript).toContain('items[0]');
+  });
+
+  it('compiles first noun phrase of to JS', () => {
+    const result = compileProgram(`
+build for web
+items = [1, 2, 3]
+first_item = first record of items
+    `);
+    expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('items[0]');
   });
 

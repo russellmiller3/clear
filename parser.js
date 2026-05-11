@@ -6892,6 +6892,16 @@ function parseContent(tokens, line, canonical) {
     return { node: contentNode('divider', '', line) };
   }
 
+  if (canonical === 'link' &&
+      tokens.length >= 6 &&
+      tokens[1].canonical === 'to_connector' &&
+      tokens[2].type === TokenType.STRING &&
+      tokens[3].canonical === 'with' &&
+      String(tokens[4].value || '').toLowerCase() === 'label' &&
+      tokens[5].type === TokenType.STRING) {
+    return { node: contentNode('link', tokens[5].value, line, tokens[2].value) };
+  }
+
   let pos = 1; // skip keyword
 
   // For bare "text" (identifier, not keyword), pos is already 1
@@ -11119,6 +11129,21 @@ function parsePrimary(tokens, pos, line, end) {
           };
         }
       }
+    }
+  }
+
+  if (tok.canonical === 'first') {
+    let connectorPos = -1;
+    for (let k = pos + 1; k < maxPos; k++) {
+      if (tokens[k].canonical === 'in') {
+        connectorPos = k;
+        break;
+      }
+    }
+    if (connectorPos > pos + 1) {
+      const operand = parsePrimary(tokens, connectorPos + 1, line, maxPos);
+      if (operand.error) return operand;
+      return { node: callNode('_first', [operand.node], line), nextPos: operand.nextPos };
     }
   }
 

@@ -2,6 +2,17 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-11: Natural English parser aliases should preserve canonical syntax
+
+Meph generated `first item of settings` and `link to '/compose' with label 'New'`.
+Both were understandable Clear, but only the terser canonical forms compiled.
+
+### Gotchas-as-rules
+
+- **Accept harmless noun phrases at the parser edge.** `first <noun phrase> of list` should compile like `first of list`; docs can still teach the canonical form.
+- **Treat reversed link label syntax as an alias, not a new canonical form.** `link to '/path' with label 'Text'` is unambiguous and maps to `link 'Text' to '/path'`.
+- **Do not repair generated Clear by editing around syntax the compiler can safely understand.** A root parser fix compounds across every app.
+
 ## Session 2026-05-11: Meph model picker must not be bypassed by the launcher
 
 The Studio shortcut forced Meph through the local Claude Code backend. That made the model dropdown cosmetic: Anthropic, OpenRouter, GLM, DeepSeek, and Kimi all still went through the same local command. When that local command was not usable, every model looked dead.
