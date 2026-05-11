@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-11 - Typed-fact vocabulary expansion (role_rule, approval_rule, object coverage)
+
+The requirements auditor can now verify three new classes of requirement phrase without falling back to unverified:
+
+- **`role_rule`**: "only admins can approve deals", "managers must review expenses", "sales reps cannot approve their own deals" — normalized to `{ kind, role, action, object }` and matched against `requires role <name>` lines in source.
+- **`approval_rule`**: "discounts over 30% require VP approval", "expenses over 500 need manager sign-off" — normalized to `{ kind, approver, object }` and matched against `requires approval from <role>`, `is_vp_approval` flags, and `approver_role` assignments in source.
+- **Expanded object vocabulary**: `objectFromText` now covers user, invoice, order, lead, opportunity, task, report, payment, product, account, project, approval (in addition to the existing booking, deal, request, etc.).
+
+Also fixed: Python `STREAM_AI` handler was emitting `null` as the no-context sentinel for Python output — Python has no `null` (it's `None`). Two regression tests added.
+
+**Why for Marcus:** deal-desk requirements like "only VPs can approve discounts above 30%" and "admins have full access to all deals" now produce typed evidence instead of falling through to unverified. The prover pipeline can match these phrases against concrete source declarations.
+
+9 new tests in `requirements-facts.test.js` (red-first TDD). All 17 audit + 12 facts tests passing.
+
+---
+
 ## 2026-05-11 - Python invite endpoints (multi-user tenant parity)
 
 Python backend now emits the full invite flow when `database is shared with tenant scope` is declared. Closes the last Python parity gap for multi-user tenants.
