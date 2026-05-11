@@ -1,3 +1,37 @@
+# Handoff — 2026-05-11 (compliance checker real-app probe — 14/17 passing)
+
+## What shipped this session
+
+**Compliance checker vocabulary expanded — 8/17 to 14/17 on real deal-desk app.**
+
+All of the vocabulary work had been unit-tested (21 tests) but never run against a real Clear app. Running the probe against `apps/deal-desk/main.clear` found 9 real gaps. Eight were fixed this session:
+
+- **Multi-word field aliases** — "discount percent" now normalizes to `discount_percent` in storage facts (was splitting on word boundaries and losing the second word)
+- **Percent-or-more threshold** — "30 percent or more" now extracted as `at-least-30` for approval routing
+- **Reviewer-is pattern** — `queue for deal: reviewer is 'CRO'` now recognized as `role_rule` evidence (was missing because the `agent` keyword wasn't present)
+- **Enforce+fail routing** — `rule discount-cap-thirty: enforce that ... fail with error message '...VP approval...'` now counts as approval routing evidence when a queue also exists in source
+- **ask-claude in function def** — `define function draft_approval(): ask claude '...'` now recognized as AI agent capability (was looking for `agent` keyword only)
+- **Queue primitive → audit trail** — `queue for deal:` now recognized as compiler-generated audit trail (auto-generates `deal_decisions` table with actor email, status, timestamp)
+- **List-price false positive** — "the list price must be greater than zero" was incorrectly passing via dashboard detector; now correctly unverified
+- **Storage universal hooks** — all storage phrasings wired through typed-fact vocabulary (no more ad-hoc parseDataShapeRequirement fallback)
+
+Remaining 3 unverified requirements (honest gaps, not code gaps):
+- r10: "every approval decision must be logged" — needs dedicated detector
+- r15: "calling POST /api/deals with discount ≥ 30% returns a 400 error" — needs HTTP status code detector
+- r16: "the list price must be greater than zero" — needs "greater than X" domain constraint detector
+
+**Tests:** 24/24 audit tests + 12/12 facts tests. Commit `2939bc9` on main, pushed.
+
+## Next critical path
+
+1. **AI assistant calls on Python** — `ask claude`, `agent`, `workflow` primitives don't emit real Anthropic API calls on Python. Mirror the JS `compileToJSBackend` AGENT/WORKFLOW node-type handlers. The runtime helper `_ask_ai` already exists in `compileToPythonBackend` (line ~15812). Why for Marcus: the AI drafter in deal-desk Chapter 11 is the most visible value-prop; if a customer picks Python and `ask claude` doesn't emit, the demo breaks immediately.
+
+2. **GTM-2b** — promote `landing/builders.html` to `landing/index.html` (1 commit).
+
+3. **Marcus walker auth-flow** — `apps/<app>/browser-uat.mjs` line 739 — replace skip-auth-pages with hit-signup/capture-token/set-Authorization.
+
+---
+
 # Handoff — 2026-05-09 night (Ralph metadata + LAE Phase C functionally complete)
 
 ## Update — Phase C cycle 6 shipped, Phase C now functionally complete
