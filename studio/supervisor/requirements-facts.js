@@ -78,18 +78,7 @@ function factsFromRequirement(item) {
     });
   }
 
-  const storedObjects = extractStoredObjects(text);
-  for (const object of storedObjects) {
-    facts.push({
-      id: item.id,
-      text: item.text,
-      kind: 'storage',
-      object,
-      fields: [],
-    });
-  }
-
-  const storedFields = extractStoredFields(text);
+  const storedFields = extractStoredFields(item.text);
   if (storedFields) {
     facts.push({
       id: item.id,
@@ -98,6 +87,17 @@ function factsFromRequirement(item) {
       object: storedFields.object,
       fields: storedFields.fields,
     });
+  } else {
+    const storedObjects = extractStoredObjects(text);
+    for (const object of storedObjects) {
+      facts.push({
+        id: item.id,
+        text: item.text,
+        kind: 'storage',
+        object,
+        fields: [],
+      });
+    }
   }
 
   // read: "can view", "can list", "can see", "can search" — proven miss 2026-05-11
@@ -407,13 +407,39 @@ function matchingAppFacts(requirement, appFacts) {
   });
 }
 
+const STORAGE_OBJECT_WORDS = new Set([
+  'booking', 'reservation', 'deal', 'request', 'ticket', 'expense',
+  'customer', 'company', 'contact', 'message', 'room', 'user', 'invoice',
+  'order', 'lead', 'opportunity', 'task', 'report', 'payment', 'product',
+  'account', 'project', 'approval', 'log',
+]);
+
 function extractStoredFields(text) {
-  const match = text.match(/\b([a-z][a-z0-9_-]*)s?\s+(?:must\s+)?stor(?:e|es)\s+(.+)$/);
-  if (!match) return null;
-  return {
-    object: singularize(normalizeIdentifier(match[1])),
-    fields: splitFields(match[2]),
-  };
+  const lower = String(text || '').toLowerCase();
+
+  function validated(rawEntity, rawFields) {
+    const entity = singularize(normalizeIdentifier(rawEntity));
+    if (!STORAGE_OBJECT_WORDS.has(entity)) return null;
+    return { object: entity, fields: splitFields(rawFields) };
+  }
+
+  // "X records must [be] store[d] [with] Y" — checked before simple so "record" isn't captured as entity
+  const records = lower.match(/\b([a-z][a-z0-9_-]*)s?\s+records?\s+must\s+(?:be\s+)?stored?\s*(?:with\s+)?(.+)$/);
+  if (records) return validated(records[1], records[2]);
+
+  // "X data/information/details must be stored [with] Y"
+  const dataStored = lower.match(/\b([a-z][a-z0-9_-]*)s?\s+(?:data|information|info|details?)\s+must\s+be\s+stored?\s+(?:with\s+)?(.+)$/);
+  if (dataStored) return validated(dataStored[1], dataStored[2]);
+
+  // "X must be stored with Y"
+  const storedWith = lower.match(/\b([a-z][a-z0-9_-]*)s?\s+must\s+be\s+stored?\s+with\s+(.+)$/);
+  if (storedWith) return validated(storedWith[1], storedWith[2]);
+
+  // "each X stores Y" or "X must store: Y" or "X stores Y" — colon allowed after verb
+  const simple = lower.match(/\b([a-z][a-z0-9_-]*)s?\s+(?:must\s+)?stor(?:e|es):?\s+(.+)$/);
+  if (simple) return validated(simple[1], simple[2]);
+
+  return null;
 }
 
 function extractStoredObjects(text) {

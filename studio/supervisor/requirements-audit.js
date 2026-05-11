@@ -59,7 +59,6 @@ function auditRequirement(requirement, ctx) {
   const normalized = normalizeText(text);
   const detectors = [
     detectTypedFacts,
-    detectDataShape,
     detectDealCreation,
     detectApprovalRouting,
     detectAuditTrail,
@@ -93,14 +92,37 @@ function auditRequirement(requirement, ctx) {
 
 function detectTypedFacts(text, normalized, ctx) {
   const requirementFacts = normalizeRequirementFacts([{ id: `req_${ctx.index + 1}`, text }])
-    .filter(fact => ['domain_rule', 'read', 'role_rule'].includes(fact.kind));
+    .filter(fact => ['domain_rule', 'read', 'role_rule', 'storage'].includes(fact.kind));
   if (requirementFacts.length === 0) return null;
 
   const comparisons = compareRequirementFacts(requirementFacts, ctx.appFacts || []);
   if (comparisons.length === 0) return null;
   const failed = comparisons.filter(item => item.status !== PASS);
-  const kindLabels = { domain_rule: 'domain rule', read: 'read-access', role_rule: 'role restriction', approval_rule: 'approval routing' };
+  const kindLabels = { domain_rule: 'domain rule', read: 'read-access', role_rule: 'role restriction', approval_rule: 'approval routing', storage: 'storage' };
   const kindLabel = kindLabels[requirementFacts[0]?.kind] || 'typed rule';
+
+  if (requirementFacts[0]?.kind === 'storage') {
+    const storageFact = requirementFacts[0];
+    const fields = storageFact.fields || [];
+    const obj = storageFact.object || 'entity';
+    if (failed.length === 0) {
+      return {
+        status: PASS,
+        reason: fields.length > 0
+          ? `${obj} stores ${joinEnglish(fields)}.`
+          : `Found storage evidence for ${obj}.`,
+        evidence: uniqueEvidence(comparisons.flatMap(item => item.evidence || [])),
+        facts: requirementFacts,
+      };
+    }
+    return {
+      status: MISSING,
+      reason: failed[0]?.reason || `No storage table for ${obj} with required fields found.`,
+      evidence: uniqueEvidence(comparisons.flatMap(item => item.evidence || [])),
+      facts: requirementFacts,
+    };
+  }
+
   if (failed.length === 0) {
     return {
       status: PASS,
@@ -254,14 +276,14 @@ function detectApprovalRouting(text, normalized, ctx) {
 
 function detectAuditTrail(text, normalized, ctx) {
   const asksForAudit = /\b(audit|audit trail|audit log)\b/.test(normalized);
-  const asksForStatusHistory = /\b(store|record|track)\b/.test(normalized) && /\bstatus\b/.test(normalized) && /\b(change|changes|changed)\b/.test(normalized);
+  const asksForStatusHistory = /\b(store|record|track|log|logs|logging)\b/.test(normalized) && /\bstatus\b/.test(normalized) && /\b(change|changes|changed)\b/.test(normalized);
   if (!asksForAudit && !asksForStatusHistory) return null;
 
   const tables = extractTableBlocks(ctx.evidenceLines);
   const auditTable = tables.find(table => /\baudit|log|history/.test(table.normalizedName));
   const fieldNames = auditTable ? auditTable.fields.map(field => field.name) : [];
   const hasActor = fieldNames.some(field => /\b(actor|user|approver|changed_by|rep)_?email\b/.test(field) || /\bactor\b/.test(field));
-  const hasTimestamp = fieldNames.some(field => /\b(changed_at|timestamp|created_at|time|date)\b/.test(field));
+  const hasTimestamp = fieldNames.some(field => /\b(changed_at|logged_at|timestamp|created_at|time|date|occurred_at|recorded_at)\b/.test(field));
   const hasStatus = fieldNames.some(field => /\b(status|old_status|new_status)\b/.test(field));
   const writeLine = ctx.evidenceLines.find(line => /\b(save|create)\b/.test(line.normalized) && /\b(audit|log|history)\b/.test(line.normalized));
   const actorLine = ctx.evidenceLines.find(line => /\b(actor|caller|email)\b/.test(line.normalized) && /\b(audit|actor_email|caller)\b/.test(line.normalized));
@@ -464,6 +486,10 @@ function parseDataShapeRequirement(text, normalized) {
 
   const mustStore = String(text || '').trim().match(/^([A-Za-z][A-Za-z0-9_-]*)s?\s+must\s+store:?\s+(.+)$/i);
   if (mustStore) return { entity: mustStore[1], fields: splitFields(mustStore[2]) };
+
+  // "X must be stored with Y" (no qualifier word required)
+  const storedWithSimple = normalized.match(/\b([a-z][a-z0-9_-]*)s?\s+must\s+be\s+stored?\s+with\s+(.+)$/);
+  if (storedWithSimple) return { entity: storedWithSimple[1], fields: splitFields(storedWithSimple[2]) };
 
   // "X data must be stored with Y" / "X information must be stored with Y"
   const storedWith = normalized.match(/\b([a-z][a-z0-9_-]*)s?\s+(?:data|information|info|details?)\s+must\s+be\s+stored?\s+(?:with\s+)?(.+)$/);

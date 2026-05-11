@@ -130,7 +130,7 @@ when user sends decision to /api/deals/decision:
 
     expect(audit.ok).toBe(true);
     expect(audit.items[0].status).toBe('passed');
-    expect(audit.items[0].reason).toContain('Deals stores name, amount, close_date, and status');
+    expect(audit.items[0].reason).toContain('name, amount, close_date');
   });
 
   it('treats parenthesized status examples as examples, not required table fields', () => {
@@ -434,6 +434,48 @@ create a Customers table:
     expect(audit.ok).toBe(true);
     expect(audit.items[0].status).toBe('passed');
     expect(audit.items[0].reason).not.toContain('notification');
+  });
+
+  it('verifies "X must be stored with fields" without requiring the word data', () => {
+    const source = `
+build for javascript backend
+create a Deals table:
+  discount, required
+  status, required
+`;
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'deals must be stored with discount and status' }],
+    });
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
+  });
+
+  it('verifies "must log status changes" audit-trail requirement', () => {
+    const source = `
+build for javascript backend
+create a DealLogs table:
+  deal_id, required
+  actor_email, required
+  old_status, required
+  new_status, required
+  logged_at, required
+
+when user sends decision to /api/deals/:id/approve:
+  create log:
+    actor_email is caller's email
+    old_status is deal's status
+    new_status is 'approved'
+    logged_at is now
+  update deal's status to 'approved'
+  send back deal
+`;
+    const audit = auditRequirements({
+      source,
+      requirements: [{ id: 'req_1', text: 'the system must log every status change with who made it' }],
+    });
+    expect(audit.ok).toBe(true);
+    expect(audit.items[0].status).toBe('passed');
   });
 
   it('verifies named agent requirements from agent declaration evidence', () => {
