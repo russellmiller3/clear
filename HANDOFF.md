@@ -22,13 +22,23 @@ Remaining 3 unverified requirements (honest gaps, not code gaps):
 
 **Tests:** 24/24 audit tests + 12/12 facts tests. Commit `2939bc9` on main, pushed.
 
+## Also shipped (Python bug fix)
+
+**Python ask-claude in function def — runtime crash fix (commit `dde28ec`).**
+
+`pyNeedsAskAI` at `compiler.js:15983` was not recursing into `FUNCTION_DEF` bodies. When `ask claude` appeared only inside a named function (not endpoint/agent/cron), compiled Python called `await _ask_ai(...)` but the utility function was never emitted — guaranteed runtime crash. Fix: add `FUNCTION_DEF` to the recursion. 3036/3036 compiler tests green, pushed.
+
+The AGENT and WORKFLOW handlers ARE wired correctly for Python. The gap was detection only, not emission.
+
 ## Next critical path
 
-1. **AI assistant calls on Python** — `ask claude`, `agent`, `workflow` primitives don't emit real Anthropic API calls on Python. Mirror the JS `compileToJSBackend` AGENT/WORKFLOW node-type handlers. The runtime helper `_ask_ai` already exists in `compileToPythonBackend` (line ~15812). Why for Marcus: the AI drafter in deal-desk Chapter 11 is the most visible value-prop; if a customer picks Python and `ask claude` doesn't emit, the demo breaks immediately.
+1. **GTM-2b** — promote `landing/builders.html` to `landing/index.html` (1 commit). No default homepage exists today.
 
-2. **GTM-2b** — promote `landing/builders.html` to `landing/index.html` (1 commit).
+2. **Marcus walker auth-flow** — `apps/<app>/browser-uat.mjs` line 739 — replace skip-auth-pages with hit-signup/capture-token/set-Authorization. Every Marcus app has auth; UAT walker silently passes broken flows today.
 
-3. **Marcus walker auth-flow** — `apps/<app>/browser-uat.mjs` line 739 — replace skip-auth-pages with hit-signup/capture-token/set-Authorization.
+3. **Verify Python optimistic-lock** — re-run `node scripts/python-parity-audit.mjs`. Commit `a91fedd` claims it shipped; audit still flags HIGH severity. 5-min check.
+
+4. **Hartl reference-track light rewrites (batch 1: Chapters 13, 13b, 14)** — each needs "this assumes deal-desk from Chapters 1-12" opening + syntax-currency check against SYNTAX.md.
 
 ---
 
