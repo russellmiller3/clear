@@ -93,13 +93,13 @@ function auditRequirement(requirement, ctx) {
 
 function detectTypedFacts(text, normalized, ctx) {
   const requirementFacts = normalizeRequirementFacts([{ id: `req_${ctx.index + 1}`, text }])
-    .filter(fact => fact.kind === 'domain_rule' || fact.kind === 'read' || fact.kind === 'role_rule');
+    .filter(fact => ['domain_rule', 'read', 'role_rule'].includes(fact.kind));
   if (requirementFacts.length === 0) return null;
 
   const comparisons = compareRequirementFacts(requirementFacts, ctx.appFacts || []);
   if (comparisons.length === 0) return null;
   const failed = comparisons.filter(item => item.status !== PASS);
-  const kindLabels = { domain_rule: 'domain rule', read: 'read-access', role_rule: 'role restriction' };
+  const kindLabels = { domain_rule: 'domain rule', read: 'read-access', role_rule: 'role restriction', approval_rule: 'approval routing' };
   const kindLabel = kindLabels[requirementFacts[0]?.kind] || 'typed rule';
   if (failed.length === 0) {
     return {

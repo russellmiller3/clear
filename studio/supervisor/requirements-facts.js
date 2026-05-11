@@ -14,6 +14,7 @@ export function extractAppFacts({
     ...storageFactsFromLines(lines),
     ...endpointFactsFromLines(lines),
     ...domainRuleFactsFromLines(lines),
+    ...approvalRuleFactsFromLines(lines),
     ...roleRuleFactsFromLines(lines),
     ...uiFactsFromLines(lines),
     ...runtimeFacts(runtimeEvidence),
@@ -38,7 +39,9 @@ export function compareRequirementFacts(requirementFacts = [], appFacts = []) {
       requirement,
       matches: [],
       evidence: [],
-      reason: `No ${requirement.kind} evidence found for ${requirement.object || 'the requirement'}.`,
+      reason: requirement.kind === 'approval_rule'
+        ? `No ${requirement.approver || ''} approval evidence found for ${requirement.object || 'the requirement'}.`
+        : `No ${requirement.kind} evidence found for ${requirement.object || 'the requirement'}.`,
     };
   });
 }
@@ -108,6 +111,22 @@ function factsFromRequirement(item) {
       kind: 'read',
       action: readAction[1],
       object: readObject,
+    });
+  }
+
+  // approval_rule: "discounts over 30% require VP approval" — proven miss 2026-05-11
+  const thresholdSubject = /\b(discounts?|expenses?|deals?|amounts?|requests?|purchases?|transactions?)\b/.test(text);
+  const thresholdCondition = /\b(over|above|exceeding|greater than|more than|exceed)\b/.test(text);
+  const approvalRequired = /\b(require|need|needs|must have|demands?)\b/.test(text);
+  const approvalKind = /\b(approval|sign-off|authorization|review|sign off)\b/.test(text);
+  const approverRole = /\b(vp|manager|director|admin|supervisor|cfo|ceo|owner)\b/.exec(text);
+  if (thresholdSubject && thresholdCondition && (approvalRequired || approvalKind) && approverRole) {
+    facts.push({
+      id: item.id,
+      text: item.text,
+      kind: 'approval_rule',
+      approver: approverRole[1],
+      object: objectFromText(text),
     });
   }
 
@@ -215,6 +234,52 @@ function domainRuleFactsFromLines(lines) {
         saveLine ? evidence(saveLine, 'source') : null,
       ]),
     });
+  }
+  return facts;
+}
+
+function approvalRuleFactsFromLines(lines) {
+  const facts = [];
+  for (const line of lines) {
+    // Pattern 1: explicit "requires approval from <role>"
+    const approvalMatch = line.normalized.match(/\brequires approval(?:\s+from\s+([a-z][a-z0-9_-]*))?\b/);
+    if (approvalMatch) {
+      const approver = approvalMatch[1] || 'approver';
+      const endpointLine = [...lines].reverse().find(
+        l => l.line < line.line && /\bwhen user\b/.test(l.normalized)
+      );
+      facts.push({
+        kind: 'approval_rule',
+        approver: singularize(approver),
+        object: endpointLine ? objectFromText(endpointLine.normalized) : null,
+        evidence: uniqueEvidence([
+          endpointLine ? evidence(endpointLine, 'source') : null,
+          evidence(line, 'source'),
+        ]),
+      });
+      continue;
+    }
+    // Pattern 2: is_vp_approval / is_manager_approval boolean flag
+    const flagMatch = line.normalized.match(/\bis_(vp|manager|director|admin|supervisor)_approval\b/);
+    if (flagMatch) {
+      facts.push({
+        kind: 'approval_rule',
+        approver: flagMatch[1],
+        object: objectFromText(line.normalized),
+        evidence: [evidence(line, 'source')],
+      });
+      continue;
+    }
+    // Pattern 3: set approver_role to 'Manager' / approver_role = 'vp'
+    const roleAssign = line.normalized.match(/\bapprover_role\b.*\b(vp|manager|director|admin|supervisor)\b/);
+    if (roleAssign) {
+      facts.push({
+        kind: 'approval_rule',
+        approver: roleAssign[1],
+        object: objectFromText(line.normalized),
+        evidence: [evidence(line, 'source')],
+      });
+    }
   }
   return facts;
 }
@@ -333,6 +398,10 @@ function matchingAppFacts(requirement, appFacts) {
     if (requirement.kind === 'role_rule') {
       if (fact.kind !== 'role_rule') return false;
       return sameValue(requirement.role, fact.role);
+    }
+    if (requirement.kind === 'approval_rule') {
+      if (fact.kind !== 'approval_rule') return false;
+      return sameValue(requirement.approver, fact.approver);
     }
     return false;
   });

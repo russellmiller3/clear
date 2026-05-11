@@ -187,6 +187,66 @@ when user sends deal to /api/deals/:id/approve:
     const comparisons = compareRequirementFacts([roleReq], appFacts);
     expect(comparisons[0].status).toEqual('passed');
   });
+  // APPROVAL_RULE VOCABULARY — red-first TDD (2026-05-11)
+  // Proven miss: "discounts over 30 percent require VP approval" returns NONE
+  it('normalizes threshold-approval phrases into approval_rule facts', () => {
+    const phrases = [
+      { id: 'ar1', text: 'discounts over 30 percent require VP approval' },
+      { id: 'ar2', text: 'expenses over 500 require manager approval before reimbursement' },
+      { id: 'ar3', text: 'deals above 10000 need director sign-off' },
+    ];
+    for (const phrase of phrases) {
+      const facts = normalizeRequirementFacts([phrase]);
+      const approvalFact = facts.find(f => f.kind === 'approval_rule');
+      if (!approvalFact) throw new Error(`Expected approval_rule fact from "${phrase.text}" — got ${JSON.stringify(facts)}`);
+      if (!approvalFact.approver) throw new Error(`approval_rule fact missing approver: ${JSON.stringify(approvalFact)}`);
+    }
+    const [vpFact] = normalizeRequirementFacts([{ id: 'ar1', text: 'discounts over 30 percent require VP approval' }]);
+    expect(vpFact.kind).toEqual('approval_rule');
+    expect(vpFact.approver).toEqual('vp');
+  });
+
+  it('extracts approval_rule evidence from source lines with "requires approval"', () => {
+    const appFacts = extractAppFacts({
+      source: `
+build for javascript backend
+create a Deals table:
+  discount, required
+  status, required
+
+when user sends deal to /api/deals/:id/approve:
+  requires approval from vp
+  update deal's status to 'approved'
+  send back deal
+`,
+    });
+    const approvalFact = appFacts.find(f => f.kind === 'approval_rule');
+    if (!approvalFact) throw new Error(`Expected approval_rule app fact — got ${JSON.stringify(appFacts)}`);
+    expect(approvalFact.approver).toEqual('vp');
+  });
+
+  it('approval_rule requirement fact matches approval_rule app fact via compareRequirementFacts', () => {
+    const requirementFacts = normalizeRequirementFacts([
+      { id: 'ar1', text: 'discounts over 30 percent require VP approval' },
+    ]);
+    const appFacts = extractAppFacts({
+      source: `
+build for javascript backend
+create a Deals table:
+  discount, required
+  status, required
+
+when user sends deal to /api/deals/:id/approve:
+  requires approval from vp
+  update deal's status to 'approved'
+  send back deal
+`,
+    });
+    const approvalReq = requirementFacts.find(f => f.kind === 'approval_rule');
+    if (!approvalReq) throw new Error('normalizer did not emit approval_rule fact');
+    const comparisons = compareRequirementFacts([approvalReq], appFacts);
+    expect(comparisons[0].status).toEqual('passed');
+  });
 });
 
 run();
