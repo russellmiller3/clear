@@ -114,6 +114,12 @@
           },
           {
             "type": "command",
+            "command": "node .claude/hooks/synonym-table-on-parser-edit.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking parser wording changes against synonyms.js..."
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/landing-design-on-write.mjs",
             "timeout": 5,
             "statusMessage": "Injecting landing-page design constraints..."

@@ -823,6 +823,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How do I add a right detail panel?](#how-do-i-add-a-right-detail-panel)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
+- [When fixing Clear wording, do I patch the parser or the synonym table?](#when-fixing-clear-wording-do-i-patch-the-parser-or-the-synonym-table)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
 - [How do I run the tests?](#how-do-i-run-the-tests)
 - [How do we know whether hints make Meph better?](#how-do-we-know-whether-hints-make-meph-better)
@@ -1860,6 +1861,22 @@ Then **bump `SYNONYM_VERSION`** at the bottom of `synonyms.js`. This invalidates
 Then check for collisions — grep `synonyms.js` for words that could ambiguously parse in different contexts. The collision risks are documented in `CLAUDE.md` and `learnings.md`.
 
 Run the template smoke test after any synonym change — new synonyms can break existing apps in non-obvious ways.
+
+---
+
+### When fixing Clear wording, do I patch the parser or the synonym table?
+
+Default to `synonyms.js`.
+
+If the issue is "Clear should understand another English word or phrase for an existing idea", add it to `SYNONYM_TABLE` first. If it is multi-word, also update `MULTI_WORD_SYNONYMS`.
+
+Then make parser-specific handling derive from `SYNONYM_TABLE` or `REVERSE_LOOKUP`. Natural collection selectors are the model: `first setting row of all_settings` works because the parser reads the shared alias table, not a private `first` special case.
+
+Do not add one-off parser checks like `tok.value === 'first'` or `tok.canonical === 'first'` for aliases. That hides vocabulary outside the shared table.
+
+Only patch parser-local phrase logic when the syntax is structural, order-sensitive, or context-sensitive. In that case, leave a short `synonym-table: structural exception` comment explaining why it cannot live in `synonyms.js`.
+
+Guardrail: `.claude/hooks/synonym-table-on-parser-edit.mjs` blocks suspicious `parser.js`, `tokenizer.js`, and `validator.js` edits that add local English-word checks without touching the synonym table.
 
 ---
 
