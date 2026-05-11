@@ -124,6 +124,69 @@ when user requests data from /api/deals:
     const comparisons = compareRequirementFacts([readReq], appFacts);
     expect(comparisons[0].status).toEqual('passed');
   });
+  // ROLE_RULE VOCABULARY — red-first TDD (2026-05-11)
+  // Proven miss: "only admins can approve deals" returns 0 facts from normalizeRequirementFacts
+  it('normalizes role-restriction phrases into role_rule facts', () => {
+    const phrases = [
+      { id: 'rr1', text: 'only admins can approve deals' },
+      { id: 'rr2', text: 'managers must review expenses over 500' },
+      { id: 'rr3', text: 'sales reps cannot approve their own deals' },
+    ];
+    for (const phrase of phrases) {
+      const facts = normalizeRequirementFacts([phrase]);
+      const roleFact = facts.find(f => f.kind === 'role_rule');
+      if (!roleFact) throw new Error(`Expected role_rule fact from "${phrase.text}" — got ${JSON.stringify(facts)}`);
+      if (!roleFact.role) throw new Error(`role_rule fact missing role field: ${JSON.stringify(roleFact)}`);
+      if (!roleFact.object) throw new Error(`role_rule fact missing object field: ${JSON.stringify(roleFact)}`);
+    }
+    // First phrase: admin + approve + deal
+    const [adminFact] = normalizeRequirementFacts([{ id: 'rr1', text: 'only admins can approve deals' }]);
+    expect(adminFact.kind).toEqual('role_rule');
+    expect(adminFact.role).toEqual('admin');
+    expect(adminFact.object).toEqual('deal');
+  });
+
+  it('extracts role_rule evidence from source lines with "requires role"', () => {
+    const appFacts = extractAppFacts({
+      source: `
+build for javascript backend
+create a Deals table:
+  title, required
+  status, required
+
+when user sends deal to /api/deals/:id/approve:
+  requires role admin
+  update deal's status to 'approved'
+  send back deal
+`,
+    });
+    const roleFact = appFacts.find(f => f.kind === 'role_rule');
+    if (!roleFact) throw new Error(`Expected role_rule app fact from "requires role" line — got ${JSON.stringify(appFacts)}`);
+    expect(roleFact.role).toEqual('admin');
+  });
+
+  it('role_rule requirement fact matches role_rule app fact via compareRequirementFacts', () => {
+    const requirementFacts = normalizeRequirementFacts([
+      { id: 'rr1', text: 'only admins can approve deals' },
+    ]);
+    const appFacts = extractAppFacts({
+      source: `
+build for javascript backend
+create a Deals table:
+  title, required
+  status, required
+
+when user sends deal to /api/deals/:id/approve:
+  requires role admin
+  update deal's status to 'approved'
+  send back deal
+`,
+    });
+    const roleReq = requirementFacts.find(f => f.kind === 'role_rule');
+    if (!roleReq) throw new Error('normalizer did not emit role_rule fact');
+    const comparisons = compareRequirementFacts([roleReq], appFacts);
+    expect(comparisons[0].status).toEqual('passed');
+  });
 });
 
 run();

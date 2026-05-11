@@ -14,6 +14,7 @@ export function extractAppFacts({
     ...storageFactsFromLines(lines),
     ...endpointFactsFromLines(lines),
     ...domainRuleFactsFromLines(lines),
+    ...roleRuleFactsFromLines(lines),
     ...uiFactsFromLines(lines),
     ...runtimeFacts(runtimeEvidence),
   ];
@@ -110,6 +111,22 @@ function factsFromRequirement(item) {
     });
   }
 
+  // role_rule: "only admins can approve", "managers must review", "reps cannot approve own" — proven miss 2026-05-11
+  const roleMatch = /\b(admins?|managers?|sales\s+reps?|reps?|directors?|vps?|owners?)\b/.exec(text);
+  const roleRestriction = /\b(only|must|cannot|cant|may not)\b/.test(text);
+  const roleAction = /\b(approve|reject|cancel|archive|delete|update|change|review|access|create|edit)\b/.exec(text);
+  const roleObject = objectFromText(text);
+  if (roleMatch && roleRestriction && roleAction && roleObject) {
+    facts.push({
+      id: item.id,
+      text: item.text,
+      kind: 'role_rule',
+      role: singularize(roleMatch[1].replace(/\s+/g, '_')),
+      action: singularize(roleAction[1]),
+      object: roleObject,
+    });
+  }
+
   const decisionAction = /\b(approve|reject|cancel|archive|delete|update|change)\b/.exec(text);
   const decisionObject = objectFromText(text);
   if (decisionAction && decisionObject) {
@@ -196,6 +213,29 @@ function domainRuleFactsFromLines(lines) {
         evidence(rejectLine, 'source'),
         bookingLine ? evidence(bookingLine, 'source') : null,
         saveLine ? evidence(saveLine, 'source') : null,
+      ]),
+    });
+  }
+  return facts;
+}
+
+function roleRuleFactsFromLines(lines) {
+  const facts = [];
+  for (const line of lines) {
+    const roleMatch = line.normalized.match(/\brequires role\s+([a-z][a-z0-9_-]*)\b/);
+    if (!roleMatch) continue;
+    const role = singularize(roleMatch[1]);
+    // find the enclosing endpoint line (search backward for "when user")
+    const endpointLine = [...lines].reverse().find(
+      l => l.line < line.line && /\bwhen user\b/.test(l.normalized)
+    );
+    facts.push({
+      kind: 'role_rule',
+      role,
+      object: endpointLine ? objectFromText(endpointLine.normalized) : null,
+      evidence: uniqueEvidence([
+        endpointLine ? evidence(endpointLine, 'source') : null,
+        evidence(line, 'source'),
       ]),
     });
   }
@@ -289,6 +329,10 @@ function matchingAppFacts(requirement, appFacts) {
       if (fact.kind !== 'read') return false;
       if (requirement.object) return sameValue(requirement.object, fact.object) || normalizeText(fact.endpoint || '').includes(requirement.object || '');
       return true;
+    }
+    if (requirement.kind === 'role_rule') {
+      if (fact.kind !== 'role_rule') return false;
+      return sameValue(requirement.role, fact.role);
     }
     return false;
   });
