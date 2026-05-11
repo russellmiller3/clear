@@ -374,6 +374,9 @@ for each deal in pending_deals:
 
 This is the **don't repeat yourself** rule in action. The same logic, written once, runs for every item — whether the list has 3 entries or 3,000.
 
+Clear also understands natural first-item phrases like `first pending deal of deals`.
+Use the shorter `first of deals` when the noun is already obvious.
+
 Run it:
 
 ```bash
@@ -1950,6 +1953,9 @@ The `page_navbar` preset handles all the layout: sticky positioning, responsive
 hamburger menu, transparent backdrop blur. You just provide the heading (brand),
 links (nav items), and a button (CTA). The last button automatically gets
 primary styling.
+
+Write links as `link 'Docs' to '/docs'` when you can. Clear also accepts
+`link to '/docs' with label 'Docs'` if you think destination-first.
 
 #### Step 2: The Hero
 

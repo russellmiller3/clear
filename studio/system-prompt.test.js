@@ -14,6 +14,11 @@ describe('Meph system prompt source hygiene', () => {
     expect(prompt).toContain('allow signup and login');
     expect(prompt).toContain('log every request');
   });
+
+  it('documents natural syntax aliases without making them canonical', () => {
+    expect(prompt).toContain('Use `first of rows`; `first <noun phrase> of rows` is accepted');
+    expect(prompt).toContain("Use `link 'Text' to '/path'`; destination-first links still compile");
+  });
 });
 
 run();

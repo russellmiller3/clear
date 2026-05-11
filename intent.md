@@ -118,7 +118,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `DETAIL_PANEL` | `detail panel for selected_deal:` + indented content + optional `actions:` | 340px right rail populated from the selected table row; body can contain normal Clear UI primitives, with sticky action buttons at bottom |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
-| `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `divider` | `<h1>` / `<p>` / `<hr>` |
+| `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `link 'Text' to '/path'` (also accepts `link to '/path' with label 'Text'`) / `divider` | `<h1>` / `<p>` / `<a>` / `<hr>` |
 | `STYLE_DEF` | `style card:` + properties | CSS class definition |
 | `ON_PAGE_LOAD` | `on page load:` + body | Runs after DOM ready |
 | `NAVIGATE` | `go to '/path'` | `location.hash = '/path'` |
@@ -471,12 +471,14 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `send back all Users where active is true` | `x = get all Users where active is true; send back x` | Inline filtered list |
 | `this id` (in expression position) | `incoming?.id` | URL path param access, works anywhere in expressions |
 | `this user_id` | `incoming?.user_id` | Same pattern for any named URL param |
+| `first setting row of all_settings` | `first of all_settings` | Natural noun phrase before `of` is accepted; use the short canonical form in fresh code. |
 | `get todos from '/api/url'` | `get from '/api/url'` (into magic response) | Named state target |
 | `sending article` | `receiving article` | User perspective canonical |
 | `saved as a todo` | `saves to todo` | With optional article |
 | `display X showing col1, col2` | `display X as table` | Column whitelist |
 | `display X as chat showing role, content` | Chat bubble UI | Full chat component: header, messages, typing indicator, scroll-to-bottom, textarea + Send button. Uses `_chatRender`, `_chatMd`, `_chatSend`/`_chatSendStream`, `_chatClear`. DaisyUI `.clear-chat-*` classes. Absorbs following text input + Send button into built-in UI. `showing` maps fields to role/content (defaults: `role, content`). Reactive: `_recompute()` calls `_chatRender()`. Auto-detects streaming agents: if POST endpoint calls a streaming agent, uses `_chatSendStream` (SSE token streaming) instead of `_chatSend`. |
 | `send X as a new Y to URL` | `send X to URL` | Decorative clause ignored |
+| `link to '/compose' with label 'New Post'` | `link 'New Post' to '/compose'` | Destination-first link alias for natural phrasing. |
 | `'Hello, {name}!'` | `'Hello, ' + name + '!'` | String interpolation |
 
 ### Database Declaration

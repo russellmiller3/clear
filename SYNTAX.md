@@ -211,6 +211,10 @@ first_item = first of items
 last_item = last of items
 remaining = rest of items
 
+# Natural noun phrases are accepted for first-item reads:
+first_setting = first setting row of all_settings
+first_post = first scheduled post of due_posts
+
 all_names = each user's name in users
 merged = combine defaults with overrides
 
@@ -472,11 +476,15 @@ page 'My App':
   italic text 'A note'
   small text 'Fine print'
   link 'Learn more' to '/about'
+  link to '/compose' with label 'New Post'
   divider
   code block 'price = 100'
   image 'https://example.com/photo.jpg'
   image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 ```
+
+`link 'Text' to '/path'` is canonical. `link to '/path' with label 'Text'`
+is accepted when a user naturally writes the destination first.
 
 ## Inputs
 

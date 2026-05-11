@@ -6,6 +6,19 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-11 - Natural collection and link phrases
+
+Clear now accepts two natural phrases that showed up in Studio-generated app code without making them the preferred style:
+
+- `first <noun phrase> of rows` compiles like `first of rows`. Examples: `first item of all_settings`, `first setting row of settings`.
+- `link to '/path' with label 'Text'` compiles like `link 'Text' to '/path'`.
+
+Docs now call these aliases out in `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `intent.md`, and the Studio prompt so Meph can repair them without teaching them as canonical.
+
+Verification: full compiler suite green on commit `bb25e8d`; prompt source hygiene test covers the Studio prompt guidance.
+
+---
+
 ## 2026-05-11 - Typed-fact vocabulary expansion (role_rule, approval_rule, object coverage)
 
 The requirements auditor can now verify three new classes of requirement phrase without falling back to unverified:

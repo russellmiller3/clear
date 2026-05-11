@@ -1046,6 +1046,8 @@ when user sends lead to /api/leads:
 | `display X as table` (no columns) | `display X as table showing col1, col2` | Always specify which columns |
 | `can user search todos` | `can user view all search` | Only create/view/delete/update are valid intents |
 | `'Label' is a dropdown ...` (no saved variable) | `'Label' is a dropdown ... saved as x` | Every interactive input must name the state variable it changes |
+| `first item of rows` | `first of rows` | Canonical form is short. The compiler also accepts `first <noun phrase> of rows` for natural repairs. |
+| `link to '/path' with label 'Text'` | `link 'Text' to '/path'` | Canonical form puts visible text first. Destination-first links still compile. |
 | `section 'X' side by side:` | `section 'X' with style row:` | Use preset or style for layout |
 | `user's id` (when unbound) | `caller's id` | `caller` is the authenticated person set by `requires login` — one word, unambiguous with any entity var. Legacy `current user's id` still compiles. |
 | `result = for each X in Y:` | Use `filter` or loop + `add to` | Can't assign a for-each loop to a variable |

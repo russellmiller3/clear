@@ -963,6 +963,8 @@ Safer: always use multi-word variable names. `todo_id` never collides; `id` some
 - DON'T use double quotes (use single quotes)
 - DON'T chain operations (one per line)
 - DON'T use dot notation (use possessive: person's name)
+- DON'T prefer `first item of rows` when the noun is obvious. Use `first of rows`; `first <noun phrase> of rows` is accepted for natural repairs.
+- DON'T prefer `link to '/path' with label 'Text'`. Use `link 'Text' to '/path'`; destination-first links still compile.
 - DON'T forget `database is local memory` for apps with tables
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)

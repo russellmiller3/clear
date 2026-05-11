@@ -234,6 +234,7 @@ section.
 | String interpolation | `'Hello, {name}!'` | Any expression inside `{}` |
 | String concat | `'Hello, ' + name` | |
 | Lists | `['a', 'b', 'c']` | Add, remove, sort, length |
+| First item | `first of rows` | Also accepts natural noun phrases like `first item of rows` and `first setting row of settings`; canonical form stays short. |
 | Records | `create person:` + indented fields | |
 | Possessive access | `user's name` | Also dot: `user.name` |
 | Map operations | `get key from scope` / `set key in scope to value` | Also `exists in`, `keys of`, `values of` |
@@ -254,6 +255,7 @@ section.
 | Textarea | `'Bio' is a textarea input saved as bio` | |
 | File input | `'Upload' is a file input saved as doc` | |
 | Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback. Selected-record updates require a `change ... from ... to ...` line before `update ... at ...`; deletes use `delete selected_record from /api/...` |
+| Links | `link 'Docs' to '/docs'` | Also accepts `link to '/docs' with label 'Docs'`; canonical form puts visible text first. |
 | Sections | `section 'Results':` | With style presets |
 | App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs) |
 | Tabs | `tab 'Settings':` | Auto-grouped |
