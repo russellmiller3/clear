@@ -355,6 +355,41 @@
 				]),
 			);
 
+			// LAE Phase C cycle 7 — rename detection UI.
+			// When the server detected a possible rename (old field removed, new
+			// field already present on the same table), offer a choice before the
+			// typed-confirmation gate so data doesn't get silently dropped.
+			let migrationChoiceRef = null;
+			if (proposal.migrationPlan && proposal.migrationPlan.detected === 'rename') {
+				const mp = proposal.migrationPlan;
+				migrationChoiceRef = { value: mp.options[0] ? mp.options[0].id : 'discard' };
+				const radios = mp.options.map((opt) => {
+					const radioId = 'clear-meph-migration-' + opt.id;
+					const radio = el('input', {
+						type: 'radio',
+						id: radioId,
+						name: 'clear-meph-migration',
+						value: opt.id,
+					});
+					if (opt.id === migrationChoiceRef.value) radio.checked = true;
+					radio.addEventListener('change', () => {
+						if (radio.checked) migrationChoiceRef.value = opt.id;
+					});
+					return el('label', { for: radioId, class: 'clear-meph-migration-option' }, [
+						radio,
+						el('span', {}, [opt.label]),
+					]);
+				});
+				summary.appendChild(
+					el('div', { class: 'clear-meph-migration' }, [
+						el('div', { class: 'clear-meph-migration-header' }, [
+							'Looks like a rename — what should happen to existing data?',
+						]),
+						...radios,
+					]),
+				);
+			}
+
 			const confirmInput = el('input', {
 				id: 'clear-meph-confirm',
 				class: 'clear-meph-confirm-input',
@@ -406,7 +441,7 @@
 
 			shipBtn.addEventListener('click', () => {
 				if (shipBtn.hasAttribute('disabled')) return;
-				shipDestructive(proposal, confirmInput, reasonInput, shipBtn);
+				shipDestructive(proposal, confirmInput, reasonInput, shipBtn, migrationChoiceRef);
 			});
 
 			summary.appendChild(confirmInput);
@@ -500,7 +535,7 @@
 	//   400 bad input → surface the expected phrase, re-enable input
 	//   503 audit gone → "audit log unreachable, try again"
 	//   500 ship-fail → "the attempt is on record (audit ID <id>)"
-	async function shipDestructive(proposal, confirmInput, reasonInput, shipBtn) {
+	async function shipDestructive(proposal, confirmInput, reasonInput, shipBtn, migrationChoiceRef) {
 		// Disable button during the request so a double-click can't fire two ships.
 		shipBtn.setAttribute('disabled', 'disabled');
 		const thinking = addBot('Shipping the destructive change...');
@@ -511,6 +546,7 @@
 				confirmation: confirmInput.value,
 				reason: reasonInput.value,
 			};
+			if (migrationChoiceRef) body.migrationChoice = migrationChoiceRef.value;
 			if (cloudContext) {
 				body.tenantSlug = cloudContext.tenantSlug;
 				body.appSlug = cloudContext.appSlug;
