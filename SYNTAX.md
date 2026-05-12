@@ -2,6 +2,166 @@
 
 Everything Clear can do, with examples. This is the definitive reference.
 
+## How AI Agents Should Use This File
+
+Use this file as a **reference**, not a tutorial. For AI, the best shape is:
+
+1. Start with the **Quick Routing Map** below to pick the right syntax family.
+2. Jump to the exact heading in the **Table of Contents**.
+3. Copy the smallest valid example from that section.
+4. Prefer the canonical form shown first. Legacy aliases are compatibility only.
+5. Use FAQ-style docs for task recipes, not as the canonical syntax source.
+
+FAQ is good for questions like "How do I build an approval queue?" or
+"Why did this endpoint fail?" It is not the best format for the complete syntax
+surface. This file should stay structured by language feature so agents can
+retrieve the right primitive quickly.
+
+## Quick Routing Map
+
+| If you need to write... | Start here |
+| --- | --- |
+| variables, values, objects, lists, maps | [Values & Variables](#values--variables), [Objects](#objects), [Lists](#lists), [Maps](#maps-dynamic-keys) |
+| arithmetic, strings, comparisons, conditions, loops | [Math](#math), [Strings](#strings), [Comparisons](#comparisons), [Conditionals](#conditionals), [Loops](#loops) |
+| reusable logic | [Functions](#functions), [Components](#components), [Multi-File Modules](#multi-file-modules) |
+| web UI pages and controls | [Web Pages](#web-pages), [Inputs](#inputs), [Buttons & Actions](#buttons--actions), [Display](#display), [Styles](#styles) |
+| app layouts and UI patterns | [Style Presets Reference](#style-presets-reference), [Inline Layout Modifiers](#inline-layout-modifiers), [Tabs](#tabs), [Modal](#modal) |
+| tables and persistence | [Database Declaration](#database-declaration), [Table shorthand](#table-shorthand), [DB Relationships](#db-relationships), [Database](#database) |
+| backend endpoints | [Backend](#backend), [URL Path Parameters](#url-path-parameters--this-x), [Auth & Guards](#auth--guards) |
+| security and production guards | [Per-row Access Rules](#per-row-access-rules-owasp-piece-1), [Outgoing Requests Allowlist](#outgoing-requests-allowlist-owasp-piece-2--ssrf-defense), [Policies](#policies-enact-guards) |
+| tests and proof | [Testing](#testing), [HTTP Test Assertions](#http-test-assertions), [Named Business Rules](#named-business-rules-rule-name), [Agent Tool-Bound Claims](#agent-tool-bound-claims-prove-that-agent-x-cannot-) |
+| integrations | [External API Calls](#external-api-calls), [Service Presets](#service-presets), [Webhooks](#webhooks), [Email](#email) |
+| AI and agents | [AI Integration](#ai-integration), [AI Agents](#ai-agents), [Workflows](#workflows-stateful-agent-graphs), [Streaming AI Responses](#streaming-ai-responses) |
+| scheduling and background work | [Scheduled Tasks](#scheduled-tasks-cron), [Background Jobs](#background-jobs), [Parallel Execution](#parallel-execution-do-all) |
+| deploy and CLI | [CLI](#cli-for-ai-agents), [Build & Deploy](#build--deploy), [Deploying your app](#deploying-your-app) |
+
+## Table of Contents
+
+### Core Language
+
+- [Values & Variables](#values--variables)
+- [TBD Placeholders](#tbd-placeholders-lean-lesson-1)
+- [Requirements](#requirements)
+- [Math](#math)
+- [Strings](#strings)
+- [Objects](#objects)
+- [Maps](#maps-dynamic-keys)
+- [Lists](#lists)
+- [Collection Operations](#collection-operations)
+- [Functions](#functions)
+- [Conditionals](#conditionals)
+- [Pattern Matching](#pattern-matching)
+- [Loops](#loops)
+- [Error Handling](#error-handling)
+- [Finally](#finally-cleanup-code)
+- [Throwing Errors](#throwing-errors)
+- [Live Blocks](#live-blocks-optional-effect-fence)
+- [Transactions](#transactions)
+- [Comparisons](#comparisons)
+- [Multi-Line Strings](#multi-line-strings-text-block)
+- [Parallel Execution](#parallel-execution-do-all)
+- [Multi-File Modules](#multi-file-modules)
+
+### Web UI
+
+- [Web Pages](#web-pages)
+- [Inputs](#inputs)
+- [Buttons & Actions](#buttons--actions)
+- [Display](#display)
+- [Charts](#charts-echarts)
+- [Display as Cards](#display-as-cards)
+- [Display as Chat](#display-as-chat)
+- [Reactive Input Handlers](#reactive-input-handlers)
+- [Conditional UI](#conditional-ui)
+- [Page Navigation](#page-navigation)
+- [On Page Load](#on-page-load)
+- [Components](#components)
+- [Styles](#styles)
+- [Style Presets Reference](#style-presets-reference)
+- [Inline Layout Modifiers](#inline-layout-modifiers)
+- [Tabs](#tabs)
+- [Collapsible Sections](#collapsible-sections)
+- [Slide-in Panel](#slide-in-panel)
+- [Modal](#modal)
+- [Loading Overlay](#loading-overlay)
+- [Toast / Alert / Notification](#toast--alert--notification)
+- [Hide Element](#hide-element)
+- [Clipboard Copy](#clipboard-copy)
+- [Download File](#download-file)
+- [Display Formats](#display-formats)
+- [Video and Audio](#video-and-audio)
+
+### Data, Backend, and Security
+
+- [Database Declaration](#database-declaration)
+- [Retry, Timeout, Race](#retry-timeout-race-production-resilience)
+- [Table shorthand](#table-shorthand)
+- [Compound Unique Constraints](#compound-unique-constraints)
+- [DB Relationships](#db-relationships)
+- [Declaring the owner](#declaring-the-owner-phase-a--live-app-editing)
+- [Hidden fields](#hidden-fields-phase-b--live-app-editing)
+- [Backend](#backend)
+- [Auth Scaffolding](#auth-scaffolding)
+- [Auth & Guards](#auth--guards)
+- [Role Definitions](#role-definitions)
+- [Per-row Access Rules](#per-row-access-rules-owasp-piece-1)
+- [Outgoing Requests Allowlist](#outgoing-requests-allowlist-owasp-piece-2--ssrf-defense)
+- [Sensitive Field Tag](#sensitive-field-tag-owasp-piece-3--encrypt-at-rest)
+- [Auto Login Rate-Limit](#auto-login-rate-limit-owasp-piece-4)
+- [Hardcoded Secrets](#hardcoded-secrets--compile-error-owasp-piece-5)
+- [Audit Trail](#audit-trail-auto-emitted-with-allow-signup-and-login)
+- [Concurrency Declarations](#concurrency-declarations)
+- [File Uploads](#file-uploads)
+- [Social Login](#social-login)
+- [Cookies](#cookies)
+- [Production Features](#production-features)
+- [Webhooks](#webhooks)
+- [Background Jobs](#background-jobs)
+- [WebSockets](#websockets-real-time)
+- [Full Text Search](#full-text-search)
+- [Has Many Relationships](#has-many-relationships)
+- [Agent Argument Guardrails](#agent-argument-guardrails)
+- [Database Migrations](#database-migrations)
+- [Billing Config](#billing-config)
+- [Full-Stack](#full-stack)
+
+### Files, Data Operations, and Integrations
+
+- [File I/O](#file-io)
+- [JSON](#json)
+- [Regex](#regex-pattern-matching)
+- [Date / Time](#date--time)
+- [Data Operations](#data-operations-csv)
+- [Database](#database)
+- [Email](#email)
+- [Web Scraper](#web-scraper)
+- [PDF Generation](#pdf-generation)
+- [Machine Learning](#machine-learning)
+- [npm Package Imports](#npm-package-imports)
+- [Shell Commands](#shell-commands)
+- [External API Calls](#external-api-calls)
+- [Service Presets](#service-presets)
+- [Webhooks (Natural Syntax)](#webhooks-natural-syntax)
+- [Auth Aliases](#auth-aliases)
+
+### AI, Workflows, Proof, and Tests
+
+- [Testing](#testing)
+- [CLI](#cli-for-ai-agents)
+- [Build & Deploy](#build--deploy)
+- [AI Integration](#ai-integration)
+- [AI Agents](#ai-agents)
+- [Policies](#policies-enact-guards)
+- [Workflows](#workflows-stateful-agent-graphs)
+- [Routing](#routing-route-x-by-field)
+- [Named Business Rules](#named-business-rules-rule-name)
+- [Agent Tool-Bound Claims](#agent-tool-bound-claims-prove-that-agent-x-cannot-)
+- [Approval Queues](#approval-queues-single-stage-reviewer)
+- [Scheduled Tasks](#scheduled-tasks-cron)
+- [HTTP Test Assertions](#http-test-assertions)
+- [Streaming AI Responses](#streaming-ai-responses)
+- [Deploying your app](#deploying-your-app)
+
 ---
 
 ## Values & Variables
