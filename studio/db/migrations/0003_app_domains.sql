@@ -10,7 +10,7 @@
 -- a Fly cert. Those are follow-up phases — this migration just lands the
 -- storage shape so the URL handlers and dashboard can wire end-to-end.
 --
--- Adapted from playground/cloud-domains/migrations/001-domains.sql which
+-- Adapted from studio/cloud-domains/migrations/001-domains.sql which
 -- assumed an `apps(id)` table that doesn't exist in the current cloud layer.
 -- Stripped the PL/pgSQL trigger to keep pg-mem happy (same pattern as
 -- 0002_users_sessions). updated_at is bumped explicitly by the helpers.

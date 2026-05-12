@@ -262,7 +262,7 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 
 | Node Type | Syntax | JS |
 |-----------|--------|-----|
-| `HTTP_REQUEST` | `send to 'url':` + method/headers/body config | `fetch()` with options |
+| `HTTP_REQUEST` | `call api 'url' with method 'POST' with bearer token sending { ... }` or `send to 'url':` + method/headers/body config | `fetch()` with options |
 | `SERVICE_CALL` (stripe) | `charge via stripe:` + amount/currency/token | `fetch('https://api.stripe.com/v1/charges', ...)` |
 | `SERVICE_CALL` (sendgrid) | `send email via sendgrid:` + to/from/subject/body | `fetch('https://api.sendgrid.com/v3/mail/send', ...)` |
 | `SERVICE_CALL` (twilio) | `send sms via twilio:` + to/body | `fetch('https://api.twilio.com/...', ...)` |
@@ -643,15 +643,15 @@ Multi-word keywords that can shadow variable names: `page` (page declaration), `
 
 ## Studio Capabilities (not language features)
 
-These are Studio (`playground/server.js`) features, not Clear language primitives. They don't add node types — they add runtime behavior around already-compiled apps.
+These are Studio (`studio/server.js`) features, not Clear language primitives. They don't add node types — they add runtime behavior around already-compiled apps.
 
 | Capability | Where | What it does |
 |------------|-------|--------------|
-| **Hosted deploy** | `playground/deploy.js`, `playground/builder/` | `POST /api/deploy` packages the current source, tars it, POSTs to a shared builder machine that runs `docker build` → `docker push registry.fly.io` → `flyctl deploy` and returns a live URL. Customer never sees Fly. |
-| **One-click updates** (Cloudflare) | `playground/deploy-cloudflare.js:_deployUpdate`, `playground/deploy.js:/api/deploy` | When `/api/deploy` sees the app is already deployed, it routes through the incremental `mode: 'update'` path — re-uploads the Worker bundle only (no D1 reprovision, no domain reattach, no full secret push), records the new `versionId` against the tenant's `versions[]`, and returns in ~2s instead of ~12s. Schema changes (D1 SQL or `wrangler.toml`) are gated by `migrationsDiffer()` + a 409 `MIGRATION_REQUIRED` confirm round-trip. Per-app history capped at 20 entries; older versions stay on Cloudflare's side. |
-| **AI proxy routing** | `playground/ai-proxy/` | Every `ask claude` in a deployed app routes through a metered proxy that holds the only Anthropic key. Usage attributed to the tenant, billed via Stripe metered add-on. |
-| **Tenant + billing** | `playground/tenants.js`, `playground/billing.js` | One row per paying customer. Plan limits come from `plans.js`. Stripe Checkout creates tenants; webhook updates plan. Dedup'd by event_id so webhook replays don't double-bill. |
-| **Multi-tenant isolation** | `playground/sanitize.js` | Every app name starts with `clear-<tenantSlug>-`. Rollback, history, cert endpoints assert ownership before calling the builder. Per-app Firecracker VM isolation is Fly's default. |
+| **Hosted deploy** | `studio/deploy.js`, `studio/builder/` | `POST /api/deploy` packages the current source, tars it, POSTs to a shared builder machine that runs `docker build` → `docker push registry.fly.io` → `flyctl deploy` and returns a live URL. Customer never sees Fly. |
+| **One-click updates** (Cloudflare) | `studio/deploy-cloudflare.js:_deployUpdate`, `studio/deploy.js:/api/deploy` | When `/api/deploy` sees the app is already deployed, it routes through the incremental `mode: 'update'` path — re-uploads the Worker bundle only (no D1 reprovision, no domain reattach, no full secret push), records the new `versionId` against the tenant's `versions[]`, and returns in ~2s instead of ~12s. Schema changes (D1 SQL or `wrangler.toml`) are gated by `migrationsDiffer()` + a 409 `MIGRATION_REQUIRED` confirm round-trip. Per-app history capped at 20 entries; older versions stay on Cloudflare's side. |
+| **AI proxy routing** | `studio/ai-proxy/` | Every `ask claude` in a deployed app routes through a metered proxy that holds the only Anthropic key. Usage attributed to the tenant, billed via Stripe metered add-on. |
+| **Tenant + billing** | `studio/tenants.js`, `studio/billing.js` | One row per paying customer. Plan limits come from `plans.js`. Stripe Checkout creates tenants; webhook updates plan. Dedup'd by event_id so webhook replays don't double-bill. |
+| **Multi-tenant isolation** | `studio/sanitize.js` | Every app name starts with `clear-<tenantSlug>-`. Rollback, history, cert endpoints assert ownership before calling the builder. Per-app Firecracker VM isolation is Fly's default. |
 
 ## Apps (Stress Tests)
 

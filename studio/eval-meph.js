@@ -6,14 +6,14 @@
 // once? (2) Meph's own self-report says the tool worked.
 //
 // Usage:
-//   node studio/eval-meph.js                  (uses env key or running playground's stored key)
+//   node studio/eval-meph.js                  (uses env key or running studio's stored key)
 //   node studio/eval-meph.js --key sk-ant-... (override)
 //   SKIP_MEPH_EVAL=1 ...                          (skip cleanly, exit 0)
 //
 // Pre-push integration:
 //   The .husky/pre-push hook runs this when ANTHROPIC_API_KEY is set.
-//   If no key, it skips cleanly with exit 0. If no playground server is
-//   running on PLAYGROUND_URL, this script spawns one for the duration
+//   If no key, it skips cleanly with exit 0. If no studio server is
+//   running on STUDIO_URL, this script spawns one for the duration
 //   of the eval and tears it down on completion.
 //
 // Cost: ~$0.10–0.30 per run. Time: ~90–180s (16 scenarios × 5–15s).
@@ -28,7 +28,7 @@ if (process.env.SKIP_MEPH_EVAL === '1') {
   process.exit(0);
 }
 
-const BASE = process.env.PLAYGROUND_URL || 'http://localhost:3456';
+const BASE = process.env.STUDIO_URL || 'http://localhost:3456';
 
 // Resolve API key from env or --key flag
 let apiKey = process.env.ANTHROPIC_API_KEY || '';
@@ -134,28 +134,28 @@ SELF-REPORT: <one sentence on whether the ${scn.expectTool} tool worked correctl
   };
 }
 
-// Spawn a temporary playground server if BASE isn't reachable. Returns the
+// Spawn a temporary studio server if BASE isn't reachable. Returns the
 // child handle (or null if BASE was already up). Caller must kill on exit.
-async function ensurePlaygroundRunning() {
+async function ensureStudioRunning() {
   try {
     const r = await fetch(BASE + '/api/templates', { signal: AbortSignal.timeout(1000) });
     if (r.ok) return null; // already running
   } catch {}
   // Need to spawn one. Pick port from BASE.
   const port = (() => { try { return new URL(BASE).port || '3456'; } catch { return '3456'; } })();
-  console.log(`No playground at ${BASE} — spawning one for the eval...`);
+  console.log(`No studio at ${BASE} — spawning one for the eval...`);
   const child = spawn('node', ['studio/server.js'], {
     cwd: process.cwd(),
     env: { ...process.env, PORT: port },
     stdio: 'pipe',
   });
-  // Wait for ready signal (server logs "Clear Playground:" on startup)
+  // Wait for ready signal (server logs "Clear Studio:" on startup)
   await new Promise((resolve, reject) => {
     let done = false;
     const finish = (err) => { if (!done) { done = true; err ? reject(err) : resolve(); } };
-    child.stdout.on('data', d => { if (/Clear Playground|listening/i.test(d.toString())) finish(); });
+    child.stdout.on('data', d => { if (/Clear Studio|listening/i.test(d.toString())) finish(); });
     child.stderr.on('data', d => process.stderr.write(d));
-    setTimeout(() => finish(new Error('Playground startup timed out after 8s')), 8000);
+    setTimeout(() => finish(new Error('Studio startup timed out after 8s')), 8000);
   });
   return child;
 }
@@ -167,8 +167,8 @@ async function main() {
   console.log(`Scenarios: ${scenarios.length}`);
   console.log('━'.repeat(60));
 
-  // Bootstrap playground if needed
-  const spawnedServer = await ensurePlaygroundRunning();
+  // Bootstrap studio if needed
+  const spawnedServer = await ensureStudioRunning();
   const cleanup = () => { if (spawnedServer) { try { spawnedServer.kill('SIGTERM'); } catch {} } };
   process.on('exit', cleanup);
   process.on('SIGINT', () => { cleanup(); process.exit(130); });

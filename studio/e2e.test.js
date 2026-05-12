@@ -1,5 +1,5 @@
 // =============================================================================
-// PLAYGROUND E2E — ALL APPS: COMPILE, RUN, USE
+// STUDIO E2E — ALL APPS: COMPILE, RUN, USE
 // =============================================================================
 // Tests all 43 templates: compile every one, run representative samples,
 // hit real endpoints, verify the IDE UI (compile btn, run btn, output tab).
@@ -95,9 +95,9 @@ async function waitForEndpoint(path, maxMs = 6000) {
 }
 
 // =============================================================================
-// START PLAYGROUND SERVER
+// START STUDIO SERVER
 // =============================================================================
-console.log('Starting playground server on port 3459...');
+console.log('Starting studio server on port 3459...');
 const server = spawn('node', ['studio/server.js'], {
   cwd: join(__dirname, '..'),
   env: { ...process.env, PORT: '3459' },

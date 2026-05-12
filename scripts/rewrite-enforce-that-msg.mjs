@@ -45,7 +45,7 @@ const REPLACEMENT = (_m, expr, msg, trail) =>
 const ALLOWED_EXTS = new Set(['.clear', '.js', '.mjs', '.md']);
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.claude', 'build', '.tmp', '.cache',
-  'studio/.tmp', 'studio/.playground-build',
+  'studio/.tmp', 'studio/.studio-build',
 ]);
 
 function* walkFiles(dir) {

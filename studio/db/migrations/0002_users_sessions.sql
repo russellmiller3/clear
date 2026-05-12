@@ -15,8 +15,8 @@
 --   buildclear.dev/api/auth/logout → soft-deletes the session
 --   buildclear.dev/dashboard       → gated by valid session
 --
--- The Node helpers (playground/cloud-auth/index.js) own the SQL these
--- tables receive. Schema mirrors playground/cloud-auth/migrations/001-users-sessions.sql,
+-- The Node helpers (studio/cloud-auth/index.js) own the SQL these
+-- tables receive. Schema mirrors studio/cloud-auth/migrations/001-users-sessions.sql,
 -- minus the PL/pgSQL trigger (pg-mem doesn't speak PL/pgSQL, and no current
 -- code path reads `updated_at` — column stays in case a future audit feature
 -- wants it).

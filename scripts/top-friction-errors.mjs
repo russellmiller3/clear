@@ -34,7 +34,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FACTOR_DB_PATH = join(__dirname, '..', 'playground', 'factor-db.sqlite');
+const FACTOR_DB_PATH = join(__dirname, '..', 'studio', 'factor-db.sqlite');
 
 const DEFAULT_TOP = 20;
 const DEFAULT_MIN_COUNT = 2;

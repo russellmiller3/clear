@@ -15626,6 +15626,22 @@ page 'Home' at '/':
     )).toBe(true);
   });
 
+  it('errors when a protected page has no declared login page', () => {
+    const src = `build for web and javascript backend
+allow signup and login
+page 'Scheduler' at '/':
+  needs login
+  heading 'Post Scheduler'`;
+
+    const result = compileProgram(src);
+
+    expect(result.errors.some(e =>
+      e.message.includes("page 'Scheduler' needs login") &&
+      e.message.includes("no page at '/login'") &&
+      e.message.includes("page 'Login' at '/login':")
+    )).toBe(true);
+  });
+
   it('accepts nav items and links that point at declared pages', () => {
     const src = `build for web
 page 'Home' at '/':
@@ -19547,6 +19563,35 @@ when user calls POST /api/charge:
     expect(r.javascript).toContain('"Authorization"');
     expect(r.javascript).toContain('AbortController');
     expect(r.javascript).toContain('10000');
+  });
+
+  it('call api sends a multi-line JSON body from endpoints and background jobs', () => {
+    const src = `build for javascript backend
+when user calls POST /api/share:
+  linkedin_token = 'token'
+  linkedin_urn = 'urn:li:person:123'
+  post_content = 'hello'
+  result = call api 'https://api.linkedin.com/v2/ugcPosts' with method 'POST' with bearer linkedin_token sending {
+    author: linkedin_urn,
+    lifecycleState: 'PUBLISHED',
+    shareText: post_content
+  }
+  send back result
+
+every 15 minutes:
+  linkedin_token = 'token'
+  linkedin_urn = 'urn:li:person:123'
+  post_content = 'scheduled hello'
+  call api 'https://api.linkedin.com/v2/ugcPosts' with method 'POST' with bearer linkedin_token sending {
+    author: linkedin_urn,
+    lifecycleState: 'PUBLISHED',
+    shareText: post_content
+  }`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("method: 'POST'");
+    expect(r.javascript).toContain('"Authorization": ("Bearer " + linkedin_token)');
+    expect(r.javascript).toContain('JSON.stringify({ author: linkedin_urn, lifecycleState: "PUBLISHED", shareText: post_content })');
   });
 
   it('call api defaults to GET without body, POST with body', () => {

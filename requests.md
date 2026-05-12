@@ -38,3 +38,36 @@ define component DealDeskSidebar:
 - accessibility snapshot of /approved shows sidebar with only "Deal Desk" heading, no nav
 
 **Related:** the proper fix Codex built in his stash (shell-page router, stash@{0} compiler.js around lines 13140-13220) hoists the sidebar into a shell page so each route's content swaps into an outlet. That bypasses components entirely. Once the shell router lands, the inline-sidebar duplication can be deleted.
+
+---
+
+## Request: Multi-line JSON body in `call api ... sending { ... }` -- DONE 2026-05-12
+
+**Fixed in this session.** `call api` now parses inline method, bearer token, and multi-line `sending { ... }` JSON bodies in both assigned calls and standalone calls. The same parser path runs inside endpoints and scheduled jobs, so the LinkedIn scheduler shape now compiles to real POST requests with `Authorization: Bearer ...` and a `JSON.stringify(...)` body. Regression coverage lives in `clear.test.js` under `call api: generic HTTP requests`.
+
+Original bug report below for history.
+
+**App:** LinkedIn Post Scheduler
+**What I needed:** Send a structured multi-key JSON payload to an external REST API inside both a regular endpoint and a background job (`every N minutes:`).
+
+**Proposed syntax:**
+```clear
+call api 'https://api.linkedin.com/v2/ugcPosts' with method 'POST' with bearer linkedin_token sending {
+  author: linkedin_urn,
+  lifecycleState: 'PUBLISHED',
+  shareText: post_content
+}
+```
+
+**What actually happened:** Compiler errors on the closing `}`:
+```
+Line 82: Clear doesn't understand "}" in this position.
+Line 103: Clear doesn't understand "}" in this position.
+```
+Single-line `sending { key: value }` may work but multi-line braced objects with multiple keys fail to parse.
+
+**Workaround used:** None viable. Can't serialize to a string and pass as raw body. Can't return a structured object from a `define function` either (same nested literal problem). App is stuck — the LinkedIn API requires this exact payload shape.
+
+**Error hit:** `Clear doesn't understand "}" in this position`
+
+**Impact:** high. Any app that needs to call a real-world REST API (Stripe, Slack, LinkedIn, GitHub, etc.) will hit this. Those APIs universally require multi-key JSON bodies. Without multi-line `sending {}` support, `call api` is only useful for GET requests or trivial single-field POSTs. This blocks the entire "connect to external services" use case.

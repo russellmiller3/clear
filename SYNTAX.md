@@ -2567,7 +2567,14 @@ Call any REST API with custom headers, body, and timeout:
 # Simple GET
 data = call api 'https://api.github.com/users/octocat'
 
-# Full POST with headers and timeout
+# Inline POST with bearer auth and a multi-line JSON body
+result = call api 'https://api.linkedin.com/v2/ugcPosts' with method 'POST' with bearer linkedin_token sending {
+  author: linkedin_urn,
+  lifecycleState: 'PUBLISHED',
+  shareText: post_content
+}
+
+# Block form for several headers and timeout
 result = call api 'https://api.example.com/data':
   method is 'POST'
   header 'Authorization' is 'Bearer ' + env('API_KEY')
@@ -2746,8 +2753,10 @@ Agent bodies that call `env('X')` or `process_env('X')` directly fail to compile
 # YES — agent calls a function, function uses the credential, agent never sees the value.
 define function charge_card(amount, token):
   result = call api 'https://api.stripe.com/v1/charges'
-    with bearer env('STRIPE_SECRET_KEY')
-    sending amount, source: token
+    with method 'POST' with bearer env('STRIPE_SECRET_KEY') sending {
+      amount: amount,
+      source: token
+    }
   return result
 
 agent 'Refund Bot' receives request:

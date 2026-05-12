@@ -37,22 +37,22 @@ If you can't find the answer there, grep — then add the answer to FAQ.md.
 ## Testing
 - Run all tests: `node clear.test.js`
 - Run sandbox tests: `node sandbox.test.js` (integration tests — spins up real servers)
-- Run playground tests (each is a separate file):
-  - `node playground/server.test.js` (server API tests)
-  - `node playground/e2e.test.js` (template compile + endpoint + CRUD + curriculum tests)
-  - `node playground/ide.test.js` (Playwright IDE UI tests)
-  - `node playground/agent.test.js` (Claude agent tool tests, needs ANTHROPIC_API_KEY)
-  - `node playground/eval-meph.js` (Meph tool eval — 16 scenarios, real LLM, ~$0.10–0.30, ~90s)
-  - `node playground/eval-fullloop-suite.js` (Meph builds 3 complex apps end-to-end — heavier eval)
+- Run Studio tests (each is a separate file):
+  - `node studio/server.test.js` (server API tests)
+  - `node studio/e2e.test.js` (template compile + endpoint + CRUD + curriculum tests)
+  - `node studio/ide.test.js` (Playwright IDE UI tests)
+  - `node studio/agent.test.js` (Claude agent tool tests, needs ANTHROPIC_API_KEY)
+  - `node studio/eval-meph.js` (Meph tool eval — 16 scenarios, real LLM, ~$0.10–0.30, ~90s)
+  - `node studio/eval-fullloop-suite.js` (Meph builds 3 complex apps end-to-end — heavier eval)
 - **Husky hooks:** pre-commit runs compiler tests, pre-push runs compiler + e2e + meph eval (when `ANTHROPIC_API_KEY` set; skips cleanly otherwise)
 - Bypass meph eval for one push: `SKIP_MEPH_EVAL=1 git push`
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
 ## Meph Tool Eval (MANDATORY when changing Meph)
-**If you touch any of these, run `node playground/eval-meph.js` BEFORE shipping:**
-- `playground/server.js` — tool dispatch, schemas, validators, /api/chat handler
-- `playground/system-prompt.md` — Meph's instructions
+**If you touch any of these, run `node studio/eval-meph.js` BEFORE shipping:**
+- `studio/server.js` — tool dispatch, schemas, validators, /api/chat handler
+- `studio/system-prompt.md` — Meph's instructions
 - The TOOLS array (tool definitions, descriptions, input_schemas)
 
 The eval drives Meph through 16 scenarios covering every tool he has, asks
@@ -66,7 +66,7 @@ him to self-report whether each tool worked, and grades the result. Catches:
 
 The pre-push hook runs it automatically when your env has `ANTHROPIC_API_KEY`.
 For deeper integration testing (Meph builds full apps from scratch, ~3min,
-~$0.50–1.00), run `node playground/eval-fullloop-suite.js` manually — not
+~$0.50–1.00), run `node studio/eval-fullloop-suite.js` manually — not
 in pre-push, because it's slower and more variable.
 
 See `.claude/skills/eval-meph/SKILL.md` for the full guide.
@@ -234,7 +234,7 @@ Read the TOC before working in the file so you know where things are.
 4. `USER-GUIDE.md` — tutorial coverage with worked example
 5. `ROADMAP.md` — mark the phase complete, update counts (forward-looking: what's next)
 6. `landing/*.html` — when the feature is user-facing (new syntax, new agent capability, new primitive), sync the marketing pages. `landing/business-agents.html` and related pages show end users what Clear looks like; stale examples there mislead prospects. Grep `landing/` for any old syntax being replaced and update every example/code snippet to match the new canonical form.
-7. `playground/system-prompt.md` — Meph reads this every session; if Meph should know about the feature, document it here.
+7. `studio/system-prompt.md` — Meph reads this every session; if Meph should know about the feature, document it here.
 8. `FAQ.md` — "Where does X live?", "How do I Y?", "Why did we Z?" entries. FAQ is the search-first doc for the codebase; if you touched a subsystem, its FAQ entry needs to reflect the change. Add new "Where / How / Why" questions when you introduce new infrastructure.
 9. `RESEARCH.md` — the theory / flywheel / re-ranker / self-play file. Update whenever you ship anything that affects the training-signal architecture (Factor DB schema, archetype classifier, hint retrieval, curriculum, eval pipeline). The "Read This First" plain-English section at the top is the capability surface for non-technical readers — keep it current.
 10. `FEATURES.md` — add a row describing what Clear can do today. This is the capability reference Russell or a new contributor reads to answer "can Clear do X?". Separate from ROADMAP (which is forward-looking) and intent.md (which is node-type spec). Split out from ROADMAP on 2026-04-21.
@@ -269,12 +269,12 @@ These automate the rule, they don't replace it. The human-side practice — writ
 Always use these skills — never jump straight to coding a new feature.
 
 ## Compiler is Closed Source
-Do not make this repo public. The playground uses an obfuscated bundle
-(`playground/clear-compiler.min.js`). Rebuild it after compiler changes:
+Do not make this repo public. Studio uses an obfuscated bundle
+(`studio/clear-compiler.min.js`). Rebuild it after compiler changes:
 
 npm run bundle
 
-(or `node scripts/build-playground-bundle.mjs` directly). The build script
+(or `node scripts/build-studio-bundle.mjs` directly). The build script
 swaps in a tiny browser stub for `lib/packaging-cloudflare.js` (which
 imports node-only `fs` / `path` / `url`) so the browser bundle builds
 cleanly. esbuild is a devDependency — installed via `npm install`. The
@@ -285,13 +285,13 @@ target, and the CLI's `--alias` flag rejects relative paths.
 ## No External Dependencies
 The compiler RUNTIME (what ships in compiled apps and the browser bundle)
 is pure ESM JavaScript with zero npm packages — runs in Node and browser.
-Build tooling (esbuild for the playground bundle, husky for git hooks,
+Build tooling (esbuild for the Studio bundle, husky for git hooks,
 pg-mem for tests) lives in devDependencies and never reaches compiled
 output. Compiled apps still depend on express / better-sqlite3 / bcryptjs
 / pg at runtime — those are listed under `dependencies`.
 
 ## Clear Studio (IDE)
-Run `node playground/server.js` → opens `http://localhost:3456`.
+Run `node studio/server.js` → opens `http://localhost:3456`.
 Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 43 template apps in dropdown. Light/dark theme. Save to Desktop.
 
@@ -306,13 +306,13 @@ Compiler-owned UI failures must be hard errors, not requirements: internal app c
 "Pending" status alone is not approval routing. Manager/VP approval requires role, reviewer assignment, approval queue, or approver evidence.
 
 Studio can route Meph through Anthropic, OpenRouter picker choices, Ollama, or cc-agent. Any model-routing change must preserve tools, memory, requests.md access, personality overrides, and full chat history on model switch.
-Tests: `node playground/server.test.js` (85 tests).
+Tests: `node studio/server.test.js` (85 tests).
 
-`playground/index.html` is the old static playground (compiler bundle only).
-`playground/ide.html` is the full Studio IDE with server backend.
+`studio/index.html` is the old static bundle viewer (compiler bundle only).
+`studio/ide.html` is the full Studio IDE with server backend.
 
 ## GAN Design Method (MANDATORY for all UI work)
-Never edit the compiler or playground HTML directly to "make it look better." Always:
+Never edit the compiler or Studio HTML directly to "make it look better." Always:
 1. **Design a static HTML mock first** — pure HTML/CSS with DaisyUI, no compiler. This is the visual target.
 2. **Use the mock as acceptance criteria** — screenshot it, compare side-by-side.
 
@@ -336,10 +336,10 @@ await new Promise(res => { const q=http.request({hostname:'localhost',port:3456,
 const b = JSON.stringify({serverJS:r.serverJS,html:r.html,css:r.css||''});
 await new Promise(res => { const q=http.request({hostname:'localhost',port:3456,path:'/api/run',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)}},re=>{let d='';re.on('data',c=>d+=c);re.on('end',()=>{console.log('port:',JSON.parse(d).port);res();})}); q.write(b);q.end(); });
 ```
-3. **Edit the compiler/playground until its output matches the mock.**
+3. **Edit the compiler/Studio output until its output matches the mock.**
 
 The mock is the discriminator. The compiler is the generator. Iterate until output matches target.
-This applies to: playground page redesigns, compiled app output quality, landing pages, dashboards, any visual work.
+This applies to: Studio page redesigns, compiled app output quality, landing pages, dashboards, any visual work.
 
 ## Console First Rule
 When debugging any browser/UI issue, **always check console errors first** before reading code or guessing. Use `preview_console_logs` or ask the user for the console output. A SyntaxError in the console tells you exactly what's broken in seconds. Guessing wastes everyone's time.
@@ -452,7 +452,7 @@ When Meph fails at a task, the failure is not just data for the Factor DB — it
 
 | Symptom | Root cause layer | Where to fix |
 |---------|-----------------|--------------|
-| Meph writes wrong syntax | He doesn't know the right syntax | `AI-INSTRUCTIONS.md` or `playground/system-prompt.md` |
+| Meph writes wrong syntax | He doesn't know the right syntax | `AI-INSTRUCTIONS.md` or `studio/system-prompt.md` |
 | Error message is confusing | Compiler error quality | `compiler.js` error messages |
 | Meph loops on same error 3+ times | Missing pattern in Meph's knowledge | `AI-INSTRUCTIONS.md` — add "gotcha" section |
 | Meph reaches for a feature that doesn't exist | Missing feature OR docs imply it exists | Either build it, or fix the docs that misled him |
@@ -472,14 +472,14 @@ For any feature whose behavior depends on an LLM — system prompts, tool-use ro
 
 ## Cross-Path Tool Side-Effects Belong IN The Tool (MANDATORY — LEARNED EXPENSIVELY)
 
-Any side-effect that depends on a tool's result — Factor DB writes, event emits, state mutations, session-level accounting — belongs **inside the tool function in `playground/meph-tools.js`**, not in `/api/chat`'s post-tool-call callback block in `playground/server.js`.
+Any side-effect that depends on a tool's result — Factor DB writes, event emits, state mutations, session-level accounting — belongs **inside the tool function in `studio/meph-tools.js`**, not in `/api/chat`'s post-tool-call callback block in `studio/server.js`.
 
 **Why:** cc-agent mode dispatches tool calls through the MCP server, which does NOT execute any code in `/api/chat` after a tool returns. Any side-effect living in the server.js tool-result loop is invisible to cc-agent runs. This bit us on 2026-04-22: the `http_request 2xx → test_pass=1` Factor DB write lived in server.js, so every cc-agent curriculum sweep produced rows with `test_pass=0` even when the endpoint returned 200. Looked like the tool was broken — it wasn't; the write was in the wrong layer.
 
 **How to apply:**
 - Anytime you see `if (tb.name === 'X') { sideEffect(...) }` in server.js's `/api/chat` post-tool block, move the side-effect into tool X's implementation in meph-tools.js. Pass the state it needs (factorDB, sessionId, etc.) through `ctx`.
 - Before wiring a new closure-level side-effect, ask: "would this fire in cc-agent mode?" If no, it's wrong.
-- The MCP server's `buildMephContext` in `playground/ghost-meph/mcp-server/tools.js` MUST wire every ctx callback the tool uses — `isAppRunning`, `setRunningChild`, `allocatePort`, `getRunningPort`, `stopRunningApp`, `factorDB`. No-op defaults silently break cc-agent runs.
+- The MCP server's `buildMephContext` in `studio/ghost-meph/mcp-server/tools.js` MUST wire every ctx callback the tool uses — `isAppRunning`, `setRunningChild`, `allocatePort`, `getRunningPort`, `stopRunningApp`, `factorDB`. No-op defaults silently break cc-agent runs.
 - **Red flag:** a tool that says "Not yet available in MCP mode" in its description. Either wire it up or remove it from the MCP TOOLS array — a half-advertised tool lets Meph call it, fail, and the sweep looks like a Meph bug when it's an infrastructure gap.
 
 **What "side-effect in the tool" means:**
@@ -528,7 +528,7 @@ This is the project-level rule file for Clear. The global rules (voice, format, 
 
 Before kicking any sweep, Meph eval, or multi-call research operation:
 
-1. **Run the pre-run estimator** at `playground/supervisor/estimate-cost.mjs` with the actual params. It pulls from calibrated Apr 2026 rates; re-calibrate if sweep invariants (system prompt size, iteration cap, workers) change.
+1. **Run the pre-run estimator** at `studio/supervisor/estimate-cost.mjs` with the actual params. It pulls from calibrated Apr 2026 rates; re-calibrate if sweep invariants (system prompt size, iteration cap, workers) change.
 2. **Post the median + range in chat BEFORE firing.** Format: "3-sweep batch: $11-40 median $23, 10 min. Firing now."
 3. **Set a budget cap for the INVESTIGATION, not just the run.** Example: "$10 to learn whether intervention X moves metric Y; if $10 spent and no clear answer, stop regardless of partial results." Stick to it.
 
@@ -747,7 +747,7 @@ rule discount-cap-thirty:
   enforce that deal's discount_percent is less than 30, or fail with error message: 'Discounts of 30% or more require VP approval'
 ```
 
-The one exception is `examples/rule-keyword-tour.clear`, where two intentional tautologies show PROVED / DISPROVED verdicts side-by-side as a teaching device. Those are explicitly labeled and should NOT be changed. Anywhere else — `.clear` app sources, `clear.test.js` fixtures, doc snippets, `playground/system-prompt.md` examples, landing-page code samples, FAQ entries, USER-GUIDE worked examples — tautologies are forbidden.
+The one exception is `examples/rule-keyword-tour.clear`, where two intentional tautologies show PROVED / DISPROVED verdicts side-by-side as a teaching device. Those are explicitly labeled and should NOT be changed. Anywhere else — `.clear` app sources, `clear.test.js` fixtures, doc snippets, `studio/system-prompt.md` examples, landing-page code samples, FAQ entries, USER-GUIDE worked examples — tautologies are forbidden.
 
 **Why:** 2026-05-04 — every regulated-tier pitch surface that ships a tautology to a reader looks broken. The audit PDF reads "PROVED for every possible deal" against `5 < 7` and the CRO immediately wonders what happened to the discount cap. Tautologies in tests are also non-evidence — they pass by construction, so they prove nothing about the rule shape. Field-referencing rules cost the same to write and actually demonstrate provability against the entity that matters.
 

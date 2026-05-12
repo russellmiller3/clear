@@ -1,5 +1,5 @@
 // =============================================================================
-// PLAYGROUND IDE — BUILDER MODE E2E TESTS
+// STUDIO IDE — BUILDER MODE E2E TESTS
 // =============================================================================
 // Run: node studio/builder-mode.test.js
 // Plan: plans/plan-builder-mode-v0.1-04-21-2026.md

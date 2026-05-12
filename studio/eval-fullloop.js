@@ -5,7 +5,7 @@
 // app end-to-end? Compile, run, test, debug if anything fails.
 // =============================================================================
 
-const BASE = process.env.PLAYGROUND_URL || 'http://localhost:3456';
+const BASE = process.env.STUDIO_URL || 'http://localhost:3456';
 let apiKey = process.env.ANTHROPIC_API_KEY || '';
 const keyFlag = process.argv.indexOf('--key');
 if (keyFlag >= 0 && process.argv[keyFlag + 1]) apiKey = process.argv[keyFlag + 1];

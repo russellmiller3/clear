@@ -197,7 +197,7 @@ Current audit snapshot after mining the rest of `apps/` and adding four language
 
 The fourth language primitive covers hard booking workflows: rooms, customers, bookings, available-room search, overlap rejection, and cancellation. A local integration test now requires a hard booking prompt to retrieve that primitive first before any paid booking A/B rerun.
 
-**One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `playground/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
+**One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `studio/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
 
 **Old hint setup vs pattern preflight:** the older Claude-built hint path was a repair loop. It fired after a compile result, searched `code_actions` for past fixes to similar errors, and asked Meph to emit `HINT_APPLIED` so we could track whether the repair hint was used. That is still useful for "I hit this compiler error, what fixed it before?" It is weaker for first-draft app quality because it waits until Meph has already written the wrong shape.
 
@@ -519,7 +519,7 @@ It's not anymore — the highlighter was rewritten 2026-05-04.
 3. The possessive `deal's discount_percent` opened a fake string at the apostrophe and swallowed everything until the next quote, de-syncing the line.
 4. English connector words (`is`, `less`, `than`, `with`, `or`, `fail`, `error`, `message`) were ALL flagged as keywords — every line lit up like a wall of blue.
 
-**The new behavior (`playground/ide.html`, `clearLang` + `clearKeywords`):**
+**The new behavior (`studio/studio.html`, `clearLang` + `clearKeywords`):**
 - The string tokenizer tracks an `inString` quote in tokenizer state. When EOL hits inside a string, the state carries; the next line consumes until the matching close quote arrives.
 - The identifier regex allows kebab-case (`(?:-[a-zA-Z][a-zA-Z0-9_]*)*`) so hyphenated rule names tokenize as one variable.
 - The identifier regex absorbs `(?:['`]s\b)?` as part of the same token, so `deal's` is one variable. Identifier matching runs BEFORE string matching, so apostrophe-after-letter never reaches the string branch.
@@ -566,7 +566,7 @@ When Studio's editor shows a green ✓, red ✗, or amber ? next to a `rule:` li
 4. `runAutoProve` builds a Map keyed by line number and dispatches it via `setProveVerdictsEffect` into `proveVerdictsField` (a CodeMirror StateField on the editor's state).
 5. The strip extension (`proveGutterExt`) reads the field, asks for each visible line "is there a verdict for line N?", and renders a glyph if so. The strip's `lineMarkerChange` callback returns true on any transaction that fires `setProveVerdictsEffect`, so the strip redraws when verdicts arrive.
 
-**Where to look in the code:** `playground/ide.html`, search for `proveVerdictsField` (the StateField), `ProveVerdictMarker` (the GutterMarker subclass that renders the glyph), and `proveGutterExt` (the gutter() extension wired into the editor's extensions array).
+**Where to look in the code:** `studio/studio.html`, search for `proveVerdictsField` (the StateField), `ProveVerdictMarker` (the GutterMarker subclass that renders the glyph), and `proveGutterExt` (the gutter() extension wired into the editor's extensions array).
 
 **Why it took two ships:**
 - v0 (toolbar badge + click-to-expand popover) shipped first against the existing CodeMirror bundle.
@@ -578,16 +578,16 @@ When Studio's editor shows a green ✓, red ✗, or amber ? next to a `rule:` li
 
 ## How do I add a new editor extension to Studio that needs a CodeMirror export not in the bundle? (2026-05-04)
 
-The playground's CodeMirror is shipped as one pre-built file: `playground/codemirror.bundle.js`. Browsers can't `import` from npm packages, so every CodeMirror symbol used in `playground/ide.html` has to be pre-bundled.
+Studio's CodeMirror is shipped as one pre-built file: `studio/codemirror.bundle.js`. Browsers can't `import` from npm packages, so every CodeMirror symbol used in `studio/studio.html` has to be pre-bundled.
 
 **To add a new symbol** (e.g. `gutter`, `StateField`, `Decoration`, etc.):
 
 1. Add an `export` line for it in `scripts/codemirror-entry.mjs` — that's the single source of truth for what's in the bundle.
 2. If the symbol comes from a package not yet installed, run `npm install --save-dev @codemirror/<package>` (or the relevant `@lezer/<package>`).
-3. Run `node scripts/build-codemirror-bundle.mjs` — rebuilds `playground/codemirror.bundle.js`, prints the size delta vs the previous version, and runs a sanity check (scans `playground/ide.html` for every `import { ... } from './codemirror.bundle.js'` line and fails the build if any symbol would 404 at runtime).
+3. Run `node scripts/build-codemirror-bundle.mjs` — rebuilds `studio/codemirror.bundle.js`, prints the size delta vs the previous version, and runs a sanity check (scans `studio/studio.html` for every `import { ... } from './codemirror.bundle.js'` line and fails the build if any symbol would 404 at runtime).
 4. Commit the regenerated bundle plus `scripts/codemirror-entry.mjs`, `package.json`, and `package-lock.json` together.
 
-**Why the bundle is vendored, not built at runtime:** browsers don't have npm. The pre-built file is the only way to get CodeMirror into a no-build playground that loads from `localhost:3456`. The original bundle was a one-off install that wasn't checked in; the rebuild script + entry file (added 2026-05-04) make it reproducible.
+**Why the bundle is vendored, not built at runtime:** browsers don't have npm. The pre-built file is the only way to get CodeMirror into a no-build Studio page that loads from `localhost:3456`. The original bundle was a one-off install that wasn't checked in; the rebuild script + entry file (added 2026-05-04) make it reproducible.
 
 **Size budget:** the build script warns if the bundle balloons past 600 KB. As of 2026-05-04, the bundle is 402 KB with `gutter`, `GutterMarker`, `StateField`, `StateEffect`, `RangeSet`, `RangeSetBuilder` plus all prior exports. If a new package brings in heavy transitive deps and pushes past 600 KB, run `npx esbuild --bundle --analyze --metafile=meta.json` against the entry file and inspect the metafile for the largest contributors.
 
@@ -599,7 +599,7 @@ The playground's CodeMirror is shipped as one pre-built file: `playground/codemi
 
 Old failure mode: pick a template (e.g. `deal-desk`) from the Studio dropdown, edit it, reload Studio. Studio loaded the editor content from `localStorage.clear_editor_content`, which was the old edited version. If the on-disk template had changed since (someone shipped a fix, the canonical syntax rolled forward, etc.), those changes never reached the editor. The CRO pitch showed the old source; the runtime crashed against an old compiled output that's now incompatible with the new source.
 
-How it works now (`playground/ide.html`):
+How it works now (`studio/studio.html`):
 1. `loadTemplateByName(name)` saves the picked template name to `localStorage.clear_editor_loaded_template`.
 2. On every Studio start, after the editor mounts, a `queueMicrotask` calls `refreshLoadedTemplateFromDisk()`.
 3. That function fetches `/api/template/<name>` from disk and compares to the editor's current content.
@@ -636,7 +636,7 @@ If the bottom of your terminal pane is the FIRST event (oldest), and the top is 
 
 ## Where does the Studio Direct Edit toggle live? (2026-05-04)
 
-**Path:** the toggle button is in `playground/ide.html`'s toolbar (next to Run/Stop). When the user toggles it on, clicking any element in the running preview iframe (a) jumps the editor cursor to that element's matching Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with a fenced snippet of the line + 4 lines of context. Compiler-side, every interactive HTML element carries a `data-clear-line="N"` attribute via `clAttr(node)` in `compiler.js` → `buildHTML`.
+**Path:** the toggle button is in `studio/studio.html`'s toolbar (next to Run/Stop). When the user toggles it on, clicking any element in the running preview iframe (a) jumps the editor cursor to that element's matching Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with a fenced snippet of the line + 4 lines of context. Compiler-side, every interactive HTML element carries a `data-clear-line="N"` attribute via `clAttr(node)` in `compiler.js` → `buildHTML`.
 
 **Two paths supported:** srcdoc iframes (web-only Clear apps — handled via `sourceMapCapture` in ide.html) and full-stack apps (running-server iframes loaded with `?clear-bridge=1` — handled via the Studio Bridge in `compiler.js`). Both honour the same `clear-direct-edit-mode` postMessage from the parent.
 
@@ -646,9 +646,9 @@ If the bottom of your terminal pane is the FIRST event (oldest), and the top is 
 
 ## Where does the auto-prove badge live? (2026-05-04)
 
-**Path:** `playground/ide.html`'s toolbar — the `#prove-stats-badge` next to the existing compile / tests stats badges. Format: `Prove: N ok · M bad · K ?`. It auto-runs the prover after every compile attempt by POSTing the source to the existing `/api/prove` endpoint, then renders the per-rule verdict counts and color-codes by worst verdict (green when every rule PROVED, red when any DISPROVED, amber when any UNVERIFIABLE). Click the badge to expand `#prove-popover` listing each rule with its verdict mark and source line; click a row to jump the editor cursor to that line.
+**Path:** `studio/studio.html`'s toolbar — the `#prove-stats-badge` next to the existing compile / tests stats badges. Format: `Prove: N ok · M bad · K ?`. It auto-runs the prover after every compile attempt by POSTing the source to the existing `/api/prove` endpoint, then renders the per-rule verdict counts and color-codes by worst verdict (green when every rule PROVED, red when any DISPROVED, amber when any UNVERIFIABLE). Click the badge to expand `#prove-popover` listing each rule with its verdict mark and source line; click a row to jump the editor cursor to that line.
 
-**Limitation:** this is the v0 — counts + popover, not the full inline editor-gutter integration. The CodeMirror bundle (`playground/codemirror.bundle.js`) doesn't export `gutter` / `GutterMarker` / `StateField` / `StateEffect` — only `lineNumbers` and a few others. The full gutter integration (and the right-click drilldown for HANDOFF item 4c) need a bundle rebuild; filed as a follow-up. This v0 ships the spell-check feel against existing exports.
+**Limitation:** this is the v0 — counts + popover, not the full inline editor-gutter integration. The CodeMirror bundle (`studio/codemirror.bundle.js`) doesn't export `gutter` / `GutterMarker` / `StateField` / `StateEffect` — only `lineNumbers` and a few others. The full gutter integration (and the right-click drilldown for HANDOFF item 4c) need a bundle rebuild; filed as a follow-up. This v0 ships the spell-check feel against existing exports.
 
 ---
 
@@ -674,17 +674,17 @@ If the bottom of your terminal pane is the FIRST event (oldest), and the top is 
 
 ## Where is the "Copy Terminal" button? (2026-05-04)
 
-**Path:** the preview-tabs row in `playground/ide.html`, between "Supervisor" and "Clear Terminal". It calls `window.copyTerminal()` — strips HTML markup from the terminal entries, appends the current `.clear` source as a fenced block, and copies the result to the clipboard formatted as markdown so it pastes cleanly into a chat message to Claude or Meph. Distinct from "Copy compiler error" (which only fires on COMPILE errors); this one captures runtime/test output from a running app.
+**Path:** the preview-tabs row in `studio/studio.html`, between "Supervisor" and "Clear Terminal". It calls `window.copyTerminal()` — strips HTML markup from the terminal entries, appends the current `.clear` source as a fenced block, and copies the result to the clipboard formatted as markdown so it pastes cleanly into a chat message to Claude or Meph. Distinct from "Copy compiler error" (which only fires on COMPILE errors); this one captures runtime/test output from a running app.
 
 ---
 
 ## Where does Studio funnel instrumentation live? (GTM-7, 2026-05-01)
 
-**Browser path:** `playground/ide.html` records coarse Studio milestones: page loaded, first click, time to first app, and bounce before first app. It sends only event names, timing numbers, mode, and allow-listed targets like `chat_send` or `template_picker`.
+**Browser path:** `studio/studio.html` records coarse Studio milestones: page loaded, first click, time to first app, and bounce before first app. It sends only event names, timing numbers, mode, and allow-listed targets like `chat_send` or `template_picker`.
 
-**Server path:** `playground/server.js` exposes `POST /api/studio-telemetry`, `GET /api/studio-telemetry`, and test-only reset via `POST /api/studio-telemetry/clear`. The sink is in-memory by design for this slice.
+**Server path:** `studio/server.js` exposes `POST /api/studio-telemetry`, `GET /api/studio-telemetry`, and test-only reset via `POST /api/studio-telemetry/clear`. The sink is in-memory by design for this slice.
 
-**Privacy rule:** do not store source text, chat contents, API keys, form values, selectors, or arbitrary request fields. The test in `playground/server.test.js` posts fake secrets and asserts they never appear in the snapshot.
+**Privacy rule:** do not store source text, chat contents, API keys, form values, selectors, or arbitrary request fields. The test in `studio/server.test.js` posts fake secrets and asserts they never appear in the snapshot.
 
 **What remains:** durable analytics storage and a real dashboard. The local endpoint proves the event contract first.
 
@@ -747,7 +747,7 @@ If the bottom of your terminal pane is the FIRST event (oldest), and the top is 
 
 ## Previous Capabilities (Session 37 — plain English)
 
-**Meph now learns across sessions.** Before, every Meph chat started with zero memory. Now every compile he does writes to a local database (`playground/factor-db.sqlite`). When he hits an error, the system finds 3 past sessions where someone hit the same error and fixed it, and shows them to Meph as hints. He stops re-discovering the same bugs.
+**Meph now learns across sessions.** Before, every Meph chat started with zero memory. Now every compile he does writes to a local database (`studio/factor-db.sqlite`). When he hits an error, the system finds 3 past sessions where someone hit the same error and fixed it, and shows them to Meph as hints. He stops re-discovering the same bugs.
 
 **A live dashboard in Studio.** Open the IDE, click the new **Flywheel** tab. Shows the database growing, which kinds of apps are being built (approval queues, CRUDs, AI agents...), progress toward the re-ranker training threshold, and a banner telling you whether the Anthropic API is reachable. Updates every 3 seconds.
 
@@ -807,7 +807,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where does the sandbox runner live?](#where-does-the-sandbox-runner-live)
 - [Where is patch.js and what does it do?](#where-is-patchjs-and-what-does-it-do)
 - [Where is the curriculum?](#where-is-the-curriculum)
-- [Where does the playground bundle come from?](#where-does-the-playground-bundle-come-from)
+- [Where does the Studio bundle come from?](#where-does-the-studio-bundle-come-from)
 - [Where does the supervisor plan live?](#where-does-the-supervisor-plan-live)
 - [Where does the archetype classifier live?](#where-does-the-archetype-classifier-live)
 - [Where does the queue primitive live?](#where-does-the-queue-primitive-live)
@@ -827,7 +827,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
 - [How do I run the tests?](#how-do-i-run-the-tests)
 - [How do we know whether hints make Meph better?](#how-do-we-know-whether-hints-make-meph-better)
-- [How do I rebuild the playground bundle?](#how-do-i-rebuild-the-playground-bundle)
+- [How do I rebuild the Studio bundle?](#how-do-i-rebuild-the-studio-bundle)
 - [How do auth tokens work in compiled apps?](#how-do-auth-tokens-work-in-compiled-apps)
 - [How does the database layer work?](#how-does-the-database-layer-work)
 - [How does WebSocket/broadcast work?](#how-does-websocketbroadcast-work)
@@ -842,7 +842,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Why mechanical signals before ML for test quality?](#why-mechanical-signals-before-ml-for-test-quality)
 - [Why a re-ranker before the sandbox, not after?](#why-a-re-ranker-before-the-sandbox-not-after)
 - [Why is the supervisor plan GA-based?](#why-is-the-supervisor-plan-ga-based)
-- [Why is there a minified bundle for the playground?](#why-is-there-a-minified-bundle-for-the-playground)
+- [Why is there a minified bundle for Studio?](#why-is-there-a-minified-bundle-for-the-studio)
 
 **What is X?**
 - [What is Clear's big thesis?](#what-is-clears-big-thesis)
@@ -885,7 +885,7 @@ The CRO sentence: tenant separation is enforced by the application AND by Postgr
 
 ### Where does the Studio Run-Prove button live?
 
-Toolbar button in `playground/ide.html` (next to `Compile`) wired to `window.doProve()`. The handler posts the editor source to `POST /api/prove` in `playground/server.js`, which calls `prove(source)` from `lib/prover/index.js` (the same engine `clear prove` uses on the CLI) and returns `{ bundle, formatted }`. The handler switches to the terminal tab via `showTab('terminal')`, renders `data.formatted` via `appendTerminalText`, and updates the status bar with proved/failed/unverifiable counts.
+Toolbar button in `studio/studio.html` (next to `Compile`) wired to `window.doProve()`. The handler posts the editor source to `POST /api/prove` in `studio/server.js`, which calls `prove(source)` from `lib/prover/index.js` (the same engine `clear prove` uses on the CLI) and returns `{ bundle, formatted }`. The handler switches to the terminal tab via `showTab('terminal')`, renders `data.formatted` via `appendTerminalText`, and updates the status bar with proved/failed/unverifiable counts.
 
 Counts come from `bundle.counts`. Statuses are `proved`, `partial`, `failed`, `unverifiable`, `errored`. Symbolic mode triggers automatically when a `test` block has free variables — the prover treats them as forall-quantified placeholders and reports things like "for any: add" in the output.
 
@@ -985,13 +985,13 @@ Implementation: `tryRunProver(source)` and `summarizeProofBundle(bundle)` in `cl
 
 ### Where does the seed-from-memory cutover script live?
 
-`playground/seed-from-memory.js` exports `seedFromMemory({ source, target, onProgress })`. Walks every tenant via `source.listTenants()`, every app via `source.listAppsByTenant(slug)`, every audit entry via `source.getAuditLog`, and every stripe event via `source.listStripeEvents()`, writing each through the target store's public write API (`upsert`, `markAppDeployed`, `recordVersion`, `appendAuditEntry`, `markAuditEntry`, `recordStripeEvent`). Idempotent — `target.get(slug)` and `target.getAppRecord` skip already-present rows.
+`studio/seed-from-memory.js` exports `seedFromMemory({ source, target, onProgress })`. Walks every tenant via `source.listTenants()`, every app via `source.listAppsByTenant(slug)`, every audit entry via `source.getAuditLog`, and every stripe event via `source.listStripeEvents()`, writing each through the target store's public write API (`upsert`, `markAppDeployed`, `recordVersion`, `appendAuditEntry`, `markAuditEntry`, `recordStripeEvent`). Idempotent — `target.get(slug)` and `target.getAppRecord` skip already-present rows.
 
-CLI usage: set `$DATABASE_URL` and `$SEED_INPUT` (path to JSON dump of in-memory state), then `node playground/seed-from-memory.js`. The `tenant-store-factory.js` builds the right target store automatically. Tests live in `playground/seed-from-memory.test.js` (24 tests covering empty, populated, idempotent rerun, audit-log copy, progress callback).
+CLI usage: set `$DATABASE_URL` and `$SEED_INPUT` (path to JSON dump of in-memory state), then `node studio/seed-from-memory.js`. The `tenant-store-factory.js` builds the right target store automatically. Tests live in `studio/seed-from-memory.test.js` (24 tests covering empty, populated, idempotent rerun, audit-log copy, progress callback).
 
 ### How do I switch between Dev mode and AI mode in Studio?
 
-Toolbar dropdown in `playground/ide.html` (`<select id="mode-switcher">`). Two options: "Dev mode" (3-panel IDE) and "AI mode" (Marcus-first chat layout). Internal mode IDs are still `classic` and `builder` — the rename is UI-only so saved preferences survive.
+Toolbar dropdown in `studio/studio.html` (`<select id="mode-switcher">`). Two options: "Dev mode" (3-panel IDE) and "AI mode" (Marcus-first chat layout). Internal mode IDs are still `classic` and `builder` — the rename is UI-only so saved preferences survive.
 
 `?studio-mode=classic` or `?studio-mode=builder` URL params override; choice persists in `localStorage` under `studio-mode-pref`. `syncModeButtons()` keeps the dropdown's value matched to the active body class on every page load.
 
@@ -1062,9 +1062,9 @@ Keep `feature/prover-inequality-reasoning` post-launch unless Russell explicitly
 
 ### Where does the Stripe webhook receiver live?
 
-`playground/stripe-webhook-receiver.js` mounts `POST /api/stripe-webhook`. It must mount before `express.json()` so Stripe signatures verify against the exact raw request body. `playground/server.js` does that and passes the same tenant store used by Clear Cloud deploy, auth, routing, and quota.
+`studio/stripe-webhook-receiver.js` mounts `POST /api/stripe-webhook`. It must mount before `express.json()` so Stripe signatures verify against the exact raw request body. `studio/server.js` does that and passes the same tenant store used by Clear Cloud deploy, auth, routing, and quota.
 
-The receiver verifies `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`, then delegates the signed event to `playground/billing.js`. `checkout.session.completed` marks the tenant's plan from checkout metadata (`team` or `business`) and saves the Stripe customer id. Replayed event ids are deduped through the tenant store, so Stripe retries are safe.
+The receiver verifies `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`, then delegates the signed event to `studio/billing.js`. `checkout.session.completed` marks the tenant's plan from checkout metadata (`team` or `business`) and saves the Stripe customer id. Replayed event ids are deduped through the tenant store, so Stripe retries are safe.
 
 Local tests use `signStripeWebhookForTest()` and never need live Stripe keys. Production fails closed when `STRIPE_WEBHOOK_SECRET` is missing.
 
@@ -1072,7 +1072,7 @@ Local tests use `signStripeWebhookForTest()` and never need live Stripe keys. Pr
 
 ### Where does Clear Cloud custom-domain verification live?
 
-`playground/cloud-domains/index.js` owns the CC-5 custom-domain helper layer.
+`studio/cloud-domains/index.js` owns the CC-5 custom-domain helper layer.
 
 - `addDomain()` writes `app_domains` rows with `status='pending'` and a stored expected CNAME.
 - `listPendingDomains()` reads rows waiting on DNS.
@@ -1085,20 +1085,20 @@ Production should pass `flyToken` so the default bridge calls Fly. Tests should 
 
 ### Where does Fly SSL certificate provisioning live?
 
-**`playground/cloud-domains/fly-certificates.js`** is the CC-5c helper. It calls Fly's certificate API, polls certificate status, and normalizes every result to `ready`, `pending`, or `failed`.
+**`studio/cloud-domains/fly-certificates.js`** is the CC-5c helper. It calls Fly's certificate API, polls certificate status, and normalizes every result to `ready`, `pending`, or `failed`.
 
 **What CC-5b calls:** after its DNS poller flips a domain row to verified, `pollPendingDomainVerifications({ flyToken })` uses `provisionFlyCertificateForDomain({ domainRow, token })`. Tests inject `provisionCertificate` directly. The row needs `id`, `domain`, and `fly_app_name`. The return value includes `certId` and `state` so the poller can write the cert id/status back.
 **What CC-5b should call:** after its DNS poller flips a domain row to verified, call `provisionFlyCertificateForDomain({ domainRow, token })`. The row needs `id`, `domain`, and `fly_app_name`. The return value includes `certId` and `state` so the poller can write the cert id/status back.
 
 **Writeback target:** `app_domains` now has `fly_certificate_id`, `certificate_status`, `certificate_ready_at`, `certificate_last_checked_at`, and `certificate_error`. DNS verification status stays separate from HTTPS readiness.
 
-**Tests:** `playground/cloud-domains/fly-certificates.test.js` mocks Fly create/status responses. No test performs a real Fly network call.
+**Tests:** `studio/cloud-domains/fly-certificates.test.js` mocks Fly create/status responses. No test performs a real Fly network call.
 
 ---
 
 ### Where is the incremental update logic for Cloudflare deploys?
 
-**`playground/deploy-cloudflare.js` → `_deployUpdate(opts)`** is the fast-path branch. The orchestrator `deploySource()` reads `opts.mode` — `'update'` routes to `_deployUpdate`, anything else falls through to the original `_deployInitial()` full-provision path. The dispatcher that decides which mode to pass lives one layer up in **`playground/deploy.js` → `/api/deploy` handler**, which calls `store.getAppRecord(tenantSlug, appSlug)` before invoking the orchestrator and sets `mode: 'update'` if a record comes back.
+**`studio/deploy-cloudflare.js` → `_deployUpdate(opts)`** is the fast-path branch. The orchestrator `deploySource()` reads `opts.mode` — `'update'` routes to `_deployUpdate`, anything else falls through to the original `_deployInitial()` full-provision path. The dispatcher that decides which mode to pass lives one layer up in **`studio/deploy.js` → `/api/deploy` handler**, which calls `store.getAppRecord(tenantSlug, appSlug)` before invoking the orchestrator and sets `mode: 'update'` if a record comes back.
 
 **What `_deployUpdate` skips:** `provisionD1` (binding is permanent), `applyMigrations` (unless schema diff requires it — see below), `attachDomain` (already bound), and the full `setSecrets` push (only NEW keys not in `lastRecord.secretKeys` get sent).
 
@@ -1106,7 +1106,7 @@ Production should pass `flyToken` so the default bridge calls Fly. Tests should 
 
 **Schema-change gate:** `migrationsDiffer(oldBundle, newBundle)` byte-compares every `migrations/*.sql` file plus `wrangler.toml`. Any difference returns `{ ok: false, stage: 'migration-confirm-required', migrationDiff: [...] }` from the orchestrator, which the handler surfaces as `409 MIGRATION_REQUIRED`. Re-POST with `confirmMigration: true` unblocks: `applyMigrations` runs first, then `uploadScript`, then `recordVersion`.
 
-Tests: `playground/deploy-cloudflare.test.js` covers all of the above; `playground/deploy.test.js` covers the handler-level routing.
+Tests: `studio/deploy-cloudflare.test.js` covers all of the above; `studio/deploy.test.js` covers the handler-level routing.
 
 ---
 
@@ -1172,12 +1172,12 @@ Why this matters strategically: every app's compile produces a verification orac
 
 `GET /api/apps` returns the authed user's tenant's apps, shipped 2026-04-29. End-to-end:
 
-- **Schema** — `playground/db/migrations/0002_users_sessions.sql`: `users.tenant_slug VARCHAR(64)` + a partial index on it. Not a FK because `clear_cloud.tenants` lives in a different schema and pg-mem chokes on cross-schema FKs; uniqueness on the tenants slug is the integrity guarantee.
-- **Tenant store method** — `playground/tenants.js`: `listAppsByTenant(slug)` on InMemory + Postgres + DualWrite. Returns `{appSlug, scriptName, hostname, deployedAt, latestVersionId}` per row, newest deploy first.
-- **Auto-tenant on signup** — `playground/cloud-auth/routes.js` POST `/api/auth/signup`: after `signupUser`, creates a `clear-<6hex>` tenant via the store + writes the slug back to `users.tenant_slug`. Best-effort: signup still succeeds even if the tenant store isn't wired (degraded mode).
-- **URL handler** — `playground/cloud-auth/routes.js` GET `/api/apps`: reads session cookie, calls `validateSession` (now returns `tenant_slug`), calls `tenantStore.listAppsByTenant(user.tenant_slug)`. 401 with no session, empty array when no deploys yet.
-- **Dashboard** — `playground/dashboard.html`: after auth, fetches `/api/apps` and renders one card per deploy with the live URL.
-- **Cross-tenant isolation** — load-bearing test in `playground/cloud-auth/routes.test.js`: two customers sign up, one deploys, the other's `/api/apps` returns `[]`. That's the safety property.
+- **Schema** — `studio/db/migrations/0002_users_sessions.sql`: `users.tenant_slug VARCHAR(64)` + a partial index on it. Not a FK because `clear_cloud.tenants` lives in a different schema and pg-mem chokes on cross-schema FKs; uniqueness on the tenants slug is the integrity guarantee.
+- **Tenant store method** — `studio/tenants.js`: `listAppsByTenant(slug)` on InMemory + Postgres + DualWrite. Returns `{appSlug, scriptName, hostname, deployedAt, latestVersionId}` per row, newest deploy first.
+- **Auto-tenant on signup** — `studio/cloud-auth/routes.js` POST `/api/auth/signup`: after `signupUser`, creates a `clear-<6hex>` tenant via the store + writes the slug back to `users.tenant_slug`. Best-effort: signup still succeeds even if the tenant store isn't wired (degraded mode).
+- **URL handler** — `studio/cloud-auth/routes.js` GET `/api/apps`: reads session cookie, calls `validateSession` (now returns `tenant_slug`), calls `tenantStore.listAppsByTenant(user.tenant_slug)`. 401 with no session, empty array when no deploys yet.
+- **Dashboard** — `studio/dashboard.html`: after auth, fetches `/api/apps` and renders one card per deploy with the live URL.
+- **Cross-tenant isolation** — load-bearing test in `studio/cloud-auth/routes.test.js`: two customers sign up, one deploys, the other's `/api/apps` returns `[]`. That's the safety property.
 
 72 routes integration tests + 121 tenant store tests cover the surface.
 
@@ -1209,19 +1209,19 @@ Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live emai
 
 ### Where do the Clear Cloud auth URLs live? (signup, login, me, logout)
 
-**The URL handlers:** `playground/cloud-auth/routes.js` — `mountCloudAuthRoutes(app, { pool })` wires four routes on Studio's Express app:
+**The URL handlers:** `studio/cloud-auth/routes.js` — `mountCloudAuthRoutes(app, { pool })` wires four routes on Studio's Express app:
 - POST `/api/auth/signup` → creates a user + auto-logs in + sets cookie
 - POST `/api/auth/login` → verifies bcrypt + sets cookie
 - GET  `/api/auth/me` → reads cookie, returns the authed user (or 401)
 - POST `/api/auth/logout` → revokes session + clears cookie
 
-**The auth helpers** (the SQL these routes hit): `playground/cloud-auth/index.js` — `signupUser`, `loginUser`, `validateSession`, `revokeSession`, `logoutAllSessions`, `issueEmailVerifyToken`, `verifyEmailToken`, `issuePasswordResetToken`, `resetPassword`. bcryptjs hashing, 32-byte hex tokens hashed with SHA-256 before storage, 30-day hard TTL + 7-day idle timeout (configurable via env).
+**The auth helpers** (the SQL these routes hit): `studio/cloud-auth/index.js` — `signupUser`, `loginUser`, `validateSession`, `revokeSession`, `logoutAllSessions`, `issueEmailVerifyToken`, `verifyEmailToken`, `issuePasswordResetToken`, `resetPassword`. bcryptjs hashing, 32-byte hex tokens hashed with SHA-256 before storage, 30-day hard TTL + 7-day idle timeout (configurable via env).
 
-**The schema:** `playground/db/migrations/0002_users_sessions.sql` — runs through the regular migrations runner alongside CC-1's init. Two tables (`users`, `sessions`) at the public schema, separate from `clear_cloud.*` which holds tenant-deploy state. Same logical Postgres DB, two concern-scoped namespaces.
+**The schema:** `studio/db/migrations/0002_users_sessions.sql` — runs through the regular migrations runner alongside CC-1's init. Two tables (`users`, `sessions`) at the public schema, separate from `clear_cloud.*` which holds tenant-deploy state. Same logical Postgres DB, two concern-scoped namespaces.
 
-**The pages that call these URLs:** `playground/{login,signup,dashboard}.html`. Login + signup auto-redirect signed-in users to /dashboard; dashboard auth-gates and bounces unauth'd users to /login.
+**The pages that call these URLs:** `studio/{login,signup,dashboard}.html`. Login + signup auto-redirect signed-in users to /dashboard; dashboard auth-gates and bounces unauth'd users to /login.
 
-**The Studio wiring:** `playground/server.js` calls `mountCloudAuthRoutes(app, { pool: _cloudTenantHandle.pool })` after the tenant-store factory. When DATABASE_URL is unset (Studio dev mode), the pool is null and every auth URL returns 503 `auth_not_configured` — Studio dev keeps working without auth.
+**The Studio wiring:** `studio/server.js` calls `mountCloudAuthRoutes(app, { pool: _cloudTenantHandle.pool })` after the tenant-store factory. When DATABASE_URL is unset (Studio dev mode), the pool is null and every auth URL returns 503 `auth_not_configured` — Studio dev keeps working without auth.
 
 **Why two auth systems?** Clear apps generated via `allow signup and login` have their own auth layer that lives INSIDE each customer's app (per-tenant SQLite, JWT cookies). Clear Cloud's auth is for buildclear.dev itself — accounts, sessions, and the dashboard that lists a customer's apps. Same bcryptjs dep, same cost factor, separate schemas.
 
@@ -1231,13 +1231,13 @@ Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live emai
 
 **The compiler emission** that makes this work: `compiler.js` function `compileToHTML` checks `hasAuthForWidget` (any `AUTH_SCAFFOLD` node in the body) and appends a `<script src="/__meph__/widget.js" defer>` tag right after the nav-items script. The `compileToJSBackend` function emits two routes inside the `hasAuthScaffold` block — `GET /__meph__/widget.js` reads the file from `clear-runtime/`, and `ALL /__meph__/api/:action` proxies to `process.env.STUDIO_PORT` (503s cleanly if unset).
 
-**The Studio side that feeds this:** `playground/server.js` in the `/api/run` handler copies `runtime/meph-widget.js` into the child's `clear-runtime/` and injects `STUDIO_PORT` into the child's env, pointing at Studio's own port.
+**The Studio side that feeds this:** `studio/server.js` in the `/api/run` handler copies `runtime/meph-widget.js` into the child's `clear-runtime/` and injects `STUDIO_PORT` into the child's env, pointing at Studio's own port.
 
-**The Studio endpoints the proxy forwards to:** `/__meph__/api/propose`, `/ship`, `/rollback`, `/snapshots`. Wired by `createEditApi(app, deps)` from `lib/edit-api.js`, mounted near the top of `playground/server.js`.
+**The Studio endpoints the proxy forwards to:** `/__meph__/api/propose`, `/ship`, `/rollback`, `/snapshots`. Wired by `createEditApi(app, deps)` from `lib/edit-api.js`, mounted near the top of `studio/server.js`.
 
 ### Where does Ghost Meph live?
 
-`playground/ghost-meph/` - chat-backend dispatch plus the Studio model picker. `MEPH_BRAIN` still forces an env-selected backend; otherwise the browser can pick Anthropic Haiku or an OpenRouter model per chat turn.
+`studio/ghost-meph/` - chat-backend dispatch plus the Studio model picker. `MEPH_BRAIN` still forces an env-selected backend; otherwise the browser can pick Anthropic Haiku or an OpenRouter model per chat turn.
 
 | File | What |
 |---|---|
@@ -1248,7 +1248,7 @@ Plan: `plans/plan-triggered-email-primitive-04-27-2026.md`. Phase B-1 (live emai
 | `openrouter.js` | `MEPH_BRAIN=openrouter` or picker-selected OpenRouter models - POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model is cheap DeepSeek V4 Flash; picker options also include Claude, GLM, and Kimi. |
 | `format-bridge.js` | Anthropic <-> OpenAI translation, including tool definitions, assistant tool calls, tool results, text deltas, and tool-call SSE back into Anthropic shape. |
 
-Tests: `node playground/ghost-meph.test.js`, `node playground/ghost-meph/model-picker.test.js`, and `node playground/ghost-meph/format-bridge.test.js`. The live smoke test for this feature used `openrouter-glm` and verified tool calls, `meph-memory.md`, `requests.md`, editor read, compile, todos, terminal access, personality override, and the full-history marker on model switch.
+Tests: `node studio/ghost-meph.test.js`, `node studio/ghost-meph/model-picker.test.js`, and `node studio/ghost-meph/format-bridge.test.js`. The live smoke test for this feature used `openrouter-glm` and verified tool calls, `meph-memory.md`, `requests.md`, editor read, compile, todos, terminal access, personality override, and the full-history marker on model switch.
 
 ### How does Ghost Meph route requests?
 
@@ -1267,10 +1267,10 @@ Every backend returns a Response-like object whose body streams Anthropic-shaped
 ### Where does the Studio server run?
 
 ```
-node playground/server.js
+node studio/server.js
 ```
 
-Opens at `http://localhost:3456`. The port is set at the bottom of `playground/server.js`:
+Opens at `http://localhost:3456`. The port is set at the bottom of `studio/server.js`:
 ```js
 const PORT = process.env.PORT || 3456;
 app.listen(PORT, ...);
@@ -1291,7 +1291,7 @@ app.listen(PORT, ...);
 
 ### Where does a compiled app run?
 
-`playground/server.js` spawns a child Node process from `BUILD_DIR`. The port starts at 4000 and increments on each `/api/run` call. The running port is stored in the module-level `runningPort` variable.
+`studio/server.js` spawns a child Node process from `BUILD_DIR`. The port starts at 4000 and increments on each `/api/run` call. The running port is stored in the module-level `runningPort` variable.
 
 When you click Run App in Studio, the server writes `server.js` to `BUILD_DIR`, installs npm deps if needed, spawns the child, waits for it to log `running on port`, and returns `{ port }` to the IDE.
 
@@ -1299,7 +1299,7 @@ When you click Run App in Studio, the server writes `server.js` to `BUILD_DIR`, 
 
 ### What is BUILD_DIR?
 
-`playground/.playground-build/` — the directory where compiled apps are written before running.
+`studio/.studio-build/` — the directory where compiled apps are written before running.
 
 Every `/api/run` call writes `server.js` + `package.json` + `clear-runtime/` symlink to this directory, then spawns Node from it. The directory is reused across runs (old files cleaned first). Don't edit anything in here — it gets overwritten.
 
@@ -1307,7 +1307,7 @@ Every `/api/run` call writes `server.js` + `package.json` + `clear-runtime/` sym
 
 ### Where does a Meph session start and end?
 
-`playground/server.js` — the `/api/chat` POST handler, starting around line 2124.
+`studio/server.js` — the `/api/chat` POST handler, starting around line 2124.
 
 One request = one session. The handler receives `{ messages, editorContent, apiKey }`, streams SSE events back, and ends with `{ type: 'done' }`.
 
@@ -1317,7 +1317,7 @@ One request = one session. The handler receives `{ messages, editorContent, apiK
 
 ### Where is the tool call log?
 
-Also in the `/api/chat` handler in `playground/server.js`.
+Also in the `/api/chat` handler in `studio/server.js`.
 
 `toolResults` is an array built during the session. Each tool call appends to it. The server emits `tool_start` and `tool_done` SSE events to bracket each call — `tool_start` fires **twice** per call (once bare, once with a summary). Use a boolean `_inTool` flag to dedup, not an ID.
 
@@ -1327,7 +1327,7 @@ At session end, `toolResults` is sent with the `done` event.
 
 ### Where are Meph's tools defined?
 
-`playground/server.js` — the `TOOLS` array, starting around line 1772. Each tool has:
+`studio/server.js` — the `TOOLS` array, starting around line 1772. Each tool has:
 - `name` — what Meph calls
 - `description` — what Meph reads to decide when to use it
 - `input_schema` — validated before execution
@@ -1338,9 +1338,9 @@ Tool execution is in `executeTool(name, input)`. Validation is in `validateToolI
 
 ### Where does Meph's system prompt live?
 
-`playground/system-prompt.md` — loaded fresh on every `/api/chat` request. Edit it and changes take effect immediately, no server restart needed.
+`studio/system-prompt.md` — loaded fresh on every `/api/chat` request. Edit it and changes take effect immediately, no server restart needed.
 
-After any change, run `node playground/eval-meph.js` to verify the 16 tool scenarios still pass.
+After any change, run `node studio/eval-meph.js` to verify the 16 tool scenarios still pass.
 
 ---
 
@@ -1394,7 +1394,7 @@ Two places, two different signals:
 
 **Weak assertion lint (static)** — `compiler.js`, inside the `UNIT_ASSERT` compile case. Checks assertion patterns at compile time. Weak patterns: `is not empty`, `is not nothing`, `is true` (bare). Pushes to `r.warnings[]`. Not shown to Meph or the user — internal signal only.
 
-**Red-step check (process)** — `playground/server.js`, end of `/api/chat` handler. Scans the tool call log: did `run_tests` ever return `ok: false` before the first `ok: true`? If not, Meph skipped the red step.
+**Red-step check (process)** — `studio/server.js`, end of `/api/chat` handler. Scans the tool call log: did `run_tests` ever return `ok: false` before the first `ok: true`? If not, Meph skipped the red step.
 
 ---
 
@@ -1402,11 +1402,11 @@ Two places, two different signals:
 
 Three pieces (Session 38):
 
-- **Training script:** `playground/supervisor/train_reranker.py` — Python, uses `interpret` (InterpretML) for EBM and `sklearn.linear_model.LassoCV` for the Lasso sanity check. Reads JSONL exported from Factor DB, writes both a pickle (Python inference) and a JSON shape-table (JS inference). Refuses to train below the configured `--min-passing` threshold (default 200).
-- **Feature exporter:** `playground/supervisor/export-training-data.js` — reads `code_actions` rows, runs the Clear parser over `source_before` to extract AST counts, derives session-trajectory features (prev_compile_ok, error_is_novel, step_advanced), and emits 24-feature JSONL.
-- **JS-side scorer:** `playground/supervisor/ebm-scorer.js` — pure JS, no ML dependency. Loads the JSON shape-table bundle, scores a feature vector via `intercept + Σ bin_score(feature_i)`. Called per candidate in `/api/chat`'s retrieval path (server.js near line 2860).
+- **Training script:** `studio/supervisor/train_reranker.py` — Python, uses `interpret` (InterpretML) for EBM and `sklearn.linear_model.LassoCV` for the Lasso sanity check. Reads JSONL exported from Factor DB, writes both a pickle (Python inference) and a JSON shape-table (JS inference). Refuses to train below the configured `--min-passing` threshold (default 200).
+- **Feature exporter:** `studio/supervisor/export-training-data.js` — reads `code_actions` rows, runs the Clear parser over `source_before` to extract AST counts, derives session-trajectory features (prev_compile_ok, error_is_novel, step_advanced), and emits 24-feature JSONL.
+- **JS-side scorer:** `studio/supervisor/ebm-scorer.js` — pure JS, no ML dependency. Loads the JSON shape-table bundle, scores a feature vector via `intercept + Σ bin_score(feature_i)`. Called per candidate in `/api/chat`'s retrieval path (server.js near line 2860).
 
-Bundle file: `playground/supervisor/reranker.json` (created manually after training by copying from `/tmp/reranker-XX.json` to here). Server loads it at boot; absent bundle = fallback to raw BM25 ordering.
+Bundle file: `studio/supervisor/reranker.json` (created manually after training by copying from `/tmp/reranker-XX.json` to here). Server loads it at boot; absent bundle = fallback to raw BM25 ordering.
 
 ### How does a hint get to Meph?
 
@@ -1424,12 +1424,12 @@ Reusable pattern snippets are separate from repair hints but now use the same Fa
 Telemetry notes:
 
 - `scripts/factor-db-summary.mjs` counts text labels: `yes`, `partial`, and `inferred`.
-- `playground/supervisor/verify-hint-flow.js` should distinguish exact-error repair hints, pattern DB snippets, and no hint. Do not collapse a weak delivered hint into `none`.
+- `studio/supervisor/verify-hint-flow.js` should distinguish exact-error repair hints, pattern DB snippets, and no hint. Do not collapse a weak delivered hint into `none`.
 - A rejected hint still proves delivery. It means Meph saw the hint and said it did not help.
 
 ### How do we know whether hints make Meph better?
 
-Use controlled hint-on versus hint-off A/B artifacts from `playground/supervisor/ab-hint-sweep.js`, not raw Factor DB rows. Raw rows are confounded because hints fire when Meph is already struggling.
+Use controlled hint-on versus hint-off A/B artifacts from `studio/supervisor/ab-hint-sweep.js`, not raw Factor DB rows. Raw rows are confounded because hints fire when Meph is already struggling.
 
 Run:
 
@@ -1441,7 +1441,7 @@ To create new hard-task evidence without saturated toy tasks:
 
 ```sh
 MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 \
-  node playground/supervisor/ab-hint-hard-sweep.js --trials=3 --workers=1
+  node studio/supervisor/ab-hint-hard-sweep.js --trials=3 --workers=1
 ```
 
 Default hard tasks are `deal-with-detail-panel`, `lead-router`,
@@ -1460,9 +1460,9 @@ Current read as of 2026-05-01: delivery works, but lift is not statistically pro
 
 ### Where is session data stored?
 
-**Short term (built):** `playground/sessions/[session-id].json` — one file per session, written at end of `/api/chat`. Readable via `GET /api/session-quality` (dev-only, not in Studio UI).
+**Short term (built):** `studio/sessions/[session-id].json` — one file per session, written at end of `/api/chat`. Readable via `GET /api/session-quality` (dev-only, not in Studio UI).
 
-**Medium term (supervisor plan, Phase 1):** `playground/sessions.db` — SQLite. Sessions table schema:
+**Medium term (supervisor plan, Phase 1):** `studio/sessions.db` — SQLite. Sessions table schema:
 
 ```sql
 CREATE TABLE sessions (
@@ -1525,25 +1525,25 @@ Output: `r.warnings[]` with `{ line, severity: 'quality', code, message }`. Not 
 
 ### Where does the red-step check run?
 
-`playground/server.js`, end of `/api/chat` handler:
+`studio/server.js`, end of `/api/chat` handler:
 
 ```js
 const testCalls = toolResults.filter(t => t.name === 'run_tests');
 const redStepObserved = testCalls.some(t => t.result?.ok === false || t.result?.error);
 ```
 
-This mirrors the assertion logic in `playground/test-tdd-loop.js` — the integration test for the full TDD loop.
+This mirrors the assertion logic in `studio/test-tdd-loop.js` — the integration test for the full TDD loop.
 
 ---
 
 ### Where does the sandbox runner live?
 
-`playground/server.js` — the eval child process infrastructure:
+`studio/server.js` — the eval child process infrastructure:
 - `ensureEvalChild()` — spawns child server on port 4999
 - `killEvalChildAndWait()` — graceful shutdown with 2s SIGKILL fallback + 200ms grace (Windows holds ports briefly after exit)
 - `EVAL_IDLE_MS = 300_000` — idle timeout (must exceed longest eval suite)
 
-`playground/test-tdd-loop.js` — integration test that drives a live Meph session end-to-end and asserts the TDD sequence happened.
+`studio/test-tdd-loop.js` — integration test that drives a live Meph session end-to-end and asserts the TDD sequence happened.
 
 ---
 
@@ -1574,15 +1574,15 @@ Each task is a `.clear` skeleton with a goal. The RL agent must complete it. The
 
 ---
 
-### Where does the playground bundle come from?
+### Where does the Studio bundle come from?
 
-`playground/clear-compiler.min.js` — a minified ESM bundle of the compiler, built with esbuild:
+`studio/clear-compiler.min.js` — a minified ESM bundle of the compiler, built with esbuild:
 
 ```
-npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js
+npx esbuild index.js --bundle --format=esm --minify --outfile=studio/clear-compiler.min.js
 ```
 
-Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.js`, `validator.js`, or `synonyms.js`. The bundle is what the browser loads in the playground — it's the closed-source distribution of the compiler.
+Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.js`, `validator.js`, or `synonyms.js`. The bundle is what the browser loads in Studio — it's the closed-source distribution of the compiler.
 
 ---
 
@@ -1594,19 +1594,19 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 
 | File | What it does |
 |------|--------------|
-| `playground/supervisor.js` | Supervisor entry point (standalone) — spawns N workers, serves REST/SSE API |
-| `playground/supervisor/registry.js` | Session registry (SQLite, WAL mode) — tracks worker state |
-| `playground/supervisor/spawner.js` | Worker process spawner (port availability check, killAll) |
-| `playground/supervisor/loop.js` | Poll loop + state machine (TASK COMPLETE / STUCK detection) + SSE |
-| `playground/supervisor/factor-db.js` | Factor DB — code_actions, ga_runs, ga_candidates, reranker_feedback |
-| `playground/supervisor/archetype.js` | Shape-of-work classifier (15 categories) |
-| `playground/supervisor/cold-start.js` | Seeds Factor DB with 13 gold templates + 25 curriculum skeletons |
-| `playground/supervisor/curriculum-sweep.js` | Drives curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150 --per-level-stats`. Has pre-flight API check, worker-death classification, and per-level sweep rollups. |
-| `playground/supervisor/export-training-data.js` | Exports Factor DB to JSONL for XGBoost training. `--stats` for summary. |
-| `playground/supervisor/train_reranker.py` | Python XGBoost trainer. Refuses below 200 passing rows with clear message. |
-| `playground/supervisor/db-stats.js` | Standalone DB stats reporter (CLI, prints archetype breakdown) |
-| `playground/eval-replicated.js` | Runs 16-scenario Meph eval across N parallel trials. Detects flake rate per scenario. |
-| `playground/eval-scenarios.js` | Shared scenario definitions (imported by eval-meph + eval-replicated) |
+| `studio/supervisor.js` | Supervisor entry point (standalone) — spawns N workers, serves REST/SSE API |
+| `studio/supervisor/registry.js` | Session registry (SQLite, WAL mode) — tracks worker state |
+| `studio/supervisor/spawner.js` | Worker process spawner (port availability check, killAll) |
+| `studio/supervisor/loop.js` | Poll loop + state machine (TASK COMPLETE / STUCK detection) + SSE |
+| `studio/supervisor/factor-db.js` | Factor DB — code_actions, ga_runs, ga_candidates, reranker_feedback |
+| `studio/supervisor/archetype.js` | Shape-of-work classifier (15 categories) |
+| `studio/supervisor/cold-start.js` | Seeds Factor DB with 13 gold templates + 25 curriculum skeletons |
+| `studio/supervisor/curriculum-sweep.js` | Drives curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150 --per-level-stats`. Has pre-flight API check, worker-death classification, and per-level sweep rollups. |
+| `studio/supervisor/export-training-data.js` | Exports Factor DB to JSONL for XGBoost training. `--stats` for summary. |
+| `studio/supervisor/train_reranker.py` | Python XGBoost trainer. Refuses below 200 passing rows with clear message. |
+| `studio/supervisor/db-stats.js` | Standalone DB stats reporter (CLI, prints archetype breakdown) |
+| `studio/eval-replicated.js` | Runs 16-scenario Meph eval across N parallel trials. Detects flake rate per scenario. |
+| `studio/eval-scenarios.js` | Shared scenario definitions (imported by eval-meph + eval-replicated) |
 
 **`server.js` extensions for supervisor integration:**
 - `--port=` / `--session-id=` CLI args
@@ -1634,7 +1634,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 
 ### Where does the archetype classifier live?
 
-`playground/supervisor/archetype.js` — takes a parsed Clear program and returns one of 15 archetypes describing the *shape of work*:
+`studio/supervisor/archetype.js` — takes a parsed Clear program and returns one of 15 archetypes describing the *shape of work*:
 
 **UI-forward:** `queue_workflow`, `routing_engine`, `agent_workflow`, `dashboard`, `crud_app`, `content_app`, `realtime_app`, `booking_app`, `ecommerce`
 
@@ -1671,9 +1671,9 @@ Open Studio normally. New users default to Builder Mode. Use `?studio-mode=build
 - Status bar (users / agent spend / last ship)
 - `cmd+.` shortcut to force classic layout
 
-**Tests:** `node playground/studio-onboarding-static.test.js` and `node playground/builder-mode.test.js` (port 3459).
+**Tests:** `node studio/studio-onboarding-static.test.js` and `node studio/builder-mode.test.js` (port 3459).
 
-**Source:** `playground/ide.html` CSS block starting at "BUILDER MODE" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
+**Source:** `studio/studio.html` CSS block starting at "BUILDER MODE" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
 
 **Full spec:** `ROADMAP.md` -> "Builder Mode - Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
 
@@ -1681,13 +1681,13 @@ Open Studio normally. New users default to Builder Mode. Use `?studio-mode=build
 
 ### How does Publish show progress and the live URL?
 
-The Publish modal lives in `playground/ide.html` inside `window.doDeploy()`.
+The Publish modal lives in `studio/studio.html` inside `window.doDeploy()`.
 
 **Progress stages:** the modal exposes a five-step rail: compiling, packaging, uploading, provisioning DB, and live. The current backend status endpoint still returns coarse job states, so the UI advances across the client-owned phases and marks live when `/api/deploy-status/:jobId` returns `ok`.
 
 **Live confirmation:** success replaces the old text-only line with "Your app is live", the final URL, and three actions: copy link, open in new tab, and share with team.
 
-**Tests:** `node playground/ide-deploy-modal-static.test.js` locks the static modal contract. `node playground/ide-deploy-modal.test.js` is the browser harness when Playwright/server spawning is available.
+**Tests:** `node studio/ide-deploy-modal-static.test.js` locks the static modal contract. `node studio/ide-deploy-modal.test.js` is the browser harness when Playwright/server spawning is available.
 
 ---
 
@@ -1844,7 +1844,7 @@ Five steps. Don't skip any.
 
 4. **Update both TOCs** — `parser.js` and `compiler.js` each have a TABLE OF CONTENTS at the top. Update them. Non-negotiable.
 
-5. **Document it** — all 11 surfaces: `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md` (only if the feature was on the roadmap; otherwise skip), `landing/*.html` (if user-facing), `playground/system-prompt.md` (if Meph should use it), `FAQ.md` (add a "How do I X?" or "Where does X live?" entry), `RESEARCH.md` (if it affects training-signal architecture), `FEATURES.md` (capability reference row), and `CHANGELOG.md` (session-by-session history entry). If it's not in the docs, it doesn't exist.
+5. **Document it** — all 11 surfaces: `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md` (only if the feature was on the roadmap; otherwise skip), `landing/*.html` (if user-facing), `studio/system-prompt.md` (if Meph should use it), `FAQ.md` (add a "How do I X?" or "Where does X live?" entry), `RESEARCH.md` (if it affects training-signal architecture), `FEATURES.md` (capability reference row), and `CHANGELOG.md` (session-by-session history entry). If it's not in the docs, it doesn't exist.
 
 Then run `node clear.test.js` + template smoke test (8 core templates, 0 errors).
 
@@ -1882,7 +1882,7 @@ Guardrail: `.claude/hooks/synonym-table-on-parser-edit.mjs` blocks suspicious `p
 
 ### How do I add a new Meph tool?
 
-Three places in `playground/server.js`:
+Three places in `studio/server.js`:
 
 1. **`TOOLS` array** (~line 1772) — add the tool definition with `name`, `description`, `input_schema`. The description is what Meph reads to decide when to use the tool. Make it specific.
 
@@ -1890,7 +1890,7 @@ Three places in `playground/server.js`:
 
 3. **`executeTool(name, input)`** — add a case that runs the tool and returns a result string.
 
-Then run `node playground/eval-meph.js` to verify Meph can discover and use the new tool. The eval drives 16 scenarios — add a new scenario for your tool if it doesn't fit an existing one.
+Then run `node studio/eval-meph.js` to verify Meph can discover and use the new tool. The eval drives 16 scenarios — add a new scenario for your tool if it doesn't fit an existing one.
 
 ---
 
@@ -1899,14 +1899,14 @@ Then run `node playground/eval-meph.js` to verify Meph can discover and use the 
 ```bash
 node clear.test.js              # 1939 compiler unit tests — run this always
 node sandbox.test.js            # integration tests (spawns real servers)
-node playground/server.test.js  # Studio server API (85 tests)
-node playground/e2e.test.js     # template compile + endpoint + curriculum (77 tests)
-node playground/ide.test.js     # Playwright IDE UI (needs server running)
-node playground/eval-meph.js    # Meph tool eval, 16 scenarios (~90s, ~$0.10–0.30)
+node studio/server.test.js  # Studio server API (85 tests)
+node studio/e2e.test.js     # template compile + endpoint + curriculum (77 tests)
+node studio/ide.test.js     # Playwright IDE UI (needs server running)
+node studio/eval-meph.js    # Meph tool eval, 16 scenarios (~90s, ~$0.10–0.30)
 ```
 
 Pre-commit hook: `node clear.test.js`
-Pre-push hook: `node clear.test.js` + `node playground/e2e.test.js` + Meph eval (if `ANTHROPIC_API_KEY` set)
+Pre-push hook: `node clear.test.js` + `node studio/e2e.test.js` + Meph eval (if `ANTHROPIC_API_KEY` set)
 
 To skip Meph eval for one push: `SKIP_MEPH_EVAL=1 git push`
 
@@ -1914,13 +1914,13 @@ To skip Meph eval for one push: `SKIP_MEPH_EVAL=1 git push`
 
 ---
 
-### How do I rebuild the playground bundle?
+### How do I rebuild the Studio bundle?
 
 ```
-npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js
+npx esbuild index.js --bundle --format=esm --minify --outfile=studio/clear-compiler.min.js
 ```
 
-Do this after any change to the compiler pipeline files. The bundle is checked into git and is what users get in the browser playground.
+Do this after any change to the compiler pipeline files. The bundle is checked into git and is what users get in browser Studio.
 
 ---
 
@@ -2040,9 +2040,9 @@ Beam search exploits, stops exploring. GA adds recombination + LLM-as-mutation (
 
 ---
 
-### Why is there a minified bundle for the playground?
+### Why is there a minified bundle for Studio?
 
-The compiler is closed source. The playground runs in the browser and needs the compiler. The bundle (`playground/clear-compiler.min.js`) is the compiler obfuscated for distribution — users can't easily read the source. The repo itself stays private. The bundle is rebuilt after compiler changes and committed.
+The compiler is closed source. Studio runs in the browser and needs the compiler. The bundle (`studio/clear-compiler.min.js`) is the compiler obfuscated for distribution — users can't easily read the source. The repo itself stays private. The bundle is rebuilt after compiler changes and committed.
 
 ---
 
@@ -2154,11 +2154,11 @@ Full RL architecture, re-ranker design, and what this doesn't buy: **[RESEARCH.m
 
 ### What is the difference between index.html and ide.html?
 
-`playground/index.html` — the old static playground. Loads the compiler bundle (`clear-compiler.min.js`) in the browser. No server required. Compiler-only — no Meph, no running apps, no file system access. Useful for quick syntax experiments.
+`studio/index.html` — the old static compiler page. Loads the compiler bundle (`clear-compiler.min.js`) in the browser. No server required. Compiler-only — no Meph, no running apps, no file system access. Useful for quick syntax experiments.
 
-`playground/ide.html` — the full Clear Studio IDE. Requires the server (`node playground/server.js`). Three-panel layout: CodeMirror editor + preview/terminal + Meph chat. Can compile, run, test, eval, and access the file system. This is what users actually use.
+`studio/studio.html` — the full Clear Studio IDE. Requires the server (`node studio/server.js`). Three-panel layout: CodeMirror editor + preview/terminal + Meph chat. Can compile, run, test, eval, and access the file system. This is what users actually use.
 
-When someone says "Studio," they mean ide.html + server.js together.
+When someone says "Studio," they mean `studio/studio.html` + `studio/server.js` together.
 
 ---
 

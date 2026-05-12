@@ -2,6 +2,27 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-12: Missing app intent should compile-error, not auto-invent UI
+
+A protected page redirected to `/login`, but the app source never declared a login page. The wrong fix was to synthesize a login page. That violates Clear's source-of-truth rule: the source is the contract, not a hint.
+
+### Gotchas-as-rules
+
+- **When one source line implies another required app surface, emit a helpful diagnostic.** Do not invent the missing page, route, form, or screen in the compiler.
+- **`needs login` on a page requires a real `page 'Login' at '/login':` in source.** If it is missing, the validator should say exactly what to add.
+- **Compiler machinery is allowed only when it traces to explicit source intent.** Hidden product behavior belongs in an error message, not generated output.
+- **The source-intent hook should guard missing app surfaces generically.** Login is only one example; nav targets, fallback screens, forms, and routes follow the same rule.
+
+## Session 2026-05-12: API examples must cover real multi-key bodies
+
+The broken request looked like a normal integration: LinkedIn-style POST, bearer token, and several JSON fields. The parser handled simple API calls, but the docs did not force the real multi-line body shape through both endpoint and scheduled-job parse paths.
+
+### Gotchas-as-rules
+
+- **API examples need real payload bodies, not toy GETs only.** Integrations fail on multi-key JSON bodies.
+- **Test assigned and standalone effect forms together.** Endpoints and scheduled jobs enter the parser through different paths.
+- **Docs must not teach split-line `with bearer` syntax unless the opener is a config block.** Prefer the tested inline `with method ... with bearer ... sending { ... }` form.
+
 ## Session 2026-05-11: Meph prompt examples must name saved input variables
 
 The compiler accepted natural syntax, but Meph still had a source-generation smell:

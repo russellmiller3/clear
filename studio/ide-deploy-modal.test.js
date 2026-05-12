@@ -1,5 +1,5 @@
 // =============================================================================
-// PLAYGROUND IDE — PUBLISH MODAL TARGETS CLEAR CLOUD (CC-4 cycle 4)
+// STUDIO IDE — PUBLISH MODAL TARGETS CLEAR CLOUD (CC-4 cycle 4)
 // =============================================================================
 // Standalone Playwright test that locks in: every Publish from Studio ships
 // to Clear Cloud (Cloudflare). No picker, no Fly fallback. Simple and final.

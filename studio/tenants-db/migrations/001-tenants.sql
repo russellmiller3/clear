@@ -17,7 +17,7 @@
 --   usage_rows — per-request AI proxy usage, keyed to app for billing
 --
 -- Apply (dev):
---   psql $DATABASE_URL -f playground/tenants-db/migrations/001-tenants.sql
+--   psql $DATABASE_URL -f studio/tenants-db/migrations/001-tenants.sql
 --
 -- Apply (prod, once Phase 85a lands):
 --   Run via whatever migration tool Clear Cloud operations settle on —

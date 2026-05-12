@@ -44,7 +44,7 @@ Sanity-check before starting: `echo $CLEAR_CLOUD_ROOT_DOMAIN` should print
 ## 2. Start Studio
 
 ```bash
-node playground/server.js
+node studio/server.js
 ```
 
 Open `http://localhost:3456`. You should see Studio's editor + chat panel.

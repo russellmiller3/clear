@@ -54,9 +54,9 @@ async function appPost(path, body) { return apiPost('/api/fetch', { method: 'POS
 async function stopApp() { await apiPost('/api/stop', {}); }
 
 // =============================================================================
-// START PLAYGROUND SERVER
+// START STUDIO SERVER
 // =============================================================================
-console.log('Starting playground server on port 3461...');
+console.log('Starting studio server on port 3461...');
 const server = spawn('node', ['studio/server.js'], {
   cwd: join(__dirname, '..'),
   env: { ...process.env, PORT: '3461' },

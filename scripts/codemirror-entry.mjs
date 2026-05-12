@@ -1,4 +1,4 @@
-// Entry file for the playground's CodeMirror bundle.
+// Entry file for Studio's CodeMirror bundle.
 //
 // Why this file exists: `studio/codemirror.bundle.js` is a pre-built
 // bundle that ships with the repo (no @codemirror/* in node_modules at
@@ -10,7 +10,7 @@
 //
 // This entry file re-exports every symbol `studio/studio.html` imports
 // plus the new ones needed for the Prove inline-gutter feature. It is
-// the single source of truth for "what's in the playground's CodeMirror
+// the single source of truth for "what's in Studio's CodeMirror
 // bundle." Adding a new editor feature that needs another CodeMirror
 // export means: add it here, re-run `node scripts/build-codemirror-bundle.mjs`,
 // commit the regenerated bundle. Dropping an unused export is a follow-up

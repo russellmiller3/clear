@@ -9,7 +9,7 @@
     "test:browser": "node scripts/run-marcus-uat.mjs",
     "test:all": "node clear.test.js && node studio/e2e.test.js && npm run test:lead-router && npm run test:browser",
     "start": "node studio/server.js",
-    "bundle": "node scripts/build-playground-bundle.mjs",
+    "bundle": "node scripts/build-studio-bundle.mjs",
     "prepare": "husky"
   },
   "private": true,

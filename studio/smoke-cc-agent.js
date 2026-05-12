@@ -27,7 +27,7 @@
  *   - Exit code 0 on success, 1 on any failure
  */
 
-const BASE = process.env.PLAYGROUND_URL || 'http://localhost:3456';
+const BASE = process.env.STUDIO_URL || 'http://localhost:3456';
 
 async function main() {
   console.log('[smoke] POSTing a minimal Meph task to', BASE + '/api/chat');

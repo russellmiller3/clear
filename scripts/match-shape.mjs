@@ -35,7 +35,7 @@ import { computeShape, shapeSimilarity } from '../studio/supervisor/program-shap
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
-const DEFAULT_EXAMPLES_PATH = join(REPO_ROOT, 'playground', 'canonical-examples.md');
+const DEFAULT_EXAMPLES_PATH = join(REPO_ROOT, 'studio', 'canonical-examples.md');
 
 /**
  * Parse the curated canonical-examples.md file into example records.

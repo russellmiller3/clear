@@ -58,7 +58,7 @@ N. **Fix Studio's mode-switcher dropdown.** Picking a different mode in the tool
 User types: `/enq when writing templates always use /* */ for multi-line comments`
 You append:
 ```
-N. **Templates use /* */ for multi-line comments — fix all templates + Meph prompt + AI instructions.** Single-comment-style guideline that should propagate everywhere. Sweep apps/, playground/system-prompt.md, AI-INSTRUCTIONS.md, and any cookbook.md examples to replace ### blocks with /* */ format.
+N. **Templates use /* */ for multi-line comments — fix all templates + Meph prompt + AI instructions.** Single-comment-style guideline that should propagate everywhere. Sweep apps/, studio/system-prompt.md, AI-INSTRUCTIONS.md, and any cookbook.md examples to replace ### blocks with /* */ format.
 ```
 
 ## Style rules

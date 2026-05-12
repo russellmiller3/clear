@@ -70,7 +70,7 @@ Express + DaisyUI HTML + external CSS. Auto-generates E2E tests.
 ## What It Compiles To
 
 | File | What |
-|------|------|
+| --- | --- |
 | `server.js` | Express with validation, auth, CORS, logging, graceful shutdown |
 | `index.html` | Self-contained DaisyUI page (CSS inlined, JS embedded, one file) |
 | `test.js` | Auto-generated E2E tests from your endpoints |
@@ -252,7 +252,7 @@ Run with `node test.js` (server must be running on localhost:3000).
 ## Documentation
 
 | Doc | What |
-|-----|------|
+| --- | --- |
 | [SYNTAX.md](SYNTAX.md) | Complete syntax reference -- every feature with examples |
 | [AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) | How AI should write Clear code -- canonical forms and conventions |
 | [PHILOSOPHY.md](PHILOSOPHY.md) | Why Clear exists, design rules, how it helps AI debug |
@@ -262,7 +262,7 @@ Run with `node test.js` (server must be running on localhost:3000).
 ## Apps
 
 | App | Lines | E2E | What |
-|-----|-------|-----|------|
+| --- | --- | --- | --- |
 | [todo-v2](apps/todo-v2/) | 37 | 9/9 | The canonical full-stack example |
 | [ecommerce-api](apps/ecommerce-api/) | 96 | 16/16 | Stripe checkout + webhooks + FK deps |
 | [project-manager](apps/project-manager/) | 175 | 36/36 | 6 tables, deep FK chains, full-stack |
@@ -275,7 +275,7 @@ Run with `node test.js` (server must be running on localhost:3000).
 | [content-moderator](apps/content-moderator/) | 29 | 6/6 | AI content classification |
 | [cast-evaluator](apps/cast-evaluator/) | 604 | 16/16 | Recursive tree-walking interpreter |
 | [blog-api](apps/blog-api/) | 90 | -- | Auth + RBAC + email validation |
-| [playground](../playground/) | 130 | -- | Self-hosted playground (imports own compiler) |
+| [studio](studio/) | 130 | -- | Self-hosted studio (imports own compiler) |
 
 ## How It Works
 

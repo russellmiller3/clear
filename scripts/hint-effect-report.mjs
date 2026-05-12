@@ -9,7 +9,7 @@ import { analyzeHintArtifacts, formatHintEffectReport } from './hint-effect-repo
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
-const DEFAULT_SESSIONS_DIR = join(ROOT, 'playground', 'sessions');
+const DEFAULT_SESSIONS_DIR = join(ROOT, 'studio', 'sessions');
 
 function parseArgs(argv) {
   const out = {

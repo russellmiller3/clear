@@ -2401,56 +2401,22 @@ const CANONICAL_DISPATCH = new Map([
     return undefined; // not a function — fall through to other handlers
   }],
   ['call_api', (ctx) => {
-    // Standalone: call api 'url': + config block
-    let urlPos = 1;
-    if (urlPos < ctx.tokens.length && ctx.tokens[urlPos].type === TokenType.STRING) {
-      const urlNode = { type: NodeType.LITERAL_STRING, value: ctx.tokens[urlPos].value, line: ctx.line };
-      const config = { method: null, headers: [], body: null, timeout: null };
-      let j = ctx.i + 1;
-      while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
-        const cfgTokens = ctx.lines[j].tokens;
-        if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
-        const key = cfgTokens[0].value?.toLowerCase();
-        if (key === 'method' && cfgTokens.length >= 3) {
-          const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-          if (isIdx >= 0 && isIdx + 1 < cfgTokens.length) config.method = cfgTokens[isIdx + 1].value.toUpperCase();
-        } else if (key === 'headers' && cfgTokens.length >= 2) {
-          j++;
-          while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent + 2) {
-            const hTokens = ctx.lines[j].tokens;
-            if (hTokens.length >= 3) {
-              const headerName = hTokens[0].value;
-              const nameIdx = 0;
-              const isIdx = hTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-              if (isIdx >= 0) {
-                const valExpr = parseExpression(hTokens, isIdx + 1, ctx.lines[j].tokens[0].line);
-                if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
-              }
-            }
-            j++;
-          }
-          continue;
-        } else if (key === 'body' && cfgTokens.length >= 3) {
-          const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-          if (isIdx >= 0) {
-            const valExpr = parseExpression(cfgTokens, isIdx + 1, ctx.lines[j].tokens[0].line);
-            if (!valExpr.error) config.body = valExpr.node;
-          }
-        } else if (key === 'timeout' && cfgTokens.length >= 3) {
-          const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
-          if (numIdx >= 0) {
-            const val = cfgTokens[numIdx].value;
-            let unit = 'seconds';
-            if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
-            config.timeout = { value: val, unit };
-          }
-        }
-        j++;
-      }
-      ctx.body.push({ type: NodeType.HTTP_REQUEST, url: urlNode, config, line: ctx.line });
-      return j;
+    const parsedCall = parseCallApiExpression(ctx.tokens, 0, ctx.line);
+    if (parsedCall.error) {
+      ctx.errors.push({ line: ctx.line, message: parsedCall.error });
+      return ctx.i + 1;
     }
-    return undefined;
+    if (!parsedCall.expression) return undefined;
+    let endIdx = ctx.i + 1;
+    if (parsedCall.multilineBody) {
+      const bodyResult = parseMultilineRecordLiteral(ctx.lines, ctx.i, ctx.indent, ctx.tokens, parsedCall.multilineBody.openPos, ctx.errors);
+      if (bodyResult.node) parsedCall.expression.config.body = bodyResult.node;
+      endIdx = bodyResult.endIdx;
+    } else if (parsedCall.needsBlock) {
+      endIdx = parseCallApiConfigBlock(ctx.lines, ctx.i + 1, ctx.indent, parsedCall.expression.config);
+    }
+    ctx.body.push(parsedCall.expression);
+    return endIdx;
   }],
   ['as_format', (ctx) => {
     // Transaction: "as one operation:"
@@ -3873,50 +3839,16 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
         // API call with config block: "result = call api 'url':" + indented config
         if (parsed.needsBlock && parsed.expression && parsed.expression.type === NodeType.HTTP_REQUEST) {
-          const config = { method: null, headers: [], body: null, timeout: null };
-          let j = i + 1;
-          while (j < lines.length && lines[j].indent > indent) {
-            const cfgTokens = lines[j].tokens;
-            if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
-            const key = cfgTokens[0].value?.toLowerCase();
-            if (key === 'method' && cfgTokens.length >= 3) {
-              // method is 'POST'
-              const valIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
-              if (valIdx >= 0) config.method = cfgTokens[valIdx].value;
-            } else if (key === 'header' && cfgTokens.length >= 4) {
-              // header 'Authorization' is 'Bearer ...'
-              const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
-              if (nameIdx >= 0) {
-                const headerName = cfgTokens[nameIdx].value;
-                // Parse the value expression (everything after 'is')
-                const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-                if (isIdx >= 0) {
-                  const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
-                  if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
-                }
-              }
-            } else if (key === 'body' && cfgTokens.length >= 3) {
-              // body is data_var
-              const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-              if (isIdx >= 0) {
-                const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
-                if (!valExpr.error) config.body = valExpr.node;
-              }
-            } else if (key === 'timeout' && cfgTokens.length >= 3) {
-              // timeout is 10 seconds
-              const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
-              if (numIdx >= 0) {
-                const val = cfgTokens[numIdx].value;
-                let unit = 'seconds';
-                if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
-                config.timeout = { value: val, unit };
-              }
-            }
-            j++;
-          }
-          parsed.expression.config = config;
+          const j = parseCallApiConfigBlock(lines, i + 1, indent, parsed.expression.config);
           body.push(assignNode(parsed.name, parsed.expression, line));
           i = j;
+          continue;
+        }
+        if (parsed.multilineBody && parsed.expression && parsed.expression.type === NodeType.HTTP_REQUEST) {
+          const bodyResult = parseMultilineRecordLiteral(lines, i, indent, tokens, parsed.multilineBody.openPos, errors);
+          if (bodyResult.node) parsed.expression.config.body = bodyResult.node;
+          body.push(assignNode(parsed.name, parsed.expression, line));
+          i = bodyResult.endIdx;
           continue;
         }
         body.push(assignNode(parsed.name, parsed.expression, line));
@@ -9854,6 +9786,208 @@ function tryParseObjectDef(lines, lineIdx, blockIndent, tokens, line, errors) {
 // LINE-LEVEL PARSERS
 // =============================================================================
 
+function callApiConfig() {
+  return { method: null, headers: [], body: null, timeout: null };
+}
+
+function bearerHeaderNode(tokenExpr, line) {
+  return {
+    type: NodeType.BINARY_OP,
+    operator: '+',
+    left: literalString('Bearer ', line),
+    right: tokenExpr,
+    line,
+  };
+}
+
+function parseCallApiExpression(tokens, startPos, line) {
+  let pos = startPos;
+  if (pos >= tokens.length || tokens[pos].canonical !== 'call_api') return { expression: null };
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: "call api needs a URL. Example: result = call api 'https://api.example.com'" };
+  }
+
+  let url;
+  if (tokens[pos].type === TokenType.STRING) {
+    url = literalString(tokens[pos].value, line);
+  } else {
+    url = variableRef(tokens[pos].value, line);
+  }
+  pos++;
+
+  const config = callApiConfig();
+  let sawInlineConfig = false;
+  let multilineBody = null;
+
+  while (pos < tokens.length) {
+    const tok = tokens[pos];
+    if (tok.type === TokenType.COMMENT) break;
+
+    if (tok.canonical === 'with') {
+      pos++;
+      if (pos >= tokens.length) break;
+      const key = String(tokens[pos].value || '').toLowerCase();
+      pos++;
+
+      if (key === 'method') {
+        if (tokens[pos]?.canonical === 'is' || tokens[pos]?.type === TokenType.ASSIGN) pos++;
+        if (pos < tokens.length) {
+          config.method = String(tokens[pos].value).toUpperCase();
+          pos++;
+          sawInlineConfig = true;
+        }
+        continue;
+      }
+
+      if (key === 'bearer') {
+        const end = nextCallApiClauseIndex(tokens, pos);
+        const tokenExpr = parseExpression(tokens, pos, line, end);
+        if (tokenExpr.error) return { error: tokenExpr.error };
+        config.headers.push({ name: 'Authorization', value: bearerHeaderNode(tokenExpr.node, line) });
+        pos = end;
+        sawInlineConfig = true;
+        continue;
+      }
+
+      if (key === 'timeout') {
+        if (tokens[pos]?.canonical === 'is' || tokens[pos]?.type === TokenType.ASSIGN) pos++;
+        if (pos < tokens.length && tokens[pos].type === TokenType.NUMBER) {
+          const value = tokens[pos].value;
+          pos++;
+          const unit = pos < tokens.length ? String(tokens[pos].value || 'seconds').toLowerCase() : 'seconds';
+          if (pos < tokens.length) pos++;
+          config.timeout = { value, unit };
+          sawInlineConfig = true;
+        }
+        continue;
+      }
+
+      continue;
+    }
+
+    if (tok.canonical === 'receiving' || String(tok.value || '').toLowerCase() === 'body') {
+      pos++;
+      if (tokens[pos]?.canonical === 'is' || tokens[pos]?.type === TokenType.ASSIGN) pos++;
+      if (pos < tokens.length && tokens[pos].type === TokenType.LBRACE) {
+        const hasClosingBrace = tokens.slice(pos + 1).some(t => t.type === TokenType.RBRACE);
+        if (!hasClosingBrace) {
+          multilineBody = { openPos: pos };
+          sawInlineConfig = true;
+          break;
+        }
+      }
+      const end = nextCallApiClauseIndex(tokens, pos);
+      const bodyExpr = parseExpression(tokens, pos, line, end);
+      if (bodyExpr.error) return { error: bodyExpr.error };
+      config.body = bodyExpr.node;
+      pos = end;
+      sawInlineConfig = true;
+      continue;
+    }
+
+    pos++;
+  }
+
+  return {
+    expression: { type: NodeType.HTTP_REQUEST, url, config, line },
+    needsBlock: !sawInlineConfig,
+    multilineBody,
+  };
+}
+
+function nextCallApiClauseIndex(tokens, pos) {
+  let depth = 0;
+  for (let i = pos; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === TokenType.LBRACE || t.type === TokenType.LBRACKET || t.type === TokenType.LPAREN) depth++;
+    else if (t.type === TokenType.RBRACE || t.type === TokenType.RBRACKET || t.type === TokenType.RPAREN) depth--;
+    if (depth === 0 && i > pos && (t.canonical === 'with' || t.canonical === 'receiving')) return i;
+  }
+  return tokens.length;
+}
+
+function parseCallApiConfigBlock(lines, startIdx, parentIndent, config) {
+  let j = startIdx;
+  while (j < lines.length && lines[j].indent > parentIndent) {
+    const cfgTokens = lines[j].tokens;
+    if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
+    const key = cfgTokens[0].value?.toLowerCase();
+    if (key === 'method' && cfgTokens.length >= 3) {
+      const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+      if (isIdx >= 0 && isIdx + 1 < cfgTokens.length) config.method = String(cfgTokens[isIdx + 1].value).toUpperCase();
+    } else if (key === 'header' && cfgTokens.length >= 4) {
+      const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+      if (nameIdx >= 0) {
+        const headerName = cfgTokens[nameIdx].value;
+        const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+        if (isIdx >= 0) {
+          const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+          if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+        }
+      }
+    } else if (key === 'headers' && cfgTokens.length >= 2) {
+      j++;
+      while (j < lines.length && lines[j].indent > parentIndent + 2) {
+        const hTokens = lines[j].tokens;
+        if (hTokens.length >= 3) {
+          const headerName = hTokens[0].value;
+          const isIdx = hTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+          if (isIdx >= 0) {
+            const valExpr = parseExpression(hTokens, isIdx + 1, lines[j].tokens[0].line);
+            if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+          }
+        }
+        j++;
+      }
+      continue;
+    } else if (key === 'body' && cfgTokens.length >= 3) {
+      const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+      if (isIdx >= 0) {
+        const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+        if (!valExpr.error) config.body = valExpr.node;
+      }
+    } else if (key === 'timeout' && cfgTokens.length >= 3) {
+      const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
+      if (numIdx >= 0) {
+        const value = cfgTokens[numIdx].value;
+        let unit = 'seconds';
+        if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
+        config.timeout = { value, unit };
+      }
+    }
+    j++;
+  }
+  return j;
+}
+
+function parseMultilineRecordLiteral(lines, openLineIdx, baseIndent, openTokens, openPos, errors) {
+  const flattened = openTokens.slice(openPos);
+  let j = openLineIdx + 1;
+  let closed = flattened.some(t => t.type === TokenType.RBRACE);
+
+  while (!closed && j < lines.length) {
+    const line = lines[j];
+    if (line.tokens.length === 0 || line.tokens[0].type === TokenType.COMMENT) { j++; continue; }
+    if (line.indent < baseIndent) break;
+    flattened.push(...line.tokens);
+    if (line.tokens.some(t => t.type === TokenType.RBRACE)) closed = true;
+    j++;
+  }
+
+  if (!closed) {
+    errors.push({ line: openTokens[openPos]?.line || lines[openLineIdx].tokens[0].line, message: 'The API body opened with "{" but never closed. Add a matching "}" on its own line.' });
+    return { node: null, endIdx: j };
+  }
+
+  const parsed = parseInlineRecord(flattened, 0, openTokens[openPos]?.line || lines[openLineIdx].tokens[0].line, flattened.length);
+  if (parsed.error) {
+    errors.push({ line: openTokens[openPos]?.line || lines[openLineIdx].tokens[0].line, message: parsed.error });
+    return { node: null, endIdx: j };
+  }
+  return { node: parsed.node, endIdx: j };
+}
+
 function parseTarget(tokens, line) {
   let pos = 1;
   // Skip optional connector: "for", ":", or "="
@@ -9995,18 +10129,9 @@ function parseAssignment(tokens, line) {
   // Check for "call api 'url'" on the right side of assignment
   // e.g. result = call api 'https://api.stripe.com/v1/charges'
   if (pos < tokens.length && tokens[pos].canonical === 'call_api') {
-    pos++; // skip 'call api'
-    if (pos >= tokens.length) {
-      return { error: "call api needs a URL. Example: result = call api 'https://api.example.com'" };
-    }
-    // URL can be a string literal or a variable
-    let url;
-    if (tokens[pos].type === TokenType.STRING) {
-      url = literalString(tokens[pos].value, line);
-    } else {
-      url = variableRef(tokens[pos].value, line);
-    }
-    return { name, expression: { type: NodeType.HTTP_REQUEST, url, line }, needsBlock: true };
+    const parsedCall = parseCallApiExpression(tokens, pos, line);
+    if (parsedCall.error) return { error: parsedCall.error };
+    return { name, expression: parsedCall.expression, needsBlock: parsedCall.needsBlock, multilineBody: parsedCall.multilineBody };
   }
 
   // Check for "fetch from 'url'" / "data from 'url'" on the right side of assignment

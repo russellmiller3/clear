@@ -769,6 +769,17 @@ When NOT to declare it: pure-internal apps (no external HTTP) and toy demos. Onc
 
 Synonyms: `allow outbound requests to`, `allow http requests to`, `allow external requests to`.
 
+For POST/PUT calls with JSON bodies, prefer the inline form when the payload is small enough to read in place:
+
+```clear
+result = call api 'https://api.example.com/events' with method 'POST' with bearer api_token sending {
+  name: event_name,
+  status: event_status
+}
+```
+
+This works inside endpoints and scheduled jobs. Use the block form (`result = call api 'url':`) when you need several headers or a custom timeout.
+
 ## Sensitive Field Tag (OWASP Piece 3 — encrypt at rest)
 
 Tag any field that holds data you don't want plaintext on disk:
@@ -1837,9 +1848,10 @@ agent 'Support Agent' receives question:
 ```clear
 # YES — agent calls a function, function uses the credential, agent never sees the value.
 define function charge_card(amount, token):
-  result = call api 'https://api.stripe.com/v1/charges'
-    with bearer env('STRIPE_SECRET_KEY')
-    sending amount, source: token
+  result = call api 'https://api.stripe.com/v1/charges' with method 'POST' with bearer env('STRIPE_SECRET_KEY') sending {
+    amount: amount,
+    source: token
+  }
   return result
 
 agent 'refund bot' receives request:

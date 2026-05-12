@@ -418,7 +418,7 @@ async function main() {
     child.kill('SIGTERM');
     await new Promise(resolve => child.once('exit', resolve));
     const interestingLog = serverLog.join('').split(/\r?\n/)
-      .filter(line => /\[FACTOR_DB\]|\[chat\]|\[meph\]|\[hints\]|\[ralph-layer\]|Clear Playground|openrouter/i.test(line))
+      .filter(line => /\[FACTOR_DB\]|\[chat\]|\[meph\]|\[hints\]|\[ralph-layer\]|Clear Studio|openrouter/i.test(line))
       .slice(-80);
     if (interestingLog.length > 0) {
       console.log('\nSERVER SIGNAL');

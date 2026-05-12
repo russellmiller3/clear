@@ -83,7 +83,7 @@ If still unclear, default to **large** (better to over-plan).
 
 ## Step 2: Codebase reconnaissance (MANDATORY — do not skip)
 
-**Before writing a single word of the plan, prove the feature doesn't already exist.** Clear has 126+ node types, a full CLI (`cli/clear.js`), a Studio server (`playground/server.js`), and years of accumulated capability. We've nearly rebuilt things that already existed (SERVICE_CALL, `clear package`, etc.). Every plan that duplicates existing code is a plan that wastes a session.
+**Before writing a single word of the plan, prove the feature doesn't already exist.** Clear has 126+ node types, a full CLI (`cli/clear.js`), a Studio server (`studio/server.js`), and years of accumulated capability. We've nearly rebuilt things that already existed (SERVICE_CALL, `clear package`, etc.). Every plan that duplicates existing code is a plan that wastes a session.
 
 ### 2a. Extract keywords from the plan title
 
@@ -96,8 +96,8 @@ Run these greps in parallel. If a keyword shows up in any of these files, **read
 | Grep target | Why |
 |-------------|-----|
 | `cli/clear.js` | Existing CLI commands. Every command is a potential overlap. |
-| `playground/server.js` | Existing Studio endpoints. Every `app.post('/api/...')` could be the thing you're about to add. |
-| `playground/ide.html` | Existing UI controls. Toolbar buttons, modals, state. |
+| `studio/server.js` | Existing Studio endpoints. Every `app.post('/api/...')` could be the thing you're about to add. |
+| `studio/studio.html` | Existing UI controls. Toolbar buttons, modals, state. |
 | `compiler.js` + `parser.js` | Read the TOC at the top of each file. Existing node types, compile paths. |
 | `synonyms.js` | Keyword collisions before proposing new syntax. |
 | `runtime/` | Existing db adapters, auth, rate limit — don't rebuild. |
@@ -123,7 +123,7 @@ Read ROADMAP.md         # what's already built (phases 1-84 complete) vs what's 
 Before drafting the plan, tell the user in chat:
 - **What already exists** that overlaps (with `path:line` cites)
 - **What's genuinely new** (the delta)
-- **What surfaces will change** (CLI, compiler, playground, docs)
+- **What surfaces will change** (CLI, compiler, Studio, docs)
 
 If ≥80% of what the plan proposes already exists, **recommend a reuse-and-extend plan instead of a net-new plan**.
 
@@ -256,13 +256,13 @@ Pick the surfaces that match the feature type and add them as the FINAL phase of
 | Tutorial | `USER-GUIDE.md` | User-facing feature — add worked example |
 | Status | `ROADMAP.md` | Mark the phase complete, update counts under "What's Next" |
 | Marketing | `landing/*.html` | Feature appears in demos, hero examples, or agent pitch pages |
-| Studio AI | `playground/system-prompt.md` | Feature Meph should know to use when building apps |
+| Studio AI | `studio/system-prompt.md` | Feature Meph should know to use when building apps |
 | FAQ | `FAQ.md` | New subsystem → add "Where does X live?" / "How do I Y?" / "Why did we Z?" entries. Touched existing subsystem → update relevant entry. |
 | Research | `RESEARCH.md` | Anything affecting training signal: Factor DB schema, archetype classifier, hint retrieval, curriculum, eval pipeline. Keep the plain-English "Read This First" section current. |
 
 If the feature adds a CLI command, also update the `## CLI (for AI agents)` block in `CLAUDE.md` itself.
 
-If the feature adds a Studio endpoint, also update `playground/server.test.js` with coverage.
+If the feature adds a Studio endpoint, also update `studio/server.test.js` with coverage.
 
 **Checklist to paste into the plan's final phase:**
 
@@ -273,10 +273,10 @@ If the feature adds a Studio endpoint, also update `playground/server.test.js` w
 - [ ] `USER-GUIDE.md` updated (tutorial coverage)
 - [ ] `ROADMAP.md` updated (phase complete + next moves)
 - [ ] `landing/*.html` synced (if feature is user-facing)
-- [ ] `playground/system-prompt.md` updated (if Meph should use it)
+- [ ] `studio/system-prompt.md` updated (if Meph should use it)
 - [ ] `FAQ.md` updated (new subsystem entries or changed answers)
 - [ ] `RESEARCH.md` updated (if training signal / flywheel affected)
-- [ ] `playground/clear-compiler.min.js` rebuilt (if compiler changed)
+- [ ] `studio/clear-compiler.min.js` rebuilt (if compiler changed)
 ```
 
 ---

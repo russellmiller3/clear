@@ -51,7 +51,7 @@ async function getBcrypt() {
   } catch {
     throw new Error(
       'cloud-auth: `bcryptjs` not installed. Run `npm install bcryptjs` in the ' +
-      'playground dir to use signup/login helpers. Matches Clear\'s runtime ' +
+      'studio dir to use signup/login helpers. Matches Clear\'s runtime ' +
       'auth — same dep, same version.'
     );
   }

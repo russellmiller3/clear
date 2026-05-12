@@ -52,7 +52,7 @@ Body is the raw tarball (gzipped or plain).
 Once per environment:
 
 ```bash
-cd playground/builder
+cd studio/builder
 FLY_API_TOKEN_01=xxx FLY_API_TOKEN_02=yyy FLY_API_TOKEN_03=zzz \
   ./deploy-builder.sh
 ```
@@ -62,7 +62,7 @@ Rotate the shared secret and `FLY_API_TOKEN_*` every 90 days.
 ## Running tests
 
 ```bash
-node playground/builder/server.test.js
+node studio/builder/server.test.js
 ```
 
 Tests use `setRunCmdMock` to stub `docker`/`flyctl`. No real Fly or Docker

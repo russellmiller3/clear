@@ -7,7 +7,7 @@
 -- reads it to find newly-verified domains that need a Fly cert.
 --
 -- Depends on:
---   - playground/tenants-db/migrations/001-tenants.sql (creates `apps`)
+--   - studio/tenants-db/migrations/001-tenants.sql (creates `apps`)
 -- Run order: tenants/001 → cloud-auth/001 → cloud-teams/001 → tenants/002 → cloud-domains/001
 --
 -- Conventions (match tenants-db + cloud-auth + cloud-teams):

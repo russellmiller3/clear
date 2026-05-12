@@ -38,7 +38,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_DB_PATH = join(__dirname, '..', 'playground', 'factor-db.sqlite');
+const DEFAULT_DB_PATH = join(__dirname, '..', 'studio', 'factor-db.sqlite');
 const DEFAULT_OUT = join(__dirname, '..', 'snapshots', 'winner-rankings-04-26-2026.txt');
 
 // ---------- Pure scoring helpers (exported for unit tests) ----------

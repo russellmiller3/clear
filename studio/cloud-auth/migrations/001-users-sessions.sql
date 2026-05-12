@@ -19,7 +19,7 @@
 -- in a separate migration so CC-2a can ship + smoke-test standalone.
 --
 -- Apply (dev):
---   psql $DATABASE_URL -f playground/cloud-auth/migrations/001-users-sessions.sql
+--   psql $DATABASE_URL -f studio/cloud-auth/migrations/001-users-sessions.sql
 --
 -- This schema can share the same Postgres instance as the tenants-db
 -- (CC-1a) — Clear Cloud uses one logical database with multiple

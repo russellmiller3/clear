@@ -1,4 +1,4 @@
-// Vercel Serverless Function — AI proxy for Clear playground
+// Vercel Serverless Function — AI proxy for Clear studio
 // Holds the Anthropic API key server-side, rate-limits by IP (3 calls per IP)
 
 const ANTHROPIC_API_KEY = process.env.CLEAR_AI_KEY;

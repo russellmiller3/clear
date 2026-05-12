@@ -27,7 +27,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, '..', 'playground', 'factor-db.sqlite');
+const DB_PATH = join(__dirname, '..', 'studio', 'factor-db.sqlite');
 
 const sha1 = (s) => crypto.createHash('sha1').update(s).digest('hex');
 const noop = () => null;

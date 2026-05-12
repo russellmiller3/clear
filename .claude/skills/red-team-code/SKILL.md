@@ -100,7 +100,7 @@ Read the project CLAUDE.md. For EVERY rule in it, check whether the new code com
 - **Plain-English comments in .clear:** No compiler/CS terms in `/* */` blocks
 - **One operation per line:** Named intermediates, no chaining, no nesting
 - **No self-assignment:** No `x is x`. Arg names must differ from field names in records.
-- **Documentation rule:** New features MUST be documented in intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, ROADMAP.md, relevant landing pages, and playground/system-prompt.md.
+- **Documentation rule:** New features MUST be documented in intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, ROADMAP.md, relevant landing pages, and studio/system-prompt.md.
 - **No external dependencies:** Compiler must stay zero-npm. Did the change add a dep?
 - **Test before declaring done:** Compiler tests passing does NOT mean the app works. Did you run `clear test` on affected apps?
 - **TOC rule:** Did you add/remove/move a section in parser.js or compiler.js? Did the TOC at top of file get updated?
@@ -128,7 +128,7 @@ For everything else: make the edit.
 
 After fixing, run the relevant test suite to verify no regression:
 - Compiler changes: `node clear.test.js`
-- Server changes: `node playground/server.test.js`
+- Server changes: `node studio/server.test.js`
 - App changes: `node cli/clear.js test <file>`
 - If dev-server-observable: start the server and use `preview_*` tools to confirm
 

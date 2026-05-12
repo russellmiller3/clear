@@ -1,6 +1,6 @@
 ---
 name: eval-meph
-description: Run the Meph tool eval as a regression net. Trigger when changes touch playground/server.js (especially TOOLS array, executeTool, validateToolInput, /api/chat handler), playground/system-prompt.md, or any tool definition. Also trigger when the user says "eval meph", "test meph", "run the meph eval", or asks to verify Meph's tool layer. Proactively suggest running this BEFORE shipping any change to Meph's surface — the pre-push hook will catch it but local feedback is cheaper.
+description: Run the Meph tool eval as a regression net. Trigger when changes touch studio/server.js (especially TOOLS array, executeTool, validateToolInput, /api/chat handler), studio/system-prompt.md, or any tool definition. Also trigger when the user says "eval meph", "test meph", "run the meph eval", or asks to verify Meph's tool layer. Proactively suggest running this BEFORE shipping any change to Meph's surface — the pre-push hook will catch it but local feedback is cheaper.
 allowed-tools: Bash, Read
 ---
 
@@ -21,13 +21,13 @@ useful data (not "Unknown tool", not garbage, not empty).
 ## When to invoke
 
 **ALWAYS run before shipping changes to:**
-- `playground/server.js`
+- `studio/server.js`
   - The `TOOLS` array (tool definitions, descriptions, input_schemas)
   - The `executeTool` switch (handler logic)
   - `validateToolInput` (runtime schema validator)
   - `/api/chat` handler (SSE stream, retry, timeout, watchdog)
   - Any tool result / SSE event shape
-- `playground/system-prompt.md` (Meph's instructions)
+- `studio/system-prompt.md` (Meph's instructions)
 - New tool added or existing tool removed
 
 **Suggest proactively when the user describes a session that touched any of those files.**
@@ -41,13 +41,13 @@ useful data (not "Unknown tool", not garbage, not empty).
 ## How to run
 
 ```bash
-node playground/eval-meph.js
+node studio/eval-meph.js
 ```
 
 What happens:
 1. If `SKIP_MEPH_EVAL=1` → exits 0 immediately
 2. If no `ANTHROPIC_API_KEY` → exits 0 with a skip message (so contributors without keys aren't blocked)
-3. If no playground server reachable at `PLAYGROUND_URL` (default `http://localhost:3456`) → spawns one for the duration of the eval
+3. If no Studio server reachable at `STUDIO_URL` (default `http://localhost:3456`) → spawns one for the duration of the eval
 4. Runs 16 scenarios, each ~5–15s
 5. Prints per-scenario result + Meph's self-report + a final tally
 6. Exits 0 if all pass, 1 if any fail
@@ -84,7 +84,7 @@ the executeTool case or schema entry that's wrong, fix it, rerun.
 
 ## Sister eval: full-loop suite
 
-`node playground/eval-fullloop-suite.js` is heavier — Meph builds 3 complex
+`node studio/eval-fullloop-suite.js` is heavier — Meph builds 3 complex
 apps from scratch end-to-end. ~3 minutes, ~$0.50–1.00 per run. **Not in
 pre-push** (too slow + variable). Run manually after big architectural changes
 to Meph or when adding new app patterns. Catches deeper integration issues
@@ -92,7 +92,7 @@ that single-tool scenarios miss.
 
 ## Pre-push integration
 
-`.husky/pre-push` runs `node playground/eval-meph.js` after the compiler and
+`.husky/pre-push` runs `node studio/eval-meph.js` after the compiler and
 e2e tests when `ANTHROPIC_API_KEY` is set. To bypass for one push:
 
 ```bash

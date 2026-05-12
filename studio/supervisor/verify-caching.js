@@ -80,7 +80,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('Spawning playground server on port ' + PORT + '...');
+  console.log('Spawning studio server on port ' + PORT + '...');
   // Truncate log
   try { writeFileSync(LOG_PATH, ''); } catch {}
   const server = spawn('node', ['studio/server.js'], {

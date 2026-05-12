@@ -1,5 +1,5 @@
 // =============================================================================
-// PLAYGROUND SERVER — TEST SUITE
+// STUDIO SERVER — TEST SUITE
 // =============================================================================
 // Run: node studio/server.test.js
 // Starts the server, runs all tests, kills server, reports results.
@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 let passed = 0, failed = 0, total = 0;
 const PORT = process.env.CLEAR_SERVER_TEST_PORT || '3462';
-const BASE = `http://localhost:${PORT}`; // Different port so it doesn't collide
+const BASE = `http://127.0.0.1:${PORT}`; // Different port so it doesn't collide
 
 function assert(condition, msg) {
   total++;
@@ -154,7 +154,7 @@ async function getJson(path) {
 // =============================================================================
 // START SERVER
 // =============================================================================
-console.log(`Starting playground server on port ${PORT}...`);
+console.log(`Starting studio server on port ${PORT}...`);
 const server = spawn(process.execPath, ['studio/server.js'], {
   cwd: join(__dirname, '..'),
   // CC-4 cycle 5 — CLEAR_ALLOW_SEED unlocks the test-only seed/inject/lookup
@@ -167,29 +167,49 @@ const server = spawn(process.execPath, ['studio/server.js'], {
 });
 
 let serverReady = false;
+let serverExited = false;
+let serverExitCode = null;
+let lastServerStdout = '';
 server.stdout.on('data', (d) => {
-  if (d.toString().includes('localhost:')) serverReady = true;
+  const text = d.toString();
+  lastServerStdout = (lastServerStdout + text).slice(-2000);
+  if (text.includes('localhost:')) serverReady = true;
 });
 server.stderr.on('data', (d) => process.stderr.write(d));
+server.on('exit', (code) => {
+  serverExited = true;
+  serverExitCode = code;
+});
 
 async function waitForHttpReady(timeoutMs = 8000) {
   const start = Date.now();
+  let lastError = null;
   while (Date.now() - start < timeoutMs) {
-    if (!serverReady) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      continue;
-    }
+    if (serverExited) break;
     try {
       const r = await fetch(BASE + '/api/templates');
       if (r.status > 0) return true;
-    } catch {}
+    } catch (err) {
+      lastError = err;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!serverReady && lastServerStdout) {
+    console.error(`Server stdout before readiness timeout:\n${lastServerStdout}`);
+  }
+  if (serverExited) {
+    console.error(`Server exited before readiness check passed (code ${serverExitCode}).`);
+  } else if (lastError) {
+    console.error(`Server readiness check failed: ${lastError.message}`);
   }
   return false;
 }
 
 // Wait for server
-await waitForHttpReady();
+if (!(await waitForHttpReady())) {
+  server.kill('SIGTERM');
+  process.exit(1);
+}
 
 console.log('Server ready. Running tests...\n');
 

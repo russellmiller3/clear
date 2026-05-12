@@ -12,7 +12,7 @@
 // is locked.
 //
 // FIX
-// The parent (playground server) and the child (the spawned compiled app)
+// The parent (studio server) and the child (the spawned compiled app)
 // share one secret, EVAL_JWT_SECRET. It's randomized per parent boot so
 // tokens from a previous Studio session can't slip into this one. The
 // parent exports JWT_SECRET=EVAL_JWT_SECRET into the child's env before

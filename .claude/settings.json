@@ -108,6 +108,12 @@
           },
           {
             "type": "command",
+            "command": "node .claude/hooks/source-intent-on-compiler-edit.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking compiler edits preserve Clear source as the contract..."
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/clear-cheatsheet-on-write.mjs",
             "timeout": 5,
             "statusMessage": "Injecting Clear canonical-syntax cheat sheet..."

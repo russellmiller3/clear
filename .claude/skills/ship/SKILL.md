@@ -18,7 +18,7 @@ Ship the current feature branch. This is a comprehensive ship process for the Cl
 
 **THE RULE: If a feature exists in the compiler but not in the docs, it doesn't exist for anyone but us. Every feature ships with documentation or it doesn't ship.**
 
-**Single source of truth: invoke the `docs` skill.** The docs skill (`.claude/skills/docs/SKILL.md`) owns the full doc cascade — `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md`, `FAQ.md`, `RESEARCH.md`, `FEATURES.md`, `CHANGELOG.md`, and `playground/system-prompt.md` (Meph's live prompt). Run the docs skill first. Ship blocks until the docs skill reports clean.
+**Single source of truth: invoke the `docs` skill.** The docs skill (`.claude/skills/docs/SKILL.md`) owns the full doc cascade — `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md`, `FAQ.md`, `RESEARCH.md`, `FEATURES.md`, `CHANGELOG.md`, and `studio/system-prompt.md` (Meph's live prompt). Run the docs skill first. Ship blocks until the docs skill reports clean.
 
 **Why this used to be duplicated and isn't anymore:** before 2026-05-03 evening, ship and docs each had their own embedded 9-surface list. The lists drifted, and in practice neither was strictly enforced — the syntax-rename ship that day landed without a USER-GUIDE worked example because both lists were technically "soft." Now there's one list (in the docs skill) and one enforcer (this ship gate). When the list changes, change it in `.claude/skills/docs/SKILL.md` only — never duplicate it here.
 
@@ -29,11 +29,11 @@ Ship the current feature branch. This is a comprehensive ship process for the Cl
 - **`design-system.md`** — theme changes, new presets, component patterns (if UI work)
 - **`learnings.md`** entries describing tricky bugs / patterns from this specific ship
 
-### Step 1: Rebuild playground bundle
+### Step 1: Rebuild Studio bundle
 
 If compiler.js or any compiler file changed:
 ```
-npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js
+npx esbuild index.js --bundle --format=esm --minify --outfile=studio/clear-compiler.min.js
 ```
 
 ### Step 2: Run tests (GATE — must pass to continue)
@@ -50,13 +50,13 @@ If tests fail, stop and fix them. Do not ship broken code.
 ### Step 2b: Meph tool eval (GATE when Meph touched)
 
 If this branch changed any of:
-- `playground/server.js` (especially the TOOLS array, executeTool switch, validateToolInput, /api/chat handler)
-- `playground/system-prompt.md`
+- `studio/server.js` (especially the TOOLS array, executeTool switch, validateToolInput, /api/chat handler)
+- `studio/system-prompt.md`
 - Any tool definition or schema
 
 …run the Meph eval BEFORE committing:
 ```
-node playground/eval-meph.js
+node studio/eval-meph.js
 ```
 
 Cost: ~$0.10–0.30 per run. Time: ~90 seconds. Catches what compiler tests can't see — schema mismatches, hallucinated tools, malformed JSON outputs, broken tool dispatch. The pre-push hook also runs this (when `ANTHROPIC_API_KEY` is set), but running it during ship lets you fix issues before pushing rather than after the hook fails.
@@ -70,7 +70,7 @@ See `.claude/skills/eval-meph/SKILL.md` for the full guide.
 **Rule:** Any change that affects what Meph sees, reads, or responds to MUST be verified against a real LLM before shipping. Unit tests with mocked LLMs miss prompt bugs every time.
 
 **Triggers (any one triggers the gate):**
-- System prompt changed (`playground/system-prompt.md`)
+- System prompt changed (`studio/system-prompt.md`)
 - TOOLS array changed (tool defs, schemas, descriptions in server.js)
 - Tool result payload shape changed (what gets serialized back to Meph)
 - Retrieval/hint/reranker format changed (what Meph sees when he hits an error)
@@ -79,7 +79,7 @@ See `.claude/skills/eval-meph/SKILL.md` for the full guide.
 
 **How to verify:**
 ```
-ANTHROPIC_API_KEY=sk-ant-... node playground/eval-meph.js
+ANTHROPIC_API_KEY=sk-ant-... node studio/eval-meph.js
 ```
 Minimum: 1 scenario that exercises the changed surface. If you changed hint formatting, hit a Factor-DB-matching error intentionally and verify Meph reads `hints.text` and references the pattern in his response. If you changed tool schemas, verify Meph calls the tool with valid args. If you changed the system prompt, verify he follows the new instruction.
 
@@ -89,22 +89,22 @@ Minimum: 1 scenario that exercises the changed surface. If you changed hint form
 
 ### Step 2c: Data-at-risk gate (GATE — must pass to continue)
 
-**Why this step exists:** on Session 38 we lost 343 training rows (149/57 → 492/182) because we treated `playground/factor-db.sqlite` as runtime state instead of committable data. The clean-worktrees hook saw a "clean" working tree (SQLite WAL mode hides pending writes) and deleted the worktree. Data vanished.
+**Why this step exists:** on Session 38 we lost 343 training rows (149/57 → 492/182) because we treated `studio/factor-db.sqlite` as runtime state instead of committable data. The clean-worktrees hook saw a "clean" working tree (SQLite WAL mode hides pending writes) and deleted the worktree. Data vanished.
 
 **Run WAL checkpoints on any SQLite DBs so git sees the true state:**
 ```
-sqlite3 playground/factor-db.sqlite "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null
-[ -f playground/sessions.db ] && sqlite3 playground/sessions.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null
+sqlite3 studio/factor-db.sqlite "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null
+[ -f studio/sessions.db ] && sqlite3 studio/sessions.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null
 ```
 
 **Verify the data files are either committed OR explicitly declined:**
 1. Check if any of these have uncommitted changes:
-   - `playground/factor-db.sqlite` — Factor DB (training data)
-   - `playground/supervisor/reranker.json` / `reranker.pkl` — trained model bundle
-   - `playground/supervisor/training-archive/*.jsonl` — training data archives
-   - `playground/sessions/*.json` — Meph session records (typically transient)
+   - `studio/factor-db.sqlite` — Factor DB (training data)
+   - `studio/supervisor/reranker.json` / `reranker.pkl` — trained model bundle
+   - `studio/supervisor/training-archive/*.jsonl` — training data archives
+   - `studio/sessions/*.json` — Meph session records (typically transient)
 2. For each with changes, either commit it in Step 3, or explicitly decline with a 1-line rationale in the commit message (e.g. "sessions/ intentionally skipped — runtime transient").
-3. NEVER let the ship workflow succeed while `factor-db.sqlite` has unstaged row additions. The rows must either be committed (preferred) or explicitly archived to `/tmp/clear-backups/` or `playground/supervisor/training-archive/`.
+3. NEVER let the ship workflow succeed while `factor-db.sqlite` has unstaged row additions. The rows must either be committed (preferred) or explicitly archived to `/tmp/clear-backups/` or `studio/supervisor/training-archive/`.
 
 **Hook recommendation:** `~/.claude/hooks/clean-worktrees.sh` was updated Session 38 to WAL-checkpoint + backup-before-delete. Don't rely only on the hook — commit the data during ship as a first-class concern.
 

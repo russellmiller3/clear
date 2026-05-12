@@ -110,7 +110,7 @@ if (_portArg) process.env.PORT = _portArg.split('=')[1];
 if (_sessionArg) process.env.SESSION_ID = _sessionArg.split('=')[1];
 
 const APPS_DIR = join(ROOT_DIR, 'apps');
-const BUILD_DIR = join(__dirname, '.playground-build');
+const BUILD_DIR = join(__dirname, '.studio-build');
 const SESSIONS_DIR = join(__dirname, 'sessions');
 if (!existsSync(SESSIONS_DIR)) mkdirSync(SESSIONS_DIR, { recursive: true });
 
@@ -4351,5 +4351,5 @@ app.get('/api/worker-heartbeat', (req, res) => {
 // =============================================================================
 const PORT = process.env.PORT || 3456;
 app.listen(PORT, () => {
-  console.log(`\n  Clear Playground: http://localhost:${PORT}\n`);
+  console.log(`\n  Clear Studio: http://localhost:${PORT}\n`);
 });

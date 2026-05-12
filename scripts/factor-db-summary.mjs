@@ -10,7 +10,7 @@ import { dirname, join } from 'path';
 import { hintHelpfulSql } from './factor-db-summary-helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, '..', 'playground', 'factor-db.sqlite');
+const DB_PATH = join(__dirname, '..', 'studio', 'factor-db.sqlite');
 
 const argSince = process.argv.find((a) => a.startsWith('--since='))?.slice(8);
 

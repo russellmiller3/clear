@@ -69,7 +69,7 @@ export function isClearFile(filePath) {
 // session. The hook fires on writes to any of these so the canonical
 // forms are fresh before the example gets typed.
 const SYNTAX_TEACHING_DOCS = [
-  /(^|[\\/])playground[\\/]system-prompt\.md$/,  // Meph reads this every session
+  /(^|[\\/])studio[\\/]system-prompt\.md$/,      // Meph reads this every session
   /(^|[\\/])USER-GUIDE\.md$/,                     // user-facing tutorial
   /(^|[\\/])AI-INSTRUCTIONS\.md$/,                // canonical conventions Meph reads
   /(^|[\\/])SYNTAX\.md$/,                          // authoritative syntax reference

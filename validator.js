@@ -2378,11 +2378,6 @@ function validateUIRouteTargets(body, errors) {
   const asNodeList = value => Array.isArray(value) ? value : value ? [value] : [];
 
   const pages = new Set(['/']);
-  const hasAuth = body.some(n => n && n.type === NodeType.AUTH_SCAFFOLD);
-  if (hasAuth) {
-    pages.add('/login');
-    pages.add('/signup');
-  }
 
   function normalizeRoute(path) {
     if (typeof path !== 'string') return '';
@@ -2405,6 +2400,30 @@ function validateUIRouteTargets(body, errors) {
       if (n.body) collectPages(n.body);
       if (n.thenBranch) collectPages(n.thenBranch);
       if (n.otherwiseBranch) collectPages(n.otherwiseBranch);
+    }
+  }
+
+  function hasLoginGuard(nodes) {
+    return asNodeList(nodes).some(n => n && n.type === NodeType.REQUIRES_AUTH);
+  }
+
+  function checkProtectedPages(nodes) {
+    for (const n of asNodeList(nodes)) {
+      if (n.type === NodeType.PAGE && hasLoginGuard(n.body) && !pages.has('/login')) {
+        errors.push({
+          line: n.line || 0,
+          message:
+            `Line ${n.line}: page '${n.title}' needs login, but this app has no page at '/login'. ` +
+            `Clear will not invent a login page that is missing from the source. Add:\n\n` +
+            `page 'Login' at '/login':\n` +
+            `  heading 'Sign in'\n` +
+            `  # add the login form this app should show\n\n` +
+            `Then retry the build, or remove 'needs login' from page '${n.title}'.`
+        });
+      }
+      if (n.body) checkProtectedPages(n.body);
+      if (n.thenBranch) checkProtectedPages(n.thenBranch);
+      if (n.otherwiseBranch) checkProtectedPages(n.otherwiseBranch);
     }
   }
 
@@ -2435,6 +2454,7 @@ function validateUIRouteTargets(body, errors) {
   }
 
   collectPages(body);
+  checkProtectedPages(body);
   checkTargets(body);
 }
 

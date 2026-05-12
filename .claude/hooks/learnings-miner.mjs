@@ -35,7 +35,7 @@ const LEARNINGS_PATH = join(REPO_ROOT, 'learnings.md');
 // Directory → concept keywords. When the edited file's parent dir matches,
 // the corresponding keywords get boosted-match scoring.
 const DIR_KEYWORDS = {
-	playground: ['studio', 'playground', 'meph', 'ide'],
+	studio: ['studio', 'meph', 'ide'],
 	'studio/supervisor': ['supervisor', 'sweep', 'curriculum', 'factor-db', 'reranker'],
 	'studio/ghost-meph': ['cc-agent', 'ghost', 'mcp', 'stream-json'],
 	'studio/ghost-meph/mcp-server': ['mcp', 'mcp-server'],

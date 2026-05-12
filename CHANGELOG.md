@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-12 - Multi-line API request bodies + Studio path cleanup
+
+Clear now supports real JSON-style request payloads in `call api` expressions:
+
+- `call api 'url' with method 'POST' with bearer token sending { ... }` now accepts multi-line body records.
+- The fix works in both assigned endpoint calls and standalone scheduled jobs.
+- Studio is now the live path in scripts, docs, tests, and Meph guidance; stale Playground paths were replaced with `studio/`.
+
+Verification: new regression test covers endpoint and background-job calls; full compiler suite passed 3037/3037 before the docs/path cleanup.
+
+---
+
 ## 2026-05-11 — Hartl reference-track batch 1: Chapters 13, 13b, 14
 
 Light rewrites of three reference chapters to ground examples in the deal-desk app from Chapters 1–12. Chapter 13 CRUD and aggregate examples now use Deals/Comments tables. Chapter 13b chart examples now use deals/deals-by-status. Chapter 14 opener explicitly states the deal-desk assumption and connects error handling to the AI drafter (Ch 11) and email provider (Ch 10) the reader already built.

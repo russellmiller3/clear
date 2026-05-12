@@ -21,7 +21,7 @@
  * This module pulls `pg` via dynamic import so the tenants-db directory
  * stays a zero-setup scaffold today. Once Phase 85a lands and Russell
  * chooses the Postgres host (Fly Postgres / Neon / Supabase), `npm
- * install pg` in the playground dir and this module starts working.
+ * install pg` in the studio dir and this module starts working.
  */
 
 import { readFileSync } from 'fs';
@@ -61,7 +61,7 @@ export async function getPool(options = {}) {
   } catch (err) {
     throw new Error(
       'tenants-db: `pg` package not installed. Run `npm install pg` in ' +
-      'the playground dir to use this module. (We keep pg out of the ' +
+      'the studio dir to use this module. (We keep pg out of the ' +
       'repo root so the compiler stays zero-dep.)'
     );
   }

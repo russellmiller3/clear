@@ -167,7 +167,7 @@ try { await hashPassword('anything12'); }
 catch (err) { if (err.message.includes('bcryptjs')) bcryptAvailable = false; }
 
 if (!bcryptAvailable) {
-  console.log('\n⏭  Skipping signup/login tests — bcryptjs not installed (run npm install bcryptjs in playground)');
+  console.log('\n⏭  Skipping signup/login tests — bcryptjs not installed (run npm install bcryptjs in studio)');
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 }

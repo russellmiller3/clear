@@ -9,11 +9,11 @@
 -- Tables:
 --   teams          — top-level collaboration group with a slug + tenant
 --   team_members   — (team, user, role) with last-owner guarantees at the
---                    app layer (see playground/cloud-teams/index.js)
+--                    app layer (see studio/cloud-teams/index.js)
 --   team_invites   — pending email invites, single-use, time-boxed
 --
 -- Apply (dev):
---   psql $DATABASE_URL -f playground/cloud-teams/migrations/001-teams.sql
+--   psql $DATABASE_URL -f studio/cloud-teams/migrations/001-teams.sql
 --
 -- Apply (prod, once Phase 85a lands):
 --   Same as tenants — plain psql, or whatever migration runner the ops

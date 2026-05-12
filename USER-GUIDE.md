@@ -1230,9 +1230,12 @@ won't compile; literal URLs outside the list won't compile.
 ```clear
 allow outgoing requests to: 'api.stripe.com', 'api.openai.com'
 
-when user requests data from /api/charge:
+when user sends payment to /api/charge:
   requires login
-  result = call api 'https://api.stripe.com/v1/charges'
+  result = call api 'https://api.stripe.com/v1/charges' with method 'POST' with bearer env('STRIPE_SECRET_KEY') sending {
+    amount: payment's amount,
+    source: payment's token
+  }
   send back result
 ```
 
@@ -3324,9 +3327,10 @@ The pattern that works: wrap the credential in a function. The function uses the
 ```clear
 # YES — the agent calls the function, the function uses the key, the agent never sees the value
 define function charge_card(amount, token):
-  result = call api 'https://api.stripe.com/v1/charges'
-    with bearer env('STRIPE_SECRET_KEY')
-    sending amount, source: token
+  result = call api 'https://api.stripe.com/v1/charges' with method 'POST' with bearer env('STRIPE_SECRET_KEY') sending {
+    amount: amount,
+    source: token
+  }
   return result
 
 agent 'refund bot' receives request:

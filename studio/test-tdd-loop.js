@@ -31,7 +31,7 @@ function loadApiKey() {
   // From studio/ dir: go up 1 (worktree root), then 3 more to reach clear/ repo root
   // worktree = ...clear/.claude/worktrees/kind-xxx  →  clear/ is 3 levels above worktree root
   const candidates = [
-    join(__dirname, '..', '..', '..', '..', '.env'),    // playground → worktree → worktrees → .claude → clear
+    join(__dirname, '..', '..', '..', '..', '.env'),    // studio → worktree → worktrees → .claude → clear
     join(__dirname, '..', '.env'),                        // worktree root fallback
     join(__dirname, '..', '..', '.env'),
     join(__dirname, '..', '..', '..', '.env'),

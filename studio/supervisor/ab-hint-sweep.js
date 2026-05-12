@@ -310,7 +310,7 @@ export async function runAbSweep({
     // Persist the raw trial results + summary to a session-dated JSON so
     // later replay / analysis can work against a fixed artifact.
     try {
-      const outDir = join(ROOT, 'playground', 'sessions');
+      const outDir = join(ROOT, 'studio', 'sessions');
       mkdirSync(outDir, { recursive: true });
       const stamp = new Date(sweepStart).toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const outPath = join(outDir, `ab-hint-sweep-${stamp}.json`);

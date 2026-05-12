@@ -1,16 +1,16 @@
-// Build script for the playground's CodeMirror bundle.
+// Build script for Studio's CodeMirror bundle.
 //
-// Why this script exists: the playground (`studio/ide.html`) imports
+// Why this script exists: Studio (`studio/studio.html`) imports
 // from `studio/codemirror.bundle.js` — a pre-built ESM file that
 // ships with the repo. Browsers can't `import` from npm packages, so
-// every CodeMirror symbol used in the playground has to be in this
+// every CodeMirror symbol used in Studio has to be in this
 // single bundle. The bundle was originally vendored from a one-off
 // `npm install` + esbuild pass that wasn't checked in. This script
 // makes the rebuild reproducible.
 //
 // What the script does:
 //   1. Reads `scripts/codemirror-entry.mjs` (the single source of truth
-//      for which CodeMirror symbols the playground uses).
+//      for which CodeMirror symbols Studio uses).
 //   2. Runs esbuild against it with the browser target.
 //   3. Writes the minified ESM result to `studio/codemirror.bundle.js`.
 //   4. Reports the bundle size (warns if it has ballooned past 600 KB).
@@ -31,8 +31,8 @@
 //
 // Why minified: the unminified bundle is ~3x larger (~1.3 MB vs 443 KB
 // today) and offers no debugging benefit because all the CodeMirror
-// internals are themselves minified. The playground's own source map
-// for `studio/ide.html` is what users debug.
+// internals are themselves minified. Studio's own source map
+// for `studio/studio.html` is what users debug.
 
 import { build } from 'esbuild';
 import { readFileSync, statSync } from 'node:fs';
@@ -42,7 +42,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const entryPoint = resolve(__dirname, 'codemirror-entry.mjs');
-const outFile = resolve(repoRoot, 'playground', 'codemirror.bundle.js');
+const outFile = resolve(repoRoot, 'studio', 'codemirror.bundle.js');
 
 console.log('[codemirror-bundle] entry  =', entryPoint);
 console.log('[codemirror-bundle] output =', outFile);
@@ -64,10 +64,10 @@ await build({
   // slipped through and would 404 at runtime in the browser. Better to
   // catch it at build time.
   external: [],
-  // Don't generate a sourcemap — studio/ide.html ships its own,
+  // Don't generate a sourcemap — studio/studio.html ships its own,
   // and bundling the CodeMirror source map would 2-3x the file size
   // for no real debugging benefit (CodeMirror internals are not what
-  // playground developers debug).
+  // Studio developers debug).
   sourcemap: false,
   // Drop comments to keep the bundle tight.
   legalComments: 'none',
@@ -84,7 +84,7 @@ const direction = delta === 0 ? '(unchanged)'
 
 console.log(`[codemirror-bundle] size: ${beforeKB} KB → ${afterKB} KB ${direction}`);
 
-// Warn if the bundle has ballooned. The playground load time on a fresh
+// Warn if the bundle has ballooned. Studio load time on a fresh
 // page is roughly proportional to bundle size; >600 KB starts to hurt
 // on slow connections.
 if (after > 600 * 1024) {
