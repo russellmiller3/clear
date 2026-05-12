@@ -3,20 +3,20 @@
 ## Short Answer
 
 Use `google/gemini-3-flash-preview` as the cheap default for Meph.
+Use `anthropic/claude-opus-4.7` as the quality ceiling or escalation model.
 
-It was the fastest model by a lot, handled the Clear-specific gotcha task best,
-and was the only cheap model besides Kimi to finish the syntax-context Clear app
-task cleanly. Kimi produced the most complete syntax-context app, but it was too
-slow and had blank visible outputs on three earlier tasks. DeepSeek was the
-best ultra-cheap fallback for requirements and summarization, but it was slow
-and truncated on longer Clear generation. GLM 4.5 Air is not reliable enough for
-Meph build work.
+Gemini delivered roughly **72% of Opus's judged quality** at about **7% of the
+cost** and about **3.4x the speed**. Opus was clearly better on exactness and
+was the only model whose syntax-context Clear app compiled locally. Sonnet was
+not enough better than Gemini on this small run to justify being the cheap lane.
 
 ## Models Tested
 
 | Model | OpenRouter id | Listed price per 1M tokens | Context |
 | --- | --- | ---: | ---: |
 | Gemini 3 Flash Preview | `google/gemini-3-flash-preview` | $0.50 in / $3.00 out | 1M |
+| Claude Sonnet 4.6 | `anthropic/claude-sonnet-4.6` | $3.00 in / $15.00 out | 1M |
+| Claude Opus 4.7 | `anthropic/claude-opus-4.7` | $5.00 in / $25.00 out | 1M |
 | DeepSeek V4 Flash | `deepseek/deepseek-v4-flash` | $0.14 in / $0.28 out | 1M |
 | GLM 4.5 Air | `z-ai/glm-4.5-air` | $0.13 in / $0.85 out | 131K |
 | Kimi K2.5 | `moonshotai/kimi-k2.5` | $0.40 in / $1.90 out | 262K |
@@ -35,18 +35,49 @@ Five tasks:
 
 The fifth task matters most for Meph because Meph normally has syntax context.
 
-Total spend: about **$0.032** across 20 calls.
+Total spend: about **$0.139** across 30 calls.
 
 ## Results
 
 | Rank | Model | Quality | Speed | Cost | Verdict |
 | ---: | --- | --- | --- | --- | --- |
-| 1 | Gemini 3 Flash Preview | Best overall | Best | Medium | Use as cheap default |
-| 2 | DeepSeek V4 Flash | Good for extraction, weak for long Clear | Slow | Cheapest | Use for cheap side tasks |
-| 3 | Kimi K2.5 | Good with syntax context, bad visible-output reliability | Very slow | Highest | Do not default |
-| 4 | GLM 4.5 Air | Too unstable for Meph | Medium | Cheap | Avoid for build work |
+| 1 | Claude Opus 4.7 | Best quality | Medium | Highest | Use as ceiling/escalation |
+| 2 | Gemini 3 Flash Preview | Best cheap default | Best | Low | Use for cheap Meph lane |
+| 3 | Claude Sonnet 4.6 | Strong but not decisive | Medium | High | Not worth defaulting here |
+| 4 | DeepSeek V4 Flash | Good extraction, weak long Clear | Slow | Cheapest | Use for cheap side tasks |
+| 5 | Kimi K2.5 | Bad reliability | Very slow | Medium-high | Do not default |
+| 6 | GLM 4.5 Air | Too unstable for Meph | Medium | Cheap | Avoid for build work |
+
+## Visual Report
+
+Open the visual HTML version:
+
+```text
+docs/openrouter-model-benchmark-2026-05-12.html
+```
+
+It includes the task explanations, quality bars, spend bars, latency bars, a
+cost-vs-quality scatter plot, and the compiler-pass comparison.
 
 ## Notes by Model
+
+### Claude Opus 4.7
+
+- Best judged quality: **7.6 / 10**.
+- Only model whose syntax-context Clear app compiled locally.
+- Correctly fixed the allowlist compiler error with the full endpoint URL.
+- Cost: about **$0.0708** for five calls, around **13.5x Gemini**.
+
+Verdict: best ceiling model. Use when correctness matters more than cheap speed.
+
+### Claude Sonnet 4.6
+
+- Judged quality: **5.7 / 10**, barely ahead of Gemini's **5.5 / 10**.
+- Strong requirements and gotcha analysis.
+- Still missed the exact allowlist fix and generated non-compiling Clear in the syntax-context app task.
+- Cost: about **$0.0367**, around **7x Gemini**.
+
+Verdict: good model, but not the right cheap default based on this run.
 
 ### Gemini 3 Flash Preview
 
@@ -54,8 +85,9 @@ Total spend: about **$0.032** across 20 calls.
 - Best Clear-gotcha answer: caught route collision, weak update targeting, and validation/authorization.
 - Completed the syntax-context Clear app in **2.3s** for about **$0.0012**.
 - Weakness: without syntax context, it invented a decorator/class version of Clear.
+- Weakness versus Opus: missed the exact compiler-error fix and did not compile locally on the syntax-context app.
 
-Verdict: best cheap Meph default. It needs syntax context, but Meph already has that.
+Verdict: best cheap Meph default. It is worse than Opus, but much cheaper and faster.
 
 ### DeepSeek V4 Flash
 
@@ -93,14 +125,20 @@ Set Meph's cheap OpenRouter lane to:
 google/gemini-3-flash-preview
 ```
 
+Use Opus as the escalation lane:
+
+```text
+anthropic/claude-opus-4.7
+```
+
 Use DeepSeek V4 Flash only for lower-risk background jobs:
 
 ```text
 deepseek/deepseek-v4-flash
 ```
 
-Do not use Kimi or GLM as the default until a follow-up benchmark proves stable
-visible completions under Meph's real prompt.
+Do not use Sonnet, Kimi, or GLM as the default from this evidence. Sonnet is
+capable, but it did not buy enough quality over Gemini here.
 
 ## Next Benchmark
 
