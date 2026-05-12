@@ -411,6 +411,21 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 .meph-todo.pending .todo-icon::before { content: '○'; }
 .meph-todo.in_progress .todo-icon::before { content: '◉'; }
 .meph-todo.completed .todo-icon::before { content: '✓'; }
+.chat-history-shell { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.chat-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-history-title { font-size: 14px; font-weight: 600; color: var(--tx); }
+.chat-history-search { width: 100%; box-sizing: border-box; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 8px 10px; font: 12px var(--font); }
+.chat-history-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+.chat-history-list { display: flex; flex-direction: column; gap: 6px; }
+.chat-history-item { text-align: left; background: var(--bg); color: var(--tx2); border: 1px solid var(--bd); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.chat-history-item:hover { border-color: var(--accent); background: color-mix(in oklch, var(--accent) 7%, var(--bg)); }
+.chat-history-meta { font-family: var(--mono); font-size: 10px; color: var(--tx3); margin-bottom: 4px; }
+.chat-history-task { font-size: 12px; font-weight: 600; color: var(--tx); margin-bottom: 4px; }
+.chat-history-snippet { font-size: 11px; line-height: 1.45; color: var(--tx3); }
+.chat-history-detail { border-top: 1px solid var(--bd); margin-top: 8px; padding-top: 10px; }
+.chat-history-message { border: 1px solid var(--bd); border-radius: 8px; padding: 8px; margin-bottom: 6px; background: var(--bg); }
+.chat-history-role { font-family: var(--mono); font-size: 10px; color: var(--accent); margin-bottom: 4px; text-transform: uppercase; }
+.chat-history-body { font-size: 12px; line-height: 1.5; color: var(--tx2); white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto; }
 .code-tabs { display: flex; gap: 2px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
 .code-tab { background: none; border: none; padding: 4px 12px; border-radius: 4px; color: var(--tx3); font-size: 11px; font-family: var(--font); font-weight: 500; cursor: pointer; transition: all .15s; }
 .code-tab:hover { background: var(--bg3); color: var(--tx); }
@@ -900,6 +915,7 @@ body.builder-mode.show-source #editor-pane {
       </span>
       <div style="display:flex;gap:4px;">
         <button class="toolbar-btn" onclick="newChat()" style="font-size:11px;padding:2px 8px;" title="Clear chat history">New</button>
+        <button class="toolbar-btn" onclick="showChatHistory()" style="font-size:11px;padding:2px 8px;" title="List and search previous Meph chats">History</button>
         <button class="toolbar-btn" onclick="showMemory()" style="font-size:11px;padding:2px 8px;" title="Meph's persistent memory">Memory</button>
         <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Meph">Personality</button>
         <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
@@ -947,6 +963,7 @@ body.builder-mode.show-source #editor-pane {
       <span><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></span>
       <div style="display:flex;gap:4px;align-items:center;">
         <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)" style="font-size:11px;padding:2px 8px;">↩ Undo</button>
+        <button class="toolbar-btn" onclick="copyEditorSource()" title="Copy the Clear source in the editor" style="font-size:11px;padding:2px 8px;">Copy Source</button>
         <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Meph chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
       </div>
     </div>
@@ -1898,7 +1915,7 @@ async function autoCompile() {
       // Deploy button is visible on compile success when the customer has an active plan
       (async () => {
         try {
-          const tr = await fetch('/api/tenant').then(r => r.ok ? r.json() : null).catch(() => null);
+          const tr = await fetchTenantStatus();
           const canDeploy = tr && tr.ok && tr.plan && tr.plan !== 'cancelled';
           document.getElementById('deploy-btn').style.display = canDeploy ? '' : 'none';
           updatePlanBadge(tr);
@@ -1917,22 +1934,12 @@ async function autoCompile() {
         runCompileAnimation(source, animTarget);
       }
 
-      // Auto-preview: web apps show instantly; JS backends auto-run
-      // BUT don't switch tabs if compile animation is playing
-      if (!compileAnimRunning) {
-        if (lastCompiled.html && !lastCompiled.serverJS) {
-          showTab('output');
-        } else if (lastCompiled.serverJS) {
-          if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
-          doRun();
-        } else {
-          if (activeTab === 'output') showOutput();
-          else if (activeTab === 'compiled') showCompiled();
-        }
-      } else if (lastCompiled.serverJS) {
-        // Still start the server in the background, just don't switch tabs
+      // Compile is a user-facing build action: end on Preview so the result is visible.
+      if (lastCompiled.serverJS) {
         if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
-        doRun();
+        await doRun();
+      } else {
+        showCompiledAppPreview();
       }
     } else {
       if (dot) dot.className = 'dot err';
@@ -1984,6 +1991,12 @@ window.doUndo = function() { if (undoCmd) undoCmd(editor); editor.focus(); };
 // ==========================================================================
 let activeTab = 'output';
 let runningPort = null; // port where backend app is running
+
+function showCompiledAppPreview() {
+  compileAnimCancel = true;
+  compileAnimRunning = false;
+  showTab('output');
+}
 
 function showOutput() {
   const el = document.getElementById('preview-content');
@@ -2468,6 +2481,16 @@ window.copyTerminal = async function() {
     appendTerminalText('Copied terminal output (' + lines.length + ' line(s)) plus source to clipboard. Paste it into a chat to ask for help.', 'term-ok');
   } catch (err) {
     appendTerminalText('Could not copy terminal: ' + (err.message || String(err)), 'term-err');
+  }
+};
+
+window.copyEditorSource = async function() {
+  const source = (window._editor && window._editor.state.doc.toString()) || '';
+  try {
+    await navigator.clipboard.writeText(source);
+    appendTerminalText('Copied Clear source to clipboard.', 'term-ok');
+  } catch (err) {
+    appendTerminalText('Could not copy Clear source: ' + (err.message || String(err)), 'term-err');
   }
 };
 
@@ -3949,10 +3972,7 @@ window.doRun = async function() {
       setStatus('ok', 'Running :' + data.port);
       runningPort = data.port;
       studioTelemetry.firstApp('run');
-      // Show output — but don't switch tabs if compile animation is playing
-      if (!compileAnimRunning) {
-        showTab('compiled');
-      }
+      showCompiledAppPreview();
       // Auto-run tests after server starts — switch to Tests tab if any fail
       autoRunTests();
     }
@@ -3985,6 +4005,20 @@ function updatePlanBadge(t) {
   el.style.display = '';
   const over = (t.ai_spent_cents > t.ai_credit_cents) || (t.plan === 'pro' && t.apps_deployed >= 25);
   el.style.color = over ? '#e74c3c' : 'var(--tx2)';
+}
+
+function hasClearTenantCookie() {
+  return document.cookie.split(';').some(part => part.trim().startsWith('clear_tenant='));
+}
+
+async function fetchTenantStatus() {
+  if (!hasClearTenantCookie()) return null;
+  try {
+    const r = await fetch('/api/tenant');
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 function deployStageLabel(status) {
@@ -4784,6 +4818,140 @@ window.closeMemory = function() {
   showingKeySetup = false;
   renderChat();
 };
+
+function chatHistoryText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(part => {
+      if (typeof part === 'string') return part;
+      if (!part || typeof part !== 'object') return '';
+      if (typeof part.text === 'string') return part.text;
+      if (part.type === 'image') return '[image]';
+      try { return JSON.stringify(part); } catch { return ''; }
+    }).filter(Boolean).join('\n');
+  }
+  if (content && typeof content === 'object') {
+    try { return JSON.stringify(content); } catch { return ''; }
+  }
+  return '';
+}
+
+function chatHistoryTime(seconds) {
+  const value = Number(seconds || 0);
+  if (!value) return 'unknown time';
+  try { return new Date(value * 1000).toLocaleString(); } catch { return 'unknown time'; }
+}
+
+function renderChatHistoryShell(query = '') {
+  return `<div class="chat-history-shell">
+    <div class="chat-history-head">
+      <div class="chat-history-title">Previous chats</div>
+      <button class="toolbar-btn" onclick="closeChatHistory()" style="font-size:11px;padding:2px 8px;">Close</button>
+    </div>
+    <input id="chat-history-search" class="chat-history-search" value="${escAttr(query)}" placeholder="Search previous chats..." oninput="queueChatHistorySearch()">
+    <div id="chat-history-list" class="chat-history-list"><div class="chat-history-snippet">Loading...</div></div>
+    <div id="chat-history-detail" class="chat-history-detail" style="display:none"></div>
+  </div>`;
+}
+
+function renderChatHistoryList(chats) {
+  const list = document.getElementById('chat-history-list');
+  if (!list) return;
+  if (!Array.isArray(chats) || chats.length === 0) {
+    list.innerHTML = '<div class="chat-history-snippet">No saved chats found.</div>';
+    return;
+  }
+  list.innerHTML = chats.map(chat => {
+    const title = chat.task || '(untitled chat)';
+    const meta = `${chatHistoryTime(chat.ended_at || chat.updated_at)} · ${chat.message_count || 0} messages · ${chat.model || 'unknown'}`;
+    return `<button class="chat-history-item" onclick="openChatHistory('${escAttr(chat.id)}')">
+      <div class="chat-history-meta">${escHtml(meta)}</div>
+      <div class="chat-history-task">${escHtml(title)}</div>
+      <div class="chat-history-snippet">${escHtml(chat.snippet || '')}</div>
+    </button>`;
+  }).join('');
+}
+
+function renderChatHistoryDetail(chat) {
+  const detail = document.getElementById('chat-history-detail');
+  if (!detail) return;
+  const messages = Array.isArray(chat.messages) ? chat.messages : [];
+  const renderedMessages = messages.slice(-12).map(message => {
+    const role = message.role || 'message';
+    const body = chatHistoryText(message.content);
+    return `<div class="chat-history-message">
+      <div class="chat-history-role">${escHtml(role)}</div>
+      <div class="chat-history-body">${escHtml(body || '(empty)')}</div>
+    </div>`;
+  }).join('');
+  detail.style.display = '';
+  detail.innerHTML = `<div class="chat-history-head">
+      <div class="chat-history-title">${escHtml(chat.task || chat.id || 'Chat')}</div>
+      <button class="toolbar-btn" onclick="copyChatHistory('${escAttr(chat.id)}')" style="font-size:11px;padding:2px 8px;">Copy</button>
+    </div>
+    <div class="chat-history-meta">${escHtml(chatHistoryTime(chat.ended_at || chat.started_at))} · ${escHtml(chat.model || 'unknown')}</div>
+    ${renderedMessages || '<div class="chat-history-snippet">No messages recorded.</div>'}`;
+}
+
+let chatHistorySearchTimer = null;
+window.showChatHistory = async function(query = '') {
+  showingKeySetup = true;
+  const el = document.getElementById('chat-messages');
+  el.innerHTML = renderChatHistoryShell(query);
+  await loadChatHistory(query);
+  const input = document.getElementById('chat-history-search');
+  if (input) input.focus();
+};
+
+window.queueChatHistorySearch = function() {
+  clearTimeout(chatHistorySearchTimer);
+  chatHistorySearchTimer = setTimeout(() => {
+    const input = document.getElementById('chat-history-search');
+    loadChatHistory(input ? input.value : '');
+  }, 180);
+};
+
+window.loadChatHistory = async function(query = '') {
+  const list = document.getElementById('chat-history-list');
+  if (list) list.innerHTML = '<div class="chat-history-snippet">Searching...</div>';
+  try {
+    const res = await fetch('/api/meph-chats?limit=50&q=' + encodeURIComponent(query));
+    const data = await res.json();
+    renderChatHistoryList(data.chats || []);
+  } catch (err) {
+    if (list) list.innerHTML = '<div class="chat-history-snippet">Could not load previous chats.</div>';
+  }
+};
+
+window.openChatHistory = async function(id) {
+  const detail = document.getElementById('chat-history-detail');
+  if (detail) { detail.style.display = ''; detail.innerHTML = '<div class="chat-history-snippet">Loading chat...</div>'; }
+  try {
+    const res = await fetch('/api/meph-chats/' + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load chat');
+    renderChatHistoryDetail(data.chat);
+  } catch (err) {
+    if (detail) detail.innerHTML = '<div class="chat-history-snippet">Could not load this chat.</div>';
+  }
+};
+
+window.copyChatHistory = async function(id) {
+  try {
+    const res = await fetch('/api/meph-chats/' + encodeURIComponent(id));
+    const data = await res.json();
+    await navigator.clipboard.writeText(JSON.stringify(data.chat || data, null, 2));
+    showToast('Copied previous chat.');
+  } catch (err) {
+    showToast('Could not copy chat.');
+  }
+};
+
+window.closeChatHistory = function() {
+  showingKeySetup = false;
+  renderChat();
+};
+
 window.showKeySetup = function() {
   showingKeySetup = true;
   const el = document.getElementById('chat-messages');
@@ -6691,7 +6859,7 @@ loadTemplates();
 // Fetch tenant info on boot — drives Deploy button visibility + plan badge
 (async () => {
   try {
-    const t = await fetch('/api/tenant').then(r => r.ok ? r.json() : null).catch(() => null);
+    const t = await fetchTenantStatus();
     updatePlanBadge(t);
   } catch {}
 })();

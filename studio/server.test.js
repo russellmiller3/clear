@@ -7,7 +7,7 @@
 
 import { spawn } from 'child_process';
 import { dirname, join } from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { checkInlineInteractionVerbAgreement } from '../lib/verb-agreement.js';
 import { requirementsId } from './supervisor/requirements-contract.js';
@@ -149,6 +149,13 @@ async function get(path) {
 async function getJson(path) {
   const r = await fetch(BASE + path);
   return { status: r.status, data: await r.json() };
+}
+
+async function getMaybeJson(path) {
+  const r = await fetch(BASE + path);
+  const text = await r.text();
+  try { return { status: r.status, data: JSON.parse(text), raw: text }; }
+  catch { return { status: r.status, data: null, raw: text }; }
 }
 
 // =============================================================================
@@ -783,6 +790,10 @@ when user sends deal to /api/deals:
     assert(text.includes('formatMephChatContextForCopy'), 'compiler-error clipboard path formats Meph chat context');
     assert(text.includes('## Meph chat context'), 'compiler-error clipboard bundle includes Meph chat context heading');
     assert(!text.includes('Copy trace for Codex'), 'studio.html does not use Codex-specific trace label');
+    assert(text.includes('Copy Source'), 'studio.html exposes a button to copy the Clear editor source');
+    assert(text.includes('copyEditorSource'), 'studio.html wires the Clear editor source copy action');
+    assert(text.includes('showCompiledAppPreview'), 'studio.html centralizes compile success on the Preview tab');
+    assert(!text.includes("showTab('compiled');\n      }\n      // Auto-run tests after server starts"), 'backend run success does not switch users to the Code tab');
     assert(text.includes('requirements-review'), 'studio.html renders requirements review cards');
     assert(text.includes('approveRequirements'), 'studio.html can approve requirements from chat');
     assert(text.includes('approvedRequirementsId'), 'studio.html sends approved requirements back to Meph');
@@ -820,8 +831,13 @@ when user sends deal to /api/deals:
     assert(text.includes('recordMephModelUsage'), 'studio.html tracks model usage for Meph chat cost display');
     assert(text.includes("'model_usage'"), 'studio.html handles model_usage events');
     assert(text.includes('openrouter_cost'), 'Meph cost tracker uses OpenRouter cost metadata when present');
+      assert(text.includes('showChatHistory'), 'studio.html exposes previous Meph chat history');
+      assert(text.includes('chat-history-search'), 'studio.html has a previous-chat text search box');
+      assert(text.includes('/api/meph-chats'), 'studio.html reads previous chats from the server transcript index');
+      assert(text.includes('function fetchTenantStatus'), 'studio.html centralizes tenant status fetching');
+      assert(!text.includes("fetch('/api/tenant').then"), 'studio.html does not trigger boot-time tenant 401 noise');
 
-    // Verify the CSS bug fix: context-meter should NOT have duplicate display properties
+      // Verify the CSS bug fix: context-meter should NOT have duplicate display properties
     const meterMatch = text.match(/id="context-meter"[^>]*style="([^"]*)"/);
     if (meterMatch) {
       const styleStr = meterMatch[1];
@@ -836,6 +852,68 @@ when user sends deal to /api/deals:
     const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
     assert(serverSrc.includes('estimateContextUsage'), 'server.js has estimateContextUsage function');
     assert(serverSrc.includes("type: 'context_usage'"), 'server.js sends context_usage event');
+  }
+
+  {
+    const chatId = `test-chat-search-${Date.now()}`;
+    const transcriptPath = join(__dirname, 'sessions', `${chatId}.transcript.json`);
+    writeFileSync(transcriptPath, JSON.stringify({
+      id: chatId,
+      started_at: 1710000000,
+      ended_at: 1710000060,
+      model: 'test-model',
+      backend: 'test',
+      task: 'approval workflow smoke',
+      message_count: 2,
+      messages: [
+        { role: 'user', content: 'Build an approval queue for expenses' },
+        { role: 'assistant', content: [{ type: 'text', text: 'I built the approval queue.' }] },
+      ],
+      final_source: "page 'Approval' at '/':\n  heading 'Approval queue'",
+    }), 'utf8');
+    try {
+      const list = await getMaybeJson('/api/meph-chats?q=expenses');
+      assert(list.status === 200, 'previous Meph chats list endpoint returns 200');
+      assert(Array.isArray(list.data?.chats), 'previous Meph chats list returns chats array');
+      const chats = Array.isArray(list.data?.chats) ? list.data.chats : [];
+      assert(chats.some(c => c.id === chatId), 'previous Meph chats search finds matching transcript text');
+      const hit = chats.find(c => c.id === chatId);
+      assert(hit && typeof hit.snippet === 'string' && hit.snippet.includes('approval queue'), 'previous Meph chats search returns a useful snippet');
+
+      const detail = await getMaybeJson(`/api/meph-chats/${chatId}`);
+      assert(detail.status === 200, 'previous Meph chat detail endpoint returns 200');
+      assert(detail.data?.chat?.id === chatId, 'previous Meph chat detail returns the requested transcript');
+      assert(Array.isArray(detail.data?.chat?.messages), 'previous Meph chat detail includes messages');
+    } finally {
+      try { unlinkSync(transcriptPath); } catch {}
+    }
+  }
+
+  {
+    const chatId = `test-chat-bom-${Date.now()}`;
+    const transcriptPath = join(__dirname, 'sessions', `${chatId}.transcript.json`);
+    writeFileSync(transcriptPath, '\uFEFF' + JSON.stringify({
+      id: chatId,
+      started_at: 1710000000,
+      ended_at: 1710000060,
+      model: 'test-model',
+      backend: 'test',
+      task: 'bomclearhistoryneedle',
+      message_count: 1,
+      messages: [
+        { role: 'user', content: 'Find chats even if a transcript has a BOM' },
+      ],
+    }), 'utf8');
+    try {
+      const list = await getMaybeJson('/api/meph-chats?q=bomclearhistoryneedle');
+      const chats = Array.isArray(list.data?.chats) ? list.data.chats : [];
+      assert(chats.some(c => c.id === chatId), 'previous Meph chats list tolerates UTF-8 BOM transcripts');
+
+      const detail = await getMaybeJson(`/api/meph-chats/${chatId}`);
+      assert(detail.status === 200, 'previous Meph chat detail tolerates UTF-8 BOM transcripts');
+    } finally {
+      try { unlinkSync(transcriptPath); } catch {}
+    }
   }
 
   // =========================================================================

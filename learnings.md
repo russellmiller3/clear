@@ -2,6 +2,26 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-12: Chat transcripts are not quality records
+
+Meph chat history belongs in Studio, but transcript files are a different artifact from session-quality rows. A manually saved transcript with a UTF-8 BOM exposed both edges: history search should tolerate BOMs, and quality dashboards should ignore transcript files.
+
+### Gotchas-as-rules
+
+- **Transcript readers should tolerate UTF-8 BOMs.** Debug files and Windows-created fixtures can carry one.
+- **Measurement endpoints must filter to their own record type.** Chat transcripts should not masquerade as quality rows.
+- **History search should fail soft on weird files.** One bad saved chat should not break browsing the rest.
+
+## Session 2026-05-12: Compile should land on the running app
+
+The Compile button successfully built and ran full-stack apps, but the final UI handoff switched users into the generated-code view. That left the preview iframe stale or visibly refused even though the app server had come up.
+
+### Gotchas-as-rules
+
+- **Successful Compile should end on Preview.** Users asked to see the app result, not generated plumbing.
+- **Backend preview refresh must happen after the live port is known.** A server-start success should rebuild the iframe from the current port.
+- **Editor copy buttons should read CodeMirror state.** Copy source from the editor document, not DOM text or compiled output.
+
 ## Session 2026-05-12: New chat must reset every session-only Meph surface
 
 The New button cleared saved chat messages, but it left the context meter and task list looking like the old session was still active. That made a fresh Meph run feel contaminated before the user typed anything.
