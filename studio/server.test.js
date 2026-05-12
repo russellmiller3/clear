@@ -779,6 +779,9 @@ when user sends deal to /api/deals:
     assert(text.includes('Clear'), 'studio.html contains Clear');
     assert(text.includes('CodeMirror') || text.includes('codemirror'), 'studio.html references CodeMirror');
     assert(text.includes('Copy compiler error'), 'studio.html labels trace button as Copy compiler error');
+    assert(text.includes('buildCompilerErrorClipboardText'), 'studio.html builds a compiler-error clipboard bundle');
+    assert(text.includes('formatMephChatContextForCopy'), 'compiler-error clipboard path formats Meph chat context');
+    assert(text.includes('## Meph chat context'), 'compiler-error clipboard bundle includes Meph chat context heading');
     assert(!text.includes('Copy trace for Codex'), 'studio.html does not use Codex-specific trace label');
     assert(text.includes('requirements-review'), 'studio.html renders requirements review cards');
     assert(text.includes('approveRequirements'), 'studio.html can approve requirements from chat');

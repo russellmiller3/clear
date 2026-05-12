@@ -2,6 +2,16 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-12: Copyable compiler failures need the chat context
+
+The compiler trace had the failing line, source snapshot, and diagnostics, but it dropped the conversation that caused Meph to write that source. A fresh debugging session could see what broke without seeing the user's intent.
+
+### Gotchas-as-rules
+
+- **Copyable compiler failures need the chat that produced them.** Include current Russell/Meph turns with the trace.
+- **Do not copy image payload bytes into text packets.** Include an explicit attachment placeholder instead.
+- **Clipboard tests should check the copied packet, not just the button label.** A visible copy button can still copy the wrong context.
+
 ## Session 2026-05-12: Missing app intent should compile-error, not auto-invent UI
 
 A protected page redirected to `/login`, but the app source never declared a login page. The wrong fix was to synthesize a login page. That violates Clear's source-of-truth rule: the source is the contract, not a hint.

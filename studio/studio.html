@@ -4490,12 +4490,116 @@ function showErrors(errors, warnings, compileTrace) {
   el.innerHTML = html;
 }
 
+function stringifyChatValueForCopy(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value, null, 2); }
+  catch { return String(value); }
+}
+
+function formatChatContentForCopy(content) {
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (part?.type === 'text') return part.text || '';
+      if (part?.type === 'image') return '[image attachment omitted from clipboard]';
+      return '[' + (part?.type || 'unknown attachment') + ']';
+    }).filter(Boolean).join('\n');
+  }
+  return stringifyChatValueForCopy(content);
+}
+
+function formatMessageTimelineForCopy(message) {
+  const timeline = Array.isArray(message?.timeline) ? message.timeline : [];
+  if (!timeline.length) return '';
+  const lines = [];
+  for (const event of timeline) {
+    if (event.type === 'thinking' && String(event.text || '').trim()) {
+      lines.push('[thinking]');
+      lines.push(String(event.text || '').trim());
+    } else if (event.type === 'text' && String(event.text || '').trim()) {
+      lines.push(String(event.text || '').trim());
+    } else if (event.type === 'tool') {
+      const label = event.summary || event.name || 'tool';
+      lines.push('[tool] ' + label + (event.done ? '' : ' (still running)'));
+    }
+  }
+  return lines.join('\n\n');
+}
+
+function formatRequirementsContextForCopy(message) {
+  const parts = [];
+  if (message?.requirementsReview) {
+    const review = message.requirementsReview;
+    parts.push('Requirements review:');
+    for (const req of (review.requirements || [])) parts.push('- ' + req);
+    if (review.errors?.length) {
+      parts.push('Requirement errors:');
+      for (const err of review.errors) parts.push('- ' + err);
+    }
+    if (review.approved) parts.push('Requirements approved.');
+  }
+  if (message?.requirementsAudit) {
+    const audit = message.requirementsAudit;
+    parts.push('Requirements audit: ' + (audit.summary || ''));
+    for (const item of (audit.items || [])) {
+      parts.push('- ' + (item.status || 'unknown') + ': ' + (item.text || 'Unnamed requirement') + (item.reason ? ' -- ' + item.reason : ''));
+    }
+  }
+  return parts.join('\n');
+}
+
+function formatMephChatContextForCopy(messages) {
+  const visible = (Array.isArray(messages) ? messages : chatMessages).filter(m => m && m.role !== 'system');
+  const parts = ['## Meph chat context', ''];
+  if (!visible.length) {
+    parts.push('_(No Meph chat messages in this browser session.)_');
+    return parts.join('\n');
+  }
+  visible.forEach((message, index) => {
+    const speaker = message.role === 'assistant' ? 'Meph' : message.role === 'user' ? 'Russell' : message.role || 'message';
+    parts.push('### ' + (index + 1) + '. ' + speaker);
+    parts.push('');
+    const timelineText = speaker === 'Meph' ? formatMessageTimelineForCopy(message) : '';
+    const body = (timelineText || formatChatContentForCopy(message.content)).trim();
+    parts.push(body || '_(no visible text)_');
+    if (!timelineText && Array.isArray(message.toolSteps) && message.toolSteps.length) {
+      parts.push('');
+      parts.push('Tools:');
+      for (const step of message.toolSteps) {
+        const label = typeof step === 'object' ? (step.summary || step.name || 'tool') : step;
+        parts.push('- ' + label);
+      }
+    }
+    const requirementsContext = formatRequirementsContextForCopy(message);
+    if (requirementsContext) {
+      parts.push('');
+      parts.push(requirementsContext);
+    }
+    if (message.streaming) {
+      parts.push('');
+      parts.push('_(This message was still streaming when copied.)_');
+    }
+    parts.push('');
+  });
+  return parts.join('\n').trim();
+}
+
+function buildCompilerErrorClipboardText(traceText) {
+  return [
+    traceText,
+    '',
+    '---',
+    '',
+    formatMephChatContextForCopy(chatMessages),
+  ].join('\n');
+}
+
 window.copyCompileTrace = async function() {
   const text = lastCompiled?.compileTrace?.pasteText;
   if (!text) return;
   try {
-    await navigator.clipboard.writeText(text);
-    appendTerminalText('Copied compiler error.');
+    await navigator.clipboard.writeText(buildCompilerErrorClipboardText(text));
+    appendTerminalText('Copied compiler error plus Meph chat context.');
   } catch (err) {
     appendTerminalText('Could not copy compiler error: ' + (err.message || String(err)));
   }
