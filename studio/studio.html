@@ -1371,13 +1371,13 @@ const proveGutterExt = gutter({
   },
 });
 
-const _savedEditor = localStorage.getItem('clear_editor_content');
+const EMPTY_EDITOR_SOURCE = '';
+try {
+  localStorage.removeItem('clear_editor_content');
+  localStorage.removeItem('clear_editor_loaded_template');
+} catch (_) {}
 const editor = new EditorView({
-  doc: _savedEditor || `# Welcome to Clear Studio
-# Pick a template from the dropdown, or start typing.
-
-show 'Hello, Clear!'
-`,
+  doc: EMPTY_EDITOR_SOURCE,
   extensions: [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -1507,17 +1507,6 @@ window._editor = editor;      // For chat apply
 window._editorView = editor;  // For tests
 window._sourceMapData = () => sourceMapData; // For debugging/tests
 window._debug = () => ({ compileAnimRunning, sourceMapTab, compiledTab, hasCompiledView: !!compiledView, hasSourceMap: !!sourceMapData, activeTab });
-
-// Russell's startup-freshness rule (2026-05-04): if the editor is showing a
-// previously-picked template (deal-desk, helpdesk-agent, etc.), refresh from
-// disk on every Studio start. The function below is defined later in this
-// file (after loadTemplateByName); fire it as soon as the editor exists so
-// the user sees the latest disk content before they touch anything.
-queueMicrotask(() => {
-  if (typeof window.refreshLoadedTemplateFromDisk === 'function') {
-    window.refreshLoadedTemplateFromDisk();
-  }
-});
 
 // ==========================================================================
 // ROTATING QUOTES
@@ -6428,6 +6417,7 @@ database is local memory
   document.getElementById('editor-label').textContent = 'main.clear';
   document.getElementById('template-picker').value = '';
   localStorage.removeItem('clear_editor_content');
+  localStorage.removeItem('clear_editor_loaded_template');
   localStorage.removeItem('clear_terminal_log');
   localStorage.removeItem('clear_terminal_entries');
   terminalEntries = ['<span class="term-status">Terminal ready. Click Run to start an app.</span>'];

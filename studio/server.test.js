@@ -794,6 +794,10 @@ when user sends deal to /api/deals:
     assert(text.includes('copyEditorSource'), 'studio.html wires the Clear editor source copy action');
     assert(text.includes('showCompiledAppPreview'), 'studio.html centralizes compile success on the Preview tab');
     assert(!text.includes("showTab('compiled');\n      }\n      // Auto-run tests after server starts"), 'backend run success does not switch users to the Code tab');
+    assert(text.includes('const EMPTY_EDITOR_SOURCE'), 'studio.html names the blank startup editor source');
+    assert(text.includes('doc: EMPTY_EDITOR_SOURCE'), 'studio.html starts the editor blank on page load');
+    assert(!text.includes("localStorage.getItem('clear_editor_content')"), 'studio.html does not restore stale editor source from localStorage');
+    assert(!text.includes('refreshLoadedTemplateFromDisk();'), 'studio.html does not auto-load the last selected template on startup');
     assert(text.includes('requirements-review'), 'studio.html renders requirements review cards');
     assert(text.includes('approveRequirements'), 'studio.html can approve requirements from chat');
     assert(text.includes('approvedRequirementsId'), 'studio.html sends approved requirements back to Meph');

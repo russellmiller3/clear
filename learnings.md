@@ -2,6 +2,16 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-12: Studio startup should not restore old editor state
+
+Studio was restoring the last editor source from browser storage and then refreshing the last selected template from disk. That made a restart reopen approval-queue even when the expected startup state was a blank editor.
+
+### Gotchas-as-rules
+
+- **Startup defaults beat browser persistence.** If the product says "new session starts blank," ignore stale localStorage on boot.
+- **Template freshness should not auto-load a template.** Refreshing a selected template is useful only after the user selects one.
+- **Clear all paired persistence keys together.** Source text and selected template name must reset as a pair.
+
 ## Session 2026-05-12: Chat transcripts are not quality records
 
 Meph chat history belongs in Studio, but transcript files are a different artifact from session-quality rows. A manually saved transcript with a UTF-8 BOM exposed both edges: history search should tolerate BOMs, and quality dashboards should ignore transcript files.
