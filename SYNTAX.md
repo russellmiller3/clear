@@ -10,15 +10,8 @@ Use this file as a **reference**, not a tutorial. For AI, the best shape is:
 2. Jump to the exact heading in the **Table of Contents**.
 3. Copy the smallest valid example from that section.
 4. Prefer the canonical form shown first. Legacy aliases are compatibility only.
-5. Use `FAQ.md` for repo navigation, task recipes, and "why did this fail?"
-   questions. Do not treat it as the canonical syntax source.
-
-`FAQ.md` is for external agents like Codex, Claude, or another repo assistant
-that needs operational context before touching Clear. It is good for questions
-like "Where does this behavior live?", "How do I build an approval queue?", or
-"Why did this endpoint fail?" It is not the best format for the complete syntax
-surface. This file should stay structured by language feature so agents can
-retrieve the right primitive quickly.
+5. Stay inside this file for syntax decisions. This file should stay structured
+   by language feature so agents can retrieve the right primitive quickly.
 
 ## Quick Routing Map
 
