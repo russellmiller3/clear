@@ -4689,17 +4689,25 @@ let lastSentMephModel = selectedMephModel;
 let mephModelChangedSinceLastSend = false;
 let approvedRequirements = null;
 let approvedRequirementsId = null;
+let lastMephContextUsage = null;
+let promptOnlyContextUsage = null;
+let mephCostTrackerActive = false;
+let mephUsageTotals = { inputTokens: 0, outputTokens: 0, costUSD: 0 };
+let mephUsageSeen = new Set();
+let currentMephTodos = [];
 
 let showingKeySetup = false;
 
 window.newChat = function() {
   if (currentAbort) currentAbort.abort();
+  resetMephSessionStateForNewChat();
   chatMessages = [];
   approvedRequirements = null;
   approvedRequirementsId = null;
   localStorage.removeItem('clear_chat_messages');
   showingKeySetup = false;
   document.getElementById('chat-messages').innerHTML = '';
+  renderMephTodos([]);
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
   document.getElementById('chat-send').disabled = false;
   document.getElementById('chat-send').style.display = '';
@@ -5396,17 +5404,99 @@ function restoreChatOrWelcome() {
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
 }
 
-function updateContextMeter(percent, used, max) {
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function estimateChatMessagesContextTokens(messages) {
+  const visible = Array.isArray(messages) ? messages.filter(m => m && m.role !== 'system') : [];
+  const chars = visible.reduce((sum, message) => sum + JSON.stringify(message.content || '').length, 0);
+  return Math.round(chars / 4);
+}
+
+function resetMephCostTracker({ keepVisible = true } = {}) {
+  mephCostTrackerActive = keepVisible;
+  mephUsageTotals = { inputTokens: 0, outputTokens: 0, costUSD: 0 };
+  mephUsageSeen = new Set();
+}
+
+function resetMephSessionStateForNewChat() {
+  const max = lastMephContextUsage?.max || promptOnlyContextUsage?.max || 200000;
+  const priorUsed = lastMephContextUsage?.used || promptOnlyContextUsage?.used || 0;
+  const promptUsed = Math.max(0, priorUsed - estimateChatMessagesContextTokens(chatMessages));
+  promptOnlyContextUsage = {
+    used: promptUsed,
+    max,
+    percent: max ? Math.round((promptUsed / max) * 100) : 0,
+  };
+  lastMephContextUsage = { ...promptOnlyContextUsage };
+  resetMephCostTracker({ keepVisible: true });
+  renderMephSessionMeter();
+}
+
+function renderMephSessionMeter() {
   const meter = document.getElementById('context-meter');
   const bar = document.getElementById('context-bar');
   const label = document.getElementById('context-label');
   if (!meter || !bar || !label) return;
+  const hasContext = !!lastMephContextUsage;
+  const hasCost = mephCostTrackerActive || mephUsageTotals.costUSD > 0;
+  if (!hasContext && !hasCost) {
+    meter.style.display = 'none';
+    return;
+  }
+  const max = lastMephContextUsage?.max || 200000;
+  const used = lastMephContextUsage?.used || 0;
+  const percent = lastMephContextUsage?.percent ?? (max ? Math.round((used / max) * 100) : 0);
   meter.style.display = 'flex';
   bar.style.width = percent + '%';
   bar.style.background = percent > 80 ? 'var(--red)' : percent > 50 ? 'var(--warning, orange)' : 'var(--accent)';
   const usedK = Math.round(used / 1000);
   const maxK = Math.round(max / 1000);
-  label.textContent = `${usedK}k / ${maxK}k tokens (${percent}%)`;
+  const costText = '$' + mephUsageTotals.costUSD.toFixed(4);
+  label.textContent = `${usedK}k / ${maxK}k tokens (${percent}%)` + (hasCost ? ` · ${costText}` : '');
+  label.title = hasCost
+    ? `${mephUsageTotals.inputTokens} input / ${mephUsageTotals.outputTokens} output model tokens this chat`
+    : '';
+}
+
+function updateContextMeter(percent, used, max) {
+  lastMephContextUsage = { percent, used, max };
+  const promptUsed = Math.max(0, used - estimateChatMessagesContextTokens(chatMessages));
+  promptOnlyContextUsage = {
+    used: promptUsed,
+    max,
+    percent: max ? Math.round((promptUsed / max) * 100) : 0,
+  };
+  renderMephSessionMeter();
+}
+
+function recordMephModelUsage(usage = {}) {
+  const usageId = usage.openrouter_generation_id || usage.generation_id || usage.id || '';
+  if (usageId && mephUsageSeen.has(usageId)) return;
+  if (usageId) mephUsageSeen.add(usageId);
+
+  const inputTokens = firstFiniteNumber(usage.input_tokens, usage.prompt_tokens)
+    + finiteNumber(usage.cache_read_input_tokens)
+    + finiteNumber(usage.cache_creation_input_tokens);
+  const outputTokens = firstFiniteNumber(usage.output_tokens, usage.completion_tokens);
+  const costUSD = firstFiniteNumber(usage.openrouter_cost, usage.costUSD, usage.cost_usd, usage.cost);
+
+  mephCostTrackerActive = true;
+  mephUsageTotals.inputTokens += inputTokens;
+  mephUsageTotals.outputTokens += outputTokens;
+  mephUsageTotals.costUSD += costUSD;
+  renderMephSessionMeter();
 }
 
 function saveChatState() {
@@ -5954,6 +6044,8 @@ window.sendChat = async function() {
         } else if (ev.type === 'test_results') {
           testResults[ev.testType] = ev;
           if (activeTab === 'tests') showTests();
+        } else if (ev.type === 'model_usage') {
+          recordMephModelUsage(ev.usage);
         } else if (ev.type === 'todo_update') {
           renderMephTodos(ev.todos);
         } else if (ev.type === 'requirements_review') {
@@ -6460,8 +6552,9 @@ document.addEventListener('keydown', e => {
 function renderMephTodos(todos) {
   const el = document.getElementById('meph-todos');
   if (!el) return;
-  if (!todos || todos.length === 0) { el.innerHTML = ''; return; }
-  el.innerHTML = todos.map(t =>
+  currentMephTodos = Array.isArray(todos) ? todos : [];
+  if (currentMephTodos.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = currentMephTodos.map(t =>
     `<div class="meph-todo ${t.status}"><span class="todo-icon"></span>${escHtml(t.status === 'in_progress' ? t.activeForm : t.content)}</div>`
   ).join('');
 }

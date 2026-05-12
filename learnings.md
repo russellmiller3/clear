@@ -2,6 +2,16 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-12: New chat must reset every session-only Meph surface
+
+The New button cleared saved chat messages, but it left the context meter and task list looking like the old session was still active. That made a fresh Meph run feel contaminated before the user typed anything.
+
+### Gotchas-as-rules
+
+- **New chat must clear every session-only surface.** Chat, task list, token meter, and cost tracker reset together.
+- **Token reset should preserve only prompt/tool baseline.** Old user and Meph turns must not keep inflating the visible context count.
+- **Cost tracking should use provider usage metadata.** For OpenRouter, prefer the streamed `openrouter_cost` value over local price guesses.
+
 ## Session 2026-05-12: Copyable compiler failures need the chat context
 
 The compiler trace had the failing line, source snapshot, and diagnostics, but it dropped the conversation that caused Meph to write that source. A fresh debugging session could see what broke without seeing the user's intent.

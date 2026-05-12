@@ -815,6 +815,11 @@ when user sends deal to /api/deals:
     assert(text.includes('id="context-label"'), 'studio.html has context-label span');
     assert(text.includes('updateContextMeter'), 'studio.html has updateContextMeter function');
     assert(text.includes("'context_usage'"), 'studio.html handles context_usage event');
+    assert(text.includes('resetMephSessionStateForNewChat'), 'New chat resets session-only context meter state');
+    assert(text.includes('renderMephTodos([])'), 'New chat clears the visible Meph task list');
+    assert(text.includes('recordMephModelUsage'), 'studio.html tracks model usage for Meph chat cost display');
+    assert(text.includes("'model_usage'"), 'studio.html handles model_usage events');
+    assert(text.includes('openrouter_cost'), 'Meph cost tracker uses OpenRouter cost metadata when present');
 
     // Verify the CSS bug fix: context-meter should NOT have duplicate display properties
     const meterMatch = text.match(/id="context-meter"[^>]*style="([^"]*)"/);
