@@ -781,3 +781,15 @@ These are deliberate non-goals. Each has been considered and rejected.
 | Per-user app forks | Every employee seeing a fundamentally different version of the app destroys the shared ontology. Audit/compliance nightmare. See Live App Editing in ROADMAP for the right answer (owner-initiated changes that ship to everyone). |
 
 - **AI provider routing (Phase 6, 2026-05-13)** — Clear apps can target Anthropic Claude (default), OpenRouter, Google Gemini direct, or OpenAI. Top-level `ai provider is X` sets a default; per-call `via provider 'X'` on `ask ai` / `stream ask ai` / `classify` overrides on a single call. Runtime helper handles the HTTP shape per provider. Env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`.
+
+
+## Phase 5.5 (2026-05-13) — DaisyUI form widgets + Nixie theme
+
+| Feature | Canonical syntax | Emits |
+|---|---|---|
+| Date+time picker | `'Due' is a datetime input that saves to var` | `<input type="datetime-local" class="input input-bordered w-full">` with reactive `_state` binding |
+| Radio selector | `'Pick' is radio with ['a','b','c'] that saves to var` | DaisyUI radio group, one `<input type="radio" class="radio radio-primary">` per option, shared name attr |
+| Slider | `'Value' is a slider from 0 to 100 that saves to var` | `<input type="range" class="range range-primary" min="0" max="100">`, stores Number |
+| Accordion section | `section 'X' as accordion:` | DaisyUI `<div class="collapse collapse-arrow">` per child, mutually-exclusive radio buttons |
+| Nested nav chevron | nav item followed by indented nav items | Auto-emits Lucide chevron-down + `clear-nav-expandable` class + nested `<ul>` |
+| Nixie theme | `theme 'nixie'` | Amber on warm-dark; focal glow via text-shadow/box-shadow; optional scanline overlay |

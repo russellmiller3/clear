@@ -6315,3 +6315,85 @@ export OPENAI_API_KEY=sk-...
 If you skip the key, the compiled server raises a clear error the moment a
 call fires: "Set OPENROUTER_API_KEY environment variable to use 'via provider
 openrouter'".
+
+
+## Phase 5.5 — DaisyUI form widgets
+
+These five widgets close the parity gap with the reference Lenat app and any other DaisyUI-styled app you'd build in Clear.
+
+### A reminder app with a datetime picker
+
+```clear
+build for web
+page 'New Reminder':
+  heading 'Remind me'
+  'What' is a text input that saves to topic
+  'When' is a datetime input that saves to due_at
+  button 'Save':
+    POST '/api/reminders' with topic, due_at
+```
+
+The datetime picker pops a native browser widget — calendar + time entry — and stores an ISO-like `YYYY-MM-DDTHH:MM` string in `_state.due_at`.
+
+### A T-shirt order form with a radio group
+
+```clear
+page 'Order':
+  'Size' is radio with ['Small', 'Medium', 'Large'] that saves to size
+  'Color' is radio with ['Black', 'White', 'Heather Grey'] that saves to color
+  button 'Add to cart':
+    POST '/api/cart' with size, color
+```
+
+One row per option. Picking a new option clears the previous selection automatically (shared name attr).
+
+### A volume control with a slider
+
+```clear
+page 'Player':
+  'Volume' is a slider from 0 to 100 that saves to volume
+  display volume as 'Current volume'
+```
+
+The slider stores a Number, so `display` formats it without quotes. Combine with `step` (TODO) when you need finer-grained control.
+
+### An FAQ as a DaisyUI accordion
+
+```clear
+page 'Help':
+  section 'Frequently Asked Questions' as accordion:
+    section 'How do I get started?':
+      text 'Read the intro page. It walks you through the first 10 minutes.'
+    section 'Where are the docs?':
+      text 'Check SYNTAX.md and USER-GUIDE.md in the repo root.'
+    section 'How do I report a bug?':
+      text 'Open an issue at github.com/example/clear/issues.'
+```
+
+Each Q becomes a collapse panel; only one panel is open at a time.
+
+### A sidebar with drill-down nav
+
+```clear
+page 'App':
+  section 'Sidebar' with style app_sidebar:
+    nav section 'Main':
+      nav item 'Records' to '/records':
+        nav item 'Open' to '/records/open'
+        nav item 'Closed' to '/records/closed'
+      nav item 'Settings' to '/settings'
+```
+
+Records gets a chevron icon on the right; clicking it toggles the visibility of the Open and Closed children. Settings stays a flat link.
+
+### Switch to the nixie theme for an AI control panel
+
+```clear
+theme 'nixie'
+page 'Console':
+  heading 'Lenat'
+  'Ask me anything' is a text input that saves to question
+  display answer
+```
+
+Amber on warm-dark, headings glow, focus rings glow. The whole page reads like a vintage CRT — perfect for AI control panels, dashboards, anything that wants the "machine talking to me" feel.

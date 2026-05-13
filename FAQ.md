@@ -2327,3 +2327,60 @@ Caveat: `stream ask ai ... via provider 'google'` doesn't word-by-word stream
 helper falls back to a single non-streaming call and yields the whole answer
 as one chunk. Anthropic, OpenRouter, and OpenAI all stream properly. (Phase
 6, 2026-05-13.)
+
+
+## Q: How do I add a date+time picker to a Clear page? (Phase 5.5)
+
+```clear
+'Due' is a datetime input that saves to due_at
+```
+
+Emits a DaisyUI `<input type="datetime-local">` that the browser renders as a native calendar + time widget. The chosen value goes into `_state.due_at` as an ISO-like `YYYY-MM-DDTHH:MM` string. Synonyms: `date and time input`, `date picker`, `datetime picker`.
+
+## Q: How do I add a radio selector? (Phase 5.5)
+
+```clear
+'Size' is radio with ['Small', 'Medium', 'Large'] that saves to size
+```
+
+One `<input type="radio">` per option, all sharing a name attribute so the browser enforces single-selection. The chosen value (the string from the list) lands in `_state.size`. Use this for short lists (3-6 options); for longer lists prefer `dropdown with [...]`.
+
+## Q: How do I add a slider with a min and a max? (Phase 5.5)
+
+```clear
+'Volume' is a slider from 0 to 100 that saves to volume
+```
+
+Emits a DaisyUI range slider with the min/max attrs from the from-to clause. The stored value is a Number. Default state is `min` (so a freshly-loaded page has a sensible starting point).
+
+## Q: How do I make an FAQ section collapse like an accordion? (Phase 5.5)
+
+```clear
+section 'FAQ' as accordion:
+  section 'Q1':
+    text 'A1'
+  section 'Q2':
+    text 'A2'
+```
+
+Each nested section becomes a DaisyUI collapse panel. Only one panel is open at a time (classic accordion behavior).
+
+## Q: How do I add a sidebar with submenus that expand on click? (Phase 5.5)
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  nav section 'Main':
+    nav item 'Records' to '/records':
+      nav item 'Open' to '/records/open'
+      nav item 'Closed' to '/records/closed'
+```
+
+The parent nav item gets a Lucide chevron-down icon and a `clear-nav-expandable` class. The runtime nav script toggles the nested `<ul>`'s visibility on click. The parent is still a real link to `/records` — the chevron handles the expand/collapse.
+
+## Q: How do I use the Nixie theme for an AI control panel look? (Phase 5.5)
+
+```clear
+theme 'nixie'
+```
+
+Amber on warm-dark CRT identity. Headings and numbers glow via text-shadow; focus rings and primary buttons glow via box-shadow; an optional scanline overlay on `body::after` adds CRT texture. Fourth Clear theme alongside midnight / ivory / nova.

@@ -29,7 +29,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 
 | Node Type | Syntax | Compiles To |
 |-----------|--------|-------------|
-| `THEME` | `theme 'midnight'` / `theme 'ivory'` / `theme 'nova'` | Sets `data-theme` on `<html>` |
+| `THEME` | `theme 'midnight'` / `theme 'ivory'` / `theme 'nova'` / `theme 'nixie'` (Phase 5.5 — amber-on-warm-dark CRT identity) — plus arctic, moss, ember, slate, dusk, vault, sakura, forge | Sets `data-theme` on `<html>` |
 | `ASSIGN` | `x = 5` / `name is 'Alice'` / `define x as: expr` | `const x = 5` / `x = 5` |
 | `FIELD_CHANGE` | `change selected_deal's status from 'pending' to 'approved'` | Checks the selected record has the expected old value, then sets the named field to the new value |
 | `SHOW` | `show x` / `display x as dollars` | `console.log(x)` / `print(x)` |
@@ -110,14 +110,14 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | Node Type | Syntax | HTML Output |
 |-----------|--------|-------------|
 | `PAGE` | `page 'Title' at '/route':` | `<title>` + pathname router (reads `location.pathname`, falls back to hash, intercepts same-origin `<a>` clicks for SPA nav). Each declared route also gets an `app.get('/route', res.sendFile('index.html', { root: __dirname }))` handler so direct URLs / refresh work. |
-| `ASK_FOR` | `'Label' is a text input that saves to var` — also supports: `text area`, `text editor` (Quill WYSIWYG via CDN, toolbar + live `_state` binding), `number input`, `dropdown with ['a','b']`, `checkbox`, `file input` | `<input>` / `<textarea>` / `<div data-clear-rich-text>` / `<select>` |
+| `ASK_FOR` | `'Label' is a text input that saves to var` — also supports: `text area`, `text editor` (Quill WYSIWYG via CDN, toolbar + live `_state` binding), `number input`, `dropdown with ['a','b']`, `checkbox`, `file input`, `datetime input` (Phase 5.5 — DaisyUI date+time picker, emits `<input type='datetime-local'>`), `radio with ['a','b','c']` (Phase 5.5 — DaisyUI radio group, one input per option sharing a name attr), `slider from N to M` (Phase 5.5 — DaisyUI range slider, min/max attrs come from the from-to clause, stores Number value) | `<input>` / `<textarea>` / `<div data-clear-rich-text>` / `<select>` / `<input type='datetime-local'>` / radio group / `<input type='range'>` |
 | `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` / `display x as chat showing role, content` | `<output>` or `<table>` with action buttons, or chat bubble component |
 | `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` / `display records as network graph showing edges via about` | ECharts `<div>` with auto-configured option (line / bar / pie / area / network force-directed graph) |
 | `STAT_STRIP` | `stat strip:` + stat cards | Responsive KPI card row |
 | `STAT_CARD` | `stat card 'Pending Count':` + `value EXPR`, optional `delta 'TEXT'`, `sparkline [1, 2, 3]`, `icon 'inbox'` | Polished KPI card with label, value, delta, optional sparkline and Lucide icon |
 | `DETAIL_PANEL` | `detail panel for selected_deal:` + indented content + optional `actions:` | 340px right rail populated from the selected table row; body can contain normal Clear UI primitives, with sticky action buttons at bottom |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
-| `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
+| `SECTION` | `section 'Name' with style card:` — Phase 5.5: also accepts `as accordion` modifier — each nested section becomes a DaisyUI collapse panel | `<div>` with CSS class (accordion variant emits one `<div class="collapse collapse-arrow">` per child) |
 | `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `link 'Text' to '/path'` (also accepts `link to '/path' with label 'Text'`) / `divider` | `<h1>` / `<p>` / `<a>` / `<hr>` |
 | `STYLE_DEF` | `style card:` + properties | CSS class definition |
 | `ON_PAGE_LOAD` | `on page load:` + body | Runs after DOM ready |
@@ -591,7 +591,7 @@ the full token system.
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `NAV_SECTION` | `nav section 'Approvals':` | Labeled group inside `app_sidebar` |
-| `NAV_ITEM` | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` | Linked sidebar row; optional count and Lucide icon; route-based active state |
+| `NAV_ITEM` | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` — Phase 5.5: a nav item followed by an indented block of more nav items becomes a parent row with children. Parent auto-renders a Lucide chevron-down icon + `clear-nav-expandable` class; children land inside a nested `<ul class='clear-nav-children'>`. | Linked sidebar row; optional count and Lucide icon; route-based active state; expandable when nested |
 
 **Page content chrome nodes** (Phase 3-4 shell upgrade):
 

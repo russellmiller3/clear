@@ -4142,3 +4142,66 @@ Deployment is a Studio feature, not a language primitive — you don't write dep
 **Re-deploys are automatic incremental updates (Cloudflare target).** When you click Publish on an app that's already live, Studio takes the fast path: it re-uploads only the new Worker bundle and records a new version against the existing tenant — no fresh D1 database, no domain reattach, no full secret reset. Wall clock drops from ~12s (fresh deploy) to ~2s (update). Schema changes — anything that changes a `migrations/*.sql` file or `wrangler.toml` — pause the update and ask for an explicit "apply migration + update" click, because SQLite has no atomic schema swap and in-flight requests would briefly see the new schema against old code. The Publish window also exposes a one-click rollback to any of the last 20 versions.
 
 **Limits.** Pro plan: 25 apps, $10/mo of AI credits included, $99/mo. See `plans.js` for the source of truth.
+
+
+## Phase 5.5 — DaisyUI form widgets (datetime / radio / slider / accordion / nav chevron / nixie theme)
+
+### datetime input — DaisyUI date+time picker
+
+```clear
+'Due' is a datetime input that saves to due_at
+'Starts At' as datetime input
+datetime input 'Reminder' saves to reminder_at
+```
+
+Emits `<input type="datetime-local" class="input input-bordered w-full">` with reactive binding to `_state.<var>`. The browser provides the calendar + time entry; the stored value is the standard ISO-like `YYYY-MM-DDTHH:MM` string.
+
+### radio selector — DaisyUI radio group
+
+```clear
+'Pick' is radio with ['Small', 'Medium', 'Large'] that saves to size
+```
+
+Emits one `<input type="radio" class="radio radio-primary">` per option, all sharing the same name attribute so the browser enforces single-selection. The chosen value lands in `_state.<var>` on change.
+
+### slider — DaisyUI range slider
+
+```clear
+'Volume' is a slider from 0 to 100 that saves to volume
+```
+
+Emits `<input type="range" class="range range-primary" min="0" max="100">`. The stored value is a Number; the default state value is `min` (so a freshly-loaded page has a sensible starting point).
+
+### accordion section
+
+```clear
+section 'FAQ' as accordion:
+  section 'Q1: How do I get started?':
+    text 'Read the intro page.'
+  section 'Q2: Where are the docs?':
+    text 'Check SYNTAX.md and USER-GUIDE.md.'
+```
+
+Each nested section becomes a DaisyUI `<div class="collapse collapse-arrow">` panel with the section title as the collapse-title header and the section body as collapse-content. Panels share a radio-name so only one is open at a time (classic accordion behavior).
+
+### nav item with nested children — auto chevron
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  nav section 'Main':
+    nav item 'Records' to '/records':
+      nav item 'Open' to '/records/open'
+      nav item 'Closed' to '/records/closed'
+```
+
+A nav item followed by an indented block of more nav items renders a parent row with a Lucide chevron-down icon on the right. The children land inside a nested `<ul class="clear-nav-children menu pl-4">`. The parent gets the `clear-nav-expandable` class so the runtime nav script can toggle visibility on click.
+
+### nixie theme — amber CRT identity
+
+```clear
+theme 'nixie'
+page 'Console':
+  heading 'Lenat'
+```
+
+The fourth Clear theme alongside midnight / ivory / nova. Amber primary `oklch(75% 0.15 60deg)` on warm-dark base `oklch(12% 0.02 60deg)`. Headings and `.num` elements glow via text-shadow; focal elements (focus rings, primary buttons, slider thumbs) glow via box-shadow. An optional CSS scanline overlay on `body::after` adds the CRT texture. Built for AI control panels and dashboards that need a "this is the machine talking to me" feel — Lenat's identity, available to any Clear app that wants it.

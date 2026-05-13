@@ -4055,3 +4055,23 @@ OpenAI all stream properly.
 use lowercase: `openrouter`. Unknown names produce a "isn't supported — try
 one of: anthropic, openrouter, google, openai" compile error.
 
+
+
+## Phase 5.5 — DaisyUI form widgets (when to use which)
+
+| User intent | Use this widget |
+|---|---|
+| "schedule a meeting", "when is it due", "pick a date and time" | `datetime input` |
+| "pick one option from a short list", "single-select" (3-6 options) | `radio with [...]` |
+| "long list of options (8+)", "dropdown", "search-filter" | `dropdown with [...]` |
+| "value between min and max", "loudness", "percentage", "rating", "intensity" | `slider from N to M` |
+| "FAQ", "expandable Q&A", "stacked sections that hide their content" | `section X as accordion:` |
+| "sidebar with submenus", "drill-down nav" | nested `nav item` (auto-chevron) |
+| "amber control-panel look", "Lenat identity", "machine talking to me" | `theme 'nixie'` |
+
+### Gotchas
+- The `slider` clause uses **`from N to M`**, not `min N max M`. The parser only recognizes the from-to form.
+- Radio's saved variable holds the **value string**, not the option index. If you want indexed selection, use `dropdown` and look up the index at render time.
+- An `accordion` section's *non-section* children render inline ABOVE the collapse panels — useful for an intro paragraph above the FAQ items.
+- A nav item with nested children still gets its own `href` (the parent route). The chevron toggles child visibility; the title is still a real link.
+- The nixie theme is a DARK theme. If your app needs a light theme by default, pair it with a theme picker rather than setting it as the only theme.

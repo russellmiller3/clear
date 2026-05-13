@@ -1014,3 +1014,23 @@ Valid provider names (lowercase): `anthropic`, `openrouter`, `google`,
 Stream-by-stream output is supported on Anthropic, OpenRouter, and OpenAI
 but NOT on Google (Gemini's direct API doesn't expose clean SSE — falls
 back to a single non-streaming call).
+
+
+## Phase 5.5 — DaisyUI form widgets you can use
+
+These five form primitives + the new Nixie theme shipped 2026-05-13. Reach for them when building UIs.
+
+- **datetime input**: `'Label' is a datetime input that saves to var` — calendar + time picker, stores ISO string in `_state.var`.
+- **radio selector**: `'Label' is radio with ['a','b','c'] that saves to var` — single-select for short lists (3-6 options).
+- **slider**: `'Label' is a slider from N to M that saves to var` — DaisyUI range slider, stores Number, defaults to `min`.
+- **accordion section**: `section 'X' as accordion:` followed by nested sections — each nested section becomes a collapse panel; non-section children render inline above.
+- **nested nav with chevron**: a `nav item` followed by an indented block of more nav items renders a parent row with a chevron-down icon + nested `<ul>` of children.
+- **nixie theme**: `theme 'nixie'` at the top of the file — amber on warm-dark CRT identity; great for AI control panels.
+
+### Pick-the-right-widget cheat sheet
+- 3-6 single-select options → radio
+- 7+ single-select options → dropdown
+- Numeric value with min/max → slider
+- "when does this happen" → datetime
+- Stacked Q&A or expandable panels → section as accordion
+- Sidebar with submenus → nested nav items

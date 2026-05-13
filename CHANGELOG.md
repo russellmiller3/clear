@@ -1,3 +1,16 @@
+## 2026-05-13 — Phase 5.5: DaisyUI form widgets + Nixie theme
+
+Five new ASK_FOR flavors (datetime input, radio, slider) plus the accordion section modifier, auto-chevron on nested nav items, and a fourth Clear theme `nixie` for the amber-CRT identity.
+
+- **datetime input** — `'Due' is a datetime input that saves to var` emits `<input type="datetime-local" class="input input-bordered w-full">` with reactive `_state` binding
+- **radio selector** — `'Pick' is radio with ['a','b','c'] that saves to var` emits a DaisyUI radio group, one `<input type="radio">` per option, shared name attribute
+- **slider** — `'Value' is a slider from 0 to 100 that saves to var` emits `<input type="range" class="range range-primary">` with min/max attrs from the from-to clause
+- **accordion** — `section 'X' as accordion:` turns each nested section into a DaisyUI collapse panel; non-section children render inline above
+- **nav chevron** — a nav item followed by an indented block of more nav items auto-renders a Lucide chevron-down icon + `clear-nav-expandable` class
+- **nixie theme** — amber on warm-dark CRT identity, focal glow via text-shadow / box-shadow, optional scanline overlay on `body::after`
+
+13 new tests (phase-5-5.test.js). Compiler suite 3159 → 3172, 0 failures. All 8 core templates compile clean. SYNONYM_VERSION 0.43.0 → 0.44.0.
+
 ## 2026-05-13 — Phase 6: AI provider routing
 
 **What shipped:**

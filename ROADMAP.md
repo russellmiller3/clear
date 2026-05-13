@@ -440,3 +440,20 @@ Both moved to `FAQ.md` to keep the roadmap tight:
 Full RL design: `RESEARCH.md`.
 
 - **Phase 6 (Lenat-in-Clear): provider routing for `ask ai` (2026-05-13)** — top-level `ai provider is openrouter|google|openai` + per-call `via provider 'X'` clause on ASK_AI / STREAM_AI / CLASSIFY. Runtime helper routes to the right HTTP shape (Anthropic, OpenRouter, Gemini direct, OpenAI). Resolution order: per-call > `CLEAR_AI_PROVIDER` env > top-level decl > anthropic default.
+
+
+## Phase 5.5 (2026-05-13) — COMPLETE
+
+Five new DaisyUI form widgets + a fourth Clear theme. Generic primitives that
+close the parity gap with the reference Lenat app and benefit any Clear app
+that needs a modern UI.
+
+- **datetime input** — `'Due' is a datetime input that saves to var` emits `<input type="datetime-local">` with DaisyUI input classes
+- **radio selector** — `'Pick' is radio with ['a','b','c'] that saves to var` emits one `<input type="radio" class="radio radio-primary">` per option
+- **slider** — `'Value' is a slider from 0 to 100 that saves to var` emits `<input type="range" class="range range-primary">` with min/max attrs
+- **accordion section** — `section 'X' as accordion:` turns nested sections into DaisyUI collapse panels
+- **nav chevron** — a nav item with nested children auto-emits a Lucide chevron-down icon + clear-nav-expandable class
+- **nixie theme** — amber on warm-dark CRT identity; fourth theme alongside midnight / ivory / nova
+
+13 new tests in phase-5-5.test.js. Suite stays at 0 failures (3159 -> 3172).
+SYNONYM_VERSION 0.43.0 -> 0.44.0 (3 new keys: datetime_input, radio, slider).
