@@ -4415,6 +4415,38 @@ The matcher returns:
 - `missingSlots` — required slots that came back empty.
 - `ambiguousMatches` — when `kind` is `ambiguous`, the list of tied frame IDs.
 
+The matcher call works in any assignment-RHS shape — pick whichever reads best:
+
+```clear
+result is match input against 'concepts'      # canonical
+result = match input against 'concepts'       # algebraic
+set result to match input against 'concepts'  # imperative
+```
+
+You can also feed it any text expression, not just a variable:
+
+```clear
+quick = match 'remind me to call Sam' against 'concepts'
+```
+
+### Locking the matcher's behavior with a test block
+
+The point of a runtime grammar is that the same English phrase always dispatches to the same frame. Lock that behavior with `test 'name':` blocks:
+
+```clear
+test 'TASK catches the canonical phrase':
+  text is 'remind me to email Marcus tomorrow'
+  result = match text against 'concepts'
+  expect result's frame is 'TASK'
+
+test 'TASK catches the `todo:` synonym':
+  text is 'todo: write the demo'
+  result = match text against 'concepts'
+  expect result's frame is 'TASK'
+```
+
+These tests are the contract — if a frame's synonym list changes and an old phrase stops matching, the test fires.
+
 ### Adding a frame at runtime
 
 The storage table is just a regular Clear table. Save a row:
