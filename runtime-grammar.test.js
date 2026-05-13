@@ -232,3 +232,56 @@ describe('runtime grammar — compile to JS (Cycle 1.4)', () => {
     expect(js).toMatch(/db\.createTable\('frameregistries'|db\.createTable\('frame_registries'/i);
   });
 });
+
+// =============================================================================
+// CYCLE 1.5 — compiler Python parity: same three pieces, Python emit
+// =============================================================================
+describe('runtime grammar — compile to Python (Cycle 1.5)', () => {
+  it('emits a CREATE TABLE statement for the storage table', () => {
+    const source = [
+      "target: python",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const py = result.python || '';
+    expect(py).toMatch(/CREATE TABLE IF NOT EXISTS concepts/);
+    expect(py).toMatch(/frame_id TEXT UNIQUE/);
+    expect(py).toMatch(/canonical_phrase TEXT NOT NULL/);
+  });
+
+  it('emits a _grammar_registry dict seeded with each frame', () => {
+    const source = [
+      "target: python",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+      "  frame ENERGY_LOG:",
+      "    effect internal",
+      "    canonical phrase 'energy'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const py = result.python || '';
+    expect(py).toMatch(/_grammar_registry/);
+    expect(py).toMatch(/TASK/);
+    expect(py).toMatch(/ENERGY_LOG/);
+    expect(py).toMatch(/make_grammar_match/);
+  });
+
+  it('Python target honors a custom storage table name', () => {
+    const source = [
+      "target: python",
+      "runtime grammar 'concepts':",
+      "  storage table is FrameRegistry",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const py = result.python || '';
+    expect(py).toMatch(/CREATE TABLE IF NOT EXISTS frameregistries/);
+  });
+});
