@@ -7,6 +7,14 @@
 import { describe, it, expect, run } from './lib/testUtils.js';
 import './runtime-grammar.test.js';
 import './slot-extractors.test.js';
+import { createRequire as _phase5CreateRequire } from 'node:module';
+// Phase 5 runtime helpers live in runtime/ as CommonJS — bridge via createRequire.
+const _phase5Require = _phase5CreateRequire(import.meta.url);
+const {
+  buildGraphData: _phase5BuildGraphData,
+  pickLabel: _phase5PickLabel,
+  DEFAULT_NODE_CAP: _phase5DefaultNodeCap,
+} = _phase5Require('./runtime/graph-edges.js');
 import { mkdtempSync, readFileSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname as pathDirname, join as pathJoin } from 'node:path';
@@ -16208,6 +16216,87 @@ describe('Phase 5 — compile emits ECharts graph series', () => {
     // sanitizeName('kind') === 'kind', wrapped in JSON.stringify → "\"kind\"".
     expect(result.html).toContain('_colorBy');
     expect(result.html).toContain('_categories');
+  });
+});
+
+// Phase 5 cycle 5.3 — runtime helpers in runtime/graph-edges.js (and the
+// matching Python port) build the {nodes, links} arrays from a flat record
+// list using substring-match edge resolution. The compiled HTML branch
+// inlines an equivalent helper; these tests verify the standalone runtime.
+describe('Phase 5 runtime — buildGraphData', () => {
+  // Pull the bridged-in CommonJS helpers (see top-level _phase5Require).
+  const buildGraphData = _phase5BuildGraphData;
+  const pickLabel = _phase5PickLabel;
+  const DEFAULT_NODE_CAP = _phase5DefaultNodeCap;
+
+  it('returns empty arrays for an empty record list', () => {
+    const result = buildGraphData([], 'about');
+    expect(result.nodes).toEqual([]);
+    expect(result.links).toEqual([]);
+  });
+
+  it('builds a node per record with id + name', () => {
+    const records = [
+      { id: 'a', name: 'Alice', about: '' },
+      { id: 'b', name: 'Bob', about: '' },
+    ];
+    const result = buildGraphData(records, 'about');
+    expect(result.nodes.length).toBe(2);
+    expect(result.nodes[0].id).toBe('a');
+    expect(result.nodes[0].name).toBe('Alice');
+    expect(result.nodes[1].id).toBe('b');
+    expect(result.nodes[1].name).toBe('Bob');
+  });
+
+  it('resolves edges via substring match on the named field', () => {
+    // Three records mention prior records: Q3 plan→Marcus, Demo→Q3 plan,
+    // Email→Marcus. Expect exactly 3 links.
+    const records = [
+      { id: 'a', name: 'Marcus', about: '' },
+      { id: 'b', name: 'Q3 plan', about: 'Marcus' },
+      { id: 'c', name: 'Demo', about: 'Q3 plan' },
+      { id: 'd', name: 'Orphan', about: '' },
+      { id: 'e', name: 'Email', about: 'Marcus' },
+    ];
+    const result = buildGraphData(records, 'about');
+    expect(result.nodes.length).toBe(5);
+    expect(result.links.length).toBe(3);
+    const has = (s, t) => result.links.some(l => l.source === s && l.target === t);
+    expect(has('b', 'a')).toBe(true);
+    expect(has('c', 'b')).toBe(true);
+    expect(has('e', 'a')).toBe(true);
+  });
+
+  it('caps node count to opts.nodeCap when provided', () => {
+    const records = Array.from({ length: 10 }, (_, i) => ({ id: i, name: `n${i}`, about: '' }));
+    const result = buildGraphData(records, 'about', { nodeCap: 3 });
+    expect(result.nodes.length).toBe(3);
+  });
+
+  it('defaults the cap to DEFAULT_NODE_CAP (200)', () => {
+    expect(DEFAULT_NODE_CAP).toBe(200);
+    const records = Array.from({ length: 250 }, (_, i) => ({ id: i, name: `n${i}`, about: '' }));
+    const result = buildGraphData(records, 'about');
+    expect(result.nodes.length).toBe(200);
+  });
+
+  it('emits a category per node when opts.colorBy is given', () => {
+    const records = [
+      { id: 1, name: 'a', kind: 'task', about: '' },
+      { id: 2, name: 'b', kind: 'energy', about: '' },
+    ];
+    const result = buildGraphData(records, 'about', { colorBy: 'kind' });
+    expect(result.nodes[0].category).toBe('task');
+    expect(result.nodes[1].category).toBe('energy');
+  });
+
+  it('pickLabel walks name → what → idea → note → id', () => {
+    expect(pickLabel({ name: 'Alice' })).toBe('Alice');
+    expect(pickLabel({ what: 'do laundry' })).toBe('do laundry');
+    expect(pickLabel({ idea: 'inventory' })).toBe('inventory');
+    expect(pickLabel({ note: 'sticky' })).toBe('sticky');
+    expect(pickLabel({ id: 42 })).toBe('42');
+    expect(pickLabel({})).toBe('');
   });
 });
 
