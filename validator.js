@@ -142,6 +142,7 @@ export function validate(ast) {
   validateTenantScope(ast.body, warnings);
   validateOutgoingAllowlist(ast.body, errors);
   validateHardcodedSecrets(ast.body, errors);
+  validateRuntimeGrammar(ast.body, errors);
   return { errors, warnings };
 }
 
@@ -3316,4 +3317,72 @@ function validateClassify(body, errors) {
   }
 
   walk(body);
+}
+
+
+// =============================================================================
+// RUNTIME GRAMMAR — frame-shape validator (Phase 1, 2026-05-13)
+// =============================================================================
+//
+// Rules enforced:
+//   GRAMMAR_FRAME_MISSING_CANONICAL — every frame needs a canonical phrase.
+//     The runtime matcher uses the canonical phrase as the primary key for
+//     prefix matching; without one the frame can never fire.
+//   RUNTIME_GRAMMAR_SLOT_UNKNOWN — `on match:` body references a slot the
+//     frame didn't declare. Catches typos like `save the match's whta` when
+//     the slot is `what`. Mirrors the validateForwardReferences pattern.
+// =============================================================================
+function validateRuntimeGrammar(body, errors) {
+  if (!Array.isArray(body)) return;
+  for (const node of body) {
+    if (!node || node.type !== 'runtime_grammar') continue;
+    const grammarName = node.name || '<unnamed>';
+    if (!Array.isArray(node.frames)) continue;
+    for (const frame of node.frames) {
+      if (!frame || frame.type !== 'grammar_frame') continue;
+      if (!frame.canonicalPhrase || typeof frame.canonicalPhrase !== 'string') {
+        errors.push({
+          line: frame.line || node.line || 0,
+          message:
+            `GRAMMAR_FRAME_MISSING_CANONICAL: frame '${frame.id}' in runtime grammar '${grammarName}' has no canonical phrase. ` +
+            `WHY: the runtime matcher uses the canonical phrase as the primary key for prefix matching against user input — without one, the frame can never fire. ` +
+            `WHAT: add a canonical phrase line inside the frame body. Example:\n  frame ${frame.id}:\n    effect ${frame.effect || 'internal'}\n    canonical phrase 'remind me to'`,
+        });
+      }
+      // Slot-name validation: every `saved as match.X` or `match's X` in
+      // on-match body must name a declared slot. Walk onMatch body looking
+      // for slot references — the canonical access shape is `match's slot_name`
+      // which compiles to MEMBER_ACCESS on a variable named 'match'.
+      const declaredSlots = new Set((frame.slots || []).map(s => s && s.name).filter(Boolean));
+      function walkOnMatch(n) {
+        if (!n || typeof n !== 'object') return;
+        // member_access shape: { type, object, member }
+        if (n.type === 'member_access' && n.object) {
+          // Resolve the chained-object's root variable name.
+          let root = n.object;
+          while (root && root.type === 'member_access') root = root.object;
+          if (root && root.type === 'variable_ref' && root.name === 'match') {
+            const slotName = n.member;
+            if (typeof slotName === 'string' && slotName !== '' && !declaredSlots.has(slotName)) {
+              errors.push({
+                line: n.line || frame.line || 0,
+                message:
+                  `RUNTIME_GRAMMAR_SLOT_UNKNOWN: frame '${frame.id}' references slot '${slotName}' in its on-match body but didn't declare it. ` +
+                  `WHY: the matcher only fills slots the frame explicitly listed under \`slots:\` — anything else stays undefined at runtime and silently corrupts your CRUD. ` +
+                  `WHAT: either add '${slotName}' to the frame's slots block, or fix the typo. Declared slots: ${[...declaredSlots].join(', ') || '(none)'}.`,
+              });
+            }
+          }
+        }
+        for (const k of Object.keys(n)) {
+          const v = n[k];
+          if (v && typeof v === 'object') {
+            if (Array.isArray(v)) for (const child of v) walkOnMatch(child);
+            else walkOnMatch(v);
+          }
+        }
+      }
+      if (Array.isArray(frame.onMatch)) for (const stmt of frame.onMatch) walkOnMatch(stmt);
+    }
+  }
 }

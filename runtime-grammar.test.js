@@ -128,3 +128,47 @@ describe('runtime grammar — frame metadata (Cycle 1.2)', () => {
     expect(grammar.frames.map(f => f.effect)).toEqual(['internal', 'internal', 'external']);
   });
 });
+
+// =============================================================================
+// CYCLE 1.3 — validator: missing canonical phrase errors with a helpful hint
+// =============================================================================
+describe('runtime grammar — validator (Cycle 1.3)', () => {
+  it('errors with GRAMMAR_FRAME_MISSING_CANONICAL when frame has no canonical phrase', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => /GRAMMAR_FRAME_MISSING_CANONICAL|canonical phrase/i.test(e.message));
+    expect(err).toBeTruthy();
+    expect(err.message).toMatch(/TASK/);
+    expect(err.message.toLowerCase()).toMatch(/canonical phrase|canonical_phrase/);
+  });
+
+  it('does NOT error when canonical phrase is present', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('defaults storage table to Concepts and reports no error', () => {
+    // Phase 1 plan: missing `storage table is X` SHOULD default silently to
+    // 'Concepts', not error. This test pins that the default path is clean.
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    canonical phrase 'remind me to'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const grammar = result.ast.body.find(n => n.type === 'runtime_grammar');
+    expect(grammar.storageTable).toBe('Concepts');
+    expect(result.errors).toEqual([]);
+  });
+});
