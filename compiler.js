@@ -8838,9 +8838,16 @@ ${pad}}`;
 
     case NodeType.PAGE: {
       if (ctx.mode === 'backend') {
-        // In backend mode, only compile backend-relevant children (endpoints, data shapes)
+        // In backend mode, only compile backend-relevant children (endpoints,
+        // data shapes, webhooks, background tasks). CRUD nodes are NOT included
+        // — those represent page-level data fetches that the frontend handles
+        // via its own fetch() against API endpoints. Including CRUD here used
+        // to emit top-level `const x = await db.findAll(...)` at server.js
+        // module scope, which crashed startup with "await is only valid inside
+        // async function." Page-level data fetches that genuinely need to run
+        // server-side should be hoisted into an explicit endpoint.
         const backendChildren = node.body.filter(n =>
-          n.type === NodeType.ENDPOINT || n.type === NodeType.DATA_SHAPE || n.type === NodeType.CRUD ||
+          n.type === NodeType.ENDPOINT || n.type === NodeType.DATA_SHAPE ||
           n.type === NodeType.WEBHOOK || n.type === NodeType.BACKGROUND
         );
         if (backendChildren.length === 0) return null;

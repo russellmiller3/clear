@@ -1324,7 +1324,51 @@ async function serveCommand(args) {
   const tmpDir = resolve(dirname(resolve(file)), '.clear-serve');
   await buildCommand([file, '--out', tmpDir, '--no-test', ...(flags.json ? ['--json'] : []), '--quiet']);
 
+  // Auto-install npm deps if a server.js is present and node_modules isn't
+  // already populated. Without this, `clear serve` on an app whose backend
+  // requires sqlite/express/bcryptjs crashes at startup with MODULE_NOT_FOUND.
+  // Mirror the install logic from `clear test` — short timeout, fail-quiet so
+  // a slow npm doesn't block the whole serve.
   const serverFile = resolve(tmpDir, 'server.js');
+  if (existsSync(serverFile)) {
+    // Inspect server.js AND every clear-runtime/*.js file — many deps
+    // (better-sqlite3, jsonwebtoken, bcryptjs) are required transitively
+    // from the runtime helpers, not from server.js directly.
+    let allContents = readFileSync(serverFile, 'utf-8');
+    const rtDir = resolve(tmpDir, 'clear-runtime');
+    if (existsSync(rtDir)) {
+      for (const f of readdirSync(rtDir)) {
+        if (f.endsWith('.js')) {
+          try { allContents += '\n' + readFileSync(resolve(rtDir, f), 'utf-8'); } catch {}
+        }
+      }
+    }
+    const deps = { express: '*' };
+    if (allContents.includes("require('better-sqlite3')")) deps['better-sqlite3'] = '*';
+    if (allContents.includes("require('bcryptjs')")) deps.bcryptjs = '*';
+    if (allContents.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
+    if (allContents.includes("require('ws')")) deps.ws = '*';
+    if (allContents.includes("require('nodemailer')")) deps.nodemailer = '*';
+    if (allContents.includes("require('multer')")) deps.multer = '*';
+    if (allContents.includes("require('pg')")) deps.pg = '*';
+    const pkgPath = resolve(tmpDir, 'package.json');
+    let existingPkg = {};
+    if (existsSync(pkgPath)) { try { existingPkg = JSON.parse(readFileSync(pkgPath, 'utf-8')); } catch {} }
+    writeFileSync(pkgPath, JSON.stringify({ ...existingPkg, dependencies: { ...(existingPkg.dependencies || {}), ...deps } }));
+    const needInstall = Object.keys(deps).some(d => !existsSync(resolve(tmpDir, 'node_modules', d)));
+    if (needInstall) {
+      if (!flags.quiet) console.log('  Installing dependencies...');
+      const installTimeoutMs = Math.max(15000, Number(process.env.CLEAR_NPM_INSTALL_TIMEOUT_MS) || 60000);
+      try {
+        execSync('npm install --production --silent', { cwd: tmpDir, timeout: installTimeoutMs, stdio: 'pipe' });
+      } catch (e) {
+        if (!flags.quiet) {
+          console.log(`  (npm install: ${e.code === 'ETIMEDOUT' ? 'timed out' : 'failed'} — server may crash on missing modules)`);
+        }
+      }
+    }
+  }
+
   // The build emits HTML as `<basename>.html` (e.g. `lenat.html` for
   // `lenat.clear`) rather than the legacy `index.html`. Look for both —
   // basename match first (current behavior), index.html second (legacy),
