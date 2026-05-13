@@ -1291,7 +1291,20 @@ async function serveCommand(args) {
   await buildCommand([file, '--out', tmpDir, '--no-test', ...(flags.json ? ['--json'] : []), '--quiet']);
 
   const serverFile = resolve(tmpDir, 'server.js');
-  const htmlFile = resolve(tmpDir, 'index.html');
+  // The build emits HTML as `<basename>.html` (e.g. `lenat.html` for
+  // `lenat.clear`) rather than the legacy `index.html`. Look for both —
+  // basename match first (current behavior), index.html second (legacy),
+  // any *.html third (fallback for hand-named outputs).
+  const sourceBase = basename(file, extname(file));
+  const htmlCandidates = [
+    resolve(tmpDir, `${sourceBase}.html`),
+    resolve(tmpDir, 'index.html'),
+  ];
+  let htmlFile = htmlCandidates.find(p => existsSync(p));
+  if (!htmlFile && existsSync(tmpDir)) {
+    const dirHtml = readdirSync(tmpDir).find(f => f.endsWith('.html'));
+    if (dirHtml) htmlFile = resolve(tmpDir, dirHtml);
+  }
 
   if (existsSync(serverFile)) {
     // Start Express server
@@ -1302,7 +1315,7 @@ async function serveCommand(args) {
     });
     child.on('exit', (code) => process.exit(code || 0));
     process.on('SIGINT', () => { child.kill(); process.exit(0); });
-  } else if (existsSync(htmlFile)) {
+  } else if (htmlFile) {
     // Static file server
     if (!flags.quiet) console.log(`  Serving ${htmlFile} on http://localhost:${flags.port}`);
     const { createServer } = await import('http');
@@ -1314,7 +1327,7 @@ async function serveCommand(args) {
     server.listen(flags.port);
     process.on('SIGINT', () => { server.close(); process.exit(0); });
   } else {
-    output({ error: 'No server.js or index.html produced. Check your build target.' }, flags);
+    output({ error: `No server.js or *.html produced in ${tmpDir}. Check your build target.` }, flags);
     process.exit(1);
   }
 }
