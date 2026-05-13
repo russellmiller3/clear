@@ -1702,10 +1702,24 @@ save new_frame as a new Concept
 
 The next `match input against 'concepts'` call picks it up. No recompile.
 
+Calling the matcher (canonical form):
+
+```clear
+when user sends text to /api/parse:
+  result = match text against 'concepts'
+  if result's kind is 'matched':
+    send back result
+  otherwise:
+    send back 'no match'
+```
+
+`match X against 'name'` works in any assignment-RHS position: `result is match ...`, `result = match ...`, `set result to match ...`. The source can be any text expression — a variable, a literal, or a computed string. Use it inside `test 'name':` blocks to write behavioral-parity tests against a reference implementation.
+
 Gotchas:
 - Don't name a frame `type:` — use `effect:` (the discriminator). `type:` is overloaded with field-type syntax everywhere else in Clear.
 - The `on match:` body can reference slot values as `match's <slot_name>`. Typos error `RUNTIME_GRAMMAR_SLOT_UNKNOWN` at compile time so they don't silently corrupt CRUD at runtime.
 - Phase 1's matcher does PREFIX matching only. For richer extraction (datetime, fuzzy, about-clause), Phase 2's slot-extractor stdlib (below) supplies the typed extractors.
+- The matcher needs the `against` keyword to disambiguate from control-flow `match X:`. `match input` alone parses as control flow; `match input against 'name'` is the runtime-grammar call.
 
 ## Slot Extractors — `extract datetime` / `fuzzy match` / `extract about-clause` / `find pattern ... returning value and remainder`
 

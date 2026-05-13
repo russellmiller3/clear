@@ -3675,6 +3675,19 @@ otherwise:
 
 The matcher returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`. `kind` is one of `matched`, `no_match`, `partial` (required slot missing), or `ambiguous` (multiple frames tied on prefix length).
 
+The call is a regular assignment-RHS expression — any form works: `result is match ...`, `result = match ...`, `set result to match ...`. The input source can be any text expression (variable, literal, or computed). Wired Cycle 1.10 (2026-05-13).
+
+### Using the Matcher in a Test Block
+
+`match input against 'X'` is the only way to exercise the runtime-grammar primitive from `.clear`-source tests. Without it, behavioral parity tests against an external reference implementation can't be written:
+
+```clear
+test 'TASK frame catches the canonical phrase':
+  input is 'remind me to email Marcus tomorrow'
+  result = match input against 'concepts'
+  expect result's frame is 'TASK'
+```
+
 ### Adding a Frame at Runtime
 
 The storage table is a regular Clear table — insert a new row with a normal CRUD save:

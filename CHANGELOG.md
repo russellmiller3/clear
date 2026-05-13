@@ -1,3 +1,14 @@
+## 2026-05-13 — Phase 1.10: GRAMMAR_MATCH_CALL wired
+
+The Phase 9 audit of Lenat-in-Clear surfaced a gap: `GRAMMAR_MATCH_CALL` was declared as a node type in parser.js:495 back in Phase 1 but never actually parsed. The intent.md note "reserved for Phase 2 wiring" was literal — that wiring never landed. Without it, no `.clear`-source `test 'X':` block could exercise the runtime-grammar matcher, blocking the entire 85-test parity sweep against Node Lenat's 126-test corpus.
+
+- **parser** — `parseAssignment` recognizes `match <expr> against 'name'` as an RHS form and emits a `GRAMMAR_MATCH_CALL` AST node. Disambiguates from control-flow `match X:` via the required `against` keyword + assignment-RHS context.
+- **compiler** — JS emit lowers to `_grammarMatch("name", input)`. Python emit lowers to `_grammar_match("name", input)`. Mirrors the EXTRACT_DATETIME / FUZZY_MATCH shape — single runtime-helper call, both targets, same shape.
+- **tests** — Cycle 1.10 adds 4 tests (parse → AST shape, JS emit, Python emit, accepts non-variable input). 3172 → 3176 passing, 0 failing.
+- **docs** — intent.md row updated (was "reserved", now describes the live shape). SYNTAX.md "Calling the Matcher" section gets a test-block example. AI-INSTRUCTIONS.md canonical-form section adds the matcher call + an `against`-keyword gotcha.
+
+Unblocks Phase 9 — concrete `match X against 'name'` calls are now usable inside any `.clear` file, including `test 'name':` blocks. The Lenat-in-Clear test-parity sweep against the 126 Node Lenat tests can proceed.
+
 ## 2026-05-13 — Phase 5.5: DaisyUI form widgets + Nixie theme
 
 Five new ASK_FOR flavors (datetime input, radio, slider) plus the accordion section modifier, auto-chevron on nested nav items, and a fourth Clear theme `nixie` for the amber-CRT identity.
