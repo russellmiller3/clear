@@ -3,6 +3,23 @@
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 
+## Where does Ralph live, and what should I read before code-searching it? (2026-05-12)
+
+Ralph is Meph's requirements-done checker. It audits the generated app against approved requirements and blocks a false "done" when the evidence is missing.
+
+Read these first:
+- Product map: `FEATURES.md` -> "Studio" and "Requirements/Ralph loop".
+- Requirements examples: `requirements-sample.md`.
+- Retry/blocking layer: `studio/ralph-layer.js`.
+- Requirement fact extraction: `studio/supervisor/requirements-facts.js`.
+- Requirement audit integration: `studio/supervisor/requirements-audit.js`.
+- Live smoke harness: `scripts/meph-requirements-live-smoke.mjs`.
+- Full-loop eval harness: `studio/eval-fullloop-harness.js` and `studio/eval-fullloop.js`.
+
+Rule: search `FAQ.md` and `FEATURES.md` first. If those docs do not point to the thing, update them after you find it.
+
+---
+
 ## Why does the Clear Studio shortcut say "Studio did not come up within 30 seconds"? (2026-05-10)
 
 The visible launcher waits for Studio to listen on port 3456. If the hidden server crashes first, the old symptom was only a timeout.

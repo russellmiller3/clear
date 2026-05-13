@@ -1,5 +1,5 @@
 import { describe, expect, it, run } from '../lib/testUtils.js';
-import { renderHtml, summarizeRuns } from './openrouter-iteration-report.mjs';
+import { analyzeRuns, renderHtml, summarizeRuns } from './openrouter-iteration-report.mjs';
 
 const payload = {
   tasks: [
@@ -22,7 +22,10 @@ const payload = {
       successAttempt: 2,
       totalCost: 0.01,
       totalLatencyMs: 12000,
-      attempts: [{ attempt: 1 }, { attempt: 2 }],
+      attempts: [
+        { attempt: 1, content: 'REQUIREMENTS:\n- schedule tweets\n\nCLEAR_SOURCE:\nbroken', evaluation: { checks: [1, 2, 3], failedCount: 2, compileErrorCount: 1, compileErrors: [{ message: 'Line 1: fake syntax error' }] } },
+        { attempt: 2, content: 'REQUIREMENTS:\n- schedule tweets\n\nCLEAR_SOURCE:\nworking', evaluation: { checks: [1, 2, 3], failedCount: 0, compileErrorCount: 0, compileErrors: [] } },
+      ],
       finalFailedChecks: [],
     },
     {
@@ -36,7 +39,11 @@ const payload = {
       successAttempt: null,
       totalCost: 0.12,
       totalLatencyMs: 30000,
-      attempts: [{ attempt: 1 }, { attempt: 2 }, { attempt: 3 }],
+      attempts: [
+        { attempt: 1, content: 'REQUIREMENTS:\n- schedule tweets\n\nCLEAR_SOURCE:\nbroken', evaluation: { checks: [1, 2, 3], failedCount: 2, compileErrorCount: 1, compileErrors: [{ message: 'Line 1: missing endpoint' }] } },
+        { attempt: 2, content: 'REQUIREMENTS:\n- schedule tweets\n\nCLEAR_SOURCE:\nstill broken', evaluation: { checks: [1, 2, 3], failedCount: 1, compileErrorCount: 0, compileErrors: [] } },
+        { attempt: 3, content: 'REQUIREMENTS:\n- schedule tweets\n\nCLEAR_SOURCE:\nstill broken', evaluation: { checks: [1, 2, 3], failedCount: 1, compileErrorCount: 0, compileErrors: [] } },
+      ],
       finalFailedChecks: [{ id: 'cron_api_call' }],
     },
   ],
@@ -55,16 +62,34 @@ describe('OpenRouter iteration report', () => {
 
   it('renders a visual HTML report without emoji-only decoration', () => {
     const summary = summarizeRuns(payload);
+    const analysis = analyzeRuns(payload, summary);
     const html = renderHtml({
       payload,
       summary,
+      analysis,
       toolCalls: { total: 1, byTool: [{ tool_name: 'compile_clear', count: 1 }] },
     });
 
     expect(html).toContain('Iteration Benchmark');
+    expect(html).toContain('Price vs Completion Frontier');
+    expect(html).toContain('What Ralph Changed');
     expect(html).toContain('Gemini 3 Flash Preview');
     expect(html).toContain('compile_clear');
     expect(html).toContain('Scheduled Twitter post publisher');
+  });
+
+  it('analyzes chat attempts, Ralph movement, and frontier points from code', () => {
+    const summary = summarizeRuns(payload);
+    const analysis = analyzeRuns(payload, summary);
+
+    expect(analysis.frontier.points.length).toBe(2);
+    expect(analysis.frontier.points[0].label).toBe('Gemini 3 Flash Preview');
+    expect(analysis.ralph.matchedPairs).toBe(0);
+    expect(analysis.chat.totalResponses).toBe(5);
+    expect(analysis.failures.topFailedChecks[0].id).toBe('cron_api_call');
+    expect(analysis.compiler.topCategories.length).toBeGreaterThan(0);
+    expect(analysis.taskDifficulty.length).toBe(1);
+    expect(analysis.taskDifficulty[0].label).toBe('Scheduled Twitter post publisher');
   });
 });
 

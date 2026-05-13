@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRouter Iteration Benchmark - Clear</title>
+  <style>
+    :root {
+      --ink: #182132;
+      --muted: #637083;
+      --line: #d9e1ec;
+      --paper: #f6f8fb;
+      --panel: #ffffff;
+      --blue: #4169e1;
+      --teal: #0b8f83;
+      --gold: #b87916;
+      --red: #b83b42;
+      --green: #21845b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    .shell { max-width: 1180px; margin: 0 auto; padding: 32px 20px 56px; }
+    header, section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 24px; margin-bottom: 18px; }
+    .eyebrow { color: var(--blue); font-size: 13px; font-weight: 800; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; line-height: 1.1; letter-spacing: 0; }
+    h1 { font-size: clamp(32px, 5vw, 52px); margin-top: 8px; max-width: 900px; }
+    h2 { font-size: 24px; margin-bottom: 14px; }
+    h3 { font-size: 15px; margin-bottom: 8px; }
+    p { color: var(--muted); margin: 10px 0 0; max-width: 820px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+    .metric { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fbfcfe; }
+    .value { display: block; font-size: 28px; font-weight: 850; white-space: nowrap; }
+    .label { color: var(--muted); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0; }
+    .bar { height: 10px; background: #e8edf6; border-radius: 999px; overflow: hidden; min-width: 120px; }
+    .fill { height: 100%; background: var(--teal); border-radius: inherit; }
+    .fail .fill { background: var(--red); }
+    .money { font-variant-numeric: tabular-nums; }
+    .pill { display: inline-block; border-radius: 999px; padding: 3px 8px; background: #eaf5f3; color: var(--teal); font-weight: 700; font-size: 12px; }
+    .warn { background: #fff6df; color: var(--gold); }
+    .bad { background: #fbe9eb; color: var(--red); }
+    .chart-wrap { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfe; padding: 12px; overflow-x: auto; }
+    svg.frontier { min-width: 860px; width: 100%; height: auto; display: block; }
+    .axis { stroke: #98a6b8; stroke-width: 1; }
+    .grid-line { stroke: #e3e9f2; stroke-width: 1; }
+    .frontier-line { fill: none; stroke: var(--teal); stroke-width: 3; }
+    .dot { stroke: #fff; stroke-width: 2; }
+    .dot.frontier-dot { stroke: var(--teal); stroke-width: 3; }
+    .chart-label { fill: var(--ink); font-size: 12px; font-weight: 750; }
+    .axis-label { fill: var(--muted); font-size: 12px; }
+    .note-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .note { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fbfcfe; }
+    .note strong { display: block; margin-bottom: 4px; }
+    @media (max-width: 820px) {
+      .metrics, .grid { grid-template-columns: 1fr; }
+      .shell { padding: 20px 12px 40px; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">Clear model benchmark</div>
+      <h1>Iteration Benchmark: Can the model recover after requirements fail?</h1>
+      <p>This run compares OpenRouter models on hard app builds. Each model must emit checkable requirements and Clear source, receive feedback, then try again.</p>
+      <div class="metrics">
+        <div class="metric"><span class="value">0/88</span><span class="label">successful runs</span></div>
+        <div class="metric"><span class="value">0%</span><span class="label">pass rate</span></div>
+        <div class="metric"><span class="value">$15.5611</span><span class="label">logged spend</span></div>
+        <div class="metric"><span class="value">1</span><span class="label">provider-blocked runs</span></div>
+      </div>
+      <p><strong>Best cheap model:</strong> Gemini 3 Flash Preview at 0% pass rate. <strong>Best overall:</strong> Gemini 3 Flash Preview at 0% pass rate. Generated 2026-05-13T00:38:38.975Z.</p>
+    </header>
+
+    <section>
+      <h2>Recommended Rankings</h2>
+      <p>Rankings sort first by full success, then partial-credit score, then best single run, then cost per requirement gap closed.</p>
+      <div class="grid">
+        <div>
+          <h3>Cheap Models</h3>
+          <table>
+    <thead><tr><th>Rank</th><th>Model</th><th>Pass</th><th>Avg Score</th><th>Best</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Gemini 3 Flash Preview <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>50%</td>
+        <td>89%</td>
+        <td class="money">$0.0607</td>
+      </tr>
+<tr>
+        <td>2</td>
+        <td>Ling 2.6 1T <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>37%</td>
+        <td>56%</td>
+        <td class="money">$0.0405</td>
+      </tr>
+<tr>
+        <td>3</td>
+        <td>DeepSeek V4 Flash <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>36%</td>
+        <td>78%</td>
+        <td class="money">$0.0083</td>
+      </tr>
+<tr>
+        <td>4</td>
+        <td>Qwen3.5 Plus <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>22%</td>
+        <td>67%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>5</td>
+        <td>Laguna M.1 Free <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>17%</td>
+        <td>56%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>6</td>
+        <td>Ring 2.6 1T Free <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>7</td>
+        <td>Tencent Hy3 Preview <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">n/a</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+        <div>
+          <h3>Overall</h3>
+          <table>
+    <thead><tr><th>Rank</th><th>Model</th><th>Pass</th><th>Avg Score</th><th>Best</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Gemini 3 Flash Preview <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>50%</td>
+        <td>89%</td>
+        <td class="money">$0.0607</td>
+      </tr>
+<tr>
+        <td>2</td>
+        <td>Claude Sonnet 4.6 <span class="pill warn">premium</span></td>
+        <td>0/8 (0%)</td>
+        <td>50%</td>
+        <td>78%</td>
+        <td class="money">$0.4065</td>
+      </tr>
+<tr>
+        <td>3</td>
+        <td>Claude Opus 4.7 <span class="pill warn">premium</span></td>
+        <td>0/8 (0%)</td>
+        <td>49%</td>
+        <td>78%</td>
+        <td class="money">$1.4641</td>
+      </tr>
+<tr>
+        <td>4</td>
+        <td>Grok 3 <span class="pill warn">premium</span></td>
+        <td>0/4 (0%)</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.0401</td>
+      </tr>
+<tr>
+        <td>5</td>
+        <td>Ling 2.6 1T <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>37%</td>
+        <td>56%</td>
+        <td class="money">$0.0405</td>
+      </tr>
+<tr>
+        <td>6</td>
+        <td>DeepSeek V4 Flash <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>36%</td>
+        <td>78%</td>
+        <td class="money">$0.0083</td>
+      </tr>
+<tr>
+        <td>7</td>
+        <td>GPT-5.5 <span class="pill warn">premium</span></td>
+        <td>0/7 (0%)</td>
+        <td>22%</td>
+        <td>78%</td>
+        <td class="money">$0.6787</td>
+      </tr>
+<tr>
+        <td>8</td>
+        <td>Qwen3.5 Plus <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>22%</td>
+        <td>67%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>9</td>
+        <td>Laguna M.1 Free <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>17%</td>
+        <td>56%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>10</td>
+        <td>Ring 2.6 1T Free <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>11</td>
+        <td>Tencent Hy3 Preview <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>12</td>
+        <td>Gemini 3.1 Pro Preview <span class="pill warn">premium</span></td>
+        <td>0/4 (0%)</td>
+        <td>0%</td>
+        <td>0%</td>
+        <td class="money">n/a</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What We Learn So Far</h2>
+      <div class="note-grid">
+        <div class="note"><strong>Best buy</strong><span>Gemini 3 Flash Preview is on the price/completion frontier at 50% average score and $0.0607 per scored run.</span></div>
+<div class="note"><strong>Smartest overall</strong><span>Gemini 3 Flash Preview ranks first by the scoring rule: 50% average score, 89% best run.</span></div>
+<div class="note"><strong>Ralph effect</strong><span>18/43 loop runs improved while retrying. Against single-shot baselines: 25/43 matched single-shot pairs improved, average +20 points.</span></div>
+<div class="note"><strong>Hardest task</strong><span>Scheduled Twitter post publisher is hardest by average score: 25%, with 6.8 gaps left on average.</span></div>
+<div class="note"><strong>Compiler signal</strong><span>syntax and parse dominates compiler failures with 1823 counted errors. This is the first compiler-improvement bucket to inspect.</span></div>
+<div class="note"><strong>5m keep list</strong><span>Do not rerun the whole field. Keep: Gemini 3 Flash Preview, Claude Sonnet 4.6, Claude Opus 4.7, Grok 3, Ling 2.6 1T. Cut the low-signal models until the task or prompt changes.</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Price vs Completion Frontier</h2>
+      <p>Each dot is one model. Higher is better completion. Further right costs more per scored run. Frontier dots are the non-dominated choices: no cheaper model scored as well or better.</p>
+      <div class="chart-wrap"><svg class="frontier" viewBox="0 0 900 420" role="img" aria-label="Price versus completion frontier">
+    <line class="grid-line" x1="70" y1="215.8" x2="866" y2="215.8"></line><text class="axis-label" x="16" y="219.8">25%</text>
+<line class="grid-line" x1="70" y1="73.5" x2="866" y2="73.5"></line><text class="axis-label" x="16" y="77.5">50%</text>
+    <line class="axis" x1="70" y1="358" x2="866" y2="358"></line>
+    <line class="axis" x1="70" y1="28" x2="70" y2="358"></line>
+    <polyline class="frontier-line" points="70.0,263.4 331.4,232.1 365.5,153.2 437.2,145.3 536.8,73.5"></polyline>
+    <circle class="dot frontier-dot" cx="70.0" cy="263.4" r="8" fill="#4169e1"><title>Laguna M.1 Free: 17% avg score, $0.0000 per run</title></circle>
+<circle class="dot " cx="70.0" cy="295.4" r="6" fill="#4169e1"><title>Ring 2.6 1T Free: 11% avg score, $0.0000 per run</title></circle>
+<circle class="dot " cx="222.0" cy="295.4" r="6" fill="#4169e1"><title>Tencent Hy3 Preview: 11% avg score, $0.0038 per run</title></circle>
+<circle class="dot frontier-dot" cx="331.4" cy="232.1" r="8" fill="#4169e1"><title>Qwen3.5 Plus: 22% avg score, $0.0100 per run</title></circle>
+<circle class="dot frontier-dot" cx="365.5" cy="153.2" r="8" fill="#4169e1"><title>DeepSeek V4 Flash: 36% avg score, $0.0134 per run</title></circle>
+<circle class="dot frontier-dot" cx="437.2" cy="145.3" r="8" fill="#4169e1"><title>Ling 2.6 1T: 37% avg score, $0.0253 per run</title></circle>
+<circle class="dot frontier-dot" cx="536.8" cy="73.5" r="8" fill="#4169e1"><title>Gemini 3 Flash Preview: 50% avg score, $0.0607 per run</title></circle>
+<circle class="dot " cx="588.4" cy="358.0" r="6" fill="#b87916"><title>Gemini 3.1 Pro Preview: 0% avg score, $0.0955 per run</title></circle>
+<circle class="dot " cx="604.8" cy="120.5" r="6" fill="#b87916"><title>Grok 3: 42% avg score, $0.1104 per run</title></circle>
+<circle class="dot " cx="720.3" cy="73.5" r="6" fill="#b87916"><title>Claude Sonnet 4.6: 50% avg score, $0.3049 per run</title></circle>
+<circle class="dot " cx="793.8" cy="232.0" r="6" fill="#b87916"><title>GPT-5.5: 22% avg score, $0.5817 per run</title></circle>
+<circle class="dot " cx="845.3" cy="82.1" r="6" fill="#b87916"><title>Claude Opus 4.7: 49% avg score, $0.9151 per run</title></circle>
+    <text class="chart-label" x="546.8" y="63.5">Gemini 3 Flash</text>
+<text class="chart-label" x="447.2" y="163.3">Ling</text>
+<text class="chart-label" x="375.5" y="143.2">DeepSeek V4 Flash</text>
+<text class="chart-label" x="341.4" y="250.1">Qwen3.5 Plus</text>
+<text class="chart-label" x="80.0" y="253.4">Laguna M.1 Free</text>
+<text class="chart-label" x="730.3" y="91.5">Sonnet</text>
+<text class="chart-label" x="855.3" y="72.1">Opus</text>
+<text class="chart-label" x="614.8" y="138.5">Grok 3</text>
+<text class="chart-label" x="803.8" y="222.0">GPT-5.5</text>
+<text class="chart-label" x="80.0" y="313.4">Ring Free</text>
+    <text class="axis-label" x="368" y="402">cost per scored run, log scale</text>
+    <text class="axis-label" transform="translate(18 280) rotate(-90)">average completion score</text>
+  </svg></div>
+      <table>
+    <thead><tr><th>Model</th><th>Tier</th><th>Avg Score</th><th>Best</th><th>Cost / Run</th><th>Frontier</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Laguna M.1 Free</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>17%</td>
+        <td>56%</td>
+        <td class="money">$0.0000</td>
+        <td><span class="pill">yes</span></td>
+      </tr>
+<tr>
+        <td>Ring 2.6 1T Free</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">$0.0000</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+<tr>
+        <td>Tencent Hy3 Preview</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">$0.0038</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+<tr>
+        <td>Qwen3.5 Plus</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>22%</td>
+        <td>67%</td>
+        <td class="money">$0.0100</td>
+        <td><span class="pill">yes</span></td>
+      </tr>
+<tr>
+        <td>DeepSeek V4 Flash</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>36%</td>
+        <td>78%</td>
+        <td class="money">$0.0134</td>
+        <td><span class="pill">yes</span></td>
+      </tr>
+<tr>
+        <td>Ling 2.6 1T</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>37%</td>
+        <td>56%</td>
+        <td class="money">$0.0253</td>
+        <td><span class="pill">yes</span></td>
+      </tr>
+<tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>50%</td>
+        <td>89%</td>
+        <td class="money">$0.0607</td>
+        <td><span class="pill">yes</span></td>
+      </tr>
+<tr>
+        <td>Gemini 3.1 Pro Preview</td>
+        <td><span class="pill warn">premium</span></td>
+        <td>0%</td>
+        <td>0%</td>
+        <td class="money">$0.0955</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+<tr>
+        <td>Grok 3</td>
+        <td><span class="pill warn">premium</span></td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.1104</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+<tr>
+        <td>Claude Sonnet 4.6</td>
+        <td><span class="pill warn">premium</span></td>
+        <td>50%</td>
+        <td>78%</td>
+        <td class="money">$0.3049</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+<tr>
+        <td>GPT-5.5</td>
+        <td><span class="pill warn">premium</span></td>
+        <td>22%</td>
+        <td>78%</td>
+        <td class="money">$0.5817</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+<tr>
+        <td>Claude Opus 4.7</td>
+        <td><span class="pill warn">premium</span></td>
+        <td>49%</td>
+        <td>78%</td>
+        <td class="money">$0.9151</td>
+        <td><span class="pill warn">no</span></td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>What Ralph Changed</h2>
+      <div class="metrics">
+        <div class="metric"><span class="value">18/43</span><span class="label">loop runs improved while retrying</span></div>
+        <div class="metric"><span class="value">43</span><span class="label">single-shot vs Ralph pairs</span></div>
+        <div class="metric"><span class="value">+20 pts</span><span class="label">average Ralph score delta</span></div>
+        <div class="metric"><span class="value">1.3</span><span class="label">avg requirement gaps closed</span></div>
+      </div>
+      <p>Ralph is counted as useful only when the failed-check count or score moves. This keeps the analysis from rewarding models for simply talking longer.</p>
+    </section>
+
+    <section>
+      <h2>Chat and Tool Behavior</h2>
+      <div class="metrics">
+        <div class="metric"><span class="value">263</span><span class="label">model responses analyzed</span></div>
+        <div class="metric"><span class="value">2915</span><span class="label">avg response chars</span></div>
+        <div class="metric"><span class="value">70%</span><span class="label">responses with Clear source</span></div>
+        <div class="metric"><span class="value">400</span><span class="label">tool calls found in chat logs</span></div>
+      </div>
+      <table>
+    <thead><tr><th>Model</th><th>Responses</th><th>Avg Chars</th><th>Clear Source Rate</th><th>Compiler Mentions</th><th>Pattern Mentions</th><th>Tool Calls</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td>56</td>
+        <td>4151</td>
+        <td>100%</td>
+        <td>12</td>
+        <td>54</td>
+        <td>9</td>
+      </tr>
+<tr>
+        <td>Ling 2.6 1T</td>
+        <td>35</td>
+        <td>4443</td>
+        <td>100%</td>
+        <td>19</td>
+        <td>31</td>
+        <td>23</td>
+      </tr>
+<tr>
+        <td>Claude Opus 4.7</td>
+        <td>31</td>
+        <td>3013</td>
+        <td>90%</td>
+        <td>22</td>
+        <td>28</td>
+        <td>62</td>
+      </tr>
+<tr>
+        <td>Tencent Hy3 Preview</td>
+        <td>26</td>
+        <td>111</td>
+        <td>4%</td>
+        <td>0</td>
+        <td>1</td>
+        <td>27</td>
+      </tr>
+<tr>
+        <td>Ring 2.6 1T Free</td>
+        <td>23</td>
+        <td>1615</td>
+        <td>35%</td>
+        <td>2</td>
+        <td>8</td>
+        <td>59</td>
+      </tr>
+<tr>
+        <td>Claude Sonnet 4.6</td>
+        <td>21</td>
+        <td>3590</td>
+        <td>81%</td>
+        <td>16</td>
+        <td>17</td>
+        <td>60</td>
+      </tr>
+<tr>
+        <td>GPT-5.5</td>
+        <td>17</td>
+        <td>1390</td>
+        <td>41%</td>
+        <td>2</td>
+        <td>8</td>
+        <td>51</td>
+      </tr>
+<tr>
+        <td>Grok 3</td>
+        <td>14</td>
+        <td>4637</td>
+        <td>100%</td>
+        <td>13</td>
+        <td>13</td>
+        <td>3</td>
+      </tr>
+<tr>
+        <td>DeepSeek V4 Flash</td>
+        <td>14</td>
+        <td>1962</td>
+        <td>50%</td>
+        <td>1</td>
+        <td>6</td>
+        <td>54</td>
+      </tr>
+<tr>
+        <td>Laguna M.1 Free</td>
+        <td>12</td>
+        <td>2430</td>
+        <td>58%</td>
+        <td>1</td>
+        <td>5</td>
+        <td>25</td>
+      </tr>
+<tr>
+        <td>Qwen3.5 Plus</td>
+        <td>8</td>
+        <td>3002</td>
+        <td>63%</td>
+        <td>2</td>
+        <td>5</td>
+        <td>13</td>
+      </tr>
+<tr>
+        <td>Gemini 3.1 Pro Preview</td>
+        <td>6</td>
+        <td>100</td>
+        <td>0%</td>
+        <td>1</td>
+        <td>1</td>
+        <td>14</td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Failure and Compiler Signals</h2>
+      <div class="grid">
+        <div>
+          <h3>Requirement Gaps</h3>
+          <table>
+    <thead><tr><th>Check</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>compile</td><td>55</td></tr>
+<tr><td>requirements_block</td><td>47</td></tr>
+<tr><td>dashboard</td><td>36</td></tr>
+<tr><td>filters</td><td>33</td></tr>
+<tr><td>output_contract</td><td>29</td></tr>
+<tr><td>target_db</td><td>28</td></tr>
+<tr><td>target_db_allowlist</td><td>28</td></tr>
+<tr><td>page_flow</td><td>22</td></tr>
+<tr><td>schedule_endpoints</td><td>22</td></tr>
+<tr><td>failure_handling</td><td>21</td></tr>
+<tr><td>page_table</td><td>21</td></tr>
+<tr><td>cron_api_call</td><td>20</td></tr>
+    </tbody>
+  </table>
+        </div>
+        <div>
+          <h3>Compiler Error Buckets</h3>
+          <table>
+    <thead><tr><th>Category</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>syntax and parse</td><td>1823</td></tr>
+<tr><td>other</td><td>764</td></tr>
+<tr><td>endpoint wiring</td><td>84</td></tr>
+<tr><td>outgoing allowlist</td><td>55</td></tr>
+<tr><td>data model</td><td>53</td></tr>
+<tr><td>frontend wiring</td><td>36</td></tr>
+    </tbody>
+  </table>
+        </div>
+      </div>
+      <p>Total compiler errors in analyzed chats: 2815. Attempts with compiler errors: 185.</p>
+      <h3>Top Raw Compiler Messages</h3>
+      <table>
+    <thead><tr><th>Message</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>Clear doesn&#39;t understand &quot;}&quot; in this position. If it&#39;s a variable, make sure it&#39;s defined on an earlier line. If it&#39;s a keyword, check the spelling. Example: result = price * quant</td><td>202</td></tr>
+<tr><td>You used &#39;clear&#39; on line 1 but it hasn&#39;t been created yet. Define it on an earlier line. Example: clear = 0 or clear is &#39;value&#39;</td><td>131</td></tr>
+<tr><td>&quot;update&quot; needs a value — add &quot;is&quot; and a value after it. Example: update is 100</td><td>52</td></tr>
+<tr><td>Clear doesn&#39;t understand &quot;:&quot; in this position. If it&#39;s a variable, make sure it&#39;s defined on an earlier line. If it&#39;s a keyword, check the spelling. Example: result = price * quant</td><td>48</td></tr>
+<tr><td>The if-block is empty -- add indented code below it. Example: if x is 5: show &quot;yes&quot;</td><td>42</td></tr>
+<tr><td>Give your variable a name. Example: price is 100</td><td>36</td></tr>
+<tr><td>There&#39;s an unclosed &quot;{&quot; — add a &quot;}&quot; to close the record. Example: { received is true }</td><td>36</td></tr>
+<tr><td>This function definition is missing a name — add one after &quot;define function&quot;. Example: define function greet of name</td><td>31</td></tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Task Difficulty</h2>
+      <p>Harder tasks have lower average completion, more gaps left, more timeouts, and worse cost per gap closed.</p>
+      <table>
+    <thead><tr><th>Hardness Rank</th><th>Task</th><th>Pass</th><th>Avg Score</th><th>Best</th><th>Avg Gaps Left</th><th>Timeouts</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Scheduled Twitter post publisher</td>
+        <td>0/23 (0%)</td>
+        <td>25%</td>
+        <td>89%</td>
+        <td>6.8</td>
+        <td>9</td>
+        <td class="money">$0.2030</td>
+      </tr>
+<tr>
+        <td>2</td>
+        <td>Customer health operations cockpit</td>
+        <td>0/20 (0%)</td>
+        <td>26%</td>
+        <td>67%</td>
+        <td>5.5</td>
+        <td>10</td>
+        <td class="money">$0.4062</td>
+      </tr>
+<tr>
+        <td>3</td>
+        <td>Deal desk approval workflow</td>
+        <td>0/24 (0%)</td>
+        <td>31%</td>
+        <td>78%</td>
+        <td>5.5</td>
+        <td>11</td>
+        <td class="money">$0.4196</td>
+      </tr>
+<tr>
+        <td>4</td>
+        <td>Stripe payout reconciliation ETL</td>
+        <td>0/20 (0%)</td>
+        <td>38%</td>
+        <td>78%</td>
+        <td>5.2</td>
+        <td>9</td>
+        <td class="money">$0.2078</td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>5m Contenders</h2>
+      <p>Poor 2m performers should not get expensive 5m reruns. Keep models with strong completion signal or unusually cheap gap-closing signal.</p>
+      <div class="grid">
+        <div>
+          <h3>Keep</h3>
+          <table>
+    <thead><tr><th>Model</th><th>Avg</th><th>Best</th><th>Cost / Run</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td>50%</td>
+        <td>89%</td>
+        <td class="money">$0.0607</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+<tr>
+        <td>Claude Sonnet 4.6</td>
+        <td>50%</td>
+        <td>78%</td>
+        <td class="money">$0.3049</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+<tr>
+        <td>Claude Opus 4.7</td>
+        <td>49%</td>
+        <td>78%</td>
+        <td class="money">$0.9151</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+<tr>
+        <td>Grok 3</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.1104</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+<tr>
+        <td>Ling 2.6 1T</td>
+        <td>37%</td>
+        <td>56%</td>
+        <td class="money">$0.0253</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+<tr>
+        <td>DeepSeek V4 Flash</td>
+        <td>36%</td>
+        <td>78%</td>
+        <td class="money">$0.0134</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+<tr>
+        <td>GPT-5.5</td>
+        <td>22%</td>
+        <td>78%</td>
+        <td class="money">$0.5817</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+        <div>
+          <h3>Cut For Now</h3>
+          <table>
+    <thead><tr><th>Model</th><th>Avg</th><th>Best</th><th>Cost / Run</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Qwen3.5 Plus</td>
+        <td>22%</td>
+        <td>67%</td>
+        <td class="money">$0.0100</td>
+        <td>cut: low score signal in 2m lane</td>
+      </tr>
+<tr>
+        <td>Laguna M.1 Free</td>
+        <td>17%</td>
+        <td>56%</td>
+        <td class="money">$0.0000</td>
+        <td>cut: low score signal in 2m lane</td>
+      </tr>
+<tr>
+        <td>Ring 2.6 1T Free</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">$0.0000</td>
+        <td>cut: low score signal in 2m lane</td>
+      </tr>
+<tr>
+        <td>Tencent Hy3 Preview</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td class="money">$0.0038</td>
+        <td>cut: low score signal in 2m lane</td>
+      </tr>
+<tr>
+        <td>Gemini 3.1 Pro Preview</td>
+        <td>0%</td>
+        <td>0%</td>
+        <td class="money">$0.0955</td>
+        <td>cut: low score signal in 2m lane</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section>
+        <h2>Model Results</h2>
+        <table>
+    <thead><tr><th>model</th><th>Pass Rate</th><th>Score</th><th>Best</th><th>Scored</th><th>Blocked</th><th>Avg Tries</th><th>Cost</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>50%</td>
+        <td>89%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>7.3</td>
+        <td class="money">$0.4854</td>
+        <td class="money">$0.0607</td>
+      </tr>
+<tr>
+        <td>Claude Sonnet 4.6</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>50%</td>
+        <td>78%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>2.6</td>
+        <td class="money">$2.4391</td>
+        <td class="money">$0.4065</td>
+      </tr>
+<tr>
+        <td>Claude Opus 4.7</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>49%</td>
+        <td>78%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>4.0</td>
+        <td class="money">$7.3205</td>
+        <td class="money">$1.4641</td>
+      </tr>
+<tr>
+        <td>Grok 3</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td>0/4</td>
+        <td>0</td>
+        <td>4.0</td>
+        <td class="money">$0.4416</td>
+        <td class="money">$0.0401</td>
+      </tr>
+<tr>
+        <td>Ling 2.6 1T</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>37%</td>
+        <td>56%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>4.9</td>
+        <td class="money">$0.2023</td>
+        <td class="money">$0.0405</td>
+      </tr>
+<tr>
+        <td>DeepSeek V4 Flash</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>36%</td>
+        <td>78%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>1.9</td>
+        <td class="money">$0.1076</td>
+        <td class="money">$0.0083</td>
+      </tr>
+<tr>
+        <td>GPT-5.5</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>22%</td>
+        <td>78%</td>
+        <td>0/7</td>
+        <td>1</td>
+        <td>2.4</td>
+        <td class="money">$4.0722</td>
+        <td class="money">$0.6787</td>
+      </tr>
+<tr>
+        <td>Qwen3.5 Plus</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>22%</td>
+        <td>67%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>1.3</td>
+        <td class="money">$0.0798</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>Laguna M.1 Free</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>17%</td>
+        <td>56%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>1.5</td>
+        <td class="money">$0.0000</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>Ring 2.6 1T Free</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>3.1</td>
+        <td class="money">$0.0000</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>Tencent Hy3 Preview</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>3.4</td>
+        <td class="money">$0.0305</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>Gemini 3.1 Pro Preview</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>0%</td>
+        <td>0%</td>
+        <td>0/4</td>
+        <td>0</td>
+        <td>1.5</td>
+        <td class="money">$0.3822</td>
+        <td class="money">n/a</td>
+      </tr>
+    </tbody>
+  </table>
+      </section>
+      <section>
+        <h2>Feedback Modes</h2>
+        <table>
+    <thead><tr><th>mode</th><th>Pass Rate</th><th>Score</th><th>Best</th><th>Scored</th><th>Blocked</th><th>Avg Tries</th><th>Cost</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Ralph + error hints + pattern DB</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>40%</td>
+        <td>89%</td>
+        <td>0/43</td>
+        <td>1</td>
+        <td>5.4</td>
+        <td class="money">$15.0564</td>
+        <td class="money">$0.2788</td>
+      </tr>
+<tr>
+        <td>Single shot, no Ralph</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>20%</td>
+        <td>44%</td>
+        <td>0/44</td>
+        <td>0</td>
+        <td>1.0</td>
+        <td class="money">$0.5047</td>
+        <td class="money">n/a</td>
+      </tr>
+    </tbody>
+  </table>
+      </section>
+    </div>
+
+    <section>
+      <h2>Task Results</h2>
+      <table>
+    <thead><tr><th>task</th><th>Pass Rate</th><th>Score</th><th>Best</th><th>Scored</th><th>Blocked</th><th>Avg Tries</th><th>Cost</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Stripe payout reconciliation ETL</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>38%</td>
+        <td>78%</td>
+        <td>0/20</td>
+        <td>0</td>
+        <td>3.1</td>
+        <td class="money">$4.1555</td>
+        <td class="money">$0.2078</td>
+      </tr>
+<tr>
+        <td>Deal desk approval workflow</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>31%</td>
+        <td>78%</td>
+        <td>0/24</td>
+        <td>0</td>
+        <td>3.2</td>
+        <td class="money">$3.7762</td>
+        <td class="money">$0.4196</td>
+      </tr>
+<tr>
+        <td>Customer health operations cockpit</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>26%</td>
+        <td>67%</td>
+        <td>0/20</td>
+        <td>0</td>
+        <td>3.3</td>
+        <td class="money">$3.6562</td>
+        <td class="money">$0.4062</td>
+      </tr>
+<tr>
+        <td>Scheduled Twitter post publisher</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>25%</td>
+        <td>89%</td>
+        <td>0/23</td>
+        <td>1</td>
+        <td>3.2</td>
+        <td class="money">$3.9731</td>
+        <td class="money">$0.2483</td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Tasks Tested</h2>
+      <table>
+        <thead><tr><th>Task</th><th>Family</th><th>What It Tests</th></tr></thead>
+        <tbody>
+          <tr><td>Deal desk approval workflow</td><td>workflow_crud</td><td>Build a Deal Desk app in Clear for sales managers and finance approvers.
+Target: web and javascript backend.
+Database: local memory.
+DealRequests table: customer_name required, owner_email required, annual_contract_value number required, discount_percent number, stage default draft, margin_percent number, approval_status default pending, created_at_date date.
+DealLineItems table: deal_id required, product_name requir...</td></tr>
+<tr><td>Scheduled Twitter post publisher</td><td>external_api_scheduler</td><td>Build a Twitter Scheduler app in Clear.
+Target: web and javascript backend.
+Database: local memory.
+Allow outgoing requests to: &#39;https://api.twitter.com/2/tweets&#39;.
+ScheduledPosts table: content required, scheduled_at text required, status default pending, retry_count number, error_message text, posted_at text, created_at_date date.
+POST /api/schedule creates a scheduled tweet.
+GET /api/scheduled lists every s...</td></tr>
+<tr><td>Stripe payout reconciliation ETL</td><td>etl</td><td>Build a Stripe reconciliation dashboard in Clear for finance ops.
+Target: web and javascript backend.
+Database: local memory.
+Allow outgoing requests to: &#39;https://api.stripe.com&#39;.
+StripeAccounts table: account_name required, stripe_account_id required, last_synced_at text.
+Payouts table: stripe_payout_id required, amount number required, currency text, arrival_date text, status text, created_at_date date.
+Bal...</td></tr>
+<tr><td>Customer health operations cockpit</td><td>analytics_workflow</td><td>Build a customer health operations app in Clear for a B2B SaaS team.
+Target: web and javascript backend.
+Database: local memory.
+Accounts table: company_name required, owner_email required, plan text, health_score number, renewal_date text, risk_level default green, created_at_date date.
+UsageEvents table: account_id required, event_name required, active_users number, seats number, occurred_at text.
+Interventions tab...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Tool Calls</h2>
+      <p>Tool calls are counted from attempt logs and, when available, from the benchmark database. Combined reports may have database rows under the original run file but still retain per-attempt tool-call evidence.</p>
+      <p><strong>Attempt-log tool calls:</strong> 400. <strong>Database-filtered tool calls:</strong> 0.</p>
+      <p><span class="pill warn">No tool calls captured in this artifact.</span></p>
+    </section>
+
+    <section>
+      <h2>OpenRouter Cost Log</h2>
+      <p>Credits come from OpenRouter's credits endpoint. Per-call costs are also logged in the benchmark database when a generation id is available.</p>
+      <div class="metrics">
+        <div class="metric"><span class="value">$20.0403</span><span class="label">usage at start</span></div>
+        <div class="metric"><span class="value">$37.0116</span><span class="label">usage at end</span></div>
+        <div class="metric"><span class="value">$16.9714</span><span class="label">usage delta</span></div>
+        <div class="metric"><span class="value">6</span><span class="label">credit snapshots</span></div>
+      </div>
+      <table>
+    <thead><tr><th>Label</th><th>Captured</th><th>Total Credits</th><th>Total Usage</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>start</td>
+        <td>2026-05-12T23:26:25.143Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$20.0403</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>end</td>
+        <td>2026-05-12T23:39:15.764Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$30.5216</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>start</td>
+        <td>2026-05-12T23:42:41.362Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$32.2434</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>end</td>
+        <td>2026-05-12T23:51:52.674Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$36.1975</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>start</td>
+        <td>2026-05-13T00:17:24.137Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$36.2131</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>end</td>
+        <td>2026-05-13T00:25:05.523Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$37.0116</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Failure Appendix</h2>
+      <table>
+        <thead><tr><th>Model</th><th>Task</th><th>Mode</th><th>Failed Checks</th></tr></thead>
+        <tbody>
+          <tr><td>Gemini 3 Flash Preview</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, deal_tables, filters, page_flow</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, target_db, deal_tables, filters, page_flow</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, deal_tables, filters, page_flow</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, target_db, deal_tables, filters, page_flow</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, target_db, deal_tables, filters, page_flow</td></tr>
+<tr><td>GPT-5.5</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, deal_tables, filters, page_flow</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>compile, page_flow</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>compile, requirements_block, deal_tables, filters, page_flow</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>compile, page_flow</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>compile, deal_tables, approval_decisions, page_flow</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>compile, page_flow</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>none recorded</td></tr>
+<tr><td>GPT-5.5</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>GPT-5.5</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>output_contract, compile, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile, requirements_block, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile, schedule_endpoints, page_table</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile, requirements_block, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, dedupe_and_findings, scheduled_sync, dashboard</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, dedupe_and_findings, scheduled_sync, dashboard</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>GPT-5.5</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>output_contract, compile, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, scheduled_sync, dashboard</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Stripe payout reconciliation ETL</td><td>Single shot, no Ralph</td><td>compile, target_db_allowlist, etl_tables, sync_endpoint, dashboard</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>none recorded</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>compile, scheduled_sync, dashboard</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>compile, requirements_block, scheduled_sync, dashboard</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>compile, scheduled_sync, dashboard</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>sync_endpoint, dashboard</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, dedupe_and_findings, scheduled_sync, dashboard</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>compile, sync_endpoint, dashboard</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, dedupe_and_findings, scheduled_sync, dashboard</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>compile, dashboard</td></tr>
+<tr><td>GPT-5.5</td><td>Stripe payout reconciliation ETL</td><td>Ralph + error hints + pattern DB</td><td>sync_endpoint, dashboard</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, ops_tables, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>compile, target_db, ops_tables, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>compile, target_db, ops_tables, filters, intervention_flow, dashboard</td></tr>
+<tr><td>GPT-5.5</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>compile, target_db, ops_tables, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db, ops_tables, ingest_and_score, filters, intervention_flow, dashboard</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>output_contract, compile, requirements_block, target_db, ops_tables, ingest_and_score, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>output_contract, requirements_block, target_db, ops_tables, ingest_and_score, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, ops_tables, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, ops_tables, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Customer health operations cockpit</td><td>Single shot, no Ralph</td><td>none recorded</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>compile, requirements_block, dashboard</td></tr>
+<tr><td>Claude Sonnet 4.6</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>compile, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Claude Opus 4.7</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>filters, intervention_flow, dashboard</td></tr>
+<tr><td>Tencent Hy3 Preview</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, ops_tables, ingest_and_score, filters, intervention_flow, dashboard</td></tr>
+<tr><td>DeepSeek V4 Flash</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>compile, filters, intervention_flow, dashboard</td></tr>
+<tr><td>GPT-5.5</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, ops_tables, ingest_and_score, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Ring 2.6 1T Free</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>output_contract, requirements_block, target_db, ops_tables, ingest_and_score, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Qwen3.5 Plus</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>none recorded</td></tr>
+<tr><td>Laguna M.1 Free</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>none recorded</td></tr>
+<tr><td>Ling 2.6 1T</td><td>Customer health operations cockpit</td><td>Ralph + error hints + pattern DB</td><td>compile, filters, intervention_flow, dashboard</td></tr>
+<tr><td>Gemini 3.1 Pro Preview</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>output_contract, compile, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Grok 3</td><td>Scheduled Twitter post publisher</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Gemini 3.1 Pro Preview</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>output_contract, compile, requirements_block, target_db_allowlist, scheduled_table, schedule_endpoints, cron_api_call, failure_handling, page_table</td></tr>
+<tr><td>Grok 3</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>compile, schedule_endpoints, failure_handling</td></tr>
+<tr><td>Gemini 3.1 Pro Preview</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>output_contract, compile, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Grok 3</td><td>Deal desk approval workflow</td><td>Single shot, no Ralph</td><td>compile, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Gemini 3.1 Pro Preview</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>none recorded</td></tr>
+<tr><td>Grok 3</td><td>Deal desk approval workflow</td><td>Ralph + error hints + pattern DB</td><td>compile, page_flow</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Provider-Blocked Appendix</h2>
+      <p>These runs did not test model quality. They failed before a scored answer could be evaluated.</p>
+      <table>
+        <thead><tr><th>Model</th><th>Task</th><th>Mode</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>GPT-5.5</td><td>Scheduled Twitter post publisher</td><td>Ralph + error hints + pattern DB</td><td>fetch failed</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

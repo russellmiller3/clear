@@ -24,16 +24,18 @@ export const DEFAULT_DOC_MAX_CHARS = 40000;
 export const DEFAULT_PATTERN_RESULT_LIMIT = 8;
 
 export const DEFAULT_MODELS = Object.freeze([
-  { key: 'gemini-flash', label: 'Gemini 3 Flash Preview', id: 'google/gemini-3-flash-preview', inPerM: 0.50, outPerM: 3.00 },
-  { key: 'opus', label: 'Claude Opus 4.7', id: 'anthropic/claude-opus-4.7', inPerM: 5.00, outPerM: 25.00 },
-  { key: 'sonnet', label: 'Claude Sonnet 4.6', id: 'anthropic/claude-sonnet-4.6', inPerM: 3.00, outPerM: 15.00 },
-  { key: 'gpt-5.5', label: 'GPT-5.5', id: 'openai/gpt-5.5', inPerM: 5.00, outPerM: 30.00 },
-  { key: 'deepseek', label: 'DeepSeek V4 Flash', id: 'deepseek/deepseek-v4-flash', inPerM: 0.14, outPerM: 0.28 },
-  { key: 'hy3', label: 'Tencent Hy3 Preview', id: 'tencent/hy3-preview', inPerM: 0.066, outPerM: 0.26 },
-  { key: 'qwen3.5', label: 'Qwen3.5 Plus', id: 'qwen/qwen3.5-plus-20260420', inPerM: 0.40, outPerM: 2.40 },
-  { key: 'ring-free', label: 'Ring 2.6 1T Free', id: 'inclusionai/ring-2.6-1t:free', inPerM: 0, outPerM: 0 },
-  { key: 'ling', label: 'Ling 2.6 1T', id: 'inclusionai/ling-2.6-1t', inPerM: 0.30, outPerM: 2.50 },
-  { key: 'laguna-free', label: 'Laguna M.1 Free', id: 'poolside/laguna-m.1:free', inPerM: 0, outPerM: 0 },
+  { key: 'gemini-flash', label: 'Gemini 3 Flash Preview', id: 'google/gemini-3-flash-preview', tier: 'cheap', inPerM: 0.50, outPerM: 3.00 },
+  { key: 'gemini-pro', label: 'Gemini 3.1 Pro Preview', id: 'google/gemini-3.1-pro-preview', tier: 'premium', inPerM: 2.00, outPerM: 12.00 },
+  { key: 'opus', label: 'Claude Opus 4.7', id: 'anthropic/claude-opus-4.7', tier: 'premium', inPerM: 5.00, outPerM: 25.00 },
+  { key: 'sonnet', label: 'Claude Sonnet 4.6', id: 'anthropic/claude-sonnet-4.6', tier: 'premium', inPerM: 3.00, outPerM: 15.00 },
+  { key: 'gpt-5.5', label: 'GPT-5.5', id: 'openai/gpt-5.5', tier: 'premium', inPerM: 5.00, outPerM: 30.00 },
+  { key: 'grok-3', label: 'Grok 3', id: 'x-ai/grok-3', tier: 'premium', inPerM: 3.00, outPerM: 15.00 },
+  { key: 'deepseek', label: 'DeepSeek V4 Flash', id: 'deepseek/deepseek-v4-flash', tier: 'cheap', inPerM: 0.14, outPerM: 0.28 },
+  { key: 'hy3', label: 'Tencent Hy3 Preview', id: 'tencent/hy3-preview', tier: 'cheap', inPerM: 0.066, outPerM: 0.26 },
+  { key: 'qwen3.5', label: 'Qwen3.5 Plus', id: 'qwen/qwen3.5-plus-20260420', tier: 'cheap', inPerM: 0.40, outPerM: 2.40 },
+  { key: 'ring-free', label: 'Ring 2.6 1T Free', id: 'inclusionai/ring-2.6-1t:free', tier: 'cheap', inPerM: 0, outPerM: 0 },
+  { key: 'ling', label: 'Ling 2.6 1T', id: 'inclusionai/ling-2.6-1t', tier: 'cheap', inPerM: 0.30, outPerM: 2.50 },
+  { key: 'laguna-free', label: 'Laguna M.1 Free', id: 'poolside/laguna-m.1:free', tier: 'cheap', inPerM: 0, outPerM: 0 },
 ]);
 
 export const DEFAULT_MODES = Object.freeze([
@@ -584,6 +586,21 @@ export function createBenchmarkLogger(dbPath = DEFAULT_DB_PATH) {
       raw_tool_call_json TEXT NOT NULL,
       FOREIGN KEY(run_id) REFERENCES model_benchmark_runs(run_id)
     );
+
+    CREATE TABLE IF NOT EXISTS model_benchmark_cost_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT,
+      attempt INTEGER,
+      event_kind TEXT NOT NULL,
+      provider TEXT DEFAULT 'openrouter',
+      generation_id TEXT,
+      created_at TEXT NOT NULL,
+      cost REAL,
+      credits_total REAL,
+      credits_usage REAL,
+      payload_json TEXT,
+      output_path TEXT
+    );
   `);
   ensureColumn(db, 'model_benchmark_attempts', 'request_messages_json', 'TEXT');
   ensureColumn(db, 'model_benchmark_attempts', 'next_feedback_text', 'TEXT');
@@ -619,6 +636,12 @@ export function createBenchmarkLogger(dbPath = DEFAULT_DB_PATH) {
       (run_id, attempt, sequence, created_at, tool_call_id, tool_name, arguments_json, result_json, result_chars, raw_tool_call_json)
     VALUES
       (@run_id, @attempt, @sequence, @created_at, @tool_call_id, @tool_name, @arguments_json, @result_json, @result_chars, @raw_tool_call_json)
+  `);
+  const costEventStmt = db.prepare(`
+    INSERT INTO model_benchmark_cost_events
+      (run_id, attempt, event_kind, provider, generation_id, created_at, cost, credits_total, credits_usage, payload_json, output_path)
+    VALUES
+      (@run_id, @attempt, @event_kind, @provider, @generation_id, @created_at, @cost, @credits_total, @credits_usage, @payload_json, @output_path)
   `);
   const finishRunStmt = db.prepare(`
     UPDATE model_benchmark_runs
@@ -714,6 +737,36 @@ export function createBenchmarkLogger(dbPath = DEFAULT_DB_PATH) {
           raw_tool_call_json: normalized.rawJson,
         });
       });
+      if (attempt.costDetails) {
+        costEventStmt.run({
+          run_id: runId,
+          attempt: attempt.attempt,
+          event_kind: 'generation',
+          provider: 'openrouter',
+          generation_id: attempt.costDetails.generationId || null,
+          created_at: createdAt,
+          cost: attempt.cost || null,
+          credits_total: null,
+          credits_usage: null,
+          payload_json: JSON.stringify(attempt.costDetails),
+          output_path: null,
+        });
+      }
+    },
+    logCostEvent(event = {}) {
+      costEventStmt.run({
+        run_id: event.runId || null,
+        attempt: event.attempt || null,
+        event_kind: event.eventKind || 'credits',
+        provider: event.provider || 'openrouter',
+        generation_id: event.generationId || null,
+        created_at: event.createdAt || new Date().toISOString(),
+        cost: event.cost ?? null,
+        credits_total: event.creditsTotal ?? null,
+        credits_usage: event.creditsUsage ?? null,
+        payload_json: event.payload ? JSON.stringify(event.payload) : null,
+        output_path: event.outputPath || null,
+      });
     },
     finishRun(run) {
       finishRunStmt.run({
@@ -736,6 +789,70 @@ function callCost(model, usage) {
   const promptTokens = usage.prompt_tokens || 0;
   const completionTokens = usage.completion_tokens || 0;
   return ((promptTokens * model.inPerM) + (completionTokens * model.outPerM)) / 1_000_000;
+}
+
+export async function fetchOpenRouterCredits(apiKey, { timeoutMs = 20000 } = {}) {
+  const res = await fetch('https://openrouter.ai/api/v1/credits', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    return { ok: false, status: res.status, error: json.error?.message || json.raw || text.slice(0, 500), rawResponse: json };
+  }
+  const data = json.data || json;
+  return {
+    ok: true,
+    totalCredits: numberOrNull(data.total_credits ?? data.totalCredits),
+    totalUsage: numberOrNull(data.total_usage ?? data.totalUsage),
+    rawResponse: json,
+  };
+}
+
+export async function fetchOpenRouterGeneration(apiKey, generationId, { timeoutMs = 20000, retries = 2 } = {}) {
+  if (!generationId) return { ok: false, error: 'Missing generation id.' };
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const res = await fetch(`https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(generationId)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    if (res.ok) {
+      const data = json.data || json;
+      return {
+        ok: true,
+        id: generationId,
+        totalCost: numberOrNull(data.total_cost ?? data.totalCost),
+        nativeTokensPrompt: numberOrNull(data.native_tokens_prompt ?? data.nativeTokensPrompt),
+        nativeTokensCompletion: numberOrNull(data.native_tokens_completion ?? data.nativeTokensCompletion),
+        rawResponse: json,
+      };
+    }
+    if (attempt === retries || ![404, 425, 429, 500, 502, 503, 504].includes(res.status)) {
+      return { ok: false, status: res.status, error: json.error?.message || json.raw || text.slice(0, 500), rawResponse: json };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  return { ok: false, error: 'Generation lookup exhausted retries.' };
+}
+
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function benchmarkTools({ docNames = DEFAULT_DOC_NAMES } = {}) {
@@ -786,7 +903,7 @@ export function benchmarkTools({ docNames = DEFAULT_DOC_NAMES } = {}) {
   ];
 }
 
-async function executeBenchmarkTool({ toolCall, rootDir, docNames = DEFAULT_DOC_NAMES, docMaxChars = DEFAULT_DOC_MAX_CHARS, patternLimit = DEFAULT_PATTERN_RESULT_LIMIT, dbPath = DEFAULT_DB_PATH }) {
+export async function executeBenchmarkTool({ toolCall, rootDir, docNames = DEFAULT_DOC_NAMES, docMaxChars = DEFAULT_DOC_MAX_CHARS, patternLimit = DEFAULT_PATTERN_RESULT_LIMIT, dbPath = DEFAULT_DB_PATH }) {
   const normalized = normalizeToolCall(toolCall);
   let args = {};
   try {
@@ -872,7 +989,7 @@ function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
 
-async function readOpenRouterKey(rootDir) {
+export async function readOpenRouterKey(rootDir) {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
   const text = await fs.readFile(path.join(rootDir, '.env'), 'utf8');
   for (const rawLine of text.split(/\r?\n/)) {
@@ -886,7 +1003,7 @@ async function readOpenRouterKey(rootDir) {
   throw new Error('OPENROUTER_API_KEY missing from environment and .env');
 }
 
-async function callModel({ apiKey, model, messages, tools, toolChoice = 'auto', timeoutMs = 240000 }) {
+export async function callModel({ apiKey, model, messages, tools, toolChoice = 'auto', timeoutMs = 240000, lookupGenerationCost = false }) {
   const started = Date.now();
   const body = {
     model: model.id,
@@ -933,7 +1050,12 @@ async function callModel({ apiKey, model, messages, tools, toolChoice = 'auto', 
   }
 
   const usage = json.usage || {};
-  const cost = usage.cost ?? callCost(model, usage);
+  const generationId = json.id || usage.generation_id || usage.generationId || null;
+  const generation = lookupGenerationCost && generationId
+    ? await fetchOpenRouterGeneration(apiKey, generationId, { timeoutMs: 20000, retries: 2 }).catch((error) => ({ ok: false, error: String(error?.message || error) }))
+    : null;
+  const generationCost = generation?.ok ? generation.totalCost : null;
+  const cost = generationCost ?? usage.cost ?? callCost(model, usage);
   const message = json.choices?.[0]?.message || {};
   return {
     ok: true,
@@ -945,6 +1067,13 @@ async function callModel({ apiKey, model, messages, tools, toolChoice = 'auto', 
     completionTokens: usage.completion_tokens || 0,
     totalTokens: usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)),
     cost,
+    generationId,
+    costDetails: {
+      source: generationCost != null ? 'generation_api' : (usage.cost != null ? 'usage' : 'estimate'),
+      usage,
+      generationId,
+      generation,
+    },
     rawResponse: json,
   };
 }

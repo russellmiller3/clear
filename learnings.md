@@ -2717,3 +2717,4 @@ The decisive move is making intent machine-checkable. Requirements turn a vague 
 - **Pattern hooks can hurt when retrieval is poorly aimed.** A full hook that retrieves generic auth/KPI-ish context for a booking app can perform worse than docs-only; add local retrieval assertions before spending on another A/B.
 - **When a golden template lacks the hard prompt's primitive, seed a trusted language primitive.** Do not hope retrieval composes the missing behavior from adjacent snippets.
 - **Every negative paid retrieval result needs a zero-cost guard before the next paid run.** Add the primitive, assert the top match, then reopen the meter.
+- **FAQ and FEATURES are the map before code search.** If an agent has to broad-search for a named Clear subsystem like Ralph, the docs are missing a direct pointer; patch the map and enforce docs-first search.
