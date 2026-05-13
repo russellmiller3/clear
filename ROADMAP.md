@@ -179,6 +179,7 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 **Parallel track (Dave):** keep `landing/for-developers.html`, `clear-lsp`, the VSCode extension, and the Compiler API. Don't bet on D-6 (HN launch) until Marcus revenue lands. After first Marcus customer, evaluate whether to push Dave-first as expansion or keep it as a parallel hobby track.
 
 **Other open work that doesn't block launch:**
+- **Lenat-in-Clear Phase 1 — Runtime Grammar primitive (shipped 2026-05-13).** Compiler now has its first runtime-extensible parsing primitive: `runtime grammar 'name':` + `frame X:` blocks emit a storage table + a `_grammarMatch` helper that resolves user input against frames seeded at compile time AND extended at runtime via normal CRUD inserts. JS + Python parity. 10 TDD cycles green, 25 new tests, 0 regressions. Next: Phase 2 (slot-extractor stdlib: datetime, fuzzy, about-clause, regex+remainder). Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
 - LAE Phase C (destructive ships) — **fully complete 2026-05-10**. All 7 cycles shipped to main. Cycle 7 wiring: propose response attaches `migrationPlan` on rename detection; widget renders keep/discard radio above typed-confirmation input.
 - LAE Phase D — LAE-9 concurrent-edit guard, LAE-10 dry-run mode. Phase D's audit log write path shipped today.
 - Builder Mode default flip (1 day, ships Builder Mode as the new-user default).

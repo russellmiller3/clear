@@ -88,6 +88,7 @@
 //   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
 //   STATIC CONTENT ELEMENTS ........... parseContent(), parseImage(), parseMedia()
 //   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
+//   RUNTIME GRAMMAR ................... parseRuntimeGrammar, parseGrammarFrame, parseGrammarSlots
 //   CRUD OPERATIONS ................... parseSave, parseDeleteFrom, parseDefineAs,
 //                                      parseLookUpAssignment, parseSaveAssignment
 //   TEST BLOCKS ....................... parseTestDef(), parseExpect(), UNIT_ASSERT detection

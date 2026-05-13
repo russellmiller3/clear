@@ -4349,6 +4349,85 @@ Marcus used to hand-write a `Notifications` table, a SendGrid client wrapper, a 
 
 ---
 
+## Chapter 19d: Runtime Grammar (Vocabulary That Grows After You Ship)
+
+Approval queues, workflows, and triggered emails handle things you know about at compile time. But what about an app where **users** teach the app new commands after it's running?
+
+That's what `runtime grammar` is for. You declare a parsing surface — a named pile of "frames" that map user input to actions — and seed it with the frames you know about now. Users add more frames later via a normal CRUD save. The next time someone types something, the matcher picks up the new frame too. No recompile.
+
+### The shape
+
+```clear
+runtime grammar 'concepts':
+  frame TASK:
+    effect internal
+    canonical phrase 'remind me to'
+    synonyms 'todo:', 'remember to'
+    slots:
+      what is text, required
+    on match:
+      save the match as a new Task
+
+  frame OPEN_NOTEPAD:
+    effect external
+    canonical phrase 'open notepad'
+    permission scope: 'spawn:notepad.exe'
+    first 3 runs require confirm: 3
+    on match:
+      ask user to confirm 'Open Notepad?'
+      run command 'notepad.exe'
+```
+
+Read this out loud. "Runtime grammar called 'concepts'. Frame TASK is an internal action; canonical phrase is 'remind me to', also recognized as 'todo:' or 'remember to'; it has one slot called 'what' that's required text; on match, save it as a new Task." It's plain English, except every keyword is doing real work.
+
+### What this compiles to
+
+Three things land in your server file:
+- A storage table (default name `Concepts`) — a regular SQLite table that holds every frame as one row.
+- A registry constant seeded with the frames above — that's the compile-time set.
+- A `_grammarMatch('concepts', input)` helper that resolves text against the live frame set (registry seed merged with whatever's in the storage table right now).
+
+### Calling the matcher
+
+```clear
+result is match input against 'concepts'
+if result's kind is 'matched':
+  show 'matched: ' + result's frame.frame_id
+otherwise:
+  show 'no match'
+```
+
+The matcher returns:
+- `kind` — one of `matched`, `no_match`, `partial` (a required slot was missing), or `ambiguous` (multiple frames tied).
+- `frame` — the winning frame's full record.
+- `slotValues` — values extracted from the input remainder, keyed by slot name.
+- `missingSlots` — required slots that came back empty.
+- `ambiguousMatches` — when `kind` is `ambiguous`, the list of tied frame IDs.
+
+### Adding a frame at runtime
+
+The storage table is just a regular Clear table. Save a row:
+
+```clear
+new_frame is { frame_id: 'DRINK_WATER', effect: 'internal', canonical_phrase: 'drink water', synonyms_json: '[]', slots_json: '[]', permission_scope: '', first_n_runs_require_confirm: 0 }
+save new_frame as a new Concept
+```
+
+The next `match input against 'concepts'` call will know about DRINK_WATER. That's the trick: the matcher reads the storage table every time, so changes take effect immediately.
+
+If a runtime row has the same `frame_id` as a compile-time seed frame, the runtime row wins. That's how users override built-in frames without you having to ship a new compiler pass.
+
+### When to reach for this
+
+Runtime grammar is the right shape when:
+- Users type free-form text and the app needs to react.
+- The set of commands isn't fixed at compile time — users add their own.
+- You want each command to carry typed slots, a permission scope, and an on-match body.
+
+It's the WRONG shape when:
+- You know every command at compile time. Use `match X:` instead.
+- You just need keyword search. Use `search Table for query`.
+
 ## Chapter 22: Scheduled Tasks (Set It and Forget It)
 
 Reference chapter. The deal-desk app doesn't strictly need scheduled tasks — every action is triggered by a CRO clicking a button. But the moment you want a *"every Monday at 9 a.m., email the CRO last week's pipeline summary"* feature, or *"every hour, expire any deals that have been pending more than 30 days,"* this chapter is the answer. Cron-style schedules in Clear's plain-English shape.

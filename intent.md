@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (173 total)
+## Node Types (176 total)
 
 ### Core Language
 
@@ -357,6 +357,16 @@ Workflow step types (inside workflow body):
 | Conditional | `if state's field is value:` + steps | `if (_state.field == value) { ... }` |
 | Repeat | `repeat until condition, max N times:` + steps | `for (_iter < N) { if (cond) break; ... }` |
 | Parallel | `at the same time:` + steps | `Promise.all([...])` |
+
+### Runtime Grammar Primitives (Lenat-in-Clear Phase 1, 2026-05-13)
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `RUNTIME_GRAMMAR` | `runtime grammar 'name':` + indented body of `storage table is X` directive (optional, defaults to `Concepts`), `matcher is X` directive (optional, defaults to `best longest-match`), and one or more `frame:` blocks | Emits a storage-table schema declaration (reuses `DATA_SHAPE` machinery), seeds `globalThis._grammarRegistry[name]` with every compile-time frame, and wires `globalThis._grammarMatch = require('./clear-runtime/grammar-matcher').makeGrammarMatch(db, globalThis._grammarRegistry)`. Python target emits a `CREATE TABLE IF NOT EXISTS` + a module-level `_grammar_registry` dict + `from clear_runtime.grammar_matcher import make_grammar_match`. |
+| `GRAMMAR_FRAME` | `frame NAME:` + indented body clauses: `effect internal\|external`, `canonical phrase 'X'`, `synonyms 'a', 'b'`, `slots:` block, `permission scope: 'X'`, `first N runs require confirm: N`, `on match:` block of normal Clear statements | Emitted as part of the parent `RUNTIME_GRAMMAR` — each frame becomes one entry in the registry seed. Standalone `GRAMMAR_FRAME` outside a `runtime grammar` block is a no-op. The `effect` discriminator is `internal` (CRUD on records) or `external` (run command / hit API). |
+| `GRAMMAR_MATCH_CALL` | `set result to match input against 'concepts'` (reserved for Phase 2 wiring) | Compiles to `result = _grammarMatch('concepts', input)` returning `{ kind: 'matched' \| 'no_match' \| 'partial' \| 'ambiguous', frame, slotValues, missingSlots, ambiguousMatches }`. |
+
+Runtime extension: frames inserted into the storage table at runtime (via a normal `save X as new` CRUD) take effect on the very next match call — the matcher reads the live table every time. That's the property the whole primitive exists for; without it, runtime grammar collapses into a hand-rolled keyword table. Validator errors: `GRAMMAR_FRAME_MISSING_CANONICAL` (no canonical phrase), `RUNTIME_GRAMMAR_SLOT_UNKNOWN` (on-match body references a slot the frame didn't declare). Runtime helpers: `runtime/grammar-matcher.js` + `runtime/grammar_matcher.py`. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
 
 ### Approval Queue Primitives (Phase 91)
 

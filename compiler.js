@@ -100,7 +100,7 @@
 //   E2E TEST GENERATION .............. generateE2ETests() — includes user-written test blocks
 //   DEPLOY CONFIG .................... generateDeployConfig()
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
-//     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
+//     Node compilers ................. compileEndpoint, compileCrud, compileRespond, compileRuntimeGrammar,
 //                                     compileAgent, compileWorkflow, compileValidate,
 //                                     compileDataShape, compileExternalFetch,
 //                                     compileWebhook, compilePdf

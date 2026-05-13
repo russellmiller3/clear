@@ -3448,6 +3448,87 @@ PROVED iff every reachable tool body only does `lookup` operations against `Deal
 - **Marcus / regulated-tier pitches.** The CRO writes the proof obligations directly in the source — *"prove that agent 'Refund Bot' cannot delete from Deals"* — and the build pipeline either ships with a green proof bundle or refuses to ship.
 - **Catch agent scope creep over time.** When someone adds a new tool to `has tools:`, any standing `prove that agent 'X' cannot call <new_tool>` flips DISPROVED in the next CI run. The pre-merge check fails — the developer either removes the tool or removes the obligation, with audit attribution either way.
 
+## Runtime Grammar (Vocabulary That Grows at Runtime)
+
+A `runtime grammar` block declares a parsing surface whose vocabulary can be extended **at runtime** without recompiling the app. Every frame seeds a row in a storage table; users insert new rows later and the matcher picks them up automatically. This is the primitive Lenat uses to let users teach the app new concepts over time.
+
+### Basic Runtime Grammar
+
+```clear
+runtime grammar 'concepts':
+  frame TASK:
+    effect internal
+    canonical phrase 'remind me to'
+    synonyms 'todo:', 'remember to'
+    slots:
+      what is text, required
+      when is datetime, optional
+    on match:
+      save the match as a new Task
+
+  frame OPEN_NOTEPAD:
+    effect external
+    canonical phrase 'open notepad'
+    synonyms 'launch notepad'
+    permission scope: 'spawn:notepad.exe'
+    first 3 runs require confirm: 3
+    on match:
+      ask user to confirm 'Open Notepad?'
+      run command 'notepad.exe'
+```
+
+This emits:
+- A `concepts` storage table holding every frame's `frame_id`, `effect`, `canonical_phrase`, `synonyms_json`, `slots_json`, `permission_scope`, `first_n_runs_require_confirm`, `created_at`.
+- A compile-time `_grammarRegistry` seeded with the frames above.
+- A `_grammarMatch('concepts', input)` runtime helper that resolves user input against the live frame set on every call.
+
+### Calling the Matcher
+
+```clear
+result is match input against 'concepts'
+if result's kind is 'matched':
+  show 'matched: ' + result's frame.frame_id
+otherwise:
+  show 'no match'
+```
+
+The matcher returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`. `kind` is one of `matched`, `no_match`, `partial` (required slot missing), or `ambiguous` (multiple frames tied on prefix length).
+
+### Adding a Frame at Runtime
+
+The storage table is a regular Clear table — insert a new row with a normal CRUD save:
+
+```clear
+save new_frame as a new Concept
+```
+
+The next `_grammarMatch` call picks the row up. No recompile.
+
+### Directives Inside a `runtime grammar:` Block
+
+| Directive | Default | Meaning |
+|-----------|---------|---------|
+| `storage table is X` | `Concepts` | SQL table that holds frame rows. |
+| `matcher is X` | `best longest-match` | Matcher strategy. Phase 1 only honors the default; future phases add fuzzy + LLM-fallback. |
+| `frame NAME:` | (required) | Declares one frame. Body clauses below. |
+
+### Clauses Inside a `frame NAME:` Block
+
+| Clause | Required? | Meaning |
+|--------|-----------|---------|
+| `effect internal\|external` | optional | `internal` = CRUD on records. `external` = run command / hit API. Reads naturally next to slot-type declarations and avoids `type:` overload. |
+| `canonical phrase 'X'` | **required** | The primary key the matcher uses for prefix matching. Missing it errors `GRAMMAR_FRAME_MISSING_CANONICAL`. |
+| `synonyms 'a', 'b', ...` | optional | Extra prefix alternatives that resolve to this frame. |
+| `slots:` + indented fields | optional | Typed slots filled from the matched input remainder. Each line: `name is <type>, required\|optional`. |
+| `permission scope: 'X'` | optional | Scope string for guarded `external` frames (e.g. `'spawn:notepad.exe'`). |
+| `first N runs require confirm: N` | optional | Confirm-then-graduate: ask user the first N times this frame fires, then auto-run afterward. |
+| `on match:` + indented body | optional | Normal Clear statements to run when this frame matches. Body can read `match's <slot>` for slot values. |
+
+### Validation Errors
+
+- `GRAMMAR_FRAME_MISSING_CANONICAL` — frame has no `canonical phrase`. The matcher can't index a frame without one; the frame can never fire.
+- `RUNTIME_GRAMMAR_SLOT_UNKNOWN` — the `on match:` body references `match's <name>` where `<name>` isn't a declared slot. Catches typos before runtime corrupts CRUD silently.
+
 ## Approval Queues (Single-Stage Reviewer)
 
 When an entity needs human approval before its status changes, declare a queue. One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action.

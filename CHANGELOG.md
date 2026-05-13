@@ -6,6 +6,39 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-13 — Runtime Grammar primitive (Phase 1 of Lenat-in-Clear)
+
+Clear gains its first runtime-extensible parsing primitive. A `runtime grammar 'name':` block declares a parsing surface whose vocabulary grows at runtime: frames inserted into the storage table via a normal CRUD save take effect on the next match call — no recompile, no restart.
+
+This is the load-bearing addition for the Lenat-in-Clear plan and the structural new thing Clear was missing to host chat-first apps where users teach the app new concepts over time.
+
+What shipped (10 TDD cycles, one commit each):
+- **1.1 Parser baseline** — `runtime grammar 'X':` + `frame Y:` parses to RUNTIME_GRAMMAR + GRAMMAR_FRAME children. Storage table defaults to `Concepts`, override with `storage table is X`.
+- **1.2 Full frame metadata** — `effect internal|external`, `canonical phrase`, `synonyms`, typed `slots:`, `permission scope:`, `first N runs require confirm:`, `on match:` body. The `effect` discriminator avoids overloading `type:` with field-type syntax.
+- **1.3 Validator hard errors** — `GRAMMAR_FRAME_MISSING_CANONICAL` when a frame has no canonical phrase. WHY/WHAT error per PHILOSOPHY Rule 7.
+- **1.4 Compiler JS emit** — storage-table schema (reuses `compileDataShape`), `_grammarRegistry` seed on `globalThis`, runtime `require()` of `./clear-runtime/grammar-matcher`.
+- **1.5 Compiler Python emit** — `CREATE TABLE IF NOT EXISTS`, `_grammar_registry` dict, `from clear_runtime.grammar_matcher import make_grammar_match`.
+- **1.6 Runtime matcher JS** — `runtime/grammar-matcher.js`. Prefix matching against canonical phrase + synonyms with length tiebreak; case-preserved remainder fills the first declared text slot.
+- **1.7 Runtime matcher Python** — `runtime/grammar_matcher.py` (byte-for-behavior port) + `grammar_matcher_test.py` (6 unittest cases).
+- **1.8 Runtime extensibility** — proved that frames inserted into the storage table at runtime take effect without recompile. Runtime rows shadow seed frames with the same `frame_id`.
+- **1.9 Slot-unknown validator** — `RUNTIME_GRAMMAR_SLOT_UNKNOWN` when `on match:` body references `match's <name>` and `<name>` isn't a declared slot. Catches typos before they silently corrupt CRUD.
+- **1.10 Doc cascade** — this entry, plus `intent.md`, `SYNTAX.md`, `FEATURES.md`, `ROADMAP.md`, `FAQ.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `studio/system-prompt.md`, `RESEARCH.md`.
+
+Test count: 3038 → 3063 (25 new tests, 0 regressions).
+
+Files touched:
+- `parser.js` — three new NodeType entries, `parseRuntimeGrammar`, `parseGrammarFrame`, `parseGrammarSlots`, CANONICAL_DISPATCH entry for `runtime`.
+- `validator.js` — new `validateRuntimeGrammar` pass wired into `validate()`.
+- `compiler.js` — `compileRuntimeGrammar` (JS) + `compileRuntimeGrammarPython` + switch entries.
+- `runtime/grammar-matcher.js` (new) — hand-rolled prefix matcher.
+- `runtime/grammar_matcher.py` (new) — Python parity port.
+- `runtime/grammar_matcher_test.py` (new) — unittest suite.
+- `runtime-grammar.test.js` (new) — 25 TDD-cycle tests, imported from `clear.test.js`.
+
+Next: Phase 2 ports the slot-extractor stdlib (datetime + fuzzy + about-clause + regex+remainder) so frames can extract structured values from free-form input. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
+
+---
+
 ## 2026-05-12 - Multi-line API request bodies + Studio path cleanup
 
 Clear now supports real JSON-style request payloads in `call api` expressions:

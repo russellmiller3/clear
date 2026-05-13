@@ -3,6 +3,38 @@
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 
+## Where does runtime grammar matching live? (2026-05-13)
+
+The runtime-extensible grammar primitive ships in three places:
+
+- **Parser** — `parser.js` has `parseRuntimeGrammar`, `parseGrammarFrame`, `parseGrammarSlots`, plus three new node types (`RUNTIME_GRAMMAR`, `GRAMMAR_FRAME`, `GRAMMAR_MATCH_CALL`). The `CANONICAL_DISPATCH` entry for `runtime` routes when the next token is `grammar`.
+- **Compiler** — `compiler.js` has `compileRuntimeGrammar` (JS) and `compileRuntimeGrammarPython`. Both emit (a) a storage-table schema via the existing `compileDataShape` machinery, (b) a `_grammarRegistry` / `_grammar_registry` seed with every compile-time frame, and (c) a require/import of the runtime helper.
+- **Runtime helpers** — `runtime/grammar-matcher.js` (CJS) and `runtime/grammar_matcher.py`. Both export `makeGrammarMatch(db, registry)` which returns the bound `_grammarMatch(name, input)` function. The matcher reads the storage table on every call (via `db.findAll` / `db.query`), merges with the registry seed, and returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`.
+
+Validator pass is `validateRuntimeGrammar` in `validator.js`. Errors: `GRAMMAR_FRAME_MISSING_CANONICAL`, `RUNTIME_GRAMMAR_SLOT_UNKNOWN`.
+
+Tests live in `runtime-grammar.test.js` (imported by `clear.test.js`) plus `runtime/grammar_matcher_test.py`. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
+
+## How do I add a frame at runtime? (2026-05-13)
+
+The storage table is a regular Clear table (default name `Concepts`). Insert a row with the same shape the matcher expects:
+
+```clear
+new_frame is { frame_id: 'DRINK_WATER', effect: 'internal', canonical_phrase: 'drink water', synonyms_json: '[]', slots_json: '[]', permission_scope: '', first_n_runs_require_confirm: 0 }
+save new_frame as a new Concept
+```
+
+The next `_grammarMatch('concepts', input)` call picks the row up automatically. No recompile.
+
+`synonyms_json` and `slots_json` are JSON-encoded strings — that's the storage shape the matcher decodes. A runtime row with the same `frame_id` as a compile-time seed frame shadows the seed; this is how users override built-in frames.
+
+## Why `effect: internal|external` instead of `type: internal|external`? (2026-05-13)
+
+`type` is heavily overloaded in Clear's field-type syntax (`is text`, `is number`, `is timestamp`) and reads ambiguously next to slot type declarations. PHILOSOPHY Rule 4b (Explicit Over Terse) and Rule 2 (One Canonical Way) both favor a more specific name. `effect: internal|external` names the surface — records vs world — and reads naturally:
+
+- `effect internal` — CRUD on records. Loads through Clear's existing `DATA_SHAPE` machinery.
+- `effect external` — talks to the world. Spawn a command, hit an API. All have `permission_scope` and gate-2 confirm-then-graduate semantics.
+
 ## Why does the Clear Studio shortcut say "Studio did not come up within 30 seconds"? (2026-05-10)
 
 The visible launcher waits for Studio to listen on port 3456. If the hidden server crashes first, the old symptom was only a timeout.

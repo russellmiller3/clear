@@ -460,6 +460,21 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Validator (hard error) | `ROUTE_AFTER_SAVE` | Route block runs after `save X as new T` — assignment never persists. The most common silent bug. |
 | Validator (warning) | `ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE` | Likely-typo / likely-mistake patterns. Program still compiles. |
 
+## Runtime Grammar (Vocabulary That Grows at Runtime)
+
+The first Clear primitive that lets a compiled app's parsing surface extend at runtime. Frames seed a storage table at compile time; users insert new frames later via a normal CRUD save, and the matcher picks them up on the next call — no recompile. Ships from `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 1).
+
+| Feature | Syntax | Notes |
+|---------|--------|-------|
+| Runtime grammar declaration | `runtime grammar 'name':` + indented frames | Emits a storage table + a `_grammarRegistry` constant + a `_grammarMatch(name, input)` helper. JS and Python targets both supported. |
+| Frame block | `frame TASK:` + clauses (`effect`, `canonical phrase`, `synonyms`, `slots:`, `permission scope`, `first N runs require confirm`, `on match:`) | Each frame becomes one seed row in the storage table + one fast-path entry in the registry. |
+| Effect discriminator | `effect internal` / `effect external` | `internal` = CRUD on records. `external` = run command / hit API. Avoids `type:` overload with field-type syntax. |
+| Typed slots | `slots:` + `name is text, required` lines | Values extracted from matched input remainder fill declared slots. Phase 2 of the plan adds typed extractors (datetime, fuzzy, about-clause, regex+remainder). |
+| Storage table override | `storage table is FrameRegistry` | Defaults to `Concepts`. Table is a regular Clear table — extend with extra fields if the app needs them. |
+| Runtime extension | `save new_frame as a new Concept` | New rows take effect on the next `_grammarMatch` call. Runtime rows shadow seed frames with the same `frame_id`. |
+| Validator (hard error) | `GRAMMAR_FRAME_MISSING_CANONICAL` | Frame has no canonical phrase — matcher can never index it. |
+| Validator (hard error) | `RUNTIME_GRAMMAR_SLOT_UNKNOWN` | `on match:` body references `match's <name>` where `<name>` isn't a declared slot. Catches typos before runtime silently corrupts CRUD. |
+
 ## Approval Queues
 
 | Feature | Syntax | Notes |

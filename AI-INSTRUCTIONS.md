@@ -1619,6 +1619,65 @@ route lead by region:
 
 **Round-robin survives restarts.** The cursor lives in a SQLite table (`_clear_route_cursors`); the cursor key is a content hash of (entity + field + rules + pool), so adding comments above a route block doesn't reset the cursor. Changing the rules or pool DOES start a fresh cursor — which is the right invalidation behavior.
 
+## Runtime Grammar — `runtime grammar 'X':`
+
+**Use this when you need a parsing surface whose vocabulary grows at runtime.** Chat-first apps, intake bots, anything where users teach the app new concepts over time. NOT for static keyword routing — that's what `match X:` is for.
+
+When you reach for this:
+- The app accepts free-form text input from users (chat, intake, command palette).
+- Users (not just the developer) should be able to add new commands / concepts / intents AFTER the app is running.
+- The compile-time set of frames is a SEED, not the final list.
+
+When you DON'T reach for this:
+- You know every command at compile time. Use `match X:` or a normal dispatcher.
+- You only need keyword search. Use `search Table for query`.
+- You want fuzzy autocomplete on a fixed list. That's a frontend concern, not a runtime-extensible primitive.
+
+Canonical form:
+
+```clear
+runtime grammar 'concepts':
+  frame TASK:
+    effect internal
+    canonical phrase 'remind me to'
+    synonyms 'todo:', 'remember to'
+    slots:
+      what is text, required
+      when is datetime, optional
+    on match:
+      save the match as a new Task
+
+  frame OPEN_NOTEPAD:
+    effect external
+    canonical phrase 'open notepad'
+    synonyms 'launch notepad'
+    permission scope: 'spawn:notepad.exe'
+    first 3 runs require confirm: 3
+    on match:
+      ask user to confirm 'Open Notepad?'
+      run command 'notepad.exe'
+```
+
+Field naming rules:
+- Frame names: `SCREAMING_SNAKE_CASE` (TASK, ENERGY_LOG, OPEN_NOTEPAD). They're identifiers, not values, so they read like constants.
+- `canonical phrase` is the PRIMARY KEY for matching. Required on every frame. Missing it errors `GRAMMAR_FRAME_MISSING_CANONICAL`.
+- `effect: internal | external` — internal = CRUD on records. External = run command / hit API. Pick one per frame.
+- Slot lines: `name is <type>, required|optional`. `<type>` is `text` | `number` | `datetime` | `boolean`.
+
+To add a frame at runtime, save a row into the storage table (defaults to `Concepts`):
+
+```clear
+new_frame is { frame_id: 'DRINK_WATER', effect: 'internal', canonical_phrase: 'drink water', synonyms_json: '[]', slots_json: '[]', permission_scope: '', first_n_runs_require_confirm: 0 }
+save new_frame as a new Concept
+```
+
+The next `match input against 'concepts'` call picks it up. No recompile.
+
+Gotchas:
+- Don't name a frame `type:` — use `effect:` (the discriminator). `type:` is overloaded with field-type syntax everywhere else in Clear.
+- The `on match:` body can reference slot values as `match's <slot_name>`. Typos error `RUNTIME_GRAMMAR_SLOT_UNKNOWN` at compile time so they don't silently corrupt CRUD at runtime.
+- Phase 1's matcher does PREFIX matching only. For richer extraction (datetime, fuzzy, about-clause), Phase 2 of the Lenat-in-Clear plan adds the slot-extractor stdlib.
+
 ## Approval Queues — `queue for X:`
 
 **Use this when an entity needs human approval before its status changes.** One block generates the audit table, the outbound notification queue, the filtered GET handler, and a login-gated PUT handler per action. About 150 lines of hand-rolled JavaScript per app collapse to 5 lines of declaration.

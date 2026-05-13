@@ -1,6 +1,18 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
+
+## 2026-05-13 update — Runtime Grammar primitive opens a new app class
+
+The Lenat-in-Clear plan landed Phase 1 (runtime-extensible grammar) on this date. The architectural implication for the training-signal flywheel: Clear can now host a third app class beyond static-form-CRUD and AI-agent-chat — **runtime-grown vocabulary apps**, where users teach the app new concepts after it's deployed.
+
+Why this matters for curriculum and Factor DB:
+- New synthetic-task source. Curriculum tasks like "build a journal app where users invent new entry types over time" are now Clear-native and don't need bespoke handlers — every concept frame becomes one row in the runtime grammar's storage table. The slot extraction surface (Phase 2) will be reusable across every chat-first task.
+- Friction-DB shape stays consistent. Errors are typed (`GRAMMAR_FRAME_MISSING_CANONICAL`, `RUNTIME_GRAMMAR_SLOT_UNKNOWN`) so the friction-score pipeline can roll them into the existing top-10 error class ranking without a parser change.
+- Ralph contract widens. "Build a chat-first concept tracker" now has measurable Ralph checks beyond "did it compile and respond to a request": did the matcher pick up a frame added at runtime? Does the typed-confirm-then-graduate path fire? Are slot extractions stable across re-runs? Each of these is a typed fact.
+
+Plan: `plans/plan-lenat-in-clear-2026-05-13.md`. Phases 2 (slot-extractor stdlib) and 3 (confirm-then-graduate variant) feed directly into chat-first curriculum tasks.
+
 Updated: **2026-05-08 (requirements/Ralph loop is now the primary quality lever; pattern/error DBs are useful retrieval aids, but deterministic contracts are what prevent false success)**.
 
 ## Latest meta-lesson — retrieval helps Meph aim, Ralph changes the game (2026-05-08)
