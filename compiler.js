@@ -4188,7 +4188,11 @@ function generateRuntimeTests(body) {
       lines.push(`      effect: ${JSON.stringify(frame.effect || 'internal')},`);
       lines.push(`      canonical_phrase: ${JSON.stringify(frame.canonicalPhrase || '')},`);
       lines.push(`      synonyms: ${JSON.stringify(frame.synonyms || [])},`);
-      lines.push(`      slots: ${JSON.stringify((frame.slots || []).map(s => ({ name: s.name, type: s.type, required: !!s.required })))},`);
+      // The parser stores the slot type as `slotType` (camelCase); the matcher
+      // expects `type`. Normalize here so the matcher's "first text slot wins"
+      // logic actually sees slot types and can skip number/datetime slots when
+      // looking for where to put the remainder.
+      lines.push(`      slots: ${JSON.stringify((frame.slots || []).map(s => ({ name: s.name, type: s.slotType || s.type || 'text', required: !!s.required })))},`);
       lines.push(`      permission_scope: ${JSON.stringify(frame.permissionScope || null)},`);
       lines.push(`      first_n_runs_require_confirm: ${JSON.stringify(frame.firstNRunsRequireConfirm || null)},`);
       lines.push('    },');
