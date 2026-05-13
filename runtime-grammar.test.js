@@ -172,3 +172,63 @@ describe('runtime grammar — validator (Cycle 1.3)', () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+// =============================================================================
+// CYCLE 1.4 — compiler JS: RUNTIME_GRAMMAR emits storage table + matcher hook
+// =============================================================================
+describe('runtime grammar — compile to JS (Cycle 1.4)', () => {
+  it('emits a Concepts storage table schema via the standard schema machinery', () => {
+    const source = [
+      "target: backend",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const js = result.javascript || result.serverJS || '';
+    // Storage table emits a schema constant matching the DATA_SHAPE pattern.
+    expect(js).toMatch(/ConceptsSchema/);
+    expect(js).toMatch(/db\.createTable\('concepts'/i);
+  });
+
+  it('emits a runtime matcher registry seeded with each compile-time frame', () => {
+    const source = [
+      "target: backend",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+      "    synonyms 'todo:'",
+      "  frame ENERGY_LOG:",
+      "    effect internal",
+      "    canonical phrase 'energy'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const js = result.javascript || result.serverJS || '';
+    // The compiler emits a per-grammar registry object holding every frame's
+    // canonical phrase, synonyms, slots, and effect, plus a _grammarMatch
+    // helper that resolves input against the registry. Asserting key shape:
+    expect(js).toMatch(/_grammarMatch/);
+    expect(js).toMatch(/_grammarRegistry/);
+    expect(js).toMatch(/["']remind me to["']/);
+    expect(js).toMatch(/["']energy["']/);
+    expect(js).toMatch(/TASK/);
+    expect(js).toMatch(/ENERGY_LOG/);
+  });
+
+  it('honors the storage table name when overridden', () => {
+    const source = [
+      "target: backend",
+      "runtime grammar 'concepts':",
+      "  storage table is FrameRegistry",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const js = result.javascript || result.serverJS || '';
+    expect(js).toMatch(/FrameRegistrySchema/);
+    expect(js).toMatch(/db\.createTable\('frameregistries'|db\.createTable\('frame_registries'/i);
+  });
+});
