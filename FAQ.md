@@ -74,6 +74,31 @@ Validator pass is `validateRuntimeGrammar` in `validator.js`. Errors: `GRAMMAR_F
 
 Tests live in `runtime-grammar.test.js` (imported by `clear.test.js`) plus `runtime/grammar_matcher_test.py`. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
 
+## How do I match input against a runtime grammar from a Clear program? (2026-05-13)
+
+Use `match <expr> against 'name'` in any assignment-RHS position:
+
+```clear
+when user sends text to /api/parse:
+  result = match text against 'concepts'
+  send back result
+```
+
+Three accepted shapes — pick whichever reads best: `result is match text against 'concepts'`, `result = match text against 'concepts'`, `set result to match text against 'concepts'`. The source can be any text expression — a variable, a literal, or a computed string.
+
+The matcher returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`. `kind` is one of `matched`, `no_match`, `partial`, `ambiguous`.
+
+Use it inside `test 'name':` blocks to write behavioral-parity tests against a reference implementation — that's the canonical way to lock the matcher's frame-dispatch behavior:
+
+```clear
+test 'TASK frame catches the canonical phrase':
+  text is 'remind me to email Marcus tomorrow'
+  result = match text against 'concepts'
+  expect result's frame is 'TASK'
+```
+
+The `against` keyword is required to disambiguate from control-flow `match X:`. `match input` alone parses as control flow; `match input against 'name'` is the runtime-grammar call. Wired Cycle 1.10 (2026-05-13 night, commit 7d6a91a on feature/lenat-in-clear).
+
 ## How do I add a frame at runtime? (2026-05-13)
 
 The storage table is a regular Clear table (default name `Concepts`). Insert a row with the same shape the matcher expects:

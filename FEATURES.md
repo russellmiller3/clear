@@ -477,6 +477,7 @@ The first Clear primitive that lets a compiled app's parsing surface extend at r
 | Runtime extension | `save new_frame as a new Concept` | New rows take effect on the next `_grammarMatch` call. Runtime rows shadow seed frames with the same `frame_id`. |
 | Validator (hard error) | `GRAMMAR_FRAME_MISSING_CANONICAL` | Frame has no canonical phrase — matcher can never index it. |
 | Validator (hard error) | `RUNTIME_GRAMMAR_SLOT_UNKNOWN` | `on match:` body references `match's <name>` where `<name>` isn't a declared slot. Catches typos before runtime silently corrupts CRUD. |
+| Match-call expression | `result = match input against 'concepts'` | Runs the matcher against any text expression. Works in any assignment-RHS form (`is`, `=`, `set X to`). Compiles to `_grammarMatch("concepts", input)` (JS) / `_grammar_match("concepts", input)` (Python). Usable inside `test 'name':` blocks for behavioral-parity tests. Wired Cycle 1.10 (2026-05-13). |
 
 ## Slot Extractors (NL-Light Parsing — Lenat-in-Clear Phase 2)
 
