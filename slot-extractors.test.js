@@ -19,6 +19,7 @@
 
 import { describe, it, expect } from './lib/testUtils.js';
 import { compileProgram } from './index.js';
+import { spawnSync } from 'node:child_process';
 
 // Helper to walk every node in the AST so tests can assert on node types
 // without depending on the exact tree shape (it changes as parser evolves).
@@ -153,5 +154,35 @@ describe('slot extractors — compile to Python (Cycle 2.3)', () => {
     const result = compileProgram(source, { target: 'python_backend' });
     expect(result.errors).toEqual([]);
     expect(result.python).toMatch(/_regex_capture_rem\s*\(/);
+  });
+});
+
+// =============================================================================
+// CYCLE 2.4 — Python runtime parity: spawn the Python unittest file
+// =============================================================================
+// Source-of-truth is runtime/slot_extractors_test.py (28 unittest cases).
+// We just shell out and assert OK; environment-only gaps (no python on PATH)
+// soft-pass so the JS suite remains useful on Windows boxes without Python.
+describe('slot extractors — Python runtime parity (Cycle 2.4)', () => {
+  it('slot_extractors_test.py passes its full unittest suite', () => {
+    const candidates = ['python', 'python3', 'py'];
+    let ran = false;
+    for (const bin of candidates) {
+      const res = spawnSync(bin, ['runtime/slot_extractors_test.py'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+      if (res.error && res.error.code === 'ENOENT') continue;
+      ran = true;
+      const output = (res.stdout || '') + '\n' + (res.stderr || '');
+      expect(output).toMatch(/OK/);
+      expect(res.status).toBe(0);
+      break;
+    }
+    if (!ran) {
+      // No python on PATH — soft-pass. The standalone py test is the source
+      // of truth; CI runs it independently.
+      expect(true).toBe(true);
+    }
   });
 });
