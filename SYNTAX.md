@@ -2200,6 +2200,33 @@ valid = matches pattern '^[a-z]+$' in text
 cleaned = replace pattern '[0-9]+' in text with 'X'
 ```
 
+## Slot Extractors (Chat-Style NL-Light Parsing)
+
+Four primitives for pulling structured values out of free-form text. Every chat-style intake app needs them — datetimes, fuzzy-matched intents, "about X" clauses, regex slices with remainder. All four return a `{value, remainder}`-shape so callers can chain them: datetime → about-clause → bare remainder as `what`.
+
+```clear
+# Extract a datetime — fast-path covers ISO, slash-date, "in N hours",
+# weekday-at-time, tomorrow-at-time, tonight, this evening
+dt = extract datetime from user_input
+# Returns {value: <Date>, remainder: '<input with datetime stripped>'} or nothing
+
+# Fuzzy-match a query against a list (Levenshtein + bigram + coverage boost)
+pick = fuzzy match 'paint' in apps scored at least 0.7
+# Returns {value: 'mspaint', score: 0.71} or nothing if no candidate clears the bar
+# Threshold optional; default 0.7
+
+# Split text on a leading 'about|re|regarding' clause
+parts = extract about-clause from message
+# Returns {what: 'remind me to email Marcus', about: 'Q3 numbers'}
+
+# First-match regex with the remainder of the text
+out = find pattern '\d+' in 'energy 6 tired' returning value and remainder
+# Returns {value: '6', remainder: 'energy  tired'}
+# Differs from plain `find pattern` (array of matches, no remainder)
+```
+
+The validator warns at compile time if you pass a number / list / boolean to the text-shaped extractors (datetime, about-clause, regex+remainder). Runtime helpers live in `runtime/slot-extractors.js` (JS) and `runtime/slot_extractors.py` (Python) — Python is full parity with the JS algorithm.
+
 ## Date / Time
 
 ```clear

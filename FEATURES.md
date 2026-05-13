@@ -475,6 +475,19 @@ The first Clear primitive that lets a compiled app's parsing surface extend at r
 | Validator (hard error) | `GRAMMAR_FRAME_MISSING_CANONICAL` | Frame has no canonical phrase — matcher can never index it. |
 | Validator (hard error) | `RUNTIME_GRAMMAR_SLOT_UNKNOWN` | `on match:` body references `match's <name>` where `<name>` isn't a declared slot. Catches typos before runtime silently corrupts CRUD. |
 
+## Slot Extractors (NL-Light Parsing — Lenat-in-Clear Phase 2)
+
+Four expression-level primitives for pulling structured values out of free-form text. Every chat-style intake / form auto-fill / NL-light parsing app needs these — Lenat-in-Clear is the headliner but the same primitives drop into any onboarding flow, support bot, or search bar. Ships from `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 2).
+
+| Feature | Syntax | Notes |
+|---------|--------|-------|
+| Datetime extraction | `dt = extract datetime from text` | Fast-path covers ISO, slash-date, `in N hours`, weekday-at-time, `tomorrow at TIME`, `tonight`, `this evening`. Returns `{value, remainder}` or `nothing` on miss (LLM fallback when an `askAi` provider is configured). |
+| Fuzzy match | `pick = fuzzy match 'q' in list [scored at least 0.7]` | Levenshtein + bigram pre-filter + subsequence-coverage boost. Returns `{value, score}` or `nothing`. Threshold defaults to 0.7. Tie-break: longest candidate wins. |
+| About-clause split | `parts = extract about-clause from text` | Regex split on `\b(about\|re\|regarding)\b`. Returns `{what, about}`; `about` is `null` if no keyword. |
+| Regex with remainder | `out = find pattern 'P' in text returning value and remainder` | First-match-only. Returns `{value, remainder}` — the input minus the match. Distinct from plain `find pattern` (array of matches). |
+| Runtime parity | Same algorithm on both targets | `runtime/slot-extractors.js` + `runtime/slot_extractors.py` share Levenshtein, fast-path datetime patterns, and split semantics. Python's LLM fallback takes a sync `ask_ai` callable; JS returns a Promise. |
+| Validator (warning) | `SLOT_EXTRACTOR_WRONG_TYPE` | Fires when `extract datetime` / `extract about-clause` / `find pattern ... returning value and remainder` receives a number / list / boolean source. The runtime would silently return `null`; the validator catches it at compile time. |
+
 ## Approval Queues
 
 | Feature | Syntax | Notes |

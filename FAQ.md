@@ -28,6 +28,26 @@ The next `_grammarMatch('concepts', input)` call picks the row up automatically.
 
 `synonyms_json` and `slots_json` are JSON-encoded strings — that's the storage shape the matcher decodes. A runtime row with the same `frame_id` as a compile-time seed frame shadows the seed; this is how users override built-in frames.
 
+## Where do slot extractors live? (2026-05-13)
+
+Four expression-level slot extractors ship from Phase 2 of Lenat-in-Clear:
+
+- **Parser** — `parser.js` recognizes `extract datetime from X`, `fuzzy match 'q' in X [scored at least N]`, `extract about-clause from X`, and `find pattern P in X returning value and remainder`. The first three are gated by `canonical === 'extract_datetime'` / `'fuzzy_match'` / `'extract_about'` checks; the regex-with-remainder is a tail-variant of plain `find pattern`.
+- **Compiler** — `compiler.js` lowers each node to a single call into the runtime helper (`_extractDatetime(text)` / `_extract_datetime(text)`, etc.). Both JS and Python targets share the same case statements in `exprToCode`.
+- **Runtime helpers** — `runtime/slot-extractors.js` (JS, CJS module) and `runtime/slot_extractors.py` (Python). Both ship the same algorithm: hand-rolled datetime fast-path covering ISO date, slash-date, in-N-units, weekday-at-time, tomorrow-at-time, tonight, this evening; Levenshtein-with-bigram fuzzy with subsequence-coverage boost; regex split on \b(about|re|regarding)\b; first-match-only regex with remainder.
+
+Validator: `validateSlotExtractors` in `validator.js` warns `SLOT_EXTRACTOR_WRONG_TYPE` when the text-shaped extractors receive a number / list / boolean source.
+
+Tests: `slot-extractors.test.js` (imported by `clear.test.js`) covers compiler emit + parser shape + runtime corpus + validator hints. Python-side has its own `runtime/slot_extractors_test.py` (28 unittest cases, spawned by the JS suite for parity).
+
+Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 2).
+
+## Why is there no LLM fallback for `extract datetime` in Python yet? (2026-05-13)
+
+The JS `_extractDatetime` returns a Promise when the fast-path misses AND an `askAi` provider is configured. Python's `_extract_datetime` takes an optional sync `ask_ai` callable for the same path. Real provider routing (Anthropic / Gemini / OpenRouter) lands in Phase 6 — until then both paths fall back to `None` / `null` when callers don't pass an `ask_ai`.
+
+The fast-path covers every case in the Phase 2 slot-extract corpus. The LLM fallback is for unusual phrasing ("the friday after thanksgiving") at ~$0.0001 per call.
+
 ## Why `effect: internal|external` instead of `type: internal|external`? (2026-05-13)
 
 `type` is heavily overloaded in Clear's field-type syntax (`is text`, `is number`, `is timestamp`) and reads ambiguously next to slot type declarations. PHILOSOPHY Rule 4b (Explicit Over Terse) and Rule 2 (One Canonical Way) both favor a more specific name. `effect: internal|external` names the surface — records vs world — and reads naturally:

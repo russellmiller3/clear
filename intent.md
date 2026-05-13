@@ -368,6 +368,22 @@ Workflow step types (inside workflow body):
 
 Runtime extension: frames inserted into the storage table at runtime (via a normal `save X as new` CRUD) take effect on the very next match call — the matcher reads the live table every time. That's the property the whole primitive exists for; without it, runtime grammar collapses into a hand-rolled keyword table. Validator errors: `GRAMMAR_FRAME_MISSING_CANONICAL` (no canonical phrase), `RUNTIME_GRAMMAR_SLOT_UNKNOWN` (on-match body references a slot the frame didn't declare). Runtime helpers: `runtime/grammar-matcher.js` + `runtime/grammar_matcher.py`. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
 
+### Slot Extractor Stdlib (Lenat-in-Clear Phase 2, 2026-05-13)
+
+Four expression-level nodes for pulling structured values out of free-form text — the chat-style intake / NL-light parsing toolkit. All four return a `{value, remainder}` (or similar structured) shape so callers chain them: datetime → about-clause → bare remainder.
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `EXTRACT_DATETIME` | `extract datetime from <text-expr>` (synonyms: `extract date from`, `pull datetime from`) | JS: `_extractDatetime(text)` — Python: `_extract_datetime(text)`. Runtime helpers in `runtime/slot-extractors.js` / `runtime/slot_extractors.py`. Returns `{value: Date, remainder: string}` or `nothing` when the fast-path misses (LLM fallback fires when an `askAi` provider is configured). Fast-path covers: ISO date, slash-date `M/D`, `in N (minutes\|hours\|days)`, weekday-at-time (`next tuesday at 9am`), `tomorrow at TIME`, bare `tomorrow`, `at TIME` alone, `tonight`, `this evening`. |
+| `FUZZY_MATCH` | `fuzzy match 'query' in <list-expr> [scored at least N]` | JS: `_fuzzyMatch(query, list, threshold)` — Python: `_fuzzy_match(query, list, threshold)`. Returns `{value, score}` for the best match at or above the threshold (default 0.7) or `nothing` if no candidate clears the bar. Algorithm: bigram pre-filter, Levenshtein distance, subsequence-coverage boost for typo-tolerant embeddings (`callculator` → `calc`). Ties broken by longest-candidate. Threshold omitted → emits `null` / `None` so the runtime uses its DEFAULT_FUZZY_THRESHOLD constant. |
+| `EXTRACT_ABOUT` | `extract about-clause from <text-expr>` (also `extract about clause from`, `pull about-clause from`) | JS: `_extractAbout(text)` — Python: `_extract_about(text)`. Regex-splits text on word-bounded `about\|re\|regarding`. Returns `{what, about}` — `what` is the head, `about` is the tail. No keyword → `about: null`, `what` is the full input. |
+| `REGEX_CAPTURE_REM` | `find pattern 'P' in <text-expr> returning value and remainder` | JS: `_regexCaptureRem(text, pattern)` — Python: `_regex_capture_rem(text, pattern)`. First-match-only against pattern. Returns `{value, remainder}` — `value` is the matched substring (or `null`), `remainder` is the input with the match removed. Differs from `REGEX_FIND` (array of matches, no remainder). The `returning value and remainder` tail is required; bare `find pattern X in Y` still parses to `REGEX_FIND`. |
+
+Validator: `SLOT_EXTRACTOR_WRONG_TYPE` warning fires when `extract datetime from` / `extract about-clause from` / `find pattern ... returning value and remainder` receive a number-, list-, or boolean-typed source (their runtime helpers defensively return `null` / empty on non-strings, looking like silent failure). `fuzzy_match` is intentionally exempt — its second arg IS a list, and its first is a parser-enforced string literal.
+
+Runtime parity: both targets share the algorithm. JS LLM fallback returns a Promise; Python takes an optional sync `ask_ai` callable. Phase 6 wires real provider routing. Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 2).
+
+
 ### Approval Queue Primitives (Phase 91)
 
 | Node Type | Syntax | Compiles To |

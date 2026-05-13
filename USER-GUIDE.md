@@ -4428,6 +4428,90 @@ It's the WRONG shape when:
 - You know every command at compile time. Use `match X:` instead.
 - You just need keyword search. Use `search Table for query`.
 
+## Chapter 19e: Slot Extractors (Pulling Structured Values Out of Free-Form Text)
+
+Runtime Grammar (Chapter 19d) routes user input to the right command. But the input usually carries DATA — "remind me **tomorrow at 2pm** to email Marcus **about Q3 numbers**" has a datetime, an action, and a topic. The matcher's prefix-match alone doesn't pull those out. That's what slot extractors are for.
+
+Phase 2 of Lenat-in-Clear ships four primitives, each returning a `{value, remainder}`-shape so you can chain them.
+
+### `extract datetime from text`
+
+The fast-path handles every common case: ISO date (`2026-05-13`), slash-date (`5/13`), relative (`in 30 minutes`, `in 2 hours`), weekday-at-time (`next tuesday at 9am`, `friday at 5pm`), `tomorrow at 2pm`, bare `tomorrow`, `at 5pm`, `tonight`, `this evening`.
+
+```clear
+when user sends note to /api/intake:
+  dt = extract datetime from note
+  # dt is {value: <Date>, remainder: '<text with the datetime stripped>'}
+  # or 'nothing' when the fast-path misses
+  if dt is nothing:
+    send back 'didn\'t catch a time — try \'tomorrow at 2pm\'?'
+  send back dt
+```
+
+If you've configured an `ask ai` provider, the runtime falls through to an LLM call when the fast-path misses (~$0.0001 per call). Phase 6 wires the provider routing — until then, fast-path misses return `nothing`.
+
+### `fuzzy match 'query' in list scored at least 0.7`
+
+Pick the best match from a list. Typo-tolerant: handles substring matches (`paint` → `mspaint`), short-vs-long typos (`callculator` → `calc`), and one-character drops (`notpad` → `notepad`).
+
+```clear
+known_apps = ['mspaint', 'calc', 'notepad', 'explorer']
+when user sends command to /api/launch:
+  pick = fuzzy match command in known_apps scored at least 0.7
+  # pick is {value: 'mspaint', score: 0.71} or 'nothing'
+  if pick is nothing:
+    send back 'no match — try one of: mspaint, calc, notepad'
+  run command pick's value
+```
+
+Threshold is optional; default 0.7. Ties broken by longest candidate.
+
+### `extract about-clause from text`
+
+Splits text on word-bounded `about`, `re`, or `regarding`. Returns the head as `what` and the tail as `about`.
+
+```clear
+when user sends note to /api/intake:
+  parts = extract about-clause from note
+  # 'remind me to email Marcus about Q3 numbers'
+  #   → {what: 'remind me to email Marcus', about: 'Q3 numbers'}
+  # 'todo: stretch' (no keyword)
+  #   → {what: 'todo: stretch', about: nothing}
+```
+
+### `find pattern 'P' in text returning value and remainder`
+
+First-match-only regex with the input minus the match. Different from plain `find pattern 'P' in text` (that returns an array of every match).
+
+```clear
+when user sends note to /api/energy:
+  out = find pattern '\d+' in note returning value and remainder
+  # 'energy 6 tired' → {value: '6', remainder: 'energy  tired'}
+  # 'no number here' → {value: nothing, remainder: 'no number here'}
+  level = out's value
+  rest = out's remainder
+```
+
+### Chaining
+
+The `{value, remainder}` shape is the chain handle. Each extractor peels its part off the front; the remainder feeds the next:
+
+```clear
+when user sends note to /api/intake:
+  dt_part = extract datetime from note
+  about_part = extract about-clause from dt_part's remainder
+  # what's left is the bare action: "remind me to email Marcus"
+  action = about_part's what
+  topic = about_part's about
+  scheduled_at = dt_part's value
+```
+
+### Gotchas
+
+- The text-shaped extractors (`extract datetime`, `extract about-clause`, `find pattern ... returning value and remainder`) all want a TEXT source. If you hand them a number / list / boolean, the validator warns `SLOT_EXTRACTOR_WRONG_TYPE` at compile time. At runtime the helpers defensively return `nothing` — silent failure looks like a missing slot, not a type error.
+- `fuzzy match` is the exception — its second arg IS a list (the candidate set).
+- Python target ships full parity. The runtime helpers live in `runtime/slot-extractors.js` and `runtime/slot_extractors.py` — same algorithm, snake_case names on the Python side.
+
 ## Chapter 22: Scheduled Tasks (Set It and Forget It)
 
 Reference chapter. The deal-desk app doesn't strictly need scheduled tasks — every action is triggered by a CRO clicking a button. But the moment you want a *"every Monday at 9 a.m., email the CRO last week's pipeline summary"* feature, or *"every hour, expire any deals that have been pending more than 30 days,"* this chapter is the answer. Cron-style schedules in Clear's plain-English shape.

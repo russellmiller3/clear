@@ -1676,7 +1676,34 @@ The next `match input against 'concepts'` call picks it up. No recompile.
 Gotchas:
 - Don't name a frame `type:` — use `effect:` (the discriminator). `type:` is overloaded with field-type syntax everywhere else in Clear.
 - The `on match:` body can reference slot values as `match's <slot_name>`. Typos error `RUNTIME_GRAMMAR_SLOT_UNKNOWN` at compile time so they don't silently corrupt CRUD at runtime.
-- Phase 1's matcher does PREFIX matching only. For richer extraction (datetime, fuzzy, about-clause), Phase 2 of the Lenat-in-Clear plan adds the slot-extractor stdlib.
+- Phase 1's matcher does PREFIX matching only. For richer extraction (datetime, fuzzy, about-clause), Phase 2's slot-extractor stdlib (below) supplies the typed extractors.
+
+## Slot Extractors — `extract datetime` / `fuzzy match` / `extract about-clause` / `find pattern ... returning value and remainder`
+
+**Use these when a chat-style endpoint needs to pull structured values out of free-form text.** Every chat-first app — intake forms, support bots, search bars, agent-led flows — needs the same toolkit. Phase 2 of Lenat-in-Clear adds four primitives, all returning a `{value, remainder}` (or similar) shape so callers can chain them.
+
+Canonical form:
+
+```clear
+when user sends note to /api/intake:
+  # Pull the datetime out first; fast-path handles "tomorrow at 2pm",
+  # "in 30 minutes", "next tuesday at 9am", "5/13", "tonight", "this evening".
+  dt = extract datetime from note
+  # Then split the about-clause off the head; what is the action, about is the topic.
+  parts = extract about-clause from note
+  # Or pull a regex match with its surrounding text gone (NOT the same as plain
+  # 'find pattern' — that returns an array of matches with no remainder).
+  energy = find pattern '\d+' in note returning value and remainder
+  # Fuzzy-pick from a list of known apps; threshold default 0.7
+  pick = fuzzy match 'paint' in known_apps scored at least 0.7
+  send back parts
+```
+
+Gotchas:
+- `extract datetime from X` / `extract about-clause from X` / `find pattern X in Y returning value and remainder` all want Y to be **text**. The validator warns `SLOT_EXTRACTOR_WRONG_TYPE` if you hand them a number / list / boolean — at runtime the helpers return `null` silently.
+- `fuzzy match` returns `{value, score}`. Pull the matched name with `pick's value`; pull the score (0-1) with `pick's score`.
+- The `returning value and remainder` tail is required for the regex-with-remainder shape. Plain `find pattern X in Y` still parses to the existing `REGEX_FIND` and returns the array.
+- When the datetime fast-path misses, the JS runtime falls through to an `ask ai` call IF an `askAi` provider is configured. Python takes a sync `ask_ai` callable. Phase 6 of the plan wires real provider routing.
 
 ## Approval Queues — `queue for X:`
 

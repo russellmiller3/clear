@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-13 — Slot Extractor stdlib (Phase 2 of Lenat-in-Clear)
+
+Four expression-level primitives for NL-light parsing. Pulls structured values out of free-form text — every chat-style intake app needs these, no more hand-rolled per-app slot extractors.
+
+**What landed:**
+- **`extract datetime from text`** — fast-path token-level parser covering ISO date, slash-date `M/D`, `in N (minutes|hours|days)`, weekday-at-time (`next tuesday at 9am`), `tomorrow at TIME`, bare `tomorrow`, `at TIME`, `tonight`, `this evening`. Returns `{value, remainder}`. LLM fallback via configured `askAi` provider when fast-path misses (Phase 6 wires the routing).
+- **`fuzzy match 'q' in list [scored at least N]`** — Levenshtein + bigram pre-filter + subsequence-coverage boost. Threshold default 0.7. Returns `{value, score}` or `nothing`.
+- **`extract about-clause from text`** — regex split on word-bounded `about|re|regarding`. Returns `{what, about}`.
+- **`find pattern 'P' in text returning value and remainder`** — first-match-only regex with the input minus the match. Returns `{value, remainder}`. Differs from plain `find pattern` (array of matches, no remainder).
+
+**Cycles shipped:** 2.2 JS compiler emit • 2.3 Python compiler emit • 2.4 Python runtime parity port (28 unittest cases) • 2.6 EXTRACT_ABOUT parser shape + JS corpus • 2.7 REGEX_CAPTURE_REM parser shape + JS corpus • 2.8 validator SLOT_EXTRACTOR_WRONG_TYPE hint • 2.9 doc cascade (this entry).
+
+**Tests:** 3096 total passing. Runtime parity: both targets share the algorithm; the JS LLM fallback returns a Promise while Python takes a sync `ask_ai` callable. Validator catches `extract datetime from <number>` / `extract about-clause from <list>` / regex-with-remainder against non-text at compile time and points at the canonical fix.
+
+Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 2). Runtime helpers: `runtime/slot-extractors.js` / `runtime/slot_extractors.py`.
+
+---
+
 ## 2026-05-13 — Runtime Grammar primitive (Phase 1 of Lenat-in-Clear)
 
 Clear gains its first runtime-extensible parsing primitive. A `runtime grammar 'name':` block declares a parsing surface whose vocabulary grows at runtime: frames inserted into the storage table via a normal CRUD save take effect on the next match call — no recompile, no restart.

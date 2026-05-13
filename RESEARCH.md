@@ -11,7 +11,7 @@ Why this matters for curriculum and Factor DB:
 - Friction-DB shape stays consistent. Errors are typed (`GRAMMAR_FRAME_MISSING_CANONICAL`, `RUNTIME_GRAMMAR_SLOT_UNKNOWN`) so the friction-score pipeline can roll them into the existing top-10 error class ranking without a parser change.
 - Ralph contract widens. "Build a chat-first concept tracker" now has measurable Ralph checks beyond "did it compile and respond to a request": did the matcher pick up a frame added at runtime? Does the typed-confirm-then-graduate path fire? Are slot extractions stable across re-runs? Each of these is a typed fact.
 
-Plan: `plans/plan-lenat-in-clear-2026-05-13.md`. Phases 2 (slot-extractor stdlib) and 3 (confirm-then-graduate variant) feed directly into chat-first curriculum tasks.
+Plan: `plans/plan-lenat-in-clear-2026-05-13.md`. Phase 2 (slot-extractor stdlib) shipped same-day — four primitives (`extract datetime`, `fuzzy match`, `extract about-clause`, `find pattern ... returning value and remainder`) for NL-light parsing, JS + Python parity, validator `SLOT_EXTRACTOR_WRONG_TYPE` warning. Phase 3 (confirm-then-graduate variant) feeds directly into chat-first curriculum tasks.
 
 Updated: **2026-05-08 (requirements/Ralph loop is now the primary quality lever; pattern/error DBs are useful retrieval aids, but deterministic contracts are what prevent false success)**.
 
