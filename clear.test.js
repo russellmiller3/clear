@@ -16105,6 +16105,77 @@ describe('`display X as bar chart` shorthand parses as CHART', () => {
   });
 });
 
+// Phase 5 (2026-05-13) — `display X as network graph showing edges via Y` is
+// the network-graph flavor of CHART. The ECharts graph series renders a
+// force-directed visualization where each record is a node and field-value
+// substring matches resolve into directed links. This is the visualization
+// layer for Lenat's records map (people/companies/ideas linked by `about`)
+// and any future relationship-graph view (CRM, knowledge base, audit chain).
+// The branch sits BEFORE the existing chart shorthand in parseDisplay so the
+// `as <word> chart` match below can't accidentally swallow it.
+describe('Phase 5 — `display X as network graph` parses as CHART', () => {
+  // Walk the AST tree finding every CHART node — pages wrap children in
+  // various ways so a flat scan keeps the test independent of the page
+  // node's exact shape.
+  const findCharts = (root) => {
+    const hits = [];
+    const visit = (n) => {
+      if (!n || typeof n !== 'object') return;
+      if (n.type === 'chart') hits.push(n);
+      for (const k of Object.keys(n)) {
+        const v = n[k];
+        if (Array.isArray(v)) v.forEach(visit);
+        else if (v && typeof v === 'object') visit(v);
+      }
+    };
+    visit(root);
+    return hits;
+  };
+
+  it('parses with chartType "network" and edges_field captured', () => {
+    const src = "build for web\npage 'p' at '/':\n  records = [{id: 'a', name: 'Alice', about: ''}]\n  display records as network graph showing edges via about";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const charts = findCharts(result.ast);
+    expect(charts.length).toBeGreaterThan(0);
+    const chart = charts[0];
+    expect(chart.chartType).toBe('network');
+    expect(chart.edgesField).toBe('about');
+  });
+
+  it('rejects network graph without `showing edges via FIELD` clause', () => {
+    const src = "build for web\npage 'p' at '/':\n  r = []\n  display r as network graph";
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toMatch(/showing edges via/);
+  });
+
+  it('accepts optional `with max N nodes` clause and stores nodeCap', () => {
+    const src = "build for web\npage 'p' at '/':\n  r = [{id: 1, name: 'x', about: ''}]\n  display r as network graph showing edges via about with max 50 nodes";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const chart = findCharts(result.ast)[0];
+    expect(chart.nodeCap).toBe(50);
+  });
+
+  it('accepts optional `with color by FIELD` clause and stores colorBy', () => {
+    const src = "build for web\npage 'p' at '/':\n  r = [{id: 1, name: 'x', kind: 'task', about: ''}]\n  display r as network graph showing edges via about with color by kind";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const chart = findCharts(result.ast)[0];
+    expect(chart.colorBy).toBe('kind');
+  });
+
+  it('accepts both `with max N nodes` and `with color by FIELD` together', () => {
+    const src = "build for web\npage 'p' at '/':\n  r = [{id: 1, name: 'x', kind: 'a', about: ''}]\n  display r as network graph showing edges via about with max 100 nodes with color by kind";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const chart = findCharts(result.ast)[0];
+    expect(chart.nodeCap).toBe(100);
+    expect(chart.colorBy).toBe('kind');
+  });
+});
+
 describe('`table X:` shorthand (no `create a` prefix) parses as DATA_SHAPE', () => {
   it('accepts `table Sales:` as a table declaration', () => {
     const src = "build for javascript backend\ntable Sales:\n  amount, number\n  region, text\nwhen user calls GET /api/sales:\n  send back 'ok'";

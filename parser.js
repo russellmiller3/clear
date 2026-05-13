@@ -8700,6 +8700,85 @@ function parseDisplay(tokens, line) {
   if (expr.error) return { error: expr.error };
   pos = exprEnd;
 
+  // Phase 5 (2026-05-13) — `display X as network graph showing edges via Y`
+  // shorthand. Network graphs join the CHART family as a new series kind. The
+  // shape is distinct enough from line/bar/pie/area (it needs an edges-field,
+  // not a y-axis) that we branch BEFORE the existing chart shorthand so the
+  // `as <word> chart` match below can't accidentally swallow it.
+  //
+  // Token shape after `as`: `network`, `graph`, [`showing`, `edges`, `via`,
+  // <field>], optional [`with`, `max`, <n>, `nodes`], optional
+  // [`with`, `color`, `by`, <field>]. The parser builds a CHART node with
+  // chartType='network' and stores the network-specific fields on the node
+  // so the compiler's chart-emit loop can branch on chartType.
+  if (pos + 2 < tokens.length &&
+      tokens[pos].canonical === 'as_format' &&
+      typeof tokens[pos + 1].value === 'string' &&
+      typeof tokens[pos + 2].value === 'string' &&
+      tokens[pos + 1].value.toLowerCase() === 'network' &&
+      tokens[pos + 2].value.toLowerCase() === 'graph') {
+    let np = pos + 3;
+    // Required: `showing edges via FIELD`.
+    let edgesField = null;
+    if (np + 3 < tokens.length &&
+        String(tokens[np].value).toLowerCase() === 'showing' &&
+        String(tokens[np + 1].value).toLowerCase() === 'edges' &&
+        String(tokens[np + 2].value).toLowerCase() === 'via') {
+      edgesField = String(tokens[np + 3].value);
+      np += 4;
+    } else {
+      return {
+        error: "Network graph needs `showing edges via <field>`. Example: display people as network graph showing edges via about",
+      };
+    }
+    // Optional repeating `with ...` clauses. Two forms supported:
+    //   with max <N> nodes        — cap node count (default 200)
+    //   with color by <field>     — color nodes by this field's value
+    let nodeCap = null;
+    let colorBy = null;
+    while (np < tokens.length && tokens[np].canonical === 'with') {
+      np++;
+      if (np + 2 < tokens.length &&
+          String(tokens[np].value).toLowerCase() === 'max' &&
+          tokens[np + 1].type === TokenType.NUMBER &&
+          String(tokens[np + 2].value).toLowerCase() === 'nodes') {
+        nodeCap = Number(tokens[np + 1].value);
+        np += 3;
+        continue;
+      }
+      if (np + 2 < tokens.length &&
+          String(tokens[np].value).toLowerCase() === 'color' &&
+          String(tokens[np + 1].value).toLowerCase() === 'by') {
+        colorBy = String(tokens[np + 2].value);
+        np += 3;
+        continue;
+      }
+      // Unknown `with` clause — rewind so a later parser can have a go.
+      np--;
+      break;
+    }
+    const title = expr.node && expr.node.name
+      ? expr.node.name.charAt(0).toUpperCase() + expr.node.name.slice(1)
+      : 'Network Graph';
+    const dataVar = expr.node && expr.node.name ? expr.node.name : null;
+    const slug = sanitizeForId(title.replace(/\s+/g, '_'));
+    const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
+    const networkNode = {
+      type: NodeType.CHART,
+      title,
+      chartType: 'network',
+      seriesKind: 'network',
+      dataVar,
+      edgesField,
+      groupBy: null,
+      line,
+      ui,
+    };
+    if (nodeCap !== null) networkNode.nodeCap = nodeCap;
+    if (colorBy !== null) networkNode.colorBy = colorBy;
+    return { node: networkNode };
+  }
+
   // T2#8 chart shorthand: `display X as bar chart` / `show Y as line chart`.
   // Meph reaches for this natural English form; canonical is `bar chart
   // 'Title' showing X`. Without this branch the rest of the function sets
