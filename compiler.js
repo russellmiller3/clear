@@ -11226,6 +11226,17 @@ export function exprToCode(expr, ctx) {
       return `_extractDatetime(${src})`;
     }
 
+    // Phase 1 runtime-grammar match call. Mirrors EXTRACT_DATETIME shape:
+    // lowers to a single runtime-helper call. The matcher itself was built
+    // in Phase 1 (`runtime/grammar-matcher.js` + `.py`) and gets seeded with
+    // every compile-time frame in the RUNTIME_GRAMMAR block's emit.
+    case NodeType.GRAMMAR_MATCH_CALL: {
+      const src = exprToCode(expr.source, ctx);
+      const name = JSON.stringify(expr.grammar);
+      if (ctx.lang === 'python') return `_grammar_match(${name}, ${src})`;
+      return `_grammarMatch(${name}, ${src})`;
+    }
+
     case NodeType.FUZZY_MATCH: {
       const src = exprToCode(expr.source, ctx);
       const q = JSON.stringify(expr.query);

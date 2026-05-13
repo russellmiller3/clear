@@ -546,3 +546,86 @@ describe('runtime grammar — slot-unknown validation (Cycle 1.9)', () => {
     expect(slotErr).toBe(undefined);
   });
 });
+
+// =============================================================================
+// CYCLE 1.10 — grammar match call expression: `match input against 'name'`
+// =============================================================================
+// Wired 2026-05-13 night. Before this cycle the GRAMMAR_MATCH_CALL NodeType
+// was declared in parser.js:495 but never parsed — the intent.md note
+// "reserved for Phase 2 wiring" was literal. Without this, no .clear test
+// block could exercise the runtime-grammar matcher, which blocked the entire
+// Phase 9 test-parity sweep against Node Lenat's 126-test corpus.
+describe('runtime grammar — match call expression (Cycle 1.10)', () => {
+  it("parses `set X to match input against 'name'` into a GRAMMAR_MATCH_CALL", () => {
+    const source = [
+      "target: backend",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    canonical phrase 'remind me to'",
+      "when user calls POST /api/parse:",
+      "  set input to 'remind me to email Marcus'",
+      "  set result to match input against 'concepts'",
+      "  send back result",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    expect(endpoint).toBeTruthy();
+    const matchAssign = endpoint.body.find(n => n.type === 'assign' && n.name === 'result');
+    expect(matchAssign).toBeTruthy();
+    expect(matchAssign.expression.type).toBe('grammar_match_call');
+    expect(matchAssign.expression.grammar).toBe('concepts');
+    expect(matchAssign.expression.source.type).toBe('variable_ref');
+    expect(matchAssign.expression.source.name).toBe('input');
+  });
+
+  it("compiles to JS `_grammarMatch(\"concepts\", input)` call", () => {
+    const source = [
+      "target: backend",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    canonical phrase 'remind me to'",
+      "when user calls POST /api/parse:",
+      "  set input to 'remind me to email Marcus'",
+      "  set result to match input against 'concepts'",
+      "  send back result",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    expect(result.javascript).toContain('_grammarMatch("concepts"');
+  });
+
+  it("compiles to Python `_grammar_match(\"concepts\", input)` call", () => {
+    const source = [
+      "target: python",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    canonical phrase 'remind me to'",
+      "when user calls POST /api/parse:",
+      "  set input to 'remind me to email Marcus'",
+      "  set result to match input against 'concepts'",
+      "  send back result",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    expect(result.python).toContain('_grammar_match("concepts"');
+  });
+
+  it('accepts any expression as the input source, not just a variable', () => {
+    const source = [
+      "target: backend",
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    canonical phrase 'remind me to'",
+      "when user calls POST /api/parse:",
+      "  set result to match 'remind me to email Marcus' against 'concepts'",
+      "  send back result",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const matchAssign = endpoint.body.find(n => n.type === 'assign' && n.name === 'result');
+    expect(matchAssign.expression.source.type).toBe('literal_string');
+    expect(matchAssign.expression.source.value).toBe('remind me to email Marcus');
+  });
+});
