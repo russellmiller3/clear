@@ -31733,4 +31733,56 @@ agent 'Charger' receives amount:
   });
 });
 
+// =============================================================================
+// PHASE 6 — AI PROVIDER ROUTING (top-level decl, per-call override, runtime)
+// =============================================================================
+
+describe('Phase 6.1 — top-level ai provider declaration', () => {
+  function _findProviderDecl(ast) {
+    const body = ast && ast.body ? ast.body : ast;
+    if (!Array.isArray(body)) return null;
+    return body.find(n => n && n.type === 'ai_provider_decl');
+  }
+  it('parses `ai provider is openrouter`', () => {
+    const r = compileProgram(`ai provider is openrouter`);
+    expect(r.errors).toEqual([]);
+    const node = _findProviderDecl(r.ast);
+    expect(node).toBeTruthy();
+    expect(node.provider).toBe('openrouter');
+  });
+  it('parses `ai provider is google`', () => {
+    const r = compileProgram(`ai provider is google`);
+    expect(r.errors).toEqual([]);
+    const node = _findProviderDecl(r.ast);
+    expect(node).toBeTruthy();
+    expect(node.provider).toBe('google');
+  });
+  it('parses `ai provider is openai`', () => {
+    const r = compileProgram(`ai provider is openai`);
+    expect(r.errors).toEqual([]);
+    const node = _findProviderDecl(r.ast);
+    expect(node.provider).toBe('openai');
+  });
+  it('parses `ai provider is anthropic` (explicit default)', () => {
+    const r = compileProgram(`ai provider is anthropic`);
+    expect(r.errors).toEqual([]);
+    const node = _findProviderDecl(r.ast);
+    expect(node.provider).toBe('anthropic');
+  });
+  it('accepts quoted provider name', () => {
+    const r = compileProgram(`ai provider is 'openrouter'`);
+    expect(r.errors).toEqual([]);
+    const node = _findProviderDecl(r.ast);
+    expect(node.provider).toBe('openrouter');
+  });
+  it('rejects an unknown provider name with a helpful message', () => {
+    const r = compileProgram(`ai provider is cohere`);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg).toMatch(/cohere/);
+    expect(msg).toMatch(/anthropic/);
+    expect(msg).toMatch(/openrouter/);
+  });
+});
+
 run();

@@ -181,6 +181,10 @@ export const NodeType = Object.freeze({
   // Database declaration
   DATABASE_DECL: 'database_decl',
   OWNER_DECL: 'owner_decl',
+  // AI provider declaration (Phase 6) — top-level `ai provider is openrouter`
+  // routes runtime ASK_AI / STREAM_AI / CLASSIFY calls to the named provider.
+  // Valid providers: anthropic (default), openrouter, google, openai.
+  AI_PROVIDER_DECL: 'ai_provider_decl',
 
   // Toast notification
   TOAST: 'toast',
@@ -2776,6 +2780,25 @@ CANONICAL_DISPATCH.set('owner', (ctx) => {
     const emailTok = ctx.tokens[2];
     if (emailTok.type !== TokenType.STRING) return undefined;
     ctx.body.push({ type: NodeType.OWNER_DECL, email: emailTok.value, line: ctx.line });
+    return ctx.i + 1;
+});
+// `ai provider is X` (Phase 6) — top-level provider declaration that defaults
+// every runtime ASK_AI / STREAM_AI / CLASSIFY call to the named provider. A
+// per-call `via provider 'X'` clause beats this; env var `CLEAR_AI_PROVIDER`
+// beats this when no per-call override; this decl beats the hard-coded
+// 'anthropic' default. Valid names: anthropic, openrouter, google, openai.
+CANONICAL_DISPATCH.set('ai', (ctx) => {
+    if (ctx.tokens.length < 4) return undefined;
+    if (ctx.tokens[1].value !== 'provider') return undefined;
+    if (!(ctx.tokens[2].canonical === 'is' || ctx.tokens[2].type === TokenType.ASSIGN)) return undefined;
+    const nameTok = ctx.tokens[3];
+    const rawName = String(nameTok.value).toLowerCase();
+    const VALID_PROVIDERS = ['anthropic', 'openrouter', 'google', 'openai'];
+    if (!VALID_PROVIDERS.includes(rawName)) {
+      ctx.errors.push({ line: ctx.line, message: `ai provider '${rawName}' isn't supported — try one of: ${VALID_PROVIDERS.join(', ')}` });
+      return ctx.i + 1;
+    }
+    ctx.body.push({ type: NodeType.AI_PROVIDER_DECL, provider: rawName, line: ctx.line });
     return ctx.i + 1;
 });
 CANONICAL_DISPATCH.set('chart', (ctx) => {
