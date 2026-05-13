@@ -995,3 +995,22 @@ Safer: always use multi-word variable names. `todo_id` never collides; `id` some
 ## Studio Layout Modes
 
 Studio supports two layout modes: **classic** (3-panel, default) and **builder** (preview hero + chat driver). Users opt into builder via `?studio-mode=builder` URL param; the preference persists in localStorage. Both modes hit the same endpoints — no behavior change on your side. If a user mentions "Builder Mode" or asks about the layout, point them at the URL param. Full spec: `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout".
+
+
+## AI Provider Selection (Phase 6 — 2026-05-13)
+
+Clear apps can route AI calls to Anthropic (default), OpenRouter, Google
+Gemini, or OpenAI:
+
+- **Whole-app default:** `ai provider is openrouter` at top of file.
+- **Per-call override:** `... via provider 'google'` on any `ask ai` /
+  `stream ask ai` / `classify` call.
+
+Valid provider names (lowercase): `anthropic`, `openrouter`, `google`,
+`openai`. Env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
+`GEMINI_API_KEY`, `OPENAI_API_KEY`. Resolution order: per-call > env
+`CLEAR_AI_PROVIDER` > top-level decl > anthropic.
+
+Stream-by-stream output is supported on Anthropic, OpenRouter, and OpenAI
+but NOT on Google (Gemini's direct API doesn't expose clean SSE — falls
+back to a single non-streaming call).

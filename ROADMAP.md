@@ -438,3 +438,5 @@ Both moved to `FAQ.md` to keep the roadmap tight:
 - **`FAQ.md` → "What is the RL training environment?"** — sandbox runner, curriculum, structured eval API, patch API, current blocker (no fine-tuning access).
 
 Full RL design: `RESEARCH.md`.
+
+- **Phase 6 (Lenat-in-Clear): provider routing for `ask ai` (2026-05-13)** — top-level `ai provider is openrouter|google|openai` + per-call `via provider 'X'` clause on ASK_AI / STREAM_AI / CLASSIFY. Runtime helper routes to the right HTTP shape (Anthropic, OpenRouter, Gemini direct, OpenAI). Resolution order: per-call > `CLEAR_AI_PROVIDER` env > top-level decl > anthropic default.

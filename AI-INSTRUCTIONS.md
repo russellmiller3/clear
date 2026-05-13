@@ -4011,3 +4011,47 @@ Apps Meph builds should be deploy-ready out of the box. The Deploy button in Stu
 - **Plan for secrets the app will need.** `requires login` auto-gets a `JWT_SECRET`. `use stripe` / `use twilio` / `use sendgrid` prompt the customer for the matching key in the Deploy modal.
 - **Avoid direct `use '@anthropic-ai/sdk'`.** The `ask claude` helper is the canonical way to call Claude — direct SDK use bypasses metering and the customer's own Anthropic key gets billed instead of their plan credit.
 - **Re-deploys are incremental updates.** If Marcus has already deployed an app, editing the source and clicking the Publish button takes the fast update path — Studio re-uploads only the new bundle and stamps a new version against the existing tenant. No new D1 database, no domain reattach, no full secrets push. Wall-clock is ~2s instead of ~12s. The only thing that pauses the update is a schema change (any `migrations/*.sql` or `wrangler.toml` byte differs from the last shipped version) — Studio responds with a 409 `MIGRATION_REQUIRED`, shows the diff, and asks for an explicit "apply migration + update" click before proceeding. So: don't tell Marcus to "redeploy from scratch" or "delete the app and ship again" to push a small change — the Publish button already does the right thing. Use the Version history panel inside Publish to roll back to any of the last 20 versions in one click.
+
+## AI Provider Selection (Phase 6 — 2026-05-13)
+
+Clear's runtime `ask ai` / `stream ask ai` / `classify` calls can route to
+four providers: **Anthropic** (default), **OpenRouter**, **Google Gemini**,
+**OpenAI**. Pick one of two surfaces:
+
+- **Top-level:** `ai provider is openrouter` at the top of the file sets the
+  default for every AI call in the program.
+- **Per-call:** `... via provider 'google'` on any single ASK_AI, STREAM_AI,
+  or CLASSIFY overrides the top-level default for just that call.
+
+**Resolution order at runtime** (highest priority first):
+
+1. Per-call `via provider 'X'` clause
+2. Env var `CLEAR_AI_PROVIDER` (set on the running server)
+3. Top-level `ai provider is X` declaration
+4. Hard-coded default: `anthropic`
+
+**Gotcha — env var per provider:** each provider reads a different env var
+for its API key. Don't paste them in source. Set them on the deploy/runtime
+environment:
+
+| Provider | API key env var |
+|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY` (or `CLEAR_AI_KEY`) |
+| `openrouter` | `OPENROUTER_API_KEY` |
+| `google` | `GEMINI_API_KEY` |
+| `openai` | `OPENAI_API_KEY` |
+
+If the runtime helper can't find the matching key it throws with a specific
+"Set X environment variable to use 'via provider Y'" message — that's the
+signal to set the right key, not switch providers.
+
+**Gotcha — Google streaming.** `stream ask ai 'X' with Y via provider 'google'`
+does NOT word-by-word stream. The Google Gemini direct generateContent API
+doesn't expose clean SSE, so the runtime falls back to a single non-streaming
+call and yields the whole answer as one chunk. Anthropic, OpenRouter, and
+OpenAI all stream properly.
+
+**Gotcha — provider name is lowercase.** `ai provider is OpenRouter` errors;
+use lowercase: `openrouter`. Unknown names produce a "isn't supported — try
+one of: anthropic, openrouter, google, openai" compile error.
+

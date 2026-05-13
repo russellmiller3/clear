@@ -294,6 +294,8 @@ Service calls use direct REST API calls via `fetch()`, not SDK imports. Auth via
 | `EVAL_DEF` | `eval 'name':` + `given 'Agent' receives X` / `call POST '/path' with X` + `expect '<rubric>'` / `expect output has fields` | (same) | Merged into `result.evalSuite` with `source: 'user-top'`. Runner POSTs the input and grades via Claude (or Gemini/OpenAI if `EVAL_PROVIDER` set). |
 | `CLASSIFY` | `intent = classify X as 'a', 'b', 'c'` | (same) | `await _classifyIntent(X, ['a','b','c'])` — Claude Haiku |
 | `ASK_AI` (multi-context) | `ask ai 'prompt' with X, Y, Z` | (same) | `await _askAI(prompt, JSON.stringify({X, Y, Z}))` |
+| `AI_PROVIDER_DECL` | `ai provider is openrouter` (top-level) — sets the default AI provider for every runtime `ask ai` / `stream ask ai` / `classify` call. Valid names: `anthropic` (default), `openrouter`, `google`, `openai`. Resolution at runtime: per-call `via provider 'X'` > env `CLEAR_AI_PROVIDER` > this decl > `'anthropic'`. | (same) | Emits a `const _CLEAR_AI_DEFAULT_PROVIDER = 'openrouter';` constant that `_askAI` / `_askAIStream` read by name. |
+| `ASK_AI` (via provider) | `set answer to ask ai 'prompt' with context via provider 'openrouter'` — per-call provider override on any ASK_AI, STREAM_AI, or CLASSIFY call site. Threads `provider` into the AST so the runtime helper picks the right HTTP shape. | (same) | `await _askAI(prompt, context, null, null, { provider: 'openrouter' })` — opts arg dispatches inside `_askAI`. |
 
 Agent directives (metadata on AGENT node, not separate nodes):
 

@@ -2287,3 +2287,43 @@ When someone says "Studio," they mean `studio/studio.html` + `studio/server.js` 
 | `needs login` on a page compiles to blank white page — JWT check hides everything but doesn't show login form or redirect | Don't use `needs login` on pages yet; use endpoint auth instead |
 | `for each` loop body in HTML doesn't render child content — outputs whole object as string instead of expanding template | Use `display X as cards showing field1, field2` instead |
 | Browser server may 404 on some routes | Untested in real browser — verify if you hit this |
+
+
+## How do I use Gemini instead of Claude?
+
+Two ways, both opt-in (default stays Anthropic Claude).
+
+**Whole-app override** — top of the file:
+
+```clear
+ai provider is google
+
+agent 'Summarizer' receiving topic:
+  reply = ask ai 'summarize' with topic
+  send back reply
+```
+
+**Per-call override** — `via provider 'google'` on any single `ask ai` /
+`stream ask ai` / `classify` call:
+
+```clear
+agent 'Picker' receiving topic:
+  pick = ask ai 'pick a name' with topic via provider 'google' returning JSON:
+    name, text
+  send back pick
+```
+
+Set `GEMINI_API_KEY` in the runtime environment. The compiled `_askAI` helper
+routes the request to Google's `generativelanguage.googleapis.com` endpoint
+with the right body shape (`contents/parts`) and parses the response shape
+(`candidates[0].content.parts[0].text`). Same path for OpenRouter
+(`OPENROUTER_API_KEY`) and OpenAI (`OPENAI_API_KEY`).
+
+Resolution order at runtime: per-call `via provider` clause > env
+`CLEAR_AI_PROVIDER` > top-level `ai provider is X` decl > `anthropic` default.
+
+Caveat: `stream ask ai ... via provider 'google'` doesn't word-by-word stream
+— Google's direct generateContent API doesn't expose SSE cleanly, so the
+helper falls back to a single non-streaming call and yields the whole answer
+as one chunk. Anthropic, OpenRouter, and OpenAI all stream properly. (Phase
+6, 2026-05-13.)

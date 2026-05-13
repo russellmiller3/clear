@@ -779,3 +779,5 @@ These are deliberate non-goals. Each has been considered and rejected.
 | Drag and drop | HTML5 events via `script:`. Niche. |
 | Infinite scroll | IntersectionObserver via `script:`. Performance concern, not language feature. |
 | Per-user app forks | Every employee seeing a fundamentally different version of the app destroys the shared ontology. Audit/compliance nightmare. See Live App Editing in ROADMAP for the right answer (owner-initiated changes that ship to everyone). |
+
+- **AI provider routing (Phase 6, 2026-05-13)** — Clear apps can target Anthropic Claude (default), OpenRouter, Google Gemini direct, or OpenAI. Top-level `ai provider is X` sets a default; per-call `via provider 'X'` on `ask ai` / `stream ask ai` / `classify` overrides on a single call. Runtime helper handles the HTTP shape per provider. Env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`.

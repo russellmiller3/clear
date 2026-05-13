@@ -2714,6 +2714,57 @@ answer = ask ai 'Summarize this' with data
 
 Requires `ANTHROPIC_API_KEY` (falls back to `CLEAR_AI_KEY`).
 
+### AI Provider (Phase 6 — 2026-05-13)
+
+Clear can route AI calls to **Anthropic**, **OpenRouter**, **Google Gemini**,
+or **OpenAI** — pick once at the top of the file, or override on a single
+call. The runtime helper handles the HTTP shape for each provider.
+
+```clear
+# Top-level: every ask ai / stream ask ai / classify routes here unless
+# overridden on the call. Valid names: anthropic (default), openrouter,
+# google, openai.
+ai provider is openrouter
+
+agent 'Summarizer' receiving article:
+  # Uses the top-level provider (openrouter).
+  short_form = ask ai 'summarize in two sentences' with article
+  send back short_form
+
+agent 'Picker' receiving topic:
+  # Per-call override beats the top-level setting AND the env var.
+  pick = ask ai 'pick a name' with topic via provider 'google' returning JSON:
+    name, text
+  send back pick
+
+when user sends payload to /api/route:
+  # via provider also works on classify
+  intent = classify payload as 'order', 'return', 'general' via provider 'google'
+  send back intent
+```
+
+**Resolution order at runtime** (highest wins):
+
+1. Per-call `via provider 'X'` clause on the call site
+2. Env var `CLEAR_AI_PROVIDER` (set when running the compiled server)
+3. Top-level `ai provider is X` declaration in the source file
+4. Hard-coded default: `anthropic`
+
+**Env vars by provider:**
+
+| Provider | API key env var |
+|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY` (or `CLEAR_AI_KEY`) |
+| `openrouter` | `OPENROUTER_API_KEY` |
+| `google` | `GEMINI_API_KEY` |
+| `openai` | `OPENAI_API_KEY` |
+
+Streaming (`stream ask ai` or the default inside endpoints) supports
+Anthropic, OpenRouter, and OpenAI SSE shapes natively. For `google`,
+streaming falls back to a single non-streaming call (the direct
+generateContent API doesn't expose clean SSE) — the full answer arrives
+in one chunk.
+
 ### Streaming (Default)
 
 When `ask claude` appears at statement level inside a POST endpoint, Clear

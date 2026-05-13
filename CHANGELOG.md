@@ -1,3 +1,41 @@
+## 2026-05-13 — Phase 6: AI provider routing
+
+**What shipped:**
+
+- Top-level `ai provider is X` declaration (cycle 6.1) — sets the default
+  provider for every runtime `ask ai` / `stream ask ai` / `classify` call.
+  Valid names: `anthropic` (default), `openrouter`, `google`, `openai`.
+- Per-call `via provider 'X'` clause (cycle 6.2) — overrides the top-level
+  default on a single ASK_AI, STREAM_AI, or CLASSIFY call.
+- Runtime `_askAI` / `_ask_ai` / `_askAIStream` helpers (cycles 6.3 + 6.4)
+  rewritten to dispatch on provider name. Each provider has its own HTTP
+  shape (request headers, body, response extraction) baked into a single
+  setup branch inside the helper. JS + Python parity.
+- Mocked-fetch unit tests covering all three new providers (Anthropic body,
+  OpenRouter OpenAI-shape body, Gemini direct generateContent body), plus
+  the default-resolution path and the `CLEAR_AI_PROVIDER` env-var fallback.
+
+**Resolution order at runtime** (highest priority first):
+
+1. Per-call `via provider 'X'` clause
+2. Env var `CLEAR_AI_PROVIDER`
+3. Top-level `ai provider is X` declaration
+4. Hard-coded default: `anthropic`
+
+**New env vars** (set in the runtime environment, not in source):
+
+- `CLEAR_AI_PROVIDER` — runtime override
+- `OPENROUTER_API_KEY` — required when provider = `openrouter`
+- `GEMINI_API_KEY` — required when provider = `google`
+- (existing) `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
+
+**Caveat:** Google's direct generateContent API doesn't expose clean SSE,
+so `stream ask ai` calls routed to `google` fall back to a single
+non-streaming call and yield the whole answer as one chunk. Anthropic,
+OpenRouter, and OpenAI all stream properly.
+
+Tests: 3146 → 3159 passing (all 8 core templates compile clean).
+
 # Clear Language — Changelog
 
 Session-by-session history of what shipped. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*. Capability reference (what features exist today) lives in `FEATURES.md`. Node-type spec lives in `intent.md`.

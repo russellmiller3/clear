@@ -6277,3 +6277,41 @@ For Marcus, this is the difference between "our ops team uses it" and "our compl
 You started Chapter 1 with `show 'Discount: 18%'`. You finished Chapter 12 with a math-proved business rule, an audit log, an AI summary, and a one-page CRO-signed PDF. Twelve chapters, one app, every primitive in the language.
 
 The reference chapters (13 onward) are there when you need them — pick the one that answers your next question, in any order. Welcome to the other side. You're a Clear developer now.
+
+
+## Picking an AI Provider (Phase 6 — 2026-05-13)
+
+Clear defaults to Anthropic Claude for every `ask ai` call. To use a
+different provider, declare it once at the top of your file:
+
+```clear
+ai provider is openrouter
+```
+
+Valid names: `anthropic` (default), `openrouter`, `google`, `openai`.
+
+You can also override the provider on a single call with
+`via provider 'X'`:
+
+```clear
+agent 'PickName' receiving topic:
+  # Uses Google Gemini Flash just for this call, even if the file says
+  # `ai provider is anthropic` at the top.
+  pick = ask ai 'pick a name' with topic via provider 'google' returning JSON:
+    name, text
+  send back pick
+```
+
+Set the matching API key on the runtime environment:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-v1-...
+# or
+export GEMINI_API_KEY=...
+# or
+export OPENAI_API_KEY=sk-...
+```
+
+If you skip the key, the compiled server raises a clear error the moment a
+call fires: "Set OPENROUTER_API_KEY environment variable to use 'via provider
+openrouter'".
