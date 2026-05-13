@@ -20,6 +20,10 @@
 import { describe, it, expect } from './lib/testUtils.js';
 import { compileProgram } from './index.js';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+
+const _requireForRuntime = createRequire(import.meta.url);
+const { _extractAbout, _regexCaptureRem } = _requireForRuntime('./runtime/slot-extractors.js');
 
 // Helper to walk every node in the AST so tests can assert on node types
 // without depending on the exact tree shape (it changes as parser evolves).
@@ -184,5 +188,76 @@ describe('slot extractors — Python runtime parity (Cycle 2.4)', () => {
       // of truth; CI runs it independently.
       expect(true).toBe(true);
     }
+  });
+});
+
+// =============================================================================
+// CYCLE 2.6 — EXTRACT_ABOUT: parser shape + JS runtime corpus
+// =============================================================================
+// `extract about-clause from X` parses to an EXTRACT_ABOUT node. The runtime
+// helper splits text on \b(about|re|regarding)\b and returns {what, about}.
+// Cycle 2.2 covered the JS emit; cycle 2.3 covered the Python emit; cycle 2.4
+// covered the Python runtime. This block locks the parser AST shape and the
+// JS runtime corpus so the about-clause primitive has full TDD coverage.
+describe('EXTRACT_ABOUT — parser AST shape (Cycle 2.6)', () => {
+  it('parses `extract about-clause from X` to a node with type extract_about', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  parts = extract about-clause from note",
+      "  send back parts",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'backend' });
+    expect(result.errors).toEqual([]);
+    const found = flattenAst(result.ast).some(n => n.type === 'extract_about');
+    expect(found).toBe(true);
+  });
+
+  it('parses the alternate `extract about clause from X` phrasing too', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  parts = extract about clause from note",
+      "  send back parts",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'backend' });
+    expect(result.errors).toEqual([]);
+    expect(flattenAst(result.ast).some(n => n.type === 'extract_about')).toBe(true);
+  });
+});
+
+describe('EXTRACT_ABOUT — JS runtime corpus (Cycle 2.6)', () => {
+  it('splits "remind me to email Marcus about Q3 numbers"', () => {
+    const r = _extractAbout('remind me to email Marcus about Q3 numbers');
+    expect(r.what).toBe('remind me to email Marcus');
+    expect(r.about).toBe('Q3 numbers');
+  });
+
+  it('splits "todo: write demo about the launch"', () => {
+    const r = _extractAbout('todo: write demo about the launch');
+    expect(r.what).toBe('todo: write demo');
+    expect(r.about).toBe('the launch');
+  });
+
+  it('splits "remind me re: pricing model"', () => {
+    const r = _extractAbout('remind me re: pricing model');
+    expect(r.what).toBe('remind me');
+    expect(r.about).toBe('pricing model');
+  });
+
+  it('splits "note regarding the deal-desk demo"', () => {
+    const r = _extractAbout('note regarding the deal-desk demo');
+    expect(r.what).toBe('note');
+    expect(r.about).toBe('the deal-desk demo');
+  });
+
+  it('returns about=null when no keyword is present', () => {
+    const r = _extractAbout('todo: stretch');
+    expect(r.what).toBe('todo: stretch');
+    expect(r.about).toBe(null);
+  });
+
+  it('handles non-string input defensively', () => {
+    const r = _extractAbout(null);
+    expect(r.what).toBe('');
+    expect(r.about).toBe(null);
   });
 });
