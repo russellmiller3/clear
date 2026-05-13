@@ -1,5 +1,47 @@
 # Clear FAQ
 
+## How do I split a Clear app across files? (2026-05-13)
+
+Use `import` (the canonical keyword) followed by the file name with its
+`.clear` extension. The simplest case is a single line at the top of
+`main.clear`:
+
+```
+import tables.clear
+import dialog.clear
+import pages.clear
+```
+
+Each `import <file>.clear` reads the named file from the same directory
+and inlines every top-level declaration — tables, endpoints, pages,
+functions — under their bare names. No `./` prefix needed; default
+resolution is "same directory as the main `.clear` file."
+
+The seven canonical shapes (all use the `import` keyword):
+
+| Shape | Example | What it does |
+|---|---|---|
+| Inline-all | `import tables.clear` | Inlines every top-level declaration. The common case. |
+| Relative subdir | `import shared/utils.clear` | Inlines from a subdirectory. |
+| Relative escape | `import ../common/auth.clear` | Inlines from a sibling directory. |
+| Absolute path | `import /abs/path/lib.clear` | Inlines from an absolute path. |
+| Namespaced | `import helpers.clear as helpers` | Imports as `helpers's double(5)`. Use when names collide. |
+| Selective | `import double, triple from helpers.clear` | Inlines only the named functions. |
+| npm package | `import npm 'stripe' as stripe` | Pulls an npm package. Strings stay quoted because they're not paths. |
+
+`include` is a silent alias for `import` (`include tables.clear` parses
+identically). The old `use` keyword was retired from the import grammar
+on 2026-05-13 and is reserved for future declarative-configuration syntax
+like `use postgres for the database` or `use 'midnight' theme`. Writing
+`use 'X'` at a module-import site is a hard compile error with a fix-it
+example pointing at the new shape.
+
+Lives in: `parser.js` `parseImport` near "IMPORT MODULES" section.
+Compiler glue: `compiler.js` `resolveModules` (zero behavior change —
+only the keyword renamed). Canonical-rename spec:
+`scripts/import-keyword-rename-spec.md`.
+
+
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 

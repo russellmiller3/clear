@@ -1145,28 +1145,57 @@ Full token spec: `design-system.md`. Hard UI rules: `ai-build-instructions.md`.
 
 ## Imports
 
-**Namespaced by default.** `use 'helpers'` creates a namespace -- access
-functions via `helpers's total(items)` or `helpers.total(items)`:
+**Canonical keyword (since 2026-05-13): `import`.** `include` is a silent
+alias. `use` is RETIRED from the import grammar and is reserved for future
+declarative-configuration syntax (`use postgres for the database`,
+`use 'midnight' theme`). Writing `use 'X'` at a module-import site is a
+hard compile error with a fix-it pointing at `import`.
+
+**Inline-all is the default for path-form imports.** `import tables.clear`
+reads `tables.clear` from the same directory and inlines every top-level
+declaration — tables, endpoints, pages, functions — under their bare names:
 ```
-use 'helpers'
+import helpers.clear
+result = total(items)
+```
+
+**Namespaced when names would collide.** `import helpers.clear as helpers`
+creates a namespace. Access via `helpers's total(items)` or
+`helpers.total(items)`:
+```
+import helpers.clear as helpers
 result = helpers's total(items)
 ```
 
-**Selective for frequently used functions.** `use total from 'helpers'`
-inlines just what you need -- no prefix required:
+**Selective for frequently used functions.** `import total from helpers.clear`
+inlines just what you need — no prefix required:
 ```
-use total, average from 'helpers'
+import total, average from helpers.clear
 result = total(items)
 ```
 
 **Components import the same way:**
 ```
-use Card, Badge from 'components'
+import Card, Badge from components.clear
 show Card('Hello')
 ```
 
-**Never use `use everything from` in new code** -- it risks name collisions.
-Prefer namespaced or selective imports.
+**npm packages keep strings quoted** (they're not file paths):
+```
+import npm 'stripe' as stripe
+import npm '@sendgrid/mail' as sendgrid
+```
+
+**Gotcha — `use` is a reserved word now.** The canonical-rename retired
+`use` from the import grammar because the word is too general to spend on
+imports. Future Clear will use it for declarative configuration:
+```
+use postgres for the database     # planned, not yet implemented
+use 'midnight' theme              # planned, not yet implemented
+use stripe for payments           # planned, not yet implemented
+```
+If you wrote `use` thinking it would import, the compiler tells you exactly
+how to fix it: write `import <file>.clear` instead.
 
 ## File Structure (MANDATORY)
 
@@ -3882,9 +3911,9 @@ Synonyms: `always do:`, `after everything:` compile identically to `finally:`.
 Import any npm package into a JS backend app with `use npm`:
 
 ```
-use npm 'stripe'                           # alias = stripe
-use npm 'openai' as OpenAI                 # alias = OpenAI
-use npm '@sendgrid/mail' as sendgrid       # scoped packages work too
+import npm 'stripe'                        # alias = stripe
+import npm 'openai' as OpenAI              # alias = OpenAI
+import npm '@sendgrid/mail' as sendgrid    # scoped packages work too
 ```
 
 The `as` alias is optional — defaults to the package name (minus scope prefix).
@@ -3896,7 +3925,7 @@ Compiles to `const alias = require('package')` at the top of server.js, alongsid
 ```
 build for javascript backend
 
-use npm 'stripe' as stripe_pkg
+import npm 'stripe' as stripe_pkg
 
 when user sends params to /api/charge:
   amount = params's amount

@@ -121,7 +121,7 @@ AI coding is roughly half of all frontier-model inference today, growing fastest
 - API keeps `compileProgram()` on servers Russell controls. Side effects worth more than IP: **usage telemetry** (which syntax, errors, features), **per-user gating** (free/paid tiers, kill switch), **instant patches** (fix a compiler bug, every user has it next compile).
 - Devs are conditioned to network calls in the agent loop; an extra 100ms is invisible.
 
-**Audit ground truth (2026-04-24):** Architecture supports multi-file + components today (`use 'module'`, `define component X receiving Y:` — proven in `apps/crm-spa/`). Studio IDE does NOT — single-file only. That's why the wedge is **editor integration** (LSP + VSCode/Cursor extension), not Studio multi-file.
+**Audit ground truth (2026-04-24, updated 2026-05-13):** Architecture supports multi-file + components today (`import module.clear`, `define component X receiving Y:` — proven in `apps/crm-spa/`). The module-import keyword was renamed to `import` on 2026-05-13 (canonical) with `include` as a silent alias; `use` is reserved for future declarative-configuration syntax. Studio IDE does NOT support multi-file — single-file only. That's why the wedge is **editor integration** (LSP + VSCode/Cursor extension), not Studio multi-file.
 
 ### What's left on the Dave-first thread
 

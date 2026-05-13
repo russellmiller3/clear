@@ -2425,9 +2425,15 @@ Python compiles to `asyncio.gather(...)`.
 
 ## Multi-File Modules
 
+Canonical keyword (since 2026-05-13): **`import`**. `include` is a silent alias.
+The old `use` keyword is RETIRED from the import grammar — writing `use 'X'` at
+a module-import site is a hard compile error with a fix-it pointing at the new
+shape. The word `use` is reserved for future declarative-configuration syntax
+(e.g. `use postgres for the database`, `use 'midnight' theme`).
+
 ```clear
 # main.clear
-use 'helpers'
+import helpers.clear
 result = double(100)
 show result
 
@@ -2436,14 +2442,32 @@ double(x) = x * 2
 format_price(amount) = '$' + round(amount, 2)
 ```
 
-`use 'modulename'` reads `modulename.clear` from the same directory and inlines
-its functions and variables. Imported functions are called directly (no namespace prefix).
+`import helpers.clear` reads `helpers.clear` from the same directory and inlines
+every top-level declaration. Imported functions are called directly (no
+namespace prefix).
 
-```clear
-# Import from a subdirectory
-use 'lib/math_utils'
-use 'components/helpers'
-```
+### The seven canonical shapes
+
+| Shape | Example | What it does |
+|---|---|---|
+| Inline-all (same dir) | `import tables.clear` | Inlines every top-level declaration. The common case. |
+| Relative subdir | `import shared/utils.clear` | Inlines from a subdirectory. |
+| Relative escape | `import ../common/auth.clear` | Inlines from a sibling directory. |
+| Absolute path | `import /abs/path/lib.clear` | Inlines from an absolute path. |
+| Namespaced | `import helpers.clear as helpers` | Imports as `helpers.double(5)` / `helpers's double(5)`. Use when names would collide. |
+| Selective | `import double, triple from helpers.clear` | Inlines only the named functions. |
+| npm package | `import npm 'stripe' as stripe` | Pulls an npm package. Strings stay quoted because they're not paths. |
+
+### Path resolution rules
+
+1. **Default: same directory as the main `.clear` file.** `import tables.clear`
+   looks for `<source-dir>/tables.clear`. No `./` required.
+2. **Relative paths work normally.** `import shared/utils.clear` looks at
+   `<source-dir>/shared/utils.clear`.
+3. **Absolute paths work normally.** `import /abs/path/lib.clear` looks at
+   exactly that path.
+4. **No extension inference.** The `.clear` must be in the import statement —
+   explicit beats magic.
 
 Built-in adapter names (`data`, `database`, `email`, `web-scraper`, `pdf`, `ml`)
 are NOT treated as file imports.
@@ -2530,9 +2554,9 @@ node cli/clear.js deploy app.clear
 Use any npm package directly in backend apps:
 
 ```clear
-use npm 'stripe' as Stripe
-use npm 'nodemailer' as mailer
-use npm '@sendgrid/mail' as sendgrid   # scoped packages work too
+import npm 'stripe' as Stripe
+import npm 'nodemailer' as mailer
+import npm '@sendgrid/mail' as sendgrid   # scoped packages work too
 
 when user sends params to /api/charge:
   client = Stripe(env('STRIPE_SECRET'))

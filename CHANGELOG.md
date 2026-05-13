@@ -6,6 +6,57 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-13 — Canonical-rename: `use` → `import` for module imports
+
+The module-import keyword is now `import`. `include` is a silent alias. The
+old `use` keyword is RETIRED from the import grammar — writing `use 'X'` at a
+module-import site is a hard compile error with a fix-it message pointing at
+the new shape. The word `use` is reserved for future declarative-
+configuration syntax (`use postgres for the database`, `use 'midnight' theme`,
+`use stripe for payments`).
+
+**Why now:** every Clear file from now on opens with `import tables.clear`
+instead of `use everything from 'tables'`. First impression for every new
+Clear user — Marcus, every future customer, every reader of the landing page
+code samples — is cleaner. Reads like English. Passes the 14-year-old test.
+The word `use` is too general to spend on imports.
+
+**Seven canonical shapes, all under `import`:**
+- `import tables.clear` — inline-all from same directory (the common case)
+- `import shared/utils.clear` — relative subdir
+- `import ../common/auth.clear` — relative escape
+- `import /abs/path/lib.clear` — absolute path
+- `import helpers.clear as helpers` — namespaced (with `as <alias>`)
+- `import double, triple from helpers.clear` — selective
+- `import npm 'stripe' as stripe` — npm package (strings stay quoted)
+
+**Parser implementation:** `parser.js` `parseImport` reassembles the path from
+post-`import` tokens (`tables.clear` is three tokens — identifier + dot +
+identifier — that we concatenate until we hit `as` / `from` / comma). Same
+USE-shaped AST node as before, so the compiler is unchanged.
+
+**Compiler glue:** `compiler.js` `resolveModules` tries the parsed module
+name first, then falls back to a `.clear`-stripped lookup so both the new
+canonical (`tables.clear`) and the legacy CLI resolver (`tables` + `.clear`
+suffix) stay compatible. `isNpm` imports skip file resolution. Namespace
+variable name honors `node.namespaceAlias` when `as <alias>` was written.
+
+**Doc cascade:** intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md,
+ROADMAP.md, FEATURES.md, FAQ.md (new "How do I split a Clear app across
+files?" entry), CHANGELOG.md (this entry).
+
+**Tests:** 3096 → 3107. Eleven new tests covering every canonical shape, the
+`include` alias, and three forms of the `use`-retirement error.
+
+**Apps migrated:** `apps/crm-spa/main.clear`, `apps/crm-spa/frontend.clear`,
+`apps/stripe-api/main.clear`, `studio/main.clear`. The 13 brief-listed apps
+(8 core templates + 5 Marcus apps) are all single-file with zero imports —
+nothing to change there. All 15 smoke-compiled clean.
+
+Spec: `scripts/import-keyword-rename-spec.md`. Branch: `feature/import-keyword`.
+
+---
+
 ## 2026-05-13 — Slot Extractor stdlib (Phase 2 of Lenat-in-Clear)
 
 Four expression-level primitives for NL-light parsing. Pulls structured values out of free-form text — every chat-style intake app needs these, no more hand-rolled per-app slot extractors.

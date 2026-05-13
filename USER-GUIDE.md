@@ -1811,22 +1811,33 @@ tax(amount) = amount * 0.08
 Then import it in **main.clear**:
 
 ```
-use 'helpers'
-result = helpers's double(21)
-```
-
-Or import specific functions:
-
-```
-use double from 'helpers'
+import helpers.clear
 result = double(21)
 ```
 
-Or import everything:
+The canonical keyword is `import` (since 2026-05-13). `include` is a
+silent alias. The old `use` keyword is retired from the import grammar —
+it's reserved for future declarative-configuration syntax like
+`use postgres for the database`.
+
+Path-form imports like `import helpers.clear` inline every top-level
+declaration. If two files define a function with the same name, the compiler
+tells you about the collision and suggests a namespaced import:
 
 ```
-use everything from 'backend'
+import helpers.clear as helpers
+result = helpers's double(21)
 ```
+
+Or import specific functions only:
+
+```
+import double from helpers.clear
+result = double(21)
+```
+
+The shape is always `import <file>.clear` — the extension is explicit
+because explicit beats magic.
 
 (Module imports require multiple files, so these examples show the syntax
 without the ` ```clear ` tag — they can't compile standalone.)
