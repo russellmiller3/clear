@@ -358,3 +358,72 @@ describe('REGEX_CAPTURE_REM — JS runtime corpus (Cycle 2.7)', () => {
     expect(r.remainder).toBe('');
   });
 });
+
+// =============================================================================
+// CYCLE 2.8 — validator: text-shaped slot extractors warn on non-text input
+// =============================================================================
+// `extract datetime from N` where N is a number / list / boolean fires a
+// SLOT_EXTRACTOR_WRONG_TYPE warning. The runtime defensively returns null
+// in those cases — looks like silent failure to the developer. The
+// validator catches it at compile time and points at the canonical fix.
+describe('slot extractors — validator hints (Cycle 2.8)', () => {
+  it('extract datetime from a number-typed variable warns', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  count = 5",
+      "  dt = extract datetime from count",
+      "  send back dt",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'backend' });
+    const all = [...(result.errors || []), ...(result.warnings || [])];
+    const matched = all.some(m =>
+      /SLOT_EXTRACTOR_WRONG_TYPE/.test(m.message || m) &&
+      /extract datetime/i.test(m.message || m)
+    );
+    expect(matched).toBe(true);
+  });
+
+  it('extract about-clause from a number-typed variable warns', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  count = 5",
+      "  parts = extract about-clause from count",
+      "  send back parts",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'backend' });
+    const all = [...(result.errors || []), ...(result.warnings || [])];
+    const matched = all.some(m =>
+      /SLOT_EXTRACTOR_WRONG_TYPE/.test(m.message || m) &&
+      /about-clause/i.test(m.message || m)
+    );
+    expect(matched).toBe(true);
+  });
+
+  it('find pattern returning value and remainder against a number warns', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  count = 5",
+      "  out = find pattern '[0-9]+' in count returning value and remainder",
+      "  send back out",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'backend' });
+    const all = [...(result.errors || []), ...(result.warnings || [])];
+    const matched = all.some(m =>
+      /SLOT_EXTRACTOR_WRONG_TYPE/.test(m.message || m) &&
+      /returning value and remainder/i.test(m.message || m)
+    );
+    expect(matched).toBe(true);
+  });
+
+  it('extract datetime from a text-typed source does NOT warn', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  dt = extract datetime from note",
+      "  send back dt",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'backend' });
+    const all = [...(result.errors || []), ...(result.warnings || [])];
+    const matched = all.some(m => /SLOT_EXTRACTOR_WRONG_TYPE/.test(m.message || m));
+    expect(matched).toBe(false);
+  });
+});

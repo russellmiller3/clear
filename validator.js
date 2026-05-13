@@ -143,6 +143,7 @@ export function validate(ast) {
   validateOutgoingAllowlist(ast.body, errors);
   validateHardcodedSecrets(ast.body, errors);
   validateRuntimeGrammar(ast.body, errors);
+  validateSlotExtractors(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -3385,4 +3386,83 @@ function validateRuntimeGrammar(body, errors) {
       if (Array.isArray(frame.onMatch)) for (const stmt of frame.onMatch) walkOnMatch(stmt);
     }
   }
+}
+
+// =============================================================================
+// VALIDATE SLOT EXTRACTORS (Phase 2.8 of Lenat-in-Clear, 2026-05-13)
+// =============================================================================
+// All four slot extractors (extract_datetime, extract_about, regex_capture_rem,
+// fuzzy_match's first source) want their input as text. When a developer
+// hands a NUMBER or a LIST in, the runtime helpers defensively return
+// {value: null, remainder: ''} — looks like silent failure at runtime.
+// This validator catches the common case at compile time and points to the
+// canonical fix.
+
+function validateSlotExtractors(body, warnings) {
+  const varTypes = new Map();
+
+  function inferType(expr) {
+    if (!expr) return 'unknown';
+    if (expr.type === 'literal_number' || expr.type === 'number') return 'number';
+    if (expr.type === 'literal_string' || expr.type === 'string') return 'string';
+    if (expr.type === 'literal_boolean' || expr.type === 'boolean') return 'boolean';
+    if (expr.type === 'literal_list') return 'list';
+    if (expr.type === 'literal_record') return 'object';
+    if (expr.type === 'binary_op' && ['+', '-', '*', '/', '%'].includes(expr.operator)) return 'number';
+    if (expr.type === 'variable_ref' && varTypes.has(expr.name)) return varTypes.get(expr.name);
+    return 'unknown';
+  }
+
+  // Per-extractor table: name shown to user + the canonical fix.
+  // FUZZY_MATCH is intentionally NOT in this table — its second arg IS a list,
+  // and its first arg is a literal string from the syntax (parser-enforced).
+  const EXTRACTOR_HINTS = {
+    extract_datetime: {
+      label: 'extract datetime from',
+      fix: "pass a text expression — `extract datetime from <text-typed variable>`. If the value really is a number, the datetime fast-path will return nothing.",
+    },
+    extract_about: {
+      label: 'extract about-clause from',
+      fix: "pass a text expression — `extract about-clause from <text-typed variable>`. About-clause splitting only works on strings.",
+    },
+    regex_capture_rem: {
+      label: 'find pattern X in Y returning value and remainder',
+      fix: "pass a text expression as Y — the runtime calls .exec() against a string. If Y is a number or list, convert it first.",
+    },
+  };
+
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'assign' && node.expression) {
+      const t = inferType(node.expression);
+      if (t !== 'unknown') varTypes.set(node.name, t);
+    }
+    // Detect any of our three text-shaped slot extractors with a non-text source.
+    if (node.type === 'assign' && node.expression) {
+      const expr = node.expression;
+      const hint = EXTRACTOR_HINTS[expr.type];
+      if (hint) {
+        const srcType = inferType(expr.source);
+        if (srcType === 'number' || srcType === 'list' || srcType === 'boolean') {
+          warnings.push({
+            line: expr.line || node.line || 0,
+            message:
+              `SLOT_EXTRACTOR_WRONG_TYPE: \`${hint.label}\` expects text but got a ${srcType}. ` +
+              `WHY: every slot extractor calls runtime helpers that .exec() / .match() / .split() the input — those silently fail on non-strings. ` +
+              `WHAT: ${hint.fix}`,
+          });
+        }
+      }
+    }
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (v && typeof v === 'object') {
+        if (Array.isArray(v)) for (const child of v) walk(child);
+        else walk(v);
+      }
+    }
+  }
+
+  if (!Array.isArray(body)) return;
+  for (const node of body) walk(node);
 }
