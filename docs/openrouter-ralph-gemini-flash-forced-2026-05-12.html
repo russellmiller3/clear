@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRouter Iteration Benchmark - Clear</title>
+  <style>
+    :root {
+      --ink: #182132;
+      --muted: #637083;
+      --line: #d9e1ec;
+      --paper: #f6f8fb;
+      --panel: #ffffff;
+      --blue: #4169e1;
+      --teal: #0b8f83;
+      --gold: #b87916;
+      --red: #b83b42;
+      --green: #21845b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    .shell { max-width: 1180px; margin: 0 auto; padding: 32px 20px 56px; }
+    header, section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 24px; margin-bottom: 18px; }
+    .eyebrow { color: var(--blue); font-size: 13px; font-weight: 800; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; line-height: 1.1; letter-spacing: 0; }
+    h1 { font-size: clamp(32px, 5vw, 52px); margin-top: 8px; max-width: 900px; }
+    h2 { font-size: 24px; margin-bottom: 14px; }
+    h3 { font-size: 15px; margin-bottom: 8px; }
+    p { color: var(--muted); margin: 10px 0 0; max-width: 820px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+    .metric { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fbfcfe; }
+    .value { display: block; font-size: 28px; font-weight: 850; white-space: nowrap; }
+    .label { color: var(--muted); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0; }
+    .bar { height: 10px; background: #e8edf6; border-radius: 999px; overflow: hidden; min-width: 120px; }
+    .fill { height: 100%; background: var(--teal); border-radius: inherit; }
+    .fail .fill { background: var(--red); }
+    .money { font-variant-numeric: tabular-nums; }
+    .pill { display: inline-block; border-radius: 999px; padding: 3px 8px; background: #eaf5f3; color: var(--teal); font-weight: 700; font-size: 12px; }
+    .warn { background: #fff6df; color: var(--gold); }
+    .bad { background: #fbe9eb; color: var(--red); }
+    .chart-wrap { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfe; padding: 12px; overflow-x: auto; }
+    svg.frontier { min-width: 860px; width: 100%; height: auto; display: block; }
+    .axis { stroke: #98a6b8; stroke-width: 1; }
+    .grid-line { stroke: #e3e9f2; stroke-width: 1; }
+    .frontier-line { fill: none; stroke: var(--teal); stroke-width: 3; }
+    .dot { stroke: #fff; stroke-width: 2; }
+    .dot.frontier-dot { stroke: var(--teal); stroke-width: 3; }
+    .chart-label { fill: var(--ink); font-size: 12px; font-weight: 750; }
+    .axis-label { fill: var(--muted); font-size: 12px; }
+    .note-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .note { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fbfcfe; }
+    .note strong { display: block; margin-bottom: 4px; }
+    @media (max-width: 820px) {
+      .metrics, .grid { grid-template-columns: 1fr; }
+      .shell { padding: 20px 12px 40px; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">Clear model benchmark</div>
+      <h1>Iteration Benchmark: Can the model recover after requirements fail?</h1>
+      <p>This run compares OpenRouter models on hard app builds. Each model must emit checkable requirements and Clear source, receive feedback, then try again.</p>
+      <div class="metrics">
+        <div class="metric"><span class="value">0/8</span><span class="label">successful runs</span></div>
+        <div class="metric"><span class="value">0%</span><span class="label">pass rate</span></div>
+        <div class="metric"><span class="value">$1.2644</span><span class="label">logged spend</span></div>
+        <div class="metric"><span class="value">0</span><span class="label">provider-blocked runs</span></div>
+      </div>
+      <p><strong>Best cheap model:</strong> Gemini 3 Flash Preview at 0% pass rate. <strong>Best overall:</strong> Gemini 3 Flash Preview at 0% pass rate. Generated 2026-05-13T03:53:53.406Z.</p>
+    </header>
+
+    <section>
+      <h2>Recommended Rankings</h2>
+      <p>Rankings sort first by full success, then partial-credit score, then best single run, then cost per requirement gap closed.</p>
+      <div class="grid">
+        <div>
+          <h3>Cheap Models</h3>
+          <table>
+    <thead><tr><th>Rank</th><th>Model</th><th>Pass</th><th>Avg Score</th><th>Best</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Gemini 3 Flash Preview <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.0973</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+        <div>
+          <h3>Overall</h3>
+          <table>
+    <thead><tr><th>Rank</th><th>Model</th><th>Pass</th><th>Avg Score</th><th>Best</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Gemini 3 Flash Preview <span class="pill ">cheap</span></td>
+        <td>0/8 (0%)</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.0973</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What We Learn So Far</h2>
+      <div class="note-grid">
+        <div class="note"><strong>Best buy</strong><span>Gemini 3 Flash Preview is on the price/completion frontier at 42% average score and $0.1581 per scored run.</span></div>
+<div class="note"><strong>Smartest overall</strong><span>Gemini 3 Flash Preview ranks first by the scoring rule: 42% average score, 78% best run.</span></div>
+<div class="note"><strong>Ralph effect</strong><span>3/8 loop runs improved while retrying. Against single-shot baselines: no matched single-shot pairs in this artifact.</span></div>
+<div class="note"><strong>Hardest task</strong><span>Stripe payout reconciliation ETL is hardest by average score: 11%, with 8.0 gaps left on average.</span></div>
+<div class="note"><strong>Compiler signal</strong><span>syntax and parse dominates compiler failures with 46 counted errors. This is the first compiler-improvement bucket to inspect.</span></div>
+<div class="note"><strong>5m keep list</strong><span>Do not rerun the whole field. Keep: Gemini 3 Flash Preview. Cut the low-signal models until the task or prompt changes.</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Price vs Completion Frontier</h2>
+      <p>Each dot is one model. Higher is better completion. Further right costs more per scored run. Frontier dots are the non-dominated choices: no cheaper model scored as well or better.</p>
+      <div class="chart-wrap"><svg class="frontier" viewBox="0 0 900 420" role="img" aria-label="Price versus completion frontier">
+    
+    <line class="axis" x1="70" y1="358" x2="866" y2="358"></line>
+    <line class="axis" x1="70" y1="28" x2="70" y2="358"></line>
+    <polyline class="frontier-line" points="70.0,193.0"></polyline>
+    <circle class="dot frontier-dot" cx="70.0" cy="193.0" r="8" fill="#4169e1"><title>Gemini 3 Flash Preview: 42% avg score, $0.1581 per run</title></circle>
+    <text class="chart-label" x="80.0" y="183.0">Gemini 3 Flash</text>
+    <text class="axis-label" x="368" y="402">cost per scored run, log scale</text>
+    <text class="axis-label" transform="translate(18 280) rotate(-90)">average completion score</text>
+  </svg></div>
+      <table>
+    <thead><tr><th>Model</th><th>Tier</th><th>Avg Score</th><th>Best</th><th>Cost / Run</th><th>Frontier</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td><span class="pill ">cheap</span></td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.1581</td>
+        <td><span class="pill">yes</span></td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>What Ralph Changed</h2>
+      <div class="metrics">
+        <div class="metric"><span class="value">3/8</span><span class="label">loop runs improved while retrying</span></div>
+        <div class="metric"><span class="value">0</span><span class="label">single-shot vs Ralph pairs</span></div>
+        <div class="metric"><span class="value">0 pts</span><span class="label">average Ralph score delta</span></div>
+        <div class="metric"><span class="value">1.6</span><span class="label">avg requirement gaps closed</span></div>
+      </div>
+      <p>Ralph is counted as useful only when the failed-check count or score moves. This keeps the analysis from rewarding models for simply talking longer.</p>
+    </section>
+
+    <section>
+      <h2>Chat and Tool Behavior</h2>
+      <div class="metrics">
+        <div class="metric"><span class="value">64</span><span class="label">model responses analyzed</span></div>
+        <div class="metric"><span class="value">2450</span><span class="label">avg response chars</span></div>
+        <div class="metric"><span class="value">56%</span><span class="label">responses with Clear source</span></div>
+        <div class="metric"><span class="value">172</span><span class="label">tool calls found in chat logs</span></div>
+      </div>
+      <table>
+    <thead><tr><th>Model</th><th>Responses</th><th>Avg Chars</th><th>Clear Source Rate</th><th>Compiler Mentions</th><th>Pattern Mentions</th><th>Tool Calls</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td>64</td>
+        <td>2450</td>
+        <td>56%</td>
+        <td>3</td>
+        <td>36</td>
+        <td>172</td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Failure and Compiler Signals</h2>
+      <div class="grid">
+        <div>
+          <h3>Requirement Gaps</h3>
+          <table>
+    <thead><tr><th>Check</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>requirements_block</td><td>4</td></tr>
+<tr><td>output_contract</td><td>3</td></tr>
+<tr><td>compile</td><td>2</td></tr>
+<tr><td>dashboard</td><td>2</td></tr>
+<tr><td>dedupe_and_findings</td><td>2</td></tr>
+<tr><td>etl_tables</td><td>2</td></tr>
+<tr><td>page_flow</td><td>2</td></tr>
+<tr><td>page_table</td><td>2</td></tr>
+<tr><td>schedule_endpoints</td><td>2</td></tr>
+<tr><td>scheduled_sync</td><td>2</td></tr>
+<tr><td>sync_endpoint</td><td>2</td></tr>
+<tr><td>target_db_allowlist</td><td>2</td></tr>
+    </tbody>
+  </table>
+        </div>
+        <div>
+          <h3>Compiler Error Buckets</h3>
+          <table>
+    <thead><tr><th>Category</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>syntax and parse</td><td>46</td></tr>
+<tr><td>other</td><td>30</td></tr>
+<tr><td>outgoing allowlist</td><td>16</td></tr>
+<tr><td>frontend wiring</td><td>5</td></tr>
+<tr><td>endpoint wiring</td><td>4</td></tr>
+    </tbody>
+  </table>
+        </div>
+      </div>
+      <p>Total compiler errors in analyzed chats: 101. Attempts with compiler errors: 33.</p>
+      <h3>Top Raw Compiler Messages</h3>
+      <table>
+    <thead><tr><th>Message</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>You used &#39;clear&#39; on line 1 but it hasn&#39;t been created yet. Define it on an earlier line. Example: clear = 0 or clear is &#39;value&#39;</td><td>24</td></tr>
+<tr><td>(nodes || []) is not iterable</td><td>9</td></tr>
+<tr><td>The expression is incomplete — a value is missing at the end. Check for a missing number, variable name, or closing bracket.</td><td>7</td></tr>
+<tr><td>The send back statement is missing a value — what should the user receive? Example: send back &quot;OK&quot;</td><td>7</td></tr>
+<tr><td>&#39;update&#39; isn&#39;t a Clear keyword on line 118. use `update Y ...` — `update` is a Clear verb but needs a target.</td><td>6</td></tr>
+<tr><td>Line 73: outgoing request to https://api.stripe.com/v1/payouts is not allowed. The allowlist permits: https://api.stripe.com. Either add the host to the top-of-file allowlist, or r</td><td>6</td></tr>
+<tr><td>The save statement needs a target. Example: save new_user to Users</td><td>6</td></tr>
+<tr><td>Line 52: outgoing request to https://api.stripe.com/v1/payouts is not allowed. The allowlist permits: https://api.stripe.com. Either add the host to the top-of-file allowlist, or r</td><td>5</td></tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Task Difficulty</h2>
+      <p>Harder tasks have lower average completion, more gaps left, more timeouts, and worse cost per gap closed.</p>
+      <table>
+    <thead><tr><th>Hardness Rank</th><th>Task</th><th>Pass</th><th>Avg Score</th><th>Best</th><th>Avg Gaps Left</th><th>Timeouts</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Stripe payout reconciliation ETL</td>
+        <td>0/2 (0%)</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td>8.0</td>
+        <td>1</td>
+        <td class="money">n/a</td>
+      </tr>
+<tr>
+        <td>2</td>
+        <td>Customer health operations cockpit</td>
+        <td>0/2 (0%)</td>
+        <td>39%</td>
+        <td>78%</td>
+        <td>1.5</td>
+        <td>1</td>
+        <td class="money">$0.0293</td>
+      </tr>
+<tr>
+        <td>3</td>
+        <td>Deal desk approval workflow</td>
+        <td>0/2 (0%)</td>
+        <td>45%</td>
+        <td>78%</td>
+        <td>5.0</td>
+        <td>2</td>
+        <td class="money">$0.0727</td>
+      </tr>
+<tr>
+        <td>4</td>
+        <td>Scheduled Twitter post publisher</td>
+        <td>0/2 (0%)</td>
+        <td>73%</td>
+        <td>78%</td>
+        <td>2.5</td>
+        <td>1</td>
+        <td class="money">$0.2611</td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>5m Contenders</h2>
+      <p>Poor 2m performers should not get expensive 5m reruns. Keep models with strong completion signal or unusually cheap gap-closing signal.</p>
+      <div class="grid">
+        <div>
+          <h3>Keep</h3>
+          <table>
+    <thead><tr><th>Model</th><th>Avg</th><th>Best</th><th>Cost / Run</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td class="money">$0.1581</td>
+        <td>kept: enough completion signal</td>
+      </tr>
+    </tbody>
+  </table>
+        </div>
+        <div>
+          <h3>Cut For Now</h3>
+          <p><span class="pill warn">No models in this bucket.</span></p>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section>
+        <h2>Model Results</h2>
+        <table>
+    <thead><tr><th>model</th><th>Pass Rate</th><th>Score</th><th>Best</th><th>Scored</th><th>Blocked</th><th>Avg Tries</th><th>Cost</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Gemini 3 Flash Preview</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>42%</td>
+        <td>78%</td>
+        <td>0/8</td>
+        <td>0</td>
+        <td>8.0</td>
+        <td class="money">$1.2644</td>
+        <td class="money">$0.0973</td>
+      </tr>
+    </tbody>
+  </table>
+      </section>
+      <section>
+        <h2>Feedback Modes</h2>
+        <table>
+    <thead><tr><th>mode</th><th>Pass Rate</th><th>Score</th><th>Best</th><th>Scored</th><th>Blocked</th><th>Avg Tries</th><th>Cost</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Ralph + docs + pattern DB + Ghost tools (2m)</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>45%</td>
+        <td>78%</td>
+        <td>0/4</td>
+        <td>0</td>
+        <td>7.8</td>
+        <td class="money">$0.6422</td>
+        <td class="money">$0.0917</td>
+      </tr>
+<tr>
+        <td>Ralph + docs + pattern DB + Ghost tools (5m)</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>39%</td>
+        <td>78%</td>
+        <td>0/4</td>
+        <td>0</td>
+        <td>8.3</td>
+        <td class="money">$0.6222</td>
+        <td class="money">$0.1037</td>
+      </tr>
+    </tbody>
+  </table>
+      </section>
+    </div>
+
+    <section>
+      <h2>Task Results</h2>
+      <table>
+    <thead><tr><th>task</th><th>Pass Rate</th><th>Score</th><th>Best</th><th>Scored</th><th>Blocked</th><th>Avg Tries</th><th>Cost</th><th>Cost / Gap</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Scheduled Twitter post publisher</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>73%</td>
+        <td>78%</td>
+        <td>0/2</td>
+        <td>0</td>
+        <td>2.5</td>
+        <td class="money">$0.2611</td>
+        <td class="money">$0.2611</td>
+      </tr>
+<tr>
+        <td>Deal desk approval workflow</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>45%</td>
+        <td>78%</td>
+        <td>0/2</td>
+        <td>0</td>
+        <td>12.0</td>
+        <td class="money">$0.4362</td>
+        <td class="money">$0.0727</td>
+      </tr>
+<tr>
+        <td>Customer health operations cockpit</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>39%</td>
+        <td>78%</td>
+        <td>0/2</td>
+        <td>0</td>
+        <td>6.0</td>
+        <td class="money">$0.1758</td>
+        <td class="money">$0.0293</td>
+      </tr>
+<tr>
+        <td>Stripe payout reconciliation ETL</td>
+        <td><div class="bar fail"><div class="fill" style="width: 0%"></div></div>0%</td>
+        <td>11%</td>
+        <td>11%</td>
+        <td>0/2</td>
+        <td>0</td>
+        <td>11.5</td>
+        <td class="money">$0.3913</td>
+        <td class="money">n/a</td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Tasks Tested</h2>
+      <table>
+        <thead><tr><th>Task</th><th>Family</th><th>What It Tests</th></tr></thead>
+        <tbody>
+          <tr><td>Deal desk approval workflow</td><td>workflow_crud</td><td>Build a Deal Desk app in Clear for sales managers and finance approvers.
+Target: web and javascript backend.
+Database: local memory.
+DealRequests table: customer_name required, owner_email required, annual_contract_value number required, discount_percent number, stage default draft, margin_percent number, approval_status default pending, created_at_date date.
+DealLineItems table: deal_id required, product_name requir...</td></tr>
+<tr><td>Scheduled Twitter post publisher</td><td>external_api_scheduler</td><td>Build a Twitter Scheduler app in Clear.
+Target: web and javascript backend.
+Database: local memory.
+Allow outgoing requests to: &#39;https://api.twitter.com/2/tweets&#39;.
+ScheduledPosts table: content required, scheduled_at text required, status default pending, retry_count number, error_message text, posted_at text, created_at_date date.
+POST /api/schedule creates a scheduled tweet.
+GET /api/scheduled lists every s...</td></tr>
+<tr><td>Stripe payout reconciliation ETL</td><td>etl</td><td>Build a Stripe reconciliation dashboard in Clear for finance ops.
+Target: web and javascript backend.
+Database: local memory.
+Allow outgoing requests to: &#39;https://api.stripe.com&#39;.
+StripeAccounts table: account_name required, stripe_account_id required, last_synced_at text.
+Payouts table: stripe_payout_id required, amount number required, currency text, arrival_date text, status text, created_at_date date.
+Bal...</td></tr>
+<tr><td>Customer health operations cockpit</td><td>analytics_workflow</td><td>Build a customer health operations app in Clear for a B2B SaaS team.
+Target: web and javascript backend.
+Database: local memory.
+Accounts table: company_name required, owner_email required, plan text, health_score number, renewal_date text, risk_level default green, created_at_date date.
+UsageEvents table: account_id required, event_name required, active_users number, seats number, occurred_at text.
+Interventions tab...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Tool Calls</h2>
+      <p>Tool calls are counted from attempt logs and, when available, from the benchmark database. Combined reports may have database rows under the original run file but still retain per-attempt tool-call evidence.</p>
+      <p><strong>Attempt-log tool calls:</strong> 172. <strong>Database-filtered tool calls:</strong> 172.</p>
+      <table><thead><tr><th>Attempt-Log Tool</th><th>Calls</th></tr></thead><tbody><tr><td>read_clear_doc</td><td>69</td></tr>
+<tr><td>query_patterns_db</td><td>66</td></tr>
+<tr><td>edit_code</td><td>15</td></tr>
+<tr><td>compile</td><td>14</td></tr>
+<tr><td>run_app</td><td>3</td></tr>
+<tr><td>read_dom</td><td>2</td></tr>
+<tr><td>read_file</td><td>1</td></tr>
+<tr><td>screenshot_output</td><td>1</td></tr>
+<tr><td>write_request</td><td>1</td></tr></tbody></table>
+      <table><thead><tr><th>Tool</th><th>Calls</th></tr></thead><tbody><tr><td>read_clear_doc</td><td>69</td></tr>
+<tr><td>query_patterns_db</td><td>66</td></tr>
+<tr><td>edit_code</td><td>15</td></tr>
+<tr><td>compile</td><td>14</td></tr>
+<tr><td>run_app</td><td>3</td></tr>
+<tr><td>read_dom</td><td>2</td></tr>
+<tr><td>read_file</td><td>1</td></tr>
+<tr><td>screenshot_output</td><td>1</td></tr>
+<tr><td>write_request</td><td>1</td></tr></tbody></table>
+    </section>
+
+    <section>
+      <h2>OpenRouter Cost Log</h2>
+      <p>Credits come from OpenRouter's credits endpoint. Per-call costs are also logged in the benchmark database when a generation id is available.</p>
+      <div class="metrics">
+        <div class="metric"><span class="value">$38.7134</span><span class="label">usage at start</span></div>
+        <div class="metric"><span class="value">$39.9843</span><span class="label">usage at end</span></div>
+        <div class="metric"><span class="value">$1.2709</span><span class="label">usage delta</span></div>
+        <div class="metric"><span class="value">4</span><span class="label">credit snapshots</span></div>
+      </div>
+      <table>
+    <thead><tr><th>Label</th><th>Captured</th><th>Total Credits</th><th>Total Usage</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>start</td>
+        <td>2026-05-13T03:39:53.789Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$38.7134</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>end</td>
+        <td>2026-05-13T03:48:15.328Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$39.7341</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>start</td>
+        <td>2026-05-13T03:39:47.043Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$38.7134</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+<tr>
+        <td>end</td>
+        <td>2026-05-13T03:50:43.076Z</td>
+        <td class="money">$40.0000</td>
+        <td class="money">$39.9843</td>
+        <td><span class="pill">ok</span></td>
+      </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Failure Appendix</h2>
+      <table>
+        <thead><tr><th>Model</th><th>Task</th><th>Mode</th><th>Failed Checks</th></tr></thead>
+        <tbody>
+          <tr><td>Gemini 3 Flash Preview</td><td>Deal desk approval workflow</td><td>Ralph + docs + pattern DB + Ghost tools (2m)</td><td>output_contract, requirements_block, target_db, deal_tables, deal_create_submit, approval_decisions, filters, page_flow</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Scheduled Twitter post publisher</td><td>Ralph + docs + pattern DB + Ghost tools (2m)</td><td>schedule_endpoints, page_table</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Stripe payout reconciliation ETL</td><td>Ralph + docs + pattern DB + Ghost tools (2m)</td><td>output_contract, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, dedupe_and_findings, scheduled_sync, dashboard</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Customer health operations cockpit</td><td>Ralph + docs + pattern DB + Ghost tools (2m)</td><td>compile, requirements_block</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Deal desk approval workflow</td><td>Ralph + docs + pattern DB + Ghost tools (5m)</td><td>compile, page_flow</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Scheduled Twitter post publisher</td><td>Ralph + docs + pattern DB + Ghost tools (5m)</td><td>schedule_endpoints, failure_handling, page_table</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Stripe payout reconciliation ETL</td><td>Ralph + docs + pattern DB + Ghost tools (5m)</td><td>output_contract, requirements_block, target_db_allowlist, etl_tables, sync_endpoint, dedupe_and_findings, scheduled_sync, dashboard</td></tr>
+<tr><td>Gemini 3 Flash Preview</td><td>Customer health operations cockpit</td><td>Ralph + docs + pattern DB + Ghost tools (5m)</td><td>none recorded</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Provider-Blocked Appendix</h2>
+      <p>These runs did not test model quality. They failed before a scored answer could be evaluated.</p>
+      <table>
+        <thead><tr><th>Model</th><th>Task</th><th>Mode</th><th>Reason</th></tr></thead>
+        <tbody>
+          
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

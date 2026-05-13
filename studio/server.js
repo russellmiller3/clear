@@ -53,7 +53,7 @@ import {
   selectedModelNeedsOpenRouterKey,
   selectChatMessagesForModel,
 } from './ghost-meph/model-picker.js';
-import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
+import { shouldSnapRetry, formatCompilerFeedbackMessage, readSnapConfig } from './snap-layer.js';
 import { shouldRalphRetry, formatRalphMessage, readRalphConfig } from './ralph-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
@@ -3529,83 +3529,16 @@ app.post('/api/chat', async (req, res) => {
   let _lastFactorRowId = null;
   let _sourceBeforeEdit = currentSource; // captured before each patch/write, used as source_before
 
-  // Hint-usage tracking. Accumulates Meph's full text across tool-use iterations
-  // so we can parse the HINT_APPLIED tag after end_turn. _hintsInjectedRowId
-  // remembers which compile row had hints — that's the row we update so the
-  // tracking joins cleanly to retrieval telemetry.
+  // Legacy hint-usage fields remain in the tool context for old telemetry rows,
+  // but the exact-error HINT_APPLIED repair flow is retired. Compiler errors now
+  // go back to Meph as hidden Snap feedback instead.
   let _allAssistantText = '';
   let _hintsInjectedRowId = null;
-  // Inference fallback: if hints are served but Meph forgets to emit
-  // HINT_APPLIED, we can still infer whether the hint likely helped by
-  // watching error counts across subsequent compiles in the same turn.
-  // If error count drops after hints → probably useful → log applied=1,
-  // helpful='inferred'. Never overwrites a real tag; only fires when Meph
-  // didn't announce. Kept in a distinct `helpful` bucket ('inferred') so
-  // ranker training can choose whether to use this weaker signal.
   let _hintsInjectedErrorCount = null;
   let _hintsInjectedTier = null;
   let _postHintMinErrorCount = null;
 
-  // Parse Meph's HINT_APPLIED tag and write the result to the row that carried
-  // the hints. Called from BOTH exit paths (end_turn and iteration-limit) so
-  // we track hint usage even when Meph fails to converge — which is when
-  // tracking is most valuable. `source` is "end_turn" or "iter_limit" for logs.
-  const _captureHintUsage = (source) => {
-    try {
-      if (_factorDB && _hintsInjectedRowId) {
-        // If Meph emitted multiple tags (one per compile-with-hints), take
-        // the LAST one — it reflects his final assessment after all iterations.
-        const all = [..._allAssistantText.matchAll(/HINT_APPLIED:\s*([^\n]+)/gi)];
-        const m = all.length > 0 ? all[all.length - 1] : null;
-        if (m) {
-          const body = m[1].trim();
-          const appliedWord = body.match(/^(yes|no)/i);
-          const tierM = body.match(/tier=([a-z_]+)/i);
-          const helpfulM = body.match(/helpful=([a-z]+)/i);
-          const reasonM = body.match(/reason=([^,\n]+)/i);
-          const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
-          // Tier preference: Meph's explicit tag > the top tier we served > null.
-          // Meph typically omits `tier=` on `HINT_APPLIED: no` (no point citing a
-          // tier he rejected) — record the served tier so we retain which tier
-          // was being rejected, not a null.
-          const recordedTier = (tierM && tierM[1]) || _hintsInjectedTier || null;
-          _factorDB.logHintUsage(_hintsInjectedRowId, {
-            applied,
-            tier: recordedTier,
-            helpful: helpfulM ? helpfulM[1].toLowerCase() : null,
-            reason: reasonM ? reasonM[1].trim().slice(0, 200) : null,
-          });
-          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} applied=${applied} tier=${recordedTier || '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
-        } else {
-          // No tag from Meph. Try the inference fallback: if a later compile
-          // in this same turn had fewer errors than when hints were served,
-          // the hint likely helped. Log as applied=1, helpful='inferred' so
-          // ranker training can opt in or out of this weaker signal.
-          // CRUCIAL: never overwrite with helpful='yes' — 'inferred' is a
-          // distinct value so the honest-label set (yes/no/partial) stays clean.
-          const canInfer =
-            _hintsInjectedErrorCount !== null &&
-            _postHintMinErrorCount !== null &&
-            _postHintMinErrorCount < _hintsInjectedErrorCount;
-          if (canInfer) {
-            _factorDB.logHintUsage(_hintsInjectedRowId, {
-              applied: 1,
-              tier: _hintsInjectedTier,
-              helpful: 'inferred',
-              reason: `no tag; errors ${_hintsInjectedErrorCount}→${_postHintMinErrorCount} after hint`,
-            });
-            console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source}+inference applied=1 tier=${_hintsInjectedTier || '-'} helpful=inferred (errors ${_hintsInjectedErrorCount}→${_postHintMinErrorCount})`);
-          } else {
-            console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} NO_TAG (hints injected, Meph didn't announce${_hintsInjectedErrorCount !== null ? `, errors stayed at ${_postHintMinErrorCount ?? _hintsInjectedErrorCount}` : ''})`);
-          }
-        }
-      } else if (_factorDB && !_hintsInjectedRowId && /HINT_APPLIED:/i.test(_allAssistantText)) {
-        console.warn(`[hint-usage] via=${source} HALLUCINATED (Meph emitted HINT_APPLIED with no hints in context)`);
-      }
-    } catch (err) {
-      console.warn(`[hint-usage] parse failed: ${err.message}`);
-    }
-  };
+  const _captureHintUsage = () => {};
 
   // Tool execution. `validateToolInput` and `describeMephTool` extracted to
   // `studio/meph-tools.js` (GM-2 step 2) so the future MCP server can
@@ -4084,7 +4017,7 @@ app.post('/api/chat', async (req, res) => {
           currentMessages.push({ role: 'assistant', content: assistantContent });
           currentMessages.push({
             role: 'user',
-            content: formatSnapMessage({
+            content: formatCompilerFeedbackMessage({
               errors: currentErrors,
               retryIndex: snapRetryCount,
               maxRetries: snapConfig.maxRetries,

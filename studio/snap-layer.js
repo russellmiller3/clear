@@ -66,6 +66,33 @@ export function formatSnapMessage({ errors, retryIndex, maxRetries }) {
   ].join('\n');
 }
 
+/**
+ * Format compiler feedback that is injected into Meph's next model call only.
+ * This is not streamed to the user. It gives Meph the same friendly compiler
+ * errors the panel shows, without making the human read repair chatter.
+ *
+ * @param {object} args
+ * @param {Array} args.errors - the current compile errors
+ * @param {number} args.retryIndex - 1-based retry number this firing represents
+ * @param {number} args.maxRetries - the cap
+ * @returns {string}
+ */
+export function formatCompilerFeedbackMessage({ errors, retryIndex, maxRetries }) {
+  const total = Array.isArray(errors) ? errors.length : 0;
+  const noun = total === 1 ? 'compiler error' : 'compiler errors';
+  const showCount = Math.min(5, total);
+  const lines = (errors || []).slice(0, showCount).map(e => formatErrorLine(e));
+  const more = total > showCount ? `\n  ... and ${total - showCount} more` : '';
+
+  return [
+    'Hidden compiler feedback for Meph (not shown to the user):',
+    `The current Clear source still has ${total} ${noun}.`,
+    lines.join('\n') + more,
+    '',
+    `Fix these compiler errors before stopping. (snap-retry ${retryIndex}/${maxRetries})`,
+  ].join('\n');
+}
+
 function formatErrorLine(err) {
   if (typeof err === 'string') return `  - ${err}`;
   if (err && typeof err === 'object') {

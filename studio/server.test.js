@@ -188,7 +188,7 @@ server.on('exit', (code) => {
   serverExitCode = code;
 });
 
-async function waitForHttpReady(timeoutMs = 8000) {
+async function waitForHttpReady(timeoutMs = Number(process.env.CLEAR_SERVER_TEST_READY_TIMEOUT_MS || 20000)) {
   const start = Date.now();
   let lastError = null;
   while (Date.now() - start < timeoutMs) {

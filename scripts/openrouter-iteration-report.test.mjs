@@ -1,5 +1,9 @@
 import { describe, expect, it, run } from '../lib/testUtils.js';
-import { analyzeRuns, renderHtml, summarizeRuns } from './openrouter-iteration-report.mjs';
+import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { analyzeRuns, readToolCallCountsForPaths, renderHtml, summarizeRuns } from './openrouter-iteration-report.mjs';
 
 const payload = {
   tasks: [
@@ -90,6 +94,32 @@ describe('OpenRouter iteration report', () => {
     expect(analysis.compiler.topCategories.length).toBeGreaterThan(0);
     expect(analysis.taskDifficulty.length).toBe(1);
     expect(analysis.taskDifficulty[0].label).toBe('Scheduled Twitter post publisher');
+  });
+
+  it('sums database tool calls across source artifacts for combined reports', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clear-report-tools-'));
+    const dbPath = path.join(dir, 'bench.sqlite');
+    const firstOutput = path.join(dir, 'first.json');
+    const secondOutput = path.join(dir, 'second.json');
+    const db = new Database(dbPath);
+    db.exec(`
+      CREATE TABLE model_benchmark_runs (run_id TEXT PRIMARY KEY, output_path TEXT);
+      CREATE TABLE model_benchmark_tool_calls (run_id TEXT, tool_name TEXT);
+    `);
+    db.prepare('INSERT INTO model_benchmark_runs (run_id, output_path) VALUES (?, ?)').run('run-1', firstOutput);
+    db.prepare('INSERT INTO model_benchmark_runs (run_id, output_path) VALUES (?, ?)').run('run-2', secondOutput);
+    db.prepare('INSERT INTO model_benchmark_tool_calls (run_id, tool_name) VALUES (?, ?)').run('run-1', 'read_clear_doc');
+    db.prepare('INSERT INTO model_benchmark_tool_calls (run_id, tool_name) VALUES (?, ?)').run('run-2', 'compile');
+    db.prepare('INSERT INTO model_benchmark_tool_calls (run_id, tool_name) VALUES (?, ?)').run('run-2', 'compile');
+    db.close();
+
+    const counts = readToolCallCountsForPaths(dbPath, [firstOutput, secondOutput]);
+
+    expect(counts.total).toBe(3);
+    expect(counts.byTool).toEqual([
+      { tool_name: 'compile', count: 2 },
+      { tool_name: 'read_clear_doc', count: 1 },
+    ]);
   });
 });
 

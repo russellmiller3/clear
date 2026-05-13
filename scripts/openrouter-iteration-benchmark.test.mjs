@@ -8,6 +8,7 @@ import {
   benchmarkTools,
   createBenchmarkLogger,
   evaluateCandidate,
+  executeBenchmarkTool,
   extractRequirementLinesFromResponse,
   extractSource,
   feedbackFor,
@@ -416,6 +417,32 @@ await describeAsync('OpenRouter iterative benchmark runner loop', async () => {
     expect(toolCalls[0].result_json).toContain('SYNTAX.md');
     expect(toolCalls[0].result_chars).toBeGreaterThan(1000);
     expect(toolCalls[1].result_json).toContain('deal approval');
+  });
+});
+
+await describeAsync('OpenRouter benchmark request tools', async () => {
+  await itAsync('rejects completion announcements as request writes', async () => {
+    const state = {};
+    const result = await executeBenchmarkTool({
+      rootDir: process.cwd(),
+      state,
+      toolCall: {
+        id: 'call_request',
+        type: 'function',
+        function: {
+          name: 'write_request',
+          arguments: JSON.stringify({
+            title: 'Twitter Scheduler App Implementation Complete',
+            body: 'The app is complete and satisfies all requirements.',
+          }),
+        },
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.written).toBe(false);
+    expect(result.error).toContain('follow-up request');
+    expect(state.requests || []).toHaveLength(0);
   });
 });
 

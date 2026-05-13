@@ -81,6 +81,7 @@ export const RALPH_VARIANTS = Object.freeze([
     loop: true,
     errorHints: true,
     patternDbTool: true,
+    requiredToolNames: ['read_clear_doc', 'query_patterns_db'],
   },
 ]);
 
@@ -159,15 +160,89 @@ export function buildRalphFeedback({ variant, evalResult, attemptIndex, maxAttem
   return lines.join('\n');
 }
 
-function toolsForVariant(variant, docNames = DEFAULT_DOC_NAMES) {
+const MEPH_LIKE_TOOL_NAMES = Object.freeze([
+  'edit_code',
+  'compile',
+  'run_app',
+  'click_element',
+  'fill_input',
+  'read_dom',
+  'read_actions',
+  'read_network',
+  'screenshot_output',
+  'read_file',
+  'edit_file',
+  'write_request',
+]);
+
+function objectTool(name, description, properties = {}, required = []) {
+  return {
+    type: 'function',
+    function: {
+      name,
+      description,
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties,
+        required,
+      },
+    },
+  };
+}
+
+function mephLikeBenchmarkTools() {
+  return [
+    objectTool('edit_code', 'Ghost Meph style editor tool. Read, write, or undo Clear source.', {
+      action: { type: 'string', enum: ['read', 'write', 'undo'] },
+      code: { type: 'string' },
+    }, ['action']),
+    objectTool('compile', 'Compile the current Clear source and return friendly compiler errors.', {
+      include_compiled: { type: 'boolean' },
+    }),
+    objectTool('run_app', 'Run the compiled app so app-inspection tools can verify behavior.'),
+    objectTool('click_element', 'Click a selector in the running app.', {
+      selector: { type: 'string' },
+    }, ['selector']),
+    objectTool('fill_input', 'Fill a selector in the running app.', {
+      selector: { type: 'string' },
+      value: { type: 'string' },
+    }, ['selector', 'value']),
+    objectTool('read_dom', 'Read a DOM snapshot from the running app.'),
+    objectTool('read_actions', 'Read the recent app/user action buffer.'),
+    objectTool('read_network', 'Read recent network requests from the app.'),
+    objectTool('screenshot_output', 'Take a visual screenshot of the running app.'),
+    objectTool('read_file', 'Read an allowed Clear repo file, including docs and requests.md.', {
+      filename: { type: 'string' },
+    }, ['filename']),
+    objectTool('edit_file', 'Append a simulated request to requests.md during the benchmark.', {
+      filename: { type: 'string' },
+      action: { type: 'string', enum: ['append'] },
+      content: { type: 'string' },
+    }, ['filename', 'action', 'content']),
+    objectTool('write_request', 'Log a request/improvement candidate discovered during the benchmark.', {
+      title: { type: 'string' },
+      body: { type: 'string' },
+    }, ['title', 'body']),
+  ];
+}
+
+export function toolsForVariant(variant, docNames = DEFAULT_DOC_NAMES) {
   if (!variant.patternDbTool) return [];
-  return benchmarkTools({ docNames })
-    .filter((tool) => tool?.function?.name === 'query_patterns_db');
+  const base = benchmarkTools({ docNames });
+  if (variant.errorHints && variant.patternDbTool) {
+    const byName = new Map(base.map((tool) => [tool.function.name, tool]));
+    for (const tool of mephLikeBenchmarkTools()) byName.set(tool.function.name, tool);
+    return [...byName.values()];
+  }
+  return base.filter((tool) => tool?.function?.name === 'query_patterns_db');
 }
 
 function systemPromptForVariant(variant) {
-  const patternLine = variant.patternDbTool
-    ? 'When you need a Clear shape or repair example, call query_patterns_db before final source.'
+  const patternLine = variant.errorHints && variant.patternDbTool
+    ? 'Your first move must be tool calls: read_clear_doc for Clear syntax/instructions, query_patterns_db for task patterns, then use Ghost Meph-style tools to write source, compile, run the app, inspect DOM/actions/network/screenshot evidence, and write requests when the compiler or harness needs a follow-up.'
+    : variant.patternDbTool
+      ? 'When you need a Clear shape or repair example, call query_patterns_db before final source.'
     : 'Do not use tools. Work from the prompt and feedback only.';
   return [
     'You are being benchmarked as a Clear/Meph app-building assistant.',
@@ -194,6 +269,7 @@ async function runToolAwareAttempt({
   docMaxChars,
   dbPath,
   timeoutMs,
+  compiler,
   lookupGenerationCost = true,
 }) {
   let totalLatencyMs = 0;
@@ -205,8 +281,11 @@ async function runToolAwareAttempt({
   let finishReason = null;
   const toolCalls = [];
   const attemptMessages = messages.map((message) => ({ ...message }));
+  const toolState = { source: '', errors: [], compileResult: null, appRunning: false, actions: [], network: [], requests: [] };
+  const requiredToolNames = new Set(variant.requiredToolNames || []);
 
   for (let round = 0; round <= maxToolRounds; round += 1) {
+    const mustUseTool = tools.length > 0 && requiredToolNames.size > 0;
     let response;
     try {
       response = await caller({
@@ -214,7 +293,7 @@ async function runToolAwareAttempt({
         model,
         messages: attemptMessages,
         tools,
-        toolChoice: tools.length ? 'auto' : 'auto',
+        toolChoice: mustUseTool ? 'required' : 'auto',
         task,
         variant,
       timeoutMs,
@@ -232,6 +311,7 @@ async function runToolAwareAttempt({
         totalTokens,
         rawResponse,
         toolCalls,
+        requestWrites: toolState.requests || [],
       };
     }
 
@@ -253,10 +333,22 @@ async function runToolAwareAttempt({
         totalTokens,
         rawResponse,
         toolCalls,
+        requestWrites: toolState.requests || [],
       };
     }
 
     const responseToolCalls = response.toolCalls || [];
+    if (mustUseTool && responseToolCalls.length === 0) {
+      attemptMessages.push({
+        role: 'assistant',
+        content: response.content || '',
+      });
+      attemptMessages.push({
+        role: 'user',
+        content: `Use the available tools before final code. Still required: ${[...requiredToolNames].join(', ')}.`,
+      });
+      continue;
+    }
     if (responseToolCalls.length === 0) {
       return {
         ...response,
@@ -268,6 +360,7 @@ async function runToolAwareAttempt({
         finishReason,
         rawResponse,
         toolCalls,
+        requestWrites: toolState.requests || [],
       };
     }
 
@@ -278,6 +371,8 @@ async function runToolAwareAttempt({
     });
 
     for (const toolCall of responseToolCalls) {
+      const toolName = toolCall.function?.name || toolCall.name || 'unknown_tool';
+      requiredToolNames.delete(toolName);
       const result = await executeBenchmarkTool({
         toolCall,
         rootDir,
@@ -285,12 +380,14 @@ async function runToolAwareAttempt({
         docMaxChars,
         patternLimit: DEFAULT_PATTERN_RESULT_LIMIT,
         dbPath,
+        state: toolState,
+        compiler,
       });
       toolCalls.push({ ...toolCall, result });
       attemptMessages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
-        name: toolCall.function?.name || toolCall.name || 'unknown_tool',
+        name: toolName,
         content: JSON.stringify(result),
       });
     }
@@ -307,6 +404,7 @@ async function runToolAwareAttempt({
     finishReason,
     rawResponse,
     toolCalls,
+    requestWrites: toolState.requests || [],
   };
 }
 
@@ -515,6 +613,7 @@ export async function runRalphRankingBenchmark(options = {}) {
         docMaxChars,
         dbPath,
         timeoutMs: Math.max(1000, remainingMs),
+        compiler,
         lookupGenerationCost,
       });
 
@@ -530,6 +629,7 @@ export async function runRalphRankingBenchmark(options = {}) {
         finishReason: response.finishReason || null,
         rawResponse: response.rawResponse || null,
         toolCalls: response.toolCalls || [],
+        requestWrites: response.requestWrites || [],
         generationId: response.generationId || null,
         costDetails: response.costDetails || null,
       };

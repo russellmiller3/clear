@@ -11,7 +11,7 @@ These tests cover the two pure functions that drive the wedge:
 */
 
 import { describe, it, expect, run } from '../lib/testUtils.js';
-import { shouldSnapRetry, formatSnapMessage, SNAP_DEFAULTS } from './snap-layer.js';
+import { shouldSnapRetry, formatSnapMessage, formatCompilerFeedbackMessage, SNAP_DEFAULTS } from './snap-layer.js';
 
 describe('snap-layer.shouldSnapRetry', () => {
   it('returns true when errors present, retries below cap, env enabled', () => {
@@ -169,6 +169,21 @@ describe('snap-layer.formatSnapMessage', () => {
     });
     expect(msg.toLowerCase()).not.toContain('system');
     expect(msg.toLowerCase()).not.toContain('automatic');
+  });
+});
+
+describe('snap-layer.formatCompilerFeedbackMessage', () => {
+  it('formats compiler errors as hidden Meph-only feedback', () => {
+    const msg = formatCompilerFeedbackMessage({
+      errors: [{ line: 60, message: 'outgoing request is not allowed' }],
+      retryIndex: 1,
+      maxRetries: 3,
+    });
+    expect(msg).toContain('Hidden compiler feedback for Meph');
+    expect(msg).toContain('not shown to the user');
+    expect(msg).toContain('line 60');
+    expect(msg).toContain('outgoing request is not allowed');
+    expect(msg).toContain('Fix these compiler errors before stopping');
   });
 });
 

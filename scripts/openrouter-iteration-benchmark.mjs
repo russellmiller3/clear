@@ -903,7 +903,7 @@ export function benchmarkTools({ docNames = DEFAULT_DOC_NAMES } = {}) {
   ];
 }
 
-export async function executeBenchmarkTool({ toolCall, rootDir, docNames = DEFAULT_DOC_NAMES, docMaxChars = DEFAULT_DOC_MAX_CHARS, patternLimit = DEFAULT_PATTERN_RESULT_LIMIT, dbPath = DEFAULT_DB_PATH }) {
+export async function executeBenchmarkTool({ toolCall, rootDir, docNames = DEFAULT_DOC_NAMES, docMaxChars = DEFAULT_DOC_MAX_CHARS, patternLimit = DEFAULT_PATTERN_RESULT_LIMIT, dbPath = DEFAULT_DB_PATH, state = null, compiler = compileProgram }) {
   const normalized = normalizeToolCall(toolCall);
   let args = {};
   try {
@@ -936,7 +936,154 @@ export async function executeBenchmarkTool({ toolCall, rootDir, docNames = DEFAU
     });
   }
 
+  const toolState = state || {};
+
+  if (normalized.name === 'read_file') {
+    const filename = String(args.filename || args.name || '');
+    if (!docNames.includes(filename) && filename !== 'requests.md') {
+      return { ok: false, error: `Unknown file "${filename}".`, allowed: [...docNames, 'requests.md'] };
+    }
+    const filePath = path.join(rootDir, filename);
+    const content = await fs.readFile(filePath, 'utf8');
+    return {
+      ok: true,
+      filename,
+      chars: content.length,
+      truncated: content.length > docMaxChars,
+      content: content.slice(0, docMaxChars),
+    };
+  }
+
+  if (normalized.name === 'edit_code') {
+    const action = String(args.action || 'read');
+    if (action === 'read') {
+      return { ok: true, source: toolState.source || '', errors: toolState.errors || [] };
+    }
+    if (action === 'write') {
+      toolState.source = String(args.code || '');
+      return { ok: true, applied: true, lines: toolState.source.split('\n').length };
+    }
+    if (action === 'undo') {
+      toolState.source = '';
+      toolState.compileResult = null;
+      toolState.errors = [];
+      return { ok: true, undone: true };
+    }
+    return { ok: false, error: `Unsupported edit_code action "${action}".` };
+  }
+
+  if (normalized.name === 'compile') {
+    const source = String(args.source || toolState.source || '');
+    if (!source.trim()) return { ok: false, error: 'No Clear source available. Use edit_code action=write first.' };
+    const compiled = compiler(source);
+    toolState.compileResult = compiled;
+    toolState.errors = compiled.errors || [];
+    return {
+      ok: (compiled.errors || []).length === 0,
+      errors: compiled.errors || [],
+      warnings: compiled.warnings || [],
+      hasHTML: !!compiled.html,
+      hasServerJS: !!compiled.serverJS,
+      hasJavascript: !!compiled.javascript,
+      hasPython: !!compiled.python,
+    };
+  }
+
+  if (normalized.name === 'run_app') {
+    const compiled = toolState.compileResult || compiler(String(toolState.source || ''));
+    toolState.compileResult = compiled;
+    toolState.errors = compiled.errors || [];
+    if ((compiled.errors || []).length > 0) {
+      return { ok: false, error: 'Cannot run app while compile errors remain.', errors: compiled.errors || [] };
+    }
+    toolState.appRunning = true;
+    toolState.port = toolState.port || 4001;
+    return { ok: true, started: true, port: toolState.port };
+  }
+
+  if (normalized.name === 'click_element') {
+    if (!toolState.appRunning) return { ok: false, error: 'No app running. Use run_app first.' };
+    toolState.actions ||= [];
+    toolState.actions.push({ type: 'click', selector: String(args.selector || ''), ts: new Date().toISOString() });
+    return { ok: true, clicked: String(args.selector || '') };
+  }
+
+  if (normalized.name === 'fill_input') {
+    if (!toolState.appRunning) return { ok: false, error: 'No app running. Use run_app first.' };
+    toolState.actions ||= [];
+    toolState.actions.push({ type: 'fill', selector: String(args.selector || ''), value: String(args.value || ''), ts: new Date().toISOString() });
+    return { ok: true, filled: String(args.selector || ''), value: String(args.value || '') };
+  }
+
+  if (normalized.name === 'read_dom') {
+    if (!toolState.appRunning) return { ok: false, error: 'No app running. Use run_app first.' };
+    const html = String(toolState.compileResult?.html || '').slice(0, 5000);
+    return { ok: true, url: `http://localhost:${toolState.port || 4001}/`, html, state: { appRunning: true } };
+  }
+
+  if (normalized.name === 'read_actions') {
+    const actions = toolState.actions || [];
+    return { ok: true, count: actions.length, actions };
+  }
+
+  if (normalized.name === 'read_network') {
+    const requests = toolState.network || [];
+    return { ok: true, count: requests.length, requests };
+  }
+
+  if (normalized.name === 'screenshot_output') {
+    if (!toolState.appRunning) return { ok: false, error: 'No app running. Use run_app first.' };
+    return { ok: true, screenshot: 'simulated', note: 'Benchmark harness confirms screenshot tool was available; real Studio/Ghost Meph returns PNG content.' };
+  }
+
+  if (normalized.name === 'write_request') {
+    toolState.requests ||= [];
+    const request = {
+      title: String(args.title || args.summary || 'Benchmark request'),
+      body: String(args.body || args.details || ''),
+      created_at: new Date().toISOString(),
+    };
+    const validation = validateBenchmarkRequestWrite(request);
+    if (!validation.ok) return validation;
+    toolState.requests.push(request);
+    return { ok: true, written: true, request };
+  }
+
+  if (normalized.name === 'edit_file') {
+    const filename = String(args.filename || '');
+    if (filename !== 'requests.md') {
+      return { ok: false, error: 'Benchmark edit_file is read-only except simulated appends to requests.md.' };
+    }
+    if (String(args.action || '') !== 'append') {
+      return { ok: false, error: 'Benchmark requests.md support only allows action="append".' };
+    }
+    toolState.requests ||= [];
+    const request = {
+      title: 'requests.md append',
+      body: String(args.content || ''),
+      created_at: new Date().toISOString(),
+    };
+    const validation = validateBenchmarkRequestWrite(request);
+    if (!validation.ok) return validation;
+    toolState.requests.push(request);
+    return { ok: true, appended: true, request };
+  }
+
   return { ok: false, error: `Unknown tool "${normalized.name}".` };
+}
+
+function validateBenchmarkRequestWrite(request) {
+  const text = `${request.title || ''}\n${request.body || ''}`.toLowerCase();
+  const looksLikeCompletion = /\b(implementation complete|task complete|app is complete|satisfies all requirements|compiles successfully|ready to ship|done)\b/.test(text);
+  const namesFollowUpNeed = /\b(needs?|missing|bug|fix|improve|improvement|request|follow[- ]?up|compiler|diagnostic|harness|pattern|error hint|snap|ralph)\b/.test(text);
+  if (looksLikeCompletion && !namesFollowUpNeed) {
+    return {
+      ok: false,
+      written: false,
+      error: 'write_request is for a follow-up request, bug, or improvement. Do not log completion/status announcements.',
+    };
+  }
+  return { ok: true };
 }
 
 function queryPatternsDb({ dbPath = DEFAULT_DB_PATH, query = '', limit = DEFAULT_PATTERN_RESULT_LIMIT }) {

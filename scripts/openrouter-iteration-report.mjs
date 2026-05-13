@@ -172,23 +172,30 @@ function scoreRun(run = {}) {
 }
 
 export function readToolCallCounts(dbPath, outputPath) {
+  return readToolCallCountsForPaths(dbPath, [outputPath]);
+}
+
+export function readToolCallCountsForPaths(dbPath, outputPaths) {
+  const paths = [...new Set((outputPaths || []).filter(Boolean).map((outputPath) => path.resolve(outputPath)))];
+  if (!paths.length) return { total: 0, byTool: [] };
   const db = new Database(dbPath, { readonly: true });
+  const placeholders = paths.map(() => '?').join(', ');
   try {
     return {
       total: db.prepare(`
         SELECT COUNT(*) AS count
         FROM model_benchmark_tool_calls tc
         JOIN model_benchmark_runs r ON r.run_id = tc.run_id
-        WHERE r.output_path = ?
-      `).get(outputPath)?.count || 0,
+        WHERE r.output_path IN (${placeholders})
+      `).get(...paths)?.count || 0,
       byTool: db.prepare(`
         SELECT COALESCE(tool_name, '(unnamed)') AS tool_name, COUNT(*) AS count
         FROM model_benchmark_tool_calls tc
         JOIN model_benchmark_runs r ON r.run_id = tc.run_id
-        WHERE r.output_path = ?
+        WHERE r.output_path IN (${placeholders})
         GROUP BY COALESCE(tool_name, '(unnamed)')
         ORDER BY count DESC, tool_name ASC
-      `).all(outputPath),
+      `).all(...paths),
     };
   } finally {
     db.close();
@@ -1033,7 +1040,7 @@ async function main() {
   let toolCalls = { total: 0, byTool: [] };
   if (args.db) {
     try {
-      toolCalls = readToolCallCounts(args.db, outputPath);
+      toolCalls = readToolCallCountsForPaths(args.db, toolCallOutputPaths(payload, outputPath));
     } catch {
       toolCalls = { total: 0, byTool: [] };
     }
@@ -1058,6 +1065,17 @@ function parseArgs(argv) {
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return args;
+}
+
+function toolCallOutputPaths(payload, fallbackPath) {
+  const artifacts = Array.isArray(payload.sourceArtifacts) ? payload.sourceArtifacts : [];
+  const paths = artifacts
+    .map((artifact) => {
+      if (typeof artifact === 'string') return artifact;
+      return artifact?.outputPath || artifact?.path || artifact?.input;
+    })
+    .filter(Boolean);
+  return paths.length ? paths : [fallbackPath];
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {

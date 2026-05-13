@@ -7,6 +7,7 @@ import {
   RALPH_VARIANTS,
   buildRalphFeedback,
   ralphAuditFromEvaluation,
+  toolsForVariant,
   runRalphRankingBenchmark,
 } from './openrouter-ralph-ranking-benchmark.mjs';
 import { evaluateCandidate } from './openrouter-iteration-benchmark.mjs';
@@ -182,6 +183,200 @@ await describeAsync('OpenRouter Ralph ranking benchmark', async () => {
     db.close();
     expect(row.tool_name).toBe('query_patterns_db');
     expect(row.arguments_json).toContain('things table');
+  });
+
+  await itAsync('exposes the Meph-like tool surface for full Ralph runs', async () => {
+    const toolNames = toolsForVariant(RALPH_VARIANTS.find((variant) => variant.id === 'ralph_error_pattern_db'))
+      .map((tool) => tool.function.name);
+    for (const required of [
+      'read_clear_doc',
+      'query_patterns_db',
+      'edit_code',
+      'compile',
+      'run_app',
+      'click_element',
+      'fill_input',
+      'read_dom',
+      'read_actions',
+      'read_network',
+      'screenshot_output',
+      'edit_file',
+      'write_request',
+    ]) {
+      expect(toolNames).toContain(required);
+    }
+  });
+
+  await itAsync('logs request-writing tool calls from full Ralph runs', async () => {
+    const dbPath = tempPath('request-tools.sqlite');
+    const outPath = tempPath('request-tools.json');
+    let calls = 0;
+
+    const payload = await runRalphRankingBenchmark({
+      apiKey: 'test-key',
+      dbPath,
+      out: outPath,
+      rootDir: process.cwd(),
+      resume: false,
+      parallelModels: false,
+      timeoutMs: 10000,
+      maxAttempts: 1,
+      models: [fakeModel],
+      variants: [RALPH_VARIANTS.find((variant) => variant.id === 'ralph_error_pattern_db')],
+      tasks: [miniTask],
+      compiler: fakeCompiler,
+      log: () => {},
+      callModel: async ({ messages }) => {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            ok: true,
+            latencyMs: 10,
+            cost: 0.001,
+            promptTokens: 10,
+            completionTokens: 10,
+            totalTokens: 20,
+            finishReason: 'tool_calls',
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_doc',
+                type: 'function',
+                function: { name: 'read_clear_doc', arguments: '{"name":"SYNTAX.md"}' },
+              },
+              {
+                id: 'call_patterns',
+                type: 'function',
+                function: { name: 'query_patterns_db', arguments: '{"query":"things table"}' },
+              },
+            ],
+          };
+        }
+        if (calls === 2) {
+          return {
+            ok: true,
+            latencyMs: 10,
+            cost: 0.001,
+            promptTokens: 10,
+            completionTokens: 10,
+            totalTokens: 20,
+            finishReason: 'tool_calls',
+            content: '',
+            toolCalls: [{
+              id: 'call_request',
+              type: 'function',
+              function: {
+                name: 'write_request',
+                arguments: '{"title":"Compiler message needs stronger advice","body":"The app loop found a missing diagnostic while fixing the benchmark task."}',
+              },
+            }],
+          };
+        }
+        expect(messages.some((message) => message.role === 'tool' && message.tool_call_id === 'call_request')).toBe(true);
+        return {
+          ok: true,
+          latencyMs: 10,
+          cost: 0.001,
+          promptTokens: 10,
+          completionTokens: 10,
+          totalTokens: 20,
+          finishReason: 'stop',
+          toolCalls: [],
+          content: passingOutput(),
+        };
+      },
+    });
+
+    expect(payload.runs[0].success).toBe(true);
+    expect(payload.runs[0].attempts[0].requestWrites).toHaveLength(1);
+    expect(payload.runs[0].attempts[0].requestWrites[0].title).toContain('Compiler message');
+
+    const db = new Database(dbPath);
+    const row = db.prepare("SELECT tool_name, result_json FROM model_benchmark_tool_calls WHERE tool_name = 'write_request'").get();
+    db.close();
+    expect(row.tool_name).toBe('write_request');
+    expect(row.result_json).toContain('Compiler message needs stronger advice');
+  });
+
+  await itAsync('requires initial doc and pattern tools before accepting full Ralph output', async () => {
+    const dbPath = tempPath('required-tools.sqlite');
+    const outPath = tempPath('required-tools.json');
+    let calls = 0;
+
+    const payload = await runRalphRankingBenchmark({
+      apiKey: 'test-key',
+      dbPath,
+      out: outPath,
+      rootDir: process.cwd(),
+      resume: false,
+      parallelModels: false,
+      timeoutMs: 10000,
+      maxAttempts: 1,
+      models: [fakeModel],
+      variants: [RALPH_VARIANTS.find((variant) => variant.id === 'ralph_error_pattern_db')],
+      tasks: [miniTask],
+      compiler: fakeCompiler,
+      log: () => {},
+      callModel: async ({ messages, toolChoice }) => {
+        calls += 1;
+        if (calls === 1) {
+          expect(toolChoice).toBe('required');
+          return {
+            ok: true,
+            latencyMs: 10,
+            cost: 0.001,
+            promptTokens: 10,
+            completionTokens: 10,
+            totalTokens: 20,
+            finishReason: 'stop',
+            toolCalls: [],
+            content: passingOutput(),
+          };
+        }
+        if (calls === 2) {
+          expect(toolChoice).toBe('required');
+          expect(messages.at(-1).content).toContain('Still required');
+          return {
+            ok: true,
+            latencyMs: 10,
+            cost: 0.001,
+            promptTokens: 10,
+            completionTokens: 10,
+            totalTokens: 20,
+            finishReason: 'tool_calls',
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_doc',
+                type: 'function',
+                function: { name: 'read_clear_doc', arguments: '{"name":"SYNTAX.md"}' },
+              },
+              {
+                id: 'call_patterns',
+                type: 'function',
+                function: { name: 'query_patterns_db', arguments: '{"query":"things table"}' },
+              },
+            ],
+          };
+        }
+        expect(toolChoice).toBe('auto');
+        return {
+          ok: true,
+          latencyMs: 10,
+          cost: 0.001,
+          promptTokens: 10,
+          completionTokens: 10,
+          totalTokens: 20,
+          finishReason: 'stop',
+          toolCalls: [],
+          content: passingOutput(),
+        };
+      },
+    });
+
+    expect(calls).toBe(3);
+    expect(payload.runs[0].success).toBe(true);
+    expect(payload.runs[0].attempts[0].toolCalls).toHaveLength(2);
   });
 
   await itAsync('stops retrying when another attempt would likely exceed the spend cap', async () => {
