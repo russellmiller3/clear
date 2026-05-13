@@ -2254,7 +2254,23 @@ function _cfPathMatchSnippet(path) {
 export function compile(ast, options = {}) {
   const errors = [...ast.errors];
   const warnings = [];
-  const target = options.target || ast.target || 'web';
+
+  // Target resolution, in priority order:
+  //   1. explicit options.target (cli flag or programmatic override)
+  //   2. explicit `target:` directive in the source AST
+  //   3. auto-inference: if the source has BOTH pages and endpoints, default
+  //      to 'both'; if it has endpoints only, default to 'backend'; otherwise
+  //      'web'. Without this, a file with a page declaration + a single
+  //      endpoint (Lenat's Records page + /api/all_records DELETE) silently
+  //      built as web-only, dropping the endpoint entirely.
+  function inferTarget(body) {
+    const hasEndpoint = body.some(n => n.type === NodeType.ENDPOINT);
+    const hasPage = body.some(n => n.type === NodeType.PAGE);
+    if (hasEndpoint && hasPage) return 'both';
+    if (hasEndpoint) return 'backend';
+    return 'web';
+  }
+  const target = options.target || ast.target || inferTarget(ast.body || []);
   const sourceMap = options.sourceMap === true; // opt-in
 
   const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend', 'cloudflare'];
@@ -7743,6 +7759,18 @@ function compileRuntimeGrammar(node, ctx, pad) {
   const tableName = String(node.storageTable || 'Concepts');
   const pluralTable = pluralizeName(tableName);
 
+  // If the source ALSO declares the storage table as a DATA_SHAPE (e.g. an
+  // explicit `create a Concepts table:` in a sibling module), skip the schema
+  // emit here — the DATA_SHAPE pass already declared `${tableName}Schema` and
+  // called `db.createTable(...)`. Without this guard we get a duplicate
+  // `const ConceptsSchema = ...` at module top level → SyntaxError, server
+  // crashes at startup. Surfaced by Phase 8 of Lenat-in-Clear where tables.clear
+  // and concepts.clear both produced a Concepts schema.
+  const astBody = ctx._astBody || [];
+  const tableAlsoDeclared = astBody.some(n =>
+    n && n.type === NodeType.DATA_SHAPE && n.name === tableName
+  );
+
   // 1. Storage table schema — fixed columns the runtime matcher uses to
   // identify a row as a frame definition. Apps can extend by inserting
   // additional fields; the matcher only consults these.
@@ -7758,9 +7786,15 @@ function compileRuntimeGrammar(node, ctx, pad) {
   ].join(',\n');
 
   let result = `${pad}// Runtime grammar: ${grammarName} (storage table ${tableName})\n`;
-  result += `${pad}const ${tableName}Schema = {\n${schemaFields}\n${pad}};\n`;
-  if (ctx.mode === 'backend') {
-    result += `${pad}db.createTable('${pluralTable}', ${tableName}Schema);\n`;
+  if (tableAlsoDeclared) {
+    result += `${pad}// Skipping ${tableName}Schema + createTable — tables.clear (or another\n`;
+    result += `${pad}// module's DATA_SHAPE) declared it already. Matcher uses the table\n`;
+    result += `${pad}// either way; only the schema/createTable codegen needs deduping.\n`;
+  } else {
+    result += `${pad}const ${tableName}Schema = {\n${schemaFields}\n${pad}};\n`;
+    if (ctx.mode === 'backend') {
+      result += `${pad}db.createTable('${pluralTable}', ${tableName}Schema);\n`;
+    }
   }
 
   // 2. Compile-time frame registry seed. The runtime helper merges this
