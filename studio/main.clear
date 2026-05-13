@@ -3,7 +3,7 @@ theme 'midnight'
 
 # Clear Playground -- try the language in your browser
 
-use 'clear' from './clear-compiler.min.js'
+import 'clear' from './clear-compiler.min.js'
 
 page 'Clear Playground' at '/':
 

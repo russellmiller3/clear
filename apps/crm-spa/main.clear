@@ -30,5 +30,5 @@ theme 'midnight'
 # Database
 database is local memory
 
-use everything from 'backend'
-use everything from 'frontend'
+import backend.clear
+import frontend.clear

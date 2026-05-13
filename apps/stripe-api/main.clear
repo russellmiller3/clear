@@ -1,10 +1,10 @@
 build for javascript backend
 
 # Stripe Payment API — demonstrates npm package imports
-# use npm imports the package; script: blocks let you call its JS API
+# `import npm` pulls in the package; script: blocks let you call its JS API.
 
-use npm 'stripe' as stripe_sdk
-use npm 'nodemailer' as mailer
+import npm 'stripe' as stripe_sdk
+import npm 'nodemailer' as mailer
 
 when user calls POST /api/charge sending params:
   amount  = params's amount

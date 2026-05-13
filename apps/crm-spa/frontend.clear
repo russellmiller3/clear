@@ -1,7 +1,7 @@
 # CRM SPA — Frontend
 # Multi-page reactive SPA with tabs, modals, debounced search, components, charts
 
-use everything from 'components'
+import components.clear
 
 # --- Dashboard Page ---
 page 'CRM Dashboard' at '/':
