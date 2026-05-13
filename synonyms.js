@@ -382,6 +382,14 @@ const SYNONYM_TABLE = Object.freeze({
   format_date: Object.freeze(['format date']),
   days_between: Object.freeze(['days between']),
 
+  // Slot extractors (Lenat-in-Clear Phase 2, 2026-05-13)
+  // Each is a multi-word phrase the tokenizer collapses into one canonical
+  // token. Picked to read naturally in chat-style apps:
+  //   when user sends X to /api/...: dt = extract datetime from X
+  extract_datetime: Object.freeze(['extract datetime from', 'extract date from', 'pull datetime from']),
+  fuzzy_match: Object.freeze(['fuzzy match']),
+  extract_about: Object.freeze(['extract about-clause from', 'extract about clause from', 'pull about-clause from']),
+
   // Data operations (Phase 22)
   load_csv: Object.freeze(['load csv', 'read csv', 'open csv']),
   save_csv: Object.freeze(['save csv', 'write csv', 'export csv']),

@@ -489,6 +489,17 @@ export const NodeType = Object.freeze({
   RUNTIME_GRAMMAR: 'runtime_grammar',
   GRAMMAR_FRAME: 'grammar_frame',
   GRAMMAR_MATCH_CALL: 'grammar_match_call',
+
+  // Lenat-in-Clear Phase 2 (2026-05-13) — slot-extractor stdlib. Four typed
+  // primitives that pull structured values out of free-form text. Each returns
+  // a `{value, remainder}` (or similar) shape so callers can chain them:
+  // datetime extraction → about-clause split → bare remainder as the `what`.
+  // Compile to runtime helpers in runtime/slot-extractors.js (JS) and
+  // runtime/slot_extractors.py (Python). See Phase 2 of the plan.
+  EXTRACT_DATETIME: 'extract_datetime',
+  FUZZY_MATCH: 'fuzzy_match',
+  EXTRACT_ABOUT: 'extract_about',
+  REGEX_CAPTURE_REM: 'regex_capture_rem',
 });
 
 // =============================================================================
@@ -11012,6 +11023,9 @@ function parseAssignment(tokens, line) {
 
   // Check for "find pattern 'X' in expr" on the right side
   // e.g. matches = find pattern '[0-9]+' in text
+  // Variant (Phase 2 — REGEX_CAPTURE_REM): if the line ends with
+  //   ... returning value and remainder
+  // we return a {value, remainder} object instead of the bare match list.
   if (pos < tokens.length && tokens[pos].canonical === 'find_pattern') {
     pos++;
     if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
@@ -11021,9 +11035,88 @@ function parseAssignment(tokens, line) {
     pos++;
     // skip 'in'
     if (pos < tokens.length && (tokens[pos].value === 'in' || tokens[pos].canonical === 'in')) pos++;
+    // Detect the value-and-remainder variant by scanning for a trailing
+    // 'returning' token. The text expression is everything between `in` and
+    // `returning`; without `returning`, we fall through to plain REGEX_FIND.
+    const returningIdx = tokens.findIndex((t, idx) => idx >= pos && (t.value === 'returning' || t.canonical === 'returning'));
+    if (returningIdx !== -1) {
+      const srcExpr = parseExpression(tokens, pos, line, returningIdx);
+      if (srcExpr.error) return { error: srcExpr.error };
+      // The tail after `returning` must be `value and remainder` (literal
+      // shape — Phase 2 ships exactly this canonical phrase; later phases
+      // can add `returning value` / `returning remainder` alone if needed).
+      const tail = tokens.slice(returningIdx + 1).map(t => (t.value || '').toLowerCase());
+      const tailJoined = tail.join(' ').trim();
+      if (tailJoined !== 'value and remainder') {
+        return { error: "find pattern ... returning needs the literal phrase 'value and remainder'. Example: result = find pattern '\d+' in text returning value and remainder" };
+      }
+      return { name, expression: { type: NodeType.REGEX_CAPTURE_REM, pattern, source: srcExpr.node, line } };
+    }
     const expr = parseExpression(tokens, pos, line);
     if (expr.error) return { error: expr.error };
     return { name, expression: { type: NodeType.REGEX_FIND, pattern, source: expr.node, line } };
+  }
+
+  // Check for "extract datetime from expr" — Phase 2 slot extractor.
+  // Returns {value: Date|null, remainder: string} so callers can chain.
+  if (pos < tokens.length && tokens[pos].canonical === 'extract_datetime') {
+    pos++;
+    if (pos >= tokens.length) {
+      return { error: "extract datetime from needs a text expression. Example: dt = extract datetime from user_input" };
+    }
+    const expr = parseExpression(tokens, pos, line);
+    if (expr.error) return { error: expr.error };
+    return { name, expression: { type: NodeType.EXTRACT_DATETIME, source: expr.node, line } };
+  }
+
+  // Check for "fuzzy match 'query' in list [scored at least N]" — Phase 2.
+  // Returns the best-matching candidate above the score threshold, or `nothing`.
+  if (pos < tokens.length && tokens[pos].canonical === 'fuzzy_match') {
+    pos++;
+    if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+      return { error: "fuzzy match needs a query string. Example: best = fuzzy match 'paint' in apps scored at least 0.7" };
+    }
+    const query = tokens[pos].value;
+    pos++;
+    if (pos >= tokens.length || (tokens[pos].value !== 'in' && tokens[pos].canonical !== 'in')) {
+      return { error: "fuzzy match needs 'in' and a list expression. Example: best = fuzzy match 'paint' in apps" };
+    }
+    pos++;
+    // Optional `scored at least N` clause. Scan from the right.
+    let scoredAtIdx = -1;
+    for (let k = pos; k < tokens.length - 2; k++) {
+      const v0 = (tokens[k].value || '').toLowerCase();
+      const v1 = (tokens[k + 1].value || '').toLowerCase();
+      const v2 = (tokens[k + 2].value || '').toLowerCase();
+      if (v0 === 'scored' && v1 === 'at' && v2 === 'least') {
+        scoredAtIdx = k;
+        break;
+      }
+    }
+    const listEnd = scoredAtIdx === -1 ? tokens.length : scoredAtIdx;
+    const listExpr = parseExpression(tokens, pos, line, listEnd);
+    if (listExpr.error) return { error: listExpr.error };
+    let threshold = null;
+    if (scoredAtIdx !== -1) {
+      const numIdx = scoredAtIdx + 3;
+      if (numIdx >= tokens.length || tokens[numIdx].type !== TokenType.NUMBER) {
+        return { error: "fuzzy match 'scored at least' needs a number 0-1. Example: scored at least 0.7" };
+      }
+      threshold = tokens[numIdx].value;
+    }
+    return { name, expression: { type: NodeType.FUZZY_MATCH, query, source: listExpr.node, threshold, line } };
+  }
+
+  // Check for "extract about-clause from expr" — Phase 2 slot extractor.
+  // Splits text on `about|re|regarding`; returns {what, about}.
+  if (pos < tokens.length && tokens[pos].canonical === 'extract_about') {
+    pos++;
+    if (pos >= tokens.length) {
+      return { error: "extract about-clause from needs a text expression. Example: parts = extract about-clause from text" };
+    }
+    const expr = parseExpression(tokens, pos, line);
+    if (expr.error) return { error: expr.error };
+    return { name, expression: { type: NodeType.EXTRACT_ABOUT, source: expr.node, line } };
   }
 
   // Check for "matches pattern 'X' in expr" on the right side
