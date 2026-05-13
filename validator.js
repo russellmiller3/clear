@@ -144,6 +144,7 @@ export function validate(ast) {
   validateHardcodedSecrets(ast.body, errors);
   validateRuntimeGrammar(ast.body, errors);
   validateSlotExtractors(ast.body, warnings);
+  validateGraduation(ast.body, errors);
   return { errors, warnings };
 }
 
@@ -3465,4 +3466,79 @@ function validateSlotExtractors(body, warnings) {
 
   if (!Array.isArray(body)) return;
   for (const node of body) walk(node);
+}
+
+
+// =============================================================================
+// Confirm-with-graduation validator (Phase 3, 2026-05-13).
+// Plan: plans/plan-lenat-in-clear-2026-05-13.md cycle 3.4.
+// Spec: scripts/phase-3-graduation-spec.md.
+//
+// Three rules:
+//   GRADUATION_THRESHOLD_MISSING — `with graduation` clause is present but
+//     no `after N runs` field was supplied. Without a threshold we cannot
+//     decide when to graduate, so the entire feature is meaningless.
+//   GRADUATION_SCOPE_UNKNOWN — `graduates per: foo` where foo is not one
+//     of action / user / tenant / session. Unknown scopes silently fall
+//     through to 'action' which is misleading; better to fail loud.
+//   GRADUATION_NO_LOGIN — `graduates per: user` on an endpoint that
+//     doesn't require login. The scope_key includes req.user.id; without
+//     auth that is always 'anon', so every anonymous caller shares a
+//     single counter — defeats the per-user intent.
+// =============================================================================
+const _GRADUATION_VALID_SCOPES = new Set(['action', 'user', 'tenant', 'session']);
+function validateGraduation(body, errors) {
+  if (!Array.isArray(body)) return;
+  // Walk every endpoint. The graduation clause is only meaningful inside an
+  // endpoint body where requires-login is observable; nested confirms
+  // (inside an agent, function_def, or workflow step) are handled later.
+  for (const node of body) {
+    if (!node || node.type !== 'endpoint' || !Array.isArray(node.body)) continue;
+    const endpointHasAuth = node.body.some(b => b && (b.type === 'requires_auth' || b.type === 'requires_role'));
+    // Deep walk — confirms can live inside an if-block or try-handle inside
+    // the endpoint body. validateGraduationNode handles the recursion.
+    validateGraduationNode(node.body, endpointHasAuth, errors);
+  }
+}
+
+function validateGraduationNode(nodes, endpointHasAuth, errors) {
+  if (!Array.isArray(nodes)) return;
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue;
+    if (n.type === 'human_confirm' && n.graduation) {
+      const g = n.graduation;
+      // Rule 1: GRADUATION_THRESHOLD_MISSING.
+      if (typeof g.after_n !== 'number' || !(g.after_n >= 1)) {
+        errors.push({
+          line: n.line || 0,
+          message: `Line ${n.line || '?'}: [GRADUATION_THRESHOLD_MISSING] \`with graduation\` needs an \`after N runs\` clause (N must be >= 1). Example: ask user to confirm 'Open notepad?' with graduation after 3 runs. Without a threshold, the compiler can't decide when to switch from manual to auto-fire.`
+        });
+      }
+      // Rule 2: GRADUATION_SCOPE_UNKNOWN.
+      if (g.scope && !_GRADUATION_VALID_SCOPES.has(g.scope)) {
+        errors.push({
+          line: n.line || 0,
+          message: `Line ${n.line || '?'}: [GRADUATION_SCOPE_UNKNOWN] graduates per: '${g.scope}' is not a recognized scope. Valid scopes: action (default — one counter per ask-confirm site), user (per logged-in user), tenant (per tenant), session (per session). Pick one.`
+        });
+      }
+      // Rule 3: GRADUATION_NO_LOGIN — only fires when per:user AND endpoint
+      // has no auth check. Without auth, req.user.id is missing and every
+      // anonymous caller collapses to the same scope_key — defeats the
+      // per-user intent.
+      if (g.scope === 'user' && !endpointHasAuth) {
+        errors.push({
+          line: n.line || 0,
+          message: `Line ${n.line || '?'}: [GRADUATION_NO_LOGIN] graduates per: user requires the endpoint to declare \`requires login\` (or \`requires role X\`). Without auth, req.user.id is undefined and every anonymous caller shares one counter — the per-user scope collapses to a single bucket. Add 'requires login' to this endpoint, or change the scope.`
+        });
+      }
+    }
+    // Recurse — confirms can live inside nested blocks (if-bodies, try-handle, etc.)
+    for (const k of Object.keys(n)) {
+      const v = n[k];
+      if (v && typeof v === 'object') {
+        if (Array.isArray(v)) validateGraduationNode(v, endpointHasAuth, errors);
+        else if (v.type) validateGraduationNode([v], endpointHasAuth, errors);
+      }
+    }
+  }
 }
