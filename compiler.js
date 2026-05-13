@@ -11865,7 +11865,71 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     // TailAdmin-quality color palette
     lines.push(`      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];`);
 
-    if (chartType === 'pie') {
+    if (chartType === 'network') {
+      // Phase 5 (2026-05-13) — network/force-directed graph emit. Inline
+      // browser-side helper that mirrors runtime/graph-edges.js: pick a
+      // display label per record, cap node count for layout perf, then
+      // scan each record's edges-field for the labels of other records
+      // (substring match). The shape matches Node Lenat's links.js so a
+      // Lenat-in-Clear records map produces visually the same graph as the
+      // Node Lenat records map.
+      const _edgesField = JSON.stringify(sanitizeName(chart.edgesField || 'about'));
+      const _nodeCap = Number(chart.nodeCap) > 0 ? Number(chart.nodeCap) : 200;
+      const _colorByJSON = chart.colorBy ? JSON.stringify(sanitizeName(chart.colorBy)) : 'null';
+      lines.push(`      const _edgesField = ${_edgesField};`);
+      lines.push(`      const _NODE_CAP = ${_nodeCap};`);
+      lines.push(`      const _colorBy = ${_colorByJSON};`);
+      lines.push(`      const _capped = _data.slice(0, _NODE_CAP);`);
+      // Label resolution: name → what → idea → note → id. Matches the
+      // runtime helper and Node Lenat's pickLabel so visualization stays
+      // consistent across implementations.
+      lines.push(`      const _pickLabel = (r) => {`);
+      lines.push(`        if (!r || typeof r !== 'object') return '';`);
+      lines.push(`        for (const f of ['name','what','idea','note','id']) {`);
+      lines.push(`          const v = r[f];`);
+      lines.push(`          if (v != null && String(v).trim() !== '') return String(v);`);
+      lines.push(`        }`);
+      lines.push(`        return '';`);
+      lines.push(`      };`);
+      // Build node array. Each node carries an id, a display name, and
+      // optionally a category (used by ECharts to color by).
+      lines.push(`      const _nodes = _capped.map((r) => {`);
+      lines.push(`        const _id = String(r.id != null ? r.id : _pickLabel(r));`);
+      lines.push(`        const n = { id: _id, name: _pickLabel(r) || _id };`);
+      lines.push(`        if (_colorBy && r[_colorBy] != null) n.category = String(r[_colorBy]);`);
+      lines.push(`        return n;`);
+      lines.push(`      });`);
+      // Edge scan — O(N²) over the capped record list. For each record,
+      // walk every OTHER record in the capped set and check whether that
+      // record's label appears as a substring of the source's edges-field
+      // value. Each match emits one directed link source→target.
+      lines.push(`      const _links = [];`);
+      lines.push(`      for (const r of _capped) {`);
+      lines.push(`        const _raw = r[_edgesField];`);
+      lines.push(`        if (_raw == null) continue;`);
+      lines.push(`        const _txt = String(_raw);`);
+      lines.push(`        if (_txt.trim() === '') continue;`);
+      lines.push(`        for (const c of _capped) {`);
+      lines.push(`          if (c === r) continue;`);
+      lines.push(`          const _lbl = _pickLabel(c);`);
+      lines.push(`          if (!_lbl) continue;`);
+      lines.push(`          if (_txt.includes(_lbl)) {`);
+      lines.push(`            _links.push({ source: String(r.id != null ? r.id : _pickLabel(r)), target: String(c.id != null ? c.id : _lbl) });`);
+      lines.push(`          }`);
+      lines.push(`        }`);
+      lines.push(`      }`);
+      // Build categories when color-by is requested. ECharts uses the
+      // category index → color from the supplied color palette.
+      lines.push(`      let _categories = undefined;`);
+      lines.push(`      if (_colorBy) {`);
+      lines.push(`        const _seen = new Set();`);
+      lines.push(`        _nodes.forEach(n => { if (n.category != null) _seen.add(n.category); });`);
+      lines.push(`        _categories = Array.from(_seen).map(name => ({ name }));`);
+      lines.push(`        const _catIdx = new Map(_categories.map((c, i) => [c.name, i]));`);
+      lines.push(`        _nodes.forEach(n => { if (n.category != null) n.category = _catIdx.get(n.category); });`);
+      lines.push(`      }`);
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: _categories ? [{ data: _categories.map(c => c.name), textStyle: { color: '#6b7280' } }] : undefined, series: [{ type: 'graph', layout: 'force', data: _nodes, links: _links, categories: _categories, roam: true, force: { repulsion: 80, edgeLength: 100 }, label: { show: true, position: 'right', color: '#374151' }, lineStyle: { color: 'source', curveness: 0.1 }, emphasis: { focus: 'adjacency', lineStyle: { width: 3 } } }] }, true);`);
+    } else if (chartType === 'pie') {
       if (groupBy) {
         // Group by field and count
         lines.push(`      const _counts = {};`);

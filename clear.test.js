@@ -16176,6 +16176,41 @@ describe('Phase 5 — `display X as network graph` parses as CHART', () => {
   });
 });
 
+// Phase 5 cycle 5.2 — compiler emit. The CHART node with chartType='network'
+// expands to an inline ECharts graph series with force layout. The emit
+// inlines a browser-side helper that mirrors runtime/graph-edges.js so the
+// page works standalone without loading the runtime helper.
+describe('Phase 5 — compile emits ECharts graph series', () => {
+  it('emits ECharts graph series with force layout in compiled HTML', () => {
+    const src = "build for web\npage 'p' at '/':\n  people = [{id: 1, name: 'Marcus', about: ''}]\n  display people as network graph showing edges via about";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+    expect(result.html).toContain("type: 'graph'");
+    expect(result.html).toContain("layout: 'force'");
+  });
+
+  it('inlines the substring-match edge resolver in compiled HTML', () => {
+    const src = "build for web\npage 'p' at '/':\n  records = [{id: 1, name: 'Marcus', about: ''}]\n  display records as network graph showing edges via about";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The compiler must inline _pickLabel + the O(N²) edge scan so the page
+    // works standalone without requiring runtime/graph-edges.js.
+    expect(result.html).toContain('_pickLabel');
+    expect(result.html).toContain('_links');
+    expect(result.html).toContain('_nodes');
+  });
+
+  it('threads opts.colorBy through to ECharts categories', () => {
+    const src = "build for web\npage 'p' at '/':\n  r = [{id: 1, name: 'x', kind: 'task', about: ''}]\n  display r as network graph showing edges via about with color by kind";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // sanitizeName('kind') === 'kind', wrapped in JSON.stringify → "\"kind\"".
+    expect(result.html).toContain('_colorBy');
+    expect(result.html).toContain('_categories');
+  });
+});
+
 describe('`table X:` shorthand (no `create a` prefix) parses as DATA_SHAPE', () => {
   it('accepts `table Sales:` as a table declaration', () => {
     const src = "build for javascript backend\ntable Sales:\n  amount, number\n  region, text\nwhen user calls GET /api/sales:\n  send back 'ok'";
