@@ -1008,7 +1008,6 @@ Toolbar button in `studio/studio.html` (next to `Compile`) wired to `window.doPr
 
 Counts come from `bundle.counts`. Statuses are `proved`, `partial`, `failed`, `unverifiable`, `errored`. Symbolic mode triggers automatically when a `test` block has free variables — the prover treats them as forall-quantified placeholders and reports things like "for any: add" in the output.
 
-<<<<<<< Updated upstream
 ### How do I show proof verdicts in business-friendly language? (2026-05-02)
 
 `node scripts/proof-business-language.mjs <file.clear>` runs the prover and prints each verdict as a sentence a CRO or compliance buyer can read. Mapping: PROVED → "We proved: <test_name>, for every possible <vars>." UNVERIFIABLE → "<test_name> talks to the world (database / email / AI / time). The prover can't decide it; tests still cover the cases you wrote." FAILED → "Counterexample found for: <test_name>. The app fails when <example_inputs>." Plus a one-line headline that summarises the bundle in plain English.
