@@ -94,3 +94,64 @@ describe('slot extractors — compile to JS (Cycle 2.2)', () => {
     expect(result.javascript).toMatch(/_regexCaptureRem\s*\(/);
   });
 });
+
+// =============================================================================
+// CYCLE 2.3 — compiler emit (Python): same shape, snake_case names
+// =============================================================================
+describe('slot extractors — compile to Python (Cycle 2.3)', () => {
+  it('EXTRACT_DATETIME emits a call to _extract_datetime', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  dt = extract datetime from note",
+      "  send back dt",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'python_backend' });
+    expect(result.errors).toEqual([]);
+    expect(result.python).toMatch(/_extract_datetime\s*\(/);
+  });
+
+  it('FUZZY_MATCH emits a call to _fuzzy_match with query, list, and threshold', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  pick = fuzzy match 'paint' in note scored at least 0.7",
+      "  send back pick",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'python_backend' });
+    expect(result.errors).toEqual([]);
+    expect(result.python).toMatch(/_fuzzy_match\s*\(/);
+    expect(result.python).toMatch(/0\.7/);
+  });
+
+  it('FUZZY_MATCH without threshold emits None so runtime uses default', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  pick = fuzzy match 'paint' in note",
+      "  send back pick",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'python_backend' });
+    expect(result.errors).toEqual([]);
+    expect(result.python).toMatch(/_fuzzy_match\(\s*"paint"\s*,[^,]+,\s*None\s*\)/);
+  });
+
+  it('EXTRACT_ABOUT emits a call to _extract_about', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  parts = extract about-clause from note",
+      "  send back parts",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'python_backend' });
+    expect(result.errors).toEqual([]);
+    expect(result.python).toMatch(/_extract_about\s*\(/);
+  });
+
+  it('REGEX_CAPTURE_REM emits a call to _regex_capture_rem with the pattern', () => {
+    const source = [
+      "when user sends note to /api/intake:",
+      "  out = find pattern '\\d+' in note returning value and remainder",
+      "  send back out",
+    ].join('\n');
+    const result = compileProgram(source, { target: 'python_backend' });
+    expect(result.errors).toEqual([]);
+    expect(result.python).toMatch(/_regex_capture_rem\s*\(/);
+  });
+});
