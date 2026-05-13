@@ -427,3 +427,81 @@ describe('runtime matcher — Python (Cycle 1.7)', () => {
     }
   });
 });
+
+// =============================================================================
+// CYCLE 1.8 — runtime-extensibility: insert frame at runtime, match against it
+// =============================================================================
+//
+// THIS IS THE LOAD-BEARING PROPERTY of the whole primitive. The reason
+// runtime grammar exists is that frames can be added AT RUNTIME via a
+// regular insert into the storage table, and the matcher picks them up
+// without a recompile. Without this property, the primitive collapses
+// into a hand-rolled keyword table.
+// =============================================================================
+describe('runtime grammar — runtime extensibility (Cycle 1.8)', () => {
+  it('matches against a frame inserted into the storage table at runtime', () => {
+    // Start with an empty registry — no compile-time seed frame for DRINK.
+    const registry = {
+      concepts: { storageTable: 'concepts', frames: [] },
+    };
+    const initialRows = [];
+    const db = {
+      findAll: (_table) => initialRows.slice(),
+      insert: (_table, row) => { initialRows.push(row); },
+    };
+    const match = grammarMatcherModule.makeGrammarMatch(db, registry);
+
+    // Before insert: no match.
+    const before = match('concepts', 'drink water 16oz');
+    expect(before.kind).toBe('no_match');
+
+    // User inserts a new frame at runtime (simulated by pushing a row).
+    db.insert('concepts', {
+      frame_id: 'DRINK_WATER',
+      effect: 'internal',
+      canonical_phrase: 'drink water',
+      synonyms_json: JSON.stringify(['hydrate']),
+      slots_json: JSON.stringify([{ name: 'amount', type: 'text', required: false }]),
+      permission_scope: null,
+      first_n_runs_require_confirm: null,
+    });
+
+    // After insert: same matcher call now succeeds. NO recompile.
+    const after = match('concepts', 'drink water 16oz');
+    expect(after.kind).toBe('matched');
+    expect(after.frame.frame_id).toBe('DRINK_WATER');
+    expect(after.slotValues.amount).toBe('16oz');
+  });
+
+  it('runtime row shadows a compile-time frame with the same id', () => {
+    // Registry has TASK; storage table has a different TASK row with a
+    // longer canonical phrase. The runtime row should win.
+    const registry = {
+      concepts: {
+        storageTable: 'concepts',
+        frames: [
+          { frame_id: 'TASK', effect: 'internal', canonical_phrase: 'remind', synonyms: [], slots: [] },
+        ],
+      },
+    };
+    const tableRows = [
+      {
+        frame_id: 'TASK',
+        effect: 'internal',
+        canonical_phrase: 'remind me to',
+        synonyms_json: JSON.stringify([]),
+        slots_json: JSON.stringify([{ name: 'what', type: 'text', required: true }]),
+        permission_scope: null,
+        first_n_runs_require_confirm: null,
+      },
+    ];
+    const db = { findAll: () => tableRows.slice() };
+    const match = grammarMatcherModule.makeGrammarMatch(db, registry);
+    const result = match('concepts', 'remind me to fix the bug');
+    expect(result.kind).toBe('matched');
+    // The runtime row had the longer canonical phrase, and its slot 'what'
+    // is required. Both confirm the runtime row won.
+    expect(result.frame.canonical_phrase).toBe('remind me to');
+    expect(result.slotValues.what).toBe('fix the bug');
+  });
+});
