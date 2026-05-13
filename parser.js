@@ -3428,25 +3428,174 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
     return ctx.i + 1;
   }
 
-  // Human-in-the-loop: ask user to confirm 'message'
+  // Human-in-the-loop: ask user to confirm 'message' [with graduation ...]
+  //
+  // Phase 3 (2026-05-13) extends HUMAN_CONFIRM with an optional `graduation`
+  // clause. Two surface forms — both compile to the same AST shape, differing
+  // only in how many fields they carry:
+  //
+  //   Inline:  ask user to confirm 'X' with graduation after 3 runs
+  //   Block:   ask user to confirm 'X' with graduation:
+  //              after 3 runs
+  //              graduates per: action
+  //              audit table is open_notepad_audits
+  //
+  // `with graduation` without `after N runs` is a validator error
+  // (GRADUATION_THRESHOLD_MISSING). Negative thresholds are also rejected.
+  // Default scope is 'action' (one counter per ask-confirm site). Default
+  // audit table is `Approvals` (matches the existing HUMAN_CONFIRM behavior).
   if (ctx.tokens.length >= 4 && second === 'user' &&
       (ctx.tokens[2].canonical === 'to_connector' || ctx.tokens[2].value === 'to') &&
       ctx.tokens[3].value === 'confirm') {
+    // Scan for "with graduation" suffix on the current line. parseExpression
+    // would otherwise swallow it as part of the message — slice the message
+    // tokens BEFORE that boundary, then parse the trailing clause ourselves.
+    let withGradIdx = -1;
+    for (let k = 4; k < ctx.tokens.length - 1; k++) {
+      const tk = ctx.tokens[k];
+      const tkNext = ctx.tokens[k + 1];
+      const isWith = tk.value === 'with' || tk.canonical === 'with';
+      const isGrad = tkNext.value === 'graduation' || tkNext.canonical === 'graduation';
+      if (isWith && isGrad) { withGradIdx = k; break; }
+    }
+
+    const msgEnd = withGradIdx >= 0 ? withGradIdx : ctx.tokens.length;
+    const msgTokens = ctx.tokens.slice(0, msgEnd);
     let messageExpr = null;
-    if (ctx.tokens.length > 4) {
-      const expr = parseExpression(ctx.tokens, 4, ctx.line);
+    if (msgTokens.length > 4) {
+      const expr = parseExpression(msgTokens, 4, ctx.line);
       if (!expr.error) messageExpr = expr.node;
     }
     if (!messageExpr) {
       ctx.errors.push({ line: ctx.line, message: "ask user to confirm needs a message. Example: ask user to confirm 'Proceed?'" });
       return ctx.i + 1;
     }
-    ctx.body.push({ type: NodeType.HUMAN_CONFIRM, message: messageExpr, line: ctx.line });
+
+    const node = { type: NodeType.HUMAN_CONFIRM, message: messageExpr, line: ctx.line };
+
+    if (withGradIdx >= 0) {
+      // Parse the graduation clause. Two shapes:
+      //   - Inline: tokens after `with graduation` end with "after N runs"
+      //   - Block:  tokens after `with graduation` end with a ":" — then
+      //             subsequent indented child lines carry the fields.
+      const gradTokens = ctx.tokens.slice(withGradIdx + 2);
+      // Block form: the colon is stripped by the line tokenizer before dispatch,
+      // so we detect block-vs-inline by checking the next line's indent. If the
+      // next line is indented deeper than the current ask-confirm line, this
+      // is a block.
+      const nextLine = ctx.lines[ctx.i + 1];
+      const hasIndentedChildren = nextLine && nextLine.indent > ctx.indent;
+      const isBlock = gradTokens.length === 0 && hasIndentedChildren;
+
+      const graduation = { scope: 'action' }; // default
+      const errs = [];
+
+      if (isBlock) {
+        // Walk subsequent lines whose indent > current line indent.
+        // Each child line is one of:
+        //   after N runs
+        //   graduates per: <scope>
+        //   audit table is <name>
+        let j = ctx.i + 1;
+        while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+          const childTokens = ctx.lines[j].tokens || [];
+          const childLine = ctx.lines[j].line || (j + 1);
+          parseGraduationField(childTokens, childLine, graduation, errs);
+          j++;
+        }
+        // Consume the body block by advancing the index past it.
+        ctx.body.push(node);
+        // attach graduation only if we parsed at least one field — even an
+        // empty block must surface the threshold-missing error later.
+        node.graduation = graduation;
+        for (const e of errs) ctx.errors.push(e);
+        return j;
+      } else {
+        // Inline form — gradTokens is "after N runs" (or empty / malformed).
+        parseGraduationField(gradTokens, ctx.line, graduation, errs);
+        node.graduation = graduation;
+        for (const e of errs) ctx.errors.push(e);
+      }
+    }
+
+    ctx.body.push(node);
     return ctx.i + 1;
   }
 
   return undefined; // fall through for other 'ask' forms
 });
+
+/**
+ * Parse one graduation-clause field into an accumulator object.
+ *
+ * Recognized field shapes:
+ *   - "after N runs"                       -> graduation.after_n = N
+ *   - "graduates per: SCOPE"               -> graduation.scope = SCOPE (validator
+ *                                              rejects unknown scopes later)
+ *   - "audit table is NAME"                -> graduation.audit_table = NAME
+ *
+ * Unknown lines push an error so block-form typos surface at compile time
+ * instead of being silently swallowed.
+ *
+ * @param {Array} tokens - tokens for the field line (without the parent's "with graduation")
+ * @param {number} line - 1-based source line number for error reporting
+ * @param {object} graduation - accumulator to mutate (after_n, scope, audit_table)
+ * @param {Array} errs - error list to push to
+ */
+function parseGraduationField(tokens, line, graduation, errs) {
+  if (!tokens || tokens.length === 0) return;
+  const first = tokens[0];
+  const firstV = first.value;
+  const firstC = first.canonical;
+
+  // "after N runs"
+  if (firstV === 'after' || firstC === 'after') {
+    if (tokens.length >= 2 && tokens[1].type === 'number') {
+      graduation.after_n = Number(tokens[1].value);
+      return;
+    }
+    errs.push({ line, message: "graduation needs a positive number of runs. Example: after 3 runs" });
+    return;
+  }
+
+  // "graduates per: SCOPE"
+  if (firstV === 'graduates' || firstC === 'graduates') {
+    // tokens: graduates per : SCOPE  OR  graduates per SCOPE
+    let scopeIdx = -1;
+    for (let k = 1; k < tokens.length; k++) {
+      const tv = tokens[k].value;
+      if (tv === 'per' || tv === ':' ) continue;
+      scopeIdx = k;
+      break;
+    }
+    if (scopeIdx >= 0) {
+      graduation.scope = String(tokens[scopeIdx].value);
+      return;
+    }
+    errs.push({ line, message: "graduates per needs a scope. Example: graduates per: action" });
+    return;
+  }
+
+  // "audit table is NAME"
+  if (firstV === 'audit' || firstC === 'audit') {
+    // audit table is X  -> the value after `is`
+    let nameIdx = -1;
+    for (let k = 1; k < tokens.length; k++) {
+      const tv = tokens[k].value;
+      if (tv === 'table' || tv === 'is' || tv === 'data_shape') continue;
+      nameIdx = k;
+      break;
+    }
+    if (nameIdx >= 0) {
+      graduation.audit_table = String(tokens[nameIdx].value);
+      return;
+    }
+    errs.push({ line, message: "audit table needs a name. Example: audit table is open_notepad_audits" });
+    return;
+  }
+
+  errs.push({ line, message: `Unknown graduation clause '${firstV}'. Expected: after N runs / graduates per: SCOPE / audit table is NAME` });
+}
 
 // HTTP test call: "call POST /api/users with name is 'Alice', email is 'test'"
 CANONICAL_DISPATCH.set('call', (ctx) => {

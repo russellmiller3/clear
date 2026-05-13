@@ -22792,6 +22792,78 @@ when user calls POST /api/process sending data:
 });
 
 // =============================================================================
+// CONFIRM-WITH-GRADUATION (Phase 3 — Lenat-in-Clear, 2026-05-13)
+// "ask user to confirm 'X' with graduation after N runs" — confirm the first N
+// times, auto-fire from call N+1 onward. Extends HUMAN_CONFIRM with an
+// optional `graduation` field. Spec: scripts/phase-3-graduation-spec.md.
+// =============================================================================
+
+describe('Confirm-with-graduation - parser (3.1)', () => {
+  it('inline: parses "with graduation after 3 runs"', () => {
+    const src = `build for javascript backend
+when user calls POST /api/open-notepad sending data:
+  ask user to confirm 'Open Notepad?' with graduation after 3 runs
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const confirm = endpoint.body.find(n => n.type === 'human_confirm');
+    expect(confirm).toBeDefined();
+    expect(confirm.message.value).toBe('Open Notepad?');
+    expect(confirm.graduation).toBeDefined();
+    expect(confirm.graduation.after_n).toBe(3);
+    expect(confirm.graduation.scope).toBe('action');
+  });
+
+  it('plain confirm (no graduation) still parses with graduation absent', () => {
+    const src = `build for javascript backend
+when user calls POST /api/refund sending data:
+  ask user to confirm 'Process refund?'
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const confirm = endpoint.body.find(n => n.type === 'human_confirm');
+    expect(confirm).toBeDefined();
+    expect(confirm.graduation).toBeUndefined();
+  });
+
+  it('block form: parses after N runs + graduates per + audit table', () => {
+    const src = `build for javascript backend
+when user calls POST /api/open-notepad sending data:
+  ask user to confirm 'Open Notepad?' with graduation:
+    after 3 runs
+    graduates per: action
+    audit table is open_notepad_audits
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const confirm = endpoint.body.find(n => n.type === 'human_confirm');
+    expect(confirm.graduation).toBeDefined();
+    expect(confirm.graduation.after_n).toBe(3);
+    expect(confirm.graduation.scope).toBe('action');
+    expect(confirm.graduation.audit_table).toBe('open_notepad_audits');
+  });
+
+  it('block form: graduates per user is captured', () => {
+    const src = `build for javascript backend
+when user calls POST /api/delete-account sending data:
+  requires login
+  ask user to confirm 'Delete account?' with graduation:
+    after 5 runs
+    graduates per: user
+  send back 'queued'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const confirm = endpoint.body.find(n => n.type === 'human_confirm');
+    expect(confirm.graduation.scope).toBe('user');
+    expect(confirm.graduation.after_n).toBe(5);
+  });
+});
+
+// =============================================================================
 // AGENT TESTING (Phase 84)
 // =============================================================================
 
