@@ -99,7 +99,21 @@ function output(data, flags) {
   } else if (!flags.quiet) {
     if (data.error) console.error(`Error: ${data.error}`);
     if (data.errors) data.errors.forEach(e => console.error(`  Line ${e.line}: ${e.message}`));
-    if (data.warnings) data.warnings.forEach(w => console.warn(`  Warning: ${w}`));
+    if (data.warnings) data.warnings.forEach(w => {
+      // Warnings come through as either plain strings or `{ line, message, ... }`
+      // objects depending on which compiler pass emitted them. Both shapes are
+      // legal; the formatter has to handle each. Previously this just
+      // interpolated `w` directly, producing the `[object Object]` cosmetic
+      // bug on every build that surfaced object-shaped warnings.
+      if (typeof w === 'string') {
+        console.warn(`  Warning: ${w}`);
+      } else if (w && typeof w === 'object' && w.message) {
+        const prefix = w.line ? `Line ${w.line}: ` : '';
+        console.warn(`  Warning: ${prefix}${w.message}`);
+      } else {
+        console.warn(`  Warning: ${JSON.stringify(w)}`);
+      }
+    });
     if (data.compileTrace) {
       if (flags.trace) {
         console.error('\n' + data.compileTrace.pasteText);
