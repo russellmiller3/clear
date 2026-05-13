@@ -285,3 +285,110 @@ describe('runtime grammar — compile to Python (Cycle 1.5)', () => {
     expect(py).toMatch(/CREATE TABLE IF NOT EXISTS frameregistries/);
   });
 });
+
+// =============================================================================
+// CYCLE 1.6 — runtime matcher (JS): load frames, resolve input to a frame
+// =============================================================================
+import { createRequire } from 'node:module';
+const _requireForRuntime = createRequire(import.meta.url);
+const grammarMatcherModule = _requireForRuntime('./runtime/grammar-matcher.js');
+
+// Fake db with a tiny in-memory storage. The matcher only needs findAll(table).
+function fakeDb(initialRows) {
+  const rows = Array.isArray(initialRows) ? initialRows.slice() : [];
+  return {
+    findAll: (tableName) => rows,
+    _insert: (row) => { rows.push(row); },
+    _rows: rows,
+  };
+}
+
+describe('runtime matcher — JS (Cycle 1.6)', () => {
+  const seedRegistry = {
+    concepts: {
+      storageTable: 'concepts',
+      frames: [
+        {
+          frame_id: 'TASK',
+          effect: 'internal',
+          canonical_phrase: 'remind me to',
+          synonyms: ['todo:', 'remember to'],
+          slots: [{ name: 'what', type: 'text', required: true }],
+          permission_scope: null,
+          first_n_runs_require_confirm: null,
+        },
+        {
+          frame_id: 'ENERGY_LOG',
+          effect: 'internal',
+          canonical_phrase: 'energy',
+          synonyms: [],
+          slots: [{ name: 'level', type: 'number', required: false }],
+          permission_scope: null,
+          first_n_runs_require_confirm: null,
+        },
+        {
+          frame_id: 'OPEN_NOTEPAD',
+          effect: 'external',
+          canonical_phrase: 'open notepad',
+          synonyms: ['launch notepad'],
+          slots: [],
+          permission_scope: 'spawn:notepad.exe',
+          first_n_runs_require_confirm: 3,
+        },
+      ],
+    },
+  };
+
+  it('matches a canonical phrase prefix and extracts the remainder into the first text slot', () => {
+    const db = fakeDb([]);
+    const match = grammarMatcherModule.makeGrammarMatch(db, seedRegistry);
+    const result = match('concepts', 'remind me to call Marcus');
+    expect(result.kind).toBe('matched');
+    expect(result.frame.frame_id).toBe('TASK');
+    expect(result.slotValues.what).toBe('call Marcus');
+    expect(result.missingSlots).toEqual([]);
+  });
+
+  it('falls back to a synonym prefix when canonical does not match', () => {
+    const db = fakeDb([]);
+    const match = grammarMatcherModule.makeGrammarMatch(db, seedRegistry);
+    const result = match('concepts', 'todo: pick up groceries');
+    expect(result.kind).toBe('matched');
+    expect(result.frame.frame_id).toBe('TASK');
+    expect(result.slotValues.what).toBe('pick up groceries');
+  });
+
+  it('returns no_match when no frame prefix matches', () => {
+    const db = fakeDb([]);
+    const match = grammarMatcherModule.makeGrammarMatch(db, seedRegistry);
+    const result = match('concepts', 'random gibberish input here');
+    expect(result.kind).toBe('no_match');
+    expect(result.frame).toBe(null);
+  });
+
+  it('returns no_match when grammar name does not exist', () => {
+    const db = fakeDb([]);
+    const match = grammarMatcherModule.makeGrammarMatch(db, seedRegistry);
+    const result = match('does_not_exist', 'remind me to call Marcus');
+    expect(result.kind).toBe('no_match');
+  });
+
+  it('picks the longest prefix when multiple frames could match', () => {
+    // Two frames: one canonical 'open' (synthetic short), one canonical 'open notepad'.
+    // Input 'open notepad' should match the longer one.
+    const registry = {
+      concepts: {
+        storageTable: 'concepts',
+        frames: [
+          { frame_id: 'OPEN_ANYTHING', effect: 'internal', canonical_phrase: 'open', synonyms: [], slots: [] },
+          { frame_id: 'OPEN_NOTEPAD', effect: 'external', canonical_phrase: 'open notepad', synonyms: [], slots: [] },
+        ],
+      },
+    };
+    const db = fakeDb([]);
+    const match = grammarMatcherModule.makeGrammarMatch(db, registry);
+    const result = match('concepts', 'open notepad');
+    expect(result.kind).toBe('matched');
+    expect(result.frame.frame_id).toBe('OPEN_NOTEPAD');
+  });
+});
