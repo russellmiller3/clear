@@ -4,7 +4,7 @@
 // Run: npx vite-node clear/clear.test.js
 // =============================================================================
 
-import { describe, it, expect, run } from './lib/testUtils.js';
+import { describe, it, expect, run, describeAsync, itAsync } from './lib/testUtils.js';
 import './runtime-grammar.test.js';
 import './slot-extractors.test.js';
 import { createRequire as _phase5CreateRequire } from 'node:module';
@@ -32275,6 +32275,295 @@ describe('Phase 6.1 — top-level ai provider declaration', () => {
     expect(msg).toMatch(/cohere/);
     expect(msg).toMatch(/anthropic/);
     expect(msg).toMatch(/openrouter/);
+  });
+});
+
+
+// Phase 6.2 — per-call `via provider 'X'` extends ASK_AI, STREAM_AI, CLASSIFY.
+//
+// Three call sites, three test cases:
+//   ASK_AI    → assigned inside an agent body (with or without `returning JSON`)
+//   STREAM_AI → top-level statement inside an endpoint (the inline streaming form)
+//   CLASSIFY  → assigned anywhere
+describe('Phase 6.2 — per-call `via provider` clause', () => {
+  function _findNode(ast, typeName) {
+    const body = ast && ast.body ? ast.body : ast;
+    function walk(nodes) {
+      if (!Array.isArray(nodes)) return null;
+      for (const n of nodes) {
+        if (!n) continue;
+        if (n.type === typeName) return n;
+        if (n.type === 'assign' && n.expression && n.expression.type === typeName) return n.expression;
+        if (n.body) { const h = walk(n.body); if (h) return h; }
+      }
+      return null;
+    }
+    return walk(body);
+  }
+
+  it('parses `via provider` on ASK_AI inside an agent (plain)', () => {
+    const src = [
+      `build for javascript backend`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic via provider 'openrouter'`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const node = _findNode(r.ast, 'ask_ai');
+    expect(node).toBeTruthy();
+    expect(node.provider).toBe('openrouter');
+  });
+
+  it('parses `via provider` on ASK_AI before `returning JSON`', () => {
+    const src = [
+      `build for javascript backend`,
+      `agent 'Picker' receiving topic:`,
+      `  answer = ask ai 'pick a name' with topic via provider 'google' returning JSON:`,
+      `    name, text`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const node = _findNode(r.ast, 'ask_ai');
+    expect(node).toBeTruthy();
+    expect(node.provider).toBe('google');
+  });
+
+  it('parses `via provider` on STREAM_AI inside an endpoint', () => {
+    const src = [
+      `when user sends body to /api/reply:`,
+      `  ask ai 'reply' with body via provider 'openrouter'`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const node = _findNode(r.ast, 'stream_ai');
+    expect(node).toBeTruthy();
+    expect(node.provider).toBe('openrouter');
+  });
+
+  it('parses `via provider` on CLASSIFY (assign form inside endpoint)', () => {
+    const src = [
+      `when user sends payload to /api/route:`,
+      `  intent = classify payload as 'order', 'return', 'general' via provider 'google'`,
+      `  send back intent`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const node = _findNode(r.ast, 'classify');
+    expect(node).toBeTruthy();
+    expect(node.provider).toBe('google');
+  });
+
+  it('rejects an unknown provider name on a per-call clause', () => {
+    const src = [
+      `build for javascript backend`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic via provider 'cohere'`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg).toMatch(/cohere/);
+  });
+
+  it('defaults provider to null when no clause given (back-compat)', () => {
+    const src = [
+      `build for javascript backend`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const node = _findNode(r.ast, 'ask_ai');
+    expect(node).toBeTruthy();
+    expect(node.provider == null).toBe(true);
+  });
+});
+
+// Phase 6.3 — Compiler+Runtime: the emitted _askAI / _askAIStream helpers
+// accept a trailing `opts` carrying the provider. Resolution at runtime:
+//   per-call opts.provider  >  env CLEAR_AI_PROVIDER  >  top-level decl  >  'anthropic'
+describe('Phase 6.3 — compiler emits provider routing into _askAI / _askAIStream', () => {
+  it('JS: structured-output ASK_AI threads provider into _askAI call', () => {
+    const src = [
+      `build for javascript backend`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic via provider 'openrouter' returning JSON:`,
+      `    name, text`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const code = String(r.javascript || '');
+    expect(code).toMatch(/_askAI\(/);
+    expect(code).toMatch(/provider:\s*['"]openrouter['"]/);
+  });
+
+  it('JS: streaming-default ASK_AI threads provider into _askAIStream call', () => {
+    const src = [
+      `build for javascript backend`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic via provider 'openrouter'`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const code = String(r.javascript || '');
+    expect(code).toMatch(/_askAIStream/);
+    expect(code).toMatch(/provider:\s*['"]openrouter['"]/);
+  });
+
+  it('JS: top-level `ai provider is openrouter` sets a runtime default constant', () => {
+    const src = [
+      `build for javascript backend`,
+      `ai provider is openrouter`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic returning JSON:`,
+      `    name, text`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const code = String(r.javascript || '');
+    expect(code).toMatch(/_CLEAR_AI_DEFAULT_PROVIDER\s*=\s*['"]openrouter['"]/);
+  });
+
+  it('JS: per-call override beats top-level decl (both appear in emitted code)', () => {
+    const src = [
+      `build for javascript backend`,
+      `ai provider is anthropic`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic via provider 'google' returning JSON:`,
+      `    name, text`,
+      `  send back answer`,
+    ].join('\n');
+    const r = compileProgram(src);
+    expect(r.errors).toEqual([]);
+    const code = String(r.javascript || '');
+    expect(code).toMatch(/_CLEAR_AI_DEFAULT_PROVIDER\s*=\s*['"]anthropic['"]/);
+    expect(code).toMatch(/provider:\s*['"]google['"]/);
+  });
+});
+
+// Phase 6.4 — Runtime: the generated `_askAI` helper sends the correct HTTP
+// shape per provider. Extract from compiled output, sandbox with a mocked
+// fetch, assert headers + body. Three providers + default + env fallback.
+await describeAsync('Phase 6.4 — runtime HTTP shape per provider (mocked fetch)', async () => {
+  function _extractAskAi(code) {
+    const idx = code.indexOf('async function _askAI(');
+    if (idx < 0) return null;
+    let depth = 0, started = false, end = -1;
+    for (let i = idx; i < code.length; i++) {
+      const ch = code[i];
+      if (ch === '{') { depth++; started = true; }
+      else if (ch === '}') { depth--; if (started && depth === 0) { end = i + 1; break; } }
+    }
+    if (end < 0) return null;
+    const src = code.slice(idx, end);
+    return new Function('fetch', 'process', 'AbortSignal', `${src}; return _askAI;`);
+  }
+
+  function _compileAndExtract(clearSrc) {
+    const r = compileProgram(clearSrc);
+    if (r.errors.length) throw new Error('compile errors: ' + JSON.stringify(r.errors));
+    const code = String(r.javascript || '');
+    const factory = _extractAskAi(code);
+    if (!factory) throw new Error('could not extract _askAI from emitted code');
+    return factory;
+  }
+
+  function _mockFetchOnce(captured, responseBody) {
+    return async (url, init) => {
+      captured.url = url;
+      captured.method = (init && init.method) || 'GET';
+      captured.headers = (init && init.headers) || {};
+      captured.body = init && init.body;
+      return {
+        ok: true,
+        status: 200,
+        async json() { return responseBody; },
+        async text() { return JSON.stringify(responseBody); },
+      };
+    };
+  }
+
+  function srcFor(viaProvider) {
+    const via = viaProvider ? ` via provider '${viaProvider}'` : '';
+    return [
+      `build for javascript backend`,
+      `agent 'A' receiving topic:`,
+      `  answer = ask ai 'hi' with topic${via} returning JSON:`,
+      `    name, text`,
+      `  send back answer`,
+    ].join('\n');
+  }
+
+  await itAsync('Anthropic shape — x-api-key header + content-list response', async () => {
+    const factory = _compileAndExtract(srcFor(null));
+    const captured = {};
+    const mockFetch = _mockFetchOnce(captured, { content: [{ type: 'text', text: '{"name":"OK"}' }] });
+    const mockProcess = { env: { ANTHROPIC_API_KEY: 'sk-test' } };
+    const _askAI = factory(mockFetch, mockProcess, AbortSignal);
+    const out = await _askAI('hello', null, null, null, { provider: 'anthropic' });
+    expect(out && out.name).toBe('OK');
+    expect(captured.url).toMatch(/api\.anthropic\.com/);
+    expect(captured.headers['x-api-key']).toBe('sk-test');
+    expect(captured.headers['anthropic-version']).toBe('2023-06-01');
+    const body = JSON.parse(captured.body);
+    expect(body.messages[0].content).toMatch(/hello/);
+    expect(body.model).toMatch(/claude/);
+  });
+
+  await itAsync('OpenRouter shape — Authorization Bearer + OpenAI choices response', async () => {
+    const factory = _compileAndExtract(srcFor('openrouter'));
+    const captured = {};
+    const mockFetch = _mockFetchOnce(captured, { choices: [{ message: { role: 'assistant', content: '{"name":"ROUTED"}' } }] });
+    const mockProcess = { env: { OPENROUTER_API_KEY: 'or-test' } };
+    const _askAI = factory(mockFetch, mockProcess, AbortSignal);
+    const out = await _askAI('hello', null, null, null, { provider: 'openrouter' });
+    expect(out && out.name).toBe('ROUTED');
+    expect(captured.url).toMatch(/openrouter\.ai/);
+    expect(captured.headers['Authorization']).toBe('Bearer or-test');
+    const body = JSON.parse(captured.body);
+    expect(Array.isArray(body.messages)).toBe(true);
+    expect(body.messages.find(m => m.role === 'user')).toBeTruthy();
+  });
+
+  await itAsync('Google Gemini shape — ?key= + contents/parts body', async () => {
+    const factory = _compileAndExtract(srcFor('google'));
+    const captured = {};
+    const mockFetch = _mockFetchOnce(captured, { candidates: [{ content: { parts: [{ text: '{"name":"GEM"}' }] } }] });
+    const mockProcess = { env: { GEMINI_API_KEY: 'gm-test' } };
+    const _askAI = factory(mockFetch, mockProcess, AbortSignal);
+    const out = await _askAI('hello', null, null, null, { provider: 'google' });
+    expect(out && out.name).toBe('GEM');
+    expect(captured.url).toMatch(/generativelanguage\.googleapis\.com/);
+    expect(captured.url).toMatch(/key=gm-test/);
+    const body = JSON.parse(captured.body);
+    expect(body.contents[0].parts[0].text).toMatch(/hello/);
+  });
+
+  await itAsync('Defaults to anthropic when no provider set anywhere', async () => {
+    const factory = _compileAndExtract(srcFor(null));
+    const captured = {};
+    const mockFetch = _mockFetchOnce(captured, { content: [{ type: 'text', text: '{"name":"D"}' }] });
+    const mockProcess = { env: { ANTHROPIC_API_KEY: 'sk-test' } };
+    const _askAI = factory(mockFetch, mockProcess, AbortSignal);
+    await _askAI('hi', null, null, null);
+    expect(captured.url).toMatch(/api\.anthropic\.com/);
+  });
+
+  await itAsync('Reads CLEAR_AI_PROVIDER from env when no per-call override', async () => {
+    const factory = _compileAndExtract(srcFor(null));
+    const captured = {};
+    const mockFetch = _mockFetchOnce(captured, { choices: [{ message: { content: '{"name":"E"}' } }] });
+    const mockProcess = { env: { CLEAR_AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'or-test' } };
+    const _askAI = factory(mockFetch, mockProcess, AbortSignal);
+    await _askAI('hi', null, null, null);
+    expect(captured.url).toMatch(/openrouter\.ai/);
   });
 });
 

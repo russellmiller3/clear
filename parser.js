@@ -2787,15 +2787,39 @@ CANONICAL_DISPATCH.set('owner', (ctx) => {
 // per-call `via provider 'X'` clause beats this; env var `CLEAR_AI_PROVIDER`
 // beats this when no per-call override; this decl beats the hard-coded
 // 'anthropic' default. Valid names: anthropic, openrouter, google, openai.
+const VALID_AI_PROVIDERS = ['anthropic', 'openrouter', 'google', 'openai'];
+
+// Shared helper: tries to consume a `via provider 'X'` clause starting at
+// `pos`. Returns `{ provider, nextPos, error }`. `provider === null` means no
+// clause present (back-compat). `error` is set when the clause was present but
+// the name isn't a known provider — the caller decides whether to push it to
+// ctx.errors or return it.
+function tryConsumeViaProvider(tokens, pos, line) {
+  if (pos >= tokens.length) return { provider: null, nextPos: pos };
+  if (tokens[pos].value !== 'via') return { provider: null, nextPos: pos };
+  if (pos + 1 >= tokens.length || tokens[pos + 1].value !== 'provider') return { provider: null, nextPos: pos };
+  if (pos + 2 >= tokens.length || tokens[pos + 2].type !== TokenType.STRING) {
+    return { provider: null, nextPos: pos, error: `via provider needs a quoted name. Example: via provider 'openrouter'` };
+  }
+  const rawName = String(tokens[pos + 2].value).toLowerCase();
+  if (!VALID_AI_PROVIDERS.includes(rawName)) {
+    return {
+      provider: null,
+      nextPos: pos + 3,
+      error: `ai provider '${rawName}' isn't supported — try one of: ${VALID_AI_PROVIDERS.join(', ')}`,
+    };
+  }
+  return { provider: rawName, nextPos: pos + 3 };
+}
+
 CANONICAL_DISPATCH.set('ai', (ctx) => {
     if (ctx.tokens.length < 4) return undefined;
     if (ctx.tokens[1].value !== 'provider') return undefined;
     if (!(ctx.tokens[2].canonical === 'is' || ctx.tokens[2].type === TokenType.ASSIGN)) return undefined;
     const nameTok = ctx.tokens[3];
     const rawName = String(nameTok.value).toLowerCase();
-    const VALID_PROVIDERS = ['anthropic', 'openrouter', 'google', 'openai'];
-    if (!VALID_PROVIDERS.includes(rawName)) {
-      ctx.errors.push({ line: ctx.line, message: `ai provider '${rawName}' isn't supported — try one of: ${VALID_PROVIDERS.join(', ')}` });
+    if (!VALID_AI_PROVIDERS.includes(rawName)) {
+      ctx.errors.push({ line: ctx.line, message: `ai provider '${rawName}' isn't supported — try one of: ${VALID_AI_PROVIDERS.join(', ')}` });
       return ctx.i + 1;
     }
     ctx.body.push({ type: NodeType.AI_PROVIDER_DECL, provider: rawName, line: ctx.line });
@@ -3444,10 +3468,19 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
-      const cExpr = parseExpression(tokens, pos, ctx.line);
-      if (!cExpr.error) { context = cExpr.node; pos = cExpr.pos || pos + 1; }
+      // Stop the context expression before a trailing `via` clause so the
+      // provider override doesn't get folded into the context expression.
+      const viaIdx = tokens.findIndex((t, i) => i >= pos && t.value === 'via');
+      const segEnd = viaIdx >= 0 ? viaIdx : undefined;
+      const cExpr = parseExpression(tokens, pos, ctx.line, segEnd);
+      if (!cExpr.error) { context = cExpr.node; pos = cExpr.nextPos || cExpr.pos || pos + 1; }
     }
-    ctx.body.push({ type: NodeType.STREAM_AI, prompt, context, noStream, line: ctx.line });
+    // Per-call `via provider 'X'` (Phase 6.2)
+    const viaResult = tryConsumeViaProvider(tokens, pos, ctx.line);
+    if (viaResult.error) ctx.errors.push({ line: ctx.line, message: viaResult.error });
+    if (viaResult.provider != null) pos = viaResult.nextPos;
+    const provider = viaResult.provider;
+    ctx.body.push({ type: NodeType.STREAM_AI, prompt, context, noStream, provider, line: ctx.line });
     return ctx.i + 1;
   }
 
@@ -8177,7 +8210,14 @@ function parseDefineAs(tokens, line) {
         break;
       }
     }
-    return { node: assignNode(name, { type: NodeType.CLASSIFY, input, categories, line }, line) };
+    // Per-call `via provider 'X'` (Phase 6.2)
+    let provider = null;
+    {
+      const v = tryConsumeViaProvider(tokens, pos, line);
+      if (v.error) return { error: v.error };
+      if (v.provider != null) { provider = v.provider; pos = v.nextPos; }
+    }
+    return { node: assignNode(name, { type: NodeType.CLASSIFY, input, categories, provider, line }, line) };
   }
 
   // Check for "predict with MODEL using FEATURES" (define-as path)
@@ -10911,8 +10951,9 @@ function parseAssignment(tokens, line) {
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
       // Parse context — supports comma-separated: ask ai 'prompt' with X, Y, Z
-      // Stop before 'returning' or 'using' keywords
-      const stopIdx = tokens.findIndex((t, i) => i >= pos && (t.value === 'returning' || t.value === 'using'));
+      // Stop before 'returning', 'using', or 'via' keywords so a `via provider`
+      // clause (Phase 6.2) doesn't get folded into the context expression.
+      const stopIdx = tokens.findIndex((t, i) => i >= pos && (t.value === 'returning' || t.value === 'using' || t.value === 'via'));
       const endPos = stopIdx >= 0 ? stopIdx : undefined;
       // Check for comma-separated contexts: collect into list if multiple
       const contexts = [];
@@ -10931,6 +10972,14 @@ function parseAssignment(tokens, line) {
         context = { type: 'multi_context', contexts, line };
       }
     }
+    // Per-call `via provider 'X'` (Phase 6.2). The clause may appear before
+    // OR after `using`/`returning` — try once here, again after `using`.
+    let provider = null;
+    {
+      const v = tryConsumeViaProvider(tokens, pos, line);
+      if (v.error) return { error: v.error };
+      if (v.provider != null) { provider = v.provider; pos = v.nextPos; }
+    }
     // Check for "using 'model-name'" clause
     let model = null;
     if (pos < tokens.length && tokens[pos].value === 'using') {
@@ -10939,6 +10988,12 @@ function parseAssignment(tokens, line) {
         model = tokens[pos].value;
         pos++;
       }
+    }
+    // Second chance at `via provider` (e.g. `... using 'm' via provider 'p'`)
+    if (provider == null) {
+      const v = tryConsumeViaProvider(tokens, pos, line);
+      if (v.error) return { error: v.error };
+      if (v.provider != null) { provider = v.provider; pos = v.nextPos; }
     }
     // Check for "returning:" or "returning JSON text:" at end of line
     // (structured output schema follows as indented block)
@@ -10949,7 +11004,7 @@ function parseAssignment(tokens, line) {
       // Skip optional "JSON" and "text" qualifier words
       while (pos < tokens.length && (tokens[pos].value === 'JSON' || tokens[pos].value === 'json' || tokens[pos].value === 'text')) pos++;
     }
-    return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
+    return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, provider, line }, hasSchema };
   }
 
   // Check for "run workflow 'Name' with ..." (workflow invocation)
@@ -11321,7 +11376,14 @@ function parseAssignment(tokens, line) {
         break;
       }
     }
-    return { name, expression: { type: NodeType.CLASSIFY, input, categories, line } };
+    // Per-call `via provider 'X'` (Phase 6.2)
+    let provider = null;
+    {
+      const v = tryConsumeViaProvider(tokens, pos, line);
+      if (v.error) return { error: v.error };
+      if (v.provider != null) { provider = v.provider; pos = v.nextPos; }
+    }
+    return { name, expression: { type: NodeType.CLASSIFY, input, categories, provider, line } };
   }
 
   // Check for "predict with MODEL using FEATURE and FEATURE" on the right side
