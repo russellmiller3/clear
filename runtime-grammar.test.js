@@ -505,3 +505,44 @@ describe('runtime grammar — runtime extensibility (Cycle 1.8)', () => {
     expect(result.slotValues.what).toBe('fix the bug');
   });
 });
+
+// =============================================================================
+// CYCLE 1.9 — validator: on-match body references undeclared slot → error
+// =============================================================================
+describe('runtime grammar — slot-unknown validation (Cycle 1.9)', () => {
+  it('errors with RUNTIME_GRAMMAR_SLOT_UNKNOWN when on-match body uses an undeclared slot', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+      "    slots:",
+      "      what is text, required",
+      "    on match:",
+      "      show match's whta",
+    ].join('\n');
+    const result = compileProgram(source);
+    // The frame declared slot 'what' but the body references 'whta'.
+    const err = result.errors.find(e => /RUNTIME_GRAMMAR_SLOT_UNKNOWN|slot 'whta'/i.test(e.message));
+    expect(err).toBeTruthy();
+    expect(err.message).toMatch(/TASK/);
+    expect(err.message.toLowerCase()).toMatch(/whta|declared|slots/);
+  });
+
+  it('does NOT error when on-match body references a declared slot', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+      "    slots:",
+      "      what is text, required",
+      "    on match:",
+      "      show match's what",
+    ].join('\n');
+    const result = compileProgram(source);
+    // No SLOT_UNKNOWN error for the well-formed body.
+    const slotErr = result.errors.find(e => /RUNTIME_GRAMMAR_SLOT_UNKNOWN/.test(e.message));
+    expect(slotErr).toBe(undefined);
+  });
+});
