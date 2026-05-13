@@ -7892,6 +7892,12 @@ function _compileNodeInner(node, ctx) {
     case NodeType.TARGET:
     case NodeType.REQUIREMENTS:
     case NodeType.THEME:
+    case NodeType.AI_PROVIDER_DECL:
+      // Declarations consumed by the body-walking emit passes (which look them
+      // up via `body.find(n => n.type === NodeType.X)` and emit the resulting
+      // constant or directive in the right place). Returning null here keeps
+      // them from falling through to the show/log compile path that would
+      // mistake them for expressions and route them through exprToCode.
       return null;
 
     case NodeType.PLACEHOLDER: {
@@ -11275,8 +11281,22 @@ export function exprToCode(expr, ctx) {
       return ctx.lang === 'python' ? '# ERROR: unknown file op' : '/* ERROR: unknown file op */';
     }
 
-    default:
-      return ctx.lang === 'python' ? '# ERROR' : '/* ERROR */';
+    default: {
+      // Silent /* ERROR */ fallthrough used to leave code that "compiled
+      // successfully" but threw at runtime. Now the failure is loud at
+      // BOTH compile time (via the warnings array — the cli surfaces it)
+      // AND runtime (the emitted code throws the same useful diagnostic
+      // when reached). Names the expression type and source line so the
+      // gap is debuggable instead of a `/* ERROR */` mystery.
+      const exprType = expr && expr.type ? expr.type : 'unknown';
+      const lineHint = expr && expr.line ? ` at line ${expr.line}` : '';
+      const msg = `compiler gap: no exprToCode case for expression type "${exprType}"${lineHint}. ` +
+        `This usually means a new node type was added to the parser without a matching emit case. ` +
+        `Open the parser/compiler to see the AST shape; add a case to exprToCode.`;
+      if (ctx.warnings) ctx.warnings.push({ line: expr?.line || 0, message: msg, code: 'EXPR_EMIT_MISSING', exprType });
+      if (ctx.lang === 'python') return `(_ for _ in ()).throw(NotImplementedError(${JSON.stringify(msg)}))`;
+      return `(() => { throw new Error(${JSON.stringify(msg)}); })()`;
+    }
   }
 }
 
