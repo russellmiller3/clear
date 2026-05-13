@@ -595,31 +595,95 @@ export const UTILITY_FUNCTIONS = [
     throw err;
   }
 }`, deps: ['_clearError'] },
-  { name: '_askAI', code: `async function _askAI(prompt, context, schema, model) {
-  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
-  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
-  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  { name: '_askAI', code: `/**
+ * _askAI — call an AI provider (Anthropic, OpenRouter, Google Gemini, OpenAI)
+ * with structured-output support.
+ *
+ * Resolution order for the provider (Phase 6):
+ *   1. opts.provider  (set by a per-call \`via provider 'X'\` clause)
+ *   2. process.env.CLEAR_AI_PROVIDER
+ *   3. _CLEAR_AI_DEFAULT_PROVIDER  (set by a top-level \`ai provider is X\`)
+ *   4. 'anthropic'
+ *
+ * Each provider has its own HTTP shape; this function is the single
+ * dispatch point so call sites stay clean.
+ */
+async function _askAI(prompt, context, schema, model, opts) {
+  const _CLEAR_AI_MODELS = {
+    anthropic:  "claude-sonnet-4-20250514",
+    openrouter: "google/gemini-2.0-flash-exp",
+    google:     "gemini-2.0-flash-exp",
+    openai:     "gpt-4o-mini",
+  };
+  const provider = (opts && opts.provider)
+    || process.env.CLEAR_AI_PROVIDER
+    || (typeof _CLEAR_AI_DEFAULT_PROVIDER !== 'undefined' ? _CLEAR_AI_DEFAULT_PROVIDER : null)
+    || 'anthropic';
+  // Build the system-prompt-style JSON-schema instruction (shared across providers).
   let content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
   if (schema) {
     const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\\n");
     content += "\\n\\nRespond with ONLY a JSON object in this exact shape, no other text:\\n{\\n" + fields + "\\n}";
   }
-  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
-  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
   function parseResult(text) {
     if (!schema) return text;
-    // Extract JSON from response (may have markdown fences)
     const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
     try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
   }
+  // Provider-specific request setup. Each branch returns { endpoint, headers, payload, extract }.
+  function _setup(provider) {
+    const _model = model || _CLEAR_AI_MODELS[provider] || _CLEAR_AI_MODELS.anthropic;
+    if (provider === 'anthropic') {
+      const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+      if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+      return {
+        endpoint: process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages",
+        headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+        payload: JSON.stringify({ model: _model, max_tokens: 1024, messages: [{ role: "user", content }] }),
+        extract: data => data.content[0].text,
+      };
+    }
+    if (provider === 'openrouter') {
+      const key = process.env.OPENROUTER_API_KEY;
+      if (!key) throw new Error("Set OPENROUTER_API_KEY environment variable to use 'via provider openrouter'");
+      return {
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        payload: JSON.stringify({ model: _model, max_tokens: 1024, messages: [{ role: "user", content }], stream: false }),
+        extract: data => data.choices[0].message.content,
+      };
+    }
+    if (provider === 'google') {
+      const key = process.env.GEMINI_API_KEY;
+      if (!key) throw new Error("Set GEMINI_API_KEY environment variable to use 'via provider google'");
+      return {
+        endpoint: "https://generativelanguage.googleapis.com/v1beta/models/" + _model + ":generateContent?key=" + key,
+        headers: { "Content-Type": "application/json" },
+        payload: JSON.stringify({ contents: [{ parts: [{ text: content }] }], generationConfig: { maxOutputTokens: 1024 } }),
+        extract: data => data.candidates[0].content.parts[0].text,
+      };
+    }
+    if (provider === 'openai') {
+      const key = process.env.OPENAI_API_KEY;
+      if (!key) throw new Error("Set OPENAI_API_KEY environment variable to use 'via provider openai'");
+      return {
+        endpoint: "https://api.openai.com/v1/chat/completions",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        payload: JSON.stringify({ model: _model, max_tokens: 1024, messages: [{ role: "user", content }] }),
+        extract: data => data.choices[0].message.content,
+      };
+    }
+    throw new Error("Unknown AI provider: " + provider);
+  }
+  const { endpoint, headers, payload, extract } = _setup(provider);
   // Fetch with exponential-backoff retry on 429 / 5xx / network timeouts.
   // Delays: 1s, 2s, 4s (capped at 8s). 4xx user errors surface immediately.
   let lastFetchErr = null;
   for (let _attempt = 0; _attempt <= 3; _attempt++) {
     try {
       const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(30000) });
-      if (r.ok) { const data = await r.json(); return parseResult(data.content[0].text); }
+      if (r.ok) { const data = await r.json(); return parseResult(extract(data)); }
       if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
         await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
         continue;
@@ -635,7 +699,9 @@ export const UTILITY_FUNCTIONS = [
       break;
     }
   }
-  // Proxy fallback: fetch may not respect HTTP_PROXY, fall back to curl.
+  // Proxy fallback (anthropic only — others use fetch-only): fetch may not
+  // respect HTTP_PROXY in some Node builds, fall back to curl.
+  if (provider !== 'anthropic') throw lastFetchErr;
   if (!process.env.HTTP_PROXY && !process.env.HTTPS_PROXY && !process.env.http_proxy) throw lastFetchErr;
   const { execSync } = require("child_process");
   const tmp = "/tmp/_askAI_" + Date.now() + ".json";
@@ -646,7 +712,7 @@ export const UTILITY_FUNCTIONS = [
     require("fs").unlinkSync(tmp);
     const data = JSON.parse(out);
     if (data.error) throw new Error("AI error: " + data.error.message);
-    return parseResult(data.content[0].text);
+    return parseResult(extract(data));
   } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
 }`, deps: [] },
   { name: '_askAIWithTools', code: `async function _askAIWithTools(prompt, context, tools, toolFns, model) {
@@ -705,15 +771,61 @@ export const UTILITY_FUNCTIONS = [
   }
   throw new Error("Agent exceeded maximum tool use turns (10)");
 }`, deps: [] },
-  { name: '_askAIStream', code: `async function* _askAIStream(prompt, context, model) {
-  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
-  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
-  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  { name: '_askAIStream', code: `/**
+ * _askAIStream — streaming version of _askAI. Yields text chunks as they
+ * arrive over SSE. Provider resolution mirrors _askAI (Phase 6).
+ *
+ * Streaming shapes per provider:
+ *   - Anthropic:  SSE 'content_block_delta' carrying { delta: { text } }
+ *   - OpenRouter: SSE OpenAI-shape carrying { choices: [{ delta: { content } }] }
+ *   - OpenAI:     same as OpenRouter
+ *   - Google:     direct generateContent doesn't stream cleanly via SSE; we
+ *                 fall back to a single non-streaming call and yield the
+ *                 whole answer in one chunk.
+ */
+async function* _askAIStream(prompt, context, model, opts) {
+  const _CLEAR_AI_MODELS = {
+    anthropic:  "claude-sonnet-4-20250514",
+    openrouter: "google/gemini-2.0-flash-exp",
+    google:     "gemini-2.0-flash-exp",
+    openai:     "gpt-4o-mini",
+  };
+  const provider = (opts && opts.provider)
+    || process.env.CLEAR_AI_PROVIDER
+    || (typeof _CLEAR_AI_DEFAULT_PROVIDER !== 'undefined' ? _CLEAR_AI_DEFAULT_PROVIDER : null)
+    || 'anthropic';
   const content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
-  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 4096, stream: true, messages: [{ role: "user", content }] });
-  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
-  // Retry only the initial connect on 429 / 5xx / network timeouts. Once the
-  // stream starts yielding chunks we can't retry mid-stream.
+  const _model = model || _CLEAR_AI_MODELS[provider] || "claude-sonnet-4-20250514";
+  // Google Gemini direct API doesn't expose SSE in a way that maps cleanly
+  // onto Clear's "stream word-by-word" model. Fall back to a single _askAI
+  // call and yield the complete answer in one chunk.
+  if (provider === 'google') {
+    const text = await _askAI(prompt, context, null, model, opts);
+    if (text) yield text;
+    return;
+  }
+  let endpoint, headers, deltaExtractor;
+  if (provider === 'anthropic') {
+    const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+    if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+    endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+    headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+    deltaExtractor = evt => (evt.type === "content_block_delta" && evt.delta && evt.delta.text) ? evt.delta.text : null;
+  } else if (provider === 'openrouter' || provider === 'openai') {
+    const envKey = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY';
+    const key = process.env[envKey];
+    if (!key) throw new Error("Set " + envKey + " environment variable to use 'via provider " + provider + "'");
+    endpoint = provider === 'openrouter'
+      ? "https://openrouter.ai/api/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
+    headers = { "Content-Type": "application/json", "Authorization": "Bearer " + key };
+    deltaExtractor = evt => (evt.choices && evt.choices[0] && evt.choices[0].delta && evt.choices[0].delta.content) || null;
+  } else {
+    throw new Error("Unknown AI provider for streaming: " + provider);
+  }
+  const payload = (provider === 'anthropic')
+    ? JSON.stringify({ model: _model, max_tokens: 4096, stream: true, messages: [{ role: "user", content }] })
+    : JSON.stringify({ model: _model, max_tokens: 4096, stream: true, messages: [{ role: "user", content }] });
   let r = null, lastErr = null;
   for (let _attempt = 0; _attempt <= 3; _attempt++) {
     try {
@@ -750,13 +862,12 @@ export const UTILITY_FUNCTIONS = [
       if (data === "[DONE]") return;
       try {
         const evt = JSON.parse(data);
-        if (evt.type === "content_block_delta" && evt.delta?.text) {
-          yield evt.delta.text;
-        }
+        const chunk = deltaExtractor(evt);
+        if (chunk) yield chunk;
       } catch {}
     }
   }
-}`, deps: [] },
+}`, deps: ['_askAI'] },
   { name: '_classifyIntent', code: `async function _classifyIntent(input, categories) {
   const prompt = "Classify the following input into exactly one of these categories: " + categories.join(", ") + ".\\n\\nInput: " + String(input) + "\\n\\nRespond with ONLY the category name, nothing else.";
   const response = await _askAI(prompt, null, null, "claude-haiku-4-5-20251001");
@@ -10785,15 +10896,33 @@ export function exprToCode(expr, ctx) {
       }
       const schema = expr.schema ? JSON.stringify(expr.schema) : null;
       const model = expr.model ? JSON.stringify(expr.model) : null;
+      // Phase 6: per-call `via provider 'X'` threads to opts.provider so the
+      // runtime helper routes to the right HTTP shape. When unset the runtime
+      // falls back to env CLEAR_AI_PROVIDER → top-level decl → 'anthropic'.
+      const optsJS = expr.provider ? `{ provider: ${JSON.stringify(expr.provider)} }` : null;
+      const optsPy = expr.provider ? `{"provider": ${JSON.stringify(expr.provider)}}` : null;
       // Streaming mode: use _askAIStream async generator
       if (ctx.streamMode) {
-        return context ? `_askAIStream(${prompt}, ${context}, ${model || 'null'})` : `_askAIStream(${prompt}, null, ${model || 'null'})`;
+        const ctxArg = context || 'null';
+        const modelArg = model || 'null';
+        return optsJS
+          ? `_askAIStream(${prompt}, ${ctxArg}, ${modelArg}, ${optsJS})`
+          : `_askAIStream(${prompt}, ${ctxArg}, ${modelArg})`;
       }
       if (ctx.lang === 'python') {
-        if (schema) return `await _ask_ai(${prompt}, ${context || 'None'}, ${schema})`;
+        const ctxArg = context || 'None';
+        if (schema) {
+          return optsPy
+            ? `await _ask_ai(${prompt}, ${ctxArg}, ${schema}, None, ${optsPy})`
+            : `await _ask_ai(${prompt}, ${ctxArg}, ${schema})`;
+        }
+        if (optsPy) return `await _ask_ai(${prompt}, ${ctxArg}, None, None, ${optsPy})`;
         return context ? `await _ask_ai(${prompt}, ${context})` : `await _ask_ai(${prompt})`;
       }
-      if (schema || model) return `await _askAI(${prompt}, ${context || 'null'}, ${schema || 'null'}, ${model || 'null'})`;
+      if (schema || model || optsJS) {
+        const tail = optsJS ? `, ${optsJS}` : '';
+        return `await _askAI(${prompt}, ${context || 'null'}, ${schema || 'null'}, ${model || 'null'}${tail})`;
+      }
       return context ? `await _askAI(${prompt}, ${context})` : `await _askAI(${prompt})`;
     }
 
@@ -11191,6 +11320,11 @@ function compileToJS(body, errors, sourceMap = false, streamingAgentNames = new 
   const bodyText = bodyLines.join('\n');
   const usedUtils = _getUsedUtilities(bodyText);
   if (usedUtils.length > 0) {
+    // Phase 6: top-level `ai provider is X` constant for the runtime helpers.
+    const providerDecl = body.find(n => n && n.type === NodeType.AI_PROVIDER_DECL);
+    if (providerDecl) {
+      lines.push(`const _CLEAR_AI_DEFAULT_PROVIDER = ${JSON.stringify(providerDecl.provider)};`);
+    }
     for (const util of usedUtils) lines.push(util);
     lines.push('');
   }
@@ -15808,6 +15942,12 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   const usedUtils = _getUsedUtilities(bodyText);
   if (usedUtils.length > 0) {
     lines.push('// Built-in utilities');
+    // Phase 6: top-level `ai provider is X` becomes a constant the AI helpers
+    // read as a default when no per-call override + no env var is set.
+    const providerDecl = body.find(n => n && n.type === NodeType.AI_PROVIDER_DECL);
+    if (providerDecl) {
+      lines.push(`const _CLEAR_AI_DEFAULT_PROVIDER = ${JSON.stringify(providerDecl.provider)};`);
+    }
     for (const util of usedUtils) lines.push(util);
     lines.push('');
   }
@@ -16029,6 +16169,13 @@ function compileToBrowserServer(body, errors) {
   // Tree-shake utilities
   const bodyText = bodyLines.join('\n');
   const usedUtils = _getUsedUtilities(bodyText);
+  // Phase 6: top-level `ai provider is X` constant.
+  {
+    const providerDecl = body.find(n => n && n.type === NodeType.AI_PROVIDER_DECL);
+    if (providerDecl) {
+      lines.push(`const _CLEAR_AI_DEFAULT_PROVIDER = ${JSON.stringify(providerDecl.provider)};`);
+    }
+  }
   for (const util of usedUtils) lines.push(util);
 
   // Convert app.METHOD('/path', handler) to route table entries
@@ -16382,23 +16529,67 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   }
   const hasAgents = pyNeedsAskAI(body);
   if (hasAgents) {
-    lines.push('# AI utility — calls Anthropic API');
+    lines.push('# AI utility — calls Anthropic / OpenRouter / Google Gemini / OpenAI');
+    lines.push('# (Phase 6: provider routing via opts["provider"] → env CLEAR_AI_PROVIDER');
+    lines.push('# → top-level `ai provider is X` constant → "anthropic" default.)');
     lines.push('import httpx');
     lines.push('');
-    lines.push('async def _ask_ai(prompt, context=None, schema=None, model=None):');
+    // Top-level decl becomes a Python constant so the helper picks it up by name.
+    const providerDeclPy = body.find(n => n && n.type === NodeType.AI_PROVIDER_DECL);
+    if (providerDeclPy) {
+      lines.push(`_CLEAR_AI_DEFAULT_PROVIDER = ${JSON.stringify(providerDeclPy.provider)}`);
+    } else {
+      lines.push('_CLEAR_AI_DEFAULT_PROVIDER = None');
+    }
+    lines.push('_CLEAR_AI_MODELS = {');
+    lines.push('    "anthropic":  "claude-sonnet-4-20250514",');
+    lines.push('    "openrouter": "google/gemini-2.0-flash-exp",');
+    lines.push('    "google":     "gemini-2.0-flash-exp",');
+    lines.push('    "openai":     "gpt-4o-mini",');
+    lines.push('}');
+    lines.push('');
+    lines.push('async def _ask_ai(prompt, context=None, schema=None, model=None, opts=None):');
     lines.push('    # Exponential-backoff retry on 429/5xx/network timeouts (PHILOSOPHY Rule 17).');
     lines.push('    # Delays: 1s, 2s, 4s (capped at 8s). 4xx user errors surface immediately.');
     lines.push('    import asyncio');
-    lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
-    lines.push('    if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
-    lines.push('    endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
+    lines.push('    provider = (opts or {}).get("provider") or os.environ.get("CLEAR_AI_PROVIDER") or _CLEAR_AI_DEFAULT_PROVIDER or "anthropic"');
+    lines.push('    _model = model or _CLEAR_AI_MODELS.get(provider) or _CLEAR_AI_MODELS["anthropic"]');
     lines.push('    content = prompt');
     lines.push('    if context: content += "\\n\\nContext: " + (context if isinstance(context, str) else json.dumps(context))');
     lines.push('    if schema:');
     lines.push('        fields = ", ".join(f\'"{f["name"]}": <{f.get("type","string")}>\' for f in schema)');
     lines.push('        content += f"\\n\\nRespond with ONLY a JSON object: {{{fields}}}"');
-    lines.push('    payload = {"model": model or "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": content}]}');
-    lines.push('    headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
+    lines.push('    # Per-provider request setup.');
+    lines.push('    if provider == "anthropic":');
+    lines.push('        key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
+    lines.push('        if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
+    lines.push('        endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
+    lines.push('        headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
+    lines.push('        payload = {"model": _model, "max_tokens": 1024, "messages": [{"role": "user", "content": content}]}');
+    lines.push('        _extract = lambda d: d["content"][0]["text"]');
+    lines.push('    elif provider == "openrouter":');
+    lines.push('        key = os.environ.get("OPENROUTER_API_KEY")');
+    lines.push('        if not key: raise Exception("Set OPENROUTER_API_KEY environment variable to use \'via provider openrouter\'")');
+    lines.push('        endpoint = "https://openrouter.ai/api/v1/chat/completions"');
+    lines.push('        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key}');
+    lines.push('        payload = {"model": _model, "max_tokens": 1024, "messages": [{"role": "user", "content": content}], "stream": False}');
+    lines.push('        _extract = lambda d: d["choices"][0]["message"]["content"]');
+    lines.push('    elif provider == "google":');
+    lines.push('        key = os.environ.get("GEMINI_API_KEY")');
+    lines.push('        if not key: raise Exception("Set GEMINI_API_KEY environment variable to use \'via provider google\'")');
+    lines.push('        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={key}"');
+    lines.push('        headers = {"Content-Type": "application/json"}');
+    lines.push('        payload = {"contents": [{"parts": [{"text": content}]}], "generationConfig": {"maxOutputTokens": 1024}}');
+    lines.push('        _extract = lambda d: d["candidates"][0]["content"]["parts"][0]["text"]');
+    lines.push('    elif provider == "openai":');
+    lines.push('        key = os.environ.get("OPENAI_API_KEY")');
+    lines.push('        if not key: raise Exception("Set OPENAI_API_KEY environment variable to use \'via provider openai\'")');
+    lines.push('        endpoint = "https://api.openai.com/v1/chat/completions"');
+    lines.push('        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key}');
+    lines.push('        payload = {"model": _model, "max_tokens": 1024, "messages": [{"role": "user", "content": content}]}');
+    lines.push('        _extract = lambda d: d["choices"][0]["message"]["content"]');
+    lines.push('    else:');
+    lines.push('        raise Exception("Unknown AI provider: " + str(provider))');
     lines.push('    last_err = None');
     lines.push('    text = None');
     lines.push('    for _attempt in range(4):');
@@ -16406,7 +16597,7 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('            async with httpx.AsyncClient(timeout=30) as client:');
     lines.push('                r = await client.post(endpoint, json=payload, headers=headers)');
     lines.push('            if r.status_code == 200:');
-    lines.push('                text = r.json()["content"][0]["text"]');
+    lines.push('                text = _extract(r.json())');
     lines.push('                break');
     lines.push('            if _attempt < 3 and (r.status_code == 429 or r.status_code >= 500):');
     lines.push('                await asyncio.sleep(min(1 * (2 ** _attempt), 8))');

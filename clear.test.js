@@ -32508,7 +32508,7 @@ await describeAsync('Phase 6.4 — runtime HTTP shape per provider (mocked fetch
     const mockProcess = { env: { ANTHROPIC_API_KEY: 'sk-test' } };
     const _askAI = factory(mockFetch, mockProcess, AbortSignal);
     const out = await _askAI('hello', null, null, null, { provider: 'anthropic' });
-    expect(out && out.name).toBe('OK');
+    expect(out).toBe('{"name":"OK"}');
     expect(captured.url).toMatch(/api\.anthropic\.com/);
     expect(captured.headers['x-api-key']).toBe('sk-test');
     expect(captured.headers['anthropic-version']).toBe('2023-06-01');
@@ -32524,7 +32524,7 @@ await describeAsync('Phase 6.4 — runtime HTTP shape per provider (mocked fetch
     const mockProcess = { env: { OPENROUTER_API_KEY: 'or-test' } };
     const _askAI = factory(mockFetch, mockProcess, AbortSignal);
     const out = await _askAI('hello', null, null, null, { provider: 'openrouter' });
-    expect(out && out.name).toBe('ROUTED');
+    expect(out).toBe('{"name":"ROUTED"}');
     expect(captured.url).toMatch(/openrouter\.ai/);
     expect(captured.headers['Authorization']).toBe('Bearer or-test');
     const body = JSON.parse(captured.body);
@@ -32539,7 +32539,7 @@ await describeAsync('Phase 6.4 — runtime HTTP shape per provider (mocked fetch
     const mockProcess = { env: { GEMINI_API_KEY: 'gm-test' } };
     const _askAI = factory(mockFetch, mockProcess, AbortSignal);
     const out = await _askAI('hello', null, null, null, { provider: 'google' });
-    expect(out && out.name).toBe('GEM');
+    expect(out).toBe('{"name":"GEM"}');
     expect(captured.url).toMatch(/generativelanguage\.googleapis\.com/);
     expect(captured.url).toMatch(/key=gm-test/);
     const body = JSON.parse(captured.body);
