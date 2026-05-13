@@ -158,10 +158,18 @@ const SYNONYM_TABLE = Object.freeze({
   live: Object.freeze(['live']),
 
   // ---------------------------------------------------------------------------
-  // Modules (Phase 3)
-  // CANONICAL: use "helpers"
+  // Modules (Phase 3, canonical-rename 2026-05-13)
+  // CANONICAL: import tables.clear
+  //
+  // `import` is the canonical keyword. `include` is a silent alias.
+  // `use` is RETIRED from the import grammar -- it stays a recognized canonical
+  // so the validator can flag legacy `use 'X'` at module-import sites and
+  // emit a helpful error pointing at the new shape. The word `use` is
+  // reserved for future declarative-configuration syntax such as
+  // `use postgres for the database` or `use 'midnight' theme`.
   // ---------------------------------------------------------------------------
-  use: Object.freeze(['use', 'import', 'include', 'load']),
+  import: Object.freeze(['import', 'include']),
+  use: Object.freeze(['use']),
 
   // ---------------------------------------------------------------------------
   // Web app features (Phase 4)
@@ -527,6 +535,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.42.0';
+const SYNONYM_VERSION = '0.43.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

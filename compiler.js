@@ -1310,6 +1310,10 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
     if (ADAPTER_NAMES.has(moduleName)) continue;
     // External JS imports (use 'lib' from './lib.js') are not resolved here
     if (node.source) continue;
+    // npm package imports (`import npm 'stripe' as stripe`) compile to a JS
+    // `await import(...)` call — they're not Clear files, so don't try to
+    // resolve them via moduleResolver.
+    if (node.isNpm) continue;
 
     // Circular dependency check — must happen before duplicate check
     if (resolutionStack.includes(moduleName)) {
@@ -1325,9 +1329,20 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
     }
     resolvedModules.add(moduleName);
 
-    const moduleSource = moduleResolver(moduleName);
+    // Try the resolver with the parsed module name first. If that fails and
+    // the name ends in `.clear`, fall back to the bare-name lookup so test
+    // resolvers (which usually compare `name === 'helpers'`) and the real
+    // CLI resolver (which tries `name + '.clear'` first, then `name`) stay
+    // compatible after the 2026-05-13 canonical-rename to bare paths.
+    let moduleSource = moduleResolver(moduleName);
+    if (moduleSource === null && /\.clear$/i.test(moduleName)) {
+      moduleSource = moduleResolver(moduleName.replace(/\.clear$/i, ''));
+    }
     if (moduleSource === null) {
-      errors.push({ line: node.line, message: `Could not find module '${moduleName}'. Create a file called '${moduleName}.clear' in the same directory.` });
+      // Avoid double-extensions in the error: if the name already ends in
+      // `.clear`, suggest it as-is rather than `tables.clear.clear`.
+      const suggestedFile = /\.clear$/i.test(moduleName) ? moduleName : `${moduleName}.clear`;
+      errors.push({ line: node.line, message: `Could not find module '${moduleName}'. Create a file called '${suggestedFile}' in the same directory.` });
       continue;
     }
     const moduleAst = parse(moduleSource);
@@ -1362,7 +1377,10 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
           n !== node && (n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN) && n.name === imported.name
         );
         if (collision) {
-          errors.push({ line: node.line, message: `'${imported.name}' exists in both your code and '${moduleName}'. Use \`use '${moduleName}'\` (namespaced) or rename one.` });
+          // Suggest a sensible namespace alias derived from the module name
+          // for the "namespaced fix" hint (`import helpers.clear as helpers`).
+          const suggestedAlias = deriveNamespace(moduleName) || 'mod';
+          errors.push({ line: node.line, message: `'${imported.name}' exists in both your code and '${moduleName}'. Use \`import ${moduleName} as ${suggestedAlias}\` (namespaced) or rename one.` });
           hasCollision = true;
         }
       }
@@ -1407,10 +1425,12 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
       continue;
     }
 
-    // Store parsed nodes on the USE node for compilation into a namespace object
+    // Store parsed nodes on the USE node for compilation into a namespace object.
+    // `namespaceAlias` (set by `import helpers.clear as helpers`) overrides the
+    // default last-segment-of-path naming.
     node._resolved = true;
     node._moduleNodes = importedNodes;
-    node._namespace = deriveNamespace(moduleName);
+    node._namespace = node.namespaceAlias || deriveNamespace(moduleName);
   }
   return errors;
 }
@@ -8366,8 +8386,17 @@ ${pad}}`;
         if (node.importAll) return null;
         return compileNamespaceObject(node, ctx, pad);
       }
-      if (ctx.lang === 'python') return `${pad}import ${sanitizeName(node.module)}`;
-      return `${pad}import * as ${sanitizeName(node.module)} from './${node.module}.js';`;
+      {
+        // Fallback: no moduleResolver was provided so the USE node never got
+        // attached metadata. Strip a trailing `.clear` from the module name
+        // for BOTH the JS variable identifier and the relative file path so
+        // we emit valid ES syntax (`import * as helpers from './helpers.js'`)
+        // even when the source wrote `import helpers.clear as helpers`.
+        const bareName = node.module.replace(/\.clear$/i, '');
+        const varName = sanitizeName(node.namespaceAlias || bareName.split('/').pop());
+        if (ctx.lang === 'python') return `${pad}import ${varName}`;
+        return `${pad}import * as ${varName} from './${bareName}.js';`;
+      }
 
     case NodeType.PAGE: {
       if (ctx.mode === 'backend') {

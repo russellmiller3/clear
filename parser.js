@@ -80,7 +80,7 @@
 //   BLOCK-LEVEL PARSERS ............... parseComponentDef, parseFunctionDef, parseAgent,
 //                                      parseMatch, parseIfBlock, parseRepeatLoop,
 //                                      parseForEachLoop, parseWhileLoop, parseWorkflow
-//   USE / IMPORT MODULES .............. parseUse()
+//   IMPORT MODULES .................... parseImport() (canonical 2026-05-13; was parseUse)
 //   PAGE DECLARATION .................. parsePage()
 //   SECTION ........................... parseSection()
 //   SIDEBAR NAV ....................... parseNav()
@@ -1750,10 +1750,24 @@ const CANONICAL_DISPATCH = new Map([
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
-  ['use', (ctx) => {
-    const parsed = parseUse(ctx.tokens, ctx.line);
+  ['import', (ctx) => {
+    const parsed = parseImport(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['use', (ctx) => {
+    // `use` was retired as an import keyword on 2026-05-13. The validator's
+    // IMPORT_USE_RETIRED rule fires the user-facing error with a fix-it
+    // example. We emit a parser-level error here too so that even programs
+    // that skip validation see a helpful message instead of a silent no-op.
+    ctx.errors.push({
+      line: ctx.line,
+      message:
+        "`use` is no longer an import keyword. Write `import <file>.clear` instead. " +
+        "Example: `import tables.clear`. " +
+        "(The word `use` is reserved for future configuration syntax like `use postgres for the database`.)"
+    });
     return ctx.i + 1;
   }],
   ['page', (ctx) => {
@@ -6274,22 +6288,93 @@ function hasDisplayModifiers(tokens) {
 }
 
 // =============================================================================
-// USE / IMPORT MODULES (Phase 3)
+// IMPORT MODULES (Phase 3, canonical-rename 2026-05-13)
 // =============================================================================
-// CANONICAL: use "helpers"
-// Aliases: import "helpers", include "helpers", load "helpers"
+// CANONICAL: import tables.clear
+//
+// Seven canonical shapes, ordered by frequency:
+//   1. import tables.clear                          → inline-all from same dir
+//   2. import shared/utils.clear                    → relative subdir
+//   3. import ../common/auth.clear                  → relative escape
+//   4. import /abs/path/lib.clear                   → absolute
+//   5. import helpers.clear as helpers              → namespaced; alias required
+//   6. import double, triple from helpers.clear     → selective
+//   7. import npm 'stripe' as stripe                → npm (strings stay quoted)
+//
+// `include` is a silent alias of `import`. `use` is RETIRED from the import
+// grammar and the dispatcher emits a hard error pointing at the new shape.
+//
+// PATH-REASSEMBLY STRATEGY: the tokenizer splits `tables.clear` into
+// IDENTIFIER('tables') + DOT + IDENTIFIER('clear'). After the `import`
+// keyword we peek tokens and re-concatenate values into one path string.
+// Continuable tokens: IDENTIFIER, KEYWORD (some path segments like
+// `extract-datetime.clear` may collide with multi-word keywords; we accept
+// keywords here too), DOT (`.`), OPERATOR(`/`).
+// Stop tokens: `as` (alias clause), `from` (selective `from <path>`), comma.
+//
+// The output AST node is the same USE node the compiler already knows about
+// (NodeType.USE). The keyword rename is purely syntactic — compiler is
+// unchanged.
 
-function parseUse(tokens, line) {
-  let pos = 1; // skip "use"
+/**
+ * Build a path string by reassembling tokens after the `import` keyword.
+ * Returns { path, nextPos } where nextPos is the index after the last
+ * consumed token. Stops at `as`, `from`, comma, or end-of-tokens.
+ *
+ * @param {Array} tokens — the line's token array.
+ * @param {number} startPos — index of the first token of the path.
+ * @returns {{ path: string, nextPos: number }}
+ */
+function reassembleImportPath(tokens, startPos) {
+  let pos = startPos;
+  let path = '';
+  while (pos < tokens.length) {
+    const tok = tokens[pos];
+    // Stop at clause-terminators. `from` canonicalizes to `in` in the
+    // tokenizer, so check .value (which is the raw word).
+    if (tok.value === 'as' || tok.value === 'from') break;
+    if (tok.type === TokenType.COMMA) break;
+    // Anything else that contributes characters to a path: identifiers,
+    // keywords (some keyword words may appear in file names), DOT, slashes.
+    if (
+      tok.type === TokenType.IDENTIFIER ||
+      tok.type === TokenType.KEYWORD ||
+      tok.type === TokenType.DOT ||
+      (tok.type === TokenType.OPERATOR && (tok.value === '/' || tok.value === '-'))
+    ) {
+      path += tok.value;
+      pos++;
+      continue;
+    }
+    // Unrecognized token — stop here and let the caller decide what's next.
+    break;
+  }
+  return { path, nextPos: pos };
+}
+
+/**
+ * Parse an `import` statement. Replaces the retired `parseUse`. Produces the
+ * same USE-shaped AST node so the compiler doesn't need to change.
+ *
+ * Supports all seven canonical shapes documented in the section header above.
+ *
+ * @param {Array} tokens — the line's token array, starting with `import` /
+ *                        `include` (canonical: `import`).
+ * @param {number} line — source line number for error reporting.
+ * @returns {{ node?: object, error?: string }}
+ */
+function parseImport(tokens, line) {
+  let pos = 1; // skip the `import` keyword
   if (pos >= tokens.length) {
-    return { error: 'The use statement needs a module name in quotes — which file do you want to use? Example: use "helpers"' };
+    return { error: "The import statement needs a file name. Example: import tables.clear" };
   }
 
-  // npm package import: use npm 'stripe' or use npm 'stripe' as stripe_client
-  if (pos < tokens.length && tokens[pos].value === 'npm') {
+  // Shape 7 — npm package import: `import npm 'stripe' as stripe`.
+  // npm packages stay quoted because they're not paths.
+  if (tokens[pos].value === 'npm') {
     pos++; // skip 'npm'
     if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-      return { error: "use npm needs a package name in quotes. Example: use npm 'stripe'" };
+      return { error: "import npm needs a package name in quotes. Example: import npm 'stripe'" };
     }
     const npmPackage = tokens[pos].value;
     pos++;
@@ -6307,65 +6392,102 @@ function parseUse(tokens, line) {
     return { node };
   }
 
-  // Inline-all import: use everything from 'helpers'
-  if (pos < tokens.length && tokens[pos].value === 'everything') {
-    pos++; // skip 'everything'
-    if (pos < tokens.length && tokens[pos].value === 'from') {
-      pos++; // skip 'from'
-      if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
-        const module = tokens[pos].value;
-        const node = useNode(module, line);
-        node.importAll = true;
-        return { node };
-      }
-    }
-    return { error: "use everything from needs a module name in quotes. Example: use everything from 'helpers'" };
-  }
-
-  // Selective import: use double, triple from 'helpers'
-  // Detected when the token after "use" is NOT a string (it's an identifier or keyword name)
-  if (tokens[pos].type !== TokenType.STRING) {
+  // Shape 6 — selective import: `import double, triple from helpers.clear`.
+  // Detection: first non-`import` token is an IDENTIFIER (or a keyword used
+  // as a name, e.g. `total`) followed by either a COMMA or the `from`
+  // keyword. A path always has a DOT or slash after its first identifier so
+  // this rule disambiguates path-form from selective-form.
+  const first = tokens[pos];
+  const isNameLike = first.type === TokenType.IDENTIFIER || first.type === TokenType.KEYWORD;
+  if (
+    isNameLike &&
+    first.value !== 'npm' && // `npm` is the shape-7 marker, not a name to import
+    pos + 1 < tokens.length &&
+    (tokens[pos + 1].type === TokenType.COMMA || tokens[pos + 1].value === 'from')
+  ) {
     const names = [];
     while (pos < tokens.length) {
       const tok = tokens[pos];
       if (tok.type === TokenType.IDENTIFIER || tok.type === TokenType.KEYWORD) {
-        // Check if this is the 'from' keyword (use .value, not .canonical, since 'from' canonicalizes to 'in')
         if (tok.value === 'from') break;
         names.push(tok.value);
         pos++;
-        // Skip comma if present
-        if (pos < tokens.length && tokens[pos].value === ',') pos++;
+        if (pos < tokens.length && tokens[pos].type === TokenType.COMMA) pos++;
       } else {
-        return { error: `Expected a name to import, but got "${tok.value}". Example: use double, triple from 'helpers'` };
+        return { error: `Expected a name to import, but got "${tok.value}". Example: import double, triple from helpers.clear` };
       }
     }
     if (names.length === 0) {
-      return { error: 'The use statement needs at least one name to import. Example: use double from "helpers"' };
+      return { error: "The import statement needs at least one name. Example: import double from helpers.clear" };
     }
-    // Expect 'from'
     if (pos >= tokens.length || tokens[pos].value !== 'from') {
-      return { error: `Expected "from" after the import names. Example: use ${names.join(', ')} from 'helpers'` };
+      return { error: `Expected "from" after the import names. Example: import ${names.join(', ')} from helpers.clear` };
     }
     pos++; // skip 'from'
-    if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-      return { error: `Expected a module name in quotes after "from". Example: use ${names.join(', ')} from 'helpers'` };
+    const { path: module, nextPos } = reassembleImportPath(tokens, pos);
+    if (!module) {
+      return { error: `Expected a file name after "from". Example: import ${names.join(', ')} from helpers.clear` };
     }
-    const module = tokens[pos].value;
+    pos = nextPos;
     const node = useNode(module, line);
     node.selectiveImports = names;
     return { node };
   }
 
-  // Standard import: use 'helpers' or use 'lib' from './lib.js'
-  const module = tokens[pos].value;
-  pos++;
-  // Optional: from 'path' (external JS/Python module import)
-  let source = null;
-  if (pos < tokens.length && tokens[pos].value === 'from' && pos + 1 < tokens.length && tokens[pos + 1].type === TokenType.STRING) {
-    source = tokens[pos + 1].value;
+  // Shapes 1-5 — path-form import. Reassemble the path, then handle the
+  // optional `as <alias>` suffix. Inline-all is the default for path-form
+  // imports (the canonical case is `import tables.clear` which inlines all
+  // top-level declarations), matching the spec.
+  if (first.type === TokenType.STRING) {
+    // External-JS escape hatch: `import 'lib' from './path.js'` keeps the
+    // shape that emits `await import('./path.js')` on the JS side. Both
+    // sides stay quoted because the right-hand side is a real JS path, not
+    // a Clear file. We allow this specific shape and route it through the
+    // legacy USE-with-`source` field that the compiler already handles.
+    if (pos + 2 < tokens.length && tokens[pos + 1].value === 'from' && tokens[pos + 2].type === TokenType.STRING) {
+      const module = first.value;
+      const source = tokens[pos + 2].value;
+      const node = useNode(module, line);
+      node.source = source;
+      return { node };
+    }
+    // Otherwise: quoted bare module name like `import 'helpers'`. Reject
+    // with a fix-it pointing at the new bare-path canonical. Strings are
+    // reserved for npm packages and the external-JS escape hatch.
+    return {
+      error:
+        "Bare paths now — drop the quotes. Write `import " + first.value + (first.value.endsWith('.clear') ? '' : '.clear') + "` instead. (Strings are reserved for `import npm 'package-name'`.)"
+    };
   }
+
+  const { path: module, nextPos } = reassembleImportPath(tokens, pos);
+  if (!module) {
+    return { error: "The import statement needs a file name. Example: import tables.clear" };
+  }
+  pos = nextPos;
+
+  // Optional `as <alias>` — Shape 5 namespaced import.
+  let namespaceAlias = null;
+  if (pos < tokens.length && tokens[pos].value === 'as' && pos + 1 < tokens.length) {
+    pos++; // skip 'as'
+    namespaceAlias = tokens[pos].value;
+    pos++;
+  }
+
   const node = useNode(module, line);
-  if (source) node.source = source;
+  if (namespaceAlias) {
+    // Namespaced import: the user wants explicit module-qualified access
+    // (e.g. `helpers's double(5)`). Tag with selectiveImports=null so the
+    // compiler picks the namespace-object path, and store the alias for
+    // deriveNamespace to honor.
+    node.namespaceAlias = namespaceAlias;
+  } else {
+    // Default for path-form imports: inline all top-level declarations from
+    // the imported file into the current AST. This is the common case
+    // (`import tables.clear` → all tables, endpoints, pages become available
+    // by their bare names).
+    node.importAll = true;
+  }
   return { node };
 }
 

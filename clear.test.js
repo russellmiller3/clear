@@ -2302,28 +2302,32 @@ describe('Error messages explain WHY then WHAT', () => {
 // PHASE 3: USE / IMPORT MODULES
 // =============================================================================
 
-describe('use/import modules', () => {
-  it('parses use "helpers"', () => {
-    const ast = parse('use "helpers"');
+describe('import modules', () => {
+  it('parses import helpers.clear as helpers', () => {
+    const ast = parse('import helpers.clear as helpers');
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].type).toBe(NodeType.USE);
-    expect(ast.body[0].module).toBe('helpers');
+    expect(ast.body[0].module).toBe('helpers.clear');
+    expect(ast.body[0].namespaceAlias).toBe('helpers');
   });
 
   it('compiles to JS import', () => {
-    const result = compileProgram('use "math_utils"', { target: 'web' });
+    const result = compileProgram('import math_utils.clear as math_utils', { target: 'web' });
     expect(result.javascript).toContain("import * as math_utils from './math_utils.js'");
   });
 
   it('compiles to Python import', () => {
-    const result = compileProgram('use "math_utils"', { target: 'backend' });
+    const result = compileProgram('import math_utils.clear as math_utils', { target: 'backend' });
     expect(result.python).toContain('import math_utils');
   });
 
-  it('gives helpful error for missing module name', () => {
+  it('gives helpful error when `use` is written at module-import site', () => {
+    // `use` was retired as an import keyword on 2026-05-13. The parser emits
+    // a fix-it pointing at `import` and reserves `use` for future config.
     const ast = parse('use');
     expect(ast.errors.length > 0).toBe(true);
-    expect(ast.errors[0].message).toContain('module name');
+    expect(ast.errors[0].message).toContain('import');
+    expect(ast.errors[0].message).toContain('no longer');
   });
 });
 
@@ -9400,7 +9404,7 @@ page 'App':
       : null;
     const result = compileProgram(`
 build for web
-use 'components'
+import components.clear as components
 page 'App':
   show components's MyCard()
   `, { moduleResolver: resolver });
@@ -9416,7 +9420,7 @@ page 'App':
       : null;
     const result = compileProgram(`
 build for web
-use 'components'
+import components.clear as components
 page 'App':
   show components's MyCard('Hello')
   `, { moduleResolver: resolver });
@@ -9432,7 +9436,7 @@ page 'App':
       : null;
     const result = compileProgram(`
 build for web
-use 'widgets'
+import widgets.clear as widgets
 define component Card receiving title:
   show title
 
@@ -12321,24 +12325,113 @@ describe('Source Maps', () => {
 // MULTI-FILE MODULES
 // =============================================================================
 
-describe('Parser - Multi-file modules', () => {
-  it('parses use with file path', () => {
-    const ast = parse("use 'helpers'");
+describe('import keyword — all 7 canonical shapes (2026-05-13)', () => {
+  // The canonical-rename ships seven shapes. Cover every one so a parser
+  // regression on any of them fires loudly.
+
+  it('Shape 1 — inline-all from same dir: import tables.clear', () => {
+    const ast = parse('import tables.clear');
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].type).toBe(NodeType.USE);
-    expect(ast.body[0].module).toBe('helpers');
+    expect(ast.body[0].module).toBe('tables.clear');
+    expect(ast.body[0].importAll).toBe(true);
   });
 
-  it('parses use with .clear extension', () => {
-    const ast = parse("use 'lib/helpers.clear'");
+  it('Shape 2 — relative subdir: import shared/utils.clear', () => {
+    const ast = parse('import shared/utils.clear');
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].module).toBe('shared/utils.clear');
+    expect(ast.body[0].importAll).toBe(true);
+  });
+
+  it('Shape 3 — relative escape: import ../common/auth.clear', () => {
+    const ast = parse('import ../common/auth.clear');
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].module).toBe('../common/auth.clear');
+    expect(ast.body[0].importAll).toBe(true);
+  });
+
+  it('Shape 4 — absolute path: import /abs/path/lib.clear', () => {
+    const ast = parse('import /abs/path/lib.clear');
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].module).toBe('/abs/path/lib.clear');
+    expect(ast.body[0].importAll).toBe(true);
+  });
+
+  it('Shape 5 — namespaced: import helpers.clear as helpers', () => {
+    const ast = parse('import helpers.clear as helpers');
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].module).toBe('helpers.clear');
+    expect(ast.body[0].namespaceAlias).toBe('helpers');
+    // Path-form with explicit alias is NOT inline-all.
+    expect(ast.body[0].importAll).toBeFalsy();
+  });
+
+  it('Shape 6 — selective: import double, triple from helpers.clear', () => {
+    const ast = parse('import double, triple from helpers.clear');
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].module).toBe('helpers.clear');
+    expect(ast.body[0].selectiveImports).toEqual(['double', 'triple']);
+  });
+
+  it("Shape 7 — npm: import npm 'stripe' as stripe", () => {
+    const ast = parse("import npm 'stripe' as stripe");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].isNpm).toBe(true);
+    expect(ast.body[0].npmPackage).toBe('stripe');
+    expect(ast.body[0].npmAlias).toBe('stripe');
+  });
+
+  it('include is a silent alias for import', () => {
+    const ast = parse('include tables.clear');
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].module).toBe('tables.clear');
+    expect(ast.body[0].importAll).toBe(true);
+  });
+
+  it('use at module-import site is a hard error (2026-05-13 retirement)', () => {
+    const ast = parse("use 'helpers'");
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('no longer an import keyword');
+    expect(ast.errors[0].message).toContain('import');
+    // The fix-it example matters — it teaches Meph the new shape.
+    expect(ast.errors[0].message).toContain('tables.clear');
+    // And it preserves the future-use-for-config rationale.
+    expect(ast.errors[0].message).toContain('use postgres');
+  });
+
+  it('use everything from is also retired', () => {
+    const ast = parse("use everything from 'helpers'");
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('no longer an import keyword');
+  });
+
+  it('bare quoted import like import \'helpers\' gives drop-the-quotes fix-it', () => {
+    const ast = parse("import 'helpers'");
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('drop the quotes');
+    expect(ast.errors[0].message).toContain('helpers.clear');
+  });
+});
+
+describe('Parser - Multi-file modules', () => {
+  it('parses import with file path', () => {
+    const ast = parse("import helpers.clear as helpers");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.USE);
+    expect(ast.body[0].module).toBe('helpers.clear');
+  });
+
+  it('parses import with .clear extension', () => {
+    const ast = parse("import lib/helpers.clear as helpers");
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].module).toBe('lib/helpers.clear');
   });
 
-  it('parses use with path separators', () => {
-    const ast = parse("use 'components/UserCard'");
+  it('parses import with path separators', () => {
+    const ast = parse("import components/UserCard.clear as UserCard");
     expect(ast.errors).toHaveLength(0);
-    expect(ast.body[0].module).toBe('components/UserCard');
+    expect(ast.body[0].module).toBe('components/UserCard.clear');
   });
 });
 
@@ -12348,7 +12441,7 @@ describe('Compiler - Multi-file modules', () => {
       if (moduleName === 'helpers') return 'double(x) = x * 2';
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = helpers's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear as helpers\nresult = helpers's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('helpers?.double(5)');
   });
@@ -12361,7 +12454,7 @@ describe('Compiler - Multi-file modules', () => {
 
   it('errors when file module not found', () => {
     const resolver = (moduleName) => null;
-    const result = compileProgram("build for javascript backend\nuse 'nonexistent'\nresult = foo()", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport nonexistent.clear as nonexistent\nresult = foo()", { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors.some(e => e.message.includes('nonexistent'))).toBe(true);
   });
@@ -12371,7 +12464,7 @@ describe('Compiler - Multi-file modules', () => {
       if (moduleName === 'math_utils') return "double(x) = x * 2\ntriple(x) = x * 3";
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'math_utils'\nfirst_result = math_utils's double(5)\nsecond_result = math_utils's triple(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport math_utils.clear as math_utils\nfirst_result = math_utils's double(5)\nsecond_result = math_utils's triple(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('math_utils?.double(5)');
     expect(result.javascript).toContain('math_utils?.triple(5)');
@@ -12382,7 +12475,7 @@ describe('Compiler - Multi-file modules', () => {
       if (moduleName === 'config') return "tax_rate = 0.08\napp_name is 'My App'";
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'config'\ntotal = 100 * config's tax_rate", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport config.clear as config\ntotal = 100 * config's tax_rate", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('config?.tax_rate');
   });
@@ -12392,7 +12485,7 @@ describe('Compiler - Multi-file modules', () => {
       if (moduleName === 'helpers') return 'double(x) = x * 2';
       return null;
     };
-    const result = compileProgram("build for python backend\nuse 'helpers'\nresult = helpers's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for python backend\nimport helpers.clear as helpers\nresult = helpers's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('helpers["double"](5)');
   });
@@ -12402,7 +12495,7 @@ describe('Compiler - Multi-file modules', () => {
       if (moduleName === 'helpers') return 'double(x) = x * 2';
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'helpers'\nuse 'helpers'\nresult = helpers's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear as helpers\nimport helpers.clear as helpers\nresult = helpers's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     // Count occurrences of helpers namespace — should be exactly 1
     const matches = result.javascript.match(/const helpers\s*=/g) || result.javascript.match(/let helpers\s*=/g);
@@ -12418,32 +12511,32 @@ describe('Namespaced module imports', () => {
   };
 
   it('wraps imports in namespace object', () => {
-    const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = helpers's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear as helpers\nresult = helpers's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('helpers?.double(5)');
   });
 
   it('dot access also works', () => {
-    const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = helpers.double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear as helpers\nresult = helpers.double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('helpers?.double(5)');
   });
 
   it('namespace contains all exported functions', () => {
-    const result = compileProgram("build for javascript backend\nuse 'helpers'\nfirst_val = helpers's double(1)\nsecond_val = helpers's triple(2)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear as helpers\nfirst_val = helpers's double(1)\nsecond_val = helpers's triple(2)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('helpers?.double(1)');
     expect(result.javascript).toContain('helpers?.triple(2)');
   });
 
   it('namespace contains variables', () => {
-    const result = compileProgram("build for javascript backend\nuse 'config'\ntotal = 100 * config's tax_rate", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport config.clear as config\ntotal = 100 * config's tax_rate", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('config?.tax_rate');
   });
 
   it('bare function name is not available (forward ref error)', () => {
-    const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear as helpers\nresult = double(5)", { moduleResolver: resolver });
     // Should either error or not find double as a bare name
     const hasError = result.errors.length > 0;
     const hasDouble = result.javascript && result.javascript.includes('function double');
@@ -12457,7 +12550,7 @@ describe('Namespaced module imports', () => {
   });
 
   it('external JS imports still work unchanged', () => {
-    const result = compileProgram("build for web\nuse 'lib' from './lib.js'\npage 'T' at '/':\n  text 'hi'");
+    const result = compileProgram("build for web\nimport 'lib' from './lib.js'\npage 'T' at '/':\n  text 'hi'");
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('await import("./lib.js")');
   });
@@ -12467,7 +12560,7 @@ describe('Namespaced module imports', () => {
       if (name === 'lib/helpers') return 'double(x) = x * 2';
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'lib/helpers'\nresult = helpers's double(5)", { moduleResolver: pathResolver });
+    const result = compileProgram("build for javascript backend\nimport lib/helpers.clear as helpers\nresult = helpers's double(5)", { moduleResolver: pathResolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('helpers?.double(5)');
   });
@@ -12479,30 +12572,30 @@ describe('Selective module imports', () => {
     return null;
   };
 
-  it('use NAME from MODULE inlines just that function', () => {
-    const result = compileProgram("build for javascript backend\nuse double from 'helpers'\nresult = double(5)", { moduleResolver: resolver });
+  it('import NAME from MODULE inlines just that function', () => {
+    const result = compileProgram("build for javascript backend\nimport double from helpers.clear\nresult = double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('double(5)');
     // triple should NOT be available
     expect(result.javascript).not.toContain('triple');
   });
 
-  it('use NAME, NAME from MODULE inlines multiple', () => {
-    const result = compileProgram("build for javascript backend\nuse double, triple from 'helpers'\nfirst = double(5)\nsecond = triple(3)", { moduleResolver: resolver });
+  it('import NAME, NAME from MODULE inlines multiple', () => {
+    const result = compileProgram("build for javascript backend\nimport double, triple from helpers.clear\nfirst = double(5)\nsecond = triple(3)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('function double');
     expect(result.javascript).toContain('function triple');
   });
 
   it('errors when name not found in module', () => {
-    const result = compileProgram("build for javascript backend\nuse nonexistent from 'helpers'\nresult = nonexistent(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport nonexistent from helpers.clear\nresult = nonexistent(5)", { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message).toContain('nonexistent');
     expect(result.errors[0].message).toContain('double'); // suggests available names
   });
 
   it('collision with local function = error', () => {
-    const result = compileProgram("build for javascript backend\ndouble(x) = x * 10\nuse double from 'helpers'\nresult = double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\ndouble(x) = x * 10\nimport double from helpers.clear\nresult = double(5)", { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message).toContain('double');
   });
@@ -12512,33 +12605,33 @@ describe('Selective module imports', () => {
       if (name === 'math') return 'total(items) = 42';
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse total from 'math'\nmy_items = [1, 2, 3]\nresult = total(my_items)", { moduleResolver: keyResolver });
+    const result = compileProgram("build for javascript backend\nimport total from math.clear\nmy_items = [1, 2, 3]\nresult = total(my_items)", { moduleResolver: keyResolver });
     expect(result.errors).toHaveLength(0);
   });
 });
 
-describe('use everything from (inline-all)', () => {
+describe('import (inline-all)', () => {
   const resolver = (name) => {
     if (name === 'helpers') return 'double(x) = x * 2\ntriple(x) = x * 3';
     return null;
   };
 
   it('inlines all functions without namespace', () => {
-    const result = compileProgram("build for javascript backend\nuse everything from 'helpers'\nresult = double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear\nresult = double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('function double');
     expect(result.javascript).toContain('double(5)');
   });
 
   it('all functions accessible without prefix', () => {
-    const result = compileProgram("build for javascript backend\nuse everything from 'helpers'\nfirst = double(5)\nsecond = triple(3)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport helpers.clear\nfirst = double(5)\nsecond = triple(3)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('function double');
     expect(result.javascript).toContain('function triple');
   });
 
   it('name collision with local function errors', () => {
-    const result = compileProgram("build for javascript backend\ndouble(x) = x * 10\nuse everything from 'helpers'\nresult = double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\ndouble(x) = x * 10\nimport helpers.clear\nresult = double(5)", { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message).toContain('double');
   });
@@ -12547,33 +12640,33 @@ describe('use everything from (inline-all)', () => {
 describe('Circular module dependency detection', () => {
   it('detects a -> b -> a cycle', () => {
     const resolver = (name) => {
-      if (name === 'module_a') return "use 'module_b'\ndouble(x) = x * 2";
-      if (name === 'module_b') return "use 'module_a'\ntriple(x) = x * 3";
+      if (name === 'module_a') return "import module_b.clear as module_b\ndouble(x) = x * 2";
+      if (name === 'module_b') return "import module_a.clear as module_a\ntriple(x) = x * 3";
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'module_a'\nresult = module_a's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport module_a.clear as module_a\nresult = module_a's double(5)", { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message.toLowerCase()).toContain('circular');
   });
 
   it('detects self-import', () => {
     const resolver = (name) => {
-      if (name === 'self_ref') return "use 'self_ref'\ndouble(x) = x * 2";
+      if (name === 'self_ref') return "import self_ref.clear as self_ref\ndouble(x) = x * 2";
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'self_ref'\nresult = self_ref's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport self_ref.clear as self_ref\nresult = self_ref's double(5)", { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message.toLowerCase()).toContain('circular');
   });
 
   it('deep chain without cycle works fine', () => {
     const resolver = (name) => {
-      if (name === 'chain_a') return "use 'chain_b'\ndouble(x) = x * 2";
-      if (name === 'chain_b') return "use 'chain_c'\ntriple(x) = x * 3";
+      if (name === 'chain_a') return "import chain_b.clear as chain_b\ndouble(x) = x * 2";
+      if (name === 'chain_b') return "import chain_c.clear as chain_c\ntriple(x) = x * 3";
       if (name === 'chain_c') return "quad(x) = x * 4";
       return null;
     };
-    const result = compileProgram("build for javascript backend\nuse 'chain_a'\nresult = chain_a's double(5)", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport chain_a.clear as chain_a\nresult = chain_a's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
   });
 });
@@ -12584,7 +12677,7 @@ describe('Component imports across files', () => {
       if (name === 'components') return "define component Card receiving content:\n  text 'Card: ' + content";
       return null;
     };
-    const result = compileProgram("build for web\nuse Card from 'components'\npage 'T' at '/':\n  show Card('Hello')", { moduleResolver: resolver });
+    const result = compileProgram("build for web\nimport Card from components.clear\npage 'T' at '/':\n  show Card('Hello')", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
   });
 
@@ -12594,7 +12687,7 @@ describe('Component imports across files', () => {
       return null;
     };
     // Namespace includes the component (compiled to JS object property)
-    const result = compileProgram("build for javascript backend\nuse 'ui'\nshow ui's StatusBadge('Active')", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nimport ui.clear as ui\nshow ui's StatusBadge('Active')", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('ui?.StatusBadge');
   });
@@ -12604,7 +12697,7 @@ describe('Component imports across files', () => {
       if (name === 'widgets') return "define component Card receiving content:\n  text 'Widget: ' + content";
       return null;
     };
-    const result = compileProgram("build for web\nuse Card from 'widgets'\npage 'T' at '/':\n  show Card('Test')", { moduleResolver: resolver });
+    const result = compileProgram("build for web\nimport Card from widgets.clear\npage 'T' at '/':\n  show Card('Test')", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
   });
 });
@@ -14426,8 +14519,8 @@ describe('store / restore (localStorage)', () => {
 });
 
 describe('use from (external JS import)', () => {
-  it('parses use with from path', () => {
-    const src = "build for web\nuse 'compiler' from '../index.js'\npage 'T' at '/':\n  text 'hi'";
+  it('parses import with from path', () => {
+    const src = "build for web\nimport 'compiler' from '../index.js'\npage 'T' at '/':\n  text 'hi'";
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const useNode = result.ast.body.find(n => n.type === 'use');
@@ -14436,20 +14529,20 @@ describe('use from (external JS import)', () => {
   });
 
   it('compiles to dynamic import', () => {
-    const src = "build for web\nuse 'compiler' from '../index.js'\npage 'T' at '/':\n  text 'hi'";
+    const src = "build for web\nimport 'compiler' from '../index.js'\npage 'T' at '/':\n  text 'hi'";
     const result = compileProgram(src);
     expect(result.html).toContain('await import("../index.js")');
   });
 
   it('allows calling imported functions via possessive', () => {
-    const src = "build for web\nuse 'lib' from './lib.js'\npage 'T' at '/':\n  result is ''\n  button 'Go':\n    set result to lib's doThing(result)";
+    const src = "build for web\nimport 'lib' from './lib.js'\npage 'T' at '/':\n  result is ''\n  button 'Go':\n    set result to lib's doThing(result)";
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('lib?.doThing');
   });
 
-  it('plain use without from still works', () => {
-    const src = "build for javascript backend\nuse 'helpers'\nshow 42";
+  it('plain import without from still works', () => {
+    const src = "build for javascript backend\nimport helpers.clear as helpers\nshow 42";
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain("from './helpers.js'");
@@ -15209,8 +15302,8 @@ database is local memory
 create a Users table:
   name, required
 allow cross-origin requests
-use everything from 'backend'
-use everything from 'frontend'`;
+import backend.clear
+import frontend.clear`;
     const result = compileProgram(src, { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     // Backend endpoints in serverJS (full-stack splits backend from frontend)
@@ -15226,14 +15319,14 @@ use everything from 'frontend'`;
 database is local memory
 create a Users table:
   name, required
-use everything from 'backend'`;
+import backend.clear`;
     const result = compileProgram(src, { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
     expect(result.serverJS || result.javascript).toContain("app.get('/api/users'");
   });
 
   it('detects missing module with helpful error', () => {
-    const src = `build for javascript backend\nuse everything from 'nonexistent'`;
+    const src = `build for javascript backend\nimport nonexistent.clear`;
     const result = compileProgram(src, { moduleResolver: resolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message).toContain('Could not find module');
@@ -15241,11 +15334,11 @@ use everything from 'backend'`;
 
   it('detects circular imports', () => {
     const circularResolver = (name) => {
-      if (name === 'a') return "use everything from 'b'\ndouble(x) = x * 2";
-      if (name === 'b') return "use everything from 'a'\ntriple(x) = x * 3";
+      if (name === 'a') return "import b.clear\ndouble(x) = x * 2";
+      if (name === 'b') return "import a.clear\ntriple(x) = x * 3";
       return null;
     };
-    const src = `build for javascript backend\nuse everything from 'a'`;
+    const src = `build for javascript backend\nimport a.clear`;
     const result = compileProgram(src, { moduleResolver: circularResolver });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].message).toContain('Circular');
@@ -19315,11 +19408,11 @@ when user sends todo to /api/todos:
 // MULTI-FILE, COMPONENTS, STREAMING STRESS TESTS
 // =============================================================================
 
-describe('Multi-file: use everything from inlines all node types', () => {
-  it('use everything from backend inlines endpoints and data shapes', () => {
+describe('Multi-file: import inlines all node types', () => {
+  it('import inlines endpoints and data shapes', () => {
     const mainSrc = `build for web and javascript backend
 database is local memory
-use everything from 'backend'`;
+import backend.clear`;
     const backendSrc = `create a Items table:
   name, required
 allow cross-origin requests
@@ -19339,12 +19432,12 @@ when user calls POST /api/items sending item_data:
     expect((r.serverJS || r.javascript)).toContain("db.insert('items'");
   });
 
-  it('use everything from frontend inlines pages and UI', () => {
+  it('import inlines pages and UI', () => {
     const mainSrc = `build for web and javascript backend
 theme 'midnight'
 database is local memory
-use everything from 'backend'
-use everything from 'frontend'`;
+import backend.clear
+import frontend.clear`;
     const backendSrc = `create a Todos table:
   title, required
 allow cross-origin requests
@@ -19369,8 +19462,8 @@ when user calls GET /api/todos:
 
   it('three-level deep imports (main -> frontend -> components) resolve', () => {
     const mainSrc = `build for web
-use everything from 'frontend'`;
-    const frontendSrc = `use everything from 'components'
+import frontend.clear`;
+    const frontendSrc = `import components.clear
 page 'App' at '/':
   heading 'My App'`;
     const componentsSrc = `define component Greeting receiving name:
@@ -19386,11 +19479,11 @@ page 'App' at '/':
   });
 });
 
-describe('Multi-file: use everything from does NOT double-compile', () => {
-  it('endpoints are not duplicated when imported via use everything from', () => {
+describe('Multi-file: import does NOT double-compile', () => {
+  it('endpoints are not duplicated when imported via import', () => {
     const mainSrc = `build for web and javascript backend
 database is local memory
-use everything from 'backend'`;
+import backend.clear`;
     const backendSrc = `create a Items table:
   name, required
 when user calls GET /api/items:
@@ -19407,7 +19500,7 @@ when user calls GET /api/items:
 describe('Multi-page SPA with multi-file imports', () => {
   it('multi-page app from imported frontend gets page wrappers', () => {
     const mainSrc = `build for web
-use everything from 'frontend'`;
+import frontend.clear`;
     const frontendSrc = `page 'Home' at '/':
   heading 'Welcome'
 page 'About' at '/about':
@@ -19435,7 +19528,7 @@ page 'App' at '/':
 
   it('component imported from file compiles correctly', () => {
     const mainSrc = `build for web
-use everything from 'components'
+import components.clear
 page 'App' at '/':
   heading 'App'`;
     const compSrc = `define component StatusTag receiving label:
@@ -26541,35 +26634,35 @@ describe('Error variable binding in handlers', () => {
 describe('npm package imports', () => {
   it('emits require at top of JS backend for simple package', () => {
     const r = compileProgram(
-      "build for javascript backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+      "build for javascript backend\nimport npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
     );
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain("const stripe = require('stripe');");
   });
   it('uses alias when specified', () => {
     const r = compileProgram(
-      "build for javascript backend\nuse npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'"
+      "build for javascript backend\nimport npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'"
     );
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain("const OpenAI = require('openai');");
   });
   it('handles scoped npm packages', () => {
     const r = compileProgram(
-      "build for javascript backend\nuse npm '@sendgrid/mail' as sendgrid\nwhen user calls GET /api/test:\n  send back 'ok'"
+      "build for javascript backend\nimport npm '@sendgrid/mail' as sendgrid\nwhen user calls GET /api/test:\n  send back 'ok'"
     );
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain("const sendgrid = require('@sendgrid/mail');");
   });
   it('does not emit duplicate require', () => {
     const r = compileProgram(
-      "build for javascript backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+      "build for javascript backend\nimport npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
     );
     const count = (r.javascript.match(/require\('stripe'\)/g) || []).length;
     expect(count).toBe(1);
   });
   it('emits python import for Python backend', () => {
     const r = compileProgram(
-      "build for python backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+      "build for python backend\nimport npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
     );
     expect(r.errors).toHaveLength(0);
     expect(r.python).toContain('import stripe');
@@ -26592,7 +26685,7 @@ describe('structured eval stats', () => {
     expect(r.stats.tests.defined).toBe(2);
   });
   it('counts npm packages', () => {
-    const r = compileProgram("build for javascript backend\nuse npm 'stripe'\nuse npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'");
+    const r = compileProgram("build for javascript backend\nimport npm 'stripe'\nimport npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'");
     expect(r.stats.npm_packages).toBe(2);
   });
   it('detects auth', () => {
