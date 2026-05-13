@@ -911,6 +911,15 @@ async function testCommand(args) {
       const src = resolve(runtimeSrc, f);
       if (existsSync(src)) copyFileSync(src, resolve(rtDir, f));
     }
+    // Pure-runtime-test files need the grammar matcher available — that's
+    // the runtime helper that gets bound to globalThis._grammarMatch inside
+    // the standalone test script. Copy it alongside the other runtime files.
+    if (result.testsAreStandalone) {
+      for (const f of ['grammar-matcher.js', 'slot-extractors.js']) {
+        const src = resolve(runtimeSrc, f);
+        if (existsSync(src)) copyFileSync(src, resolve(rtDir, f));
+      }
+    }
     if (result.python && /from\s+clear_runtime\s+import/.test(result.python)) {
       for (const f of ['__init__.py', 'db.py', 'db_postgres.py', 'auth.py', 'rate_limit.py', 'sensitive_crypto.py']) {
         const src = resolve(runtimeSrc, f);
@@ -918,10 +927,21 @@ async function testCommand(args) {
       }
     }
 
-    // Write server + test files
-    const serverCode = result.serverJS || result.javascript || '';
+    // Write server + test files. Standalone runtime tests skip the server
+    // entirely — they require the runtime helpers directly from clear-runtime/
+    // and don't need an HTTP harness.
+    const serverCode = result.testsAreStandalone ? '' : (result.serverJS || result.javascript || '');
     const testFile = resolve(buildDir, 'test.js');
     writeFileSync(testFile, addClearTestRunnerCleanup(result.tests));
+
+    // Scope-assert CommonJS for standalone runs: the test.js uses require()
+    // (mirroring the runtime helpers' CJS shape), but Node walks up looking
+    // for the nearest package.json to pick module mode, and if the clear repo
+    // sits in an ESM project the test.js would be parsed as ESM and crash on
+    // require. Dropping a tiny package.json next to test.js locks the scope.
+    if (result.testsAreStandalone) {
+      writeFileSync(resolve(buildDir, 'package.json'), JSON.stringify({ type: 'commonjs' }));
+    }
 
     if (serverCode) {
       const testServerCode = addClearTestShutdownHook(serverCode);
