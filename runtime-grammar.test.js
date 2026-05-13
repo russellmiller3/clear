@@ -63,3 +63,68 @@ describe('runtime grammar — parse baseline (Cycle 1.1)', () => {
     expect(grammar.storageTable).toBe('FrameRegistry');
   });
 });
+
+// =============================================================================
+// CYCLE 1.2 — frame with effect + slots + synonyms parses to full metadata
+// =============================================================================
+describe('runtime grammar — frame metadata (Cycle 1.2)', () => {
+  it('parses effect, canonical phrase, synonyms, and typed slots', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+      "    synonyms 'todo:', 'remember to'",
+      "    slots:",
+      "      what is text, required",
+      "      when is datetime, optional",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    const grammar = result.ast.body.find(n => n.type === 'runtime_grammar');
+    const frame = grammar.frames[0];
+    expect(frame.effect).toBe('internal');
+    expect(frame.canonicalPhrase).toBe('remind me to');
+    expect(frame.synonyms).toEqual(['todo:', 'remember to']);
+    expect(frame.slots.length).toBe(2);
+    expect(frame.slots[0]).toEqual({ name: 'what', slotType: 'text', required: true });
+    expect(frame.slots[1]).toEqual({ name: 'when', slotType: 'datetime', required: false });
+  });
+
+  it('captures effect external + permission scope + first-N-confirm', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame OPEN_NOTEPAD:",
+      "    effect external",
+      "    canonical phrase 'open notepad'",
+      "    permission scope: 'spawn:notepad.exe'",
+      "    first 3 runs require confirm: 3",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    const frame = result.ast.body.find(n => n.type === 'runtime_grammar').frames[0];
+    expect(frame.effect).toBe('external');
+    expect(frame.permissionScope).toBe('spawn:notepad.exe');
+    expect(frame.firstNRunsRequireConfirm).toBe(3);
+  });
+
+  it('parses multiple frames in one grammar block', () => {
+    const source = [
+      "runtime grammar 'concepts':",
+      "  frame TASK:",
+      "    effect internal",
+      "    canonical phrase 'remind me to'",
+      "  frame ENERGY_LOG:",
+      "    effect internal",
+      "    canonical phrase 'energy'",
+      "  frame OPEN_NOTEPAD:",
+      "    effect external",
+      "    canonical phrase 'open notepad'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const grammar = result.ast.body.find(n => n.type === 'runtime_grammar');
+    expect(grammar.frames.length).toBe(3);
+    expect(grammar.frames.map(f => f.id)).toEqual(['TASK', 'ENERGY_LOG', 'OPEN_NOTEPAD']);
+    expect(grammar.frames.map(f => f.effect)).toEqual(['internal', 'internal', 'external']);
+  });
+});
