@@ -189,6 +189,14 @@ const SYNONYM_TABLE = Object.freeze({
   checkbox: Object.freeze(['checkbox']),
   text_area: Object.freeze(['text area', 'textarea']),
   rich_text: Object.freeze(['text editor', 'rich text editor', 'rich text', 'rich editor']),
+  // Phase 5.5 — DaisyUI form widgets: datetime picker, radio selector, slider.
+  // Each maps a user-facing phrase to a single canonical keyword the parser
+  // dispatches on (same shape as text_input / dropdown above). DaisyUI gets
+  // the emit classes: input with type "datetime-local" for datetime,
+  // radio radio-primary for radios, range range-primary for sliders.
+  datetime_input: Object.freeze(['datetime input', 'date and time input', 'date picker', 'datetime picker']),
+  radio: Object.freeze(['radio', 'radio selector', 'radio group']),
+  slider: Object.freeze(['slider', 'range slider']),
   saves_to: Object.freeze(['saves to', 'saved as']),
   // Static content elements
   heading: Object.freeze(['heading']),
@@ -535,6 +543,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.43.0';
+const SYNONYM_VERSION = '0.44.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

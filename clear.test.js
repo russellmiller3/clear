@@ -7,6 +7,7 @@
 import { describe, it, expect, run, describeAsync, itAsync } from './lib/testUtils.js';
 import './runtime-grammar.test.js';
 import './slot-extractors.test.js';
+import './phase-5-5.test.js';
 import { createRequire as _phase5CreateRequire } from 'node:module';
 // Phase 5 runtime helpers live in runtime/ as CommonJS — bridge via createRequire.
 const _phase5Require = _phase5CreateRequire(import.meta.url);

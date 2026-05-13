@@ -8671,6 +8671,17 @@ ${pad}}`;
       if (node.inputType === 'rich text') {
         return `${pad}// Input: ${node.label} (rich text — bound by _initRichTextEditors)`;
       }
+      // Phase 5.5 — radio groups listen on the container element with a
+      // 'change' event; the value is the chosen <input>'s value attr.
+      if (node.inputType === 'radio') {
+        const varName = sanitizeName(node.variable);
+        return `${pad}// Input: ${node.label}\n${pad}document.getElementById('${inputId}').addEventListener('change', (e) => {\n${pad}  if (e.target && e.target.type === 'radio') {\n${pad}    _state.${varName} = e.target.value;\n${pad}    _recompute();\n${pad}  }\n${pad}});`;
+      }
+      // Phase 5.5 — slider stores a Number; same 'input' event as text/number.
+      if (node.inputType === 'slider') {
+        const varName = sanitizeName(node.variable);
+        return `${pad}// Input: ${node.label}\n${pad}document.getElementById('${inputId}').addEventListener('input', (e) => {\n${pad}  _state.${varName} = Number(e.target.value);\n${pad}  _recompute();\n${pad}});`;
+      }
       const inputType = node.inputType === 'number' ? 'number' : node.inputType === 'percent' ? 'number' : 'text';
       return `${pad}// Input: ${node.label}\n${pad}document.getElementById('${inputId}').addEventListener('input', (e) => {\n${pad}  _state.${sanitizeName(node.variable)} = ${inputType === 'number' ? 'Number(e.target.value)' : 'e.target.value'};\n${pad}  _recompute();\n${pad}});`;
     }
@@ -11526,7 +11537,16 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const stateDefaults = {};
   for (const inp of inputNodes) {
     const name = sanitizeName(inp.variable);
-    stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : inp.inputType === 'yes/no' ? 'false' : '""';
+    // Phase 5.5 — slider defaults to its min (or 0); radio defaults to empty
+    // string until the user picks an option.
+    if (inp.inputType === 'slider') {
+      const minVal = inp.min !== undefined && inp.min !== null ? inp.min : 0;
+      stateDefaults[name] = String(minVal);
+    } else if (inp.inputType === 'radio') {
+      stateDefaults[name] = '""';
+    } else {
+      stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : inp.inputType === 'yes/no' ? 'false' : '""';
+    }
   }
   // Scan for API calls -- register their target variables as state
   function findApiTargets(nodes) {
@@ -12897,6 +12917,22 @@ function buildHTML(body) {
       ? `<i data-lucide="${attrEsc(node.icon)}" aria-hidden="true"></i>`
       : '';
     const count = navCountHTML(node.count);
+    // Phase 5.5 — nav items with nested children get a chevron-down icon and
+    // the clear-nav-expandable class. The runtime's nav script listens for
+    // clicks on these rows and toggles the visibility of the nested <ul>.
+    const hasChildren = Array.isArray(node.body) && node.body.length > 0;
+    if (hasChildren) {
+      const childHtml = node.body
+        .map(child => (child && child.type === 'nav_item') ? navItemHTML(child) : '')
+        .filter(Boolean)
+        .join('\n');
+      const chevron = '<i data-lucide="chevron-down" class="clear-nav-chevron ml-auto" aria-hidden="true"></i>';
+      return `    <li><a href="${href}" class="clear-nav-item clear-nav-expandable flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="${uatId}" data-clear-control-kind="nav-item" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}${chevron}</a>
+      <ul class="clear-nav-children menu pl-4">
+${childHtml}
+      </ul>
+    </li>`;
+    }
     return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="${uatId}" data-clear-control-kind="nav-item" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
   }
 
@@ -13137,6 +13173,9 @@ ${bodyHTML}
           const isModal = mods.includes('__modal');
           const isSlideIn = mods.some(m => typeof m === 'string' && m.startsWith('__slidein_'));
           const isCollapsible = mods.includes('__collapsible');
+          // Phase 5.5 — accordion modifier. Each nested section becomes a
+          // DaisyUI collapse panel; non-section children render inline above.
+          const isAccordion = mods.includes('__accordion');
           const startsClosed = mods.includes('__starts_closed');
           const slug = sanitizeName(node.title.replace(/\s+/g, '_').toLowerCase());
           const panelId = `panel-${slug}`;
@@ -13196,6 +13235,39 @@ ${bodyHTML}
             parts.push(`      <div class="collapsible-content" style="display:${display}">`);
             walk(node.body);
             parts.push(`      </div>`);
+            parts.push(`    </div>`);
+            break;
+          }
+
+          if (isAccordion) {
+            // Phase 5.5 — DaisyUI accordion. Each child SECTION becomes a
+            // collapse panel; the parent's title becomes a header label above
+            // the group. Non-section children render inline. A shared name
+            // attribute on the radios makes the panels mutually exclusive in
+            // the classic accordion behavior.
+            const accordionName = `accordion-${slug}`;
+            const accordionChildren = node.body.filter(n => n && n.type === NodeType.SECTION);
+            const nonSectionChildren = node.body.filter(n => n && n.type !== NodeType.SECTION);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}">`);
+            if (node.title) {
+              parts.push(`      <h2 class="text-base font-semibold text-base-content mb-4">${node.title}</h2>`);
+            }
+            if (nonSectionChildren.length > 0) {
+              walk(nonSectionChildren);
+            }
+            for (let i = 0; i < accordionChildren.length; i++) {
+              const child = accordionChildren[i];
+              const childSlug = sanitizeName(String(child.title || `item-${i}`).replace(/\s+/g, '_').toLowerCase());
+              parts.push(`      <div class="collapse collapse-arrow bg-base-200 mb-2" id="accordion-${slug}-${childSlug}">`);
+              parts.push(`        <input type="radio" name="${accordionName}"${i === 0 ? ' checked="checked"' : ''}>`);
+              parts.push(`        <div class="collapse-title text-sm font-medium">${child.title || ''}</div>`);
+              parts.push(`        <div class="collapse-content">`);
+              if (Array.isArray(child.body)) {
+                walk(child.body);
+              }
+              parts.push(`        </div>`);
+              parts.push(`      </div>`);
+            }
             parts.push(`    </div>`);
             break;
           }
@@ -13785,6 +13857,43 @@ ${options}
             parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <input id="${ui.id}" class="file-input file-input-bordered w-full" type="file">
+    </fieldset>`);
+          } else if (ui.htmlType === 'datetime-local') {
+            // Phase 5.5 — DaisyUI date+time picker. Native browser widget for
+            // calendar + time entry, classes match the regular text input so
+            // the column rhythm in forms stays consistent.
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <input id="${ui.id}" class="input input-bordered w-full" type="datetime-local" placeholder="${ui.label}">
+    </fieldset>`);
+          } else if (ui.htmlType === 'radio') {
+            // Phase 5.5 — DaisyUI radio group. One <input type="radio"> per
+            // choice. All share the same name attribute so the browser enforces
+            // single-selection. The container DIV holds the same id the
+            // reactive binding listens on (via 'change' event delegation).
+            const choices = ui.choices || [];
+            const optionsHtml = choices.map((c, idx) => {
+              const optionId = `${ui.id}_${idx}`;
+              return `        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="${ui.id}" id="${optionId}" class="radio radio-primary" value="${c}">
+          <span class="text-sm text-base-content/80">${c}</span>
+        </label>`;
+            }).join('\n');
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <div id="${ui.id}" class="flex flex-col gap-2">
+${optionsHtml}
+      </div>
+    </fieldset>`);
+          } else if (ui.htmlType === 'range') {
+            // Phase 5.5 — DaisyUI range slider. min/max come from the parser's
+            // 'from N to M' clause and default to 0..100 when absent. step="any"
+            // for fractional values, current value reads as a number in _state.
+            const minVal = node.min !== undefined && node.min !== null ? node.min : 0;
+            const maxVal = node.max !== undefined && node.max !== null ? node.max : 100;
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <input id="${ui.id}" class="range range-primary" type="range" min="${minVal}" max="${maxVal}" step="any">
     </fieldset>`);
           } else {
             parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
@@ -17613,6 +17722,55 @@ const THEME_CSS = {
   --color-error-content: oklch(100% 0 0);
   --radius-box: 0; --radius-field: 0; --radius-selector: 0;
   --border: 2px; --depth: 0; --noise: 0;
+}`,
+  // Phase 5.5 — Nixie. Amber-on-warm-dark CRT identity, modeled on
+  // vintage Nixie tubes + amber phosphor monitors. The signature tokens
+  // are a hot amber primary (oklch 75% 0.15 60deg) on a warm-dark base
+  // (oklch 12% 0.02 60deg). Focal elements glow via text-shadow and
+  // box-shadow; an optional scanline overlay on the body adds the CRT
+  // texture. Built for AI control panels, dashboards that need a
+  // "this is the machine talking to me" feel — Lenat's identity, but
+  // available to any Clear app that wants the same vibe.
+  nixie: `[data-theme="nixie"] {
+  color-scheme: dark;
+  --color-base-100: oklch(12% 0.02 60deg);
+  --color-base-200: oklch(16% 0.025 60deg);
+  --color-base-300: oklch(22% 0.03 60deg);
+  --color-base-content: oklch(85% 0.1 60deg);
+  --color-primary: oklch(75% 0.15 60deg);
+  --color-primary-content: oklch(12% 0.02 60deg);
+  --color-secondary: oklch(68% 0.13 80deg);
+  --color-secondary-content: oklch(12% 0.02 60deg);
+  --color-accent: oklch(80% 0.16 45deg);
+  --color-accent-content: oklch(12% 0.02 60deg);
+  --color-neutral: oklch(20% 0.022 60deg);
+  --color-neutral-content: oklch(80% 0.08 60deg);
+  --color-info: oklch(65% 0.13 220deg);
+  --color-info-content: oklch(12% 0.02 220deg);
+  --color-success: oklch(68% 0.14 130deg);
+  --color-success-content: oklch(12% 0.02 130deg);
+  --color-warning: oklch(78% 0.15 75deg);
+  --color-warning-content: oklch(12% 0.02 75deg);
+  --color-error: oklch(62% 0.2 22deg);
+  --color-error-content: oklch(12% 0.02 22deg);
+  --radius-box: 0.5rem; --radius-field: 0.25rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+[data-theme="nixie"] h1, [data-theme="nixie"] h2, [data-theme="nixie"] h3,
+[data-theme="nixie"] .clear-page-title, [data-theme="nixie"] .num {
+  text-shadow: 0 0 8px oklch(75% 0.15 60deg / 0.4);
+}
+[data-theme="nixie"] :focus-visible, [data-theme="nixie"] .input:focus,
+[data-theme="nixie"] .btn-primary, [data-theme="nixie"] .range::-webkit-slider-thumb {
+  box-shadow: 0 0 12px oklch(75% 0.15 60deg / 0.35);
+}
+[data-theme="nixie"] body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background-image: repeating-linear-gradient(
+    0deg, transparent 0, transparent 2px,
+    oklch(75% 0.15 60deg / 0.025) 2px, oklch(75% 0.15 60deg / 0.025) 3px
+  );
+  mix-blend-mode: screen;
 }`
 };
 

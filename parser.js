@@ -668,6 +668,11 @@ function askForNode(variable, inputType, label, line, choices) {
   else if (baseType === 'long text') { htmlType = 'textarea'; tag = 'textarea'; }
   else if (baseType === 'rich text') { htmlType = 'rich-text'; tag = 'div'; }
   else if (baseType === 'choice') { htmlType = 'select'; tag = 'select'; }
+  // Phase 5.5 — three new DaisyUI form widgets. Each gets its own htmlType
+  // so the compiler dispatch picks the right emit path.
+  else if (baseType === 'datetime') { htmlType = 'datetime-local'; tag = 'input'; }
+  else if (baseType === 'radio')    { htmlType = 'radio';          tag = 'div';   }
+  else if (baseType === 'slider')   { htmlType = 'range';          tag = 'input'; }
 
   const ui = {
     tag,
@@ -1275,7 +1280,7 @@ const CANONICAL_DISPATCH = new Map([
     }
     const nameToken = ctx.tokens[1];
     const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
-    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss', 'ember', 'slate', 'dusk', 'vault', 'sakura', 'forge'];
+    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss', 'ember', 'slate', 'dusk', 'vault', 'sakura', 'forge', 'nixie'];
     if (!validThemes.includes(themeName)) {
       ctx.errors.push({ line: ctx.line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
     } else {
@@ -2542,6 +2547,27 @@ const CANONICAL_DISPATCH = new Map([
     if (ctx.tokens.length >= 2 && (ctx.tokens[1].value === 'the' || ctx.tokens[1].value === 'this')) {
       return undefined; // fall through to panel action handler
     }
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  // Phase 5.5 — three new type-first input handlers. Each mirrors the
+  // text_input/number_input pattern above: dispatch to parseNewInput which
+  // recognizes the canonical via its typeMap entry.
+  ['datetime_input', (ctx) => {
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['radio', (ctx) => {
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['slider', (ctx) => {
     const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
@@ -4003,11 +4029,14 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         i++; continue;
       }
 
-      // Label-first input: 'Label' is a text input / 'Label' as text input
+      // Label-first input: 'Label' is [a|the] text input / 'Label' as text input
+      // Phase 5.5 — article ('a'/'the') is OPTIONAL so 'Pick' is radio with [...]
+      // and 'Value' is slider from 0 to 100 read naturally. The parser tries
+      // both shapes: with-article (typePos 3) and without-article (typePos 2).
       if (firstToken.type === TokenType.STRING && tokens.length >= 3 &&
-          tokens[1].canonical === 'is' &&
-          (tokens[2].canonical === 'a' || tokens[2].canonical === 'the')) {
-        const typePos = 3;
+          tokens[1].canonical === 'is') {
+        const hasArticle = tokens[2].canonical === 'a' || tokens[2].canonical === 'the';
+        const typePos = hasArticle ? 3 : 2;
         if (typePos < tokens.length && isInputType(tokens[typePos])) {
           const parsed = parseLabelIsInput(tokens, line);
           if (parsed) {
@@ -6825,6 +6854,12 @@ function parseSection(lines, startIdx, blockIndent, errors) {
           inlineModifiers.push('__starts_closed');
         }
       }
+      // Phase 5.5 — 'section X as accordion:' turns each nested section into
+      // a DaisyUI collapse panel. The compiler reads this flag and wraps each
+      // child SECTION's body in collapse-content with a collapse-title header.
+      if (modText.includes('accordion')) {
+        inlineModifiers.push('__accordion');
+      }
 
       // Match known CSS modifiers (longest first)
       const sortedMods = Object.keys(INLINE_MODIFIERS).sort((a, b) => b.length - a.length);
@@ -7176,6 +7211,21 @@ function parseNav(lines, startIdx, blockIndent, errors) {
       }
     }
 
+    // Phase 5.5 — nested nav items. The tokenizer strips trailing block
+    // colons, so we detect a block-opener by looking at the next line's
+    // indent: if it's deeper than this nav item's, those lines are children.
+    // Pass the nav item's own indent as parentIndent so parseBlock treats
+    // them as children rather than as siblings.
+    const navItemIndent = lines[startIdx].indent;
+    const nextLine = lines[startIdx + 1];
+    if (nextLine && nextLine.indent > navItemIndent && nextLine.tokens.length > 0) {
+      const { body: children, endIdx: childEnd } = parseBlock(lines, startIdx + 1, navItemIndent, errors);
+      const node = navItemNode(title, path, line, count, icon);
+      if (children && children.length > 0) {
+        node.body = children;
+      }
+      return { node, endIdx: childEnd };
+    }
     return { node: navItemNode(title, path, line, count, icon), endIdx: startIdx + 1 };
   }
 
@@ -7273,10 +7323,23 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
 // 'Hourly Rate' as number input saves to rate
 
 function isInputType(token) {
-  return ['text_input', 'number_input', 'file_input', 'dropdown', 'checkbox', 'text_area', 'rich_text'].includes(token.canonical);
+  // Phase 5.5 — datetime_input/radio/slider join the family of ASK_FOR flavors
+  // recognized by the label-is and label-first parsers.
+  return [
+    'text_input', 'number_input', 'file_input', 'dropdown',
+    'checkbox', 'text_area', 'rich_text',
+    'datetime_input', 'radio', 'slider',
+  ].includes(token.canonical);
 }
 
 // 'Label' is a text input that saves to var
+//
+// Phase 5.5 — also handles three new flavors:
+//   'Due'   is a datetime input that saves to due_at       → kind 'datetime'
+//   'Pick'  is radio with ['a','b','c'] that saves to var  → kind 'radio' + choices
+//   'Value' is a slider from 0 to 100 that saves to value  → kind 'slider' + min/max
+// The article ('a'/'the') is optional after 'is' so the radio/slider phrasings
+// read naturally without forcing 'a radio'.
 function parseLabelIsInput(tokens, line) {
   const label = tokens[0].value;
   let pos = 2; // skip label + "is"
@@ -7293,14 +7356,18 @@ function parseLabelIsInput(tokens, line) {
   else if (typeToken.canonical === 'checkbox') inputType = 'yes/no';
   else if (typeToken.canonical === 'text_area') inputType = 'long text';
   else if (typeToken.canonical === 'rich_text') inputType = 'rich text';
+  else if (typeToken.canonical === 'datetime_input') inputType = 'datetime';
+  else if (typeToken.canonical === 'radio') inputType = 'radio';
+  else if (typeToken.canonical === 'slider') inputType = 'slider';
   pos++;
 
   let variable = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-  // Dropdown choices: 'Color' is a dropdown with ['Red', 'Green']
+  // Dropdown OR radio choices: 'Color' is a dropdown with ['Red', 'Green'] /
+  //                            'Pick'  is radio with ['a','b','c']
   let choices = null;
-  if (inputType === 'choice') {
-    // Look for "with" followed by a list
+  if (inputType === 'choice' || inputType === 'radio') {
+    // Look for "with" followed by a list literal
     for (let k = pos; k < tokens.length; k++) {
       if (tokens[k].canonical === 'with' && k + 1 < tokens.length && tokens[k + 1].type === TokenType.LBRACKET) {
         choices = [];
@@ -7309,6 +7376,29 @@ function parseLabelIsInput(tokens, line) {
           if (tokens[j].type === TokenType.STRING) choices.push(tokens[j].value);
           j++;
         }
+        break;
+      }
+    }
+  }
+
+  // Slider range: 'Value' is a slider FROM <number> TO <number>
+  // 'from' tokenizes to canonical 'in' (see synonyms.js — from/of/in are aliases).
+  // 'to' tokenizes to canonical 'to_connector'.
+  let sliderMin = null;
+  let sliderMax = null;
+  if (inputType === 'slider') {
+    for (let k = pos; k < tokens.length - 3; k++) {
+      const fromTok = tokens[k];
+      const isFrom = fromTok && (fromTok.value === 'from' || fromTok.canonical === 'in');
+      if (!isFrom) continue;
+      const minTok = tokens[k + 1];
+      const toTok = tokens[k + 2];
+      const maxTok = tokens[k + 3];
+      if (minTok && minTok.type === TokenType.NUMBER &&
+          toTok && (toTok.value === 'to' || toTok.canonical === 'to_connector') &&
+          maxTok && maxTok.type === TokenType.NUMBER) {
+        sliderMin = Number(minTok.value);
+        sliderMax = Number(maxTok.value);
         break;
       }
     }
@@ -7327,7 +7417,9 @@ function parseLabelIsInput(tokens, line) {
     break;
   }
 
-  return { node: askForNode(variable, inputType, label, line, choices) };
+  const node = askForNode(variable, inputType, label, line, choices);
+  if (sliderMin !== null) { node.min = sliderMin; node.max = sliderMax; }
+  return { node };
 }
 
 function parseLabelFirstInput(tokens, line) {
@@ -7362,6 +7454,18 @@ function parseLabelFirstInput(tokens, line) {
   } else if (typeToken.canonical === 'file_input') {
     inputType = 'file';
     pos++;
+  } else if (typeToken.canonical === 'datetime_input') {
+    // Phase 5.5 — DaisyUI datetime-local picker, mirrors text_input shape.
+    inputType = 'datetime';
+    pos++;
+  } else if (typeToken.canonical === 'radio') {
+    // Phase 5.5 — radio selector, choice-like list semantics.
+    inputType = 'radio';
+    pos++;
+  } else if (typeToken.canonical === 'slider') {
+    // Phase 5.5 — DaisyUI range slider, optional 'from N to M' clause.
+    inputType = 'slider';
+    pos++;
   } else {
     // Not an input type after 'as' — this isn't a label-first input
     return null;
@@ -7370,9 +7474,10 @@ function parseLabelFirstInput(tokens, line) {
   // Auto-derive variable name from label
   let variable = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-  // Optional: dropdown options — 'Color' as dropdown with ['Red', 'Green']
+  // Optional: dropdown/radio options — 'Color' as dropdown with ['Red', 'Green']
+  // Radio uses the same list literal shape as dropdown.
   let choices = null;
-  if (inputType === 'choice' && pos < tokens.length &&
+  if ((inputType === 'choice' || inputType === 'radio') && pos < tokens.length &&
       ((tokens[pos].type === TokenType.KEYWORD && tokens[pos].canonical === 'with') ||
        (tokens[pos].type === TokenType.IDENTIFIER && tokens[pos].value.toLowerCase() === 'with'))) {
     pos++;
@@ -7390,6 +7495,29 @@ function parseLabelFirstInput(tokens, line) {
     }
   }
 
+  // Phase 5.5 — slider 'from N to M' clause. Same shape as parseLabelIsInput's
+  // scan but inline since we know where pos is. 'from' tokenizes as canonical
+  // 'in' (synonyms.js — from/of/in are alias group).
+  let sliderMin = null;
+  let sliderMax = null;
+  if (inputType === 'slider') {
+    for (let k = pos; k < tokens.length - 3; k++) {
+      const fromTok = tokens[k];
+      const isFrom = fromTok && (fromTok.value === 'from' || fromTok.canonical === 'in');
+      if (!isFrom) continue;
+      const minTok = tokens[k + 1];
+      const toTok = tokens[k + 2];
+      const maxTok = tokens[k + 3];
+      if (minTok && minTok.type === TokenType.NUMBER &&
+          toTok && (toTok.value === 'to' || toTok.canonical === 'to_connector') &&
+          maxTok && maxTok.type === TokenType.NUMBER) {
+        sliderMin = Number(minTok.value);
+        sliderMax = Number(maxTok.value);
+        break;
+      }
+    }
+  }
+
   // Optional: saves to <variable>
   if (pos < tokens.length && tokens[pos].canonical === 'saves_to') {
     pos++;
@@ -7402,6 +7530,7 @@ function parseLabelFirstInput(tokens, line) {
 
   const node = askForNode(variable, inputType, label, line);
   if (choices) { node.choices = choices; node.ui.choices = choices; }
+  if (sliderMin !== null) { node.min = sliderMin; node.max = sliderMax; }
   return { node };
 }
 
@@ -7425,6 +7554,10 @@ function parseNewInput(tokens, line, canonical) {
     dropdown: 'choice',
     checkbox: 'yes/no',
     text_area: 'long text',
+    // Phase 5.5 — three new DaisyUI form widgets
+    datetime_input: 'datetime',
+    radio: 'radio',
+    slider: 'slider',
   };
   const inputType = typeMap[canonical] || 'text';
 
@@ -7438,9 +7571,10 @@ function parseNewInput(tokens, line, canonical) {
   // Auto-derive variable name from label: "Hourly Rate" -> hourly_rate
   let variable = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-  // Optional: dropdown 'Color' with ['Red', 'Green', 'Blue']
+  // Optional: dropdown/radio 'Color' with ['Red', 'Green', 'Blue']
+  // Phase 5.5 — radio shares the same list-literal shape as dropdown.
   let choices = null;
-  if (inputType === 'choice' && pos < tokens.length &&
+  if ((inputType === 'choice' || inputType === 'radio') && pos < tokens.length &&
       ((tokens[pos].type === TokenType.KEYWORD && tokens[pos].canonical === 'with') ||
        (tokens[pos].type === TokenType.IDENTIFIER && tokens[pos].value.toLowerCase() === 'with'))) {
     pos++;
@@ -7458,6 +7592,28 @@ function parseNewInput(tokens, line, canonical) {
     }
   }
 
+  // Phase 5.5 — slider 'Volume' from 0 to 100 attaches min/max to the node.
+  // 'from' tokenizes as canonical 'in'; 'to' as 'to_connector'.
+  let sliderMin = null;
+  let sliderMax = null;
+  if (inputType === 'slider') {
+    for (let k = pos; k < tokens.length - 3; k++) {
+      const fromTok = tokens[k];
+      const isFrom = fromTok && (fromTok.value === 'from' || fromTok.canonical === 'in');
+      if (!isFrom) continue;
+      const minTok = tokens[k + 1];
+      const toTok = tokens[k + 2];
+      const maxTok = tokens[k + 3];
+      if (minTok && minTok.type === TokenType.NUMBER &&
+          toTok && (toTok.value === 'to' || toTok.canonical === 'to_connector') &&
+          maxTok && maxTok.type === TokenType.NUMBER) {
+        sliderMin = Number(minTok.value);
+        sliderMax = Number(maxTok.value);
+        break;
+      }
+    }
+  }
+
   // Optional: saves to <variable>
   if (pos < tokens.length && tokens[pos].canonical === 'saves_to') {
     pos++;
@@ -7470,6 +7626,7 @@ function parseNewInput(tokens, line, canonical) {
 
   const node = askForNode(variable, inputType, label, line);
   if (choices) { node.choices = choices; node.ui.choices = choices; }
+  if (sliderMin !== null) { node.min = sliderMin; node.max = sliderMax; }
   return { node };
 }
 
