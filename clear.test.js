@@ -6,6 +6,7 @@
 
 import { describe, it, expect, run } from './lib/testUtils.js';
 import './runtime-grammar.test.js';
+import './slot-extractors.test.js';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync as writeFixtureFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname as pathDirname, join as pathJoin } from 'node:path';

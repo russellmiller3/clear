@@ -10927,6 +10927,47 @@ export function exprToCode(expr, ctx) {
       return `${src}.replace(new RegExp(${pat}, "g"), ${repl})`;
     }
 
+    // =========================================================================
+    // SLOT EXTRACTORS (Phase 2 of Lenat-in-Clear, 2026-05-13)
+    // =========================================================================
+    // Each lowers to a single call into the runtime helper, with the same
+    // shape on both targets — JS uses camelCase, Python uses snake_case.
+    // The runtime helpers themselves live in runtime/slot-extractors.js (JS)
+    // and runtime/slot_extractors.py (Python). They are loaded into globals
+    // alongside the compiled app — see compileToJSBackend's preamble for the
+    // `globalThis._extractDatetime` / `_fuzzyMatch` / etc. injection.
+
+    case NodeType.EXTRACT_DATETIME: {
+      const src = exprToCode(expr.source, ctx);
+      if (ctx.lang === 'python') return `_extract_datetime(${src})`;
+      return `_extractDatetime(${src})`;
+    }
+
+    case NodeType.FUZZY_MATCH: {
+      const src = exprToCode(expr.source, ctx);
+      const q = JSON.stringify(expr.query);
+      // Threshold may be null (parser-default) — emit `null`/`None` so the
+      // runtime helper falls back to its own DEFAULT_FUZZY_THRESHOLD constant.
+      const threshold = expr.threshold == null
+        ? (ctx.lang === 'python' ? 'None' : 'null')
+        : String(expr.threshold);
+      if (ctx.lang === 'python') return `_fuzzy_match(${q}, ${src}, ${threshold})`;
+      return `_fuzzyMatch(${q}, ${src}, ${threshold})`;
+    }
+
+    case NodeType.EXTRACT_ABOUT: {
+      const src = exprToCode(expr.source, ctx);
+      if (ctx.lang === 'python') return `_extract_about(${src})`;
+      return `_extractAbout(${src})`;
+    }
+
+    case NodeType.REGEX_CAPTURE_REM: {
+      const src = exprToCode(expr.source, ctx);
+      const pat = JSON.stringify(expr.pattern);
+      if (ctx.lang === 'python') return `_regex_capture_rem(${src}, ${pat})`;
+      return `_regexCaptureRem(${src}, ${pat})`;
+    }
+
     case NodeType.FILE_OP: {
       const safePath = JSON.stringify(expr.path);
       if (expr.operation === 'read') {
