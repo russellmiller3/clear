@@ -289,7 +289,7 @@ Service calls use direct REST API calls via `fetch()`, not SDK imports. Auth via
 | `PIPELINE` | `pipeline 'Name' with var:` + steps (`'Agent'` or `stepname with 'Agent'`) | (same) | `async function pipeline_name(var) { ... }` |
 | `RUN_PIPELINE` | `result = call pipeline 'Name' with data` | (same) | `await pipeline_name(data)` |
 | `SKILL` | `skill 'Name':` + `has tool(s):` + `instructions:` | (same) | Compile-time merge into agent |
-| `HUMAN_CONFIRM` | `ask user to confirm 'message'` | (same) | Approvals table insert + 202 response |
+| `HUMAN_CONFIRM` | `ask user to confirm 'message'` (optional `with graduation after N runs` / block-form `graduates per: action|user|tenant|session` / `audit table is X`) | (same) | Plain form: Approvals table insert + 202. Graduating form (Phase 3, 2026-05-13): auto-emits per-scope `<scope>_grad_counters` + per-action audit table; first N calls return 202 with `mode: manual`, call N+1 auto-fires with `mode: auto`. |
 | `MOCK_AI` | `mock claude responding:` + fields (in test) | (same) | `_askAI` override with mock |
 | `EVAL_DEF` | `eval 'name':` + `given 'Agent' receives X` / `call POST '/path' with X` + `expect '<rubric>'` / `expect output has fields` | (same) | Merged into `result.evalSuite` with `source: 'user-top'`. Runner POSTs the input and grades via Claude (or Gemini/OpenAI if `EVAL_PROVIDER` set). |
 | `CLASSIFY` | `intent = classify X as 'a', 'b', 'c'` | (same) | `await _classifyIntent(X, ['a','b','c'])` — Claude Haiku |

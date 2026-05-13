@@ -407,6 +407,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Policies | `must not:` + rules | Compile-time guardrails |
 | Observability | `track agent decisions` | Logs _askAI calls with timing |
 | Human approval | `ask user to confirm 'message'` | Approval workflow |
+| Confirm with graduation | `ask user to confirm 'message' with graduation after N runs` (or block form with `graduates per: action|user|tenant|session` + `audit table is X`) | First N calls return 202 + manual audit row; call N+1 auto-fires with auto audit row. Counter + audit tables auto-emitted. |
+
 | Mock AI | `mock claude responding:` + fields | Test infrastructure |
 | Model selection | `ask claude 'prompt' with X using 'model'` | |
 | Streaming | Auto-streams by default in endpoints | Opt out: `do not stream` |

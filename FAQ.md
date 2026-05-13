@@ -84,6 +84,14 @@ Tests: `slot-extractors.test.js` (imported by `clear.test.js`) covers compiler e
 
 Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 2).
 
+## How do I make an approval graduate to auto-fire after N runs? (2026-05-13)
+
+Use `ask user to confirm 'message' with graduation after N runs` (inline) or the block form with `graduates per: <scope>` + optional `audit table is X`. The compiler auto-emits two tables on first use: a counter table (`<scope>_grad_counters` — defaults to `action_grad_counters`) and a per-action audit table (`<endpoint-slug>_approvals`). First N calls return HTTP 202 with the approval prompt and a manual audit row. Call N+1 onward inserts an auto audit row and falls through to the rest of the endpoint body — no 202, no prompt.
+
+Validator catches three mistakes: `with graduation` without `after N` (GRADUATION_THRESHOLD_MISSING), unknown scope like `graduates per: foo` (GRADUATION_SCOPE_UNKNOWN), and `graduates per: user` on an endpoint without `requires login` (GRADUATION_NO_LOGIN — anonymous callers would collapse into one bucket).
+
+Plain `ask user to confirm 'X'` (no graduation clause) still works unchanged. See SYNTAX.md "Confirmation with Graduation" and USER-GUIDE.md Chapter 19d-2. Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 3). Spec: `scripts/phase-3-graduation-spec.md`.
+
 ## Why is there no LLM fallback for `extract datetime` in Python yet? (2026-05-13)
 
 The JS `_extractDatetime` returns a Promise when the fast-path misses AND an `askAi` provider is configured. Python's `_extract_datetime` takes an optional sync `ask_ai` callable for the same path. Real provider routing (Anthropic / Gemini / OpenRouter) lands in Phase 6 — until then both paths fall back to `None` / `null` when callers don't pass an `ask_ai`.

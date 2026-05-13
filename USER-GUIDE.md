@@ -4439,6 +4439,83 @@ It's the WRONG shape when:
 - You know every command at compile time. Use `match X:` instead.
 - You just need keyword search. Use `search Table for query`.
 
+## Chapter 19d-2: Confirmation with Graduation (Approval That Earns Its Way to Auto-Fire)
+
+Sometimes you want the user to approve an action **the first few times**,
+and then trust the system to fire it without asking. Picture a Marcus-customer
+agent that issues refunds: the operator wants to eyeball the first 50
+decisions, but after that the agent has earned the right to act on its own.
+Or a dev tool that opens Notepad on cue — the first three times the user
+clicks, you ask "are you sure?"; the fourth time, just open it.
+
+That's what `ask user to confirm 'X' with graduation` does. The first N calls
+return the usual HTTP 202 with an approval prompt. Call N+1 onwards: the
+action fires immediately, no prompt. Every call writes one audit row, so
+you always know who approved what (and which calls fired automatically).
+
+### Simplest form
+
+```clear
+when user calls POST /api/open-notepad sending data:
+  ask user to confirm 'Open Notepad?' with graduation after 3 runs
+  send back 'opened'
+```
+
+Say it out loud: "Ask the user to confirm 'Open Notepad?' with graduation
+after three runs." The first three POSTs return 202 with the prompt. The
+fourth POST returns 200 with `{ message: 'opened' }`.
+
+### What gets auto-created
+
+The compiler emits two new tables on first compile:
+
+- **`action_grad_counters`** — one row per ask-confirm site, tracks how
+  many times that site has been approved (`scope_key, count, last_at`).
+- **`open_notepad_approvals`** — the audit log (`decided_by, decided_at,
+  decision, mode`). `mode` is `'manual'` for the first N calls and
+  `'auto'` for every call after.
+
+The audit table name is derived from the endpoint path. Override it with
+the block form:
+
+```clear
+when user calls POST /api/open-notepad sending data:
+  ask user to confirm 'Open Notepad?' with graduation:
+    after 3 runs
+    graduates per: action
+    audit table is open_notepad_audits
+  send back 'opened'
+```
+
+### Counter scopes
+
+`graduates per:` decides what counts as "the same site":
+
+- `action` *(default)* — one counter per ask-confirm line. Trust the
+  action itself.
+- `user` — one counter per logged-in user. Each user earns trust
+  independently. Requires `requires login` on the endpoint.
+- `tenant` — one counter per tenant. Each tenant earns trust
+  independently.
+- `session` — one counter per session. Trust resets every login.
+
+The validator catches the easy mistakes: `graduates per: foo` errors
+`GRADUATION_SCOPE_UNKNOWN`, `graduates per: user` without auth errors
+`GRADUATION_NO_LOGIN`, and `with graduation` without `after N` errors
+`GRADUATION_THRESHOLD_MISSING`.
+
+### When to reach for this
+
+Use `with graduation` when:
+- The action is dangerous-by-default but should loosen with proof.
+- An agent or capability is verified by-hand for N runs and then trusted.
+- Operators want to see something work three times before they walk away.
+
+Don't reach for it when:
+- The action should ALWAYS require approval (plain `ask user to confirm`).
+- The graduation rule depends on data inside the action (use a regular
+  `if` plus an `ask user to confirm` instead).
+
 ## Chapter 19e: Slot Extractors (Pulling Structured Values Out of Free-Form Text)
 
 Runtime Grammar (Chapter 19d) routes user input to the right command. But the input usually carries DATA — "remind me **tomorrow at 2pm** to email Marcus **about Q3 numbers**" has a datetime, an action, and a topic. The matcher's prefix-match alone doesn't pull those out. That's what slot extractors are for.

@@ -6,6 +6,45 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-13 — Phase 3: Confirmation with Graduation (Lenat-in-Clear)
+
+`ask user to confirm 'X' with graduation after N runs` (inline) and the
+block-form variant with `graduates per: action|user|tenant|session` plus
+`audit table is X`. Extends the existing `HUMAN_CONFIRM` node with an
+optional `graduation` field — plain `ask user to confirm` keeps working
+identically (no breaking change).
+
+**What the compiler now emits when the clause is present:**
+- A counter table per scope (default `action_grad_counters` with columns
+  `scope_key, count, last_at`). Deduped via a compile-context flag so
+  multiple confirm sites share the table.
+- An audit table per action (default `<endpoint-slug>_approvals` with
+  `decided_by, decided_at, decision, mode`). The audit table name can be
+  overridden with `audit table is <name>` in the block form.
+- A counter-check branch at the call site:
+    count < after_n  → write a manual audit row, bump the counter, return
+                       HTTP 202 with the approval prompt + `remaining_before_auto`.
+    count >= after_n → write an auto audit row, fall through to the rest
+                       of the endpoint body (no 202, no prompt).
+
+**Validator rules:** GRADUATION_THRESHOLD_MISSING fires when `with graduation`
+lacks an `after N` clause. GRADUATION_SCOPE_UNKNOWN fires on unknown scopes.
+GRADUATION_NO_LOGIN fires on `graduates per: user` without `requires login` —
+without auth, every anonymous caller would collapse into one counter bucket.
+
+**JS + Python parity from day one** — both targets emit the same shape
+using their respective db facades. The req.user (JS) / request.state.user
+(Python) reference drives the scope key when `graduates per: user`.
+
+6 TDD cycles green (3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6). 18 new tests across
+parser, compiler emit, in-process runtime (3 manual → 1 auto), validator,
+and run-command integration. 3129 total tests passing, no regressions.
+
+Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 3).
+Spec: `scripts/phase-3-graduation-spec.md`.
+
+---
+
 ## 2026-05-13 — Canonical-rename: `use` → `import` for module imports
 
 The module-import keyword is now `import`. `include` is a silent alias. The

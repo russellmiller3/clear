@@ -68,6 +68,7 @@ The cheat sheet above covers ~80% of every-turn syntax. For the rest — when th
 | AI agents / streaming / tools / RAG / memory | `SYNTAX.md` (AI Agents) |
 | Workflows / pipelines / multi-step orchestration | `SYNTAX.md` (Workflows) |
 | Approval queues / triggered email | `SYNTAX.md` (Approval Queues) + `apps/deal-desk/main.clear` |
+| Confirm with graduation (approval that auto-fires after N runs) | `SYNTAX.md` (Confirmation with Graduation) — inline form `ask user to confirm 'X' with graduation after N runs`; block form supports `graduates per:` + `audit table is X`. Validator names every mistake (GRADUATION_THRESHOLD_MISSING / GRADUATION_SCOPE_UNKNOWN / GRADUATION_NO_LOGIN). |
 | Routing — `route X by FIELD:` | `SYNTAX.md` (Routing) — getting the LHS-quoting + before-save rules wrong is a HARD error |
 | Provable business rules — `rule <name>:` | `SYNTAX.md` (Named Business Rules) + `examples/rule-keyword-tour.clear` |
 | Provable agent bounds — `prove that agent 'X' cannot ...` | `SYNTAX.md` (Agent Tool-Bound Claims) + `USER-GUIDE.md` Chapter 12b + `examples/proofs/agent-bounds-demo.clear` |
