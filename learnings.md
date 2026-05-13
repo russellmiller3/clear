@@ -1,5 +1,20 @@
 # Engineering Learnings
 
+## 2026-05-13 — Phase 5 (Lenat-in-Clear): `display X as network graph` lands as a CHART kind
+
+**What shipped.** A fifth chart kind — `display X as network graph showing edges via Y` — that parses to a CHART node with `chartType: 'network'` and compiles to an ECharts force-directed graph. Optional `with max N nodes` and `with color by FIELD` modifiers. Runtime helpers `runtime/graph-edges.js` + `runtime/graph_edges.py` mirror the same logic for server-side / Python use.
+
+**Why it was easy.** Network graphs are NOT a new node type; they're a new `chartType` value on the existing CHART node. That meant zero new validator rules, zero new compiler dispatch entries, and the parser branch sits right next to the existing chart shorthand. The ECharts `graph` series is native — the compile emit just sets `type: 'graph', layout: 'force'` instead of `type: 'bar'`.
+
+**Substring-match edge resolution.** Each record's edges-field value (free-form English like `"about Marcus and Q3 plan"`) is scanned for every OTHER record's display label. Each hit emits one directed link. Label preference order: `name → what → idea → note → id`. Matches Node Lenat's `pickLabel` so a Lenat-in-Clear records map looks the same as a Node Lenat records map fed the same records.
+
+**Inlined helper, not a runtime import.** The compiler inlines an equivalent JS helper inside the compiled chart emit so the page works standalone (no `require('./clear-runtime/graph-edges')` in the browser). The runtime files in `runtime/` are for server-side use cases and Python consumers.
+
+**Gotcha — CommonJS bridge for tests.** The compiler tests need to `require()` `runtime/graph-edges.js` (CommonJS, scoped via `runtime/package.json` `{"type":"commonjs"}`), but `clear.test.js` is ESM. The fix: `import { createRequire } from 'node:module'` at the top of the test file and bridge once for the whole suite. Inline `require('module')` inside a `describe` block triggers `ERR_AMBIGUOUS_MODULE_SYNTAX` because ESM doesn't allow bare `require` calls.
+
+**Gotcha — testUtils `expect` matcher surface.** `testUtils.js` doesn't ship `toMatchObject` or `toContainEqual`. Rewrite assertions as field-by-field `toBe` or a hand-rolled `some()` predicate. The compiler test suite uses a minimal matcher set — anything fancier than `toBe` / `toEqual` / `toContain` / `toMatch` / `toHaveLength` / `toBeGreaterThan` needs to be expanded out.
+
+
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
 ## Session 2026-05-12: Missing app intent should compile-error, not auto-invent UI

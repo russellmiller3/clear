@@ -1,5 +1,22 @@
 # Clear FAQ
 
+## Where does the network-graph chart kind live? (2026-05-13)
+
+A fifth CHART kind alongside line / bar / pie / area. Trigger it with
+`display X as network graph showing edges via Y` — the parser branch in
+`parser.js` `parseDisplay` (around the `as_format` token check) fires
+BEFORE the existing `as <word> chart` shorthand so it can't swallow the
+network form. The compile emit in `compiler.js` (the chart-emit loop)
+branches on `chartType === 'network'` and inlines an ECharts
+`{type:'graph', layout:'force'}` series with a substring-match edge
+resolver. Optional `with max N nodes` caps the layout (default 200);
+`with color by FIELD` threads through to ECharts categories.
+
+Runtime helpers live at `runtime/graph-edges.js` (JS) and
+`runtime/graph_edges.py` (Python) for server-side `{nodes, links}`
+consumers. The compiled HTML inlines an equivalent helper so pages
+render standalone without loading the runtime module.
+
 ## How do I split a Clear app across files? (2026-05-13)
 
 Use `import` (the canonical keyword) followed by the file name with its

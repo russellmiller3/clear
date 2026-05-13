@@ -3550,6 +3550,22 @@ want to group and count by a field:
 
 Always prefer the type-first canonical form in new code.
 
+**Network graph (force-directed).** A fifth chart kind for relationship
+visualizations — people linked to projects, contacts to deals, ideas to
+the records that reference them. Each record becomes a node; substring
+matches on the named field resolve into directed links.
+
+```
+display records as network graph showing edges via about
+display people as network graph showing edges via about with max 100 nodes
+display concepts as network graph showing edges via about with color by kind
+```
+
+Use a network graph when you have a flat list of records that reference
+each other by name in a free-form text field. Node labels walk
+`name` → `what` → `idea` → `note` → `id` in order. The default node cap is
+200 (ECharts force-layout gets sluggish past ~300 nodes).
+
 **Chart modifiers:**
 - **Subtitle:** `bar chart 'Title' subtitle 'Description' showing data` — adds small text below chart title
 - **Stacked:** `bar chart 'Title' showing data stacked` — stacks bar series on top of each other

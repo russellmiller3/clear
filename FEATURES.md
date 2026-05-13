@@ -288,6 +288,7 @@ The tables below cover every feature in the language with exact syntax. Jump to 
 | Bar | `bar chart 'Sales' showing data` / `display Sales as bar chart` | ECharts |
 | Pie | `pie chart 'Breakdown' showing data` | ECharts |
 | Area | `area chart 'Trend' showing data` | ECharts |
+| Network graph | `display records as network graph showing edges via about` | ECharts force-directed graph (nodes + links via substring match) |
 
 | UI Action | Syntax | Notes |
 |-----------|--------|-------|

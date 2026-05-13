@@ -6,6 +6,41 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-13 — Phase 5 of Lenat-in-Clear: `display X as network graph`
+
+Network graph joins the CHART family as the fifth chart kind alongside
+line / bar / pie / area. ECharts handles the force-directed layout; the
+parser branch fires on `display X as network graph showing edges via Y`
+and stores `chartType: 'network'`, the named edges-field, and optional
+`with max N nodes` / `with color by FIELD` modifiers on the CHART node.
+
+**Compiler emit.** The chart-emit loop branches on `chartType === 'network'`
+and inlines a browser-side helper that mirrors `runtime/graph-edges.js`:
+pick a display label per record (walking `name` → `what` → `idea` →
+`note` → `id`), cap node count for layout perf (default 200), then scan
+each record's edges-field for the labels of other records (substring
+match). Each match emits one directed link. The shape matches Node
+Lenat's `links.js` so a Lenat-in-Clear records map renders edges in the
+same places as the Node Lenat version. `with color by` threads through
+to ECharts categories so nodes color by the named field's value.
+
+**Runtime helpers.** `runtime/graph-edges.js` (JS) and
+`runtime/graph_edges.py` (Python) expose the same `{nodes, links}`
+builder for server-side use cases and for programs that want to consume
+the structure outside the browser layer.
+
+**Why this matters.** Network graphs are the visualization layer for
+Lenat's records map (people / companies / ideas linked by the `about`
+field) and for any future relationship-graph view — CRM contact-deal-
+company, knowledge-base topic links, audit-chain dependencies. ECharts
+already supports it; the work was wiring it as a first-class CHART kind
+so apps get force-directed graphs from one English line.
+
+**Tests:** 15 new tests (5 parser, 3 compiler, 7 runtime). Baseline 3117
+→ 3132. All green.
+
+---
+
 ## 2026-05-13 — Canonical-rename: `use` → `import` for module imports
 
 The module-import keyword is now `import`. `include` is a silent alias. The

@@ -637,6 +637,38 @@ bar chart 'Weekly Trends' subtitle 'Opened vs closed' showing weekly_stats stack
 bar chart 'Weekly Trends' subtitle 'Last 4 weeks' showing data by category stacked
 ```
 
+### Network Graph (force-directed)
+
+```clear
+# Each record becomes a node. Substring matches on the named field
+# resolve into directed links between nodes.
+display records as network graph showing edges via about
+
+# Cap node count for layout performance (default 200).
+display people as network graph showing edges via about with max 100 nodes
+
+# Color nodes by a field's value.
+display concepts as network graph showing edges via about with color by kind
+
+# Both modifiers together.
+display records as network graph showing edges via about with max 150 nodes with color by category
+```
+
+The network graph is the fifth chart kind (alongside line / bar / pie / area).
+ECharts handles the force-directed layout; the runtime helper
+`runtime/graph-edges.js` (or `runtime/graph_edges.py` for Python apps)
+exposes the same `{nodes, links}` builder for server-side use.
+
+**Label resolution.** Each node's display label walks the record fields in
+this order: `name` → `what` → `idea` → `note` → `id`. The first non-empty
+value wins. Matches Node Lenat's `pickLabel` so the same record set
+visualizes the same way across implementations.
+
+**Edge resolution.** Substring match: for every record, scan its
+edges-field value (typically free-form English like
+`"about Marcus and the Q3 plan"`) and emit one directed link to every
+OTHER record whose display label appears as a substring of that value.
+
 ## Display as Cards
 
 ```clear

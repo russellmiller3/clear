@@ -599,6 +599,17 @@ page 'App' at '/':
     display todos as table
 ```
 
+**Network graph (force-directed) — fifth chart kind.** Use when records
+reference each other by name in a free-form text field (Lenat `about`,
+CRM contact-deal-company, knowledge-base topic links). Each record
+becomes a node; substring matches resolve into directed links.
+
+```clear
+display records as network graph showing edges via about
+display people as network graph showing edges via about with max 100 nodes
+display concepts as network graph showing edges via about with color by kind
+```
+
 ## Declaring the Owner (MANDATORY for any auth-enabled app)
 
 Every app with `allow signup and login` MUST also declare an owner:
