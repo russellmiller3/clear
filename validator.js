@@ -1362,10 +1362,26 @@ function validateForwardReferences(body, errors) {
           break;
         // Phases 85-90: Workflows
         case NodeType.WORKFLOW: {
-          // Workflow defines state fields in its scope
+          // Workflow defines state fields in its scope.
           const wfScope = new Set(localDefined);
           if (node.stateVar) wfScope.add(node.stateVar);
-          for (const f of (node.stateFields || [])) wfScope.add(f.name);
+          const stateFieldNames = new Set();
+          for (const f of (node.stateFields || [])) {
+            wfScope.add(f.name);
+            stateFieldNames.add(f.name);
+          }
+          // user_input step validation: every `step X awaits user input as state's Y`
+          // must point at a declared state field. Without this check Clear ships
+          // a workflow whose pause-step writes to a field that doesn't exist —
+          // server crashes at first user message with "cannot set property of undefined".
+          for (const step of (node.steps || [])) {
+            if (step.kind === 'user_input' && step.savesTo && !stateFieldNames.has(step.savesTo)) {
+              errors.push({
+                line: step.line || node.line || 0,
+                message: `step '${step.name}' awaits user input as state's '${step.savesTo}', but '${step.savesTo}' isn't a declared state field. Add \`${step.savesTo} is text, default ''\` to the workflow's \`state has:\` block.`,
+              });
+            }
+          }
           break;
         }
         case NodeType.POLICY:
