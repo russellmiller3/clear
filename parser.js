@@ -209,6 +209,13 @@ export const NodeType = Object.freeze({
   // Companion to the existing `define function NAME(arg):` primitive.
   CALL_FUNCTION: 'call_function',
 
+  // Text-prefix-match dispatcher over a runtime-mutable table. Added
+  // 2026-05-14. Shape: `search for X in TABLE by FIELD [or FIELD ...]`.
+  // Returns the first row whose FIELD value (or any element of a
+  // list-typed alternative field) is a prefix of X, lowercased. Binds
+  // an implicit `match` variable usable in the next conditional.
+  SEARCH_FOR: 'search_for',
+
   // Workflow primitives (Phases 85-90)
   WORKFLOW: 'workflow',
   RUN_WORKFLOW: 'run_workflow',
@@ -3587,6 +3594,90 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
 });
 
 // HTTP test call: "call POST /api/users with name is 'Alice', email is 'test'"
+CANONICAL_DISPATCH.set('search', (ctx) => {
+  // `search for X in TABLE by FIELD [or FIELD ...]` — text-prefix-match
+  // dispatcher (added 2026-05-14 as P1 of the text-routing primitives
+  // plan). Binds an implicit `match` variable for the next conditional.
+  //
+  // Disambiguation from the existing assignment-form `results = search
+  // TABLE for query`: that one is parsed on the RHS of `=` (see
+  // parser.js around line 11399). This handler ONLY fires at statement
+  // start when the second token is `for` — i.e., `search for ...`.
+  if (ctx.tokens.length < 5) return undefined;
+  if (ctx.tokens[1].value !== 'for' && ctx.tokens[1].canonical !== 'for_target') return undefined;
+
+  // Find the `in TABLE` boundary.
+  let in_index = -1;
+  for (let scan = 2; scan < ctx.tokens.length - 1; scan++) {
+    const tk = ctx.tokens[scan];
+    if ((tk.value === 'in' || tk.canonical === 'in') &&
+        ctx.tokens[scan + 1] && ctx.tokens[scan + 1].type === TokenType.IDENTIFIER) {
+      in_index = scan;
+      break;
+    }
+  }
+  if (in_index < 0) {
+    ctx.errors.push({ line: ctx.line, message: "`search for X in TABLE by FIELD`: need `in <Table>` clause. Example: search for query in Commands by phrase" });
+    return ctx.i + 1;
+  }
+
+  // Parse the input expression (everything between `for` and `in`).
+  const input_tokens = ctx.tokens.slice(2, in_index);
+  if (input_tokens.length === 0) {
+    ctx.errors.push({ line: ctx.line, message: "`search for X in TABLE`: missing the X to search for. Example: search for query in Commands by phrase" });
+    return ctx.i + 1;
+  }
+  // parseExpression operates on a token array starting at index 1 (it
+  // skips the leading keyword by default — replicate by prefixing a
+  // marker). Simpler: pass the slice as tokens and start at 0 via a
+  // small wrapper. We do it inline by building a fake token array.
+  const fake_for_parse = [{ value: '_marker_', line: ctx.line }, ...input_tokens];
+  const input_result = parseExpression(fake_for_parse, 1, ctx.line);
+  if (input_result.error || !input_result.node) {
+    ctx.errors.push({ line: ctx.line, message: `\`search for\` could not parse the input expression: ${input_result.error || 'unknown'}` });
+    return ctx.i + 1;
+  }
+
+  // Table name comes right after `in`.
+  const table_name = ctx.tokens[in_index + 1].value;
+
+  // Find `by` and read field list.
+  let by_index = -1;
+  for (let scan = in_index + 2; scan < ctx.tokens.length; scan++) {
+    const tk = ctx.tokens[scan];
+    if (tk.value === 'by' || tk.canonical === 'by') { by_index = scan; break; }
+  }
+  if (by_index < 0) {
+    ctx.errors.push({ line: ctx.line, message: `\`search for X in ${table_name}\` needs a \`by FIELD\` clause. Example: search for query in ${table_name} by phrase` });
+    return ctx.i + 1;
+  }
+  const fields = [];
+  let field_scan = by_index + 1;
+  while (field_scan < ctx.tokens.length) {
+    const tk = ctx.tokens[field_scan];
+    if (tk.value === 'or' || tk.canonical === 'or' || tk.value === ',') { field_scan++; continue; }
+    if (tk.type === TokenType.IDENTIFIER || tk.type === TokenType.KEYWORD) {
+      fields.push(String(tk.value));
+      field_scan++;
+      continue;
+    }
+    break;
+  }
+  if (fields.length === 0) {
+    ctx.errors.push({ line: ctx.line, message: `\`search for X in ${table_name} by ...\` needs at least one field name. Example: by phrase or synonyms` });
+    return ctx.i + 1;
+  }
+
+  ctx.body.push({
+    type: NodeType.SEARCH_FOR,
+    input: input_result.node,
+    table: table_name,
+    fields,
+    line: ctx.line,
+  });
+  return ctx.i + 1;
+});
+
 CANONICAL_DISPATCH.set('call', (ctx) => {
   // `call function NAME with ARG` — runtime dispatch by string name.
   // Added 2026-05-14 as P3 of the text-routing primitives plan. NAME is

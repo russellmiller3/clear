@@ -8651,6 +8651,57 @@ function _compileNodeInner(node, ctx) {
       return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}\n${_registration}`;
     }
 
+    case NodeType.SEARCH_FOR: {
+      // Text-prefix-match dispatcher over a table. The emitted JS reads
+      // every row, lowercases the input, and tests starts-with against
+      // each named field. Optional list-typed fields are iterated. The
+      // result binds into a `match` variable visible to subsequent
+      // statements (typically an `if there's a match:` block).
+      const input_code = exprToCode(node.input, ctx);
+      const table_lit = JSON.stringify(pluralizeName(node.table).toLowerCase());
+      const fields_lit = JSON.stringify(node.fields);
+      if (ctx.lang === 'python') {
+        // Python emit — equivalent shape, snake_case identifiers.
+        let py = '';
+        py += `${pad}_search_input = str(${input_code}).lower()\n`;
+        py += `${pad}match = None\n`;
+        py += `${pad}for _row in (await db.find_all(${table_lit}) or []):\n`;
+        py += `${pad}    if match: break\n`;
+        py += `${pad}    for _field in ${fields_lit}:\n`;
+        py += `${pad}        _val = _row.get(_field) if hasattr(_row, 'get') else getattr(_row, _field, None)\n`;
+        py += `${pad}        if isinstance(_val, list):\n`;
+        py += `${pad}            for _entry in _val:\n`;
+        py += `${pad}                if str(_entry).lower().startswith(_search_input) or _search_input.startswith(str(_entry).lower()):\n`;
+        py += `${pad}                    match = _row; break\n`;
+        py += `${pad}        elif _val is not None:\n`;
+        py += `${pad}            if str(_val).lower().startswith(_search_input) or _search_input.startswith(str(_val).lower()):\n`;
+        py += `${pad}                match = _row; break\n`;
+        return py;
+      }
+      let js = '';
+      js += `${pad}const _searchInput = String(${input_code}).toLowerCase();\n`;
+      js += `${pad}let match = null;\n`;
+      js += `${pad}for (const _row of (await db.findAll(${table_lit})) || []) {\n`;
+      js += `${pad}  if (match) break;\n`;
+      js += `${pad}  for (const _field of ${fields_lit}) {\n`;
+      js += `${pad}    const _val = _row[_field];\n`;
+      js += `${pad}    if (Array.isArray(_val)) {\n`;
+      js += `${pad}      for (const _entry of _val) {\n`;
+      js += `${pad}        const _e = String(_entry).toLowerCase();\n`;
+      js += `${pad}        if (_e.startsWith(_searchInput) || _searchInput.startsWith(_e)) { match = _row; break; }\n`;
+      js += `${pad}      }\n`;
+      js += `${pad}    } else if (_val != null) {\n`;
+      js += `${pad}      const _v = String(_val).toLowerCase();\n`;
+      js += `${pad}      if (_v.startsWith(_searchInput) || _searchInput.startsWith(_v)) { match = _row; break; }\n`;
+      js += `${pad}    }\n`;
+      js += `${pad}    if (match) break;\n`;
+      js += `${pad}  }\n`;
+      js += `${pad}}`;
+      // Mark `match` as declared in this scope so subsequent statements can read it.
+      if (ctx.declared) ctx.declared.add('match');
+      return js;
+    }
+
     case NodeType.CALL_FUNCTION: {
       // Runtime dispatch by string name. Two source shapes:
       //   `call function GREET with X`           — literal name (GREET is the function)
