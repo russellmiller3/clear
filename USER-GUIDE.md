@@ -1925,6 +1925,30 @@ bar chart 'Weekly Deals' subtitle 'Approved vs rejected' showing weekly_stats
 bar chart 'Weekly Deals' subtitle 'Last 4 weeks' showing weekly_stats stacked
 ```
 
+### Network Graph
+
+For data where the relationships matter more than the values — records that
+reference each other by name, people connected by emails, concepts linked by
+shared phrases — render it as a **network graph**:
+
+```clear
+define all_records as: look up records in Records table
+
+display all_records as network graph
+  showing edges via payload_json
+  with color by concept_id
+```
+
+Each row becomes a node. The compiler scans the field named after `showing
+edges via` (here `payload_json`) for mentions of OTHER records by name and
+draws an edge whenever it finds one. `with color by concept_id` paints each
+node according to that field's value — useful when records come in distinct
+kinds (tasks vs notes vs people in Lenat, for example).
+
+The result is a force-directed layout: bigger nodes mean more connections,
+nodes that share many edges cluster together, isolated rows sit at the
+edge. Used in Lenat-Clear's "How it connects" pane.
+
 ---
 
 ## Chapter 20: Designing Beautiful Pages
