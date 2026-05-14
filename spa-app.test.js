@@ -127,6 +127,63 @@ describe('SPA app primitive — parse baseline (Cycle 11.1)', () => {
     expect(result.serverJS).toMatch(/app\.get\("\/chat", \(req, res\) => res\.sendFile/);
   });
 
+  // Cycle 12 — shared sidebar block at the app level (2026-05-14). Lenat-clear's
+  // pre-refactor pages.clear duplicated the sidebar 8 times across page blocks;
+  // after SPA refactor it still duplicates 8 times across pane blocks. The
+  // `sidebar:` block lets the app declare the sidebar ONCE; the HTML emit
+  // wraps it next to the pane container so every pane shares the same chrome.
+  describe('SPA app primitive — shared sidebar block (Cycle 12)', () => {
+    it('parses `sidebar:` as a sibling of pane declarations inside `app`', () => {
+      const source = [
+        "app 'Lenat' at '/':",
+        "  sidebar:",
+        "    heading 'Lenat'",
+        "    nav section 'Surface':",
+        "      nav item 'Today' to '/today'",
+        "  pane 'Today' as 'today':",
+        "    heading 'Today'",
+        "  pane 'Chat' as 'chat':",
+        "    heading 'Chat'",
+      ].join('\n');
+      const result = compileProgram(source);
+      expect(result.errors).toEqual([]);
+      const app = result.ast.body.find(n => n.type === 'app_block');
+      expect(app).toBeTruthy();
+      expect(Array.isArray(app.sidebar)).toBe(true);
+      expect(app.sidebar.length).toBeGreaterThan(0);
+      expect(app.panes.length).toBe(2);
+    });
+
+    it('emits the sidebar once in HTML output (not per pane)', () => {
+      const source = [
+        "app 'Lenat' at '/':",
+        "  sidebar:",
+        "    heading 'Lenat sidebar'",
+        "  pane 'Today' as 'today':",
+        "    heading 'Today'",
+        "  pane 'Chat' as 'chat':",
+        "    heading 'Chat'",
+      ].join('\n');
+      const result = compileProgram(source);
+      expect(result.errors).toEqual([]);
+      // The sidebar heading should appear exactly ONCE in the rendered HTML
+      const sidebarHeadingCount = (result.html.match(/Lenat sidebar/g) || []).length;
+      expect(sidebarHeadingCount).toBe(1);
+    });
+
+    it('does NOT require a sidebar — app without one still works', () => {
+      const source = [
+        "app 'Lenat' at '/':",
+        "  pane 'Today' as 'today':",
+        "    heading 'Today'",
+      ].join('\n');
+      const result = compileProgram(source);
+      expect(result.errors).toEqual([]);
+      const app = result.ast.body.find(n => n.type === 'app_block');
+      expect(app.sidebar).toBeFalsy();
+    });
+  });
+
   // Regression: 2026-05-14 — comments between panes inside an app block
   // tokenized as content and tripped the "expected pane" error path. The
   // parser now skips COMMENT-type leading tokens silently.

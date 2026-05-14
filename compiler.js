@@ -9077,16 +9077,22 @@ ${pad}}`;
     case NodeType.APP_BLOCK: {
       // SPA app primitive emits its HTML shell + inline router script via the
       // HTML build path. For the JS compile targets (backend server.js and
-      // frontend reactive code), walk into each pane's body — they contain
-      // the same shape of content a PAGE body has (sections, displays,
-      // endpoints if any), so we delegate to compileNode on each child.
+      // frontend reactive code), walk the sidebar (if present) AND each pane's
+      // body — both contain the same shape of content a PAGE body has.
+      const allFrames = [];
+      if (Array.isArray(node.sidebar) && node.sidebar.length > 0) {
+        allFrames.push({ name: 'sidebar', body: node.sidebar, route: node.route || '/' });
+      }
+      for (const pane of (node.panes || [])) {
+        allFrames.push({ name: `pane: ${pane.name}`, body: pane.body || [], route: pane.route || '/' });
+      }
       if (ctx.mode === 'backend') {
-        // Collect backend-relevant children from every pane: endpoints,
-        // data shapes, webhooks, background tasks. UI content (sections,
-        // displays, etc.) is skipped — those are frontend-only.
+        // Collect backend-relevant children from sidebar + every pane:
+        // endpoints, data shapes, webhooks, background tasks. UI content
+        // (sections, displays, etc.) is skipped — frontend-only.
         const all = [];
-        for (const pane of (node.panes || [])) {
-          const backendChildren = (pane.body || []).filter(n =>
+        for (const frame of allFrames) {
+          const backendChildren = frame.body.filter(n =>
             n.type === NodeType.ENDPOINT || n.type === NodeType.DATA_SHAPE ||
             n.type === NodeType.WEBHOOK || n.type === NodeType.BACKGROUND
           );
@@ -9095,13 +9101,14 @@ ${pad}}`;
         if (all.length === 0) return null;
         return all.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
       }
-      // Frontend JS: walk every pane's body. Each pane is functionally a
-      // page (route + content); the router shows/hides at runtime.
+      // Frontend JS: walk every frame's body. Sidebar lives outside any one
+      // pane but its defines and event wiring belong to the global page-load
+      // sequence (recompute fires once on load and covers them).
       const allBodies = [];
-      for (const pane of (node.panes || [])) {
-        const paneCtx = { ...ctx, insidePage: true, pageRoute: pane.route || '/' };
-        const bodyCode = (pane.body || []).map(n => compileNode(n, paneCtx)).filter(Boolean).join('\n');
-        if (bodyCode.trim()) allBodies.push(`${pad}// Pane: ${pane.name}\n${bodyCode}`);
+      for (const frame of allFrames) {
+        const frameCtx = { ...ctx, insidePage: true, pageRoute: frame.route };
+        const bodyCode = frame.body.map(n => compileNode(n, frameCtx)).filter(Boolean).join('\n');
+        if (bodyCode.trim()) allBodies.push(`${pad}// ${frame.name}\n${bodyCode}`);
       }
       if (allBodies.length === 0) return null;
       if (ctx.lang === 'python') return `${pad}# App: ${node.name}\n${allBodies.join('\n')}`;
@@ -13670,6 +13677,16 @@ ${bodyHTML}
           // and reuse below.
           const _esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           parts.push(`<div class="clear-app" data-app="${_esc(node.name || '')}" data-active="${_esc(firstPaneRoute)}">`);
+          // Optional shared sidebar — rendered ONCE above the pane container.
+          // Sidebar contents (heading, nav, footer stats) are persistent across
+          // pane switches; only the pane area swaps visibility. Without this
+          // declaration the app emits panes only (sidebar = null skipped).
+          if (Array.isArray(node.sidebar) && node.sidebar.length > 0) {
+            parts.push(`<aside class="clear-app-sidebar" data-app-sidebar="true">`);
+            walk(node.sidebar);
+            parts.push(`</aside>`);
+          }
+          parts.push(`<div class="clear-app-panes" data-app-panes="true">`);
           for (let pi = 0; pi < (node.panes || []).length; pi++) {
             const pane = node.panes[pi];
             const isActive = pi === 0;
@@ -13679,6 +13696,7 @@ ${bodyHTML}
             walk(pane.body || []);
             parts.push(`</div>`);
           }
+          parts.push(`</div>`);
           parts.push(`</div>`);
           // Inline router script — minimal, no framework. Hooks every <a href>
           // whose target matches a known pane route, switches via pushState,

@@ -6846,9 +6846,11 @@ function parseApp(lines, startIdx, blockIndent, errors) {
     }
   }
 
-  // Body is a list of `pane 'X' as 'slug':` blocks. We parse the indented
-  // children one-at-a-time so we can call parsePane on each pane block.
+  // Body: optional `sidebar:` block (shared chrome) + one or more
+  // `pane 'X' as 'slug':` blocks. We parse the indented children
+  // one-at-a-time so we can dispatch parseSidebar / parsePane.
   const panes = [];
+  let sidebar = null;
   let i = startIdx + 1;
   const expectedIndent = blockIndent + 2;
   while (i < lines.length) {
@@ -6859,6 +6861,21 @@ function parseApp(lines, startIdx, blockIndent, errors) {
     const t = ln.tokens;
     // Skip comment-only lines silently — they're documentation, not structure.
     if (t[0].type === TokenType.COMMENT) { i++; continue; }
+    // Optional `sidebar:` block — shared chrome rendered next to every pane.
+    // Only one sidebar per app; a second declaration is a hard error so the
+    // user catches the typo at compile time instead of wondering which one
+    // wins at runtime.
+    if (t[0].value === 'sidebar' && (t.length === 1 || (t.length === 2 && t[1].type === TokenType.COLON))) {
+      if (sidebar !== null) {
+        errors.push({ line: t[0].line, message: `app '${name}' has more than one \`sidebar:\` block. Declare it once at the top of the app.` });
+        i++;
+        continue;
+      }
+      const parsed = parseBlock(lines, i + 1, expectedIndent, errors);
+      sidebar = parsed.body || [];
+      i = parsed.endIdx;
+      continue;
+    }
     if (t[0].value === 'pane' && t[1] && t[1].type === TokenType.STRING) {
       const parsed = parsePane(lines, i, expectedIndent, errors);
       if (parsed.node) panes.push(parsed.node);
@@ -6866,7 +6883,7 @@ function parseApp(lines, startIdx, blockIndent, errors) {
       continue;
     }
     // Unknown line inside an app block. Skip with a warning to keep parsing.
-    errors.push({ line: t[0].line, message: `Inside an \`app\` block, expected \`pane 'Name' as 'route':\` — got \`${t[0].value || ''}\` instead.` });
+    errors.push({ line: t[0].line, message: `Inside an \`app\` block, expected \`pane 'Name' as 'route':\` or \`sidebar:\` — got \`${t[0].value || ''}\` instead.` });
     i++;
   }
 
@@ -6874,7 +6891,7 @@ function parseApp(lines, startIdx, blockIndent, errors) {
     errors.push({ line, message: `app '${name}' is empty — declare at least one \`pane 'X' as 'route':\` inside it.` });
   }
 
-  return { node: { type: NodeType.APP_BLOCK, name, route, panes, line }, endIdx: i };
+  return { node: { type: NodeType.APP_BLOCK, name, route, panes, sidebar, line }, endIdx: i };
 }
 
 // One pane inside an app block: `pane 'Name' as 'route':` + indented body.
