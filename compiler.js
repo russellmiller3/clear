@@ -9172,6 +9172,12 @@ ${pad}}`;
     case NodeType.STAT_STRIP:
     case NodeType.STAT_CARD:
     case NodeType.DETAIL_PANEL:
+    case NodeType.OWNER_DECL:
+      // OWNER_DECL is a top-level declaration handled in the auth-scaffold
+      // emit (compiler.js line ~16111). When it appears in the dispatch path
+      // we just return null so it doesn't emit a "compiler gap" stub that
+      // crashes the server at startup. Pre-existing gap — exposed when the
+      // e2e tests started running compiled servers with `owner is 'X'`.
       return null;
 
     case NodeType.ASK_FOR: {
