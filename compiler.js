@@ -14994,6 +14994,7 @@ function formatInlineText(text) {
 function compileToHTML(body, compiledJS) {
   const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR, hasRichText } = buildHTML(body);
   const hasLucide = htmlBody.includes('data-lucide');
+  const hasSparkline = htmlBody.includes('data-sparkline-source');
   // Live App Editing: whenever the app has login, emit the Meph edit widget
   // script. The widget self-gates on role === 'owner' in the JWT, so
   // including it for every auth-enabled app is safe — non-owners never see
@@ -15192,6 +15193,54 @@ ${htmlBody}
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
 ${hasLucide ? `if (window.lucide && lucide.createIcons) lucide.createIcons();
+` : ''}
+${hasSparkline ? `
+// --- Data-driven sparklines ---
+// Walks every SVG marked data-sparkline-source, reads the named array from
+// _state, normalises values to the 96x28 viewBox, and draws or updates the
+// inner <polyline>. Mirrors the literal-list coordinate math in statSparklineHTML:
+//   x = 2 + i * (92 / (n-1))   range 2-94 within 96-wide viewBox
+//   y = 24 - (normalised * 20)  range 4-24, y=4 at max, y=24 at min
+(function _initSparklines() {
+  function _drawSparklines() {
+    if (typeof _state === 'undefined') return;
+    document.querySelectorAll('svg[data-sparkline-source]').forEach(function(svg) {
+      var sourceName = svg.getAttribute('data-sparkline-source');
+      var fieldName = svg.getAttribute('data-sparkline-field');
+      var source_records = _state[sourceName];
+      if (!Array.isArray(source_records) || source_records.length < 2) return;
+      var numeric_values = source_records.map(function(record) {
+        var field_value = fieldName ? record[fieldName] : record;
+        return typeof field_value === 'number' ? field_value : parseFloat(field_value) || 0;
+      });
+      var min_value = Math.min.apply(null, numeric_values);
+      var max_value = Math.max.apply(null, numeric_values);
+      var value_span = max_value - min_value || 1;
+      var x_step = 92 / (numeric_values.length - 1);
+      var points = numeric_values.map(function(spark_value, i) {
+        var x = (2 + i * x_step).toFixed(1);
+        var y = (24 - ((spark_value - min_value) / value_span) * 20).toFixed(1);
+        return x + ',' + y;
+      }).join(' ');
+      var polyline = svg.querySelector('polyline');
+      if (!polyline) {
+        polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline.setAttribute('fill', 'none');
+        polyline.setAttribute('stroke', 'currentColor');
+        polyline.setAttribute('stroke-width', '2');
+        polyline.setAttribute('stroke-linecap', 'round');
+        polyline.setAttribute('stroke-linejoin', 'round');
+        svg.appendChild(polyline);
+      }
+      polyline.setAttribute('points', points);
+    });
+  }
+  _drawSparklines();
+  if (typeof _recompute === 'function') {
+    var _origRecompute = _recompute;
+    _recompute = function() { _origRecompute(); _drawSparklines(); };
+  }
+})();
 ` : ''}
 ${hasRichText ? `
 // --- Rich text editors (Quill) ---

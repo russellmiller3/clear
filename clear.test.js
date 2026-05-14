@@ -18881,6 +18881,32 @@ page 'Deals' at '/cro':
     expect(r.html).toContain('<polyline');
   });
 
+  it('emits sparkline init script for data-driven sparklines', () => {
+    const data_driven_page = compileProgram(`build for web
+page 'Energy' at '/energy':
+  stat strip:
+    stat card 'Trend':
+      value 7
+      sparkline energy_logs taking 'level'`);
+    expect(data_driven_page.errors).toHaveLength(0);
+    expect(data_driven_page.html).toContain('data-sparkline-source="energy_logs"');
+    expect(data_driven_page.html).toContain('data-sparkline-field="level"');
+    expect(data_driven_page.html).toContain('_initSparklines');
+    expect(data_driven_page.html).toContain('_drawSparklines');
+  });
+
+  it('does not emit sparkline init script for literal-list sparklines', () => {
+    const literal_sparkline_page = compileProgram(`build for web
+page 'Deals' at '/deals':
+  stat strip:
+    stat card 'Revenue':
+      value 1000
+      sparkline [4, 6, 5, 8, 7]`);
+    expect(literal_sparkline_page.errors).toHaveLength(0);
+    expect(literal_sparkline_page.html).toContain('<polyline');
+    expect(literal_sparkline_page.html).not.toContain('_initSparklines');
+  });
+
   it('emits stat strips inside app content chrome', () => {
     const r = compileProgram(`build for web
 page 'Deals' at '/cro':
