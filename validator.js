@@ -145,7 +145,66 @@ export function validate(ast) {
   validateRuntimeGrammar(ast.body, errors);
   validateSlotExtractors(ast.body, warnings);
   validateGraduation(ast.body, errors);
+  validateDuplicateTables(ast.body, errors);
   return { errors, warnings };
+}
+
+// =============================================================================
+// validateDuplicateTables — catch two `create a X table` blocks (or a table
+// AND a runtime grammar with `storage table is X`) that target the same name.
+//
+// Without this, the duplicate slips through and Node throws at server startup:
+//   `SyntaxError: Identifier 'XSchema' has already been declared`
+// — a cryptic message that doesn't point at either Clear source line. This
+// check surfaces the collision at compile time with both line numbers and
+// the table name, plus a suggested fix.
+//
+// Added 2026-05-14 as part of the Compiler Error Gaps work — the first of
+// four checks for latent runtime errors. Test cases in clear.test.js under
+// `Compiler error gaps — duplicate-table detector`.
+// =============================================================================
+function validateDuplicateTables(body, errors) {
+  // Map name (lowercased) → list of { line, source } so we can report every
+  // pair of overlapping declarations, not just the first collision.
+  const declarations = new Map();
+  for (const node of (body || [])) {
+    if (!node) continue;
+    let name = null;
+    let line = node.line || 0;
+    let source = null;
+    if (node.type === 'data_shape' || node.type === 'DATA_SHAPE') {
+      name = node.name || '';
+      source = 'create-table';
+    } else if (node.type === 'runtime_grammar' || node.type === 'RUNTIME_GRAMMAR') {
+      // Runtime grammars carry the storage table on .storageTable (default 'Concepts').
+      name = node.storageTable || 'Concepts';
+      source = 'runtime-grammar';
+    } else {
+      continue;
+    }
+    const key = String(name).toLowerCase();
+    if (!declarations.has(key)) declarations.set(key, []);
+    declarations.get(key).push({ name, line, source });
+  }
+  for (const [_, occurrences] of declarations.entries()) {
+    if (occurrences.length < 2) continue;
+    // Walk every pair so three duplicates produce three errors (one per pair),
+    // not a single ambiguous "duplicate". Each error names both lines + the
+    // table name + the fix.
+    for (let i = 0; i < occurrences.length; i++) {
+      for (let j = i + 1; j < occurrences.length; j++) {
+        const a = occurrences[i];
+        const b = occurrences[j];
+        const tableName = a.name; // preserve original case from the first declaration
+        const firstWhere = a.source === 'runtime-grammar' ? `runtime grammar storage on line ${a.line}` : `table on line ${a.line}`;
+        const secondWhere = b.source === 'runtime-grammar' ? `runtime grammar storage on line ${b.line}` : `table on line ${b.line}`;
+        errors.push({
+          line: b.line || a.line || 0,
+          message: `Table '${tableName}' is already declared (${firstWhere}); a second declaration at ${secondWhere} would emit a duplicate \`const ${tableName}Schema = {...}\` and crash the server at startup. Pick one declaration as the source of truth and remove or rename the other.`,
+        });
+      }
+    }
+  }
 }
 
 // =============================================================================
