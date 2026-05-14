@@ -67,6 +67,66 @@ describe('SPA app primitive — parse baseline (Cycle 11.1)', () => {
     expect(app.panes[1].body.length).toBeGreaterThan(0);
   });
 
+  // Regression: 2026-05-14 — an app block + an endpoint inferred target='backend'
+  // because target inference only knew about PAGE nodes. Result: no HTML emit, no
+  // index.html on disk, and the compiled server.js had no UI to serve. Now an
+  // APP_BLOCK + endpoint correctly infers 'both'.
+  it('infers target=both for app block + endpoint combo (no PAGE needed)', () => {
+    const source = [
+      "app 'Lenat' at '/':",
+      "  pane 'Today' as 'today':",
+      "    heading 'Today'",
+      "",
+      "when user calls DELETE /api/x/:id:",
+      "  send back 'ok'",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    expect(typeof result.html).toBe('string');
+    expect(result.html.length).toBeGreaterThan(0);
+    expect(typeof result.serverJS).toBe('string');
+    expect(result.serverJS.length).toBeGreaterThan(0);
+  });
+
+  // Regression: 2026-05-14 — backend compile path had no APP_BLOCK case in the
+  // compileNode dispatch. server.js emit produced a "compiler gap" stub that
+  // crashed the server at startup with `console.log((() => throw new Error...
+  it('compiles app block to backend without crashing (no compiler-gap stub)', () => {
+    const source = [
+      "app 'Lenat' at '/':",
+      "  pane 'Today' as 'today':",
+      "    heading 'Today'",
+      "",
+      "when user calls DELETE /api/x/:id:",
+      "  send back 'ok'",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    expect(result.serverJS).not.toContain('compiler gap');
+    expect(result.serverJS).not.toContain('no exprToCode case for expression type "app_block"');
+  });
+
+  // Regression: 2026-05-14 — SPA route registration only looked at PAGE nodes,
+  // so the server had no GET / handler when source had only APP_BLOCK. Result:
+  // 404 Cannot GET / on every request. Now app + every pane slug registers.
+  it('registers GET routes for the app root + every pane slug', () => {
+    const source = [
+      "app 'Lenat' at '/':",
+      "  pane 'Today' as 'today':",
+      "    heading 'Today'",
+      "  pane 'Chat' as 'chat':",
+      "    heading 'Chat'",
+      "",
+      "when user calls DELETE /api/x/:id:",
+      "  send back 'ok'",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    expect(result.serverJS).toMatch(/app\.get\("\/", \(req, res\) => res\.sendFile/);
+    expect(result.serverJS).toMatch(/app\.get\("\/today", \(req, res\) => res\.sendFile/);
+    expect(result.serverJS).toMatch(/app\.get\("\/chat", \(req, res\) => res\.sendFile/);
+  });
+
   // Regression: 2026-05-14 — comments between panes inside an app block
   // tokenized as content and tripped the "expected pane" error path. The
   // parser now skips COMMENT-type leading tokens silently.

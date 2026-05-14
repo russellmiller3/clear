@@ -2266,6 +2266,10 @@ export function compile(ast, options = {}) {
   function inferTarget(body) {
     const hasEndpoint = body.some(n => n.type === NodeType.ENDPOINT);
     const hasPage = body.some(n => n.type === NodeType.PAGE);
+    // SPA app blocks are UI just like pages — they need the HTML build path.
+    // Without this, an app-only file with an endpoint silently picks 'backend'
+    // and no index.html ever gets generated.
+    const hasAppBlock = body.some(n => n.type === NodeType.APP_BLOCK);
     // A workflow with at least one user-input step emits HTTP endpoints
     // (/api/workflow/<name>/start + /respond), so it implies a JS backend
     // target even without an explicit `when user calls X` endpoint in the
@@ -2279,7 +2283,7 @@ export function compile(ast, options = {}) {
     // compiler produces serverJS + index.html. Devs who want backend-only
     // can still set `target: backend` explicitly.
     if (hasUserInputWorkflow) return 'both';
-    if (hasEndpoint && hasPage) return 'both';
+    if (hasEndpoint && (hasPage || hasAppBlock)) return 'both';
     if (hasEndpoint) return 'backend';
     return 'web';
   }
@@ -9069,6 +9073,40 @@ ${pad}}`;
         if (ctx.lang === 'python') return `${pad}import ${varName}`;
         return `${pad}import * as ${varName} from './${bareName}.js';`;
       }
+
+    case NodeType.APP_BLOCK: {
+      // SPA app primitive emits its HTML shell + inline router script via the
+      // HTML build path. For the JS compile targets (backend server.js and
+      // frontend reactive code), walk into each pane's body — they contain
+      // the same shape of content a PAGE body has (sections, displays,
+      // endpoints if any), so we delegate to compileNode on each child.
+      if (ctx.mode === 'backend') {
+        // Collect backend-relevant children from every pane: endpoints,
+        // data shapes, webhooks, background tasks. UI content (sections,
+        // displays, etc.) is skipped — those are frontend-only.
+        const all = [];
+        for (const pane of (node.panes || [])) {
+          const backendChildren = (pane.body || []).filter(n =>
+            n.type === NodeType.ENDPOINT || n.type === NodeType.DATA_SHAPE ||
+            n.type === NodeType.WEBHOOK || n.type === NodeType.BACKGROUND
+          );
+          for (const c of backendChildren) all.push(c);
+        }
+        if (all.length === 0) return null;
+        return all.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
+      }
+      // Frontend JS: walk every pane's body. Each pane is functionally a
+      // page (route + content); the router shows/hides at runtime.
+      const allBodies = [];
+      for (const pane of (node.panes || [])) {
+        const paneCtx = { ...ctx, insidePage: true, pageRoute: pane.route || '/' };
+        const bodyCode = (pane.body || []).map(n => compileNode(n, paneCtx)).filter(Boolean).join('\n');
+        if (bodyCode.trim()) allBodies.push(`${pad}// Pane: ${pane.name}\n${bodyCode}`);
+      }
+      if (allBodies.length === 0) return null;
+      if (ctx.lang === 'python') return `${pad}# App: ${node.name}\n${allBodies.join('\n')}`;
+      return `${pad}// App: ${node.name}\n${pad}document.title = ${JSON.stringify(node.name)};\n${allBodies.join('\n')}`;
+    }
 
     case NodeType.PAGE: {
       if (ctx.mode === 'backend') {
@@ -16728,7 +16766,8 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // router in the compiled HTML then picks the right page based on
   // window.location.pathname.
   const pageNodes = body.filter(n => n.type === NodeType.PAGE);
-  if (pageNodes.length > 0) {
+  const appBlocks = body.filter(n => n.type === NodeType.APP_BLOCK);
+  if (pageNodes.length > 0 || appBlocks.length > 0) {
     lines.push('');
     lines.push("const path = require('path');");
     lines.push("app.use(express.static(__dirname));");
@@ -16739,6 +16778,25 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
       // already handle those.
       if (route.startsWith('/api/') || route.startsWith('/auth/')) continue;
       pageRoutes.add(route);
+    }
+    // SPA app blocks: register the app's root route AND every pane route.
+    // The client-side router in the inline HTML picks which pane to show
+    // based on window.location (hash or path). All routes return the same
+    // index.html so refresh + direct nav both Just Work.
+    for (const app of appBlocks) {
+      const appRoute = app.route || '/';
+      if (!appRoute.startsWith('/api/') && !appRoute.startsWith('/auth/')) {
+        pageRoutes.add(appRoute);
+      }
+      for (const pane of (app.panes || [])) {
+        const slug = pane.route || '';
+        if (!slug) continue;
+        // Normalize: pane route may be 'today' or '/today' — always emit
+        // as '/<slug>' from the app's root.
+        const fullRoute = slug.startsWith('/') ? slug : (appRoute === '/' ? `/${slug}` : `${appRoute}/${slug}`);
+        if (fullRoute.startsWith('/api/') || fullRoute.startsWith('/auth/')) continue;
+        pageRoutes.add(fullRoute);
+      }
     }
     // Always ensure root is served
     pageRoutes.add('/');
