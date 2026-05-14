@@ -6857,6 +6857,8 @@ function parseApp(lines, startIdx, blockIndent, errors) {
     if (ln.indent <= blockIndent) break; // outdent ends the app block
     if (ln.indent !== expectedIndent) { i++; continue; }
     const t = ln.tokens;
+    // Skip comment-only lines silently — they're documentation, not structure.
+    if (t[0].type === TokenType.COMMENT) { i++; continue; }
     if (t[0].value === 'pane' && t[1] && t[1].type === TokenType.STRING) {
       const parsed = parsePane(lines, i, expectedIndent, errors);
       if (parsed.node) panes.push(parsed.node);

@@ -66,6 +66,27 @@ describe('SPA app primitive — parse baseline (Cycle 11.1)', () => {
     expect(app.panes[0].body.length).toBeGreaterThan(0);
     expect(app.panes[1].body.length).toBeGreaterThan(0);
   });
+
+  // Regression: 2026-05-14 — comments between panes inside an app block
+  // tokenized as content and tripped the "expected pane" error path. The
+  // parser now skips COMMENT-type leading tokens silently.
+  it('allows # comments between pane declarations', () => {
+    const source = [
+      "app 'Lenat' at '/':",
+      "  # Comment header above the first pane",
+      "  pane 'Today' as 'today':",
+      "    heading 'Today'",
+      "",
+      "  # Comment between panes describing the next surface",
+      "  # second comment line — multi-line block-comment style",
+      "  pane 'Map' as 'map':",
+      "    heading 'Map'",
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toEqual([]);
+    const app = result.ast.body.find(n => n.type === 'app_block');
+    expect(app.panes.length).toBe(2);
+  });
 });
 
 // =============================================================================
