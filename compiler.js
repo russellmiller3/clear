@@ -8620,7 +8620,10 @@ function _compileNodeInner(node, ctx) {
         // Self-reference heuristic: bodyCode contains a call to fnName(
         const recursesSelf = new RegExp(`\\b${fnName}\\s*\\(`).test(bodyCode);
         // Python registration into _user_functions for dispatch-by-name.
-        const _py_registration = `\n${pad}_user_functions[${JSON.stringify(fnName)}] = ${fnName}`;
+        // Backend-only — same reason as the JS side.
+        const _py_registration = (ctx.mode === 'backend')
+          ? `\n${pad}_user_functions[${JSON.stringify(fnName)}] = ${fnName}`
+          : '';
         if (recursesSelf) {
           // Python: track depth via a function attribute (default 0, reset at top-of-call chain).
           const depthCheck = `${pad}    ${fnName}._depth = getattr(${fnName}, '_depth', 0) + 1\n${pad}    if ${fnName}._depth > ${maxDepth}:\n${pad}        ${fnName}._depth = 0\n${pad}        raise Exception("${fnName} recursed more than ${maxDepth} levels — rewrite as a loop or add 'max depth N' for a higher cap")\n${pad}    try:\n`;
@@ -8651,14 +8654,23 @@ function _compileNodeInner(node, ctx) {
       // Every function-def auto-registers into a module-scope lookup
       // table so `call function NAME with ARG` (CALL_FUNCTION) can
       // dispatch by string name at runtime. Initialization of the table
-      // itself happens once per compile via the prologue emit (see
+      // happens once per backend compile via the prologue emit (see
       // compileToJSBackend prologue around `_userFunctions = {}`).
-      const _registration = `${pad}_userFunctions[${JSON.stringify(fnName)}] = ${fnName};`;
+      //
+      // ONLY emitted in backend mode — the frontend reactive JS doesn't
+      // have the prologue init, so leaking the registration line into
+      // browser code throws `_userFunctions is not defined`. The
+      // call-function primitive is a backend-side dispatcher; frontend
+      // functions are called locally by name without going through the
+      // lookup table.
+      const _registration = (ctx.mode === 'backend')
+        ? `\n${pad}_userFunctions[${JSON.stringify(fnName)}] = ${fnName};`
+        : '';
       if (recursesSelf) {
         const depthBody = `${pad}  ${fnName}._depth = (${fnName}._depth || 0) + 1;\n${pad}  if (${fnName}._depth > ${maxDepth}) { ${fnName}._depth = 0; throw new Error("${fnName} recursed more than ${maxDepth} levels — rewrite as a loop or add 'max depth N' for a higher cap"); }\n${pad}  try {\n${bodyCode}\n${pad}  } finally { ${fnName}._depth--; }`;
-        return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${depthBody}\n${pad}}\n${_registration}`;
+        return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${depthBody}\n${pad}}${_registration}`;
       }
-      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}\n${_registration}`;
+      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}${_registration}`;
     }
 
     case NodeType.MATCH_CONDITIONAL: {
