@@ -562,6 +562,44 @@ function ifThenNode(condition, thenBranch, otherwiseBranch, line) {
   return { type: NodeType.IF_THEN, condition, thenBranch, otherwiseBranch, line };
 }
 
+// =============================================================================
+// Field-type convention tables (P6, 2026-05-14)
+// =============================================================================
+// When a field is declared by name alone inside a table — `phrase` instead
+// of `phrase is text` — the parser looks up its lowercased name here to
+// pick a default type. Explicit `is <type>` always overrides. Names not
+// covered by any convention fall back to text.
+//
+// The lists are deliberately short — only names where the type is
+// UNAMBIGUOUS in business apps. Adding entries is welcome; removing them
+// is dangerous (existing user code might depend on the inference).
+const FIELD_NAME_TEXT_CONVENTIONS = new Set([
+  'phrase', 'name', 'first_name', 'last_name', 'full_name',
+  'address', 'street', 'city', 'state', 'country',
+  'email', 'username', 'handle',
+  'title', 'subtitle', 'description', 'summary', 'notes',
+  'message', 'subject', 'body', 'content',
+  'url', 'link', 'slug',
+]);
+
+const FIELD_NAME_NUMBER_CONVENTIONS = new Set([
+  // Count-ish
+  'age', 'count', 'quantity', 'qty',
+  'phone', 'phone_number', 'zip', 'zip_code', 'postal_code',
+  // Money-ish (formatted as dollars in display; stored as plain number)
+  'price', 'cost', 'amount', 'total', 'subtotal',
+  'discount', 'tax', 'fee', 'rate',
+  // Measurements
+  'weight', 'height', 'width', 'length', 'distance',
+  'score', 'rating',
+]);
+
+const FIELD_NAME_BOOLEAN_CONVENTIONS = new Set([
+  'enabled', 'disabled', 'active', 'archived',
+  'is_active', 'is_done', 'is_archived', 'is_complete',
+  'is_paid', 'is_published', 'is_visible',
+]);
+
 function functionDefNode(name, params, body, line, returnType, maxDepth) {
   // Normalize params: plain strings → {name, type: null}
   const normalizedParams = params.map(p =>
@@ -8381,6 +8419,18 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
         fieldType = 'fk';
       } else if (lowerName.endsWith('_id')) {
         fieldType = 'fk';
+      } else if (FIELD_NAME_NUMBER_CONVENTIONS.has(lowerName)) {
+        // DHH-style convention (P6, 2026-05-14): well-known money/count/
+        // measurement field names default to number type.
+        fieldType = 'number';
+      } else if (FIELD_NAME_BOOLEAN_CONVENTIONS.has(lowerName) || lowerName.startsWith('is_')) {
+        // Well-known on/off field names default to boolean.
+        fieldType = 'boolean';
+      } else if (FIELD_NAME_TEXT_CONVENTIONS.has(lowerName)) {
+        // Explicit text-by-convention names. Falls back to text below in
+        // any case — this entry is documentation of intent + a hook for
+        // a future date/email/url type if we add stricter validation.
+        fieldType = 'text';
       } else {
         fieldType = 'text'; // safe default
       }

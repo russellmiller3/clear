@@ -15,6 +15,7 @@ import './call-function.test.js';
 import './search-for.test.js';
 import './if-match.test.js';
 import './with-rows.test.js';
+import './field-conventions.test.js';
 
 
 import { createRequire as _phase5CreateRequire } from 'node:module';
