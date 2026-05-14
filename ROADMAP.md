@@ -292,6 +292,36 @@ CF-1 is the cheap optionality bet: 20 lines of instrumentation that starts colle
 
 **Error-message flywheel:** Track which compile errors correlate with STUCK sessions; auto-flag for rewrite. Half-built via existing Factor DB + `scripts/top-friction-errors.mjs`. See CLAUDE.md → "Compiler error fixes are data-driven".
 
+**Magic-debt cleanup (added 2026-05-14):** Two primitives currently
+violate PHILOSOPHY §1:1 mapping — they are acknowledged in PHILOSOPHY.md
+under "Acknowledged §1:1 exceptions" but should be unwound when possible.
+
+1. **Runtime grammar's opaque dispatch.** Each `frame X:` block compiles
+   to a runtime matcher entry + handler dispatch + slot extraction +
+   audit log + permission check. The user sees the frame; the compiled
+   output hides the plumbing in `clear-runtime/grammar-matcher.js`.
+   Fix: emit a readable `# generated from runtime grammar 'X'` block
+   into the compiled JS so a debugger can map line-by-line. Compiler
+   change, ~50 LOC.
+2. **Gate-2 graduation's hidden state machine.** `approval graduates
+   after 3 runs` packages an implicit conditional. Fix: deprecate the
+   sugar; require the visible conditional in source. Migration: every
+   existing `graduates after N` call rewrites to `if X's approval_count
+   is less than N: ... else: ...`. App-level change, deprecate in
+   parser with a clear hint pointing at the explicit form.
+
+Neither is launch-blocking. Schedule when there's a quiet session.
+
+**Compiler-gap detector (added 2026-05-14, deferred wire-in):**
+`scanForCompilerGapStubs()` in compiler.js catches the canonical
+"compiler gap: no exprToCode case for expression type X" stub before
+it ships in compiled output. Function shipped + tested; wire-in to
+`compile()` is commented out. Enabling surfaces 11 latent failing
+tests — mix of real gaps (node types whose dispatch is missing) and
+possible regex false positives. Triage the 11 cases (likely 1-2 hr),
+fix or whitelist each, then uncomment 2 lines in compiler.js around
+line 2412. Once on, NO new node type can ship without a dispatch case.
+
 ---
 
 ## P2 — Ghost Meph last mile

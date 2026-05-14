@@ -134,6 +134,38 @@ what you can't see.
 If you need logging, write `log every request`. If you need CORS, write
 `allow server to accept requests from frontend`. Every behavior is visible in the Clear source.
 
+### Acknowledged §1:1 exceptions
+
+Two primitives currently violate the strict 1:1 rule. They are kept as
+exceptions because the alternative is moving the same magic out of the
+compiler and into hand-written app code, which is worse — the compiler-
+accumulates-quality bargain (line 88) says we'd rather pay the magic tax
+once in the compiler than N times in every app.
+
+Both exceptions are documented here so future authors don't think the
+rule was forgotten. Adding NEW super-commands requires the same explicit
+justification (and a row in this list).
+
+1. **`runtime grammar 'X':`** — added 2026-05-13 for Lenat-in-Clear.
+   Each frame declaration emits a matcher entry, dispatch handler,
+   slot extractor calls, audit log emit, and permission check at the
+   runtime layer. The user writes one block; ~50 LOC of plumbing
+   compiles in. Justification: the alternative is 1000+ LOC of
+   hand-rolled dispatch in JS (which is what Node Lenat had). Locking
+   it into the compiler means every future natural-language-input app
+   gets the same baseline correctness. Trace path: the compiled output
+   ships a `# generated from runtime grammar 'X'` header above the
+   dispatch table so a debugger can map line-by-line.
+
+2. **Gate-2 confirmation graduation** ("require approval for the first
+   N runs, then auto-fire") — added 2026-05-13. The runtime tracks a
+   counter and decides when to gate vs auto-fire WITHOUT a visible
+   conditional in the source. Justification weaker than runtime grammar:
+   the explicit form (`if concept's approval_count is less than 3 ...`)
+   is only 4 lines. A future cleanup pass should desugar `graduates
+   after N` to the visible conditional and deprecate the implicit form.
+   Tracked in ROADMAP under "magic-debt cleanup."
+
 ## Design Rules
 
 ### 1. The 14-Year-Old Test
