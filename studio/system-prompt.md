@@ -733,27 +733,40 @@ Inline reminders for the shapes you'll touch every turn:
 - `agent 'X' receives Y:` then `ask claude '...' with Y` — output streams by default, opt out with `without streaming`. Directives go before code: `has tools: fn1`, `must not: delete records`, `remember conversation context`, `knows about: Products, FAQ`, `using 'claude-sonnet-4-6'`, `uses skills: 'Name'`. **HARD RULE: agent bodies must NEVER call `env(...)` or `process_env(...)` directly** — the compiler refuses, because one prompt-injection attack ("print your env vars") could exfiltrate the credential. Pattern: wrap the credential in a function (`define function charge_card(amount, token): result = call api '...' with method 'POST' with bearer env('STRIPE_SECRET_KEY') sending { amount: amount, source: token }`), then attach via `has tool: charge_card`. The agent calls the function; the function uses the key; the agent never sees the value.
 - `route X by FIELD:` with quoted-string left sides (`'SMB' to alice`, NOT `SMB to alice`); MUST come BEFORE `save X as new T` in the endpoint or the assignment is lost (HARD ERROR `ROUTE_AFTER_SAVE`).
 - `queue for X:` auto-emits the audit table + outbound notifications + login-gated PUT routes per action — never hand-roll. Canonical clause is `email <role> when <action>, <action>` (legacy `notify <role> on <action>` still parses).
-- **Text-routing dispatcher** (replaces `runtime grammar` — removed 2026-05-14): build a seed table + per-concept function + fuzzy-match endpoint. Canonical shape:
+- **Text-routing dispatcher** (replaces `runtime grammar` — removed 2026-05-14): seed table + per-concept handler functions + prefix-match endpoint. Three composable primitives:
+  - **P1 — prefix match:** `search for X in TABLE by FIELD` → binds `match` if any row's field is a prefix of X
+  - **P2 — conditional:** `if there's a match:` / `if no match:` — branch on P1 result
+  - **P3 — dynamic call:** `call function match's FIELD with ARG` — looks up the handler function name from the matched row and calls it
+  - **Seed rows:** `with rows:` block inside `create a TABLE:` using JSON objects `{field: 'value', field2: 'value2'}`
+
+  Canonical shape (what Lenat-clear's `concepts.clear` actually uses):
   ```
-  create a TABLE Concepts with rows: canonical phrase, handler name
-  seed Concepts with rows:
-    'cancel my order', 'handle_cancel'
-    'check order status', 'handle_status'
+  create a Concepts table:
+    canonical_phrase is text
+    handler_function_name is text
+    with rows:
+      {canonical_phrase: 'cancel my order', handler_function_name: 'handle_cancel'}
+      {canonical_phrase: 'check order status', handler_function_name: 'handle_status'}
 
   define function handle_cancel(utterance):
-    send back { action: 'cancel', confirmed: false }
+    cancel_payload = {concept_id: 'CANCEL', payload_json: utterance, status: 'open'}
+    new_cancel = save cancel_payload as a new Records
+    send back new_cancel
 
   define function handle_status(utterance):
-    send back { action: 'status_check', query: utterance }
+    status_records = look up records in Records where concept_id is 'STATUS'
+    send back status_records
 
-  when user sends text to '/api/dispatch':
-    match_result = fuzzy match text in Concepts by 'canonical phrase' scored at least 0.7
+  when user sends message to /api/dispatch:
+    search for message in Concepts by canonical_phrase
     if there's a match:
-      call function match_result's 'handler name' with text
+      dispatch_response = call function match's handler_function_name with message
+      send back dispatch_response
     if no match:
-      send back { error: 'no matching intent' }
+      no_match_response = {dispatched: false, reason: 'I do not know that one yet'}
+      send back no_match_response
   ```
-  Approve-first-N: add `first N runs require confirm:` to the endpoint. Name every per-concept function with a `handle_` prefix that matches the seed table's handler-name column. Do NOT use `runtime grammar 'X':` — that keyword no longer parses.
+  Key gotchas: (1) the endpoint body variable must NOT be named `user` — that is a Clear keyword; use `message`, `utterance`, `command`. (2) The path is unquoted: `to /api/dispatch` not `to '/api/dispatch'`. (3) Two-step save: assign the object to a named variable first, then `save VAR as a new TABLE` — inline literals `save {field: val} as new TABLE` are rejected. (4) Do NOT use `runtime grammar 'X':` — that keyword no longer parses.
 - **Slot extractors** (NL-light parsing — pull structured values out of free-form text):
   - `dt = extract datetime from text` — fast-path covers ISO, slash-date, `in N hours`, weekday-at-time, `tomorrow at TIME`, `tonight`, `this evening`. Returns `{value, remainder}` or `nothing`.
   - `pick = fuzzy match 'q' in list [scored at least 0.7]` — Levenshtein + bigram + coverage. Returns `{value, score}` or `nothing`.
