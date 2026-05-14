@@ -8609,15 +8609,17 @@ function _compileNodeInner(node, ctx) {
         const isAsync = bodyCode.includes('await ');
         // Self-reference heuristic: bodyCode contains a call to fnName(
         const recursesSelf = new RegExp(`\\b${fnName}\\s*\\(`).test(bodyCode);
+        // Python registration into _user_functions for dispatch-by-name.
+        const _py_registration = `\n${pad}_user_functions[${JSON.stringify(fnName)}] = ${fnName}`;
         if (recursesSelf) {
           // Python: track depth via a function attribute (default 0, reset at top-of-call chain).
           const depthCheck = `${pad}    ${fnName}._depth = getattr(${fnName}, '_depth', 0) + 1\n${pad}    if ${fnName}._depth > ${maxDepth}:\n${pad}        ${fnName}._depth = 0\n${pad}        raise Exception("${fnName} recursed more than ${maxDepth} levels — rewrite as a loop or add 'max depth N' for a higher cap")\n${pad}    try:\n`;
           // Re-indent body two levels deeper (inside try:), restore depth on return/exception.
           const reindent = bodyCode.split('\n').map(l => l ? '    ' + l : l).join('\n');
           const finallyBlock = `\n${pad}    finally:\n${pad}        ${fnName}._depth -= 1`;
-          return `${pad}${isAsync ? 'async ' : ''}def ${fnName}(${params}):\n${depthCheck}${reindent}${finallyBlock}`;
+          return `${pad}${isAsync ? 'async ' : ''}def ${fnName}(${params}):\n${depthCheck}${reindent}${finallyBlock}${_py_registration}`;
         }
-        return `${pad}${isAsync ? 'async ' : ''}def ${fnName}(${params}):\n${bodyCode}`;
+        return `${pad}${isAsync ? 'async ' : ''}def ${fnName}(${params}):\n${bodyCode}${_py_registration}`;
       }
       // JS: emit JSDoc if any params have types or there's a returnType
       const _typeMap = { text: 'string', number: 'number', list: 'Array', boolean: 'boolean', map: 'Object', any: '*' };
@@ -8636,11 +8638,44 @@ function _compileNodeInner(node, ctx) {
       const isAsync = bodyCode.includes('await ');
       // Self-reference: wrap body in depth counter using function's _depth property.
       const recursesSelf = new RegExp(`\\b${fnName}\\s*\\(`).test(bodyCode);
+      // Every function-def auto-registers into a module-scope lookup
+      // table so `call function NAME with ARG` (CALL_FUNCTION) can
+      // dispatch by string name at runtime. Initialization of the table
+      // itself happens once per compile via the prologue emit (see
+      // compileToJSBackend prologue around `_userFunctions = {}`).
+      const _registration = `${pad}_userFunctions[${JSON.stringify(fnName)}] = ${fnName};`;
       if (recursesSelf) {
         const depthBody = `${pad}  ${fnName}._depth = (${fnName}._depth || 0) + 1;\n${pad}  if (${fnName}._depth > ${maxDepth}) { ${fnName}._depth = 0; throw new Error("${fnName} recursed more than ${maxDepth} levels — rewrite as a loop or add 'max depth N' for a higher cap"); }\n${pad}  try {\n${bodyCode}\n${pad}  } finally { ${fnName}._depth--; }`;
-        return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${depthBody}\n${pad}}`;
+        return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${depthBody}\n${pad}}\n${_registration}`;
       }
-      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}`;
+      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}\n${_registration}`;
+    }
+
+    case NodeType.CALL_FUNCTION: {
+      // Runtime dispatch by string name. Two source shapes:
+      //   `call function GREET with X`           — literal name (GREET is the function)
+      //   `call function chosen_function with X` — variable name (resolves at runtime)
+      //
+      // We distinguish by checking whether the parsed name is a bare
+      // variable_ref AND has been declared as a Clear-side variable in
+      // scope. If NOT declared, it's treated as a literal function name
+      // and quoted as a string. If declared (e.g. `chosen_function =
+      // 'GREET'`), it's emitted as the variable read — _userFunctions
+      // then resolves at runtime against whatever the variable holds.
+      let name_code;
+      const name_node = node.functionName;
+      if (name_node && name_node.type === NodeType.VARIABLE_REF && ctx.declared && !ctx.declared.has(name_node.name)) {
+        // Literal function name: quote it.
+        name_code = JSON.stringify(name_node.name);
+      } else {
+        // Variable holding the name: emit the variable read.
+        name_code = exprToCode(name_node, ctx);
+      }
+      const arg_code = node.argument ? exprToCode(node.argument, ctx) : '';
+      if (ctx.lang === 'python') {
+        return `${pad}await _user_functions[${name_code}](${arg_code})`;
+      }
+      return `${pad}await _userFunctions[${name_code}](${arg_code});`;
     }
 
     case NodeType.AGENT:
@@ -15965,6 +16000,12 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('}');
   }
   lines.push('const app = express();');
+  // Module-scope lookup for runtime function dispatch by string name.
+  // Every `define function NAME(arg):` registers itself into this table;
+  // `call function NAME with ARG` reads from it. Added 2026-05-14 as P3
+  // of the text-routing primitives plan. Always emitted (cost: 0 bytes
+  // when no functions are defined; correctness when they are).
+  lines.push('const _userFunctions = {};');
   lines.push('app.use(express.json());');
   if (hasSignedCookies) {
     lines.push('app.use(cookieParser(_cookieSecretResolved));');
@@ -17143,6 +17184,8 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('from fastapi.responses import JSONResponse');
   lines.push('');
   lines.push('app = FastAPI()');
+  // Module-scope lookup for `call function NAME with ARG` dispatch in Python.
+  lines.push('_user_functions = {}');
   lines.push('');
   if (pyTestsPresent) {
     lines.push('# Test harness base URL + auth headers (env-driven so tests run the same');

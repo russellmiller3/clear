@@ -202,6 +202,13 @@ export const NodeType = Object.freeze({
   SKILL: 'skill',
   CLASSIFY: 'classify',
 
+  // Runtime dispatch to a user-defined function by string name. Added
+  // 2026-05-14. Shape: `call function NAME with ARG`. NAME is parsed as
+  // an expression — it can be a literal identifier (resolves at runtime
+  // to the function lookup) or a variable holding the name as a string.
+  // Companion to the existing `define function NAME(arg):` primitive.
+  CALL_FUNCTION: 'call_function',
+
   // Workflow primitives (Phases 85-90)
   WORKFLOW: 'workflow',
   RUN_WORKFLOW: 'run_workflow',
@@ -3581,6 +3588,41 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
 
 // HTTP test call: "call POST /api/users with name is 'Alice', email is 'test'"
 CANONICAL_DISPATCH.set('call', (ctx) => {
+  // `call function NAME with ARG` — runtime dispatch by string name.
+  // Added 2026-05-14 as P3 of the text-routing primitives plan. NAME is
+  // an arbitrary expression (literal identifier OR variable holding the
+  // name); ARG is whatever the function receives as its single parameter.
+  // Compiled emit: `_userFunctions[NAME](ARG)`. Pairs with the existing
+  // `define function NAME(arg):` primitive — every function-def now
+  // registers itself into `_userFunctions` at module scope.
+  if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'function') {
+    // Slice the function-name expression — everything between `function`
+    // and the `with` boundary (or end of line if no `with`).
+    let with_index = -1;
+    for (let scan = 2; scan < ctx.tokens.length; scan++) {
+      const tk = ctx.tokens[scan];
+      if (tk.value === 'with' || tk.canonical === 'with') { with_index = scan; break; }
+    }
+    const name_end = with_index >= 0 ? with_index : ctx.tokens.length;
+    const name_expr_result = parseExpression(ctx.tokens, 2, ctx.line);
+    if (name_expr_result.error || !name_expr_result.node) {
+      ctx.errors.push({ line: ctx.line, message: "`call function` needs a function name. Example: call function GREET with 'world'" });
+      return ctx.i + 1;
+    }
+    let arg_expr = null;
+    if (with_index >= 0 && with_index + 1 < ctx.tokens.length) {
+      const arg_result = parseExpression(ctx.tokens, with_index + 1, ctx.line);
+      if (!arg_result.error) arg_expr = arg_result.node;
+    }
+    ctx.body.push({
+      type: NodeType.CALL_FUNCTION,
+      functionName: name_expr_result.node,
+      argument: arg_expr,
+      line: ctx.line,
+    });
+    return ctx.i + 1;
+  }
+
   const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
   if (ctx.tokens.length < 3) return undefined;
   const methodToken = ctx.tokens[1];
