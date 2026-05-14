@@ -10,6 +10,7 @@ import './slot-extractors.test.js';
 import './phase-5-5.test.js';
 import './workflow-user-input.test.js';
 import './spa-app.test.js';
+import './compiler-gap-detector.test.js';
 import { createRequire as _phase5CreateRequire } from 'node:module';
 // Phase 5 runtime helpers live in runtime/ as CommonJS — bridge via createRequire.
 const _phase5Require = _phase5CreateRequire(import.meta.url);
