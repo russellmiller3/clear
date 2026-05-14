@@ -3576,6 +3576,16 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
     const node = { type: NodeType.HUMAN_CONFIRM, message: messageExpr, line: ctx.line };
 
     if (withGradIdx >= 0) {
+      // Deprecation marker (2026-05-14, magic-debt cleanup): the `with
+      // graduation after N runs` sugar packages an implicit runtime
+      // state machine (counter table emit + scope-key build + counter
+      // check + audit-row emit) per PHILOSOPHY §1:1's "no super
+      // commands" rule. We continue to parse the old form so existing
+      // apps don't break, and tag the node so the COMPILER's
+      // HUMAN_CONFIRM emit surfaces a deprecation warning (the parser's
+      // ctx has no warnings array; the compiler's does). See ROADMAP
+      // "magic-debt cleanup" for the migration path.
+      node._graduationDeprecated = true;
       // Parse the graduation clause. Two shapes:
       //   - Inline: tokens after `with graduation` end with "after N runs"
       //   - Block:  tokens after `with graduation` end with a ":" — then

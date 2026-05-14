@@ -2304,6 +2304,34 @@ export function compile(ast, options = {}) {
       message: `Build target auto-inferred as '${inferredTarget}' (${reason}). Add \`target: web\` or \`target: backend\` at the top of the file to control this explicitly.`,
     });
   }
+
+  // Graduation-deprecation post-pass (added 2026-05-14, magic-debt cleanup).
+  // Walks the AST for HUMAN_CONFIRM nodes that the parser tagged
+  // `_graduationDeprecated: true` (every `ask user to confirm ... with
+  // graduation after N runs` site). Emits ONE warning per source line
+  // pointing at the canonical visible-conditional form. The sugar still
+  // compiles; this just nudges new apps toward the §1:1 form.
+  (function emitGraduationDeprecations(nodes, seenLines) {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.HUMAN_CONFIRM && n._graduationDeprecated) {
+        const ln = n.line || 0;
+        if (!seenLines.has(ln)) {
+          seenLines.add(ln);
+          warnings.push({
+            line: ln,
+            code: 'GRADUATION_DEPRECATED',
+            message: `\`ask user to confirm ... with graduation after N runs\` is deprecated. The canonical replacement is a visible conditional in source: declare the counter table, check the count, branch with \`if count is less than N: ask user to confirm ... else: ... \`, then increase the count yourself. Today's sugar still compiles; new apps should use the explicit form. Background: PHILOSOPHY §1:1 + ROADMAP "magic-debt cleanup".`,
+          });
+        }
+      }
+      // Recurse into common body containers — endpoint, page, app, pane, etc.
+      if (Array.isArray(n.body)) emitGraduationDeprecations(n.body, seenLines);
+      if (Array.isArray(n.panes)) emitGraduationDeprecations(n.panes, seenLines);
+      if (Array.isArray(n.steps)) emitGraduationDeprecations(n.steps, seenLines);
+    }
+  })(ast.body, new Set());
   const sourceMap = options.sourceMap === true; // opt-in
 
   const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend', 'cloudflare'];
@@ -8722,6 +8750,9 @@ function _compileNodeInner(node, ctx) {
         code += `${pad}return res.status(202).json({ approval_id: _approval.id, message: ${msg}, status: 'pending' });`;
         return code;
       }
+      // (Graduation deprecation warning emits from compile()'s post-pass.
+      // The backend ctx doesn't carry warnings; walking the AST once at
+      // compile() level is simpler than threading.)
       // Graduation path. Resolve names + scope-key shape.
       const scope = grad.scope || 'action';
       const afterN = grad.after_n;
