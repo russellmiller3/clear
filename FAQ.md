@@ -154,13 +154,28 @@ Tests: `slot-extractors.test.js` (imported by `clear.test.js`) covers compiler e
 
 Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 2).
 
-## How do I make an approval graduate to auto-fire after N runs? (2026-05-13)
+## How do I make an approval auto-fire after the first N runs? (2026-05-14)
 
-Use `ask user to confirm 'message' with graduation after N runs` (inline) or the block form with `graduates per: <scope>` + optional `audit table is X`. The compiler auto-emits two tables on first use: a counter table (`<scope>_grad_counters` — defaults to `action_grad_counters`) and a per-action audit table (`<endpoint-slug>_approvals`). First N calls return HTTP 202 with the approval prompt and a manual audit row. Call N+1 onward inserts an auto audit row and falls through to the rest of the endpoint body — no 202, no prompt.
+Write it as a visible conditional in source over a counter table you own. Clear has no sugar for this — that's a deliberate PHILOSOPHY §1:1 choice (the previous `with graduation after N runs` sugar was removed 2026-05-14 because it packaged a runtime state machine into one keyword).
 
-Validator catches three mistakes: `with graduation` without `after N` (GRADUATION_THRESHOLD_MISSING), unknown scope like `graduates per: foo` (GRADUATION_SCOPE_UNKNOWN), and `graduates per: user` on an endpoint without `requires login` (GRADUATION_NO_LOGIN — anonymous callers would collapse into one bucket).
+```clear
+create an OpenNotepadApprovals table:
+  granted_at is timestamp, auto
+  mode is text
 
-Plain `ask user to confirm 'X'` (no graduation clause) still works unchanged. See SYNTAX.md "Confirmation with Graduation" and USER-GUIDE.md Chapter 19d-2. Plan: `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 3). Spec: `scripts/phase-3-graduation-spec.md`.
+when user calls POST /api/open-notepad:
+  approved = look up records in OpenNotepadApprovals table
+  count = approved's length
+  if count is less than 3:
+    ask user to confirm 'Open Notepad?'
+    save { mode: 'manual' } as a new OpenNotepadApproval
+  else:
+    save { mode: 'auto' } as a new OpenNotepadApproval
+    run command 'notepad.exe'
+  send back 'done'
+```
+
+Plain `ask user to confirm 'X'` always asks — inserts a row in `Approvals` and returns 202. Wrap it in your own counter check + table to get the auto-fire-after-N behavior. Per-user scoping: scope the count lookup by `req.user.id` in the conditional yourself.
 
 ## Why is there no LLM fallback for `extract datetime` in Python yet? (2026-05-13)
 

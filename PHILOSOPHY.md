@@ -157,14 +157,12 @@ justification (and a row in this list).
    ships a `# generated from runtime grammar 'X'` header above the
    dispatch table so a debugger can map line-by-line.
 
-2. **Gate-2 confirmation graduation** ("require approval for the first
-   N runs, then auto-fire") — added 2026-05-13. The runtime tracks a
-   counter and decides when to gate vs auto-fire WITHOUT a visible
-   conditional in the source. Justification weaker than runtime grammar:
-   the explicit form (`if concept's approval_count is less than 3 ...`)
-   is only 4 lines. A future cleanup pass should desugar `graduates
-   after N` to the visible conditional and deprecate the implicit form.
-   Tracked in ROADMAP under "magic-debt cleanup."
+2. **Gate-2 confirmation graduation — REMOVED 2026-05-14.** The
+   `with graduation after N runs` sugar was deleted from parser and
+   compiler. App authors now write the "approve first N, then auto"
+   pattern as a visible conditional in source over a counter table
+   they declare. See FAQ + USER-GUIDE Chapter 19d-2 for the canonical
+   shape.
 
 ## Design Rules
 

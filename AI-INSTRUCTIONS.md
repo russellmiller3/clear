@@ -3414,32 +3414,33 @@ create an Approvals table:
   decided_at (timestamp)
 ```
 
-### Confirmation with Graduation (Phase 3 gotchas)
+### Approve-the-first-N-times pattern (visible conditional)
 
-Use `ask user to confirm 'X' with graduation after N runs` when you want
-the first N invocations to require approval, and then trust the action to
-fire automatically. Two pitfalls to avoid:
+To require approval for the first N invocations of an action and then
+let it auto-fire, write it as a visible conditional in source over an
+explicit counter table you own. Clear has no sugar for this — it would
+violate PHILOSOPHY §1:1.
 
-1. **`with graduation` without `after N` is rejected** with
-   `GRADUATION_THRESHOLD_MISSING`. Always include the threshold:
-   `ask user to confirm 'Open Notepad?' with graduation after 3 runs`.
-2. **`graduates per: user` requires `requires login`** on the
-   endpoint. Without it, `req.user.id` is undefined and every anonymous
-   caller collapses to one counter — defeats the per-user intent. The
-   validator catches this with `GRADUATION_NO_LOGIN`.
+```clear
+create an OpenNotepadApprovals table:
+  granted_at is timestamp, auto
+  mode is text  # 'manual' or 'auto'
 
-The compiler auto-emits two tables on first use:
+when user calls POST /api/open-notepad:
+  approved = look up records in OpenNotepadApprovals table
+  count = approved's length
+  if count is less than 3:
+    ask user to confirm 'Open Notepad?'
+    save { mode: 'manual' } as a new OpenNotepadApproval
+  else:
+    save { mode: 'auto' } as a new OpenNotepadApproval
+    run command 'notepad.exe'
+  send back 'done'
+```
 
-- `<scope>_grad_counters` (e.g. `action_grad_counters` for the
-  default `per: action` scope) — tracks how many times each
-  ask-confirm site has been approved.
-- `<action_slug>_approvals` (e.g. `open_notepad_approvals`) — audit
-  log with one row per call. `mode = 'manual'` for the first N calls,
-  `mode = 'auto'` from N+1 on. Override the name with `audit table is X`
-  in the block form.
-
-Plain `ask user to confirm 'X'` (no graduation clause) still works
-unchanged — always asks, never auto-fires.
+Plain `ask user to confirm 'X'` always asks — it inserts a row in
+`Approvals` and returns 202 with the pending approval. The pattern
+above wraps it in your own counter logic.
 
 ### Pipeline vs Parallel
 

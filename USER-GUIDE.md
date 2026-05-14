@@ -4495,7 +4495,7 @@ It's the WRONG shape when:
 - You know every command at compile time. Use `match X:` instead.
 - You just need keyword search. Use `search Table for query`.
 
-## Chapter 19d-2: Confirmation with Graduation (Approval That Earns Its Way to Auto-Fire)
+## Chapter 19d-2: Approve-the-First-N-Times (Then Let It Auto-Fire)
 
 Sometimes you want the user to approve an action **the first few times**,
 and then trust the system to fire it without asking. Picture a Marcus-customer
@@ -4504,73 +4504,75 @@ decisions, but after that the agent has earned the right to act on its own.
 Or a dev tool that opens Notepad on cue — the first three times the user
 clicks, you ask "are you sure?"; the fourth time, just open it.
 
-That's what `ask user to confirm 'X' with graduation` does. The first N calls
-return the usual HTTP 202 with an approval prompt. Call N+1 onwards: the
-action fires immediately, no prompt. Every call writes one audit row, so
-you always know who approved what (and which calls fired automatically).
+Clear has no special keyword for this. You write it as a visible
+conditional in source over a counter table you own. That's a deliberate
+choice — earlier Clear had a `with graduation after N runs` sugar but it
+packaged an implicit runtime state machine into one keyword (counter
+table + scope key + audit row emission), violating §1:1 of PHILOSOPHY.
+The sugar was removed 2026-05-14. The explicit pattern below replaces it.
 
-### Simplest form
-
-```clear
-when user calls POST /api/open-notepad sending data:
-  ask user to confirm 'Open Notepad?' with graduation after 3 runs
-  send back 'opened'
-```
-
-Say it out loud: "Ask the user to confirm 'Open Notepad?' with graduation
-after three runs." The first three POSTs return 202 with the prompt. The
-fourth POST returns 200 with `{ message: 'opened' }`.
-
-### What gets auto-created
-
-The compiler emits two new tables on first compile:
-
-- **`action_grad_counters`** — one row per ask-confirm site, tracks how
-  many times that site has been approved (`scope_key, count, last_at`).
-- **`open_notepad_approvals`** — the audit log (`decided_by, decided_at,
-  decision, mode`). `mode` is `'manual'` for the first N calls and
-  `'auto'` for every call after.
-
-The audit table name is derived from the endpoint path. Override it with
-the block form:
+### The pattern
 
 ```clear
-when user calls POST /api/open-notepad sending data:
-  ask user to confirm 'Open Notepad?' with graduation:
-    after 3 runs
-    graduates per: action
-    audit table is open_notepad_audits
-  send back 'opened'
+create an OpenNotepadApprovals table:
+  granted_at is timestamp, auto
+  mode is text  # 'manual' for the first 3 calls, 'auto' after
+
+when user calls POST /api/open-notepad:
+  approved = look up records in OpenNotepadApprovals table
+  count = approved's length
+  if count is less than 3:
+    ask user to confirm 'Open Notepad?'
+    save { mode: 'manual' } as a new OpenNotepadApproval
+  else:
+    save { mode: 'auto' } as a new OpenNotepadApproval
+    run command 'notepad.exe'
+  send back 'done'
 ```
 
-### Counter scopes
+Read it line by line: count how many approvals we have, if it's less
+than three ask the user and save a manual row, otherwise save an auto
+row and just fire. Every call writes one row, so the audit trail is
+complete by construction. Reviewers don't have to know about a hidden
+counter — it's a normal table you can `look up records in` like any
+other.
 
-`graduates per:` decides what counts as "the same site":
+### Per-user counters
 
-- `action` *(default)* — one counter per ask-confirm line. Trust the
-  action itself.
-- `user` — one counter per logged-in user. Each user earns trust
-  independently. Requires `requires login` on the endpoint.
-- `tenant` — one counter per tenant. Each tenant earns trust
-  independently.
-- `session` — one counter per session. Trust resets every login.
+If you want each logged-in user to earn trust independently, filter the
+lookup by user id:
 
-The validator catches the easy mistakes: `graduates per: foo` errors
-`GRADUATION_SCOPE_UNKNOWN`, `graduates per: user` without auth errors
-`GRADUATION_NO_LOGIN`, and `with graduation` without `after N` errors
-`GRADUATION_THRESHOLD_MISSING`.
+```clear
+when user calls POST /api/open-notepad:
+  requires login
+  approved = look up records in OpenNotepadApprovals table where user_id is current_user's id
+  count = approved's length
+  if count is less than 3:
+    ask user to confirm 'Open Notepad?'
+    save { user_id: current_user's id, mode: 'manual' } as a new OpenNotepadApproval
+  else:
+    save { user_id: current_user's id, mode: 'auto' } as a new OpenNotepadApproval
+    run command 'notepad.exe'
+  send back 'done'
+```
+
+Same pattern, just scoped. Per-session: filter by session id. Per-tenant:
+filter by tenant id. The mechanism stays the same — visible conditional
+over a table you control.
 
 ### When to reach for this
 
-Use `with graduation` when:
+Use the pattern when:
 - The action is dangerous-by-default but should loosen with proof.
 - An agent or capability is verified by-hand for N runs and then trusted.
 - Operators want to see something work three times before they walk away.
 
-Don't reach for it when:
-- The action should ALWAYS require approval (plain `ask user to confirm`).
-- The graduation rule depends on data inside the action (use a regular
-  `if` plus an `ask user to confirm` instead).
+Skip it when:
+- The action should ALWAYS require approval — plain `ask user to confirm`
+  without the surrounding conditional is enough.
+- The N is data-dependent (the user's plan tier, the deal size, etc.).
+  Use the regular `if` against whatever value you want — that's exactly
+  the same shape, just with a different condition.
 
 ## Chapter 19e: Slot Extractors (Pulling Structured Values Out of Free-Form Text)
 

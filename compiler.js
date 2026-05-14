@@ -2305,33 +2305,6 @@ export function compile(ast, options = {}) {
     });
   }
 
-  // Graduation-deprecation post-pass (added 2026-05-14, magic-debt cleanup).
-  // Walks the AST for HUMAN_CONFIRM nodes that the parser tagged
-  // `_graduationDeprecated: true` (every `ask user to confirm ... with
-  // graduation after N runs` site). Emits ONE warning per source line
-  // pointing at the canonical visible-conditional form. The sugar still
-  // compiles; this just nudges new apps toward the §1:1 form.
-  (function emitGraduationDeprecations(nodes, seenLines) {
-    if (!Array.isArray(nodes)) return;
-    for (const n of nodes) {
-      if (!n || typeof n !== 'object') continue;
-      if (n.type === NodeType.HUMAN_CONFIRM && n._graduationDeprecated) {
-        const ln = n.line || 0;
-        if (!seenLines.has(ln)) {
-          seenLines.add(ln);
-          warnings.push({
-            line: ln,
-            code: 'GRADUATION_DEPRECATED',
-            message: `\`ask user to confirm ... with graduation after N runs\` is deprecated. The canonical replacement is a visible conditional in source: declare the counter table, check the count, branch with \`if count is less than N: ask user to confirm ... else: ... \`, then increase the count yourself. Today's sugar still compiles; new apps should use the explicit form. Background: PHILOSOPHY §1:1 + ROADMAP "magic-debt cleanup".`,
-          });
-        }
-      }
-      // Recurse into common body containers — endpoint, page, app, pane, etc.
-      if (Array.isArray(n.body)) emitGraduationDeprecations(n.body, seenLines);
-      if (Array.isArray(n.panes)) emitGraduationDeprecations(n.panes, seenLines);
-      if (Array.isArray(n.steps)) emitGraduationDeprecations(n.steps, seenLines);
-    }
-  })(ast.body, new Set());
   const sourceMap = options.sourceMap === true; // opt-in
 
   const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend', 'cloudflare'];
@@ -8725,134 +8698,23 @@ function _compileNodeInner(node, ctx) {
       return null;
 
     case NodeType.HUMAN_CONFIRM: {
-      // Phase 3 (2026-05-13) — confirm-with-graduation primitive.
-      // When node.graduation is present, the compiler emits:
-      //   1. A counter table (deduped per scope) so we know how many times
-      //      this confirm site has been approved.
-      //   2. An audit table (deduped per table name) so every decision —
-      //      pre-graduation manual approvals AND post-graduation auto-fires
-      //      — has a row for forensic review.
-      //   3. A counter-check branch at the call site:
-      //        count < after_n → insert manual audit row, bump counter,
-      //                          return 202 with the approval prompt.
-      //        count >= after_n → insert auto audit row, fall through to
-      //                           the rest of the endpoint (auto-fire).
-      // When node.graduation is absent, behavior is identical to the
-      // existing HUMAN_CONFIRM (always return 202 + write to Approvals).
-      // Spec: scripts/phase-3-graduation-spec.md.
+      // Human-in-the-loop: create approval request and return 202.
+      // The previous `with graduation after N runs` sugar was removed
+      // 2026-05-14 as a PHILOSOPHY §1:1 cleanup. If you need
+      // "approve first N runs, then auto-fire," write a visible
+      // conditional in source over an explicit counter table you own.
       const msg = exprToCode(node.message, ctx);
-      const grad = node.graduation;
-      if (!grad) {
-        // Back-compat path — no graduation, classic ask-once behavior.
-        if (ctx.lang === 'python') {
-          let code = `${pad}# Human-in-the-loop: create approval request\n`;
-          code += `${pad}_approval = await db.insert("Approvals", {"action": "confirm", "details": str(${msg}), "status": "pending"})\n`;
-          code += `${pad}return JSONResponse(content={"approval_id": _approval.get("id"), "message": ${msg}, "status": "pending"}, status_code=202)`;
-          return code;
-        }
-        let code = `${pad}// Human-in-the-loop: create approval request\n`;
-        code += `${pad}const _approval = await db.insert('Approvals', { action: 'confirm', details: String(${msg}), status: 'pending' });\n`;
-        code += `${pad}return res.status(202).json({ approval_id: _approval.id, message: ${msg}, status: 'pending' });`;
-        return code;
-      }
-      // (Graduation deprecation warning emits from compile()'s post-pass.
-      // The backend ctx doesn't carry warnings; walking the AST once at
-      // compile() level is simpler than threading.)
-      // Graduation path. Resolve names + scope-key shape.
-      const scope = grad.scope || 'action';
-      const afterN = grad.after_n;
-      // Default audit-table name: derive from the endpoint path (or fall back
-      // to "<scope>_approvals" if compiled outside an endpoint). Example:
-      // /api/open-notepad → open_notepad_approvals.
-      const auditTableDefault = (function () {
-        const ep = (ctx.endpointPath || '').replace(/^\/api\//, '').replace(/^\/+/, '');
-        const slug = ep ? ep.replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '') : scope;
-        return (slug || scope) + '_approvals';
-      })();
-      const auditTable = grad.audit_table || auditTableDefault;
-      const counterTable = scope + '_grad_counters';
-      // Scope key: stable identifier for the counter. Per spec:
-      //   action  -> "<endpoint-path>:<line-number>"
-      //   user    -> action key + ":" + req.user.id
-      //   tenant  -> action key + ":" + req.user.tenant_id
-      //   session -> action key + ":" + req.session.id
-      const actionKey = ((ctx.endpointPath || 'unknown') + ':' + (node.line || 0));
-      const buildScopeKeyJS = (function () {
-        const baseLit = JSON.stringify(actionKey);
-        if (scope === 'user')    return baseLit + " + ':' + (req.user && req.user.id || 'anon')";
-        if (scope === 'tenant')  return baseLit + " + ':' + (req.user && req.user.tenant_id || 'no-tenant')";
-        if (scope === 'session') return baseLit + " + ':' + (req.session && req.session.id || 'no-session')";
-        return baseLit;
-      })();
-      const buildScopeKeyPy = (function () {
-        const baseLit = JSON.stringify(actionKey);
-        if (scope === 'user')    return baseLit + " + ':' + str(getattr(request.state, 'user', {}).get('id', 'anon'))";
-        if (scope === 'tenant')  return baseLit + " + ':' + str(getattr(request.state, 'user', {}).get('tenant_id', 'no-tenant'))";
-        if (scope === 'session') return baseLit + " + ':' + str(getattr(request, 'session_id', 'no-session'))";
-        return baseLit;
-      })();
-      // Track which counter / audit tables we have already emitted in this
-      // compile so we don't drop duplicate createTable calls.
-      if (!ctx._gradCountersEmitted) ctx._gradCountersEmitted = new Set();
-      if (!ctx._gradAuditEmitted)    ctx._gradAuditEmitted    = new Set();
       if (ctx.lang === 'python') {
-        let code = '';
-        if (!ctx._gradCountersEmitted.has(counterTable)) {
-          ctx._gradCountersEmitted.add(counterTable);
-          code += `${pad}# Auto-emitted counter table for confirm-with-graduation (scope: ${scope})\n`;
-          code += `${pad}await db.create_table("${counterTable}", {"scope_key": {"type": "text", "required": True}, "count": {"type": "number", "default": 0}, "last_at": {"type": "timestamp"}})\n`;
-        }
-        if (!ctx._gradAuditEmitted.has(auditTable)) {
-          ctx._gradAuditEmitted.add(auditTable);
-          code += `${pad}# Auto-emitted audit table for graduating confirm\n`;
-          code += `${pad}await db.create_table("${auditTable}", {"decided_by": {"type": "text"}, "decided_at": {"type": "timestamp", "auto": True}, "decision": {"type": "text"}, "mode": {"type": "text", "required": True}})\n`;
-        }
-        code += `${pad}# Confirm-with-graduation: look up counter for this scope\n`;
-        code += `${pad}_scope_key = ${buildScopeKeyPy}\n`;
-        code += `${pad}_grad_counter = await db.find_one("${counterTable}", {"scope_key": _scope_key})\n`;
-        code += `${pad}_grad_count = _grad_counter.get("count", 0) if _grad_counter else 0\n`;
-        code += `${pad}if _grad_count < ${afterN}:\n`;
-        code += `${pad}    await db.insert("${auditTable}", {"decided_by": (getattr(request.state, "user", {}) or {}).get("id"), "decided_at": datetime.datetime.now().isoformat(), "decision": "pending", "mode": "manual"})\n`;
-        code += `${pad}    if _grad_counter:\n`;
-        code += `${pad}        await db.update("${counterTable}", _grad_counter.get("id"), {"count": _grad_count + 1, "last_at": datetime.datetime.now().isoformat()})\n`;
-        code += `${pad}    else:\n`;
-        code += `${pad}        await db.insert("${counterTable}", {"scope_key": _scope_key, "count": 1, "last_at": datetime.datetime.now().isoformat()})\n`;
-        code += `${pad}    return JSONResponse(content={"message": ${msg}, "status": "pending", "mode": "manual", "remaining_before_auto": ${afterN} - (_grad_count + 1)}, status_code=202)\n`;
-        code += `${pad}# Post-graduation: auto-fire path. Audit row, then fall through to action body.\n`;
-        code += `${pad}await db.insert("${auditTable}", {"decided_by": (getattr(request.state, "user", {}) or {}).get("id"), "decided_at": datetime.datetime.now().isoformat(), "decision": "approve", "mode": "auto"})`;
+        let code = `${pad}# Human-in-the-loop: create approval request\n`;
+        code += `${pad}_approval = await db.insert("Approvals", {"action": "confirm", "details": str(${msg}), "status": "pending"})\n`;
+        code += `${pad}return JSONResponse(content={"approval_id": _approval.get("id"), "message": ${msg}, "status": "pending"}, status_code=202)`;
         return code;
       }
-      // JS path
-      let code = '';
-      if (!ctx._gradCountersEmitted.has(counterTable)) {
-        ctx._gradCountersEmitted.add(counterTable);
-        code += `${pad}// Auto-emitted counter table for confirm-with-graduation (scope: ${scope})\n`;
-        code += `${pad}try { await db.createTable('${counterTable}', { scope_key: { type: 'text', required: true }, count: { type: 'number', default: 0 }, last_at: { type: 'timestamp' } }); } catch (_e) { /* table may already exist */ }\n`;
-      }
-      if (!ctx._gradAuditEmitted.has(auditTable)) {
-        ctx._gradAuditEmitted.add(auditTable);
-        code += `${pad}// Auto-emitted audit table for graduating confirm\n`;
-        code += `${pad}try { await db.createTable('${auditTable}', { decided_by: { type: 'text' }, decided_at: { type: 'timestamp', auto: true }, decision: { type: 'text' }, mode: { type: 'text', required: true } }); } catch (_e) { /* table may already exist */ }\n`;
-      }
-      code += `${pad}// Confirm-with-graduation: look up counter for this scope\n`;
-      code += `${pad}const _scopeKey = ${buildScopeKeyJS};\n`;
-      code += `${pad}const _gradCounter = await db.findOne('${counterTable}', { scope_key: _scopeKey });\n`;
-      code += `${pad}const _gradCount = _gradCounter ? Number(_gradCounter.count || 0) : 0;\n`;
-      code += `${pad}if (_gradCount < ${afterN}) {\n`;
-      code += `${pad}  // Pre-graduation: write manual audit row + bump counter + return 202.\n`;
-      code += `${pad}  await db.insert('${auditTable}', { decided_by: (req.user && req.user.id) || null, decided_at: new Date().toISOString(), decision: 'pending', mode: 'manual' });\n`;
-      code += `${pad}  if (_gradCounter) {\n`;
-      code += `${pad}    await db.update('${counterTable}', _gradCounter.id, { count: _gradCount + 1, last_at: new Date().toISOString() });\n`;
-      code += `${pad}  } else {\n`;
-      code += `${pad}    await db.insert('${counterTable}', { scope_key: _scopeKey, count: 1, last_at: new Date().toISOString() });\n`;
-      code += `${pad}  }\n`;
-      code += `${pad}  return res.status(202).json({ message: ${msg}, status: 'pending', mode: 'manual', remaining_before_auto: ${afterN} - (_gradCount + 1) });\n`;
-      code += `${pad}}\n`;
-      code += `${pad}// Post-graduation: auto-fire path. Insert audit row, then fall through.\n`;
-      code += `${pad}await db.insert('${auditTable}', { decided_by: (req.user && req.user.id) || null, decided_at: new Date().toISOString(), decision: 'approve', mode: 'auto' });`;
+      let code = `${pad}// Human-in-the-loop: create approval request\n`;
+      code += `${pad}const _approval = await db.insert('Approvals', { action: 'confirm', details: String(${msg}), status: 'pending' });\n`;
+      code += `${pad}return res.status(202).json({ approval_id: _approval.id, message: ${msg}, status: 'pending' });`;
       return code;
     }
-
     case NodeType.REPEAT: {
       const count = exprToCode(node.count, ctx);
       if (ctx.lang === 'python') {

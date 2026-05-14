@@ -409,7 +409,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Policies | `must not:` + rules | Compile-time guardrails |
 | Observability | `track agent decisions` | Logs _askAI calls with timing |
 | Human approval | `ask user to confirm 'message'` | Approval workflow |
-| Confirm with graduation | `ask user to confirm 'message' with graduation after N runs` (or block form with `graduates per: action|user|tenant|session` + `audit table is X`) | First N calls return 202 + manual audit row; call N+1 auto-fires with auto audit row. Counter + audit tables auto-emitted. |
+| Approve-first-N pattern | Visible conditional in source: `if count is less than 3: ask user to confirm 'X' ... else: ...` over a counter table you declare yourself | Removed the `with graduation` sugar 2026-05-14 (PHILOSOPHY §1:1 cleanup). The explicit form makes the gate logic readable line-by-line. |
 
 | Mock AI | `mock claude responding:` + fields | Test infrastructure |
 | Model selection | `ask claude 'prompt' with X using 'model'` | |

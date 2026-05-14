@@ -180,7 +180,7 @@ Items 1 + 2 run **in parallel** — different files (CC-4 touches `playground/se
 
 **Other open work that doesn't block launch:**
 - **Lenat-in-Clear Phase 5 — Network Graph chart kind (shipped 2026-05-13).** A fifth CHART kind alongside line / bar / pie / area. `display X as network graph showing edges via Y` parses to a CHART node with `chartType: 'network'`; the compiler emits an ECharts `{type:'graph', layout:'force'}` series with an inlined substring-match edge resolver that mirrors Node Lenat's `links.js`. Optional `with max N nodes` caps the layout (default 200); `with color by FIELD` threads through to ECharts categories. Runtime helpers `runtime/graph-edges.js` + `runtime/graph_edges.py` ship the same `{nodes, links}` builder for server-side use. JS + Python parity. 4 TDD cycles green, 15 new tests, 0 regressions. Baseline 3117 → 3132. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
-- **Lenat-in-Clear Phase 3 — Confirm-with-graduation primitive (shipped 2026-05-13).** `ask user to confirm 'X' with graduation after N runs` (inline) and the block form with `graduates per: action|user|tenant|session` + `audit table is X`. Compiler auto-emits a counter table per scope and an audit table per action. Pre-graduation: 202 + manual audit row + counter bump. Post-graduation: auto audit row, fall through to body. JS + Python parity. Validator catches GRADUATION_THRESHOLD_MISSING, GRADUATION_SCOPE_UNKNOWN, GRADUATION_NO_LOGIN. 6 TDD cycles green (3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6), 18 new tests, 3129 total. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
+- **Lenat-in-Clear Phase 3 — REMOVED 2026-05-14.** The original `ask user to confirm 'X' with graduation after N runs` primitive was a §1:1 violation (counter table + scope key + audit row emit packaged into one keyword). Ripped out 2026-05-14 along with the 18 tests + 5 doc surfaces that referenced it. Replacement: write the "approve first N, then auto" behavior as a visible conditional in source over a counter table you declare. See FAQ "How do I make an approval auto-fire after the first N runs?" and USER-GUIDE Chapter 19d-2.
 - **Lenat-in-Clear Phase 2 — Slot Extractor stdlib (shipped 2026-05-13).** Four expression-level primitives for NL-light parsing: `extract datetime from text` (fast-path covering ISO, slash-date, in-N-units, weekday-at-time, tomorrow-at-time, tonight, this evening), `fuzzy match 'q' in list` (Levenshtein + bigram + subsequence-coverage boost), `extract about-clause from text`, and `find pattern P in text returning value and remainder`. JS + Python parity; both targets share the algorithm. Validator `SLOT_EXTRACTOR_WRONG_TYPE` catches `extract datetime from <number>` at compile time. 7 TDD cycles green (2.2 / 2.3 / 2.4 / 2.6 / 2.7 / 2.8 / 2.9). 33 new tests; 3096 total. Next: Phase 3 (confirm-then-graduate approval variant). Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
 - **Lenat-in-Clear Cycle 1.10 — GRAMMAR_MATCH_CALL wired (shipped 2026-05-13 night, commit 7d6a91a).** The Phase 9 audit surfaced that the matcher-call expression `match X against 'name'` was declared as a node type in parser.js:495 back in Phase 1 but never parsed — the "reserved for Phase 2 wiring" note was literal. This commit wires the parser case (in `parseAssignment`, disambiguated from control-flow `match X:` via the required `against` keyword), the JS compile emit (`_grammarMatch("name", input)`), and the Python compile emit (`_grammar_match("name", input)`). 4 new Cycle 1.10 tests pass; 3172 → 3176. Doc cascade: 4 of 11 surfaces done (intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, CHANGELOG.md) in commit 52a6604. Unblocks the entire Phase 9 test-parity sweep against Node Lenat's 126-test corpus. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
 - **Lenat-in-Clear Phase 1 — Runtime Grammar primitive (shipped 2026-05-13).** Compiler now has its first runtime-extensible parsing primitive: `runtime grammar 'name':` + `frame X:` blocks emit a storage table + a `_grammarMatch` helper that resolves user input against frames seeded at compile time AND extended at runtime via normal CRUD inserts. JS + Python parity. 10 TDD cycles green, 25 new tests, 0 regressions. Next: Phase 2 (slot-extractor stdlib: datetime, fuzzy, about-clause, regex+remainder). Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
@@ -303,24 +303,23 @@ under "Acknowledged §1:1 exceptions" but should be unwound when possible.
    Fix: emit a readable `# generated from runtime grammar 'X'` block
    into the compiled JS so a debugger can map line-by-line. Compiler
    change, ~50 LOC.
-2. **Gate-2 graduation's hidden state machine.** `approval graduates
-   after 3 runs` packages an implicit conditional. Fix: deprecate the
-   sugar; require the visible conditional in source. Migration: every
-   existing `graduates after N` call rewrites to `if X's approval_count
-   is less than N: ... else: ...`. App-level change, deprecate in
-   parser with a clear hint pointing at the explicit form.
+2. **Gate-2 graduation — DONE 2026-05-14.** The `with graduation after N
+   runs` sugar was removed from parser + compiler. 18 tests + 5 doc
+   surfaces rewritten to use the visible conditional pattern (counter
+   table you declare, `if count is less than N: ask ... else: ...` in
+   source). No legacy path retained. Pattern documented in FAQ + SYNTAX
+   + USER-GUIDE Chapter 19d-2.
 
-Neither is launch-blocking. Schedule when there's a quiet session.
+Item 1 is not launch-blocking. Schedule when there's a quiet session.
 
-**Compiler-gap detector (added 2026-05-14, deferred wire-in):**
+**Compiler-gap detector (added 2026-05-14, ARMED):**
 `scanForCompilerGapStubs()` in compiler.js catches the canonical
 "compiler gap: no exprToCode case for expression type X" stub before
-it ships in compiled output. Function shipped + tested; wire-in to
-`compile()` is commented out. Enabling surfaces 11 latent failing
-tests — mix of real gaps (node types whose dispatch is missing) and
-possible regex false positives. Triage the 11 cases (likely 1-2 hr),
-fix or whitelist each, then uncomment 2 lines in compiler.js around
-line 2412. Once on, NO new node type can ship without a dispatch case.
+it ships in compiled output. Triage done 2026-05-14 (11 latent cases
+fixed in 2 batches: PDF emit's bare-string-to-exprToCode bug + 4 new
+NodeTypes added to the dispatch null-case list). Detector now ARMED in
+`compile()` — any new node type added to the parser without a matching
+dispatch case fails at build time, not at server startup.
 
 ---
 

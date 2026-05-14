@@ -3065,52 +3065,40 @@ agent 'Refund' receives request:
   send back 'Refund processed'
 ```
 
-### Confirmation with Graduation (Phase 3 — 2026-05-13)
+### Approve-first-N-then-auto-fire pattern (visible conditional)
 
-A graduating confirm asks the user the **first N times**, then auto-fires
-from call N+1 onward. Every call writes an audit row regardless of which
-branch fires, so the decision history is preserved for forensic review.
-Useful for: agents that escalate from supervised to autonomous after a
-calibration period, dangerous-by-default actions that loosen with trust,
-or any feature gated behind "let me see it work three times first."
+The "ask the user the first N times, then auto-fire" behavior is NOT
+sugar in Clear. Write it as a visible conditional in source over a
+counter table you declare yourself. The previous `with graduation
+after N runs` keyword was removed 2026-05-14 as a PHILOSOPHY §1:1
+cleanup (it packaged an implicit runtime state machine into one
+keyword).
 
-Inline form (most common):
 ```clear
-when user calls POST /api/open-notepad sending data:
-  ask user to confirm 'Open Notepad?' with graduation after 3 runs
-  send back 'opened'
+create an OpenNotepadApprovals table:
+  granted_at is timestamp, auto
+  mode is text  # 'manual' for first 3 calls, 'auto' after
+
+when user calls POST /api/open-notepad:
+  approved = look up records in OpenNotepadApprovals table
+  count = approved's length
+  if count is less than 3:
+    ask user to confirm 'Open Notepad?'
+    save { mode: 'manual' } as a new OpenNotepadApproval
+  else:
+    save { mode: 'auto' } as a new OpenNotepadApproval
+    run command 'notepad.exe'
+  send back 'done'
 ```
 
-Block form (more options):
-```clear
-when user calls POST /api/open-notepad sending data:
-  ask user to confirm 'Open Notepad?' with graduation:
-    after 3 runs
-    graduates per: action
-    audit table is open_notepad_audits
-  send back 'opened'
-```
+Per-user scoping: change the lookup to filter by `req.user.id` so each
+user has their own counter. Per-session scoping: filter by session id
+instead. The pattern stays the same — visible conditional over a
+table you control.
 
-`graduates per:` selects the counter granularity:
-
-| Scope | Counter key | Use when |
-|---|---|---|
-| `action` *(default)* | one counter per ask-confirm site | the trust is in the action itself |
-| `user` | per logged-in user | each user earns trust independently (requires `requires login`) |
-| `tenant` | per tenant | each tenant earns trust independently |
-| `session` | per session | trust resets every login |
-
-`audit table is X` overrides the audit table name. The default is
-`<action_slug>_approvals` (e.g. `/api/open-notepad` → `open_notepad_approvals`).
-Each audit row has `decided_by, decided_at, decision, mode` where `mode`
-is `'manual'` for pre-graduation calls and `'auto'` for post-graduation
-auto-fires.
-
-Runtime semantics:
-- **Calls 1 through N:** insert a `mode: 'manual'` audit row, bump the
-  counter, return HTTP 202 with the approval prompt + `remaining_before_auto`.
-- **Call N+1 onward:** insert a `mode: 'auto'` audit row, fall through to
-  the rest of the endpoint body (no 202, no prompt).
+Plain `ask user to confirm 'X'` (no surrounding conditional) always
+asks. It inserts a row into the `Approvals` table and returns HTTP 202
+with `{ approval_id, message, status: 'pending' }`.
 
 ### Agent Testing
 ```clear
