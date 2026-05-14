@@ -32650,4 +32650,60 @@ when user calls GET /api/list:
   });
 });
 
+describe('Compiler error gaps — auto-id column collision detector', () => {
+  it('explicit `id is text` in a table body errors with a clear "Clear adds id automatically" message', () => {
+    const src = `build for javascript backend
+
+create a deal table:
+  id is text
+  amount is a number
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg.toLowerCase()).toMatch(/id.*auto|automatically.*id|already.*id/);
+    expect(msg.toLowerCase()).toMatch(/deal/);
+  });
+
+  it('the explicit id message names the source line so the user can find it', () => {
+    const src = `build for javascript backend
+
+create a Records table:
+  concept_id is text
+  id is text
+  payload is text
+`;
+    const r = compileProgram(src);
+    const idErr = r.errors.find(e => /id.*auto|automatically.*id/i.test(e.message || ''));
+    expect(idErr).toBeTruthy();
+  });
+
+  it('a table without an explicit id compiles clean — no false positives', () => {
+    const src = `build for javascript backend
+
+create a deal table:
+  amount is a number
+  status is text
+
+when user calls GET /api/list:
+  send back 'ok'
+`;
+    const r = compileProgram(src);
+    const idErr = r.errors.find(e => /id.*auto|automatically.*id/i.test(e.message || ''));
+    expect(idErr).toBeUndefined();
+  });
+
+  it('an `id is number` (different type) still errors — Clear always adds id, type does not matter', () => {
+    const src = `build for javascript backend
+
+create a deal table:
+  id is a number
+  amount is a number
+`;
+    const r = compileProgram(src);
+    const idErr = r.errors.find(e => /id.*auto|automatically.*id/i.test(e.message || ''));
+    expect(idErr).toBeTruthy();
+  });
+});
+
 run();

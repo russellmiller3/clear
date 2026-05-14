@@ -146,7 +146,36 @@ export function validate(ast) {
   validateSlotExtractors(ast.body, warnings);
   validateGraduation(ast.body, errors);
   validateDuplicateTables(ast.body, errors);
+  validateAutoIdCollision(ast.body, errors);
   return { errors, warnings };
+}
+
+// =============================================================================
+// validateAutoIdCollision — when a `create a X table` body declares its OWN
+// `id` field, SQLite crashes at startup:
+//
+//   SqliteError: duplicate column name: id
+//
+// because Clear's runtime auto-injects `id` as the primary key on every
+// table. The collision is silent until first server boot. This check
+// catches it at compile time and tells the user to drop the explicit id
+// line.
+//
+// Added 2026-05-14 as Compiler Error Gap check 2 of 4.
+// =============================================================================
+function validateAutoIdCollision(body, errors) {
+  for (const node of (body || [])) {
+    if (!node) continue;
+    if (node.type !== 'data_shape' && node.type !== 'DATA_SHAPE') continue;
+    const fields = node.fields || [];
+    const idField = fields.find(f => f && (f.name === 'id' || (f.name || '').toLowerCase() === 'id'));
+    if (idField) {
+      errors.push({
+        line: idField.line || node.line || 0,
+        message: `Table '${node.name}' declares its own \`id\` field, but Clear adds \`id\` automatically as the primary key on every table. Two \`id\` columns crash SQLite at startup with "duplicate column name: id". Remove the explicit \`id\` line from the table body — Clear will inject it for you.`,
+      });
+    }
+  }
 }
 
 // =============================================================================
