@@ -1,3 +1,7 @@
+## 2026-05-14 — todo-fullstack template: Categories seeded via `with rows:`
+
+`apps/todo-fullstack/main.clear` migrated so Work / Personal / Shopping categories are declared inside the `create a Categories table:` block using `with rows:` instead of being created at runtime by the `/api/seed` endpoint. The seed endpoint now only creates the five Todos, referencing category IDs 1–3 which are guaranteed by insertion order at app startup. 3192/3192 tests pass.
+
 ## 2026-05-14 — Data-driven sparkline runtime helper (feature/sparkline-runtime)
 
 Data-driven stat-card sparklines now render client-side. When a stat card uses `sparkline VAR taking 'FIELD'` (the non-literal form), the compiler emits an SVG placeholder with `data-sparkline-source` / `data-sparkline-field` attributes and injects a `_initSparklines` IIFE into the compiled HTML. The IIFE walks every marked SVG after DOM load, reads the named array from `_state[VAR]`, normalises values to the 96x28 viewBox using the same coordinate math as the compile-time literal-list path (x: 2-94, y: 4-24), and draws or updates a polyline inside the SVG. It also monkey-patches `_recompute` so sparklines refresh whenever state updates arrive. Literal-list sparklines are unchanged. 2 new tests (3192/3192). Docs updated: intent.md, FEATURES.md.
