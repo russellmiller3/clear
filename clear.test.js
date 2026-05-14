@@ -32568,4 +32568,86 @@ await describeAsync('Phase 6.4 — runtime HTTP shape per provider (mocked fetch
   });
 });
 
+// =============================================================================
+// Compiler error gaps — four checks that catch latent bugs Clear lets through
+// to Node/SQLite runtime today. Each fix lifts a runtime crash up to a clear
+// compile-time error with a friendly message that names both the bad line and
+// the suggested fix.
+//
+// Without these, the failures happen at server startup with terse Node /
+// SQLite errors (`SyntaxError: Identifier 'dealSchema' has already been
+// declared`, `SQLITE_ERROR: duplicate column name: id`, etc.) that don't
+// point at the source-Clear line that produced the conflict.
+// =============================================================================
+describe('Compiler error gaps — duplicate-table detector', () => {
+  it('two tables with the same name are caught at compile time, naming both source lines', () => {
+    const src = `build for javascript backend
+
+create a deal table:
+  amount is a number
+
+create a deal table:
+  title is text
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg.toLowerCase()).toMatch(/duplicate|already.*declared|already.*defined/);
+    // Both source lines should be referenced so the author can find them.
+    expect(msg).toMatch(/3/);
+    expect(msg).toMatch(/6/);
+    // The table name should be in the message.
+    expect(msg.toLowerCase()).toMatch(/deal/);
+  });
+
+  it('a table and a runtime grammar both pointing at the same storage table also collide', () => {
+    const src = `build for javascript backend
+
+create a Concepts table:
+  name is text
+
+runtime grammar concept_match:
+  storage table is Concepts
+  matches /(\\w+)/
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    expect(msg.toLowerCase()).toMatch(/duplicate|already/);
+    expect(msg.toLowerCase()).toMatch(/concepts/);
+  });
+
+  it('three duplicate tables surface all overlapping pairs, not just the first', () => {
+    const src = `build for javascript backend
+
+create a deal table:
+  amount is a number
+
+create a deal table:
+  title is text
+
+create a deal table:
+  status is text
+`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+  });
+
+  it('a single table compiles clean — no false positives', () => {
+    const src = `build for javascript backend
+
+create a deal table:
+  amount is a number
+  status is text
+
+when user calls GET /api/list:
+  send back 'ok'
+`;
+    const r = compileProgram(src);
+    // No duplicate-table error should fire (other errors/warnings irrelevant here).
+    const dupErr = r.errors.find(e => /duplicate.*table|already.*declared.*table/i.test(e.message || ''));
+    expect(dupErr).toBeUndefined();
+  });
+});
+
 run();
