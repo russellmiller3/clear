@@ -850,6 +850,18 @@ async function buildCommand(args) {
     const runtimeSrc = resolve(__dirname, '..', 'runtime');
     const runtimeFiles = ['db.js', 'auth.js', 'rateLimit.js'];
     if (needsWidget) runtimeFiles.push('meph-widget.js');
+    // If the compiled server.js requires the grammar-matcher or slot-extractor
+    // runtime helpers (Phase 1 / Phase 2 of Lenat-in-Clear), copy them into
+    // clear-runtime/ too. Without this the server crashes at startup with
+    // MODULE_NOT_FOUND when it tries to require('./clear-runtime/grammar-matcher').
+    // Detection mirrors the require-call detection that `clear serve` uses.
+    const serverContents = result.serverJS || result.javascript || '';
+    if (serverContents.includes("require('./clear-runtime/grammar-matcher')")) {
+      runtimeFiles.push('grammar-matcher.js');
+    }
+    if (serverContents.includes("require('./clear-runtime/slot-extractors')")) {
+      runtimeFiles.push('slot-extractors.js');
+    }
     for (const f of runtimeFiles) {
       const src = resolve(runtimeSrc, f);
       if (existsSync(src)) { copyFileSync(src, resolve(runtimeDir, f)); }
