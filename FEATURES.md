@@ -265,6 +265,7 @@ The tables below cover every feature in the language with exact syntax. Jump to 
 | Sidebar nav item | `nav item 'Pending' to '/cro' with count pending_count with icon 'inbox'` | Linked sidebar row; optional count + Lucide icon; active state follows the route |
 | Page header | `page header 'CRO Review':` + `subtitle '5 deals waiting'` + `actions:` | Main content title row with optional subtitle and right-aligned actions |
 | Tab strip | `tab strip:` + `tab 'Pending' to '/cro'` | Routed underline tabs; active state follows the route |
+| Stat strip | `stat strip:` + `stat card 'Pending Count':` + `value N`, optional `delta '+5%'`, `sparkline [1,2,3]` or `sparkline VAR taking 'FIELD'`, `icon 'inbox'` | Responsive KPI card row. Literal-list sparkline renders at compile time. Data-driven `sparkline VAR taking 'FIELD'` emits an SVG placeholder filled client-side from `_state[VAR]` on load and on every `_recompute` tick — blank until data arrives from an API call |
 
 | Display Format | Syntax | Output |
 |----------------|--------|--------|

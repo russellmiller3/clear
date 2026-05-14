@@ -114,7 +114,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` / `display x as chat showing role, content` | `<output>` or `<table>` with action buttons, or chat bubble component |
 | `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` / `display records as network graph showing edges via about` | ECharts `<div>` with auto-configured option (line / bar / pie / area / network force-directed graph) |
 | `STAT_STRIP` | `stat strip:` + stat cards | Responsive KPI card row |
-| `STAT_CARD` | `stat card 'Pending Count':` + `value EXPR`, optional `delta 'TEXT'`, `sparkline [1, 2, 3]`, `icon 'inbox'` | Polished KPI card with label, value, delta, optional sparkline and Lucide icon |
+| `STAT_CARD` | `stat card 'Pending Count':` + `value EXPR`, optional `delta 'TEXT'`, `sparkline [1,2,3]` or `sparkline energy_logs taking 'level'`, `icon 'inbox'` | Polished KPI card with label, value, delta, optional sparkline and Lucide icon. Data-driven form (`sparkline VAR taking 'FIELD'`) emits an SVG placeholder filled client-side from `_state[VAR]` on load and every `_recompute` tick |
 | `DETAIL_PANEL` | `detail panel for selected_deal:` + indented content + optional `actions:` | 340px right rail populated from the selected table row; body can contain normal Clear UI primitives, with sticky action buttons at bottom |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` — Phase 5.5: also accepts `as accordion` modifier — each nested section becomes a DaisyUI collapse panel | `<div>` with CSS class (accordion variant emits one `<div class="collapse collapse-arrow">` per child) |
@@ -597,7 +597,7 @@ the full token system.
 | `TAB_STRIP` | `tab strip:` + `tab 'Pending' to '/cro'` | Routed content tabs with underline active state |
 | `ROUTE_TAB` | `tab 'Pending' to '/cro'` | One tab row inside a `tab strip`; optional `active tab is 'Pending'` hint |
 | `STAT_STRIP` | `stat strip:` | Responsive KPI row inside `app_content` |
-| `STAT_CARD` | `stat card 'Pending Count':` + `value pending_count`, optional `delta '+1.8 pts vs last week'`, `sparkline [3, 4, 6, 5, 8]`, `icon 'inbox'` | Dashboard stat card with value, trend copy, mini sparkline, and Lucide icon |
+| `STAT_CARD` | `stat card 'Pending Count':` + `value pending_count`, optional `delta '+1.8 pts vs last week'`, `sparkline [3,4,6,5,8]` or `sparkline energy_logs taking 'level'`, `icon 'inbox'` | Dashboard stat card with value, trend copy, mini sparkline, and Lucide icon. Data-driven `taking` form reads from `_state[VAR]` at runtime |
 
 The shell tags use semantic HTML5 elements (`aside`, `main`, `header`) instead
 of generic divs — better accessibility and matches the polished slate-on-ivory
