@@ -8181,12 +8181,41 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
   const fields = [];
   const policies = [];
   const compoundUniques = [];
+  const seedRows = []; // P5 (2026-05-14): `with rows:` block seed data
   let j = startIdx + 1;
   while (j < lines.length && lines[j].indent > blockIndent) {
     const fieldTokens = lines[j].tokens;
     const fieldLine = fieldTokens[0]?.line || line;
     if (fieldTokens.length === 0) { j++; continue; }
     if (fieldTokens[0].type === TokenType.COMMENT) { j++; continue; }
+
+    // `with rows:` — declare seed rows for this table. Each indented
+    // child line is one row literal. Added 2026-05-14 as P5 of the
+    // text-routing primitives plan.
+    if (fieldTokens.length >= 2 &&
+        (fieldTokens[0].canonical === 'with' || fieldTokens[0].value === 'with') &&
+        (fieldTokens[1].value === 'rows' || fieldTokens[1].canonical === 'rows')) {
+      const rows_indent = lines[j].indent;
+      let row_idx = j + 1;
+      while (row_idx < lines.length && lines[row_idx].indent > rows_indent) {
+        const row_tokens = lines[row_idx].tokens;
+        if (!row_tokens || row_tokens.length === 0 || row_tokens[0].type === TokenType.COMMENT) {
+          row_idx++;
+          continue;
+        }
+        // Parse the line as an expression. A row literal `{a: 1, b: 2}`
+        // already parses as an OBJECT_LITERAL via parseExpression.
+        const row_result = parseExpression(row_tokens, 0, row_tokens[0].line);
+        if (row_result.error) {
+          errors.push({ line: row_tokens[0].line, message: `\`with rows\`: could not parse row literal: ${row_result.error}` });
+        } else if (row_result.node) {
+          seedRows.push(row_result.node);
+        }
+        row_idx++;
+      }
+      j = row_idx;
+      continue;
+    }
 
     // Check if this is an RLS policy line. Legacy shapes — `anyone can ...`,
     // `owner can ...`, `same org can ...`, `role 'X' can ...`. OWASP Piece 1
@@ -8375,6 +8404,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
 
   const shapeNode = dataShapeNode(name, fields, line, policies);
   if (compoundUniques.length > 0) shapeNode.compoundUniques = compoundUniques;
+  if (seedRows.length > 0) shapeNode.seedRows = seedRows;
   return { node: shapeNode, endIdx: j };
 }
 

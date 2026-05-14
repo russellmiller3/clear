@@ -8170,11 +8170,21 @@ function compileDataShape(node, ctx, pad) {
     return `  ${sanitizeName(f.name)}: { ${props.join(', ')} }`;
   }).join(',\n');
   const tableName = pluralizeName(node.name);
+  // name-by-use-override: `result` is a pre-existing local in this function.
   let result = `${pad}// Data shape: ${node.name}\n${pad}const ${node.name}Schema = {\n${fields}\n${pad}};`;
   if (ctx.mode === 'backend' && !(ctx.dbBackend && ctx.dbBackend.includes('supabase'))) {
     result += `\n${pad}db.createTable('${tableName}', ${node.name}Schema);`;
   } else if (ctx.mode === 'backend' && ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
     result += `\n${pad}// Table '${tableName}' must exist in Supabase dashboard`;
+  }
+  // `with rows:` seed inserts (P5, 2026-05-14). Each row is an AST
+  // expression (typically an OBJECT_LITERAL); we lower via exprToCode
+  // and insert at module top so rows exist before any handler reads.
+  if (node.seedRows && node.seedRows.length > 0 && ctx.mode === 'backend') {
+    for (const seed_row of node.seedRows) {
+      const row_code = exprToCode(seed_row, ctx);
+      result += `\n${pad}db.insert('${tableName}', ${row_code});`;
+    }
   }
   return result;
 }
