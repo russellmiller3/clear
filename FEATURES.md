@@ -252,7 +252,8 @@ The tables below cover every feature in the language with exact syntax. Jump to 
 | Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback. Selected-record updates require a `change ... from ... to ...` line before `update ... at ...`; deletes use `delete selected_record from /api/...` |
 | Links | `link 'Docs' to '/docs'` | Also accepts `link to '/docs' with label 'Docs'`; canonical form puts visible text first. |
 | Sections | `section 'Results':` | With style presets |
-| App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs) |
+| App shell presets | `section 'X' with style app_layout / app_sidebar / app_main / app_header` | Polished slate-on-ivory shell. `app_header` auto-splits children into brand / breadcrumb / action slots (data-slot attrs). For multi-page apps the shell page persists across routes (shell-page router). |
+| SPA app primitive | `app 'Lenat' at '/': sidebar: ... pane 'Today' as 'today': ...` | Single-HTML-shell SPA. Hash-routed panes, inline router, shared sidebar declared once at app level. Alternative syntax to the app_layout shell-page pattern — pick one per file. |
 | Tabs | `tab 'Settings':` | Auto-grouped |
 | Components | `define component Card receiving content:` | Reusable, parameterized |
 | Conditional UI | `if logged_in:` + content block | |

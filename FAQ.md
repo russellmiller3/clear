@@ -990,6 +990,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [How do I share a compile failure trace?](#how-do-i-share-a-compile-failure-trace)
 - [How do I add a new approval action?](#how-do-i-add-a-new-approval-action)
 - [How do I add sidebar navigation to an app shell?](#how-do-i-add-sidebar-navigation-to-an-app-shell)
+- [How do I build a single-page app with multiple panes?](#how-do-i-build-a-single-page-app-with-multiple-panes)
 - [How do I add a page header and routed tabs?](#how-do-i-add-a-page-header-and-routed-tabs)
 - [How do I add KPI stat cards?](#how-do-i-add-kpi-stat-cards)
 - [How do I add a right detail panel?](#how-do-i-add-a-right-detail-panel)
@@ -1917,6 +1918,41 @@ For multi-page apps, declare `app_layout` once on the shell page (`/`); other pa
 Apps without `app_layout` use the original simple show/hide router (no shell, no outlet, no behavior change).
 
 The 5 regression tests live in `clear.test.js` under `describe('Shell-page router (chunk #10) — fixes empty-tables-after-route-change', ...)`.
+
+**See also:** Clear added a SECOND mechanism for the same job 2026-05-14 — the SPA `app`+`pane`+`sidebar:` primitive (see "How do I build a single-page app with multiple panes?" below). Both work. Quick guide:
+- **Use the shell-page router** when you have a multi-PAGE app where each route has its own URL, your team is used to the page-block pattern, and you want auto-detected shell from `app_layout`. Battle-tested with 5 regression tests.
+- **Use the SPA primitive** when you want explicit "this IS an app, these ARE its panes" syntax, single-HTML-shell emit (smaller output), and inline hash routing. Cleaner mental model for greenfield SPA work.
+
+Don't mix both in one file; pick one syntax per app.
+
+### How do I build a single-page app with multiple panes?
+
+Use the SPA `app`+`pane`+`sidebar:` primitive. One HTML shell, hash-routed panes, instant switching with no full-page reload.
+
+```clear
+app 'Lenat' at '/':
+  sidebar:
+    heading 'Lenat'
+    nav section 'Surface':
+      nav item 'Today' to '/today' with icon 'sun-medium'
+      nav item 'Chat' to '/chat' with icon 'messages-square'
+
+  pane 'Today' as 'today':
+    heading 'Today'
+    text 'Energy, mood, what is due'
+
+  pane 'Chat' as 'chat':
+    heading 'Chat'
+    'Type a message...' is a text input saved as user_message
+```
+
+The compiler emits:
+- One `index.html` containing every pane as `<div data-pane="slug">` (first pane visible, rest `display: none`)
+- An inline router script that toggles visibility on nav clicks via `history.pushState`
+- Express routes for every pane slug, all returning the same `index.html` (so refresh + direct nav work)
+- The `sidebar:` block renders once as `<aside data-app-sidebar="true">` outside the pane container
+
+**Compared to the shell-page router** (see "Where does the shell-page router live?" above): both achieve "shared sidebar + content swap" but via different mechanisms. The SPA primitive is the newer, more explicit syntax (added 2026-05-14). The shell-page router predates it and remains battle-tested. Don't mix both in one file.
 
 ```clear
 section 'Sidebar' with style app_sidebar:
