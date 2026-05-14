@@ -18189,6 +18189,38 @@ const THEME_CSS = {
   --radius-box: 0.875rem; --radius-field: 0.625rem; --radius-selector: 0.5rem;
   --border: 1px; --depth: 0; --noise: 0;
 }`,
+  // Nixie — vintage nixie-tube amber glow on near-black warm background.
+  // Designed to match Lenat's signature aesthetic: cream text, deep warm
+  // dark bg, bright amber accents. Different from `dusk` (which is more
+  // golden-brown overall) — nixie is MORE contrasty: nearly-black bg with
+  // a brighter, more saturated amber glow on accents. Named for nixie
+  // tubes — the vintage glowing-amber displays from the 1950s-60s, which
+  // Lenat's visual identity riffs on.
+  nixie: `[data-theme="nixie"] {
+  color-scheme: dark;
+  --color-base-100: oklch(13% 0.012 50);
+  --color-base-200: oklch(17% 0.014 50);
+  --color-base-300: oklch(22% 0.016 50);
+  --color-base-content: oklch(88% 0.04 70);
+  --color-primary: oklch(74% 0.17 70);
+  --color-primary-content: oklch(12% 0.02 50);
+  --color-secondary: oklch(58% 0.14 30);
+  --color-secondary-content: oklch(96% 0.01 30);
+  --color-accent: oklch(76% 0.18 75);
+  --color-accent-content: oklch(13% 0.02 50);
+  --color-neutral: oklch(19% 0.014 50);
+  --color-neutral-content: oklch(80% 0.03 70);
+  --color-info: oklch(70% 0.14 60);
+  --color-info-content: oklch(12% 0.02 60);
+  --color-success: oklch(64% 0.15 130);
+  --color-success-content: oklch(10% 0.02 130);
+  --color-warning: oklch(78% 0.17 70);
+  --color-warning-content: oklch(13% 0.02 70);
+  --color-error: oklch(62% 0.22 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}`,
   // Vault — enterprise navy + gold. "Trust is the product" SaaS: PE,
   // banking, legal, compliance. Conservative radii. Looks expensive.
   // Russell's COMPETITION.md auditability thesis lands hardest here.
