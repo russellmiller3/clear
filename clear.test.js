@@ -32706,4 +32706,11 @@ create a deal table:
   });
 });
 
+// (Top-level await detector — deferred. See compiler.js validateEmittedJS
+// comment. Top-level await is correct-in-principle to flag, but Clear emits
+// it in many legitimate paths today and tightening every emit is its own
+// refactor. The page-CRUD case that bit Phase 8 is now caught at the SOURCE
+// level by removing CRUD from the backend page filter — that fix shipped on
+// feature/lenat-in-clear earlier this session.)
+
 run();

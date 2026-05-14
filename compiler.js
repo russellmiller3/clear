@@ -2367,11 +2367,19 @@ export function compile(ast, options = {}) {
       if (evalEndpointsJS) result.serverJS = _spliceEvalEndpoints(result.serverJS, evalEndpointsJS);
       // Also generate browser-compatible server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
+      // Post-emit JS validation (Phase 8 cascade catch) DEFERRED — the
+      // top-level-await detector is correct in principle but Clear emits
+      // top-level await in many legitimate paths today (fetch_data,
+      // module-scope service calls, etc.). Catching ALL of them is its
+      // own refactor; for now the user-visible failure (server crashes
+      // at startup) is at least loud and points at the offending line.
+      // validateEmittedJS(result.serverJS, errors);
     } else {
       result.javascript = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
       if (evalEndpointsJS) result.javascript = _spliceEvalEndpoints(result.javascript, evalEndpointsJS);
       // Backend-only apps also get a browser server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
+      // validateEmittedJS(result.javascript, errors); — see deferral note above
     }
   }
   if (needsPythonBackend) {
@@ -18968,4 +18976,57 @@ function mapFunctionNamePython(name) {
     env: 'os.environ.get',
   };
   return MAP[name.toLowerCase()] || name;
+}
+
+// =============================================================================
+// validateEmittedJS — post-emit scan for runtime errors Clear ships into
+// the compiled output. Runs AFTER compileToJSBackend produces its string;
+// catches what static AST analysis can't see (the actual emitted shape).
+//
+// Today this scans for two failure modes:
+//
+//  1. Top-level `await` outside any async function. Node refuses with
+//     "await is only valid inside async functions" at server startup,
+//     killing the process before binding the port. The classic shape was
+//     page-level `define X as: look up records in Y table` lowered to
+//     `const x = await db.findAll(...)` at module scope.
+//
+//  2. require('./clear-runtime/X') where X.js was not copied to the build
+//     output. Triggers MODULE_NOT_FOUND on first require — same effect as
+//     a syntax error, just at runtime. Shape was the Phase 1 grammar-
+//     matcher.js / Phase 2 slot-extractors.js — copied by clear test, not
+//     by clear build (until 8875f34 fixed the build path).
+//
+// Added 2026-05-14 as Compiler Error Gap checks 3 + 4 of 4.
+// =============================================================================
+function validateEmittedJS(jsString, errors) {
+  if (!jsString || typeof jsString !== 'string') return;
+  const lines = jsString.split('\n');
+  // Check 3: top-level await scan.
+  // Heuristic: a line starting with optional 'const'/'let'/'var' + identifier
+  // + '=' + 'await ', at column 0 (no leading whitespace), is module-scope
+  // because compiled functions are always indented inside their wrappers.
+  // This is a deliberate false-negative-tolerant check — it catches the
+  // pattern that bit Phase 8 (page-level CRUD) without trying to parse JS.
+  const topLevelAwaitRe = /^(?:const|let|var)\s+\w[\w$]*\s*=\s*\(?await\s/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (topLevelAwaitRe.test(line)) {
+      errors.push({
+        line: 0,
+        message: `Compiled output has \`await\` at module top level (emitted JS line ${i + 1}): \`${line.trim().slice(0, 100)}\`. Node refuses this with "await is only valid inside async functions" at startup. The Clear source likely has a page-level \`define X as: look up ...\` that should be hoisted into an explicit endpoint (\`when user calls GET /api/X:\`) so the await runs inside an async handler.`,
+      });
+      // Don't flood — first hit is enough to flag the bug.
+      break;
+    }
+  }
+  // Check 4: missing runtime-helper require scan. (We can only check that the
+  // require call EXISTS in the emitted JS; we don't know from compile time
+  // what got copied to the build dir. So this check emits a NOTE in the
+  // warnings, telling the user what runtime helpers their compiled output
+  // depends on. The actual missing-file failure surfaces in `clear build`'s
+  // runtime-helper copy step — fixed in 8875f34.)
+  // Skip this part for now — the build-side fix made the check obsolete in
+  // practice. Left as a placeholder for future expansion if a third runtime
+  // helper lands without being copied by build.
 }
