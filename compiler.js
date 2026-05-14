@@ -2435,25 +2435,19 @@ export function compile(ast, options = {}) {
       // own refactor; for now the user-visible failure (server crashes
       // at startup) is at least loud and points at the offending line.
       // validateEmittedJS(result.serverJS, errors);
-      // Compiler-gap detector (2026-05-14) — DEFERRED.
-      // The scanForCompilerGapStubs() helper is wired and tested for the
-      // canonical 2-bug case (app_block, OWNER_DECL — both fixed today).
-      // BUT flipping the switch surfaces 11 additional failing test cases
-      // that need investigation first: either real latent gaps in node
-      // types like bold_text / agent_scenario / pdf_emit (which means
-      // shipping apps with hidden runtime crashes), or false positives
-      // in the regex (matching test fixtures, doc strings, etc.).
-      // Until those 11 are characterized, the scanner stays off so the
-      // existing test suite remains green. Re-enable by uncommenting
-      // and tracking down each failure individually.
-      // scanForCompilerGapStubs(result.serverJS, errors);
+      // Compiler-gap detector ARMED (2026-05-14, triage pass).
+      // After triaging the 11 cases that fired when this first turned on,
+      // the scanner is now wired to fail any compile that emits the
+      // "compiler gap: no exprToCode case" stub. Safe because the regex
+      // matches the canonical stub shape only.
+      scanForCompilerGapStubs(result.serverJS, errors);
     } else {
       result.javascript = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
       if (evalEndpointsJS) result.javascript = _spliceEvalEndpoints(result.javascript, evalEndpointsJS);
       // Backend-only apps also get a browser server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
       // validateEmittedJS(result.javascript, errors); — see deferral note above
-      // scanForCompilerGapStubs(result.javascript, errors); — deferred (see above)
+      scanForCompilerGapStubs(result.javascript, errors);
     }
   }
   if (needsPythonBackend) {
@@ -8288,10 +8282,21 @@ function compileWebhook(node, ctx, pad) {
 
 function compilePdf(node, ctx, pad) {
   const pathCode = exprToCode(node.path, ctx);
+  // Helper: CONTENT nodes carry .text as a RAW STRING (the literal from
+  // the parser), not as an AST node. Passing a bare string to exprToCode
+  // hits its default case and emits a "compiler gap: no exprToCode case
+  // for expression type unknown" stub. We coerce bare strings to a JSON
+  // literal and only call exprToCode on actual AST nodes.
+  const textCodeOf = (t) => {
+    if (t == null) return '""';
+    if (typeof t === 'string') return JSON.stringify(t);
+    if (typeof t === 'number') return JSON.stringify(t);
+    return exprToCode(t, ctx);
+  };
   const elements = (node.content || []).map(child => {
     if (!child) return null;
     if (child.type === NodeType.CONTENT) {
-      const textCode = child.text ? exprToCode(child.text, ctx) : '""';
+      const textCode = textCodeOf(child.text);
       switch (child.contentType) {
         case 'heading': return { op: 'heading', text: textCode };
         case 'subheading': return { op: 'subheading', text: textCode };
@@ -9217,11 +9222,17 @@ ${pad}}`;
     case NodeType.STAT_CARD:
     case NodeType.DETAIL_PANEL:
     case NodeType.OWNER_DECL:
-      // OWNER_DECL is a top-level declaration handled in the auth-scaffold
-      // emit (compiler.js line ~16111). When it appears in the dispatch path
-      // we just return null so it doesn't emit a "compiler gap" stub that
-      // crashes the server at startup. Pre-existing gap — exposed when the
-      // e2e tests started running compiled servers with `owner is 'X'`.
+    case NodeType.EVAL_DEF:
+    case NodeType.CAN_RETURN_SENSITIVE:
+    case NodeType.OUTGOING_ALLOWLIST:
+    case NodeType.WITH_OPTIMISTIC_LOCK:
+      // All of these are declarative markers / top-level config / harness
+      // definitions — they drive behavior in their dedicated emit paths
+      // elsewhere (auth scaffold, endpoint directives, eval harness,
+      // outgoing-request guard, save-with-version). The dispatch path just
+      // returns null so they don't fall through to the "compiler gap"
+      // stub. Pre-existing latent gaps surfaced by the gap detector
+      // 2026-05-14.
       return null;
 
     case NodeType.ASK_FOR: {
