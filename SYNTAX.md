@@ -3617,99 +3617,49 @@ PROVED iff every reachable tool body only does `lookup` operations against `Deal
 - **Marcus / regulated-tier pitches.** The CRO writes the proof obligations directly in the source — *"prove that agent 'Refund Bot' cannot delete from Deals"* — and the build pipeline either ships with a green proof bundle or refuses to ship.
 - **Catch agent scope creep over time.** When someone adds a new tool to `has tools:`, any standing `prove that agent 'X' cannot call <new_tool>` flips DISPROVED in the next CI run. The pre-merge check fails — the developer either removes the tool or removes the obligation, with audit attribution either way.
 
-## Runtime Grammar (Vocabulary That Grows at Runtime)
+## Text-Routing Dispatcher (replaces `runtime grammar` — removed 2026-05-14)
 
-A `runtime grammar` block declares a parsing surface whose vocabulary can be extended **at runtime** without recompiling the app. Every frame seeds a row in a storage table; users insert new rows later and the matcher picks them up automatically. This is the primitive Lenat uses to let users teach the app new concepts over time.
+The `runtime grammar / frame / on match` block was removed (PHILOSOPHY §1:1 — one keyword packaged a table + registry + matcher + dispatch block). Build the same capability from six composable primitives:
 
-### Basic Runtime Grammar
-
-```clear
-runtime grammar 'concepts':
-  frame TASK:
-    effect internal
-    canonical phrase 'remind me to'
-    synonyms 'todo:', 'remember to'
-    slots:
-      what is text, required
-      when is datetime, optional
-    on match:
-      save the match as a new Task
-
-  frame OPEN_NOTEPAD:
-    effect external
-    canonical phrase 'open notepad'
-    synonyms 'launch notepad'
-    permission scope: 'spawn:notepad.exe'
-    first 3 runs require confirm: 3
-    on match:
-      ask user to confirm 'Open Notepad?'
-      run command 'notepad.exe'
-```
-
-This emits:
-- A `concepts` storage table holding every frame's `frame_id`, `effect`, `canonical_phrase`, `synonyms_json`, `slots_json`, `permission_scope`, `first_n_runs_require_confirm`, `created_at`.
-- A compile-time `_grammarRegistry` seeded with the frames above.
-- A `_grammarMatch('concepts', input)` runtime helper that resolves user input against the live frame set on every call.
-
-### Calling the Matcher
+### Seed table + rows
 
 ```clear
-result is match input against 'concepts'
-if result's kind is 'matched':
-  show 'matched: ' + result's frame.frame_id
-otherwise:
-  show 'no match'
+create a Concepts table:
+  function is text
+  phrase is text
+  synonyms is list
+  effect is text
+
+  with rows:
+    {function: 'OPEN_NOTEPAD', phrase: 'open notepad', synonyms: ['launch notepad'], effect: 'external'}
+    {function: 'LIST_TASKS',   phrase: 'list my tasks', synonyms: ['show tasks'],    effect: 'internal'}
 ```
 
-The matcher returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`. `kind` is one of `matched`, `no_match`, `partial` (required slot missing), or `ambiguous` (multiple frames tied on prefix length).
-
-The call is a regular assignment-RHS expression — any form works: `result is match ...`, `result = match ...`, `set result to match ...`. The input source can be any text expression (variable, literal, or computed). Wired Cycle 1.10 (2026-05-13).
-
-### Using the Matcher in a Test Block
-
-`match input against 'X'` is the only way to exercise the runtime-grammar primitive from `.clear`-source tests. Without it, behavioral parity tests against an external reference implementation can't be written:
+### Per-concept function
 
 ```clear
-test 'TASK frame catches the canonical phrase':
-  input is 'remind me to email Marcus tomorrow'
-  result = match input against 'concepts'
-  expect result's frame is 'TASK'
+define function OPEN_NOTEPAD(user_command):
+  ask user to confirm 'Open Notepad?'
+  run command 'notepad.exe'
+  send back 'opened'
+
+define function LIST_TASKS(user_command):
+  open_tasks = look up records in Tasks where status is 'open'
+  send back open_tasks
 ```
 
-### Adding a Frame at Runtime
-
-The storage table is a regular Clear table — insert a new row with a normal CRUD save:
+### Dispatcher endpoint
 
 ```clear
-save new_frame as a new Concept
+when user sends command to /api/parse:
+  search for command in Concepts by phrase or synonyms
+  if there's a match:
+    call function match's function with command
+  if no match:
+    send back 'unknown command'
 ```
 
-The next `_grammarMatch` call picks the row up. No recompile.
-
-### Directives Inside a `runtime grammar:` Block
-
-| Directive | Default | Meaning |
-|-----------|---------|---------|
-| `storage table is X` | `Concepts` | SQL table that holds frame rows. |
-| `matcher is X` | `best longest-match` | Matcher strategy. Phase 1 only honors the default; future phases add fuzzy + LLM-fallback. |
-| `frame NAME:` | (required) | Declares one frame. Body clauses below. |
-
-### Clauses Inside a `frame NAME:` Block
-
-| Clause | Required? | Meaning |
-|--------|-----------|---------|
-| `effect internal\|external` | optional | `internal` = CRUD on records. `external` = run command / hit API. Reads naturally next to slot-type declarations and avoids `type:` overload. |
-| `canonical phrase 'X'` | **required** | The primary key the matcher uses for prefix matching. Missing it errors `GRAMMAR_FRAME_MISSING_CANONICAL`. |
-| `synonyms 'a', 'b', ...` | optional | Extra prefix alternatives that resolve to this frame. |
-| `slots:` + indented fields | optional | Typed slots filled from the matched input remainder. Each line: `name is <type>, required\|optional`. |
-| `permission scope: 'X'` | optional | Scope string for guarded `external` frames (e.g. `'spawn:notepad.exe'`). |
-| `first N runs require confirm: N` | optional | Confirm-then-graduate: ask user the first N times this frame fires, then auto-run afterward. |
-| `on match:` + indented body | optional | Normal Clear statements to run when this frame matches. Body can read `match's <slot>` for slot values. |
-
-### Validation Errors
-
-- `GRAMMAR_FRAME_MISSING_CANONICAL` — frame has no `canonical phrase`. The matcher can't index a frame without one; the frame can never fire.
-- `RUNTIME_GRAMMAR_SLOT_UNKNOWN` — the `on match:` body references `match's <name>` where `<name>` isn't a declared slot. Catches typos before runtime corrupts CRUD silently.
+See `search for X in TABLE by FIELD or FIELD`, `if there's a match:` / `if no match:`, `call function EXPR with ARG`, and `define function NAME(input):` — each documented in its own SYNTAX.md section.
 
 ## Approval Queues (Single-Stage Reviewer)
 

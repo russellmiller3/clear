@@ -24,9 +24,7 @@ Added 2026-05-14 as a WORKFLOW extension. The original Phase 4 plan called for a
 Four compile-time warnings surface decisions Clear used to make silently. Look in `result.warnings` (or the CLI output):
 
 - **`target-auto-inferred`** — when no `target:` directive sits at the top of the file, the compiler picks one based on what's in the source (pages + endpoints → `both`, endpoints only → `backend`, otherwise `web`). The warning names the inferred target and the override syntax.
-- **`runtime-grammar-table-dedup`** — when a runtime grammar's `storage table is X` AND a `create a X table` both declare the same table, the compiler uses the explicit table definition and the runtime grammar reads from it. Warning names both.
 - **`page-crud-frontend-only`** — when a `page` body has a `define X as: look up ...`, that lookup runs CLIENT-SIDE (the frontend calls the API). The backend output skips it. Warning suggests hoisting into an explicit `when user calls GET /api/X:` endpoint if you wanted server-side fetching.
-- **`runtime-helper-copied`** (info tier) — when `clear build` copies grammar-matcher.js or slot-extractors.js into clear-runtime/ because the emit needs them, surface the copy so the build dir contents aren't a mystery.
 
 ## Where does the network-graph chart kind live? (2026-05-13)
 
@@ -90,55 +88,34 @@ only the keyword renamed). Canonical-rename spec:
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 
-## Where does runtime grammar matching live? (2026-05-13)
+## How do I build a text-routing dispatcher? (2026-05-14 — replaces old `runtime grammar`)
 
-The runtime-extensible grammar primitive ships in three places:
-
-- **Parser** — `parser.js` has `parseRuntimeGrammar`, `parseGrammarFrame`, `parseGrammarSlots`, plus three new node types (`RUNTIME_GRAMMAR`, `GRAMMAR_FRAME`, `GRAMMAR_MATCH_CALL`). The `CANONICAL_DISPATCH` entry for `runtime` routes when the next token is `grammar`.
-- **Compiler** — `compiler.js` has `compileRuntimeGrammar` (JS) and `compileRuntimeGrammarPython`. Both emit (a) a storage-table schema via the existing `compileDataShape` machinery, (b) a `_grammarRegistry` / `_grammar_registry` seed with every compile-time frame, and (c) a require/import of the runtime helper.
-- **Runtime helpers** — `runtime/grammar-matcher.js` (CJS) and `runtime/grammar_matcher.py`. Both export `makeGrammarMatch(db, registry)` which returns the bound `_grammarMatch(name, input)` function. The matcher reads the storage table on every call (via `db.findAll` / `db.query`), merges with the registry seed, and returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`.
-
-Validator pass is `validateRuntimeGrammar` in `validator.js`. Errors: `GRAMMAR_FRAME_MISSING_CANONICAL`, `RUNTIME_GRAMMAR_SLOT_UNKNOWN`.
-
-Tests live in `runtime-grammar.test.js` (imported by `clear.test.js`) plus `runtime/grammar_matcher_test.py`. Plan: `plans/plan-lenat-in-clear-2026-05-13.md`.
-
-## How do I match input against a runtime grammar from a Clear program? (2026-05-13)
-
-Use `match <expr> against 'name'` in any assignment-RHS position:
+The `runtime grammar / frame / on match` primitive was removed 2026-05-14 (PHILOSOPHY §1:1 cleanup — one keyword was packaging a table, a registry, a matcher, and a dispatch block). The replacement is six composable primitives you assemble yourself:
 
 ```clear
-when user sends text to /api/parse:
-  result = match text against 'concepts'
-  send back result
+create a Concepts table:
+  function is text
+  phrase is text
+  synonyms is list
+  effect is text
+
+  with rows:
+    {function: 'OPEN_NOTEPAD', phrase: 'open notepad', synonyms: ['launch notepad'], effect: 'external'}
+
+define function OPEN_NOTEPAD(user_command):
+  ask user to confirm 'Open Notepad?'
+  run command 'notepad.exe'
+  send back 'opened'
+
+when user sends command to /api/parse:
+  search for command in Concepts by phrase or synonyms
+  if there's a match:
+    call function match's function with command
+  if no match:
+    send back 'unknown command'
 ```
 
-Three accepted shapes — pick whichever reads best: `result is match text against 'concepts'`, `result = match text against 'concepts'`, `set result to match text against 'concepts'`. The source can be any text expression — a variable, a literal, or a computed string.
-
-The matcher returns `{ kind, frame, slotValues, missingSlots, ambiguousMatches }`. `kind` is one of `matched`, `no_match`, `partial`, `ambiguous`.
-
-Use it inside `test 'name':` blocks to write behavioral-parity tests against a reference implementation — that's the canonical way to lock the matcher's frame-dispatch behavior:
-
-```clear
-test 'TASK frame catches the canonical phrase':
-  text is 'remind me to email Marcus tomorrow'
-  result = match text against 'concepts'
-  expect result's frame is 'TASK'
-```
-
-The `against` keyword is required to disambiguate from control-flow `match X:`. `match input` alone parses as control flow; `match input against 'name'` is the runtime-grammar call. Wired Cycle 1.10 (2026-05-13 night, commit 7d6a91a on feature/lenat-in-clear).
-
-## How do I add a frame at runtime? (2026-05-13)
-
-The storage table is a regular Clear table (default name `Concepts`). Insert a row with the same shape the matcher expects:
-
-```clear
-new_frame is { frame_id: 'DRINK_WATER', effect: 'internal', canonical_phrase: 'drink water', synonyms_json: '[]', slots_json: '[]', permission_scope: '', first_n_runs_require_confirm: 0 }
-save new_frame as a new Concept
-```
-
-The next `_grammarMatch('concepts', input)` call picks the row up automatically. No recompile.
-
-`synonyms_json` and `slots_json` are JSON-encoded strings — that's the storage shape the matcher decodes. A runtime row with the same `frame_id` as a compile-time seed frame shadows the seed; this is how users override built-in frames.
+The six primitives: `create a TABLE with rows:`, `define function NAME(input):`, `search for X in TABLE by FIELD or FIELD`, `if there's a match:` / `if no match:`, `call function EXPR with ARG`. Each is individually documented in SYNTAX.md.
 
 ## Where do slot extractors live? (2026-05-13)
 

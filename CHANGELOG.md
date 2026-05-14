@@ -1,3 +1,7 @@
+## 2026-05-14 — Runtime grammar rip-out (feature/rip-runtime-grammar)
+
+The `runtime grammar / frame / on match` block (Phase 1, shipped 2026-05-13) and its matcher-call expression `match X against 'name'` (Cycle 1.10) were removed entirely from parser and compiler. Root cause: the primitive violated PHILOSOPHY §1:1 — one keyword packaged a storage table, a compile-time registry, a runtime matcher, and a per-frame dispatch block. The replacement is six individually-documented composable primitives: `create a TABLE with rows:`, `define function NAME(input):`, `search for X in TABLE by FIELD or FIELD`, `if there's a match:` / `if no match:`, `call function EXPR with ARG`. All 11 doc surfaces updated. Lenat-clear/concepts.clear migration: next item. 3190 / 3190 tests pass.
+
 ## 2026-05-14 — Phase 4 (WORKFLOW user-input) + compiler quality push
 
 Big day across three tracks: the dialog primitive landed as a WORKFLOW extension (not a parallel `dialog with state` — that was the DRY check that turned ~150 LOC into ~50), four first-class warnings now surface previously-silent compile decisions, and the Lenat-clear consumer app got a 7-pane frontend parity push.
@@ -15,9 +19,9 @@ Big day across three tracks: the dialog primitive landed as a WORKFLOW extension
 
 **First-class warnings** (`feature/first-class-warnings`, 4 of 4):
 - W1 (5fbf14f): target auto-inference — when no `target:` directive sits at the top and inference picks `both`/`backend`, surface that with the override syntax.
-- W2 (f3e3bb6): runtime-grammar table-dedup skip — when a runtime grammar's storage table is ALSO declared as `create a X table`, name the dedup explicitly so devs know which declaration won.
+- W2 (f3e3bb6): runtime-grammar table-dedup skip — REMOVED 2026-05-14 with the runtime grammar primitive. No longer emitted.
 - W3 (f3e3bb6): page-CRUD-frontend-only — when a page-level `define X as: look up ...` gets dropped from backend mode (because top-level await crashes Node), name the dropped variable + page + the hoist-into-endpoint fix.
-- W4 (f3e3bb6): build-runtime-helper-copy info — when `clear build` copies grammar-matcher.js or slot-extractors.js into clear-runtime/ because the emit needs them, surface that info-tier so the build dir contents don't surprise.
+- W4 (f3e3bb6): build-runtime-helper-copy info — REMOVED 2026-05-14 with the runtime grammar primitive. No longer emitted.
 
 **Lenat-clear consumer app** (its own repo, on `main`):
 - 7-pane frontend parity push: sparklines on Today's Energy + Mood stat cards; split-pane detail views on Capabilities and Knowledge; kind-filter dropdown above Knowledge; help modal inline on every page; Trace event-type + time-range filters; Chat six quick-chip prefill buttons; sidebar footer with concept/record counts + Live label. Each pane its own commit on `feature/ux-parity-in-scope-v2`, all 7 merged to main.

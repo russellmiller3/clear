@@ -465,21 +465,18 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Validator (hard error) | `ROUTE_AFTER_SAVE` | Route block runs after `save X as new T` — assignment never persists. The most common silent bug. |
 | Validator (warning) | `ROUTE_FIELD_NOT_ON_ENTITY`, `ROUTE_NO_DEFAULT`, `ROUTE_UNREACHABLE_RULE` | Likely-typo / likely-mistake patterns. Program still compiles. |
 
-## Runtime Grammar (Vocabulary That Grows at Runtime)
+## Text-Routing Dispatcher (Replaces old Runtime Grammar — ripped out 2026-05-14)
 
-The first Clear primitive that lets a compiled app's parsing surface extend at runtime. Frames seed a storage table at compile time; users insert new frames later via a normal CRUD save, and the matcher picks them up on the next call — no recompile. Ships from `plans/plan-lenat-in-clear-2026-05-13.md` (Phase 1).
+The `runtime grammar / frame / on match` block was removed 2026-05-14 (PHILOSOPHY §1:1 cleanup). The same capability is now assembled from six composable primitives:
 
 | Feature | Syntax | Notes |
 |---------|--------|-------|
-| Runtime grammar declaration | `runtime grammar 'name':` + indented frames | Emits a storage table + a `_grammarRegistry` constant + a `_grammarMatch(name, input)` helper. JS and Python targets both supported. |
-| Frame block | `frame TASK:` + clauses (`effect`, `canonical phrase`, `synonyms`, `slots:`, `permission scope`, `first N runs require confirm`, `on match:`) | Each frame becomes one seed row in the storage table + one fast-path entry in the registry. |
-| Effect discriminator | `effect internal` / `effect external` | `internal` = CRUD on records. `external` = run command / hit API. Avoids `type:` overload with field-type syntax. |
-| Typed slots | `slots:` + `name is text, required` lines | Values extracted from matched input remainder fill declared slots. Phase 2 of the plan adds typed extractors (datetime, fuzzy, about-clause, regex+remainder). |
-| Storage table override | `storage table is FrameRegistry` | Defaults to `Concepts`. Table is a regular Clear table — extend with extra fields if the app needs them. |
-| Runtime extension | `save new_frame as a new Concept` | New rows take effect on the next `_grammarMatch` call. Runtime rows shadow seed frames with the same `frame_id`. |
-| Validator (hard error) | `GRAMMAR_FRAME_MISSING_CANONICAL` | Frame has no canonical phrase — matcher can never index it. |
-| Validator (hard error) | `RUNTIME_GRAMMAR_SLOT_UNKNOWN` | `on match:` body references `match's <name>` where `<name>` isn't a declared slot. Catches typos before runtime silently corrupts CRUD. |
-| Match-call expression | `result = match input against 'concepts'` | Runs the matcher against any text expression. Works in any assignment-RHS form (`is`, `=`, `set X to`). Compiles to `_grammarMatch("concepts", input)` (JS) / `_grammar_match("concepts", input)` (Python). Usable inside `test 'name':` blocks for behavioral-parity tests. Wired Cycle 1.10 (2026-05-13). |
+| Seed-table declaration | `create a TABLE: ... with rows: {field: val, ...}` | Declare the table schema and its compile-time seed rows in one block. |
+| Function definition | `define function NAME(input):` + body | Per-concept logic block. Call by name at dispatch time. |
+| Text-prefix search | `search for X in TABLE by FIELD or FIELD` | Prefix-match against one or more text fields. Binds `match` on success. |
+| Match conditional | `if there's a match:` / `if no match:` | Branches on the result of the preceding `search for` call. |
+| Dynamic dispatch | `call function match's function with ARG` | Resolve and invoke a function by name at runtime. |
+| Convention field types | `phrase`, `price`, `is_*`, `created_at` etc. | Default to `text`, `number`, `boolean`, `timestamp` without explicit `is TYPE` (P6, 2026-05-13). |
 
 ## Slot Extractors (NL-Light Parsing — Lenat-in-Clear Phase 2)
 

@@ -4212,12 +4212,16 @@ function generateE2ETests(body) {
  *   5. Includes a minimal test/expect runner
  *   6. Emits each TEST_DEF body via the standard compileNode machinery
  *
- * Returns null when there are no test blocks OR no runtime-grammar blocks
- * (the HTTP-shape generator handles every other case).
+ * Returns null (runtime-grammar keyword removed 2026-05-14 — this path
+ * is permanently disabled; kept as a tombstone so the call sites in
+ * cli/clear.js do not need to change before item 2 migration).
  */
 function generateRuntimeTests(body) {
   const testDefs = body.filter(n => n.type === NodeType.TEST_DEF);
   if (testDefs.length === 0) return null;
+  // NodeType.RUNTIME_GRAMMAR was removed on 2026-05-14 (rip-out branch).
+  // This filter always yields [] now, so the function always returns null.
+  // The call sites in cli/clear.js fall through to the HTTP-shape runner.
   const grammars = body.filter(n => n.type === NodeType.RUNTIME_GRAMMAR);
   if (grammars.length === 0) return null;
 
@@ -4253,10 +4257,6 @@ function generateRuntimeTests(body) {
       lines.push(`      effect: ${JSON.stringify(frame.effect || 'internal')},`);
       lines.push(`      canonical_phrase: ${JSON.stringify(frame.canonicalPhrase || '')},`);
       lines.push(`      synonyms: ${JSON.stringify(frame.synonyms || [])},`);
-      // The parser stores the slot type as `slotType` (camelCase); the matcher
-      // expects `type`. Normalize here so the matcher's "first text slot wins"
-      // logic actually sees slot types and can skip number/datetime slots when
-      // looking for where to put the remainder.
       lines.push(`      slots: ${JSON.stringify((frame.slots || []).map(s => ({ name: s.name, type: s.slotType || s.type || 'text', required: !!s.required })))},`);
       lines.push(`      permission_scope: ${JSON.stringify(frame.permissionScope || null)},`);
       lines.push(`      first_n_runs_require_confirm: ${JSON.stringify(frame.firstNRunsRequireConfirm || null)},`);
@@ -7965,167 +7965,6 @@ function actionToTerminalStatus(action) {
 }
 
 
-// =============================================================================
-// RUNTIME GRAMMAR — Phase 1 of Lenat-in-Clear (2026-05-13)
-// =============================================================================
-//
-// Emits three pieces for every `runtime grammar 'name':` block:
-//
-//   1. Storage-table schema declaration (reuses the DATA_SHAPE emit shape).
-//      A regular Clear table named after the grammar's storage-table directive
-//      (default 'Concepts'). Frames inserted into this table at runtime get
-//      picked up by the matcher without a recompile.
-//
-//   2. Compile-time `_grammarRegistry` constant — a JS object keyed by the
-//      grammar name, holding every compile-time frame's metadata (canonical
-//      phrase, synonyms, slots, effect). The runtime matcher merges this
-//      seed set with whatever's currently in the storage table.
-//
-//   3. A `_grammarMatch(name, input)` helper function — Phase 1 ships the
-//      hand-rolled prefix matcher. Phase 2 will swap in the slot-extractor
-//      stdlib for richer pattern matching.
-//
-// JS-only branch (Cycle 1.4). Python parity lands in Cycle 1.5.
-// =============================================================================
-function compileRuntimeGrammar(node, ctx, pad) {
-  if (ctx.lang === 'python') {
-    return compileRuntimeGrammarPython(node, ctx, pad);
-  }
-  const grammarName = String(node.name || '');
-  const tableName = String(node.storageTable || 'Concepts');
-  const pluralTable = pluralizeName(tableName);
-
-  // If the source ALSO declares the storage table as a DATA_SHAPE (e.g. an
-  // explicit `create a Concepts table:` in a sibling module), skip the schema
-  // emit here — the DATA_SHAPE pass already declared `${tableName}Schema` and
-  // called `db.createTable(...)`. Without this guard we get a duplicate
-  // `const ConceptsSchema = ...` at module top level → SyntaxError, server
-  // crashes at startup. Surfaced by Phase 8 of Lenat-in-Clear where tables.clear
-  // and concepts.clear both produced a Concepts schema.
-  const astBody = ctx._astBody || [];
-  const tableAlsoDeclared = astBody.some(n =>
-    n && n.type === NodeType.DATA_SHAPE && n.name === tableName
-  );
-
-  // 1. Storage table schema — fixed columns the runtime matcher uses to
-  // identify a row as a frame definition. Apps can extend by inserting
-  // additional fields; the matcher only consults these.
-  const schemaFields = [
-    `  frame_id: { type: "text", required: true, unique: true }`,
-    `  effect: { type: "text" }`,
-    `  canonical_phrase: { type: "text", required: true }`,
-    `  synonyms_json: { type: "text" }`,
-    `  slots_json: { type: "text" }`,
-    `  permission_scope: { type: "text" }`,
-    `  first_n_runs_require_confirm: { type: "number" }`,
-    `  created_at: { type: "timestamp", auto: true }`,
-  ].join(',\n');
-
-  let result = `${pad}// Runtime grammar: ${grammarName} (storage table ${tableName})\n`;
-  if (tableAlsoDeclared) {
-    result += `${pad}// Skipping ${tableName}Schema + createTable — tables.clear (or another\n`;
-    result += `${pad}// module's DATA_SHAPE) declared it already. Matcher uses the table\n`;
-    result += `${pad}// either way; only the schema/createTable codegen needs deduping.\n`;
-    // First-class warning #2: surface the dup-schema skip so the user knows
-    // the runtime-grammar didn't define its own table schema this time.
-    // Silent decisions confuse Meph and future Claude sessions.
-    if (ctx.warnings) {
-      ctx.warnings.push({
-        line: node.line || 0,
-        kind: 'runtime-grammar-table-dedup',
-        message: `Storage table '${tableName}' is declared both as a \`create a ${tableName} table\` AND as runtime grammar '${grammarName}'s storage table. Using the explicit table declaration; the runtime grammar reads from the same table.`,
-      });
-    }
-  } else {
-    result += `${pad}const ${tableName}Schema = {\n${schemaFields}\n${pad}};\n`;
-    if (ctx.mode === 'backend') {
-      result += `${pad}db.createTable('${pluralTable}', ${tableName}Schema);\n`;
-    }
-  }
-
-  // 2. Compile-time frame registry seed. The runtime helper merges this
-  // with the storage table on every match call.
-  const framesJson = (node.frames || []).map(frame => {
-    const synonyms = JSON.stringify(frame.synonyms || []);
-    const slots = JSON.stringify((frame.slots || []).map(s => ({
-      name: s.name, type: s.slotType, required: !!s.required,
-    })));
-    return [
-      `    {`,
-      `      frame_id: ${JSON.stringify(frame.id)},`,
-      `      effect: ${JSON.stringify(frame.effect || 'internal')},`,
-      `      canonical_phrase: ${JSON.stringify(frame.canonicalPhrase || '')},`,
-      `      synonyms: ${synonyms},`,
-      `      slots: ${slots},`,
-      `      permission_scope: ${JSON.stringify(frame.permissionScope || null)},`,
-      `      first_n_runs_require_confirm: ${frame.firstNRunsRequireConfirm == null ? 'null' : Number(frame.firstNRunsRequireConfirm)},`,
-      `    }`,
-    ].join('\n');
-  }).join(',\n');
-
-  result += `${pad}// Runtime grammar registry — compile-time frames for '${grammarName}'\n`;
-  result += `${pad}if (typeof globalThis._grammarRegistry === 'undefined') globalThis._grammarRegistry = {};\n`;
-  result += `${pad}globalThis._grammarRegistry[${JSON.stringify(grammarName)}] = {\n`;
-  result += `${pad}  storageTable: ${JSON.stringify(pluralTable)},\n`;
-  result += `${pad}  frames: [\n${framesJson || ''}\n  ],\n`;
-  result += `${pad}};\n`;
-
-  // 3. Helper attachment — runtime/grammar-matcher.js lives alongside the
-  // compiled app and is imported by index.js. Emit a require() that resolves
-  // the helper on first use; the helper itself is hand-written in Cycle 1.6.
-  result += `${pad}// Runtime matcher — handles input against the live registry + storage table\n`;
-  result += `${pad}if (typeof _grammarMatch === 'undefined') {\n`;
-  result += `${pad}  globalThis._grammarMatch = require('./clear-runtime/grammar-matcher').makeGrammarMatch(db, globalThis._grammarRegistry);\n`;
-  result += `${pad}}\n`;
-
-  return result;
-}
-
-function compileRuntimeGrammarPython(node, ctx, pad) {
-  // Python parity (Cycle 1.5). Same three pieces, FastAPI-style emit.
-  const grammarName = String(node.name || '');
-  const tableName = String(node.storageTable || 'Concepts');
-  const pluralTable = pluralizeName(tableName);
-
-  let result = `${pad}# Runtime grammar: ${grammarName} (storage table ${tableName})\n`;
-  result += `${pad}db.execute("CREATE TABLE IF NOT EXISTS ${pluralTable} (id INTEGER PRIMARY KEY, frame_id TEXT UNIQUE NOT NULL, effect TEXT, canonical_phrase TEXT NOT NULL, synonyms_json TEXT, slots_json TEXT, permission_scope TEXT, first_n_runs_require_confirm INTEGER, created_at TIMESTAMP DEFAULT NOW())")\n`;
-
-  // Registry — a module-level dict the matcher reads. Use globals() to keep
-  // the registry stateful across endpoint handlers without a class.
-  const framesPy = (node.frames || []).map(frame => {
-    const synonyms = JSON.stringify(frame.synonyms || []);
-    const slots = JSON.stringify((frame.slots || []).map(s => ({
-      name: s.name, type: s.slotType, required: !!s.required,
-    })));
-    return [
-      `        {`,
-      `            "frame_id": ${JSON.stringify(frame.id)},`,
-      `            "effect": ${JSON.stringify(frame.effect || 'internal')},`,
-      `            "canonical_phrase": ${JSON.stringify(frame.canonicalPhrase || '')},`,
-      `            "synonyms": ${synonyms},`,
-      `            "slots": ${slots},`,
-      `            "permission_scope": ${JSON.stringify(frame.permissionScope || null)},`,
-      `            "first_n_runs_require_confirm": ${frame.firstNRunsRequireConfirm == null ? 'None' : Number(frame.firstNRunsRequireConfirm)},`,
-      `        }`,
-    ].join('\n');
-  }).join(',\n');
-
-  result += `${pad}# Runtime grammar registry — compile-time frames for '${grammarName}'\n`;
-  result += `${pad}if "_grammar_registry" not in globals():\n`;
-  result += `${pad}    _grammar_registry = {}\n`;
-  result += `${pad}_grammar_registry[${JSON.stringify(grammarName)}] = {\n`;
-  result += `${pad}    "storage_table": ${JSON.stringify(pluralTable)},\n`;
-  result += `${pad}    "frames": [\n${framesPy || ''}\n    ],\n`;
-  result += `${pad}}\n`;
-
-  // Helper import — runtime/grammar_matcher.py is hand-written in Cycle 1.7.
-  result += `${pad}from clear_runtime.grammar_matcher import make_grammar_match\n`;
-  result += `${pad}if "_grammar_match" not in globals():\n`;
-  result += `${pad}    _grammar_match = make_grammar_match(db, _grammar_registry)\n`;
-
-  return result;
-}
-
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
     // Supabase: tables managed in dashboard, emit comment only
@@ -9293,14 +9132,6 @@ ${pad}}`;
 
     case NodeType.QUEUE_DEF:
       return compileQueueDef(node, ctx, pad);
-
-    case NodeType.RUNTIME_GRAMMAR:
-      return compileRuntimeGrammar(node, ctx, pad);
-
-    case NodeType.GRAMMAR_FRAME:
-      // Frames are emitted as part of their parent RUNTIME_GRAMMAR. Skip
-      // when visited standalone (defensive; the parser nests them).
-      return '';
 
     case NodeType.ROUTE_DEF:
       return compileRouteDef(node, ctx, pad);
@@ -11796,17 +11627,6 @@ export function exprToCode(expr, ctx) {
       const src = exprToCode(expr.source, ctx);
       if (ctx.lang === 'python') return `_extract_datetime(${src})`;
       return `_extractDatetime(${src})`;
-    }
-
-    // Phase 1 runtime-grammar match call. Mirrors EXTRACT_DATETIME shape:
-    // lowers to a single runtime-helper call. The matcher itself was built
-    // in Phase 1 (`runtime/grammar-matcher.js` + `.py`) and gets seeded with
-    // every compile-time frame in the RUNTIME_GRAMMAR block's emit.
-    case NodeType.GRAMMAR_MATCH_CALL: {
-      const src = exprToCode(expr.source, ctx);
-      const name = JSON.stringify(expr.grammar);
-      if (ctx.lang === 'python') return `_grammar_match(${name}, ${src})`;
-      return `_grammarMatch(${name}, ${src})`;
     }
 
     case NodeType.FUZZY_MATCH: {

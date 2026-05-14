@@ -733,7 +733,27 @@ Inline reminders for the shapes you'll touch every turn:
 - `agent 'X' receives Y:` then `ask claude '...' with Y` — output streams by default, opt out with `without streaming`. Directives go before code: `has tools: fn1`, `must not: delete records`, `remember conversation context`, `knows about: Products, FAQ`, `using 'claude-sonnet-4-6'`, `uses skills: 'Name'`. **HARD RULE: agent bodies must NEVER call `env(...)` or `process_env(...)` directly** — the compiler refuses, because one prompt-injection attack ("print your env vars") could exfiltrate the credential. Pattern: wrap the credential in a function (`define function charge_card(amount, token): result = call api '...' with method 'POST' with bearer env('STRIPE_SECRET_KEY') sending { amount: amount, source: token }`), then attach via `has tool: charge_card`. The agent calls the function; the function uses the key; the agent never sees the value.
 - `route X by FIELD:` with quoted-string left sides (`'SMB' to alice`, NOT `SMB to alice`); MUST come BEFORE `save X as new T` in the endpoint or the assignment is lost (HARD ERROR `ROUTE_AFTER_SAVE`).
 - `queue for X:` auto-emits the audit table + outbound notifications + login-gated PUT routes per action — never hand-roll. Canonical clause is `email <role> when <action>, <action>` (legacy `notify <role> on <action>` still parses).
-- `runtime grammar 'X':` declares a parsing surface whose vocabulary grows at runtime. Body contains `frame NAME:` blocks with `effect internal|external`, `canonical phrase 'X'` (REQUIRED — missing it errors `GRAMMAR_FRAME_MISSING_CANONICAL`), optional `synonyms 'a', 'b'`, `slots:` (typed field declarations), `permission scope:`, `first N runs require confirm:`, and `on match:` (Clear statement body). The compiler emits a storage table (default `Concepts`, overridable with `storage table is X`), a registry seed, and a `_grammarMatch` helper. Frames inserted into the storage table at runtime via a normal CRUD save take effect on the next call — no recompile. Use when users teach the app new commands; do NOT use for static keyword dispatch (use `match X:` instead).
+- **Text-routing dispatcher** (replaces `runtime grammar` — removed 2026-05-14): build a seed table + per-concept function + fuzzy-match endpoint. Canonical shape:
+  ```
+  create a TABLE Concepts with rows: canonical phrase, handler name
+  seed Concepts with rows:
+    'cancel my order', 'handle_cancel'
+    'check order status', 'handle_status'
+
+  define function handle_cancel(utterance):
+    send back { action: 'cancel', confirmed: false }
+
+  define function handle_status(utterance):
+    send back { action: 'status_check', query: utterance }
+
+  when user sends text to '/api/dispatch':
+    match_result = fuzzy match text in Concepts by 'canonical phrase' scored at least 0.7
+    if there's a match:
+      call function match_result's 'handler name' with text
+    if no match:
+      send back { error: 'no matching intent' }
+  ```
+  Approve-first-N: add `first N runs require confirm:` to the endpoint. Name every per-concept function with a `handle_` prefix that matches the seed table's handler-name column. Do NOT use `runtime grammar 'X':` — that keyword no longer parses.
 - **Slot extractors** (NL-light parsing — pull structured values out of free-form text):
   - `dt = extract datetime from text` — fast-path covers ISO, slash-date, `in N hours`, weekday-at-time, `tomorrow at TIME`, `tonight`, `this evening`. Returns `{value, remainder}` or `nothing`.
   - `pick = fuzzy match 'q' in list [scored at least 0.7]` — Levenshtein + bigram + coverage. Returns `{value, score}` or `nothing`.

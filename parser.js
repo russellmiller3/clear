@@ -11732,40 +11732,6 @@ function parseAssignment(tokens, line) {
     return { name, expression: { type: NodeType.FUZZY_MATCH, query, source: listExpr.node, threshold, line } };
   }
 
-  // Check for "match input against 'X'" — Phase 1 runtime-grammar match call.
-  // Wired in 2026-05-13 night session after Phase 9 audit revealed that
-  // GRAMMAR_MATCH_CALL was declared as a NodeType but never parsed. Without
-  // this, .clear-source test blocks can't exercise the runtime-grammar matcher
-  // — every Phase 9 parity test was blocked. Shape:
-  //   set result to match input against 'concepts'
-  // The first arg expression is whatever sits between `match` and `against`
-  // (typically an `input` variable, but any text-typed expression works).
-  // Compiles to `result = _grammarMatch('concepts', <expr>)` returning
-  // `{ kind: 'matched'|'no_match'|'partial'|'ambiguous', frame, slotValues, missingSlots }`.
-  if (pos < tokens.length && tokens[pos].value === 'match') {
-    // Distinguish from control-flow `match X:` (statement-level, ends with colon).
-    // Here we're already inside an assignment RHS — colon shouldn't be present.
-    // Look ahead for the `against` keyword; if missing, this isn't a match-call.
-    let againstIdx = -1;
-    for (let k = pos + 1; k < tokens.length; k++) {
-      if (tokens[k].value === 'against') { againstIdx = k; break; }
-    }
-    if (againstIdx !== -1 && againstIdx + 1 < tokens.length && tokens[againstIdx + 1].type === TokenType.STRING) {
-      const grammarName = tokens[againstIdx + 1].value;
-      const inputExpr = parseExpression(tokens, pos + 1, line, againstIdx);
-      if (inputExpr.error) return { error: inputExpr.error };
-      return {
-        name,
-        expression: {
-          type: NodeType.GRAMMAR_MATCH_CALL,
-          grammar: grammarName,
-          source: inputExpr.node,
-          line,
-        },
-      };
-    }
-  }
-
   // Check for "extract about-clause from expr" — Phase 2 slot extractor.
   // Splits text on `about|re|regarding`; returns {what, about}.
   if (pos < tokens.length && tokens[pos].canonical === 'extract_about') {

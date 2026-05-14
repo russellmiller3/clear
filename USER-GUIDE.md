@@ -4384,116 +4384,57 @@ Marcus used to hand-write a `Notifications` table, a SendGrid client wrapper, a 
 
 ---
 
-## Chapter 19d: Runtime Grammar (Vocabulary That Grows After You Ship)
+## Chapter 19d: Text-Routing Dispatcher (replaces `runtime grammar` — removed 2026-05-14)
 
-Approval queues, workflows, and triggered emails handle things you know about at compile time. But what about an app where **users** teach the app new commands after it's running?
+The `runtime grammar / frame / on match` primitive was removed (PHILOSOPHY §1:1 — one keyword packaged a table + registry + matcher + dispatch block). The same capability is built from six composable primitives:
 
-That's what `runtime grammar` is for. You declare a parsing surface — a named pile of "frames" that map user input to actions — and seed it with the frames you know about now. Users add more frames later via a normal CRUD save. The next time someone types something, the matcher picks up the new frame too. No recompile.
-
-### The shape
+### The pattern
 
 ```clear
-runtime grammar 'concepts':
-  frame TASK:
-    effect internal
-    canonical phrase 'remind me to'
-    synonyms 'todo:', 'remember to'
-    slots:
-      what is text, required
-    on match:
-      save the match as a new Task
+create a Concepts table:
+  function is text
+  phrase is text
+  synonyms is list
+  effect is text
 
-  frame OPEN_NOTEPAD:
-    effect external
-    canonical phrase 'open notepad'
-    permission scope: 'spawn:notepad.exe'
-    first 3 runs require confirm: 3
-    on match:
-      ask user to confirm 'Open Notepad?'
-      run command 'notepad.exe'
+  with rows:
+    {function: 'OPEN_NOTEPAD', phrase: 'open notepad', synonyms: ['launch notepad'], effect: 'external'}
+    {function: 'LIST_TASKS',   phrase: 'list my tasks', synonyms: ['show tasks'],    effect: 'internal'}
+
+define function OPEN_NOTEPAD(user_command):
+  ask user to confirm 'Open Notepad?'
+  run command 'notepad.exe'
+  send back 'opened'
+
+define function LIST_TASKS(user_command):
+  open_tasks = look up records in Tasks where status is 'open'
+  send back open_tasks
+
+when user sends command to /api/parse:
+  search for command in Concepts by phrase or synonyms
+  if there's a match:
+    call function match's function with command
+  if no match:
+    send back 'unknown command'
 ```
 
-Read this out loud. "Runtime grammar called 'concepts'. Frame TASK is an internal action; canonical phrase is 'remind me to', also recognized as 'todo:' or 'remember to'; it has one slot called 'what' that's required text; on match, save it as a new Task." It's plain English, except every keyword is doing real work.
+Read this out loud. "Create a Concepts table seeded with two concepts. Define what OPEN_NOTEPAD does. Define what LIST_TASKS does. When someone sends a command, search the Concepts table; if we find one, call the function named in that row; if not, say we don't know it." Every line does one thing.
 
-### What this compiles to
-
-Three things land in your server file:
-- A storage table (default name `Concepts`) — a regular SQLite table that holds every frame as one row.
-- A registry constant seeded with the frames above — that's the compile-time set.
-- A `_grammarMatch('concepts', input)` helper that resolves text against the live frame set (registry seed merged with whatever's in the storage table right now).
-
-### Calling the matcher
+### Adding a concept at runtime
 
 ```clear
-result is match input against 'concepts'
-if result's kind is 'matched':
-  show 'matched: ' + result's frame.frame_id
-otherwise:
-  show 'no match'
+save {function: 'DRINK_WATER', phrase: 'drink water', synonyms: [], effect: 'internal'} as a new Concept
 ```
 
-The matcher returns:
-- `kind` — one of `matched`, `no_match`, `partial` (a required slot was missing), or `ambiguous` (multiple frames tied).
-- `frame` — the winning frame's full record.
-- `slotValues` — values extracted from the input remainder, keyed by slot name.
-- `missingSlots` — required slots that came back empty.
-- `ambiguousMatches` — when `kind` is `ambiguous`, the list of tied frame IDs.
-
-The matcher call works in any assignment-RHS shape — pick whichever reads best:
-
-```clear
-result is match input against 'concepts'      # canonical
-result = match input against 'concepts'       # algebraic
-set result to match input against 'concepts'  # imperative
-```
-
-You can also feed it any text expression, not just a variable:
-
-```clear
-quick = match 'remind me to call Sam' against 'concepts'
-```
-
-### Locking the matcher's behavior with a test block
-
-The point of a runtime grammar is that the same English phrase always dispatches to the same frame. Lock that behavior with `test 'name':` blocks:
-
-```clear
-test 'TASK catches the canonical phrase':
-  text is 'remind me to email Marcus tomorrow'
-  result = match text against 'concepts'
-  expect result's frame is 'TASK'
-
-test 'TASK catches the `todo:` synonym':
-  text is 'todo: write the demo'
-  result = match text against 'concepts'
-  expect result's frame is 'TASK'
-```
-
-These tests are the contract — if a frame's synonym list changes and an old phrase stops matching, the test fires.
-
-### Adding a frame at runtime
-
-The storage table is just a regular Clear table. Save a row:
-
-```clear
-new_frame is { frame_id: 'DRINK_WATER', effect: 'internal', canonical_phrase: 'drink water', synonyms_json: '[]', slots_json: '[]', permission_scope: '', first_n_runs_require_confirm: 0 }
-save new_frame as a new Concept
-```
-
-The next `match input against 'concepts'` call will know about DRINK_WATER. That's the trick: the matcher reads the storage table every time, so changes take effect immediately.
-
-If a runtime row has the same `frame_id` as a compile-time seed frame, the runtime row wins. That's how users override built-in frames without you having to ship a new compiler pass.
+The next search picks it up immediately. No recompile.
 
 ### When to reach for this
 
-Runtime grammar is the right shape when:
 - Users type free-form text and the app needs to react.
-- The set of commands isn't fixed at compile time — users add their own.
-- You want each command to carry typed slots, a permission scope, and an on-match body.
+- The set of commands grows after the app ships.
+- Each command has its own logic that you want as a readable function.
 
-It's the WRONG shape when:
-- You know every command at compile time. Use `match X:` instead.
-- You just need keyword search. Use `search Table for query`.
+Use `match X:` instead when you know every command at compile time and the logic is short enough to inline.
 
 ## Chapter 19d-2: Approve-the-First-N-Times (Then Let It Auto-Fire)
 

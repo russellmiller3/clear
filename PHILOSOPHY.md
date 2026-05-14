@@ -146,16 +146,7 @@ Both exceptions are documented here so future authors don't think the
 rule was forgotten. Adding NEW super-commands requires the same explicit
 justification (and a row in this list).
 
-1. **`runtime grammar 'X':`** — added 2026-05-13 for Lenat-in-Clear.
-   Each frame declaration emits a matcher entry, dispatch handler,
-   slot extractor calls, audit log emit, and permission check at the
-   runtime layer. The user writes one block; ~50 LOC of plumbing
-   compiles in. Justification: the alternative is 1000+ LOC of
-   hand-rolled dispatch in JS (which is what Node Lenat had). Locking
-   it into the compiler means every future natural-language-input app
-   gets the same baseline correctness. Trace path: the compiled output
-   ships a `# generated from runtime grammar 'X'` header above the
-   dispatch table so a debugger can map line-by-line.
+1. **`runtime grammar 'X':` — REMOVED 2026-05-14.** The exception was revoked: the primitive was ripped out and replaced by six composable primitives (table + define-function + search-for + if-match + call-function). Each composable primitive does exactly one thing; the output is fully transparent with no hidden plumbing. No §1:1 exceptions remain in this slot.
 
 2. **Gate-2 confirmation graduation — REMOVED 2026-05-14.** The
    `with graduation after N runs` sugar was deleted from parser and
