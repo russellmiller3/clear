@@ -12094,6 +12094,12 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   lines.push(`let _state = {`);
   if (stateEntries) lines.push(stateEntries);
   lines.push(`};`);
+  // SSR hydration: if the server pre-fetched data and injected it as
+  // window.__CLEAR_INITIAL_STATE__, merge it into _state now — before
+  // _recompute runs — so the first paint shows real data with no flash.
+  lines.push(`if (typeof window !== 'undefined' && window.__CLEAR_INITIAL_STATE__) {`);
+  lines.push(`  Object.assign(_state, window.__CLEAR_INITIAL_STATE__);`);
+  lines.push(`}`);
 
   // 3b. Hoist component and function definitions before _recompute
   const hoistTypes = new Set([NodeType.COMPONENT_DEF, NodeType.FUNCTION_DEF]);
@@ -16767,11 +16773,62 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     }
     // Always ensure root is served
     pageRoutes.add('/');
+
+    // Build route → SSR-able defines map.
+    // Each entry: { variable: string, table: string } for every non-clientOnly
+    // CRUD lookup node in a page or pane body. These get pre-fetched server-side
+    // so the browser sees real data on first paint instead of the "0 flash."
+    const routeSsrDefines = new Map();
+    const collectSsrDefines = (bodyNodes) =>
+      (bodyNodes || []).filter(n => n && n.type === NodeType.CRUD && n.operation === 'lookup' && !n.clientOnly && n.variable && n.target)
+        .map(n => ({ variable: n.variable, table: pluralizeName(n.target) }));
+    for (const p of pageNodes) {
+      const route = p.route || '/';
+      if (route.startsWith('/api/') || route.startsWith('/auth/')) continue;
+      const ssrDefs = collectSsrDefines(p.body);
+      if (ssrDefs.length > 0) routeSsrDefines.set(route, ssrDefs);
+    }
+    for (const appBlock of appBlocks) {
+      const appRoute = appBlock.route || '/';
+      for (const pane of (appBlock.panes || [])) {
+        const slug = pane.route || '';
+        if (!slug) continue;
+        const fullRoute = slug.startsWith('/') ? slug : (appRoute === '/' ? `/${slug}` : `${appRoute}/${slug}`);
+        if (fullRoute.startsWith('/api/') || fullRoute.startsWith('/auth/')) continue;
+        const ssrDefs = collectSsrDefines(pane.body);
+        if (ssrDefs.length > 0) routeSsrDefines.set(fullRoute, ssrDefs);
+      }
+    }
+
     // Use `{ root: __dirname }` option: Express 5's send module mishandles
     // absolute paths on non-root request URLs (confuses path vs URL). With
     // the root option, send resolves safely.
+    //
+    // SSR: routes with non-clientOnly defines get an async handler that
+    // pre-fetches data, injects window.__CLEAR_INITIAL_STATE__, and sends
+    // the modified HTML. Routes without defines get a simple sendFile.
     for (const route of pageRoutes) {
-      lines.push(`app.get(${JSON.stringify(route)}, (req, res) => res.sendFile('index.html', { root: __dirname }));`);
+      const ssrDefs = routeSsrDefines.get(route);
+      if (ssrDefs && ssrDefs.length > 0) {
+        lines.push(`app.get(${JSON.stringify(route)}, async (req, res) => {`);
+        lines.push(`  try {`);
+        lines.push(`    const _ssrState = {};`);
+        for (const def of ssrDefs) {
+          lines.push(`    _ssrState[${JSON.stringify(def.variable)}] = (await db.findAll(${JSON.stringify(def.table)})).map(_revive);`);
+        }
+        lines.push(`    const _html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');`);
+        lines.push(`    const _stateScript = '<script>window.__CLEAR_INITIAL_STATE__ = ' + JSON.stringify(_ssrState) + ';</script>';`);
+        // Inject before the compiledJS script block so the state is available
+        // when the reactive runtime initializes. Replace <body...> opening tag
+        // so the inline script runs first, before any CDN scripts or app code.
+        lines.push(`    res.send(_html.replace(/(<body[^>]*>)/, '$1' + _stateScript));`);
+        lines.push(`  } catch (_ssrErr) {`);
+        lines.push(`    res.sendFile('index.html', { root: __dirname });`);
+        lines.push(`  }`);
+        lines.push(`});`);
+      } else {
+        lines.push(`app.get(${JSON.stringify(route)}, (req, res) => res.sendFile('index.html', { root: __dirname }));`);
+      }
     }
   }
 

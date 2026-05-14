@@ -894,6 +894,37 @@ function crudNode(operation, variable, target, condition, line) {
   return { type: NodeType.CRUD, operation, variable, target, condition, line };
 }
 
+// SSR opt-out directive detector.
+// Recognizes `fetch this data in the browser, not from the server` anywhere
+// in a token stream from the given start position. The phrase appears either
+// (a) trailing on the same line as a `look up records in X` clause (after a
+// comma) or (b) on its own line at deeper indent under a define block.
+function tokensContainBrowserFetchDirective(tokens, fromPos) {
+  if (!tokens || fromPos == null) return false;
+  for (let i = fromPos; i + 5 < tokens.length; i++) {
+    if (tokens[i] && tokens[i].value === 'fetch'
+        && tokens[i + 1] && tokens[i + 1].value === 'this'
+        && tokens[i + 2] && tokens[i + 2].value === 'data'
+        && tokens[i + 3] && (tokens[i + 3].value === 'in' || tokens[i + 3].canonical === 'in')
+        && tokens[i + 4] && tokens[i + 4].value === 'the'
+        && tokens[i + 5] && tokens[i + 5].value === 'browser') {
+      return true;
+    }
+  }
+  return false;
+}
+
+// True when a token line is JUST the SSR opt-out directive (no other syntax
+// on the line). Used by parseBlock to detect the multi-line form: an
+// indented directive line under a previous `define X as: look up ...` block,
+// which we apply to the previous node.
+function lineIsBrowserFetchDirective(tokens) {
+  if (!tokens || tokens.length < 6) return false;
+  return tokens[0].value === 'fetch'
+      && tokens[1].value === 'this'
+      && tokens[2].value === 'data';
+}
+
 function testDefNode(name, body, line) {
   return { type: NodeType.TEST_DEF, name, body, line };
 }
@@ -4051,6 +4082,26 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // Comment-only line
       if (firstToken.type === TokenType.COMMENT) {
         body.push(commentNode(firstToken.value, line));
+        i++;
+        continue;
+      }
+
+      // SSR opt-out directive on its own line (multi-line form):
+      // `fetch this data in the browser, not from the server`
+      // Tags the previous CRUD/ASSIGN-with-CRUD node with clientOnly:true.
+      if (lineIsBrowserFetchDirective(tokens)) {
+        let prev = body.length - 1;
+        while (prev >= 0 && body[prev].type === NodeType.COMMENT) prev--;
+        if (prev >= 0) {
+          const prev_node = body[prev];
+          if (prev_node.type === NodeType.ASSIGN && prev_node.expression && prev_node.expression.type === NodeType.CRUD) {
+            prev_node.expression.clientOnly = true;
+          } else if (prev_node.type === NodeType.CRUD) {
+            prev_node.clientOnly = true;
+          } else {
+            errors.push({ line, message: '`fetch this data in the browser, not from the server` only applies to a preceding `define X as: look up ...` block.' });
+          }
+        }
         i++;
         continue;
       }
@@ -8500,6 +8551,12 @@ function parseLookUpAssignment(name, tokens, pos, line) {
   const node = crudNode('lookup', name, target, condition, line);
   node.lookupAll = lookupAll;
   if (noLimit) node.noLimit = true;
+  // SSR opt-out: `... fetch this data in the browser, not from the server`
+  // after the lookup tags this CRUD with clientOnly — compiler skips the
+  // server-side bake and keeps the current client-side fetch behavior.
+  if (tokensContainBrowserFetchDirective(tokens, pos)) {
+    node.clientOnly = true;
+  }
   // Optional pagination: "page N, M per page"
   if (pos < tokens.length && tokens[pos].value === 'page') {
     pos++;
