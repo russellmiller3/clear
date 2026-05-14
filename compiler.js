@@ -12813,9 +12813,14 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
     lines.push(`  document.querySelectorAll('[data-clear-tpl]').forEach(_el => {`);
     lines.push(`    const _tpl = _el.getAttribute('data-clear-tpl');`);
-    lines.push(`    _el.textContent = _tpl.replace(/\\{(\\w+)\\}/g, (_m, _v) => {`);
+    // Template lookup supports two shapes:
+    //   {varname}        → _tplCtx.varname
+    //   {varname.field}  → _tplCtx.varname?.field (added 2026-05-14 for
+    //                       stat-card member-access like {energy_logs.length})
+    lines.push(`    _el.textContent = _tpl.replace(/\\{(\\w+)(?:\\.(\\w+))?\\}/g, (_m, _v, _f) => {`);
     lines.push(`      const _val = _tplCtx[_v];`);
-    lines.push(`      return (_val == null) ? '' : String(_val);`);
+    lines.push(`      const _resolved = _f ? (_val == null ? undefined : _val[_f]) : _val;`);
+    lines.push(`      return (_resolved == null) ? '' : String(_resolved);`);
     lines.push(`    });`);
     lines.push(`  });`);
   }
@@ -13488,6 +13493,17 @@ ${childHtml}
     if (expr.type === NodeType.VARIABLE_REF) {
       const name = attrEsc(expr.name || '');
       return `<span data-clear-tpl="{${name}}">{${name}}</span>`;
+    }
+    // Member access — `energy_logs's length`, `deal's discount_percent`. Emit a
+    // template placeholder that the reactive runtime evaluates as `var.field`.
+    // The runtime's data-clear-tpl regex was extended (2026-05-14) to accept
+    // `{var.field}` shapes for exactly this case. Without this, stat-card values
+    // like `value energy_logs's length` shipped as the literal string
+    // "energy_logs?.length" instead of evaluating.
+    if (expr.type === 'member_access' && expr.object && expr.object.type === NodeType.VARIABLE_REF && expr.member) {
+      const tplKey = `${expr.object.name}.${expr.member}`;
+      const safe = attrEsc(tplKey);
+      return `<span data-clear-tpl="{${safe}}">0</span>`;
     }
     return formatInlineText(exprToCode(expr, { lang: 'javascript' }));
   }
