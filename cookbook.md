@@ -137,6 +137,42 @@ Eight hooks in this repo as of 2026-05-03. Each fires automatically on a specifi
 
 ---
 
+## User-Level Hooks (Generic, Reusable Across Projects)
+
+The project-level hooks above fire ONLY when Claude is working in this repo. A second tier of hooks lives at `~/.claude/hooks/` and fires on EVERY Claude Code session regardless of project. Russell's rule (2026-05-14): **all user-level hooks must be generic and reusable. Anything project-specific belongs in the project's own `.claude/hooks/` or `.claude/<config>.json`.**
+
+These hooks were audited 2026-05-14 to remove Clear-specific hardcoded paths. The result is a portable hook stack any AI-first repo can adopt by copying `~/.claude/hooks/` and `~/.claude/settings.json`.
+
+| Hook | Event | What it does | Why it exists | Project-specific config? |
+|------|-------|--------------|---------------|---|
+| `dry-check.mjs` | PreToolUse (Edit/Write) | Detects duplicate work in two ways: (1) named-primitive collisions — additions of functions, classes, top-level consts, or project-specific patterns (themes, NodeTypes, etc.) whose names already exist in the same file or in docs; (2) domain-noun matches in plan/spec markdown edits — capitalized phrases already documented in project docs. Soft-warns with line numbers. | Russell shipped a duplicate `nixie` theme block to compiler.js 2026-05-14 — the existing one (with glow + scanline effects) was already there ~120 lines down, silently shadowed by the new one because JS object literals tolerate duplicate keys. Without this hook, the duplicate would have stuck and the next session would have read both. | Yes — `<project>/.claude/dry-check.json` (optional): `docs[]`, `namePatterns[]`, `planFiles[]` |
+| `worktree-on-agent-spawn.mjs` | PreToolUse (Agent) | Blocks any subagent spawn that omits `isolation: "worktree"` unless the prompt opts out with `NO_WORKTREE`. When NO_WORKTREE is used, additionally blocks if the agent's brief targets a repo accessible from the parent's cwd (the agent's `git checkout -b` would switch the parent's working tree). | 2026-05-13 — three parallel agents shared the same working tree without worktrees. Phase 3's compiler.js edits got eaten; Phase 6's parser.js edits clobbered; Phase 5 was forced into survival mode. The hook prevents that class entirely. | No — generic |
+| `pulse-on-agent-activity.mjs` | PreToolUse (Agent) + Stop | Gates Agent spawn on a pulse-contract reference in the brief; emits a baseline "Goal" pulse the moment the agent fires. On Stop, surfaces the 5-min heartbeat box for the parent conversation. | The agent dashboard at localhost:9999 reads from `~/Desktop/programming/.claude/state/agent-pulse.log`. Without forced pulses, the dashboard sits empty even when work is shipping. | No — generic (assumes the dashboard is at the standard pulse-log location) |
+| `pulse-enforcer-subagent.mjs` | Stop | Refuses subagent stops without at least one narrative pulse emitted during the run. | Without enforcement, agents would do silent work and the dashboard would show nothing. | No — generic |
+| `main-thread-pulse.mjs` | PostToolUse (Edit/Write/Bash) | Emits a dashboard pulse for every meaningful main-thread action — commit, test run, edit, build. Throttled to one pulse per 15 seconds per task. Task name auto-derived from the git branch of the touched file. | The dashboard was useless when the main conversation was the one doing the work — no pulses fired. This hook fixes that by capturing main-thread activity automatically. | No — generic; uses file's git branch + falls back to "Main thread" |
+| `parallel-when-possible.mjs` | Stop | Detects when a single agent is in flight while 2+ parallel-safe queue items sit unstarted; nudges the orchestrator to spawn the rest in one message. Plan-file discovery walks every immediate child of `~/Desktop/programming/` that has a `plans/` directory — no project hardcoding. | "Work in parallel by default" was a CLAUDE.md rule that kept being violated. This hook makes it structural. | No — generic; plan discovery is dynamic |
+| `read-before-write.mjs` | PreToolUse (Edit/Write) | Blocks Edit/Write on files >200 lines that haven't been Read in this session. | Editing a 2000-line file blind = silently breaking unrelated parts. Force a Read first. | No — generic |
+| `forbidden-patterns.mjs` | PreToolUse (Edit/Write) | Blocks structural anti-patterns: untyped record rows, positional access, string type-discriminators, AI-added TODO/FIXME. | These are the "drunk junior dev at 3am" failure modes the architecture rules prevent. | No — generic |
+| `concurrency-guard.mjs` | PreToolUse (Edit/Write) | Blocks background tasks that mutate shared state instead of sending messages. | "Concurrency — Messages Only" rule, structurally enforced. | No — generic |
+| `no-emoji-landing.mjs` | PreToolUse (Edit/Write) | Blocks emoji in `.html` files; suggests Lucide icon swaps. | Landing pages must look professional. Emoji renders inconsistently across OS/browser. | No — generic |
+| `no-feature-branch-push.mjs` | PreToolUse (Bash) | Blocks `git push origin <feature-branch>`; allows push to main, tags, branch delete. Override via `PUSH_BRANCH_OVERRIDE=1`. | "Don't push branches until work is done" rule. Pre-push hooks are expensive; pushing every feature branch repays the cost N times for no value. | No — generic |
+| `file-size-guard.mjs` | PostToolUse (Write) | Warns when a written file exceeds a size threshold. | "No god objects" — large files signal poor decomposition. | No — generic |
+| `never-idle.mjs` | Stop | Blocks Stop while background agents/tasks are still running. | "Never idle while agents run" — start the next chunk of work in parallel. | No — generic |
+| `no-shortcuts.mjs` | Stop | Detects structural shortest-path shortcuts in the last message (string-stringly-typed data, flag fields on root struct, etc.) | "Resist Shortest Path" rule, structurally enforced. | No — generic |
+| `never-stop-asking.mjs` | Stop | Blocks turns that asked permission ("want me to", "should I"), described a next move without producing it, or worked without a priority queue. | The Ross Perot Rule + Critical-Path Navigator + priority-queue workflow, all enforced at Stop. | No — generic |
+| `hardest-first.mjs` | Stop | Blocks Stop where the most recent commits are style/docs/test only while launch-blocking items remain open in the priority queue. | "Hardest thing goes first" — prevents the polish-instead-of-load-bearing-work pattern. | No — generic |
+| `decay-footer.mjs` | Stop | Blocks code-changing turns missing the Files touched / Invariants / Smells / Follow-up footer. | "Decay Footer — Surface Debt" — every code change names its risks. | No — generic |
+| `time-estimates.mjs` | Stop | Catches human-hour time estimates without the AI-time correction (divide by ~60 for agent work). | Russell asked for AI-time estimates; the calibration table is built from measured agent throughput. | No — generic; calibration data is in the hook itself |
+| `recommend-when-listing.mjs` | Stop | Blocks alternative listings without a recommendation verb ("going with X because Y"). | "Strong Opinion + Minimize Cognitive Load" — never make the user pick blindly. | No — generic |
+| `build-priority-queue.mjs` | SessionStart | Injects a kickoff reminder when the priority queue is missing or stale (>24h). | First task every session: build the queue. | No — generic |
+| `clean-worktrees.sh` | SessionEnd | Cleans stale git worktrees, with WAL-checkpoint protection for SQLite-bearing repos. | Long-running sessions accumulate worktrees that block disk + create stale-state confusion. | No — generic |
+
+**The pattern (user-tier):** every hook here works in any AI-first repo by default. Where a project wants custom behavior, it ships a config file in its own `.claude/` directory. This is the difference between a portable hook stack (copy-paste to a new repo and it works) and a project-coupled one (must rewrite for each repo).
+
+**Cost (user-tier):** roughly identical to the project tier — all PreToolUse hooks together add 50-200ms per Edit/Write, Stop hooks 100-300ms per turn end, SessionStart <500ms. The dashboard pulse hook is the cheapest in the stack (single appendFileSync).
+
+---
+
 <!-- BEGIN AUTO-INVENTORY - Do not edit by hand. .claude/hooks/cookbook-updater.mjs refreshes this section every 7 days on SessionStart. -->
 
 _Last refresh: 2026-05-10_

@@ -1,0 +1,10 @@
+{
+  "docs": ["FAQ.md", "FEATURES.md", "intent.md", "SYNTAX.md", "AI-INSTRUCTIONS.md", "ROADMAP.md"],
+  "namePatterns": [
+    { "kind": "theme block", "regex": "^\\s*(\\w+):\\s*`\\[data-theme=" },
+    { "kind": "NodeType declaration", "regex": "^\\s*([A-Z][A-Z0-9_]+):\\s*['\"]\\w+['\"]" },
+    { "kind": "synonym key", "regex": "^\\s*(\\w+):\\s*Object\\.freeze\\(\\[" },
+    { "kind": "validator pass", "regex": "^function (validate[A-Z]\\w+)\\(" }
+  ],
+  "planFiles": ["plans/*.md", "intent.md", "ROADMAP.md"]
+}
