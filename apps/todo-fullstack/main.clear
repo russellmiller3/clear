@@ -23,6 +23,10 @@ create a Categories table:
   name, required
   todos has many Todos
   the category's creator can read, change, or delete
+  with rows:
+    {name: 'Work'}
+    {name: 'Personal'}
+    {name: 'Shopping'}
 
 create a Todos table:
   title, required
@@ -71,35 +75,26 @@ when user requests data from /api/search:
 ## Seed Data
 
 when user sends seed to /api/seed:
-  create c1:
-    name is 'Work'
-  save c1 as new Category
-  create c2:
-    name is 'Personal'
-  save c2 as new Category
-  create c3:
-    name is 'Shopping'
-  save c3 as new Category
   create t1:
     title is 'Finish quarterly report'
-    category is c1's id
+    category is 1
   save t1 as new Todo
   create t2:
     title is 'Book dentist appointment'
-    category is c2's id
+    category is 2
   save t2 as new Todo
   create t3:
     title is 'Buy groceries'
     completed is true
-    category is c3's id
+    category is 3
   save t3 as new Todo
   create t4:
     title is 'Review pull requests'
-    category is c1's id
+    category is 1
   save t4 as new Todo
   create t5:
     title is 'Pick up dry cleaning'
-    category is c2's id
+    category is 2
   save t5 as new Todo
   send back 'seeded' with success message
 
