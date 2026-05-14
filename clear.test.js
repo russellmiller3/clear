@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { describe, it, expect, run, describeAsync, itAsync } from './lib/testUtils.js';
-import './runtime-grammar.test.js';
+
 import './slot-extractors.test.js';
 import './phase-5-5.test.js';
 import './workflow-user-input.test.js';

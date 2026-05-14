@@ -88,7 +88,7 @@
 //   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
 //   STATIC CONTENT ELEMENTS ........... parseContent(), parseImage(), parseMedia()
 //   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
-//   RUNTIME GRAMMAR ................... parseRuntimeGrammar, parseGrammarFrame, parseGrammarSlots
+//   (RUNTIME GRAMMAR removed 2026-05-14 — text-routing primitives took its place)
 //   CRUD OPERATIONS ................... parseSave, parseDeleteFrom, parseDefineAs,
 //                                      parseLookUpAssignment, parseSaveAssignment
 //   TEST BLOCKS ....................... parseTestDef(), parseExpect(), UNIT_ASSERT detection
@@ -512,15 +512,11 @@ export const NodeType = Object.freeze({
   // forcing a rewrite of the whole file.
   PLACEHOLDER: 'placeholder',
 
-  // Lenat-in-Clear Phase 1 (2026-05-13) — runtime-extensible grammar primitive.
-  // The load-bearing addition: lets a Clear app declare a parsing surface
-  // whose vocabulary grows at runtime. Frames are seeded at compile time AND
-  // can be inserted into the storage table later; the matcher reads the live
-  // table on every call so new frames take effect without a recompile.
-  // See plans/plan-lenat-in-clear-2026-05-13.md for the full design.
-  RUNTIME_GRAMMAR: 'runtime_grammar',
-  GRAMMAR_FRAME: 'grammar_frame',
-  GRAMMAR_MATCH_CALL: 'grammar_match_call',
+  // (RUNTIME_GRAMMAR / GRAMMAR_FRAME / GRAMMAR_MATCH_CALL removed 2026-05-14.
+  // The text-routing layer is now table + define-function + search-for-X-in-T
+  // + if-there's-a-match + call-function-NAME — six small composable
+  // primitives that pass the 14-year-old test. See plans/plan-text-routing-
+  // primitives-2026-05-14.md.)
 
   // Lenat-in-Clear Phase 2 (2026-05-13) — slot-extractor stdlib. Four typed
   // primitives that pull structured values out of free-form text. Each returns
@@ -3156,15 +3152,20 @@ CANONICAL_DISPATCH.set('queue', (ctx) => {
     return result.endIdx;
 });
 CANONICAL_DISPATCH.set('runtime', (ctx) => {
-    // Runtime-extensible grammar primitive (Phase 1 of Lenat-in-Clear, 2026-05-13).
-    // Shape: `runtime grammar 'name':` + indented body of `storage table is X`,
-    // `matcher is X`, and `frame NAME:` blocks. Lets the app declare a parsing
-    // surface whose vocabulary grows at runtime — frames inserted into the
-    // storage table take effect without a recompile.
-    if (ctx.tokens.length < 2 || ctx.tokens[1].value !== 'grammar') return undefined;
-    const result = parseRuntimeGrammar(ctx.lines, ctx.i, ctx.errors, parseBlock);
-    if (result.node) ctx.body.push(result.node);
-    return result.endIdx;
+    // `runtime grammar` was the load-bearing primitive of Lenat-in-Clear
+    // Phase 1 (2026-05-13). Removed 2026-05-14 — the text-routing layer
+    // (create-table-with-rows + define-function + search-for + if-match
+    // + call-function) replaced it with six smaller primitives that
+    // pass the 14-year-old test. Reject the old keyword with a clear
+    // pointer to the replacement.
+    if (ctx.tokens.length >= 2 && ctx.tokens[1].value === 'grammar') {
+      ctx.errors.push({
+        line: ctx.line,
+        message: "`runtime grammar 'X':` was removed 2026-05-14. The replacement is a normal table + handlers: `create a Commands table: function is text, phrase, synonyms is list, with rows: { ... }` plus `define function NAME(input):` for each handler, plus `search for X in Commands by phrase or synonyms / if there's a match: call function match's function with X / if no match: ...` in your endpoint. See plans/plan-text-routing-primitives-2026-05-14.md.",
+      });
+      return ctx.i + 1;
+    }
+    return undefined;
 });
 CANONICAL_DISPATCH.set('route', (ctx) => {
     // Statement-level routing primitive. Shape: `route <entity> by <field>:`
@@ -5826,304 +5827,6 @@ function parseQueueDef(lines, startIdx, _parentIndent, errors) {
   };
 }
 
-// =============================================================================
-// RUNTIME GRAMMAR — Phase 1 of Lenat-in-Clear (2026-05-13)
-// =============================================================================
-//
-// Shape:
-//   runtime grammar 'concepts':
-//     storage table is FrameRegistry         # optional, defaults to 'Concepts'
-//     matcher is best longest-match          # optional, default
-//     frame TASK:
-//       effect internal
-//       canonical phrase 'remind me to'
-//       synonyms 'todo:', 'remember to'
-//       slots:
-//         what is text, required
-//         when is datetime, optional
-//       on match:
-//         <body of normal Clear statements>
-//
-// AST:
-//   { type: 'runtime_grammar', name, storageTable, matcher,
-//     frames: [GrammarFrame], line }
-//   GrammarFrame = { type: 'grammar_frame', id, effect,
-//     canonicalPhrase, synonyms: [string], slots: [Slot],
-//     permissionScope, firstNRunsRequireConfirm, onMatch: [StatementNode],
-//     line }
-//   Slot = { name, slotType, required }
-//
-// The storage table is a regular Clear data table emitted via the existing
-// DATA_SHAPE machinery. Each compile-time frame becomes a seed row; new
-// frames can be added at runtime via a regular CRUD insert against the
-// same table — the matcher reads the live table on every call.
-// =============================================================================
-
-// Default storage table when no `storage table is X` directive is given.
-// Matches Lenat's existing concept_store.js shape — concepts live in a
-// single table called Concepts unless the app names another.
-const DEFAULT_GRAMMAR_STORAGE_TABLE = 'Concepts';
-
-// Default matcher strategy when no `matcher is X` directive is given.
-// Phase 1 only knows 'best longest-match' (canonical-phrase prefix + synonym
-// prefix with length tiebreak). Future phases add fuzzy / LLM matchers.
-const DEFAULT_GRAMMAR_MATCHER = 'best longest-match';
-
-/**
- * Parse a single `slots:` block inside a GRAMMAR_FRAME body.
- *
- * Each indented line under `slots:` is one slot field of the form:
- *   name is <slotType>, required
- *   name is <slotType>, optional
- *
- * @param {Array} lines - Tokenized lines from tokenizer
- * @param {number} startIdx - Index of the `slots:` line itself
- * @param {Array} errors - Error list to push to
- * @returns {{ slots: Array<{name, slotType, required}>, endIdx: number }}
- */
-function parseGrammarSlots(lines, startIdx, errors) {
-  const slots = [];
-  const slotsLineIndent = lines[startIdx].indent;
-  let i = startIdx + 1;
-  while (i < lines.length && lines[i].indent > slotsLineIndent) {
-    const slotTokens = lines[i].tokens;
-    if (!slotTokens || slotTokens.length === 0) { i++; continue; }
-    const slotLine = lines[i].line || (i + 1);
-    const slotName = slotTokens[0].value;
-    let slotType = 'text';
-    let required = false;
-    for (let j = 1; j < slotTokens.length; j++) {
-      const tv = slotTokens[j].value;
-      if (tv === 'is' || tv === ',') continue;
-      if (tv === 'required') { required = true; continue; }
-      if (tv === 'optional') { required = false; continue; }
-      slotType = String(tv);
-    }
-    if (!slotName) {
-      errors.push({
-        line: slotLine,
-        message: "slot needs a name. Example: what is text, required",
-      });
-    } else {
-      slots.push({ name: String(slotName), slotType, required });
-    }
-    i++;
-  }
-  return { slots, endIdx: i };
-}
-
-/**
- * Parse one GRAMMAR_FRAME block. Called from parseRuntimeGrammar.
- *
- * Body clauses (any order; all optional except `canonical phrase`):
- *   effect internal|external
- *   canonical phrase 'X'
- *   synonyms 'a', 'b', 'c'
- *   slots: <indented body>
- *   permission scope: 'spawn:notepad.exe'
- *   first N runs require confirm: 3
- *   on match: <indented body of Clear statements>
- *
- * @param {Array} lines - Tokenized lines
- * @param {number} startIdx - Index of `frame NAME:` line
- * @param {Array} errors - Error list
- * @param {Function} parseBlockFn - reference to parseBlock for nested statements
- * @returns {{ node: object|null, endIdx: number }}
- */
-function parseGrammarFrame(lines, startIdx, errors, parseBlockFn) {
-  const tokens = lines[startIdx].tokens;
-  const line = lines[startIdx].line || (startIdx + 1);
-  if (tokens.length < 2) {
-    errors.push({ line, message: "frame needs an identifier. Example: frame TASK:" });
-    return { node: null, endIdx: startIdx + 1 };
-  }
-  const id = String(tokens[1].value);
-
-  const frameIndent = lines[startIdx].indent;
-  let effect = null;
-  let canonicalPhrase = null;
-  let synonyms = [];
-  let slots = [];
-  let permissionScope = null;
-  let firstNRunsRequireConfirm = null;
-  let onMatch = [];
-
-  let i = startIdx + 1;
-  while (i < lines.length && lines[i].indent > frameIndent) {
-    const bodyTokens = lines[i].tokens;
-    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
-    const first = bodyTokens[0].value;
-
-    if (first === 'effect' && bodyTokens.length >= 2) {
-      const effectVal = String(bodyTokens[1].value).toLowerCase();
-      if (effectVal !== 'internal' && effectVal !== 'external') {
-        errors.push({
-          line: lines[i].line || (i + 1),
-          message: "frame '" + id + "': effect must be 'internal' (CRUD on records) or 'external' (run commands, hit APIs). Got: " + effectVal,
-        });
-      } else {
-        effect = effectVal;
-      }
-      i++;
-      continue;
-    }
-
-    if (first === 'canonical' && bodyTokens.length >= 3 &&
-        bodyTokens[1].value === 'phrase') {
-      const phraseToken = bodyTokens[2];
-      if (phraseToken && typeof phraseToken.value === 'string') {
-        canonicalPhrase = phraseToken.value;
-      }
-      i++;
-      continue;
-    }
-
-    if (first === 'synonyms' && bodyTokens.length >= 2) {
-      for (let j = 1; j < bodyTokens.length; j++) {
-        const t = bodyTokens[j];
-        if (t.value === ',' || t.value === ':') continue;
-        if (typeof t.value === 'string' && t.value !== '') synonyms.push(t.value);
-      }
-      i++;
-      continue;
-    }
-
-    if (first === 'slots' && bodyTokens.length >= 1) {
-      const slotsResult = parseGrammarSlots(lines, i, errors);
-      slots = slotsResult.slots;
-      i = slotsResult.endIdx;
-      continue;
-    }
-
-    if (first === 'permission' && bodyTokens.length >= 3 &&
-        bodyTokens[1].value === 'scope') {
-      const scopeToken = bodyTokens[bodyTokens.length - 1];
-      if (scopeToken && typeof scopeToken.value === 'string') {
-        permissionScope = scopeToken.value;
-      }
-      i++;
-      continue;
-    }
-
-    // first N runs require confirm: 3
-    if (first === 'first' && bodyTokens.length >= 6) {
-      const numToken = bodyTokens[bodyTokens.length - 1];
-      const n = Number(numToken.value);
-      if (Number.isFinite(n) && n > 0) firstNRunsRequireConfirm = n;
-      i++;
-      continue;
-    }
-
-    if (first === 'on' && bodyTokens.length >= 2 && bodyTokens[1].value === 'match') {
-      const blockIndent = lines[i].indent;
-      const sub = parseBlockFn(lines, i + 1, blockIndent + 1, errors);
-      onMatch = sub.body || [];
-      i = sub.endIdx;
-      continue;
-    }
-
-    // Unknown clause — skip silently for Phase 2+ forward-compat.
-    i++;
-  }
-
-  return {
-    node: {
-      type: NodeType.GRAMMAR_FRAME,
-      id,
-      effect,
-      canonicalPhrase,
-      synonyms,
-      slots,
-      permissionScope,
-      firstNRunsRequireConfirm,
-      onMatch,
-      line,
-    },
-    endIdx: i,
-  };
-}
-
-/**
- * Parse a `runtime grammar 'name':` block + its body of frames + directives.
- *
- * @param {Array} lines - Tokenized lines
- * @param {number} startIdx - Index of `runtime grammar 'name':` line
- * @param {Array} errors - Error list
- * @param {Function} parseBlockFn - parseBlock reference for nested statements
- * @returns {{ node: object|null, endIdx: number }}
- */
-function parseRuntimeGrammar(lines, startIdx, errors, parseBlockFn) {
-  const tokens = lines[startIdx].tokens;
-  const line = lines[startIdx].line || (startIdx + 1);
-  if (tokens.length < 3 || tokens[1].value !== 'grammar') {
-    errors.push({
-      line,
-      message: "runtime grammar needs 'grammar' keyword. Example: runtime grammar 'concepts':",
-    });
-    return { node: null, endIdx: startIdx + 1 };
-  }
-  const nameToken = tokens[2];
-  if (!nameToken || typeof nameToken.value !== 'string') {
-    errors.push({
-      line,
-      message: "runtime grammar needs a quoted name. Example: runtime grammar 'concepts':",
-    });
-    return { node: null, endIdx: startIdx + 1 };
-  }
-  const name = nameToken.value;
-
-  let storageTable = DEFAULT_GRAMMAR_STORAGE_TABLE;
-  let matcher = DEFAULT_GRAMMAR_MATCHER;
-  const frames = [];
-
-  const grammarIndent = lines[startIdx].indent;
-  let i = startIdx + 1;
-
-  while (i < lines.length && lines[i].indent > grammarIndent) {
-    const bodyTokens = lines[i].tokens;
-    if (!bodyTokens || bodyTokens.length === 0) { i++; continue; }
-    const first = bodyTokens[0].value;
-
-    if (first === 'storage' && bodyTokens.length >= 4 &&
-        bodyTokens[1].value === 'table' && bodyTokens[2].value === 'is') {
-      const tableNameToken = bodyTokens[3];
-      if (tableNameToken && tableNameToken.value) {
-        storageTable = String(tableNameToken.value);
-      }
-      i++;
-      continue;
-    }
-
-    if (first === 'matcher' && bodyTokens.length >= 3 && bodyTokens[1].value === 'is') {
-      const matcherTokens = bodyTokens.slice(2).map(t => t.value).filter(v => v !== ',');
-      matcher = matcherTokens.join(' ');
-      i++;
-      continue;
-    }
-
-    if (first === 'frame') {
-      const result = parseGrammarFrame(lines, i, errors, parseBlockFn);
-      if (result.node) frames.push(result.node);
-      i = result.endIdx;
-      continue;
-    }
-
-    // Unknown directive — skip for forward-compat. Real errors come in validator.
-    i++;
-  }
-
-  return {
-    node: {
-      type: NodeType.RUNTIME_GRAMMAR,
-      name,
-      storageTable,
-      matcher,
-      frames,
-      line,
-    },
-    endIdx: i,
-  };
-}
 
 
 // Routing primitive (2026-04-29). Plan: plans/plan-routing-primitive-2026-04-29.md
