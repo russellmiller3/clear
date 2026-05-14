@@ -5141,13 +5141,14 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
           if (nextIdx < sTokens.length && sTokens[nextIdx].value === "'s") nextIdx++;
           if (nextIdx < sTokens.length) savesTo = sTokens[nextIdx].value;
           t = sTokens.length;
+          continue;
         }
         // user-input destination: `as state's field` after `awaits user input`.
         // The tokenizer can split `state's reply` as one possessive token,
         // as ["state", "'s", "reply"], or even as ["state", "reply"] (apostrophe-s
         // eaten as whitespace). Walk tokens explicitly: skip the stateVar word
         // and any apostrophe-s remnant, then take the next token as the field.
-        if (isUserInputStep && sTokens[t].value === 'as' && t + 1 < sTokens.length) {
+        if (isUserInputStep && t < sTokens.length && sTokens[t].value === 'as' && t + 1 < sTokens.length) {
           let nextIdx = t + 1;
           if (sTokens[nextIdx].value === stateVar) nextIdx++;
           if (nextIdx < sTokens.length && sTokens[nextIdx].value === "'s") nextIdx++;
