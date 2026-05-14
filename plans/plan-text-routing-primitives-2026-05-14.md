@@ -49,7 +49,7 @@ when user sends command:
     send back 'I do not know that one yet'
 
 # Functions: normal top-level callables. One per command.
-function OPEN_NOTEPAD receiving command:
+define function OPEN_NOTEPAD(command):
   approval_count = count of records in OpenNotepadApprovals
   if approval_count is less than 3:
     ask user to confirm 'Open Notepad?'
@@ -59,8 +59,8 @@ function OPEN_NOTEPAD receiving command:
     run command 'notepad.exe'
   send back 'opened'
 
-function OPEN_CALCULATOR receiving command: ...
-function LOCK_SCREEN receiving command: ...
+define function OPEN_CALCULATOR(command): ...
+define function LOCK_SCREEN(command): ...
 ```
 
 ---
@@ -131,18 +131,31 @@ return await _fn(<args>);
 Functions registered at module top level via the new `function NAME
 receiving X:` declaration (see P4) auto-register into `_userFunctions`.
 
-### P4. `function NAME receiving ARG:`
+### P4. (DROPPED — Clear already has functions)
 
-Top-level callable declaration. Parses like a workflow / endpoint —
-just a name + a parameter list + a body.
+**Caught 2026-05-14 by the dry-check hook:** Clear's existing
+`define function NAME(arg):` (parser.js:549, documented at
+intent.md:37, SYNTAX.md:247, USER-GUIDE.md:556) is the right primitive.
+No new keyword needed. The text-routing plan uses the existing syntax
+everywhere it shows a function declaration.
 
-**Parser:** new `FUNCTION_DEF` node type.
+What `define function NAME(arg):` already supports:
+- multiple params: `define function add(a, b):`
+- typed params: `define function add(a is number, b is number):`
+- return type: `define function label(name is text) returns text:`
+- recursion depth limit: `define function walk(n) max depth 1000:`
 
-**Compiler emit (JS backend):**
-```js
-async function NAME(ARG) { /* body */ }
-_userFunctions['NAME'] = NAME;
-```
+For the text-routing flow, the simple form `define function
+NAME(command):` is enough. The dispatcher (P3 below) calls them by
+string name.
+
+**What P3 needs from the existing `define function` emit:** the
+compiled function must be registered into a string-keyed lookup table
+so `call function NAME with ARGS` can find it. Today's emit produces
+`async function NAME(...) { ... }` at module scope. To enable
+dispatch-by-name, we add ONE line at compile time per function-def:
+`_userFunctions['NAME'] = NAME;` — a tiny extension to the existing
+`define function` compiler path, not a new primitive.
 
 ### P5. `with rows:` block on `create a TABLE`
 
