@@ -2277,6 +2277,28 @@ on page load:
   get users from '/api/users'
 ```
 
+## SSR-Default Page Data (prefer over on page load for static data)
+
+`define X as: look up records in Y` inside a page body is **server-rendered by default**. The server pre-fetches the data before sending HTML. Use this instead of `on page load` for data that doesn't change per-request.
+
+```
+page 'Shop' at '/shop':
+  define all_products as: look up records in Products table
+  display all_products as table showing name, price
+```
+
+**Opt out** for real-time or auth-scoped data:
+```
+page 'Map' at '/map':
+  define nearby_stores as: look up records in Locations table
+    fetch this data in the browser, not from the server
+  display nearby_stores as table showing name
+```
+
+**When to use SSR vs on page load:**
+- SSR (`define X as: look up`): static catalogue data, admin lists, anything the same for every visitor
+- `on page load` + API fetch: real-time counts, user-specific data, data that needs a session cookie
+
 ## Layout
 
 **Layout goes inline. Visual styling goes in style blocks.**

@@ -2139,6 +2139,16 @@ Two JWT formats exist in the wild (legacy vs modern templates) — the eval runn
 
 ---
 
+### How does Clear avoid the data flash on first page load?
+
+**SSR-default**: `define X as: look up records in Y` inside a page body triggers server-side pre-fetch. The route handler runs `db.findAll()` before `res.send()`, serializes the result into `window.__CLEAR_INITIAL_STATE__`, and injects that as an inline `<script>` immediately after `<body>`. The reactive runtime reads it via `Object.assign(_state, window.__CLEAR_INITIAL_STATE__)` before `_recompute()` fires — so the table is populated on first paint, not after a second roundtrip.
+
+Pages with no defines, or with only `clientOnly` defines, skip the SSR path entirely and serve the static HTML normally.
+
+**Opt out** with `fetch this data in the browser, not from the server` (indented under the define, or inline after a comma). Use this for real-time data or auth-session-scoped queries that can't be pre-fetched without a user context.
+
+---
+
 ### How does the database layer work?
 
 `runtime/db.js` — the database abstraction. Three backends:

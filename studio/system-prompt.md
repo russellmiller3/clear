@@ -600,6 +600,23 @@ page 'App' at '/':
     display todos as table
 ```
 
+**SSR-default data loading.** For static or catalogue data, use `define X as: look up records in Y` inside a page body instead of `on page load`. The server pre-fetches the data before sending HTML — the page is populated on first paint, no loading flash.
+
+```clear
+page 'Shop' at '/shop':
+  define all_products as: look up records in Products table
+  display all_products as table showing name, price
+```
+
+Opt out for real-time or session-scoped data:
+
+```clear
+page 'Feed' at '/feed':
+  define live_items as: look up records in Posts table
+    fetch this data in the browser, not from the server
+  display live_items as list showing title
+```
+
 **Network graph (force-directed) — fifth chart kind.** Use when records
 reference each other by name in a free-form text field (Lenat `about`,
 CRM contact-deal-company, knowledge-base topic links). Each record

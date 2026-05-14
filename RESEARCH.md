@@ -2,6 +2,10 @@
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
 
+## 2026-05-14 update — SSR default closes the data-flash gap
+
+`define X as: look up records in Y` at page scope now pre-fetches on the server and injects `window.__CLEAR_INITIAL_STATE__` — reactive runtime hydrates on first paint. Curriculum relevance: tasks that check "data appears without a second fetch" or "table is populated on load" are now straightforwardly satisfied by any app using page-level defines, widening the set of synthetic tasks Meph can be scored against. No change to the Factor DB schema; `test_pass` signals still measure compile + endpoint correctness.
+
 ## 2026-05-13 update — Runtime Grammar primitive opens a new app class
 
 The Lenat-in-Clear plan landed Phase 1 (runtime-extensible grammar) on this date. The architectural implication for the training-signal flywheel: Clear can now host a third app class beyond static-form-CRUD and AI-agent-chat — **runtime-grown vocabulary apps**, where users teach the app new concepts after it's deployed.

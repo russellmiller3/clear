@@ -1793,6 +1793,42 @@ secret is env('STRIPE_SECRET')
 
 ---
 
+## Chapter 13c: SSR — Pages That Load Data Instantly
+
+When a page uses `define X as: look up records in Y`, the server fetches the data **before** sending the HTML — so the browser gets a page that's already populated. No loading spinner, no empty table skeleton flickering on screen.
+
+```clear
+build for web and javascript backend
+create a Products table:
+  name is text
+  price is number
+
+page 'Shop' at '/shop':
+  define all_products as: look up records in Products table
+  display all_products as table showing name, price
+```
+
+The route handler for `/shop` runs `db.findAll("products")`, packs the result into `window.__CLEAR_INITIAL_STATE__`, and injects it into the HTML response. The reactive JavaScript picks it up on first paint.
+
+**When to opt out:** use `fetch this data in the browser, not from the server` for data that changes every second, or data scoped to the user's session:
+
+```clear
+page 'Feed' at '/feed':
+  define live_posts as: look up records in Posts table
+    fetch this data in the browser, not from the server
+  display live_posts as list showing title
+```
+
+The inline comma form works too:
+
+```clear
+  define live_posts as: look up records in Posts table, fetch this data in the browser, not from the server
+```
+
+If a page has no `define` lookups at all (it's a form, a static page, or only uses `on page load`), the SSR path is skipped entirely and the page serves as a normal static HTML file.
+
+---
+
 ## Chapter 15: Modules (When One File Isn't Enough)
 
 Reference chapter. Deal-desk fits in one file because the tutorial kept it that way on purpose — but the moment your app grows past a few hundred lines, you'll want to split shared helpers, frontend pages, and the backend into separate `.clear` files. This chapter shows the import shape.

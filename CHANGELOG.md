@@ -1,3 +1,11 @@
+## 2026-05-14 — SSR-default: pages pre-fetch data on the server (feature/ssr-default-v2)
+
+`define X as: look up records in Y` inside a page body now triggers server-side pre-fetch. The route handler runs `db.findAll()` before `res.send()`, serializes the result into `window.__CLEAR_INITIAL_STATE__`, and injects it as an inline `<script>` immediately after `<body>`. The reactive runtime hydrates via `Object.assign(_state, window.__CLEAR_INITIAL_STATE__)` before `_recompute()` fires — no loading flash.
+
+Opt out with `fetch this data in the browser, not from the server` (indented under the define, or inline after a comma) — sets `clientOnly:true`, compiler skips it in the SSR path.
+
+7 new tests in `ssr-default.test.js`. All 8 core templates smoke-test clean.
+
 ## 2026-05-14 — todo-fullstack template: Categories seeded via `with rows:`
 
 `apps/todo-fullstack/main.clear` migrated so Work / Personal / Shopping categories are declared inside the `create a Categories table:` block using `with rows:` instead of being created at runtime by the `/api/seed` endpoint. The seed endpoint now only creates the five Todos, referencing category IDs 1–3 which are guaranteed by insertion order at app startup. 3192/3192 tests pass.

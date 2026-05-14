@@ -465,6 +465,15 @@ Full RL design: `RESEARCH.md`.
 - **Phase 6 (Lenat-in-Clear): provider routing for `ask ai` (2026-05-13)** — top-level `ai provider is openrouter|google|openai` + per-call `via provider 'X'` clause on ASK_AI / STREAM_AI / CLASSIFY. Runtime helper routes to the right HTTP shape (Anthropic, OpenRouter, Gemini direct, OpenAI). Resolution order: per-call > `CLEAR_AI_PROVIDER` env > top-level decl > anthropic default.
 
 
+## Phase SSR (2026-05-14) — COMPLETE
+
+Server-side rendering default for page-level data lookups.
+
+- **Parser:** `fetch this data in the browser, not from the server` directive (indented or inline) sets `clientOnly:true` on a CRUD lookup node. Multi-line and inline-comma forms both work.
+- **Compiler:** route handlers for pages with non-`clientOnly` `define X as: look up` nodes are now `async` handlers that pre-fetch via `db.findAll()` and inject `window.__CLEAR_INITIAL_STATE__` as an inline `<script>` after `<body>`.
+- **Runtime:** `Object.assign(_state, window.__CLEAR_INITIAL_STATE__)` hydrates on first paint before `_recompute()` fires.
+- 7 new tests in `ssr-default.test.js`. All 8 core templates smoke-test clean (0 errors).
+
 ## Phase 5.5 (2026-05-13) — COMPLETE
 
 Five new DaisyUI form widgets + a fourth Clear theme. Generic primitives that

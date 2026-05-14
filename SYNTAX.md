@@ -772,6 +772,38 @@ on page load:
   get users from '/api/users'
 ```
 
+## SSR Default — Pre-fetching Page Data
+
+Pages fetch data on the server before sending HTML. The browser gets pre-loaded
+data on first paint — no loading flash, no empty table skeleton.
+
+```clear
+# SSR-default: server pre-fetches before sending the page
+page 'Shop' at '/shop':
+  define all_products as: look up records in Products table
+  display all_products as table showing name, price
+
+# Opt out — fetch in the browser instead (for real-time or auth-scoped data)
+page 'Map' at '/map':
+  define nearby_stores as: look up records in Locations table
+    fetch this data in the browser, not from the server
+  display nearby_stores as table showing name
+
+# Inline opt-out form (same line, after a comma)
+page 'Live Feed' at '/feed':
+  define feed_items as: look up records in Posts table, fetch this data in the browser, not from the server
+  display feed_items as list showing title
+```
+
+The route handler for SSR pages runs `db.findAll()` before `res.send()` and
+injects `window.__CLEAR_INITIAL_STATE__` into the HTML. The reactive runtime
+hydrates from that state on first paint instead of making a second fetch.
+
+Use the opt-out directive for:
+- Real-time data that changes faster than a page load (use `on page load` instead)
+- Data scoped to a browser session cookie
+- Browser-only state that has no server equivalent
+
 ## Components
 
 ```clear
