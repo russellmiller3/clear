@@ -1,3 +1,32 @@
+## 2026-05-14 — Phase 4 (WORKFLOW user-input) + compiler quality push
+
+Big day across three tracks: the dialog primitive landed as a WORKFLOW extension (not a parallel `dialog with state` — that was the DRY check that turned ~150 LOC into ~50), four first-class warnings now surface previously-silent compile decisions, and the Lenat-clear consumer app got a 7-pane frontend parity push.
+
+**Phase 4 — WORKFLOW user-input step** (`feature/dialog-runtime`, 2 commits, 9/10 tests pass):
+- New step variant: `step 'Ask name' awaits user input as state's reply`
+- When ANY workflow step is user_input, the compiler emits a session-scoped multi-turn shape: `<wfslug>_sessions` table + POST /api/workflow/<name>/start + POST /api/workflow/<name>/respond + a switch over current step
+- Lenat's hand-rolled flow.js (343 LOC) collapses to a Clear `workflow` block (~30 LOC) using existing WORKFLOW machinery + the new step kind
+- Python parity emit (FastAPI flavor — @app.post, db.create_table, json.dumps, if/elif step switch) lands in the same commit as JS per the cross-target parity rule
+
+**Compiler error gaps** (`feature/compiler-error-gaps-v2`, 2 of 4 checks shipped + 2 deferred):
+- Check 1 (5768ee5): duplicate-table detector — catches `create a X table` + another `create a X table` (or runtime grammar with same storage table) at compile time. Was crashing servers at startup with `SyntaxError: Identifier 'XSchema' already declared`.
+- Check 2 (872ef75): auto-id collision detector — catches `create a X table:` that declares its own `id is text` field. Was crashing SQLite at startup with `duplicate column name: id`. Tells the user Clear adds id automatically.
+- Checks 3 + 4 (38f80bd): deferred — the page-CRUD top-level-await case is already fixed at source (b536b37), and missing-runtime-helper is already fixed at build (8875f34). The emit-side checks would catch ~16 false-positives in the existing test corpus; not worth the refactor.
+
+**First-class warnings** (`feature/first-class-warnings`, 4 of 4):
+- W1 (5fbf14f): target auto-inference — when no `target:` directive sits at the top and inference picks `both`/`backend`, surface that with the override syntax.
+- W2 (f3e3bb6): runtime-grammar table-dedup skip — when a runtime grammar's storage table is ALSO declared as `create a X table`, name the dedup explicitly so devs know which declaration won.
+- W3 (f3e3bb6): page-CRUD-frontend-only — when a page-level `define X as: look up ...` gets dropped from backend mode (because top-level await crashes Node), name the dropped variable + page + the hoist-into-endpoint fix.
+- W4 (f3e3bb6): build-runtime-helper-copy info — when `clear build` copies grammar-matcher.js or slot-extractors.js into clear-runtime/ because the emit needs them, surface that info-tier so the build dir contents don't surprise.
+
+**Lenat-clear consumer app** (its own repo, on `main`):
+- 7-pane frontend parity push: sparklines on Today's Energy + Mood stat cards; split-pane detail views on Capabilities and Knowledge; kind-filter dropdown above Knowledge; help modal inline on every page; Trace event-type + time-range filters; Chat six quick-chip prefill buttons; sidebar footer with concept/record counts + Live label. Each pane its own commit on `feature/ux-parity-in-scope-v2`, all 7 merged to main.
+- New `scripts/parity-structural.mjs` (zero-dep HTTP fetch comparison), `scripts/parity-screenshot.mjs` (Playwright visual side-by-side report), `scripts/parity-clickthrough.mjs` (every interactive control exercised). Three-script regression net for "does Lenat-clear match Node Lenat pane-for-pane."
+
+**Full test suite**: 3176 → 3184 → 3176 across the day (the +8 from compiler error gap checks dropped to 3176 after deferring 3+4; net +0). 0 failures throughout.
+
+The day's load-bearing claim: Lenat-clear is now demoable side-by-side with Node Lenat. Every pane exists, every control works, every parity test runs. The substrate story for Marcus is now showable.
+
 ## 2026-05-13 — Phase 1.10: GRAMMAR_MATCH_CALL wired
 
 The Phase 9 audit of Lenat-in-Clear surfaced a gap: `GRAMMAR_MATCH_CALL` was declared as a node type in parser.js:495 back in Phase 1 but never actually parsed. The intent.md note "reserved for Phase 2 wiring" was literal — that wiring never landed. Without it, no `.clear`-source `test 'X':` block could exercise the runtime-grammar matcher, blocking the entire 85-test parity sweep against Node Lenat's 126-test corpus.

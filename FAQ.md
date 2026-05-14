@@ -1,5 +1,33 @@
 # Clear FAQ
 
+## How do I make a multi-turn conversation in Clear? (2026-05-14)
+
+Use a `workflow` block with a `step ... awaits user input` step. The compiler emits a session-scoped multi-turn shape: a `<wfslug>_sessions` table that holds state across HTTP requests, and two endpoints (`POST /api/workflow/<name>/start` to open a session, `POST /api/workflow/<name>/respond` to advance it).
+
+```
+workflow 'main flow' with state:
+  state has:
+    last_response is text, default ''
+    awaiting is text, default ''
+
+  step 'parse' with 'Concept Matcher' saves to state's last_response
+  step 'ask for slot' awaits user input as state's awaiting
+  step 'act' with 'Internal Action Runner'
+```
+
+The user-input step ENDS the current /respond response. The next /respond call resumes from the next step in the workflow body.
+
+Added 2026-05-14 as a WORKFLOW extension. The original Phase 4 plan called for a parallel `dialog with state:` primitive; the DRY check showed WORKFLOW already had everything except pause-for-user-message, so we extended instead of paralleled. See `plans/plan-lenat-in-clear-2026-05-13.md` Phase 4 + the CHANGELOG entry for the design path.
+
+## What silent decisions does the compiler make, and how do I see them? (2026-05-14)
+
+Four compile-time warnings surface decisions Clear used to make silently. Look in `result.warnings` (or the CLI output):
+
+- **`target-auto-inferred`** — when no `target:` directive sits at the top of the file, the compiler picks one based on what's in the source (pages + endpoints → `both`, endpoints only → `backend`, otherwise `web`). The warning names the inferred target and the override syntax.
+- **`runtime-grammar-table-dedup`** — when a runtime grammar's `storage table is X` AND a `create a X table` both declare the same table, the compiler uses the explicit table definition and the runtime grammar reads from it. Warning names both.
+- **`page-crud-frontend-only`** — when a `page` body has a `define X as: look up ...`, that lookup runs CLIENT-SIDE (the frontend calls the API). The backend output skips it. Warning suggests hoisting into an explicit `when user calls GET /api/X:` endpoint if you wanted server-side fetching.
+- **`runtime-helper-copied`** (info tier) — when `clear build` copies grammar-matcher.js or slot-extractors.js into clear-runtime/ because the emit needs them, surface the copy so the build dir contents aren't a mystery.
+
 ## Where does the network-graph chart kind live? (2026-05-13)
 
 A fifth CHART kind alongside line / bar / pie / area. Trigger it with

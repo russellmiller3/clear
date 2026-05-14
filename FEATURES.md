@@ -443,6 +443,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | State shape | `state has:` + field definitions | Typed state |
 | Step | `step 'Name' with 'Agent'` | Delegates to agent |
 | Step with save | `step 'Name' with 'Agent' saves to state's field` | |
+| User-input step | `step 'Ask name' awaits user input as state's reply` | Pauses workflow at this step. Compiler emits a session table + `/api/workflow/<name>/start` + `/respond` endpoints; the workflow resumes when the user posts the next message. Added 2026-05-14 as a WORKFLOW extension (replaces the planned-but-unbuilt `dialog with state` primitive — DRY check showed WORKFLOW already had state, steps, conditionals; only the pause-for-user-message capability was missing). |
 | Conditional step | `if state's field is value:` + steps | |
 | Repeat until | `repeat until condition, max N times:` + steps | |
 | Parallel steps | `at the same time:` + steps | |
