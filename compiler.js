@@ -8651,6 +8651,35 @@ function _compileNodeInner(node, ctx) {
       return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}\n${_registration}`;
     }
 
+    case NodeType.MATCH_CONDITIONAL: {
+      // `if there's a match:` / `if no match:` — pairs with SEARCH_FOR.
+      // Plain branch over the `match` variable bound by P1.
+      const match_body_code = compileBody(node.matchBody || [], ctx);
+      const no_match_body_code = compileBody(node.noMatchBody || [], ctx);
+      const has_match_body = (node.matchBody || []).length > 0;
+      const has_no_match_body = (node.noMatchBody || []).length > 0;
+      if (ctx.lang === 'python') {
+        let py = '';
+        if (has_match_body) {
+          py += `${pad}if match:\n${match_body_code}\n`;
+        }
+        if (has_no_match_body) {
+          py += `${pad}${has_match_body ? 'else:\n' : 'if not match:\n'}${no_match_body_code}`;
+        }
+        return py;
+      }
+      let js = '';
+      if (has_match_body) {
+        js += `${pad}if (match) {\n${match_body_code}\n${pad}}`;
+      }
+      if (has_no_match_body) {
+        js += has_match_body
+          ? ` else {\n${no_match_body_code}\n${pad}}`
+          : `${pad}if (!match) {\n${no_match_body_code}\n${pad}}`;
+      }
+      return js;
+    }
+
     case NodeType.SEARCH_FOR: {
       // Text-prefix-match dispatcher over a table. The emitted JS reads
       // every row, lowercases the input, and tests starts-with against

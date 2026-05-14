@@ -216,6 +216,13 @@ export const NodeType = Object.freeze({
   // an implicit `match` variable usable in the next conditional.
   SEARCH_FOR: 'search_for',
 
+  // Conditional binding paired with SEARCH_FOR. Shape:
+  //   `if there's a match:` <body>
+  //   `if no match:` <body>
+  // Compiles to a plain `if (match) { ... } else { ... }` against the
+  // `match` variable bound by the preceding SEARCH_FOR. Added 2026-05-14.
+  MATCH_CONDITIONAL: 'match_conditional',
+
   // Workflow primitives (Phases 85-90)
   WORKFLOW: 'workflow',
   RUN_WORKFLOW: 'run_workflow',
@@ -2115,6 +2122,53 @@ const CANONICAL_DISPATCH = new Map([
       }
       // Fall through to normal if/guard handling
     }
+
+    // `if there's a match:` / `if no match:` — the conditional binding
+    // that pairs with the search-for primitive (P1). Added 2026-05-14
+    // as P2 of the text-routing primitives plan. Detected by exact-token
+    // sequence so it doesn't compete with general boolean if-expressions.
+    // Tokenizer notes: `there's` splits into `there` + `'s`. So the
+    // canonical sequence is: `if`, `there`, `'s`, `a`, `match`.
+    {
+      const tk_values = ctx.tokens.map(t => String(t.value).toLowerCase());
+      const is_theres_a_match =
+        tk_values[1] === 'there' &&
+        tk_values[2] === "'s" &&
+        tk_values[3] === 'a' &&
+        tk_values[4] === 'match';
+      const is_no_match =
+        tk_values[1] === 'no' &&
+        tk_values[2] === 'match';
+      if (is_theres_a_match || is_no_match) {
+        // Walk subsequent lines deeper-indented than the current line —
+        // those are the conditional body. parseBlock returns body + endIdx.
+        const block_result = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+        // Locate an existing MATCH_CONDITIONAL sibling we should attach to.
+        // The pattern is:
+        //   search for X in T by F
+        //   if there's a match: ...
+        //   if no match: ...
+        // We attach the no-match block to the prior MATCH_CONDITIONAL if
+        // one exists immediately above; otherwise we create a new node.
+        const last_sibling = ctx.body.length > 0 ? ctx.body[ctx.body.length - 1] : null;
+        if (last_sibling && last_sibling.type === NodeType.MATCH_CONDITIONAL) {
+          if (is_theres_a_match) {
+            last_sibling.matchBody = block_result.body || [];
+          } else {
+            last_sibling.noMatchBody = block_result.body || [];
+          }
+          return block_result.endIdx;
+        }
+        ctx.body.push({
+          type: NodeType.MATCH_CONDITIONAL,
+          matchBody: is_theres_a_match ? (block_result.body || []) : [],
+          noMatchBody: is_no_match ? (block_result.body || []) : [],
+          line: ctx.line,
+        });
+        return block_result.endIdx;
+      }
+    }
+
     // Guard: "check X, otherwise error 'msg'" (check tokenizes as 'if')
     let otherwiseIdx = -1;
     for (let k = 1; k < ctx.tokens.length; k++) {
