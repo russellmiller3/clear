@@ -2266,6 +2266,19 @@ export function compile(ast, options = {}) {
   function inferTarget(body) {
     const hasEndpoint = body.some(n => n.type === NodeType.ENDPOINT);
     const hasPage = body.some(n => n.type === NodeType.PAGE);
+    // A workflow with at least one user-input step emits HTTP endpoints
+    // (/api/workflow/<name>/start + /respond), so it implies a JS backend
+    // target even without an explicit `when user calls X` endpoint in the
+    // source. Without this, a workflow-only file silently picks 'web' and
+    // the emit never reaches result.serverJS.
+    const hasUserInputWorkflow = body.some(n =>
+      n.type === NodeType.WORKFLOW && (n.steps || []).some(s => s && s.kind === 'user_input')
+    );
+    // User-input workflows emit /api endpoints that need to be CALLED by something
+    // — typically a page hosting a chat composer. Default to 'both' so the
+    // compiler produces serverJS + index.html. Devs who want backend-only
+    // can still set `target: backend` explicitly.
+    if (hasUserInputWorkflow) return 'both';
     if (hasEndpoint && hasPage) return 'both';
     if (hasEndpoint) return 'backend';
     return 'web';
@@ -6275,6 +6288,18 @@ function compileWorkflow(node, ctx, pad) {
 
   const stateVarName = sanitizeName(node.stateVar);
 
+  // If ANY step in this workflow awaits user input, this is a multi-turn flow
+  // that must persist state across HTTP requests. Emit a session-scoped shape
+  // (Phase 4 extension, 2026-05-14): session table + /start + /respond
+  // endpoints + a switch that pauses on each user_input step.
+  const hasUserInputStep = (node.steps || []).some(s => s && s.kind === 'user_input');
+  if (hasUserInputStep && ctx.lang !== 'python') {
+    return compileWorkflowWithUserInputJS(node, ctx, pad);
+  }
+  if (hasUserInputStep && ctx.lang === 'python') {
+    return compileWorkflowWithUserInputPython(node, ctx, pad);
+  }
+
   // Build state initialization with defaults from state has:
   let stateInit = `${innerPad}let _state = Object.assign({`;
   const defaults = node.stateFields.map(f => {
@@ -6613,6 +6638,181 @@ function compileWorkflow(node, ctx, pad) {
       code += `${pad}async function ${agentFnName}(state) { return state; }`;
     }
   }
+
+  return code;
+}
+
+// =============================================================================
+// WORKFLOW WITH USER INPUT — session-scoped multi-turn extension
+// =============================================================================
+//
+// When a workflow has at least one `step X awaits user input as state's Y`,
+// the workflow can no longer run as a single async function — state has to
+// persist across HTTP requests because each user_input step ENDS the
+// current response and waits for the next /respond call.
+//
+// Emit shape (JS):
+//   - session table `<wfname>_sessions` with state_json + awaiting_step
+//   - POST /api/workflow/<name>/start — creates a session, returns id + first awaiting step
+//   - POST /api/workflow/<name>/respond — loads session, applies user message, advances
+//   - A step switch in /respond that dispatches by current step name. user_input
+//     steps fold the user message into state's <savesTo> field and advance.
+//
+// This is the Phase 4 capability done as a WORKFLOW extension (DRY-checked
+// 2026-05-14 — see plan-lenat-in-clear-2026-05-13.md Phase 4).
+// =============================================================================
+
+function compileWorkflowWithUserInputJS(node, ctx, pad) {
+  const wfName = node.name;
+  // Slug strips all non-alphanumerics — "main flow" → "mainflow". The session
+  // table name `<slug>_sessions` then reads naturally without double underscores.
+  const wfSlug = wfName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wfRoute = wfName.toLowerCase().replace(/\s+/g, '-');
+  const sessionTable = `${wfSlug}_sessions`;
+
+  // Initial state shape from `state has:` defaults.
+  const stateDefaults = (node.stateFields || []).map(f => {
+    let val = 'null';
+    if (f.default !== null && f.default !== undefined) {
+      if (typeof f.default === 'string') val = JSON.stringify(f.default);
+      else if (typeof f.default === 'boolean') val = String(f.default);
+      else val = String(f.default);
+    }
+    return `${sanitizeName(f.name)}: ${val}`;
+  }).join(', ');
+
+  // Find the first step name — that's what /start hands back as the awaiting step.
+  const firstStep = node.steps && node.steps[0];
+  const firstStepName = firstStep ? firstStep.name : '';
+
+  let code = `${pad}// === WORKFLOW '${wfName}' — multi-turn (session-scoped) ===\n`;
+  code += `${pad}// User-input steps pause the flow at each await; /start opens a session,\n`;
+  code += `${pad}// /respond folds user replies into state and advances the awaiting step.\n`;
+  code += `${pad}db.createTable('${sessionTable}', {\n`;
+  code += `${pad}  state_json: { type: 'text', required: true },\n`;
+  code += `${pad}  awaiting_step: { type: 'text' },\n`;
+  code += `${pad}  started_at: { type: 'timestamp', auto: true },\n`;
+  code += `${pad}  updated_at: { type: 'timestamp' },\n`;
+  code += `${pad}});\n\n`;
+
+  // /start endpoint — fresh session.
+  code += `${pad}app.post('/api/workflow/${wfRoute}/start', async (req, res) => {\n`;
+  code += `${pad}  const _state = { ${stateDefaults} };\n`;
+  code += `${pad}  const _session = await db.insert('${sessionTable}', {\n`;
+  code += `${pad}    state_json: JSON.stringify(_state),\n`;
+  code += `${pad}    awaiting_step: ${JSON.stringify(firstStepName)},\n`;
+  code += `${pad}    updated_at: new Date().toISOString(),\n`;
+  code += `${pad}  });\n`;
+  code += `${pad}  res.json({ session_id: _session.id, awaiting_step: ${JSON.stringify(firstStepName)} });\n`;
+  code += `${pad}});\n\n`;
+
+  // /respond endpoint — load session, switch on awaiting step, advance.
+  code += `${pad}app.post('/api/workflow/${wfRoute}/respond', async (req, res) => {\n`;
+  code += `${pad}  const _session = await db.findOne('${sessionTable}', { id: req.body.session_id });\n`;
+  code += `${pad}  if (!_session) { res.status(404).json({ error: 'session not found' }); return; }\n`;
+  code += `${pad}  const _state = JSON.parse(_session.state_json);\n`;
+  code += `${pad}  const _msg = (req.body && req.body.message != null) ? String(req.body.message) : '';\n`;
+  code += `${pad}  let _nextStep = null;\n`;
+  code += `${pad}  switch (_session.awaiting_step) {\n`;
+
+  // One case per step. user_input steps fold _msg into state's savesTo,
+  // then point at the next step. (Agent/conditional/etc inside the same
+  // user-input-bearing workflow get inlined here in a follow-up commit.)
+  const steps = node.steps || [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const nextName = (i + 1 < steps.length) ? steps[i + 1].name : null;
+    code += `${pad}    case ${JSON.stringify(step.name)}: {\n`;
+    if (step.kind === 'user_input' && step.savesTo) {
+      code += `${pad}      _state.${sanitizeName(step.savesTo)} = _msg;\n`;
+    }
+    code += `${pad}      _nextStep = ${nextName ? JSON.stringify(nextName) : 'null'};\n`;
+    code += `${pad}      break;\n`;
+    code += `${pad}    }\n`;
+  }
+
+  code += `${pad}    default: res.status(400).json({ error: 'unknown step: ' + _session.awaiting_step }); return;\n`;
+  code += `${pad}  }\n`;
+  code += `${pad}  await db.update('${sessionTable}', _session.id, {\n`;
+  code += `${pad}    state_json: JSON.stringify(_state),\n`;
+  code += `${pad}    awaiting_step: _nextStep,\n`;
+  code += `${pad}    updated_at: new Date().toISOString(),\n`;
+  code += `${pad}  });\n`;
+  code += `${pad}  res.json({ session_id: _session.id, awaiting_step: _nextStep, state: _state, done: _nextStep === null });\n`;
+  code += `${pad}});\n`;
+
+  return code;
+}
+
+function compileWorkflowWithUserInputPython(node, ctx, pad) {
+  // Python parity emit for the session-scoped workflow shape. Same primitives
+  // (session table + start/respond endpoints + step switch), FastAPI flavor.
+  const wfName = node.name;
+  // Slug strips all non-alphanumerics — "main flow" → "mainflow". The session
+  // table name `<slug>_sessions` then reads naturally without double underscores.
+  const wfSlug = wfName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wfRoute = wfName.toLowerCase().replace(/\s+/g, '-');
+  const sessionTable = `${wfSlug}_sessions`;
+
+  const stateDefaults = (node.stateFields || []).map(f => {
+    let val = 'None';
+    if (f.default !== null && f.default !== undefined) {
+      if (typeof f.default === 'string') val = JSON.stringify(f.default);
+      else if (typeof f.default === 'boolean') val = f.default ? 'True' : 'False';
+      else val = String(f.default);
+    }
+    return `'${sanitizeName(f.name)}': ${val}`;
+  }).join(', ');
+
+  const firstStep = node.steps && node.steps[0];
+  const firstStepName = firstStep ? firstStep.name : '';
+
+  let code = `${pad}# === WORKFLOW '${wfName}' — multi-turn (session-scoped) ===\n`;
+  code += `${pad}# /start opens a session; /respond folds user replies into state and advances.\n`;
+  code += `${pad}db.create_table('${sessionTable}', {\n`;
+  code += `${pad}  'state_json': {'type': 'text', 'required': True},\n`;
+  code += `${pad}  'awaiting_step': {'type': 'text'},\n`;
+  code += `${pad}  'started_at': {'type': 'timestamp', 'auto': True},\n`;
+  code += `${pad}  'updated_at': {'type': 'timestamp'},\n`;
+  code += `${pad}})\n\n`;
+
+  code += `${pad}@app.post('/api/workflow/${wfRoute}/start')\n`;
+  code += `${pad}async def workflow_${wfSlug}_start():\n`;
+  code += `${pad}  _state = { ${stateDefaults} }\n`;
+  code += `${pad}  _session = db.insert('${sessionTable}', {\n`;
+  code += `${pad}    'state_json': json.dumps(_state),\n`;
+  code += `${pad}    'awaiting_step': ${JSON.stringify(firstStepName)},\n`;
+  code += `${pad}    'updated_at': datetime.utcnow().isoformat(),\n`;
+  code += `${pad}  })\n`;
+  code += `${pad}  return {'session_id': _session['id'], 'awaiting_step': ${JSON.stringify(firstStepName)}}\n\n`;
+
+  code += `${pad}@app.post('/api/workflow/${wfRoute}/respond')\n`;
+  code += `${pad}async def workflow_${wfSlug}_respond(req: dict):\n`;
+  code += `${pad}  _session = db.find_one('${sessionTable}', {'id': req.get('session_id')})\n`;
+  code += `${pad}  if not _session: return JSONResponse({'error': 'session not found'}, status_code=404)\n`;
+  code += `${pad}  _state = json.loads(_session['state_json'])\n`;
+  code += `${pad}  _msg = str(req.get('message') or '')\n`;
+  code += `${pad}  _next_step = None\n`;
+  code += `${pad}  _aw = _session['awaiting_step']\n`;
+
+  const steps = node.steps || [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const nextName = (i + 1 < steps.length) ? steps[i + 1].name : null;
+    code += `${pad}  ${i === 0 ? 'if' : 'elif'} _aw == ${JSON.stringify(step.name)}:\n`;
+    if (step.kind === 'user_input' && step.savesTo) {
+      code += `${pad}    _state['${sanitizeName(step.savesTo)}'] = _msg\n`;
+    }
+    code += `${pad}    _next_step = ${nextName ? JSON.stringify(nextName) : 'None'}\n`;
+  }
+  code += `${pad}  else:\n`;
+  code += `${pad}    return JSONResponse({'error': 'unknown step: ' + str(_aw)}, status_code=400)\n`;
+  code += `${pad}  db.update('${sessionTable}', _session['id'], {\n`;
+  code += `${pad}    'state_json': json.dumps(_state),\n`;
+  code += `${pad}    'awaiting_step': _next_step,\n`;
+  code += `${pad}    'updated_at': datetime.utcnow().isoformat(),\n`;
+  code += `${pad}  })\n`;
+  code += `${pad}  return {'session_id': _session['id'], 'awaiting_step': _next_step, 'state': _state, 'done': _next_step is None}\n`;
 
   return code;
 }

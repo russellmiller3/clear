@@ -5088,31 +5088,64 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
     if (sTokens.length === 0) { bodyStartIdx++; continue; }
     const sLine = sTokens[0].line;
 
-    // step 'Name' with 'Agent Name'
+    // step 'Name' with 'Agent Name' [saves to state's field]
+    //   OR
+    // step 'Name' awaits user input as state's field    (DRY extension)
+    //   The user-input variant pauses the workflow at this step. The compiler
+    //   emits a session-scoped table + HTTP start/respond endpoints, ending
+    //   the response on this step name and resuming when the user posts the
+    //   next message. Cleaner than a parallel `dialog` primitive — the
+    //   WORKFLOW machinery (state, steps, conditionals, parallel-steps,
+    //   repeat-until) is reused; this just adds one more step kind.
     if (sTokens[0].value === 'step' && sTokens.length >= 4 && sTokens[1].type === TokenType.STRING) {
       const stepName = sTokens[1].value;
       let agentName = null;
       let savesTo = null;
+      // Detect `awaits user input` anywhere in the token stream. The phrase
+      // can sit before or after `as state's field`; both shapes parse the
+      // same way. `await` is the canonical singular if the tokenizer
+      // collapses it.
+      const rawTokens = sTokens.map(tk => tk.value).join(' ');
+      const isUserInputStep = /\bawaits?\s+user\s+input\b/i.test(rawTokens);
       for (let t = 2; t < sTokens.length; t++) {
         if ((sTokens[t].value === 'with' || sTokens[t].canonical === 'with') && t + 1 < sTokens.length && sTokens[t + 1].type === TokenType.STRING) {
           agentName = sTokens[t + 1].value; t++;
         }
         if ((sTokens[t].canonical === 'saves_to' || sTokens[t].value === 'saves') && t + 1 < sTokens.length) {
-          // saves to state's field — "saves to" may be a single multi-word token (canonical saves_to)
+          // saves to state's field — "saves to" may be a single multi-word token (canonical saves_to).
+          // Walk tokens explicitly: skip "to", skip stateVar, skip apostrophe-s,
+          // take the next token. Same shape as the user-input destination parse.
           let nextIdx = t + 1;
-          // If "saves" and "to" are separate tokens, skip "to"
           if (sTokens[t].value === 'saves' && nextIdx < sTokens.length && (sTokens[nextIdx].value === 'to' || sTokens[nextIdx].canonical === 'to_connector')) nextIdx++;
-          const remaining = sTokens.slice(nextIdx).map(tk => tk.value).join(' ');
-          // Strip possessive state reference: "state's sentiment" → "sentiment"
-          savesTo = remaining.replace(stateVar + "'s ", '').replace("'s ", '');
-          if (!savesTo) savesTo = remaining;
+          if (nextIdx < sTokens.length && sTokens[nextIdx].value === stateVar) nextIdx++;
+          if (nextIdx < sTokens.length && sTokens[nextIdx].value === "'s") nextIdx++;
+          if (nextIdx < sTokens.length) savesTo = sTokens[nextIdx].value;
+          t = sTokens.length;
+        }
+        // user-input destination: `as state's field` after `awaits user input`.
+        // The tokenizer can split `state's reply` as one possessive token,
+        // as ["state", "'s", "reply"], or even as ["state", "reply"] (apostrophe-s
+        // eaten as whitespace). Walk tokens explicitly: skip the stateVar word
+        // and any apostrophe-s remnant, then take the next token as the field.
+        if (isUserInputStep && sTokens[t].value === 'as' && t + 1 < sTokens.length) {
+          let nextIdx = t + 1;
+          if (sTokens[nextIdx].value === stateVar) nextIdx++;
+          if (nextIdx < sTokens.length && sTokens[nextIdx].value === "'s") nextIdx++;
+          if (nextIdx < sTokens.length) savesTo = sTokens[nextIdx].value;
           t = sTokens.length;
         }
       }
-      if (!agentName) {
-        errors.push({ line: sLine, message: `step '${stepName}' needs an agent. Example: step '${stepName}' with 'Agent Name'` });
+      if (isUserInputStep) {
+        if (!savesTo) {
+          errors.push({ line: sLine, message: `step '${stepName}' awaits user input but has no destination field. Example: step '${stepName}' awaits user input as state's reply` });
+        }
+        steps.push({ kind: 'user_input', name: stepName, savesTo, line: sLine });
+      } else {
+        if (!agentName) {
+          errors.push({ line: sLine, message: `step '${stepName}' needs an agent. Example: step '${stepName}' with 'Agent Name'` });
+        }
+        steps.push({ kind: 'step', name: stepName, agentName, savesTo, line: sLine });
       }
-      steps.push({ kind: 'step', name: stepName, agentName, savesTo, line: sLine });
       bodyStartIdx++;
       continue;
     }
