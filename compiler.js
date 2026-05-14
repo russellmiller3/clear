@@ -2270,7 +2270,23 @@ export function compile(ast, options = {}) {
     if (hasEndpoint) return 'backend';
     return 'web';
   }
-  const target = options.target || ast.target || inferTarget(ast.body || []);
+  const explicitTarget = options.target || ast.target;
+  const inferredTarget = inferTarget(ast.body || []);
+  const target = explicitTarget || inferredTarget;
+  // First-class warning: surface auto-inference so devs know Clear picked a target.
+  // Silent inference bit Lenat (a Records page + DELETE endpoint silently shipped
+  // web-only). If a dev never wrote `target:` AND inference picked anything other
+  // than the obvious web default, say so plainly with the override syntax.
+  if (!explicitTarget && inferredTarget !== 'web') {
+    const reason = inferredTarget === 'both'
+      ? 'this file has both pages and endpoints'
+      : 'this file has endpoints but no pages';
+    warnings.push({
+      kind: 'target-auto-inferred',
+      line: 0,
+      message: `Build target auto-inferred as '${inferredTarget}' (${reason}). Add \`target: web\` or \`target: backend\` at the top of the file to control this explicitly.`,
+    });
+  }
   const sourceMap = options.sourceMap === true; // opt-in
 
   const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend', 'cloudflare'];
