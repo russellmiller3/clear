@@ -7156,6 +7156,17 @@ function parseStatCard(lines, startIdx, blockIndent, errors) {
   const card = { type: NodeType.STAT_CARD, label, value: null, delta: null, sparkline: null, icon: null, line };
   let j = startIdx + 1;
 
+  // Tiny local helper — find the `taking` token index in a token slice, or
+  // return tokens.length if absent. Used by the sparkline parse below to
+  // split `sparkline showing X taking 'Y'` into the expression part and the
+  // field-name part.
+  function _findTakingIdx(toks, from) {
+    for (let i = from; i < toks.length; i++) {
+      if (toks[i] && toks[i].value === 'taking') return i;
+    }
+    return toks.length;
+  }
+
   while (j < lines.length && lines[j].indent > blockIndent) {
     const childTokens = lines[j].tokens || [];
     if (childTokens.length === 0) { j++; continue; }
@@ -7181,9 +7192,25 @@ function parseStatCard(lines, startIdx, blockIndent, errors) {
     }
 
     if (first === 'sparkline') {
-      const parsed = parseExpression(childTokens, 1, childLine);
+      // Accept all four forms:
+      //   sparkline [1, 2, 3]                          — literal sample data
+      //   sparkline energy_logs                        — variable shorthand
+      //   sparkline showing energy_logs                — explicit (preferred)
+      //   sparkline showing energy_logs taking 'level' — explicit + field
+      // The compiler picks the rendering path (server-side polyline for
+      // literals, client-side data-attribute helper for variables).
+      let exprStart = 1;
+      // Strip optional `showing` connector — pure-sugar word.
+      if (childTokens[exprStart] && childTokens[exprStart].value === 'showing') exprStart++;
+      const parsed = parseExpression(childTokens.slice(0, _findTakingIdx(childTokens, exprStart)), exprStart, childLine);
       if (parsed.error) errors.push({ line: childLine, message: parsed.error });
       else card.sparkline = parsed.node;
+      // Optional `taking 'field'` clause names which numeric field to plot
+      // from each item. Attached to the expression node for the compiler.
+      const takingIdx = _findTakingIdx(childTokens, exprStart);
+      if (takingIdx !== childTokens.length && childTokens[takingIdx + 1] && childTokens[takingIdx + 1].type === TokenType.STRING) {
+        if (card.sparkline) card.sparkline.takingField = String(childTokens[takingIdx + 1].value);
+      }
       j++;
       continue;
     }

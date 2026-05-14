@@ -133,6 +133,55 @@ describe('SPA app primitive — HTML emit (Cycle 11.3)', () => {
     expect(html).toContain('popstate');
   });
 
+  it('sparkline showing X taking field emits a data-sparkline-source attribute', () => {
+    // Data-driven sparkline shape — replaces the hardcoded `[1,2,3]` shape
+    // for production use. The compiler emits a placeholder SVG with the
+    // source variable name as a data-attribute; a client-side helper
+    // walks every such SVG and fills it with a polyline from the runtime value.
+    const source = [
+      "page 'Today' at '/':",
+      "  stat strip:",
+      "    stat card 'Energy':",
+      "      value 7",
+      "      sparkline showing energy_logs taking 'level'",
+      "      icon 'battery-medium'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const html = result.html || result.javascript || '';
+    expect(html).toContain('data-sparkline-source="energy_logs"');
+    expect(html).toContain('data-sparkline-field="level"');
+  });
+
+  it('sparkline VAR shorthand (no `showing`) also emits the data-source', () => {
+    const source = [
+      "page 'Today' at '/':",
+      "  stat strip:",
+      "    stat card 'Energy':",
+      "      value 7",
+      "      sparkline energy_logs",
+      "      icon 'battery-medium'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const html = result.html || result.javascript || '';
+    expect(html).toContain('data-sparkline-source="energy_logs"');
+  });
+
+  it('sparkline [1, 2, 3] literal still renders server-side as a polyline', () => {
+    // Backward-compat — literal numeric arrays still bake the polyline into
+    // the SVG at compile time (no client-side fetch needed).
+    const source = [
+      "page 'Today' at '/':",
+      "  stat strip:",
+      "    stat card 'Energy':",
+      "      value 7",
+      "      sparkline [5, 6, 4, 7, 6, 8, 7]",
+      "      icon 'battery-medium'",
+    ].join('\n');
+    const result = compileProgram(source);
+    const html = result.html || result.javascript || '';
+    expect(html).toContain('<polyline');
+  });
+
   it('default-shows the first pane on initial load', () => {
     const source = [
       "app 'Lenat' at '/':",

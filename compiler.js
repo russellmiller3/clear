@@ -13501,25 +13501,49 @@ ${childHtml}
 
   function statSparklineHTML(expr) {
     if (!expr) return '';
-    if (expr.type !== NodeType.LITERAL_LIST) {
+    // LITERAL LIST path — `sparkline [5, 6, 4, 7, 6, 8, 7]` — render the
+    // polyline server-side. Useful for hand-drawn sample sparklines or fixed
+    // historical data, but most production use should be the data-driven path
+    // below.
+    if (expr.type === NodeType.LITERAL_LIST) {
+      const nums = (expr.elements || [])
+        .filter(item => item && item.type === NodeType.LITERAL_NUMBER)
+        .map(item => Number(item.value));
+      if (nums.length === 0) {
+        return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
+      }
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      const span = max - min || 1;
+      const step = nums.length === 1 ? 0 : 92 / (nums.length - 1);
+      const points = nums.map((num, idx) => {
+        const x = 2 + idx * step;
+        const y = 24 - ((num - min) / span) * 20;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="${attrEsc(points)}"></polyline></svg>`;
+    }
+    // DATA-DRIVEN path — `sparkline showing energy_logs taking 'level'` or
+    // shorthand `sparkline energy_logs`. The compiler doesn't know the values
+    // at build time, so it emits a placeholder SVG with the source name as a
+    // data-attribute. A runtime helper script (injected once per page) reads
+    // the named source from the reactive state, extracts a numeric field, and
+    // renders the polyline client-side.
+    //
+    // 2026-05-14 — added because the previous "any non-literal-list silently
+    // emits an empty SVG" behavior left Russell's stat cards with blank
+    // sparklines that LOOKED like they should be rendering data.
+    // Parser emits `variable_ref` for identifiers in expression position
+    // (e.g. `energy_logs`). Older code paths use IDENTIFIER / VARIABLE — accept all.
+    const sourceName = (expr.type === 'variable_ref' || expr.type === NodeType.IDENTIFIER || expr.type === NodeType.VARIABLE)
+      ? String(expr.name || expr.value || '')
+      : '';
+    const takingField = expr.takingField || ''; // set by parser for `taking 'X'` clause
+    if (!sourceName) {
       return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
     }
-    const nums = (expr.elements || [])
-      .filter(item => item && item.type === NodeType.LITERAL_NUMBER)
-      .map(item => Number(item.value));
-    if (nums.length === 0) {
-      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
-    }
-    const min = Math.min(...nums);
-    const max = Math.max(...nums);
-    const span = max - min || 1;
-    const step = nums.length === 1 ? 0 : 92 / (nums.length - 1);
-    const points = nums.map((num, idx) => {
-      const x = 2 + idx * step;
-      const y = 24 - ((num - min) / span) * 20;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-    return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="${attrEsc(points)}"></polyline></svg>`;
+    const fieldAttr = takingField ? ` data-sparkline-field="${attrEsc(takingField)}"` : '';
+    return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend" data-sparkline-source="${attrEsc(sourceName)}"${fieldAttr}></svg>`;
   }
 
   function statCardHTML(card) {
