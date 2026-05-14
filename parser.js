@@ -281,6 +281,13 @@ export const NodeType = Object.freeze({
 
   // Web app features (Phase 4)
   PAGE: 'page',
+
+  // SPA primitive (added 2026-05-14): `app 'X' at '/': pane 'Y' as 'route': ...`
+  // emits a single HTML shell + client-side router for in-place pane switches.
+  // Different from PAGE (which gets its own route + full reload on nav).
+  APP_BLOCK: 'app_block',
+  PANE: 'pane',
+
   ASK_FOR: 'ask_for',
   DISPLAY: 'display',
   CHART: 'chart',
@@ -1786,6 +1793,19 @@ const CANONICAL_DISPATCH = new Map([
       return parsed.endIdx;
     }
     const parsed = parsePage(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  // SPA primitive: `app 'Lenat' at '/': pane 'Today' as 'today': ...`
+  // Emits a single HTML shell + client-side router instead of one HTML
+  // file per page. Pane switches happen via History API, not full reload.
+  ['app', (ctx) => {
+    // Only fire on the SPA block shape: `app 'Name' ...`. Other uses of `app`
+    // (none currently, but reserve the space) fall through.
+    if (!ctx.tokens[1] || ctx.tokens[1].type !== TokenType.STRING) {
+      return null; // let default token dispatch try
+    }
+    const parsed = parseApp(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -6794,6 +6814,89 @@ function parsePage(lines, startIdx, blockIndent, errors) {
   }
 
   return { node: pageNode(title, body, line, route), endIdx };
+}
+
+// =============================================================================
+// APP BLOCK (SPA primitive, 2026-05-14)
+// =============================================================================
+// Syntax: `app 'Name' at '/path':`
+//   indented body of `pane 'PaneName' as 'routeSlug':` blocks
+//
+// Emits an APP_BLOCK with .panes array of PANE nodes. Each PANE has a name,
+// a route slug, and a body (parsed via parseBlock — same as page bodies).
+function parseApp(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1;
+
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    errors.push({ line, message: "The app needs a name in quotes. Example: app 'Lenat' at '/'" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const name = tokens[pos].value;
+  pos++;
+
+  // Optional `at '/route'` — default to '/' if absent.
+  let route = '/';
+  if (pos < tokens.length && (tokens[pos].value === 'at' || tokens[pos].canonical === 'at')) {
+    pos++;
+    if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+      route = tokens[pos].value;
+    }
+  }
+
+  // Body is a list of `pane 'X' as 'slug':` blocks. We parse the indented
+  // children one-at-a-time so we can call parsePane on each pane block.
+  const panes = [];
+  let i = startIdx + 1;
+  const expectedIndent = blockIndent + 2;
+  while (i < lines.length) {
+    const ln = lines[i];
+    if (!ln.tokens || ln.tokens.length === 0) { i++; continue; }
+    if (ln.indent <= blockIndent) break; // outdent ends the app block
+    if (ln.indent !== expectedIndent) { i++; continue; }
+    const t = ln.tokens;
+    if (t[0].value === 'pane' && t[1] && t[1].type === TokenType.STRING) {
+      const parsed = parsePane(lines, i, expectedIndent, errors);
+      if (parsed.node) panes.push(parsed.node);
+      i = parsed.endIdx;
+      continue;
+    }
+    // Unknown line inside an app block. Skip with a warning to keep parsing.
+    errors.push({ line: t[0].line, message: `Inside an \`app\` block, expected \`pane 'Name' as 'route':\` — got \`${t[0].value || ''}\` instead.` });
+    i++;
+  }
+
+  if (panes.length === 0) {
+    errors.push({ line, message: `app '${name}' is empty — declare at least one \`pane 'X' as 'route':\` inside it.` });
+  }
+
+  return { node: { type: NodeType.APP_BLOCK, name, route, panes, line }, endIdx: i };
+}
+
+// One pane inside an app block: `pane 'Name' as 'route':` + indented body.
+function parsePane(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1;
+  const name = tokens[pos].value;
+  pos++;
+  let routeSlug = '';
+  // Accept `as 'route'`. The route slug is a short string for the URL hash
+  // (or path segment under the app's route).
+  if (pos < tokens.length && (tokens[pos].value === 'as' || tokens[pos].canonical === 'as')) {
+    pos++;
+    if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+      routeSlug = tokens[pos].value;
+    }
+  }
+  if (!routeSlug) {
+    // Auto-slugify from the name if no `as 'X'` given.
+    routeSlug = String(name || 'pane').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!routeSlug) routeSlug = 'pane';
+  }
+  const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+  return { node: { type: NodeType.PANE, name, route: routeSlug, body, line }, endIdx };
 }
 
 // =============================================================================

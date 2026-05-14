@@ -13580,6 +13580,65 @@ ${bodyHTML}
   function walk(nodes) {
     for (const node of nodes) {
       switch (node.type) {
+        // SPA primitive: emit a single shell with all panes wrapped in
+        // [data-pane="slug"] containers + a client-side router that toggles
+        // visibility on nav clicks. The first pane is active on initial load.
+        case NodeType.APP_BLOCK: {
+          pageTitle = node.name || pageTitle;
+          const firstPaneRoute = (node.panes && node.panes[0] && node.panes[0].route) || '';
+          // Cheap inline attribute escape — the buildHTML scope doesn't carry
+          // a general HTML escaper. Route slugs are short identifiers (a-z,
+          // 0-9, dash); names may contain quotes/ampersands, so escape both
+          // and reuse below.
+          const _esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          parts.push(`<div class="clear-app" data-app="${_esc(node.name || '')}" data-active="${_esc(firstPaneRoute)}">`);
+          for (let pi = 0; pi < (node.panes || []).length; pi++) {
+            const pane = node.panes[pi];
+            const isActive = pi === 0;
+            const hideStyle = isActive ? '' : ' style="display:none"';
+            parts.push(`<div data-pane="${_esc(pane.route)}"${hideStyle}>`);
+            // The pane's body compiles the same way a page body does — walk recursively.
+            walk(pane.body || []);
+            parts.push(`</div>`);
+          }
+          parts.push(`</div>`);
+          // Inline router script — minimal, no framework. Hooks every <a href>
+          // whose target matches a known pane route, switches via pushState,
+          // and listens for popstate so browser back/forward Just Works.
+          const routeList = (node.panes || []).map(p => JSON.stringify(p.route)).join(',');
+          parts.push(`<script>
+(function() {
+  var ROUTES = [${routeList}];
+  function setActivePane(slug) {
+    var app = document.querySelector('[data-app]');
+    if (!app) return;
+    app.setAttribute('data-active', slug);
+    var panes = app.querySelectorAll('[data-pane]');
+    for (var i = 0; i < panes.length; i++) {
+      panes[i].style.display = panes[i].getAttribute('data-pane') === slug ? '' : 'none';
+    }
+  }
+  function routeFromHash() {
+    var h = (location.hash || '').replace(/^#\\/?/, '');
+    return ROUTES.indexOf(h) >= 0 ? h : ROUTES[0];
+  }
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    var slug = href.replace(/^#?\\/?/, '');
+    if (ROUTES.indexOf(slug) >= 0) {
+      e.preventDefault();
+      history.pushState({slug: slug}, '', '#/' + slug);
+      setActivePane(slug);
+    }
+  });
+  window.addEventListener('popstate', function() { setActivePane(routeFromHash()); });
+  setActivePane(routeFromHash());
+})();
+</script>`);
+          break;
+        }
         case NodeType.PAGE: {
           pageTitle = node.title;
           const previousPage = currentPage;

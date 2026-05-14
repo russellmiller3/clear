@@ -147,7 +147,33 @@ export function validate(ast) {
   validateGraduation(ast.body, errors);
   validateDuplicateTables(ast.body, errors);
   validateAutoIdCollision(ast.body, errors);
+  validateAppPaneRoutes(ast.body, errors);
   return { errors, warnings };
+}
+
+// =============================================================================
+// validateAppPaneRoutes — every pane in an APP_BLOCK must have a unique route
+// slug, otherwise the client-side router can't disambiguate which one to show.
+// Added 2026-05-14 for the SPA primitive.
+// =============================================================================
+function validateAppPaneRoutes(body, errors) {
+  for (const node of (body || [])) {
+    if (!node || (node.type !== 'app_block' && node.type !== 'APP_BLOCK')) continue;
+    const seen = new Map();
+    for (const pane of (node.panes || [])) {
+      const slug = String(pane.route || '').toLowerCase();
+      if (!slug) continue;
+      if (seen.has(slug)) {
+        const firstLine = seen.get(slug);
+        errors.push({
+          line: pane.line || node.line || 0,
+          message: `Duplicate pane route '${slug}' in app '${node.name}' — already declared at line ${firstLine}. Every pane needs a distinct route slug so the router can switch between them.`,
+        });
+      } else {
+        seen.set(slug, pane.line || node.line || 0);
+      }
+    }
+  }
 }
 
 // =============================================================================

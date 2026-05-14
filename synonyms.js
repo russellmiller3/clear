@@ -177,6 +177,10 @@ const SYNONYM_TABLE = Object.freeze({
   //            display total as dollars called "Total" / button "Click Me"
   // ---------------------------------------------------------------------------
   page: Object.freeze(['page', 'screen', 'view']),
+  // SPA primitive (2026-05-14): `app 'Name'` and `spa 'Name'` both trigger the
+  // APP_BLOCK parser. `spa` is the technical name people reach for; `app` reads
+  // naturally in plain English. Both canonicalize to `app`.
+  app: Object.freeze(['app', 'spa']),
   section: Object.freeze(['section', 'group']),
   style: Object.freeze(['style']),
   theme: Object.freeze(['theme']),
