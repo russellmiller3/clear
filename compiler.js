@@ -17977,6 +17977,64 @@ const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tab
   --clear-bad:           oklch(54% 0.21 25);
   --clear-bad-soft:      oklch(96% 0.04 25);
 }
+
+/* Dark-theme overrides for the Clear-specific variable namespace.
+ * The DaisyUI vars (--color-base-100 etc.) update automatically per
+ * theme but the --clear-* namespace was light-mode-only until 2026-05-14.
+ * Stat cards, sidebar rails, hairlines, status pills all read --clear-*
+ * vars, so without these overrides they kept their light backgrounds
+ * even when the page theme was nixie/midnight/dusk/vault.
+ *
+ * Each dark theme below maps the --clear-* surface tokens onto values
+ * that match the theme's mood. Nixie gets the deep-warm + amber-glow
+ * palette; midnight stays cool-blue; dusk/vault inherit their respective
+ * warm/navy tones.
+ */
+[data-theme="nixie"] {
+  --clear-bg-app:        oklch(13% 0.014 50);
+  --clear-bg-canvas:     oklch(16% 0.018 50);
+  --clear-bg-panel:      oklch(17% 0.018 50);
+  --clear-bg-rail:       oklch(14% 0.014 50);
+  --clear-bg-row-hover:  oklch(20% 0.022 50);
+  --clear-bg-active:     oklch(23% 0.05 70);
+  --clear-bg-chip:       oklch(20% 0.025 60);
+  --clear-line:          oklch(28% 0.025 50);
+  --clear-line-strong:   oklch(38% 0.04 60);
+  --clear-ink:           oklch(88% 0.05 70);
+  --clear-ink-soft:      oklch(80% 0.05 70);
+  --clear-ink-muted:     oklch(68% 0.05 70);
+  --clear-ink-subtle:    oklch(58% 0.04 70);
+}
+[data-theme="midnight"] {
+  --clear-bg-app:        oklch(18% 0.03 255);
+  --clear-bg-canvas:     oklch(23% 0.03 255);
+  --clear-bg-panel:      oklch(23% 0.03 255);
+  --clear-bg-rail:       oklch(19% 0.025 255);
+  --clear-bg-row-hover:  oklch(26% 0.03 255);
+  --clear-bg-active:     oklch(29% 0.05 252);
+  --clear-bg-chip:       oklch(25% 0.025 255);
+  --clear-line:          oklch(32% 0.025 255);
+  --clear-line-strong:   oklch(42% 0.03 255);
+  --clear-ink:           oklch(90% 0.02 240);
+  --clear-ink-soft:      oklch(82% 0.02 240);
+  --clear-ink-muted:     oklch(68% 0.02 240);
+  --clear-ink-subtle:    oklch(56% 0.02 240);
+}
+[data-theme="dusk"], [data-theme="vault"] {
+  --clear-bg-app:        oklch(19% 0.018 45);
+  --clear-bg-canvas:     oklch(24% 0.022 45);
+  --clear-bg-panel:      oklch(24% 0.022 45);
+  --clear-bg-rail:       oklch(20% 0.018 45);
+  --clear-bg-row-hover:  oklch(27% 0.022 45);
+  --clear-bg-active:     oklch(30% 0.05 60);
+  --clear-bg-chip:       oklch(25% 0.022 45);
+  --clear-line:          oklch(32% 0.025 45);
+  --clear-line-strong:   oklch(42% 0.03 45);
+  --clear-ink:           oklch(92% 0.015 55);
+  --clear-ink-soft:      oklch(82% 0.015 55);
+  --clear-ink-muted:     oklch(68% 0.015 55);
+  --clear-ink-subtle:    oklch(56% 0.015 55);
+}
 body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-feature-settings: "cv11","ss01","ss03";
