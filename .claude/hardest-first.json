@@ -1,0 +1,23 @@
+{
+  "_comment": "Project-specific load-bearing keywords + paths for the hardest-first.mjs user-level hook. Merged with generic defaults at run time. See ~/.claude/CLAUDE.md rule 'Never Write Project-Specific User-Level Hooks'.",
+  "keywords": [
+    "concurrency phase 2",
+    "race prevention",
+    "optimistic locking",
+    "tenant isolation",
+    "row-level security",
+    "regulated-tier",
+    "provable correctness completion",
+    "provable correctness workstream",
+    "first paying marcus"
+  ],
+  "paths": [
+    "^lib/prover/",
+    "^validator\\.js$",
+    "^runtime/db\\.(js|py)$",
+    "^cli/clear\\.js$",
+    "^plans/plan-concurrency",
+    "^plans/plan-tenant",
+    "^plans/plan-row[- ]level"
+  ]
+}
