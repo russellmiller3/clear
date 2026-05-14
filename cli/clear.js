@@ -856,17 +856,34 @@ async function buildCommand(args) {
     // MODULE_NOT_FOUND when it tries to require('./clear-runtime/grammar-matcher').
     // Detection mirrors the require-call detection that `clear serve` uses.
     const serverContents = result.serverJS || result.javascript || '';
+    const copiedExtras = [];
     if (serverContents.includes("require('./clear-runtime/grammar-matcher')")) {
       runtimeFiles.push('grammar-matcher.js');
+      copiedExtras.push('grammar-matcher.js (needed by `match input against`)');
     }
     if (serverContents.includes("require('./clear-runtime/slot-extractors')")) {
       runtimeFiles.push('slot-extractors.js');
+      copiedExtras.push('slot-extractors.js (needed by slot-extractor primitives)');
     }
     for (const f of runtimeFiles) {
       const src = resolve(runtimeSrc, f);
       if (existsSync(src)) { copyFileSync(src, resolve(runtimeDir, f)); }
     }
     files.push('clear-runtime/');
+    // First-class warning #4: surface which extra runtime helpers landed in
+    // the build dir alongside db / auth / rateLimit. Silent copies leave
+    // users wondering why their build dir has unfamiliar files.
+    if (copiedExtras.length > 0) {
+      result.warnings = result.warnings || [];
+      for (const note of copiedExtras) {
+        result.warnings.push({
+          line: 0,
+          kind: 'runtime-helper-copied',
+          severity: 'info',
+          message: `Copied runtime helper \`${note}\` into \`clear-runtime/\` next to the compiled server.`,
+        });
+      }
+    }
   }
   // Python runtime copy (parity follow-up, 2026-05-06): when the Python
   // emit imports clear_runtime helpers, drop the matching .py files into

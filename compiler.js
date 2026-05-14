@@ -7806,6 +7806,16 @@ function compileRuntimeGrammar(node, ctx, pad) {
     result += `${pad}// Skipping ${tableName}Schema + createTable — tables.clear (or another\n`;
     result += `${pad}// module's DATA_SHAPE) declared it already. Matcher uses the table\n`;
     result += `${pad}// either way; only the schema/createTable codegen needs deduping.\n`;
+    // First-class warning #2: surface the dup-schema skip so the user knows
+    // the runtime-grammar didn't define its own table schema this time.
+    // Silent decisions confuse Meph and future Claude sessions.
+    if (ctx.warnings) {
+      ctx.warnings.push({
+        line: node.line || 0,
+        kind: 'runtime-grammar-table-dedup',
+        message: `Storage table '${tableName}' is declared both as a \`create a ${tableName} table\` AND as runtime grammar '${grammarName}'s storage table. Using the explicit table declaration; the runtime grammar reads from the same table.`,
+      });
+    }
   } else {
     result += `${pad}const ${tableName}Schema = {\n${schemaFields}\n${pad}};\n`;
     if (ctx.mode === 'backend') {
@@ -8866,6 +8876,19 @@ ${pad}}`;
           n.type === NodeType.ENDPOINT || n.type === NodeType.DATA_SHAPE ||
           n.type === NodeType.WEBHOOK || n.type === NodeType.BACKGROUND
         );
+        // First-class warning #3: if the page had CRUD nodes that we filtered
+        // out, tell the user explicitly so they know the lookup ran client-side
+        // only. Silent removal confuses devs who expect server-rendered data.
+        const droppedCrud = (node.body || []).filter(n => n.type === NodeType.CRUD);
+        if (droppedCrud.length > 0 && ctx.warnings) {
+          for (const c of droppedCrud) {
+            ctx.warnings.push({
+              line: c.line || node.line || 0,
+              kind: 'page-crud-frontend-only',
+              message: `Page '${node.title || node.route || ''}' has a page-level lookup (\`define ${c.variable || 'X'} as: look up ...\`) that runs on the FRONTEND only. The backend output skips it. If you need server-rendered data on first paint, hoist into an explicit \`when user calls GET /api/${c.variable || 'X'}:\` endpoint instead.`,
+            });
+          }
+        }
         if (backendChildren.length === 0) return null;
         return backendChildren.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
       }
