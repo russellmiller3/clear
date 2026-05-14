@@ -217,21 +217,32 @@ function validateDuplicateTables(body, errors) {
   }
   for (const [_, occurrences] of declarations.entries()) {
     if (occurrences.length < 2) continue;
-    // Walk every pair so three duplicates produce three errors (one per pair),
-    // not a single ambiguous "duplicate". Each error names both lines + the
-    // table name + the fix.
-    for (let i = 0; i < occurrences.length; i++) {
-      for (let j = i + 1; j < occurrences.length; j++) {
-        const a = occurrences[i];
-        const b = occurrences[j];
-        const tableName = a.name; // preserve original case from the first declaration
-        const firstWhere = a.source === 'runtime-grammar' ? `runtime grammar storage on line ${a.line}` : `table on line ${a.line}`;
-        const secondWhere = b.source === 'runtime-grammar' ? `runtime grammar storage on line ${b.line}` : `table on line ${b.line}`;
-        errors.push({
-          line: b.line || a.line || 0,
-          message: `Table '${tableName}' is already declared (${firstWhere}); a second declaration at ${secondWhere} would emit a duplicate \`const ${tableName}Schema = {...}\` and crash the server at startup. Pick one declaration as the source of truth and remove or rename the other.`,
-        });
+    // A DATA_SHAPE + a RUNTIME_GRAMMAR for the same table is the INTENTIONAL
+    // pattern — the user declares the table explicitly, the runtime grammar
+    // reads from it. The compiler's emit-side dedup (compileRuntimeGrammar's
+    // tableAlsoDeclared guard) handles that case cleanly. Only flag when both
+    // declarations are the SAME kind (two tables, OR two runtime grammars).
+    const tables = occurrences.filter(o => o.source === 'create-table');
+    const grammars = occurrences.filter(o => o.source === 'runtime-grammar');
+    const collisionsToFlag = [];
+    if (tables.length >= 2) {
+      for (let i = 0; i < tables.length; i++) for (let j = i + 1; j < tables.length; j++) {
+        collisionsToFlag.push([tables[i], tables[j]]);
       }
+    }
+    if (grammars.length >= 2) {
+      for (let i = 0; i < grammars.length; i++) for (let j = i + 1; j < grammars.length; j++) {
+        collisionsToFlag.push([grammars[i], grammars[j]]);
+      }
+    }
+    for (const [a, b] of collisionsToFlag) {
+      const tableName = a.name; // preserve original case
+      const firstWhere = a.source === 'runtime-grammar' ? `runtime grammar storage on line ${a.line}` : `table on line ${a.line}`;
+      const secondWhere = b.source === 'runtime-grammar' ? `runtime grammar storage on line ${b.line}` : `table on line ${b.line}`;
+      errors.push({
+        line: b.line || a.line || 0,
+        message: `Table '${tableName}' is already declared (${firstWhere}); a second declaration at ${secondWhere} would emit a duplicate \`const ${tableName}Schema = {...}\` and crash the server at startup. Pick one declaration as the source of truth and remove or rename the other.`,
+      });
     }
   }
 }

@@ -32600,7 +32600,12 @@ create a deal table:
     expect(msg.toLowerCase()).toMatch(/deal/);
   });
 
-  it('a table and a runtime grammar both pointing at the same storage table also collide', () => {
+  it('a table + a runtime grammar pointing at the same table is INTENTIONAL and compiles clean', () => {
+    // Lenat-clear's documented pattern: explicit `create a Concepts table`
+    // for the user-visible schema, plus a `runtime grammar` that reads from
+    // the same table for matcher dispatch. The emit-side dedup
+    // (compileRuntimeGrammar's tableAlsoDeclared guard) handles the schema
+    // collision; the validator should NOT flag this case.
     const src = `build for javascript backend
 
 create a Concepts table:
@@ -32611,10 +32616,8 @@ runtime grammar concept_match:
   matches /(\\w+)/
 `;
     const r = compileProgram(src);
-    expect(r.errors.length).toBeGreaterThan(0);
-    const msg = r.errors.map(e => e.message).join(' | ');
-    expect(msg.toLowerCase()).toMatch(/duplicate|already/);
-    expect(msg.toLowerCase()).toMatch(/concepts/);
+    const dupErr = r.errors.find(e => /duplicate.*table|already.*declared.*table/i.test(e.message || ''));
+    expect(dupErr).toBeUndefined();
   });
 
   it('three duplicate tables surface all overlapping pairs, not just the first', () => {
