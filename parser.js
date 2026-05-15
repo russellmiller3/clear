@@ -336,6 +336,7 @@ export const NodeType = Object.freeze({
   UNIT_ASSERT: 'unit_assert', // Value-level assertion: expect x is 5, expect x is greater than 3
   STYLE_DEF: 'style_def',
   THEME: 'theme',
+  FONT: 'font',
 
   // Backend features (Phase 5)
   ENDPOINT: 'endpoint',
@@ -1379,6 +1380,27 @@ const CANONICAL_DISPATCH = new Map([
     } else {
       ctx.body.push({ type: NodeType.THEME, name: themeName, line: ctx.line });
     }
+    return ctx.i + 1;
+  }],
+  ['font', (ctx) => {
+    if (ctx.tokens.length < 2) {
+      ctx.errors.push({ line: ctx.line, message: "font needs a family — try: font sans 'Inter', font serif 'Instrument Serif', or font mono 'JetBrains Mono'" });
+      return ctx.i + 1;
+    }
+    const roles = new Set(['sans', 'serif', 'mono', 'display']);
+    let role = 'sans';
+    let familyToken = ctx.tokens[1];
+    const maybeRole = String(ctx.tokens[1]?.value || '').toLowerCase();
+    if (roles.has(maybeRole)) {
+      role = maybeRole;
+      familyToken = ctx.tokens[2];
+    }
+    if (!familyToken || (familyToken.type !== TokenType.STRING && familyToken.type !== TokenType.IDENTIFIER && familyToken.type !== TokenType.KEYWORD)) {
+      ctx.errors.push({ line: ctx.line, message: `font ${role} needs a family name — try: font ${role} 'Inter'` });
+      return ctx.i + 1;
+    }
+    const family = String(familyToken.value || '').replace(/^['"]|['"]$/g, '');
+    ctx.body.push({ type: NodeType.FONT, role, family, line: ctx.line });
     return ctx.i + 1;
   }],
   ['define_role', (ctx) => {

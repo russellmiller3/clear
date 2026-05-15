@@ -1580,6 +1580,34 @@ describe('theme directive', () => {
     expect(result.html).toContain('data-theme="ivory"');
   });
 
+  it('parses font declarations for sans, serif, and mono families', () => {
+    const ast = parse("font sans 'Inter'\nfont serif 'Instrument Serif'\nfont mono 'JetBrains Mono'");
+    expect(ast.errors).toHaveLength(0);
+    const fonts = ast.body.filter(n => n.type === NodeType.FONT);
+    expect(fonts.map(f => [f.role, f.family])).toEqual([
+      ['sans', 'Inter'],
+      ['serif', 'Instrument Serif'],
+      ['mono', 'JetBrains Mono'],
+    ]);
+  });
+
+  it('font declarations emit CSS variables and Google font loading links', () => {
+    const result = compileProgram(`build for web
+font sans 'Inter'
+font serif 'Instrument Serif'
+font mono 'JetBrains Mono'
+page 'Test' at '/':
+  heading 'Hello'`);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('family=Inter:wght@400;500;600;700');
+    expect(result.html).toContain('family=Instrument+Serif');
+    expect(result.html).toContain('family=JetBrains+Mono:wght@400;500');
+    expect(result.css).toContain('--font-sans: "Inter"');
+    expect(result.css).toContain('--font-serif: "Instrument Serif"');
+    expect(result.css).toContain('--font-mono: "JetBrains Mono"');
+    expect(result.css).toContain('.font-display { font-family: var(--font-display);');
+  });
+
   it('compileNode returns null (directive, no code)', () => {
     const node = { type: NodeType.THEME, name: 'nova', line: 1 };
     const ctx = { lang: 'js', indent: 0, declared: new Set(), stateVars: new Set() };
@@ -29396,15 +29424,22 @@ app 'Lenat' at '/':
     heading 'Lenat'
     nav item 'Today' to '/today' with icon 'sun-medium'
     nav item 'Chat' to '/chat' with icon 'messages-square'
+    section 'Sidebar footer' with style app_card:
+      text '20 concepts'
+      text '16 records'
+      text 'nothing due'
+      text 'live'
   pane 'Today' as 'today':
     page header 'Today'
     stat strip:
       stat card 'Energy':
         value 5
         delta 'logs in the last week'
+        sparkline [5, 6]
       stat card 'Mood':
         value 6
         delta 'mood entries on file'
+        sparkline [7, 6, 6]
       stat card 'Due soon':
         value 0
         delta 'open tasks waiting'
@@ -29412,7 +29447,20 @@ app 'Lenat' at '/':
         value 20
         delta 'concepts taught to Lenat'
   pane 'Chat' as 'chat':
-    display messages as chat showing role, content`;
+    display messages as chat showing role, content
+    section 'Quick chips' with style app_card:
+      button 'log energy':
+        user_message is 'energy '
+      button 'add task':
+        user_message is 'todo: '
+      button 'remind me':
+        user_message is 'remind me to '
+      button 'note':
+        user_message is 'note: '
+      button 'log mood':
+        user_message is 'mood '
+      button 'query':
+        user_message is 'show me '`;
   const shellResult = compileProgram(shellSrc);
 
   it('T-SHELL-1: app block emits CSS for a two-column viewport shell', () => {
@@ -29488,8 +29536,23 @@ app 'Lenat' at '/':
     expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-input \{[\s\S]*width: 100%;[\s\S]*max-width: 820px/.test(shellResult.html)).toBe(true);
   });
 
+  it('T-SHELL-8b: Lenat chat composer keeps the square send button visible', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-send-btn \{[\s\S]*flex: 0 0 44px;[\s\S]*font-size: 0;/.test(shellResult.html)).toBe(true);
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-send-btn::before \{[\s\S]*content: "\\2191";/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-8c: assistant chat turns reserve the Lenat avatar gutter', () => {
+    expect(shellResult.html).toContain('.clear-app [data-pane="chat"] .clear-chat-msg.assistant::before');
+    expect(shellResult.html).toContain('left: -36px;');
+  });
+
   it('T-SHELL-9: stat strip holds four cards across on desktop', () => {
     expect(shellResult.html).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))');
+  });
+
+  it('T-SHELL-9b: stat card icons sit before the labels like Lenat', () => {
+    expect(/\.clear-stat-card-top \{[\s\S]*justify-content: flex-start;/.test(shellResult.html)).toBe(true);
+    expect(/\.clear-stat-icon \{[\s\S]*order: -1;/.test(shellResult.html)).toBe(true);
   });
 
   it('T-SHELL-10: member-access stat values are wired into the template renderer', () => {
@@ -29539,9 +29602,87 @@ app 'Lenat' at '/':
     expect(shellResult.html).toContain('font-weight: 400;');
   });
 
+  it('T-SHELL-14b: app shell includes an inline icon fallback when Lucide is unavailable', () => {
+    expect(shellResult.html).toContain('function _clearInstallIconFallbacks');
+    expect(shellResult.html).toContain('"sun-medium"');
+    expect(shellResult.html).toContain('"messages-square"');
+    expect(shellResult.html).toContain('window.lucide && window.lucide.createIcons');
+  });
+
+  it('T-SHELL-14d: Lenat icon fallback covers chat, chips, and footer icons', () => {
+    expect(shellResult.html).toContain('"brain-circuit"');
+    expect(shellResult.html).toContain('"check-square"');
+    expect(shellResult.html).toContain('"sticky-note"');
+    expect(shellResult.html).toContain('"bell"');
+  });
+
+  it('T-SHELL-14c: app shell typography reads from declared font variables', () => {
+    expect(shellResult.html).toContain('font-family: var(--font-serif');
+    expect(shellResult.html).toContain('font-family: var(--font-sans');
+    expect(shellResult.html).toContain('font-family: var(--font-mono');
+  });
+
   it('T-SHELL-15: Today recent activity renders as a feed, not a generic card', () => {
     expect(shellResult.html).toContain('.clear-app [data-pane="today"] .clear-section-card:has(> h2:first-child)');
     expect(shellResult.html).toContain('white-space: pre-wrap');
+  });
+
+  it('T-SHELL-16: sidebar footer renders Lenat guide card and stat icons', () => {
+    expect(shellResult.html).toContain('class="clear-sidebar-footer"');
+    expect(shellResult.html).toContain('class="clear-sidebar-guide-link"');
+    expect(shellResult.html).toContain('What is Lenat?');
+    expect(shellResult.html).toContain('data-lucide="brain-circuit"');
+    expect(shellResult.html).toContain('data-lucide="archive"');
+    expect(shellResult.html).toContain('data-lucide="bell"');
+    expect(shellResult.html).toContain('class="clear-live-dot"');
+  });
+
+  it('T-SHELL-17: chat quick chips render Lenat action icons', () => {
+    expect(/data-lucide="battery-medium"[\s\S]*log energy/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="check-square"[\s\S]*add task/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="bell"[\s\S]*remind me/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="sticky-note"[\s\S]*note/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="smile"[\s\S]*log mood/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="search"[\s\S]*query/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-18: stat sparklines reserve visible Lenat vertical space', () => {
+    expect(shellResult.html).toContain('class="clear-stat-sparkline"');
+    expect(/\.clear-stat-sparkline \{[\s\S]*margin-top: 12px;/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-19: Lenat shell defines the amber accent token used by lines and buttons', () => {
+    expect(shellResult.html).toContain('--clear-accent:');
+    expect(shellResult.html).toContain('background: var(--clear-accent)');
+  });
+
+  it('T-SHELL-20: assistant avatar is a stroked brain mark, not a filled mask blob', () => {
+    expect(shellResult.html).toContain('background-image: url("data:image/svg+xml');
+    expect(shellResult.html).not.toContain('-webkit-mask: url("data:image/svg+xml');
+  });
+
+  it('T-SHELL-21: Lenat chat composer uses the real Lenat placeholder prompt', () => {
+    expect(shellResult.html).toContain('placeholder="tell me anything');
+    expect(shellResult.html).toContain('remind me to stretch in 30 min');
+  });
+
+  it('T-SHELL-22: stat sparklines use Lenat mint, not the amber button accent', () => {
+    expect(shellResult.html).toContain('--clear-sparkline:');
+    expect(shellResult.html).toContain('stroke: var(--clear-sparkline)');
+    expect(shellResult.html).toContain('clear-stat-sparkline-caption');
+  });
+
+  it('T-SHELL-23: short ten-point sparklines do not exaggerate into full-height diagonals', () => {
+    expect(shellResult.html).toContain('points="2.0,14.0 94.0,12.0"');
+    expect(shellResult.html).not.toContain('points="2.0,24.0 94.0,4.0"');
+  });
+
+  it('T-SHELL-24: Lenat chat bubbles can grow to the reference lane width', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-msg \{[\s\S]*max-width: 640px;/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-25: quick chips sit above the composer instead of overlapping it', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-section-card \{[\s\S]*margin: -108px auto 0;/.test(shellResult.html)).toBe(true);
   });
 });
 

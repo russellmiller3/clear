@@ -8211,6 +8211,7 @@ function _compileNodeInner(node, ctx) {
     case NodeType.TARGET:
     case NodeType.REQUIREMENTS:
     case NodeType.THEME:
+    case NodeType.FONT:
     case NodeType.AI_PROVIDER_DECL:
       // Declarations consumed by the body-walking emit passes (which look them
       // up via `body.find(n => n.type === NodeType.X)` and emit the resulting
@@ -11976,6 +11977,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       case NodeType.COMMENT:
       case NodeType.TARGET:
       case NodeType.THEME:
+      case NodeType.FONT:
       case NodeType.USE:
         setupNodes.push(node); break;
       case NodeType.SCRIPT:
@@ -13436,6 +13438,8 @@ function buildHTML(body) {
   // auto-inject a default signup+login form on `/login` pages so the user
   // doesn't end up with a "use the form above" dead-end.
   const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+  let inAppSidebar = false;
+  let currentAppPane = null;
 
   function navCountHTML(count) {
     if (count === undefined || count === null || count === '') return '';
@@ -13483,6 +13487,55 @@ ${childHtml}
     </li>`;
     }
     return `    <li><a href="${href}" class="clear-nav-item flex items-center gap-2.5" data-nav-item="true" data-clear-uat-id="${uatId}" data-clear-control-kind="nav-item" data-nav-path="${href}"${clAttr(node)}>${icon}<span class="clear-nav-label">${title}</span>${count}</a></li>`;
+  }
+
+  function contentNodeText(node) {
+    if (!node) return '';
+    return node.ui?.text || node.text || node.value || '';
+  }
+
+  function sidebarStatHTML(iconName, statText) {
+    const safeText = formatInlineText(statText || '');
+    const emphasized = safeText.replace(/^(\d+)/, '<span>$1</span>');
+    return `      <div class="clear-sidebar-stat"><i data-lucide="${attrEsc(iconName)}" aria-hidden="true"></i>${emphasized}</div>`;
+  }
+
+  function sidebarFooterHTML(node) {
+    const footerLines = (node.body || [])
+      .filter(child => child && child.type === NodeType.CONTENT)
+      .map(contentNodeText)
+      .filter(Boolean);
+    const concepts = footerLines[0] || '0 concepts';
+    const records = footerLines[1] || '0 records';
+    const due = footerLines[2] || 'nothing due';
+    const live = footerLines[3] || 'live';
+    return `    <div class="clear-sidebar-footer"${clAttr(node)}>
+      <a href="/guide" class="clear-sidebar-guide-link" data-nav-item="true" data-nav-path="/guide" data-clear-control-kind="nav-item" title="Read the guide">
+        <i data-lucide="book-open" aria-hidden="true"></i><span>What is Lenat?</span>
+      </a>
+${sidebarStatHTML('brain-circuit', concepts)}
+${sidebarStatHTML('archive', records)}
+${sidebarStatHTML('bell', due)}
+      <div class="clear-sidebar-stat clear-sidebar-live"><span class="clear-live-dot" aria-hidden="true"></span>${formatInlineText(live)}</div>
+    </div>`;
+  }
+
+  function quickChipIconForLabel(label) {
+    switch (String(label || '').trim().toLowerCase()) {
+      case 'log energy': return 'battery-medium';
+      case 'add task': return 'check-square';
+      case 'remind me': return 'bell';
+      case 'note': return 'sticky-note';
+      case 'log mood': return 'smile';
+      case 'query': return 'search';
+      default: return null;
+    }
+  }
+
+  function buttonLabelHTML(label, iconName) {
+    const safeLabel = formatInlineText(label || '');
+    if (!iconName) return safeLabel;
+    return `<i data-lucide="${attrEsc(iconName)}" aria-hidden="true"></i><span>${safeLabel}</span>`;
   }
 
   function pageHeaderHTML(node) {
@@ -13588,8 +13641,9 @@ ${childHtml}
       if (nums.length === 0) {
         return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"></svg>`;
       }
-      const min = Math.min(...nums);
-      const max = Math.max(...nums);
+      const usesTenPointScale = nums.every(num => num >= 0 && num <= 10);
+      const min = usesTenPointScale ? 0 : Math.min(...nums);
+      const max = usesTenPointScale ? 10 : Math.max(...nums);
       const span = max - min || 1;
       const step = nums.length === 1 ? 0 : 92 / (nums.length - 1);
       const points = nums.map((num, idx) => {
@@ -13597,7 +13651,11 @@ ${childHtml}
         const y = 24 - ((num - min) / span) * 20;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(' ');
-      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="${attrEsc(points)}"></polyline></svg>`;
+      const avg = nums.reduce((sum, num) => sum + num, 0) / nums.length;
+      const caption = nums.length > 1
+        ? `<div class="clear-stat-sparkline-caption">last ${nums.length} &middot; avg ${avg.toFixed(1)}</div>`
+        : '';
+      return `<svg class="clear-stat-sparkline" viewBox="0 0 96 28" role="img" aria-label="trend"><polyline points="${attrEsc(points)}"></polyline></svg>${caption}`;
     }
     // DATA-DRIVEN path — `sparkline showing energy_logs taking 'level'` or
     // shorthand `sparkline energy_logs`. The compiler doesn't know the values
@@ -13698,7 +13756,10 @@ ${bodyHTML}
           // declaration the app emits panes only (sidebar = null skipped).
           if (Array.isArray(node.sidebar) && node.sidebar.length > 0) {
             parts.push(`<aside class="clear-app-sidebar" data-app-sidebar="true">`);
+            const previousInAppSidebar = inAppSidebar;
+            inAppSidebar = true;
             walk(node.sidebar);
+            inAppSidebar = previousInAppSidebar;
             parts.push(`</aside>`);
           }
           parts.push(`<main class="clear-app-stage" data-app-stage="true">`);
@@ -13738,7 +13799,10 @@ ${bodyHTML}
             const hideStyle = isActive ? '' : ' style="display:none"';
             parts.push(`<div data-pane="${_esc(pane.route)}"${hideStyle}>`);
             // The pane's body compiles the same way a page body does — walk recursively.
+            const previousAppPane = currentAppPane;
+            currentAppPane = pane.route || '';
             walk(pane.body || []);
+            currentAppPane = previousAppPane;
             parts.push(`</div>`);
           }
           parts.push(`</div>`);
@@ -13892,6 +13956,10 @@ ${bodyHTML}
         }
 
         case NodeType.SECTION: {
+          if (inAppSidebar && node.styleName === 'app_card' && /sidebar footer/i.test(String(node.title || ''))) {
+            parts.push(sidebarFooterHTML(node));
+            break;
+          }
           const hasUserStyle = node.styleName;
           const hasInline = node.inlineModifiers && node.inlineModifiers.length > 0;
           // Determine if this is a layout section (bare div) or content (card)
@@ -14717,7 +14785,7 @@ ${optionsHtml}
       </div>
       <button class="clear-chat-scroll" id="${displayId}_scroll">&#8595;</button>
       <div class="clear-chat-input">
-        <textarea id="${displayId}_input" placeholder="Type a message..." rows="1"></textarea>
+        <textarea id="${displayId}_input" placeholder="tell me anything &mdash; try &quot;energy 7&quot; or &quot;remind me to stretch in 30 min&quot;" rows="1"></textarea>
         <button id="${displayId}_send" class="clear-chat-send-btn">Send</button>
       </div>
     </div>`);
@@ -14810,7 +14878,10 @@ ${optionsHtml}
             : '';
           const btnUatId = attrEsc(stableUatId('button', node.line, node.label || node.ui.label));
           const buttonId = uniqueElementId(node.ui.id);
-          parts.push(`    <button class="${btnCls}" id="${buttonId}" data-clear-uat-id="${btnUatId}" data-clear-control-kind="button"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
+          const chipIcon = currentAppPane === 'chat' && btnPreset === 'app_card'
+            ? quickChipIconForLabel(node.ui.label)
+            : null;
+          parts.push(`    <button class="${btnCls}" id="${buttonId}" data-clear-uat-id="${btnUatId}" data-clear-control-kind="button"${detailActionAttr}${clAttr(node)}>${buttonLabelHTML(node.ui.label, chipIcon)}</button>`);
           break;
         }
 
@@ -15224,6 +15295,101 @@ function formatInlineText(markup_source) {  // name-by-use-override: markup_sour
   }).join('');
 }
 
+function cssQuotedFontFamily(fontFamily) {
+  return `"${String(fontFamily || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function googleFontFamilyParam(fontFamily, fontRole) {
+  const trimmedFamily = String(fontFamily || '').trim();
+  if (!trimmedFamily || /^(system-ui|sans-serif|serif|monospace|ui-monospace)$/i.test(trimmedFamily)) return null;
+  const encodedFamily = trimmedFamily.replace(/\s+/g, '+');
+  if (fontRole === 'mono') return `family=${encodedFamily}:wght@400;500`;
+  if (fontRole === 'serif') return `family=${encodedFamily}`;
+  return `family=${encodedFamily}:wght@400;500;600;700`;
+}
+
+function resolveFontDeclarations(astBody) {
+  const declaredFonts = (astBody || []).filter(fontNodeCandidate => fontNodeCandidate && fontNodeCandidate.type === NodeType.FONT);
+  if (declaredFonts.length === 0) return { links: '', css: '' };
+
+  const familiesByRole = {};
+  for (const fontNode of declaredFonts) {
+    familiesByRole[fontNode.role || 'sans'] = fontNode.family;
+  }
+  if (familiesByRole.serif && !familiesByRole.display) familiesByRole.display = familiesByRole.serif;
+
+  const fallbacksByRole = {
+    sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    serif: '"Iowan Old Style", Georgia, serif',
+    mono: 'SFMono-Regular, ui-monospace, Menlo, Consolas, monospace',
+    display: 'var(--font-sans)',
+  };
+  const cssLines = [':root {'];
+  for (const fontRole of ['sans', 'serif', 'mono', 'display']) {
+    if (!familiesByRole[fontRole]) continue;
+    cssLines.push(`  --font-${fontRole}: ${cssQuotedFontFamily(familiesByRole[fontRole])}, ${fallbacksByRole[fontRole]};`);
+  }
+  cssLines.push('}');
+  cssLines.push('body { font-family: var(--font-sans); }');
+  cssLines.push('.font-display { font-family: var(--font-display); }');
+  cssLines.push('.font-mono, code, pre { font-family: var(--font-mono); }');
+
+  const googleFamilyParams = [];
+  const seenFamilies = new Set();
+  for (const fontRole of ['sans', 'serif', 'mono', 'display']) {
+    const fontFamily = familiesByRole[fontRole];
+    if (!fontFamily || seenFamilies.has(fontFamily)) continue;
+    seenFamilies.add(fontFamily);
+    const familyParam = googleFontFamilyParam(fontFamily, fontRole);
+    if (familyParam) googleFamilyParams.push(familyParam);
+  }
+  const links = googleFamilyParams.length
+    ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="https://fonts.googleapis.com/css2?${googleFamilyParams.join('&')}&display=swap" rel="stylesheet">`
+    : '';
+  return { links, css: cssLines.join('\n') };
+}
+
+function lucideFallbackScript() {
+  return `function _clearInstallIconFallbacks() {
+  if (window.lucide && window.lucide.createIcons) {
+    window.lucide.createIcons();
+    return;
+  }
+  var icons = {
+    "activity": '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+    "archive": '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+    "battery-medium": '<rect width="16" height="10" x="2" y="7" rx="2"/><path d="M22 11v2"/><path d="M6 11h4"/>',
+    "bell": '<path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M4 8a8 8 0 0 1 16 0c0 7 3 7 3 9H1c0-2 3-2 3-9"/>',
+    "bell-ring": '<path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M4 8a8 8 0 0 1 16 0c0 7 3 7 3 9H1c0-2 3-2 3-9"/><path d="M2 2c2 1.6 3 3.3 3 5"/><path d="M22 2c-2 1.6-3 3.3-3 5"/>',
+    "book-open": '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4v14a4 4 0 0 0-4-4H3Z"/><path d="M21 18a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-5a4 4 0 0 0-4 4v14a4 4 0 0 1 4-4h5Z"/>',
+    "brain-circuit": '<path d="M9.5 2A2.5 2.5 0 0 0 7 4.5v.25A4.5 4.5 0 0 0 4.6 9a4 4 0 0 0-.7 6.65A4.25 4.25 0 0 0 8.2 22H12V2H9.5Z"/><path d="M14.5 2H12v20h3.8a4.25 4.25 0 0 0 4.3-6.35A4 4 0 0 0 19.4 9 4.5 4.5 0 0 0 17 4.75V4.5A2.5 2.5 0 0 0 14.5 2Z"/><path d="M7 10h2"/><path d="M15 10h2"/><path d="M8 15h2"/><path d="M14 15h2"/>',
+    "check-square": '<path d="m9 12 2 2 4-4"/><rect width="18" height="18" x="3" y="3" rx="2"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+    "circle-help": '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 1 1 5.8 1c-.6 1.2-1.9 1.7-2.6 2.4-.4.4-.5.8-.5 1.6"/><path d="M12 17h.01"/>',
+    "database": '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
+    "git-fork": '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-6 8.5A9 9 0 0 1 6 9"/><path d="M12 15V3"/>',
+    "library-big": '<rect width="3" height="18" x="3" y="3" rx="1"/><rect width="3" height="18" x="9" y="3" rx="1"/><path d="m15 4 6 16"/><path d="M4 21h14"/>',
+    "messages-square": '<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h5"/>',
+    "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    "smile": '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/>',
+    "sparkles": '<path d="M9.9 4.2 8.7 7.4 5.5 8.6l3.2 1.2 1.2 3.2 1.2-3.2 3.2-1.2-3.2-1.2z"/><path d="M18 12.5 17.2 15 15 15.8l2.2.8.8 2.4.8-2.4 2.2-.8-2.2-.8z"/><path d="M4 17h.01"/>',
+    "sticky-note": '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/>',
+    "sun-medium": '<circle cx="12" cy="12" r="4"/><path d="M12 3v1"/><path d="M12 20v1"/><path d="M3 12h1"/><path d="M20 12h1"/><path d="m5.6 5.6.7.7"/><path d="m17.7 17.7.7.7"/><path d="m18.4 5.6-.7.7"/><path d="m6.3 17.7-.7.7"/>',
+    "user": '<path d="M19 21a7 7 0 0 0-14 0"/><circle cx="12" cy="7" r="4"/>',
+    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+  };
+  document.querySelectorAll('[data-lucide]').forEach(function(icon) {
+    if (icon.querySelector('svg')) return;
+    var name = icon.getAttribute('data-lucide') || 'circle';
+    var inner = icons[name] || '<circle cx="12" cy="12" r="9"/>';
+    icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
+  });
+}
+_clearInstallIconFallbacks();
+setTimeout(_clearInstallIconFallbacks, 250);`;
+}
+
 /**
  * Compile a Clear AST + compiled JS into a complete, runnable index.html.
  */
@@ -15236,6 +15402,7 @@ function compileToHTML(body, compiledJS) {
   // including it for every auth-enabled app is safe — non-owners never see
   // anything mount.
   const hasAuthForWidget = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+  const fontConfig = resolveFontDeclarations(body);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -15388,7 +15555,7 @@ _router();`;
   const hasFullLayout = usesAppPresets || htmlBody.includes('style-app_layout') ||
     cssCore.includes('full_height') || cssCore.includes('column_layout') || cssCore.includes('grid') ||
     cssCore.includes('flex-direction: row') || cssCore.includes('side_by_side');
-  const css = cssCore + '\n\n' + BUTTON_PEARL_CSS;
+  const css = cssCore + (fontConfig.css ? '\n\n/* --- Font Declarations --- */\n' + fontConfig.css : '') + '\n\n' + BUTTON_PEARL_CSS;
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
   // The default page wrapper used to be `max-w-2xl mx-auto p-8` — a 600px column
   // that made every Marcus app look like a 2018 single-column-form site. Widen
@@ -15419,6 +15586,7 @@ ${hasRichText ? '  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/qui
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+${fontConfig.links}
   <style>${css}</style>
 </head>
 <body class="min-h-screen bg-base-100">
@@ -15430,7 +15598,7 @@ ${htmlBody}
   <script${scriptType}>
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
-${hasLucide ? `if (window.lucide && lucide.createIcons) lucide.createIcons();
+${hasLucide ? `${lucideFallbackScript()}
 ` : ''}
 ${hasSparkline ? `
 // --- Data-driven sparklines ---
@@ -18328,6 +18496,8 @@ const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tab
   --clear-ink-soft:      oklch(35% 0.02 255);
   --clear-ink-muted:     oklch(54% 0.018 255);
   --clear-ink-subtle:    oklch(68% 0.015 240);
+  --clear-accent:        oklch(58% 0.14 70);
+  --clear-sparkline:     oklch(70% 0.12 160);
   --clear-good:          oklch(50% 0.16 152);
   --clear-good-soft:     oklch(96% 0.05 152);
   --clear-warn:          oklch(58% 0.14 65);
@@ -18362,6 +18532,8 @@ const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tab
   --clear-ink-soft:      oklch(80% 0.05 70);
   --clear-ink-muted:     oklch(68% 0.05 70);
   --clear-ink-subtle:    oklch(58% 0.04 70);
+  --clear-accent:        oklch(78% 0.10 70);
+  --clear-sparkline:     oklch(82% 0.11 160);
 }
 [data-theme="midnight"] {
   --clear-bg-app:        oklch(18% 0.03 255);
@@ -18377,6 +18549,8 @@ const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tab
   --clear-ink-soft:      oklch(82% 0.02 240);
   --clear-ink-muted:     oklch(68% 0.02 240);
   --clear-ink-subtle:    oklch(56% 0.02 240);
+  --clear-accent:        oklch(72% 0.12 255);
+  --clear-sparkline:     oklch(80% 0.10 170);
 }
 [data-theme="dusk"], [data-theme="vault"] {
   --clear-bg-app:        oklch(19% 0.018 45);
@@ -18392,9 +18566,11 @@ const CSS_RESET = `/* Clear design system v3 — Inter base + slate chrome + tab
   --clear-ink-soft:      oklch(82% 0.015 55);
   --clear-ink-muted:     oklch(68% 0.015 55);
   --clear-ink-subtle:    oklch(56% 0.015 55);
+  --clear-accent:        oklch(75% 0.10 65);
+  --clear-sparkline:     oklch(80% 0.10 160);
 }
 body {
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
   font-feature-settings: "cv11","ss01","ss03";
   -webkit-font-smoothing: antialiased;
   background: var(--clear-bg-app);
@@ -18402,10 +18578,10 @@ body {
   margin: 0;
 }
 @supports (font-variation-settings: normal) {
-  body { font-family: 'Inter var', 'Inter', system-ui, sans-serif; }
+  body { font-family: var(--font-sans, 'Inter var', 'Inter', system-ui, sans-serif); }
 }
-.font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; letter-spacing: -0.01em; }
-.font-mono, code, pre { font-family: 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace; }
+.font-display { font-family: var(--font-display, 'Plus Jakarta Sans', 'Inter', sans-serif); letter-spacing: -0.01em; }
+.font-mono, code, pre { font-family: var(--font-mono, 'Geist Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace); }
 .num, .tabular { font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
 #app { margin: 0 auto; }
 ::selection { background: oklch(var(--color-primary) / 0.15); }
@@ -18827,7 +19003,7 @@ const CSS_COMPONENTS = [
   margin: 0 0 16px !important;
   padding: 6px 8px 18px;
   border-bottom: 1px solid var(--clear-line);
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--font-serif, "Instrument Serif", Georgia, serif);
   font-size: 22px !important;
   font-weight: 400;
   line-height: 1;
@@ -18867,6 +19043,59 @@ const CSS_COMPONENTS = [
 .clear-app-sidebar > .bg-base-100.rounded-xl p {
   margin: 0 0 4px;
   color: inherit;
+}
+.clear-sidebar-footer {
+  margin-top: auto;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--clear-line);
+  color: var(--clear-ink-muted);
+}
+.clear-sidebar-guide-link {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--clear-line-strong);
+  border-radius: 8px;
+  background: var(--clear-bg-active);
+  color: var(--clear-accent);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.clear-sidebar-guide-link svg,
+.clear-sidebar-guide-link i {
+  width: 18px;
+  height: 18px;
+}
+.clear-sidebar-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 4px;
+  color: var(--clear-ink-muted);
+  font-size: 12px;
+}
+.clear-sidebar-stat svg,
+.clear-sidebar-stat i {
+  width: 13px;
+  height: 13px;
+  color: var(--clear-ink-muted);
+}
+.clear-sidebar-stat span {
+  color: var(--clear-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.clear-sidebar-live .clear-live-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background: var(--clear-accent);
+  box-shadow: 0 0 8px rgb(255 184 108 / .35);
 }
 .clear-app-stage {
   min-width: 0;
@@ -19047,7 +19276,7 @@ const CSS_COMPONENTS = [
   display: flex;
   align-items: baseline;
   gap: 14px;
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--font-serif, "Instrument Serif", Georgia, serif);
   font-size: 38px !important;
   font-weight: 400;
   line-height: 1;
@@ -19100,7 +19329,26 @@ const CSS_COMPONENTS = [
   border-radius: 12px;
   background: var(--clear-bg-panel);
   color: var(--clear-ink);
+  max-width: 640px;
   box-shadow: none;
+}
+.clear-app [data-pane="chat"] .clear-chat-msg.assistant {
+  position: relative;
+  margin-left: 36px;
+}
+.clear-app [data-pane="chat"] .clear-chat-msg.assistant::before {
+  content: "";
+  position: absolute;
+  left: -36px;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f1e6d4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z'/%3E%3Cpath d='M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z'/%3E%3Cpath d='M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4'/%3E%3Cpath d='M17.599 6.5a3 3 0 0 0 .399-1.375'/%3E%3Cpath d='M6.003 5.125A3 3 0 0 0 6.401 6.5'/%3E%3Cpath d='M3.477 10.896a4 4 0 0 1 .585-.396'/%3E%3Cpath d='M19.938 10.5a4 4 0 0 1 .585.396'/%3E%3Cpath d='M6 18a4 4 0 0 1-1.967-.516'/%3E%3Cpath d='M19.967 17.484A4 4 0 0 1 18 18'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: .95;
 }
 .clear-app [data-pane="chat"] .clear-chat-msg.user {
   background: oklch(78% 0.045 295 / .10);
@@ -19122,6 +19370,7 @@ const CSS_COMPONENTS = [
   background: var(--clear-bg-panel);
 }
 .clear-app [data-pane="chat"] .clear-chat-send-btn {
+  flex: 0 0 44px;
   width: 44px;
   min-width: 44px;
   display: inline-flex;
@@ -19142,7 +19391,7 @@ const CSS_COMPONENTS = [
 }
 .clear-app [data-pane="chat"] .clear-section-card {
   max-width: 820px;
-  margin: -78px auto 0;
+  margin: -108px auto 0;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -19151,6 +19400,9 @@ const CSS_COMPONENTS = [
   z-index: 3;
 }
 .clear-app [data-pane="chat"] .clear-section-card .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
   border: 1px solid var(--clear-line);
   background: transparent;
@@ -19162,6 +19414,11 @@ const CSS_COMPONENTS = [
   height: 30px;
   padding: 5px 10px;
   font-size: 12px;
+}
+.clear-app [data-pane="chat"] .clear-section-card .btn svg,
+.clear-app [data-pane="chat"] .clear-section-card .btn i {
+  width: 12px;
+  height: 12px;
 }
 .clear-app [data-pane="chat"] .clear-section-card .btn:hover {
   color: var(--clear-accent);
@@ -19205,7 +19462,8 @@ const CSS_COMPONENTS = [
   }
   .clear-app-sidebar .clear-nav-label,
   .clear-app-sidebar .clear-nav-section-label,
-  .clear-app-sidebar > .bg-base-100.rounded-xl { display: none; }
+  .clear-app-sidebar > .bg-base-100.rounded-xl,
+  .clear-sidebar-footer { display: none; }
   .clear-app-sidebar .clear-nav-item { justify-content: center; padding: 10px; }
   .clear-app-topbar { padding: 10px 12px; }
   .clear-app-search { max-width: none; }
@@ -19349,7 +19607,7 @@ const CSS_COMPONENTS = [
 .clear-stat-card-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
 }
 .clear-stat-label {
@@ -19361,6 +19619,7 @@ const CSS_COMPONENTS = [
   text-transform: uppercase;
 }
 .clear-stat-icon {
+  order: -1;
   width: 16px;
   height: 16px;
   color: var(--clear-ink-muted);
@@ -19405,15 +19664,21 @@ const CSS_COMPONENTS = [
   display: block;
   width: 100%;
   height: 28px;
-  margin-top: 10px;
+  margin-top: 12px;
   overflow: visible;
 }
 .clear-stat-sparkline polyline {
   fill: none;
-  stroke: var(--clear-accent);
+  stroke: var(--clear-sparkline);
   stroke-width: 2.25;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.clear-stat-sparkline-caption {
+  margin-top: 5px;
+  color: var(--clear-ink-subtle);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }` },
   { class: 'clear-detail-panel', css: `.clear-detail-panel {
   width: 340px;
