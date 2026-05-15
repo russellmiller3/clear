@@ -29408,6 +29408,25 @@ app 'Lenat' at '/':
     expect(filteredLookup.serverJS).toContain('_ssrState["energy_logs"]');
     expect(filteredLookup.serverJS).toContain('db.findAll("records", { concept_id: "ENERGY_LOG" })');
   });
+
+  it('T-PANE-8: every app route hydrates shared pane lookup state for client-side navigation', () => {
+    const globalLookupResult = compileProgram(`build for both
+create a Records table:
+  concept_id is text
+app 'Lenat' at '/':
+  pane 'Today' as 'today':
+    define energy_logs as: look up records in Records table where concept_id is 'ENERGY_LOG'
+  pane 'Knowledge' as 'knowledge':
+    define all_records as: look up records in Records table
+    display all_records as record browser`);
+
+    expect(globalLookupResult.errors).toHaveLength(0);
+    const todayRouteStart = globalLookupResult.serverJS.indexOf('app.get("/today"');
+    const todayRouteEnd = globalLookupResult.serverJS.indexOf('});', todayRouteStart);
+    const todayRouteSnippet = globalLookupResult.serverJS.slice(todayRouteStart, todayRouteEnd);
+    expect(todayRouteSnippet).toContain('_ssrState["energy_logs"]');
+    expect(todayRouteSnippet).toContain('_ssrState["all_records"]');
+  });
 });
 
 // =============================================================================

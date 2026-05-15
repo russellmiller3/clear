@@ -17517,13 +17517,16 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     }
     for (const appBlock of appBlocks) {
       const appRoute = appBlock.route || '/';
+      const appSsrDefs = collectSsrDefines([appBlock]);
+      if (appSsrDefs.length > 0 && !appRoute.startsWith('/api/') && !appRoute.startsWith('/auth/')) {
+        routeSsrDefines.set(appRoute, appSsrDefs);
+      }
       for (const pane of (appBlock.panes || [])) {
         const slug = pane.route || '';
         if (!slug) continue;
         const fullRoute = slug.startsWith('/') ? slug : (appRoute === '/' ? `/${slug}` : `${appRoute}/${slug}`);
         if (fullRoute.startsWith('/api/') || fullRoute.startsWith('/auth/')) continue;
-        const ssrDefs = collectSsrDefines(pane.body);
-        if (ssrDefs.length > 0) routeSsrDefines.set(fullRoute, ssrDefs);
+        if (appSsrDefs.length > 0) routeSsrDefines.set(fullRoute, appSsrDefs);
       }
     }
 
