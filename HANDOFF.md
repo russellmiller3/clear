@@ -1,3 +1,41 @@
+# Handoff — 2026-05-14 session 3 (SPA routing complete, Studio bundle, UAT shortcut)
+
+## What shipped this session
+
+**SPA router hardened — both routing bugs fixed.**
+
+- **Pathname fallback** (`routeFromHash`): was shipped in session 2; screenshots were stale from before the fix. The compiled Lenat-clear HTML has the fix at line 1237: reads `location.pathname` when `location.hash` is empty.
+- **Click handler hash bug** (new fix): click handler was pushing `'#/' + slug` to history instead of `'/' + slug`. After a nav click, `location.pathname` stayed `/` so `syncActiveNav()` never highlighted the active item. Fixed in compiler.js line 13616. 1 new test. 20/20 SPA tests green. Pushed `19c6a18`.
+
+**Studio bundle rebuilt** — `studio/clear-compiler.min.js` was stale after two compiler.js changes (SSR-default phases 1-7, SPA routing). Rebuilt with `npm run bundle`. Pushed `da20a6e`.
+
+**concepts.clear migration verified** — All 20 handlers in `Lenat-clear/concepts.clear` use text-routing primitives (P1-P3). No runtime grammar references. No changes needed.
+
+**UAT shortcut shipped:**
+- `Lenat-clear/start-lenat.bat` — starts server on port 7778, waits 3s, opens Chrome to `http://localhost:7778`
+- `Desktop/Lenat-UAT.lnk` — double-click to launch
+
+**Lenat-clear recompiled** — fresh `index.html` + `server.js` with both routing fixes. To re-run parity screenshots after Russell starts Node Lenat:
+```
+cd Lenat && node src/server.js              # port 7777
+cd Lenat-clear && node scripts/parity-screenshot.mjs
+```
+
+## State at handoff
+
+- **clear repo**: main, 3 commits ahead of where session 2 ended, pushed to origin/main
+- **Lenat-clear**: recompiled; fresh `index.html` with both routing fixes; no git remote
+- **UAT shortcut**: `C:\Users\rmill\Desktop\Lenat-UAT.lnk` exists and points to `start-lenat.bat`
+- **Screenshots**: stale — need fresh run with Node Lenat running
+
+## Next priorities (see priority-queue.md for full list)
+
+1. **Lenat-clear visual parity review** — BLOCKED on Node Lenat at 7777. Once unblocked: run `parity-screenshot.mjs`, open `screenshots/REPORT.html`, identify top-3 visual gaps vs Node Lenat.
+2. **LAE Phase C audit + finish** — read `studio/tenants.js` + `runtime/meph-widget.js`, verify cycles 3/5/6, plug gaps. Goal: destructive ships end-to-end.
+3. **Marcus demo polish** — open each Marcus app in Studio, click Run, verify no JS errors or broken layouts.
+
+---
+
 # Handoff — 2026-05-11 (docs: Stripe-style FEATURES.md + Chapter 27 + clean reading copy)
 
 ## What shipped this session
