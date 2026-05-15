@@ -19186,16 +19186,14 @@ const CSS_COMPONENTS = [
   text-transform: uppercase;
 }
 .clear-app [data-pane="today"] .clear-section-card:has(> h2:first-child) > p {
-  display: grid;
-  grid-template-columns: 78px 84px minmax(0, 1fr);
-  gap: 14px;
+  display: block;
   margin: 0;
   padding: 10px 0;
   border-top: 1px solid var(--clear-line);
   color: var(--clear-ink-soft);
   font-size: 13px;
   line-height: 1.45;
-  white-space: pre-wrap;
+  white-space: pre;
 }
 @media (max-width: 720px) {
   .clear-app { grid-template-columns: 64px minmax(0, 1fr); }
@@ -19377,6 +19375,20 @@ const CSS_COMPONENTS = [
   font-weight: 700;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+}
+.clear-stat-value.clear-stat-value-number {
+  color: var(--clear-accent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 44px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-shadow: 0 0 8px rgb(255 184 108 / 0.35), 0 0 16px rgb(255 184 108 / 0.18);
+}
+.clear-stat-value.clear-stat-value-text {
+  color: var(--clear-ink-muted);
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 500;
 }
 .clear-stat-delta {
   margin-top: 7px;
