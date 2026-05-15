@@ -12600,6 +12600,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       outputId = outputId + '_' + counter;
     }
     _dispUsedIds.add(outputId);
+    disp.ui._resolvedId = outputId;
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'capability_explorer') {
       lines.push(`  _clearRenderCapabilityExplorer(document.getElementById('${outputId}'), ${val});`);

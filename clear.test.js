@@ -29753,6 +29753,24 @@ app 'Lenat' at '/':
     expect(paneFeatureResult.html).toContain('selectedRow.slot_schema_json || selectedRow.slots_json');
     expect(paneFeatureResult.html).toContain('synonymList = [selectedRow.canonical_phrase]');
   });
+
+  it('T-DEEP-7: duplicate displays bind delete handlers to the resolved table id', () => {
+    const duplicateDisplaySrc = `build for web
+app 'Lenat' at '/':
+  pane 'Knowledge' as 'knowledge':
+    all_records = [{id: 'r1', concept_id: 'IDEA', payload_json: '{"idea":"x"}'}]
+    display all_records as record browser
+  pane 'Records' as 'records':
+    all_records = [{id: 'r1', concept_id: 'IDEA', payload_json: '{"idea":"x"}'}]
+    display all_records as table showing concept_id with delete
+when user calls DELETE /api/all_records/:id:
+  send back 'deleted' with success message`;
+    const duplicateDisplayResult = compileProgram(duplicateDisplaySrc);
+    expect(duplicateDisplayResult.errors).toHaveLength(0);
+    expect(duplicateDisplayResult.html).toContain('id="output_All_Records_2_table"');
+    expect(duplicateDisplayResult.html).toContain("document.getElementById('output_All_Records_2_table').addEventListener");
+    expect(duplicateDisplayResult.html).not.toContain("document.getElementById('output_All_Records_table').addEventListener");
+  });
 });
 
 // =============================================================================
