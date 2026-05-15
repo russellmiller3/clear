@@ -792,7 +792,18 @@ Inline reminders for the shapes you'll touch every turn:
   - All four want TEXT for their source — validator warns `SLOT_EXTRACTOR_WRONG_TYPE` on number / list / boolean inputs. Chain them via `{value, remainder}` to peel structured values off an utterance left-to-right.
 - `email customer when X's status changes to 'value':` — the top-level triggered-email block; needs `subject is`, `body is`, `provider is` (default `'agentmail'`), optional `track replies as <text>`.
 - `policy:` blocks blanket safety rules (block schema changes, block deletes without filter, protect tables: X, no mass emails).
-- `workflow 'X' with state:` — multi-step orchestration with shared state across steps.
+- `workflow 'X' with state:` — multi-step orchestration with shared state across steps. Emits `/start` (POST, starts the flow) and `/respond` (POST, advances paused steps). Use `step 'Name' awaits user input as state's field` to pause and wait for the next user POST. Use `step 'Name' with 'Agent Name'` for automated agent steps. State fields persist across HTTP requests. Example:
+  ```
+  workflow 'Intake' with state:
+    state has:
+      email, required
+      issue_summary
+    step 'Collect Email' awaits user input as state's email
+    step 'Summarise' with 'Summary Agent'
+    step 'Collect Details' awaits user input as state's issue_summary
+    step 'Route' with 'Router Agent'
+  ```
+  POST `/start` → pauses at 'Collect Email', returns `{step: 'Collect Email', prompt: ...}`. POST `/respond` with `{session_id, message}` → advances. **Don't use this for simple single-turn chat** — use a plain `when user sends message to /api/X:` endpoint instead. Workflow is for flows that genuinely need 2+ round-trips with saved state between them.
 
 Agent evals: `list_evals` / `run_evals` / `run_eval { id: '...' }` tools. Probes auto-attach a test-user token — if a probe gets 401, that is NOT the real bug, look at the response body. Probe budget 90s.
 
