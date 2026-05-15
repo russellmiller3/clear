@@ -8216,6 +8216,15 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
 // CRUD OPERATIONS (Phase 9)
 // =============================================================================
 
+function skipOptionalArticles(tokens, pos) {
+  while (pos < tokens.length) {
+    const value = String(tokens[pos].value || '').toLowerCase();
+    if (value !== 'a' && value !== 'an' && value !== 'the') break;
+    pos++;
+  }
+  return pos;
+}
+
 function parseSave(tokens, line) {
   let pos = 1; // skip "save"
   if (pos >= tokens.length) {
@@ -8262,8 +8271,13 @@ function parseSave(tokens, line) {
   } else if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
     pos++; // "save X to Y" = update existing
   }
+  pos = skipOptionalArticles(tokens, pos);
   // Skip optional "new": "save X as new Model"
-  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
+  if (pos < tokens.length && String(tokens[pos].value || '').toLowerCase() === 'new') {
+    isInsert = true;
+    pos++;
+    pos = skipOptionalArticles(tokens, pos);
+  }
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a target. Example: save new_user to Users' };
   }
@@ -8598,9 +8612,14 @@ function parseSaveAssignment(name, tokens, pos, line) {
       || (typeof tokens[pos].value === 'string' && (tokens[pos].value.toLowerCase() === 'as' || tokens[pos].value.toLowerCase() === 'to')))) {
     pos++;
   }
+  pos = skipOptionalArticles(tokens, pos);
   // Skip optional "new" before target: "save X as new Todo"
   let isInsert = false;
-  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
+  if (pos < tokens.length && String(tokens[pos].value || '').toLowerCase() === 'new') {
+    isInsert = true;
+    pos++;
+    pos = skipOptionalArticles(tokens, pos);
+  }
   let target = 'unknown';
   if (pos < tokens.length) {
     target = tokens[pos].value;
@@ -12231,6 +12250,36 @@ function parsePrimary(tokens, pos, line, end) {
   // `items = get all Items where owner is this user_id`. Previously this
   // only worked inside specific forms (delete/update/look up with this X).
   // Now it works in any expression position.
+  if (tok.value === 'call' && pos + 1 < maxPos && tokens[pos + 1].value === 'function') {
+    let withIndex = -1;
+    for (let scan = pos + 2; scan < maxPos; scan++) {
+      const tk = tokens[scan];
+      if (tk.value === 'with' || tk.canonical === 'with') { withIndex = scan; break; }
+    }
+    const nameEnd = withIndex >= 0 ? withIndex : maxPos;
+    const nameExpr = parseExpression(tokens, pos + 2, line, nameEnd);
+    if (nameExpr.error || !nameExpr.node) {
+      return { error: "`call function` needs a function name. Example: call function GREET with 'world'" };
+    }
+    let argExpr = null;
+    let nextPos = nameExpr.nextPos || nameEnd;
+    if (withIndex >= 0 && withIndex + 1 < maxPos) {
+      const parsedArg = parseExpression(tokens, withIndex + 1, line, maxPos);
+      if (parsedArg.error) return parsedArg;
+      argExpr = parsedArg.node;
+      nextPos = parsedArg.nextPos || maxPos;
+    }
+    return {
+      node: {
+        type: NodeType.CALL_FUNCTION,
+        functionName: nameExpr.node,
+        argument: argExpr,
+        line,
+      },
+      nextPos,
+    };
+  }
+
   if (tok.value === 'this' && pos + 1 < maxPos) {
     const nextTok = tokens[pos + 1];
     // Only match if the next token is a plausible identifier name.

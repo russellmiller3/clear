@@ -89,4 +89,22 @@ describe('call-function primitive (2026-05-14)', () => {
     // The emitted dispatch must read from the variable, NOT the literal 'chosen_function' string.
     expect(compile_result.javascript).toMatch(/_userFunctions\[\s*chosen_function\s*\]/);
   });
+
+  it('emits assignment from call function without compiling to a bare call variable', () => {
+    const source = [
+      "target: backend",
+      "",
+      "define function GREET(caller_name):",
+      "  send back 'hello ' + caller_name",
+      "",
+      "when user calls POST /api/x:",
+      "  chosen_function = 'GREET'",
+      "  result = call function chosen_function with 'world'",
+      "  send back result",
+    ].join('\n');
+    const compile_result = compileProgram(source);
+    expect(compile_result.errors).toEqual([]);
+    expect(compile_result.javascript).toMatch(/result\s*=\s*await _userFunctions\[\s*chosen_function\s*\]\(\s*['"]world['"]\s*\)/);
+    expect(compile_result.javascript).not.toContain('result = call;');
+  });
 });

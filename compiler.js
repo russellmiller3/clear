@@ -993,9 +993,15 @@ async function* _askAIStream(prompt, context, model, opts) {
     el.innerHTML = '<p style="text-align:center;opacity:0.4;padding:2rem 0;font-size:14px">No messages yet</p>';
     return;
   }
+  function _chatText(content) {
+    if (content == null) return '';
+    if (typeof content === 'string') return content;
+    if (typeof content === 'number' || typeof content === 'boolean') return String(content);
+    try { return JSON.stringify(content); } catch (_) { return String(content); }
+  }
   el.innerHTML = messages.map(function(msg) {
     var role = String(msg[roleField] || 'user').toLowerCase();
-    var content = String(msg[contentField] || '');
+    var content = _chatText(msg[contentField]);
     var isUser = role === 'user';
     var cls = isUser ? 'user' : 'assistant';
     var rendered = isUser ? _chatMdInline(content) : _chatMd(content);
@@ -8991,10 +8997,26 @@ ${pad}}`;
       // Frontend JS: walk every frame's body. Sidebar lives outside any one
       // pane but its defines and event wiring belong to the global page-load
       // sequence (recompute fires once on load and covers them).
+      const withoutAbsorbedChatControls = (nodes) => (nodes || [])
+        .filter(n => n && !n._chatAbsorbed)
+        .map(n => {
+          if (Array.isArray(n.body)) return { ...n, body: withoutAbsorbedChatControls(n.body) };
+          if (Array.isArray(n.thenBranch) || Array.isArray(n.otherwiseBranch)) {
+            return {
+              ...n,
+              thenBranch: withoutAbsorbedChatControls(n.thenBranch),
+              otherwiseBranch: withoutAbsorbedChatControls(n.otherwiseBranch),
+            };
+          }
+          return n;
+        });
       const allBodies = [];
       for (const frame of allFrames) {
         const frameCtx = { ...ctx, insidePage: true, pageRoute: frame.route };
-        const bodyCode = frame.body.map(n => compileNode(n, frameCtx)).filter(Boolean).join('\n');
+        const bodyCode = withoutAbsorbedChatControls(frame.body)
+          .map(n => compileNode(n, frameCtx))
+          .filter(Boolean)
+          .join('\n');
         if (bodyCode.trim()) allBodies.push(`${pad}// ${frame.name}\n${bodyCode}`);
       }
       if (allBodies.length === 0) return null;
@@ -10798,19 +10820,20 @@ ${pad}}`;
     case NodeType.PANEL_ACTION: {
       const slug = sanitizeName(node.target.replace(/\s+/g, '_').toLowerCase());
       const panelId = `panel-${slug}`;
+      const scopedPanelLookup = `const _root = (typeof this !== 'undefined' && this && this.closest) ? (this.closest('[data-pane]') || document) : document; const _p = (_root.querySelector && _root.querySelector('[data-panel-key="${slug}"]')) || document.getElementById('${panelId}')`;
       if (node.action === 'toggle') {
-        return `${pad}{ const _p = document.getElementById('${panelId}'); if (_p) { if (_p.style.display === 'none') _p.style.display = ''; else _p.style.display = 'none'; } }`;
+        return `${pad}{ ${scopedPanelLookup}; if (_p) { if (_p.style.display === 'none') _p.style.display = ''; else _p.style.display = 'none'; } }`;
       }
       if (node.action === 'open') {
         // Check if it's a modal (dialog element) or a regular panel
-        return `${pad}{ const _p = document.getElementById('${panelId}'); if (_p) { if (_p.tagName === 'DIALOG') _p.showModal(); else _p.style.display = ''; } }`;
+        return `${pad}{ ${scopedPanelLookup}; if (_p) { if (_p.tagName === 'DIALOG') _p.showModal(); else _p.style.display = ''; } }`;
       }
       if (node.action === 'close') {
         // "close modal" -- find the nearest dialog ancestor or target
         if (node.target === 'this') {
           return `${pad}{ const _d = this.closest('dialog'); if (_d) _d.close(); }`;
         }
-        return `${pad}{ const _p = document.getElementById('${panelId}'); if (_p) { if (_p.tagName === 'DIALOG') _p.close(); else _p.style.display = 'none'; } }`;
+        return `${pad}{ ${scopedPanelLookup}; if (_p) { if (_p.tagName === 'DIALOG') _p.close(); else _p.style.display = 'none'; } }`;
       }
       return null;
     }
@@ -11333,6 +11356,19 @@ export function exprToCode(expr, ctx) {
       return `await _classifyIntent(${inputCode}, [${cats}])`;
     }
 
+    case NodeType.CALL_FUNCTION: {
+      let nameCode;
+      const nameNode = expr.functionName;
+      if (nameNode && nameNode.type === NodeType.VARIABLE_REF && ctx.declared && !ctx.declared.has(nameNode.name)) {
+        nameCode = JSON.stringify(nameNode.name);
+      } else {
+        nameCode = exprToCode(nameNode, ctx);
+      }
+      const argCode = expr.argument ? exprToCode(expr.argument, ctx) : '';
+      if (ctx.lang === 'python') return `await _user_functions[${nameCode}](${argCode})`;
+      return `await _userFunctions[${nameCode}](${argCode})`;
+    }
+
     case NodeType.RUN_AGENT: {
       const fnName = 'agent_' + sanitizeName(expr.agentName.toLowerCase().replace(/\s+/g, '_'));
       const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
@@ -11775,7 +11811,7 @@ function compileToJS(body, errors, sourceMap = false, streamingAgentNames = new 
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE || node.type === NodeType.DETAIL_PANEL) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE || node.type === NodeType.DETAIL_PANEL || node.type === NodeType.STAT_STRIP || node.type === NodeType.STAT_CARD) return true;
       // Conditional blocks with UI content need reactive path for show/hide toggling
       if (node.type === NodeType.IF_THEN && node.isBlock) return true;
       // Inline component call: show Card(name) OR show ui's Card(name) — needs reactive path for DOM injection
@@ -11789,6 +11825,13 @@ function isReactiveApp(body) {
       if (node.type === NodeType.ON_SCROLL) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
+      }
+      // SPA apps: recurse into every pane body so buttons/inputs inside panes
+      // correctly route the whole app through compileToReactiveJS.
+      if (node.type === NodeType.APP_BLOCK) {
+        for (const pane of (node.panes || [])) {
+          if (check(pane.body || [])) return true;
+        }
       }
       if (node.type === NodeType.IF_THEN) {
         if (Array.isArray(node.thenBranch) && check(node.thenBranch)) return true;
@@ -11835,6 +11878,14 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
         flatten(node.actions || [], pageRoute);
+      } else if (node.type === NodeType.APP_BLOCK) {
+        // Recurse into each pane's body so absorption pre-scans (chat, etc.)
+        // can detect display+input+button triples inside SPA panes.
+        if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
+        if (node.name) pageTitles.push(node.name);
+        for (const pane of (node.panes || [])) {
+          flatten(pane.body || [], pane.route || pageRoute || '/');
+        }
       } else {
         if (pageRoute && node._pageRoute === undefined) node._pageRoute = pageRoute;
         flatNodes.push(node);
@@ -11870,13 +11921,20 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   // When `display X as chat` is immediately followed by a text input + Send button
   // at the same level, absorb those controls into the chat component's built-in UI
   // so the compiled output doesn't render duplicate input/button elements.
+  const nextNonCommentNodeIndex = (start) => {
+    let idx = start;
+    while (idx < flatNodes.length && flatNodes[idx].type === NodeType.COMMENT) idx++;
+    return idx;
+  };
   for (let i = 0; i < flatNodes.length - 2; i++) {
     const disp = flatNodes[i];
     if (disp.type !== NodeType.DISPLAY || disp.format !== 'chat') continue;
-    const inp = flatNodes[i + 1];
-    if (inp.type !== NodeType.ASK_FOR) continue;
-    const btn = flatNodes[i + 2];
-    if (btn.type !== NodeType.BUTTON || !btn.body || btn.body.length === 0) continue;
+    const inpIdx = nextNonCommentNodeIndex(i + 1);
+    const inp = flatNodes[inpIdx];
+    if (!inp || inp.type !== NodeType.ASK_FOR) continue;
+    const btnIdx = nextNonCommentNodeIndex(inpIdx + 1);
+    const btn = flatNodes[btnIdx];
+    if (!btn || btn.type !== NodeType.BUTTON || !btn.body || btn.body.length === 0) continue;
     // Button body must contain a POST API_CALL (the send action)
     const postNode = btn.body.find(n => n.type === NodeType.API_CALL && n.method === 'POST');
     if (!postNode) continue;
@@ -11931,6 +11989,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         computeNodes.push(node); break;
     }
   }
+  const absorbedChatInputs = displayNodes
+    .filter(d => d.format === 'chat' && d._chatAbsorbedInput && d._chatAbsorbedInput.variable)
+    .map(d => ({ displayNode: d, variable: d._chatAbsorbedInput.variable }));
 
   // 1. Setup (comments, imports)
   const declared = new Set();
@@ -11966,6 +12027,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       stateDefaults[name] = inp.inputType === 'number' ? '0' : inp.inputType === 'percent' ? '0' : inp.inputType === 'yes/no' ? 'false' : '""';
     }
   }
+  for (const inp of absorbedChatInputs) {
+    const name = sanitizeName(inp.variable);
+    if (stateDefaults[name] === undefined) stateDefaults[name] = '""';
+  }
   // Scan for API calls -- register their target variables as state
   function findApiTargets(nodes) {
     for (const n of nodes) {
@@ -11977,6 +12042,21 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     }
   }
   findApiTargets(flatNodes);
+  function findCrudLookupTargets(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.CRUD && n.operation === 'lookup' && n.variable) {
+        const target = sanitizeName(n.variable);
+        if (stateDefaults[target] === undefined) stateDefaults[target] = '[]';
+      }
+      if (Array.isArray(n.body)) findCrudLookupTargets(n.body);
+      if (Array.isArray(n.thenBranch)) findCrudLookupTargets(n.thenBranch);
+      if (Array.isArray(n.otherwiseBranch)) findCrudLookupTargets(n.otherwiseBranch);
+      if (n.panes) {
+        for (const pane of n.panes) findCrudLookupTargets(pane.body || []);
+      }
+    }
+  }
+  findCrudLookupTargets(flatNodes);
   // Also add simple literal assignments to state:
   // step = 1, name is 'hello', active is true, items is an empty list
   // These are "initial state" — not derived from other variables.
@@ -12417,6 +12497,10 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       const roleField = JSON.stringify(chatCols[0] || 'role');
       const contentField = JSON.stringify(chatCols[1] || 'content');
       lines.push(`  _chatRender(document.getElementById('${outputId}_msgs'), ${val}, ${roleField}, ${contentField});`);
+      if (disp._chatAbsorbedInput && disp._chatAbsorbedInput.variable) {
+        const inputName = sanitizeName(disp._chatAbsorbedInput.variable);
+        lines.push(`  { const _el = document.getElementById('${outputId}_input'); if (_el && _el.value !== _state.${inputName}) _el.value = _state.${inputName}; }`);
+      }
       // Track for event listener wiring after _recompute
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
       _chatDisplays.push({ outputId, varName, dispNode: disp });
@@ -12724,8 +12808,16 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       _tplVars.add(_node.count);
     }
     // (3) Stat-card big number — `value pending_count` parses to a VARIABLE_REF.
-    if (_node.type === NodeType.STAT_CARD && _node.value && _node.value.type === NodeType.VARIABLE_REF && typeof _node.value.name === 'string') {
-      _tplVars.add(_node.value.name);
+    function _addTplExpr(_expr) {
+      if (!_expr || typeof _expr !== 'object') return;
+      if (_expr.type === NodeType.VARIABLE_REF && typeof _expr.name === 'string') {
+        _tplVars.add(_expr.name);
+      } else if ((_expr.type === NodeType.MEMBER_ACCESS || _expr.type === 'member_access') && _expr.object) {
+        _addTplExpr(_expr.object);
+      }
+    }
+    if (_node.type === NodeType.STAT_CARD && _node.value) {
+      _addTplExpr(_node.value);
     }
     // Recurse into known child-bearing fields. flatNodes already unrolled
     // PAGE / SECTION / DETAIL_PANEL / PAGE_HEADER; this catches the
@@ -12767,6 +12859,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   // 4b. Chat component event listeners
   for (const chatDisp of _chatDisplays) {
     const { outputId, varName } = chatDisp;
+    const absorbedInputName = chatDisp.dispNode?._chatAbsorbedInput?.variable
+      ? sanitizeName(chatDisp.dispNode._chatAbsorbedInput.variable)
+      : null;
     // Determine DELETE endpoint for New button (convention: DELETE /api/{resource})
     const resourceKey = varName.toLowerCase();
     const deleteUrl = deleteEndpoints[resourceKey] || null;
@@ -12788,6 +12883,11 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push(`document.getElementById('${outputId}_input').addEventListener('keydown', function(e) {`);
     lines.push(`  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('${outputId}_send').click(); }`);
     lines.push(`});`);
+    if (absorbedInputName) {
+      lines.push(`document.getElementById('${outputId}_input').addEventListener('input', function(e) {`);
+      lines.push(`  _state.${absorbedInputName} = e.target.value;`);
+      lines.push(`});`);
+    }
 
     // Scroll-to-bottom visibility toggle
     lines.push(`(function() {`);
@@ -12808,6 +12908,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     const dispNode = chatDisp.dispNode;
     if (dispNode && dispNode._chatAbsorbedButton) {
       const { postUrl, postField, refreshUrl, refreshVar } = dispNode._chatAbsorbedButton;
+      const clearVar = dispNode._chatAbsorbedButton.clearVar
+        ? sanitizeName(dispNode._chatAbsorbedButton.clearVar)
+        : null;
       const refreshCode = refreshUrl && refreshVar
         ? `_state.${refreshVar} = await fetch('${refreshUrl}', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } }).then(function(r) { return r.json(); }); _recompute();`
         : '_recompute();';
@@ -12840,6 +12943,9 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       const sendFn = isStreamingEndpoint ? '_chatSendStream' : '_chatSend';
       lines.push(`document.getElementById('${outputId}_send').addEventListener('click', async function() {`);
       lines.push(`  ${sendFn}('${outputId}_input', '${outputId}_msgs', '${outputId}_typing', '${postUrl}', '${postField}', async function() {`);
+      if (clearVar && stateVarNames.has(clearVar)) {
+        lines.push(`    _state.${clearVar} = "";`);
+      }
       lines.push(`    ${refreshCode}`);
       lines.push(`  });`);
       lines.push(`});`);
@@ -12869,6 +12975,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push('// --- Button handlers ---');
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
+      const btnUatId = stableUatId('button', btn.line, btn.label || btn.ui?.label || btnId);
       const btnDeclared = new Set(recomputeDeclared);
       const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined, streamingEndpoints, authEndpoints };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
@@ -12885,7 +12992,8 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
         if (call.fields) call.fields.forEach(f => fieldsToValidate.add(sanitizeName(f)));
       }
 
-      lines.push(`document.getElementById('${btnId}').addEventListener('click', ${asyncKw}function() {`);
+      lines.push(`document.querySelectorAll('[data-clear-uat-id="${btnUatId}"]').forEach(function(_clearBtn) {`);
+      lines.push(`_clearBtn.addEventListener('click', ${asyncKw}function() {`);
 
       // Client-side validation: check required fields aren't empty
       if (fieldsToValidate.size > 0) {
@@ -12897,7 +13005,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
 
       // Loading state: disable button + show spinner during async work
       if (hasApiCall) {
-        lines.push(`  const _btn = document.getElementById('${btnId}');`);
+        lines.push(`  const _btn = this;`);
         lines.push(`  const _btnHTML = _btn.innerHTML;`);
         lines.push(`  _btn.disabled = true;`);
         lines.push(`  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';`);
@@ -12911,6 +13019,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       }
 
       lines.push(`  _recompute();`);
+      lines.push(`});`);
       lines.push(`});`);
     }
   }
@@ -13338,6 +13447,17 @@ function buildHTML(body) {
     return `<span class="clear-nav-count num">${safe}</span>`;
   }
 
+  function uniqueElementId(baseId) {
+    let resolved = baseId;
+    if (usedIds.has(resolved)) {
+      let counter = 2;
+      while (usedIds.has(`${baseId}_${counter}`)) counter++;
+      resolved = `${baseId}_${counter}`;
+    }
+    usedIds.add(resolved);
+    return resolved;
+  }
+
   function navItemHTML(node) {
     const title = formatInlineText(node.title || '');
     const href = attrEsc(node.path || '#');
@@ -13367,6 +13487,9 @@ ${childHtml}
 
   function pageHeaderHTML(node) {
     const title = formatInlineText(node.title || '');
+    const todayDate = String(node.title || '').trim().toLowerCase() === 'today'
+      ? `<span class="clear-page-date" data-current-date="true"></span>`
+      : '';
     // Subtitle supports {varname} interpolation against the page's reactive
     // state — same path that text/small-text use elsewhere. When the subtitle
     // contains {var} placeholders we emit data-clear-tpl="{original}" and the
@@ -13392,7 +13515,7 @@ ${childHtml}
       : '';
     return `    <div class="clear-page-header flex items-start justify-between gap-4" data-page-header="true"${clAttr(node)}>
       <div class="min-w-0">
-        <h1 class="clear-page-title text-2xl">${title}</h1>
+        <h1 class="clear-page-title text-2xl"><span class="clear-page-title-text">${title}</span>${todayDate}</h1>
         ${subtitle}
       </div>${actions}
     </div>`;
@@ -13438,6 +13561,11 @@ ${childHtml}
       return `<span data-clear-tpl="{${safe}}">0</span>`;
     }
     return formatInlineText(exprToCode(expr, { lang: 'javascript' }));
+  }
+
+  function statValueKind(expr) {
+    if (expr && expr.type === NodeType.LITERAL_STRING) return 'text';
+    return 'number';
   }
 
   function statDeltaHTML(delta) {
@@ -13509,7 +13637,7 @@ ${childHtml}
     if (icon) lines.push(icon);
     lines.push(
       '        </div>',
-      `        <div class="clear-stat-value tabular-nums">${statValueHTML(card.value)}</div>`
+      `        <div class="clear-stat-value clear-stat-value-${statValueKind(card.value)}${statValueKind(card.value) === 'number' ? ' tabular-nums' : ''}">${statValueHTML(card.value)}</div>`
     );
     if (delta) lines.push(`        ${delta}`);
     if (sparkline) lines.push(`        ${sparkline}`);
@@ -13573,6 +13701,36 @@ ${bodyHTML}
             walk(node.sidebar);
             parts.push(`</aside>`);
           }
+          parts.push(`<main class="clear-app-stage" data-app-stage="true">`);
+          parts.push(`<div class="clear-app-topbar" data-app-topbar="true">
+  <button type="button" class="clear-app-search" data-app-search="true" title="Search everything">
+    <i data-lucide="search" aria-hidden="true"></i><span>Search everything</span><kbd>&#8984;K</kbd>
+  </button>
+  <div class="clear-app-topbar-actions">
+    <button type="button" class="clear-app-ghost" data-app-help="true" title="Help">
+      <i data-lucide="circle-help" aria-hidden="true"></i><span>Help</span>
+    </button>
+    <button type="button" class="clear-app-ghost" data-app-new-chat="true" title="New chat">
+      <i data-lucide="plus" aria-hidden="true"></i><span>New chat</span>
+    </button>
+  </div>
+</div>`);
+          parts.push(`<div class="clear-app-palette" data-app-palette="true" hidden>
+  <div class="clear-app-palette-panel" role="dialog" aria-label="Search everything">
+    <label class="clear-app-palette-search">
+      <i data-lucide="search" aria-hidden="true"></i>
+      <input type="search" data-app-palette-input="true" placeholder="Search everything" />
+    </label>
+    <div class="clear-app-palette-actions">
+      <button type="button" data-app-palette-go="today">Today</button>
+      <button type="button" data-app-palette-go="chat">Chat</button>
+      <button type="button" data-app-palette-go="capabilities">What I can do</button>
+      <button type="button" data-app-palette-go="knowledge">What I know</button>
+      <button type="button" data-app-palette-go="records">All records</button>
+    </div>
+    <button type="button" class="clear-app-palette-close" data-app-palette-close="true">Close</button>
+  </div>
+</div>`);
           parts.push(`<div class="clear-app-panes" data-app-panes="true">`);
           for (let pi = 0; pi < (node.panes || []).length; pi++) {
             const pane = node.panes[pi];
@@ -13584,6 +13742,7 @@ ${bodyHTML}
             parts.push(`</div>`);
           }
           parts.push(`</div>`);
+          parts.push(`</main>`);
           parts.push(`</div>`);
           // Inline router script — minimal, no framework. Hooks every <a href>
           // whose target matches a known pane route, switches via pushState,
@@ -13600,6 +13759,14 @@ ${bodyHTML}
     for (var i = 0; i < panes.length; i++) {
       panes[i].style.display = panes[i].getAttribute('data-pane') === slug ? '' : 'none';
     }
+    var navItems = app.querySelectorAll('[data-nav-item]');
+    for (var n = 0; n < navItems.length; n++) {
+      var navHref = navItems[n].getAttribute('data-nav-path') || navItems[n].getAttribute('href') || '';
+      var navSlug = navHref.replace(/^#?\\/?/, '');
+      var active = navSlug === slug;
+      navItems[n].classList.toggle('is-active', active);
+      navItems[n].classList.toggle('active', active);
+    }
   }
   function routeFromHash() {
     var h = (location.hash || '').replace(/^#\\/?/, '');
@@ -13607,6 +13774,59 @@ ${bodyHTML}
     return ROUTES.indexOf(h) >= 0 ? h : ROUTES[0];
   }
   document.addEventListener('click', function(e) {
+    var search = e.target.closest && e.target.closest('[data-app-search]');
+    if (search) {
+      e.preventDefault();
+      var palette = document.querySelector('[data-app-palette]');
+      if (palette) {
+        palette.hidden = false;
+        var input = palette.querySelector('[data-app-palette-input]');
+        if (input) setTimeout(function() { input.focus(); }, 0);
+      }
+      return;
+    }
+    var paletteClose = e.target.closest && e.target.closest('[data-app-palette-close]');
+    if (paletteClose) {
+      e.preventDefault();
+      var paletteToClose = document.querySelector('[data-app-palette]');
+      if (paletteToClose) paletteToClose.hidden = true;
+      return;
+    }
+    var paletteGo = e.target.closest && e.target.closest('[data-app-palette-go]');
+    if (paletteGo) {
+      e.preventDefault();
+      var goSlug = paletteGo.getAttribute('data-app-palette-go');
+      if (ROUTES.indexOf(goSlug) >= 0) {
+        history.pushState({slug: goSlug}, '', '/' + goSlug);
+        setActivePane(goSlug);
+        var openPalette = document.querySelector('[data-app-palette]');
+        if (openPalette) openPalette.hidden = true;
+      }
+      return;
+    }
+    var help = e.target.closest && e.target.closest('[data-app-help]');
+    if (help) {
+      e.preventDefault();
+      var activeSlug = (document.querySelector('[data-app]') || {}).getAttribute && document.querySelector('[data-app]').getAttribute('data-active');
+      var activePane = activeSlug ? document.querySelector('[data-pane="' + activeSlug + '"]') : null;
+      var dialog = activePane && activePane.querySelector && activePane.querySelector('dialog.modal, dialog');
+      if (dialog) {
+        if (dialog.showModal) dialog.showModal();
+        else dialog.style.display = 'block';
+      }
+      return;
+    }
+    var newChat = e.target.closest && e.target.closest('[data-app-new-chat]');
+    if (newChat) {
+      e.preventDefault();
+      if (ROUTES.indexOf('chat') >= 0) {
+        history.pushState({slug: 'chat'}, '', '/chat');
+        setActivePane('chat');
+        var clearBtn = document.querySelector('[data-pane="chat"] .clear-chat-new');
+        if (clearBtn) clearBtn.click();
+      }
+      return;
+    }
     var a = e.target.closest && e.target.closest('a[href]');
     if (!a) return;
     var href = a.getAttribute('href') || '';
@@ -13741,14 +13961,15 @@ ${bodyHTML}
 
           if (isModal) {
             // Modal: DaisyUI modal pattern
-            parts.push(`    <dialog class="modal" id="${panelId}">`);
+            const resolvedPanelId = uniqueElementId(panelId);
+            parts.push(`    <dialog class="modal" id="${resolvedPanelId}" data-panel-key="${attrEsc(slug)}">`);
             parts.push(`    <div class="modal-box">`);
             walk(node.body);
             parts.push(`    </div>`);
             parts.push(`    <form method="dialog" class="modal-backdrop"><button>close</button></form>`);
             parts.push(`    </dialog>`);
             // CSS for modal backdrop
-            inlineStyleBlocks.push(`#${panelId}::backdrop { background: rgba(0,0,0,0.4); }`);
+            inlineStyleBlocks.push(`#${resolvedPanelId}::backdrop { background: rgba(0,0,0,0.4); }`);
             break;
           }
 
@@ -14577,7 +14798,8 @@ ${optionsHtml}
             ? ` data-action="${attrEsc(actionSlug(node.ui.label || ''))}"`
             : '';
           const btnUatId = attrEsc(stableUatId('button', node.line, node.label || node.ui.label));
-          parts.push(`    <button class="${btnCls}" id="${node.ui.id}" data-clear-uat-id="${btnUatId}" data-clear-control-kind="button"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
+          const buttonId = uniqueElementId(node.ui.id);
+          parts.push(`    <button class="${btnCls}" id="${buttonId}" data-clear-uat-id="${btnUatId}" data-clear-control-kind="button"${detailActionAttr}${clAttr(node)}>${node.ui.label}</button>`);
           break;
         }
 
@@ -14974,12 +15196,21 @@ ${optionsHtml}
  * Convert inline formatting markers to HTML:
  * *bold* -> <strong>bold</strong>
  * _italic_ -> <em>italic</em>
+ *
+ * Split on {variable} interpolation blocks before applying markdown so
+ * underscores inside variable names like {all_count} are never consumed
+ * by the italic regex.
  */
-function formatInlineText(text) {
-  if (!text) return '';
-  return text
-    .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
-    .replace(/_([^_]+)_/g, '<em>$1</em>');
+function formatInlineText(markup_source) {  // name-by-use-override: markup_source is the canonical param name for this helper
+  if (!markup_source) return '';
+  // Even-indexed parts are plain text; odd-indexed are {interpolation} blocks.
+  const segments = markup_source.split(/(\{[^}]+\})/);
+  return segments.map((segment, i) => {
+    if (i % 2 === 1) return segment; // interpolation token — pass through unchanged
+    return segment
+      .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
+      .replace(/_([^_]+)_/g, '<em>$1</em>');
+  }).join('');
 }
 
 /**
@@ -15163,6 +15394,8 @@ _router();`;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
 ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>' : ''}
@@ -16767,9 +17000,34 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // CRUD lookup node in a page or pane body. These get pre-fetched server-side
     // so the browser sees real data on first paint instead of the "0 flash."
     const routeSsrDefines = new Map();
-    const collectSsrDefines = (bodyNodes) =>
-      (bodyNodes || []).filter(n => n && n.type === NodeType.CRUD && n.operation === 'lookup' && !n.clientOnly && n.variable && n.target)
-        .map(n => ({ variable: n.variable, table: pluralizeName(n.target) }));
+    const collectSsrDefines = (bodyNodes) => {
+      const out = [];
+      const seen = new Set();
+      function walk(nodes) {
+        for (const n of (nodes || [])) {
+          if (!n) continue;
+          if (n.type === NodeType.CRUD && n.operation === 'lookup' && !n.clientOnly && n.variable && n.target) {
+            const key = sanitizeName(n.variable);
+            if (!seen.has(key)) {
+              seen.add(key);
+              out.push({
+                variable: key,
+                table: pluralizeName(n.target),
+                filterExpr: n.condition ? conditionToFilter(n.condition, ctx) : null,
+              });
+            }
+          }
+          if (Array.isArray(n.body)) walk(n.body);
+          if (Array.isArray(n.thenBranch)) walk(n.thenBranch);
+          if (Array.isArray(n.otherwiseBranch)) walk(n.otherwiseBranch);
+          if (n.panes) {
+            for (const pane of n.panes) walk(pane.body || []);
+          }
+        }
+      }
+      walk(bodyNodes);
+      return out;
+    };
     for (const p of pageNodes) {
       const route = p.route || '/';
       if (route.startsWith('/api/') || route.startsWith('/auth/')) continue;
@@ -16802,7 +17060,8 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
         lines.push(`  try {`);
         lines.push(`    const _ssrState = {};`);
         for (const def of ssrDefs) {
-          lines.push(`    _ssrState[${JSON.stringify(def.variable)}] = (await db.findAll(${JSON.stringify(def.table)})).map(_revive);`);
+          const filterArg = def.filterExpr ? `, ${def.filterExpr}` : '';
+          lines.push(`    _ssrState[${JSON.stringify(def.variable)}] = (await db.findAll(${JSON.stringify(def.table)}${filterArg})).map(_revive);`);
         }
         lines.push(`    const _html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');`);
         lines.push(`    const _stateScript = '<script>window.__CLEAR_INITIAL_STATE__ = ' + JSON.stringify(_ssrState) + ';</script>';`);
@@ -17904,7 +18163,7 @@ const BUILTIN_PRESET_CLASSES = {
   app_main:          'flex-1 min-w-0 flex flex-col',
   app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6',
   app_header:        'hairline-b sticky top-0 z-30 flex items-center gap-4 px-5',
-  app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
+  app_card:          'clear-section-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
   app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
 
   // --- Layout presets ---
@@ -18519,6 +18778,389 @@ const CSS_COMPONENTS = [
 }` },
   { class: 'clear-conditional', css: '.clear-conditional { }' },
   { class: 'clear-component', css: '.clear-component { }' },
+  { class: 'clear-app', css: `.clear-app {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--clear-bg-app);
+  color: var(--clear-ink);
+}
+.clear-app-sidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 16px 12px;
+  border-right: 1px solid var(--clear-line);
+  background: var(--clear-bg-rail);
+}
+.clear-app-sidebar ul,
+.clear-app-sidebar ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.clear-app-sidebar li {
+  list-style: none;
+}
+.clear-app-sidebar .clear-nav-section-label {
+  display: none;
+}
+.clear-app .clear-app-sidebar > h1:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px !important;
+  padding: 6px 8px 18px;
+  border-bottom: 1px solid var(--clear-line);
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 22px !important;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--clear-ink);
+}
+.clear-app .clear-app-sidebar > h1:first-child::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 30% 30%, oklch(var(--color-primary) / 1), oklch(30% 0.07 55deg) 80%);
+  box-shadow: 0 0 8px oklch(var(--color-primary) / 0.45), 0 0 16px oklch(var(--color-primary) / 0.22);
+}
+.clear-app .clear-app-sidebar > h1:first-child::after {
+  content: "0.1";
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--clear-line);
+  border-radius: 3px;
+  color: var(--clear-ink-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 400;
+}
+.clear-app-sidebar > .bg-base-100.rounded-xl {
+  margin-top: auto;
+  padding: 14px 10px 0;
+  border: 0;
+  border-top: 1px solid var(--clear-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--clear-ink-muted);
+}
+.clear-app-sidebar > .bg-base-100.rounded-xl p {
+  margin: 0 0 4px;
+  color: inherit;
+}
+.clear-app-stage {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--clear-bg-app);
+}
+.clear-app-topbar {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--clear-line);
+  background: var(--clear-bg-app);
+}
+.clear-app-search {
+  flex: 1 1 380px;
+  max-width: 380px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: var(--clear-bg-panel);
+  color: var(--clear-ink-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.clear-app-search svg,
+.clear-app-search i {
+  width: 19px;
+  height: 19px;
+}
+.clear-app-search kbd {
+  margin-left: auto;
+  padding: 2px 5px;
+  border: 1px solid var(--clear-line);
+  border-radius: 3px;
+  background: var(--clear-bg-card);
+  color: var(--clear-ink-muted);
+  font: 10px var(--font-mono, ui-monospace, monospace);
+}
+.clear-app-topbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.clear-app-ghost {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--clear-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--clear-ink-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.clear-app-ghost:hover,
+.clear-app-search:hover {
+  color: var(--clear-ink);
+  border-color: oklch(var(--color-primary) / .35);
+  background: var(--clear-bg-rail);
+}
+.clear-app-ghost svg,
+.clear-app-ghost i {
+  width: 18px;
+  height: 18px;
+}
+.clear-app-palette[hidden] {
+  display: none;
+}
+.clear-app-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: start center;
+  padding-top: 82px;
+  background: rgb(0 0 0 / .42);
+}
+.clear-app-palette-panel {
+  width: min(620px, calc(100vw - 32px));
+  border: 1px solid var(--clear-line);
+  border-radius: 14px;
+  background: var(--clear-bg-panel);
+  box-shadow: 0 24px 56px rgb(0 0 0 / .45);
+  padding: 12px;
+}
+.clear-app-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--clear-line);
+  border-radius: 10px;
+  background: var(--clear-bg-app);
+  padding: 10px 12px;
+}
+.clear-app-palette-search svg,
+.clear-app-palette-search i {
+  width: 18px;
+  height: 18px;
+  color: var(--clear-ink-muted);
+}
+.clear-app-palette-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--clear-ink);
+  font: inherit;
+}
+.clear-app-palette-actions {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+.clear-app-palette-actions button,
+.clear-app-palette-close {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--clear-ink-soft);
+  font: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.clear-app-palette-actions button:hover,
+.clear-app-palette-close:hover {
+  border-color: var(--clear-line);
+  background: var(--clear-bg-rail);
+  color: var(--clear-accent);
+}
+.clear-app-palette-close {
+  width: 100%;
+  margin-top: 8px;
+  color: var(--clear-ink-muted);
+}
+.clear-app-panes {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background: var(--clear-bg-app);
+}
+.clear-app-panes > [data-pane] {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 32px 32px;
+}
+.clear-app-panes > [data-pane] > main,
+.clear-app-panes > [data-pane] > section,
+.clear-app-panes > [data-pane] > div {
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}
+.clear-app-panes .clear-page-header {
+  margin-bottom: 22px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.clear-app-panes .clear-page-title {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 38px !important;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--clear-ink);
+  text-shadow: 0 0 8px oklch(var(--color-primary) / .12);
+}
+.clear-app-panes .clear-page-subtitle {
+  display: none;
+}
+.clear-app-panes .clear-page-actions {
+  display: none;
+}
+.clear-app [data-pane="chat"] .clear-page-header {
+  display: none;
+}
+.clear-app [data-pane="chat"] > main {
+  height: 100%;
+}
+.clear-app [data-pane="chat"] .clear-chat-wrap {
+  height: calc(100vh - 110px);
+  width: 100%;
+  max-width: 820px;
+  min-height: 0;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.clear-app [data-pane="chat"] .clear-chat-head {
+  display: none;
+}
+.clear-app [data-pane="chat"] .clear-chat-msgs {
+  padding: 12px 4px;
+  max-width: 820px;
+  gap: 12px;
+}
+.clear-app [data-pane="chat"] .clear-chat-msg {
+  border: 1px solid var(--clear-line);
+  border-radius: 12px;
+  background: var(--clear-bg-panel);
+  color: var(--clear-ink);
+  box-shadow: none;
+}
+.clear-app [data-pane="chat"] .clear-chat-msg.user {
+  background: oklch(78% 0.045 295 / .10);
+  border-color: oklch(78% 0.045 295 / .70);
+}
+.clear-app [data-pane="chat"] .clear-chat-input {
+  width: 100%;
+  max-width: 820px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 14px 4px 16px;
+  border-top: 1px solid var(--clear-line);
+  background: transparent;
+}
+.clear-app [data-pane="chat"] .clear-chat-input textarea {
+  min-height: 42px;
+  border-color: oklch(var(--color-primary) / .85);
+  border-radius: 12px;
+  background: var(--clear-bg-panel);
+}
+.clear-app [data-pane="chat"] .clear-chat-send-btn {
+  width: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--clear-accent);
+  background: var(--clear-accent);
+  color: var(--clear-bg-app);
+  box-shadow: 0 8px 22px oklch(var(--color-primary) / .22);
+  font-size: 0;
+}
+.clear-app [data-pane="chat"] .clear-chat-send-btn::before {
+  content: "\\2191";
+  font-size: 26px;
+  line-height: 1;
+}
+.clear-app [data-pane="chat"] .clear-section-card {
+  max-width: 820px;
+  margin: -78px auto 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  position: relative;
+  z-index: 3;
+}
+.clear-app [data-pane="chat"] .clear-section-card .btn {
+  border-radius: 999px;
+  border: 1px solid var(--clear-line);
+  background: transparent;
+  background-image: none;
+  color: var(--clear-ink-muted);
+  box-shadow: none;
+  text-shadow: none;
+  min-height: 30px;
+  height: 30px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.clear-app [data-pane="chat"] .clear-section-card .btn:hover {
+  color: var(--clear-accent);
+  border-color: var(--clear-accent);
+  background: oklch(var(--color-primary) / .10);
+}
+@media (max-width: 720px) {
+  .clear-app { grid-template-columns: 64px minmax(0, 1fr); }
+  .clear-app-sidebar { padding: 12px 6px; }
+  .clear-app-sidebar > h1:first-child {
+    justify-content: center;
+    padding: 6px 0 16px;
+    font-size: 0;
+  }
+  .clear-app-sidebar .clear-nav-label,
+  .clear-app-sidebar .clear-nav-section-label,
+  .clear-app-sidebar > .bg-base-100.rounded-xl { display: none; }
+  .clear-app-sidebar .clear-nav-item { justify-content: center; padding: 10px; }
+  .clear-app-topbar { padding: 10px 12px; }
+  .clear-app-search { max-width: none; }
+  .clear-app-ghost span { display: none; }
+  .clear-app-panes > [data-pane] { padding: 24px 18px; }
+}` },
   { class: 'clear-nav-item', css: `.clear-nav-section-label {
   font-size: 10.5px;
   font-weight: 600;
@@ -18636,13 +19278,14 @@ const CSS_COMPONENTS = [
 }` },
   { class: 'clear-stat-strip', css: `.clear-stat-strip {
   display: grid;
-  /* Cap each card at 280px so 3-up doesn't stretch into banner ads on
-     wide screens. minmax(220px, 280px) + auto-fit gives 3 same-size
-     cards on desktop, wraps cleanly under 1024px. justify-content:start
-     leaves leftover space on the right instead of stretching cards. */
-  grid-template-columns: repeat(auto-fit, minmax(220px, 280px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 20px;
-  justify-content: start;
+}
+@media (max-width: 1024px) {
+  .clear-stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .clear-stat-strip { grid-template-columns: 1fr; }
 }
 .clear-stat-card {
   min-height: 116px;
@@ -19089,13 +19732,18 @@ const BUTTON_PEARL_CSS = `
   box-shadow: 0 1px 2px 0 oklch(28% 0.03 240 / 0.04);
 }
 
-/* Stat strip: cap card width so 3 cards in a 1440px content area look
-   like dashboard cards, not banner ads. Wraps cleanly under 1024px. */
+/* Stat strip: four-across on desktop to match Lenat's dashboard row.
+   It collapses deliberately at tablet and phone widths. */
 .clear-stat-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 320px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
-  justify-content: start;
+}
+@media (max-width: 1024px) {
+  .clear-stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .clear-stat-strip { grid-template-columns: 1fr; }
 }
 .clear-stat-card {
   min-height: 132px;
