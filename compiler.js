@@ -4932,12 +4932,20 @@ function compileEndpoint(node, ctx, pad) {
   // Guard seed endpoints from running in production + auto-dedup
   if (isSeedEndpoint) {
     epCode += `${pad}    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });\n`;
-    // Auto-dedup: find the first table being inserted into, skip if it already has data
-    const firstInsert = node.body.find(n => n.type === NodeType.CRUD && (n.operation === 'insert' || n.isInsert));
-    if (firstInsert && firstInsert.target) {
-      const dedupTable = pluralizeName(firstInsert.target);
-      epCode += `${pad}    const _existing = await db.findAll('${dedupTable}');\n`;
-      epCode += `${pad}    if (_existing.length > 0) return res.json({ message: 'already seeded' });\n`;
+    // Auto-dedup: skip only when every table this seed endpoint fills is
+    // already populated. Earlier versions checked only the first table, which
+    // made mixed seed endpoints look done after a partial run.
+    const seededTableNames = [];
+    for (const seedStep of node.body || []) {
+      if (seedStep && seedStep.type === NodeType.CRUD && (seedStep.operation === 'insert' || seedStep.isInsert) && seedStep.target) {
+        const seededTableName = pluralizeName(seedStep.target);
+        if (!seededTableNames.includes(seededTableName)) seededTableNames.push(seededTableName);
+      }
+    }
+    if (seededTableNames.length > 0) {
+      epCode += `${pad}    const _seedTables = ${JSON.stringify(seededTableNames)};\n`;
+      epCode += `${pad}    const _seedExistingCounts = await Promise.all(_seedTables.map(async (_seedTable) => (await db.findAll(_seedTable)).length));\n`;
+      epCode += `${pad}    if (_seedExistingCounts.every(_seedCount => _seedCount > 0)) return res.json({ message: 'already seeded' });\n`;
     }
   }
   if (needsBinding) {

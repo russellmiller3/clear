@@ -4,7 +4,9 @@ Static same-app page-load reads now join the first-paint data path. A Clear page
 
 The regression set now names all 13 golden apps: the 8 core templates plus 5 Marcus workflow templates. `core-13-ssr-first-paint.test.js` proves every static same-app first-page read in those apps is present in the initial page data, and `clear.test.js` imports that guard so future compiler changes run it automatically.
 
-Verification: `core-13-ssr-first-paint.test.js`, `ssr-default.test.js`, and the full Clear suite are green at 3204 / 3204.
+The publish gate also caught a partial-seed bug in the expense tracker: seed endpoints skipped as soon as the first seeded table had data, even if later tables were still empty. Seed endpoints now skip only when every table they populate already has rows, so a warm category table cannot leave expenses empty.
+
+Verification: `core-13-ssr-first-paint.test.js`, `ssr-default.test.js`, the full Clear suite, and the Studio browser suite are green. Current full suite: 3205 / 3205. Current Studio browser suite: 75 / 75.
 
 ## 2026-05-14 — SSR-default: pages pre-fetch data on the server (feature/ssr-default-v2)
 

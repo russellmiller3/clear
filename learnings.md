@@ -2696,3 +2696,4 @@ The durable fix was compiler-level: safe same-app page-load reads now join the s
 - **Skip browser-state reads on the server.** URLs with interpolation need the browser's current state and should remain browser-loaded.
 - **When a roadmap item ships, remove it from ROADMAP and move it to FEATURES/FAQ/CHANGELOG.** Backlog should mean future work, not history.
 - **Name the golden set in FAQ.** Future agents should not rediscover which 13 apps are load-bearing by scanning scripts.
+- **Seed idempotence must cover every table the seed fills.** Checking only the first table can make a demo say "already seeded" while later data is still missing.
