@@ -81,6 +81,7 @@
 //                                      parseMatch, parseIfBlock, parseRepeatLoop,
 //                                      parseForEachLoop, parseWhileLoop, parseWorkflow
 //   IMPORT MODULES .................... parseImport() (canonical 2026-05-13; was parseUse)
+//   GOOGLE WORKSPACE .................. `use google workspace`
 //   PAGE DECLARATION .................. parsePage()
 //   SECTION ........................... parseSection()
 //   SIDEBAR NAV ....................... parseNav()
@@ -102,7 +103,7 @@
 //                                      parseSubscribe, parseUpdateDatabase, parseMigration, parseWait
 //   FILE UPLOADS & EXTERNAL APIS ...... parseAcceptFile, parseExternalFetch
 //   BILLING & PAYMENTS ................ parseCheckout, parseUsageLimit
-//   WEBHOOKS & OAUTH .................. parseWebhook, parseOAuthConfig
+//   WEBHOOKS & GOOGLE WORKSPACE ....... parseWebhook, `use google workspace`
 //   INPUT VALIDATION .................. parseValidateBlock, parseFieldRule,
 //                                      parseRespondsWithBlock, parseRateLimit
 //   RESPOND ........................... parseRespond()
@@ -174,6 +175,10 @@ export const NodeType = Object.freeze({
 
   // Modules (Phase 3)
   USE: 'use',
+
+  // Google Workspace authorization and read-only Gmail/Calendar search.
+  GOOGLE_WORKSPACE: 'google_workspace',
+  GOOGLE_WORKSPACE_SEARCH: 'google_workspace_search',
 
   // Shell command execution (Phase 100)
   RUN_COMMAND: 'run_command',
@@ -1859,6 +1864,14 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['use', (ctx) => {
+    if (
+      ctx.tokens.length === 3 &&
+      String(ctx.tokens[1].value || '').toLowerCase() === 'google' &&
+      String(ctx.tokens[2].value || '').toLowerCase() === 'workspace'
+    ) {
+      ctx.body.push({ type: NodeType.GOOGLE_WORKSPACE, services: ['gmail', 'calendar'], line: ctx.line });
+      return ctx.i + 1;
+    }
     // `use` was retired as an import keyword on 2026-05-13. The validator's
     // IMPORT_USE_RETIRED rule fires the user-facing error with a fix-it
     // example. We emit a parser-level error here too so that even programs
@@ -4364,6 +4377,10 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         let pos = 1;
         // Skip 'with' if present
         if (pos < tokens.length && (tokens[pos].value?.toLowerCase() === 'with' || tokens[pos].canonical === 'with')) pos++;
+        if (pos < tokens.length && String(tokens[pos].value || '').toLowerCase() === 'google') {
+          body.push({ type: NodeType.LOGIN_ACTION, provider: 'google', line });
+          i++; continue;
+        }
         // Collect field names (separated by 'and' or commas)
         const fields = [];
         while (pos < tokens.length) {
@@ -11378,6 +11395,28 @@ function parseAssignment(tokens, line) {
     pos++; // skip 'search'
     if (pos >= tokens.length) {
       return { error: "search needs a table name and a query. Example: results = search Posts for query" };
+    }
+    const firstSearchTarget = String(tokens[pos].value || '').toLowerCase();
+    const secondSearchTarget = String(tokens[pos + 1]?.value || '').toLowerCase();
+    let googleSearchService = null;
+    if (firstSearchTarget === 'gmail') {
+      googleSearchService = 'gmail';
+      pos++;
+    } else if (firstSearchTarget === 'calendar') {
+      googleSearchService = 'calendar';
+      pos++;
+    } else if (firstSearchTarget === 'google' && secondSearchTarget === 'calendar') {
+      googleSearchService = 'calendar';
+      pos += 2;
+    }
+    if (googleSearchService) {
+      if (pos < tokens.length && (tokens[pos].value === 'for' || tokens[pos].canonical === 'for_target')) pos++;
+      if (pos >= tokens.length) {
+        return { error: `search ${googleSearchService} needs a search term. Example: ${name} = search ${googleSearchService} for query` };
+      }
+      const googleSearchQuery = parseExpression(tokens, pos, line);
+      if (googleSearchQuery.error) return { error: googleSearchQuery.error };
+      return { name, expression: { type: NodeType.GOOGLE_WORKSPACE_SEARCH, service: googleSearchService, query: googleSearchQuery.node, resultVar: name, line } };
     }
     const tableName = tokens[pos].value;
     pos++;

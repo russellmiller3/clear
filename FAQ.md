@@ -2557,3 +2557,30 @@ theme 'nixie'
 ```
 
 Amber on warm-dark CRT identity. Headings and numbers glow via text-shadow; focus rings and primary buttons glow via box-shadow; an optional scanline overlay on `body::after` adds CRT texture. Fourth Clear theme alongside midnight / ivory / nova.
+
+## Q: How do I let a Clear app search Gmail and Google Calendar? (Phase 6.5)
+
+Use the Google Workspace primitive. Do not use `script:` for OAuth.
+
+```clear
+use google workspace
+
+page 'Connections' at '/connections':
+  heading 'Connections'
+  button 'Authorize Gmail + Calendar':
+    login with google
+
+when user calls GET /api/inbox/search sending query:
+  messages = search gmail for query's q
+  send back messages
+
+when user calls GET /api/calendar/search sending query:
+  events = search google calendar for query's q
+  send back events
+```
+
+`use google workspace` emits three routes: `/api/google/auth/start`, `/api/google/auth/callback`, and `/api/google/auth/status`. The button redirects the user to Google consent. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; set `GOOGLE_REDIRECT_URI` only when the runtime host cannot infer the callback URL.
+
+Gmail search returns message metadata and snippets. Calendar search returns event details, including attendee names and email addresses when Google provides them. Both are external data, so compiled records carry `trust: 'untrusted_external_content'`.
+
+Agents should receive `secret_ref: 'google_oauth_ref'`, never the raw OAuth token. The token lives in Clear's internal `_google_workspace_tokens` table.

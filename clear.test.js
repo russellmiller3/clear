@@ -15,6 +15,7 @@ import './call-function.test.js';
 import './search-for.test.js';
 import './if-match.test.js';
 import './with-rows.test.js';
+import './google-workspace-auth.test.js';
 import './field-conventions.test.js';
 import './ssr-default.test.js';
 import './core-13-ssr-first-paint.test.js';

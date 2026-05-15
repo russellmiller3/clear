@@ -185,8 +185,10 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `WEBHOOK` | `webhook '/stripe/events' signed with env('SECRET'):` | HMAC verification |
+| `GOOGLE_WORKSPACE` | `use google workspace` | Emits Google OAuth start/callback/status routes and internal token storage for Gmail + Calendar readonly scopes |
+| `LOGIN_ACTION` | `login with google` | Frontend redirect to `/api/google/auth/start`; bare provider keyword, not quoted text |
 
-(`OAUTH_CONFIG` removed 2026-04-21 — zero app usage. Use a record literal instead, or the `allow signup and login` JWT scaffold.)
+(`OAUTH_CONFIG` removed 2026-04-21 — zero app usage. Google Workspace is the narrow first-class consent primitive; do not revive generic OAuth config.)
 
 ### Billing (Phase 18)
 
@@ -203,7 +205,7 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 | `ACCEPT_FILE` | `accept file:` + max size, allowed types | Multer / UploadFile |
 | `EXTERNAL_FETCH` | `data from 'url':` + timeout, cache, fallback | AbortController / httpx |
 | `UPLOAD_TO` | `upload file to 's3-bucket'` | File upload to cloud storage |
-| `LOGIN_ACTION` | `login with 'google'` | Social login redirect flow |
+| `GOOGLE_WORKSPACE_SEARCH` | `search gmail for X`, `search google calendar for X` | Read-only Gmail/Calendar API search; results include `trust: 'untrusted_external_content'` and `secret_ref: 'google_oauth_ref'` |
 
 ### Real-time (Phase 20)
 

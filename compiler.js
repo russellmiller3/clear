@@ -4847,6 +4847,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.STREAM, NodeType.STREAM_AI, NodeType.GIVE_CLAUDE, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
+  NodeType.GOOGLE_WORKSPACE,
   NodeType.AGENT, NodeType.WORKFLOW, NodeType.SKILL, NodeType.PIPELINE, NodeType.PARALLEL_AGENTS,
   NodeType.POLICY,
 ]);
@@ -10518,6 +10519,11 @@ ${pad}}`;
     }
 
     case NodeType.LOGIN_ACTION: {
+      if (node.provider === 'google') {
+        if (ctx.lang === 'python') return `${pad}# Google login action — frontend only`;
+        if (ctx.mode === 'backend') return null;
+        return `${pad}window.location.href = '/api/google/auth/start';`;
+      }
       // login with email and password → POST to /auth/login, store JWT, redirect
       if (ctx.lang === 'python') return `${pad}# Login action — frontend only`;
       if (ctx.mode === 'backend') return null; // frontend-only node
@@ -10925,6 +10931,9 @@ ${pad}}`;
       }
       return null; // emitted in scaffold
     }
+
+    case NodeType.GOOGLE_WORKSPACE:
+      return null;
 
     // Nodes handled by dedicated loops in the reactive compiler -- skip here
     case NodeType.ON_PAGE_LOAD:
@@ -11428,6 +11437,13 @@ export function exprToCode(expr, ctx) {
         return `[r for r in await db.find_all('${table}', {}) if ${query}.lower() in ' '.join(str(v) for v in r.values()).lower()][:${DEFAULT_SEARCH_LIMIT}]`;
       }
       return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase()))).slice(0, ${DEFAULT_SEARCH_LIMIT})`;
+    }
+
+    case NodeType.GOOGLE_WORKSPACE_SEARCH: {
+      const googleSearchService = JSON.stringify(expr.service);
+      const googleSearchQuery = exprToCode(expr.query, ctx);
+      if (ctx.lang === 'python') return `await _clear_google_workspace_search(${googleSearchService}, ${googleSearchQuery})`;
+      return `await _clearGoogleWorkspaceSearch(${googleSearchService}, ${googleSearchQuery})`;
     }
 
     case NodeType.SQL_AGGREGATE: {
@@ -15766,12 +15782,285 @@ function _bodyCallsAny(nodes, fnSet) {
   return false;
 }
 
+function bodyUsesGoogleWorkspace(nodes) {
+  if (!Array.isArray(nodes)) return false;
+  for (const candidateNode of nodes) {
+    if (!candidateNode || typeof candidateNode !== 'object') continue;
+    if (candidateNode.type === NodeType.GOOGLE_WORKSPACE) return true;
+    if (candidateNode.expression?.type === NodeType.GOOGLE_WORKSPACE_SEARCH) return true;
+    if (bodyUsesGoogleWorkspace(candidateNode.body)) return true;
+    if (bodyUsesGoogleWorkspace(candidateNode.thenBody)) return true;
+    if (bodyUsesGoogleWorkspace(candidateNode.elseBody)) return true;
+    if (bodyUsesGoogleWorkspace(candidateNode.defaultBody)) return true;
+    if (Array.isArray(candidateNode.cases)) {
+      for (const branchCase of candidateNode.cases) {
+        if (bodyUsesGoogleWorkspace(branchCase.body)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function emitGoogleWorkspaceJS(lines) {
+  lines.push('// Google Workspace primitive from `use google workspace`.');
+  lines.push("const _GOOGLE_WORKSPACE_SCOPES = ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/calendar.readonly'];");
+  lines.push("db.createTable('_google_workspace_tokens', { subject: { type: 'text', required: true, unique: true }, email: { type: 'text' }, access_token: { type: 'text', sensitive: true }, refresh_token: { type: 'text', sensitive: true }, scope: { type: 'text' }, expiry_date: { type: 'text' }, created_at: { type: 'text' }, updated_at: { type: 'text' } });");
+  lines.push("function _clearGoogleRedirectUri(req) { return process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/google/auth/callback`; }");
+  lines.push("function _clearGoogleCookie(req, name) {");
+  lines.push("  const cookieHeader = req.headers.cookie || '';");
+  lines.push("  for (const cookiePart of cookieHeader.split(';')) {");
+  lines.push("    const [rawName, ...rawValueParts] = cookiePart.trim().split('=');");
+  lines.push("    if (rawName === name) return decodeURIComponent(rawValueParts.join('='));");
+  lines.push("  }");
+  lines.push("  return null;");
+  lines.push("}");
+  lines.push("async function _clearGoogleFetchJson(url, options = {}) {");
+  lines.push("  const upstreamResponse = await fetch(url, options);");
+  lines.push("  const upstreamPayload = await upstreamResponse.json().catch(() => ({}));");
+  lines.push("  if (!upstreamResponse.ok) {");
+  lines.push("    const upstreamError = new Error(upstreamPayload.error_description || upstreamPayload.error || upstreamResponse.statusText);");
+  lines.push("    upstreamError.status = upstreamResponse.status;");
+  lines.push("    upstreamError.code = upstreamPayload.error || 'GOOGLE_WORKSPACE_ERROR';");
+  lines.push("    throw upstreamError;");
+  lines.push("  }");
+  lines.push("  return upstreamPayload;");
+  lines.push("}");
+  lines.push("async function _clearGoogleCurrentToken() {");
+  lines.push("  const googleTokenRows = await db.findAll('_google_workspace_tokens', {}, { includeHidden: true });");
+  lines.push("  return googleTokenRows.sort((leftToken, rightToken) => String(rightToken.updated_at || '').localeCompare(String(leftToken.updated_at || '')))[0] || null;");
+  lines.push("}");
+  lines.push("async function _clearGoogleSaveToken(tokenPayload, profilePayload = {}) {");
+  lines.push("  const subject = profilePayload.sub || profilePayload.id || profilePayload.email || 'default';");
+  lines.push("  const existingToken = await db.findOne('_google_workspace_tokens', { subject }, { includeHidden: true });");
+  lines.push("  const expiryDate = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : (existingToken && existingToken.expiry_date) || null;");
+  lines.push("  const tokenRecord = {");
+  lines.push("    subject,");
+  lines.push("    email: profilePayload.email || (existingToken && existingToken.email) || '',");
+  lines.push("    access_token: tokenPayload.access_token || (existingToken && existingToken.access_token) || '',");
+  lines.push("    refresh_token: tokenPayload.refresh_token || (existingToken && existingToken.refresh_token) || '',");
+  lines.push("    scope: tokenPayload.scope || (existingToken && existingToken.scope) || _GOOGLE_WORKSPACE_SCOPES.join(' '),");
+  lines.push("    expiry_date: expiryDate,");
+  lines.push("    created_at: (existingToken && existingToken.created_at) || new Date().toISOString(),");
+  lines.push("    updated_at: new Date().toISOString(),");
+  lines.push("  };");
+  lines.push("  if (existingToken) { await db.update('_google_workspace_tokens', { id: existingToken.id }, tokenRecord); return { ...existingToken, ...tokenRecord }; }");
+  lines.push("  return db.insert('_google_workspace_tokens', tokenRecord);");
+  lines.push("}");
+  lines.push("async function _clearGoogleAccessToken() {");
+  lines.push("  const currentToken = await _clearGoogleCurrentToken();");
+  lines.push("  if (!currentToken || !currentToken.access_token) { const noAuth = new Error('Google Workspace is not authorized yet.'); noAuth.status = 401; noAuth.code = 'NO_GOOGLE_AUTH'; throw noAuth; }");
+  lines.push("  const expiryMs = currentToken.expiry_date ? Date.parse(currentToken.expiry_date) : 0;");
+  lines.push("  if (expiryMs && expiryMs - Date.now() > 60000) return currentToken.access_token;");
+  lines.push("  if (!currentToken.refresh_token) { const expired = new Error('Google Workspace token expired and has no refresh token.'); expired.status = 401; expired.code = 'TOKEN_EXPIRED'; throw expired; }");
+  lines.push("  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) { const missingEnv = new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required to refresh Google Workspace access.'); missingEnv.status = 503; missingEnv.code = 'GOOGLE_AUTH_ENV_MISSING'; throw missingEnv; }");
+  lines.push("  const refreshedToken = await _clearGoogleFetchJson('https://oauth2.googleapis.com/token', {");
+  lines.push("    method: 'POST',");
+  lines.push("    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },");
+  lines.push("    body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, refresh_token: currentToken.refresh_token, grant_type: 'refresh_token' }),");
+  lines.push("  });");
+  lines.push("  const savedToken = await _clearGoogleSaveToken({ ...refreshedToken, refresh_token: currentToken.refresh_token }, { sub: currentToken.subject, email: currentToken.email });");
+  lines.push("  return savedToken.access_token;");
+  lines.push("}");
+  lines.push("function _clearGoogleHeaders(accessToken) { return { Authorization: `Bearer ${accessToken}` }; }");
+  lines.push("async function _clearGoogleSearchGmail(accessToken, query) {");
+  lines.push("  const searchParams = new URLSearchParams({ maxResults: '10' });");
+  lines.push("  if (query) searchParams.set('q', String(query));");
+  lines.push("  const messageList = await _clearGoogleFetchJson(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${searchParams.toString()}`, { headers: _clearGoogleHeaders(accessToken) });");
+  lines.push("  const messageRefs = Array.isArray(messageList.messages) ? messageList.messages : [];");
+  lines.push("  const normalizedMessages = [];");
+  lines.push("  for (const messageRef of messageRefs) {");
+  lines.push("    const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageRef.id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`;");
+  lines.push("    const messageDetail = await _clearGoogleFetchJson(detailUrl, { headers: _clearGoogleHeaders(accessToken) });");
+  lines.push("    const metadataHeaders = {};");
+  lines.push("    for (const headerEntry of (messageDetail.payload && messageDetail.payload.headers) || []) metadataHeaders[String(headerEntry.name || '').toLowerCase()] = headerEntry.value || '';");
+  lines.push("    normalizedMessages.push({ id: messageDetail.id, thread_id: messageDetail.threadId, subject: metadataHeaders.subject || '', from: metadataHeaders.from || '', date: metadataHeaders.date || '', snippet: messageDetail.snippet || '', labels: messageDetail.labelIds || [], trust: 'untrusted_external_content', secret_ref: 'google_oauth_ref' });");
+  lines.push("  }");
+  lines.push("  return normalizedMessages;");
+  lines.push("}");
+  lines.push("async function _clearGoogleSearchCalendar(accessToken, query) {");
+  lines.push("  const calendarParams = new URLSearchParams({ singleEvents: 'true', orderBy: 'startTime', maxResults: '20', timeMin: new Date().toISOString(), timeMax: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });");
+  lines.push("  if (query) calendarParams.set('q', String(query));");
+  lines.push("  const calendarPayload = await _clearGoogleFetchJson(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${calendarParams.toString()}`, { headers: _clearGoogleHeaders(accessToken) });");
+  lines.push("  return (calendarPayload.items || []).map((calendarEvent) => ({");
+  lines.push("    id: calendarEvent.id,");
+  lines.push("    title: calendarEvent.summary || '',");
+  lines.push("    description: calendarEvent.description || '',");
+  lines.push("    start: (calendarEvent.start && (calendarEvent.start.dateTime || calendarEvent.start.date)) || null,");
+  lines.push("    end: (calendarEvent.end && (calendarEvent.end.dateTime || calendarEvent.end.date)) || null,");
+  lines.push("    location: calendarEvent.location || '',");
+  lines.push("    meet_link: calendarEvent.hangoutLink || '',");
+  lines.push("    html_link: calendarEvent.htmlLink || '',");
+  lines.push("    organizer: calendarEvent.organizer ? { email: calendarEvent.organizer.email || '', display_name: calendarEvent.organizer.displayName || '' } : null,");
+  lines.push("    attendees: (calendarEvent.attendees || []).map((attendee) => ({ email: attendee.email || '', display_name: attendee.displayName || '', response_status: attendee.responseStatus || '' })),");
+  lines.push("    trust: 'untrusted_external_content',");
+  lines.push("    secret_ref: 'google_oauth_ref',");
+  lines.push("  }));");
+  lines.push("}");
+  lines.push("async function _clearGoogleWorkspaceSearch(service, query) {");
+  lines.push("  const accessToken = await _clearGoogleAccessToken();");
+  lines.push("  if (service === 'gmail') return _clearGoogleSearchGmail(accessToken, query);");
+  lines.push("  if (service === 'calendar') return _clearGoogleSearchCalendar(accessToken, query);");
+  lines.push("  const unknownService = new Error(`Unknown Google Workspace service: ${service}`); unknownService.status = 400; throw unknownService;");
+  lines.push("}");
+  lines.push("app.get('/api/google/auth/start', (req, res) => {");
+  lines.push("  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return res.status(503).json({ error: 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before authorizing Google Workspace.' });");
+  lines.push("  const state = require('crypto').randomBytes(24).toString('hex');");
+  lines.push("  res.cookie('clear_google_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: req.secure || req.headers['x-forwarded-proto'] === 'https', maxAge: 10 * 60 * 1000 });");
+  lines.push("  const googleParams = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: _clearGoogleRedirectUri(req), response_type: 'code', access_type: 'offline', prompt: 'consent', scope: _GOOGLE_WORKSPACE_SCOPES.join(' '), state });");
+  lines.push("  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${googleParams.toString()}`);");
+  lines.push("});");
+  lines.push("app.get('/api/google/auth/callback', async (req, res) => {");
+  lines.push("  try {");
+  lines.push("    const expectedState = _clearGoogleCookie(req, 'clear_google_oauth_state');");
+  lines.push("    if (!expectedState || expectedState !== req.query.state) return res.status(400).json({ error: 'Google authorization state did not match. Start authorization again.' });");
+  lines.push("    if (!req.query.code) return res.status(400).json({ error: 'Google did not return an authorization code.' });");
+  lines.push("    const tokenPayload = await _clearGoogleFetchJson('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: _clearGoogleRedirectUri(req), grant_type: 'authorization_code' }) });");
+  lines.push("    const profilePayload = await _clearGoogleFetchJson('https://www.googleapis.com/oauth2/v2/userinfo', { headers: _clearGoogleHeaders(tokenPayload.access_token) });");
+  lines.push("    await _clearGoogleSaveToken(tokenPayload, profilePayload);");
+  lines.push("    res.clearCookie('clear_google_oauth_state');");
+  lines.push("    res.redirect('/connections?google=connected');");
+  lines.push("  } catch (err) { res.status(err.status || 500).json({ error: err.message || 'Google authorization failed' }); }");
+  lines.push("});");
+  lines.push("app.get('/api/google/auth/status', async (req, res) => {");
+  lines.push("  const currentToken = await _clearGoogleCurrentToken();");
+  lines.push("  res.json({ connected: !!currentToken, email: currentToken ? currentToken.email : null, scopes: _GOOGLE_WORKSPACE_SCOPES, status: currentToken ? 'connected' : 'needs_authorization' });");
+  lines.push("});");
+}
+
+function emitGoogleWorkspacePython(lines) {
+  lines.push('# Google Workspace primitive from `use google workspace`.');
+  lines.push('db.create_table("_google_workspace_tokens", {"subject": {"type": "text", "required": True, "unique": True}, "email": {"type": "text"}, "access_token": {"type": "text", "sensitive": True}, "refresh_token": {"type": "text", "sensitive": True}, "scope": {"type": "text"}, "expiry_date": {"type": "text"}, "created_at": {"type": "text"}, "updated_at": {"type": "text"}})');
+  lines.push('_GOOGLE_WORKSPACE_SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.readonly"]');
+  lines.push('def _clear_google_redirect_uri(request):');
+  lines.push('    return os.environ.get("GOOGLE_REDIRECT_URI") or f"{request.url.scheme}://{request.headers.get(\'host\')}/api/google/auth/callback"');
+  lines.push('');
+  lines.push('async def _clear_google_fetch_json(url, method="GET", headers=None, data=None):');
+  lines.push('    async with httpx.AsyncClient(timeout=20) as google_client:');
+  lines.push('        upstream_response = await google_client.request(method, url, headers=headers, data=data)');
+  lines.push('    try:');
+  lines.push('        upstream_payload = upstream_response.json()');
+  lines.push('    except Exception:');
+  lines.push('        upstream_payload = {}');
+  lines.push('    if upstream_response.status_code >= 400:');
+  lines.push('        upstream_error = HTTPException(status_code=upstream_response.status_code, detail=upstream_payload.get("error_description") or upstream_payload.get("error") or upstream_response.text)');
+  lines.push('        raise upstream_error');
+  lines.push('    return upstream_payload');
+  lines.push('');
+  lines.push('async def _clear_google_current_token():');
+  lines.push('    google_token_rows = db.find_all("_google_workspace_tokens")');
+  lines.push('    google_token_rows.sort(key=lambda google_token: str(google_token.get("updated_at") or ""), reverse=True)');
+  lines.push('    return google_token_rows[0] if google_token_rows else None');
+  lines.push('');
+  lines.push('async def _clear_google_save_token(token_payload, profile_payload=None):');
+  lines.push('    profile_payload = profile_payload or {}');
+  lines.push('    subject = profile_payload.get("sub") or profile_payload.get("id") or profile_payload.get("email") or "default"');
+  lines.push('    existing_token = db.find_one("_google_workspace_tokens", {"subject": subject})');
+  lines.push('    expiry_date = (datetime.datetime.utcnow() + datetime.timedelta(seconds=int(token_payload.get("expires_in", 0)))).isoformat() if token_payload.get("expires_in") else (existing_token or {}).get("expiry_date")');
+  lines.push('    token_record = {');
+  lines.push('        "subject": subject,');
+  lines.push('        "email": profile_payload.get("email") or (existing_token or {}).get("email", ""),');
+  lines.push('        "access_token": token_payload.get("access_token") or (existing_token or {}).get("access_token", ""),');
+  lines.push('        "refresh_token": token_payload.get("refresh_token") or (existing_token or {}).get("refresh_token", ""),');
+  lines.push('        "scope": token_payload.get("scope") or (existing_token or {}).get("scope") or " ".join(_GOOGLE_WORKSPACE_SCOPES),');
+  lines.push('        "expiry_date": expiry_date,');
+  lines.push('        "created_at": (existing_token or {}).get("created_at") or datetime.datetime.utcnow().isoformat(),');
+  lines.push('        "updated_at": datetime.datetime.utcnow().isoformat(),');
+  lines.push('    }');
+  lines.push('    if existing_token:');
+  lines.push('        db.update("_google_workspace_tokens", {"id": existing_token.get("id")}, token_record)');
+  lines.push('        return {**existing_token, **token_record}');
+  lines.push('    return db.insert("_google_workspace_tokens", token_record)');
+  lines.push('');
+  lines.push('async def _clear_google_access_token():');
+  lines.push('    current_token = await _clear_google_current_token()');
+  lines.push('    if not current_token or not current_token.get("access_token"):');
+  lines.push('        raise HTTPException(status_code=401, detail="Google Workspace is not authorized yet.")');
+  lines.push('    expiry_text = current_token.get("expiry_date")');
+  lines.push('    if expiry_text:');
+  lines.push('        try:');
+  lines.push('            expiry_time = datetime.datetime.fromisoformat(expiry_text)');
+  lines.push('            if (expiry_time - datetime.datetime.utcnow()).total_seconds() > 60:');
+  lines.push('                return current_token.get("access_token")');
+  lines.push('        except Exception:');
+  lines.push('            pass');
+  lines.push('    if not current_token.get("refresh_token"):');
+  lines.push('        raise HTTPException(status_code=401, detail="Google Workspace token expired and has no refresh token.")');
+  lines.push('    if not os.environ.get("GOOGLE_CLIENT_ID") or not os.environ.get("GOOGLE_CLIENT_SECRET"):');
+  lines.push('        raise HTTPException(status_code=503, detail="GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required to refresh Google Workspace access.")');
+  lines.push('    refreshed_token = await _clear_google_fetch_json("https://oauth2.googleapis.com/token", method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, data=urlencode({"client_id": os.environ.get("GOOGLE_CLIENT_ID"), "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"), "refresh_token": current_token.get("refresh_token"), "grant_type": "refresh_token"}))');
+  lines.push('    saved_token = await _clear_google_save_token({**refreshed_token, "refresh_token": current_token.get("refresh_token")}, {"sub": current_token.get("subject"), "email": current_token.get("email")})');
+  lines.push('    return saved_token.get("access_token")');
+  lines.push('');
+  lines.push('def _clear_google_headers(access_token):');
+  lines.push('    return {"Authorization": f"Bearer {access_token}"}');
+  lines.push('');
+  lines.push('async def _clear_google_search_gmail(access_token, query):');
+  lines.push('    gmail_params = {"maxResults": "10"}');
+  lines.push('    if query: gmail_params["q"] = str(query)');
+  lines.push('    message_list = await _clear_google_fetch_json("https://gmail.googleapis.com/gmail/v1/users/me/messages?" + urlencode(gmail_params), headers=_clear_google_headers(access_token))');
+  lines.push('    normalized_messages = []');
+  lines.push('    for message_ref in message_list.get("messages", []):');
+  lines.push('        detail_url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/" + str(message_ref.get("id")) + "?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date"');
+  lines.push('        message_detail = await _clear_google_fetch_json(detail_url, headers=_clear_google_headers(access_token))');
+  lines.push('        metadata_headers = {str(header_entry.get("name", "")).lower(): header_entry.get("value", "") for header_entry in message_detail.get("payload", {}).get("headers", [])}');
+  lines.push('        normalized_messages.append({"id": message_detail.get("id"), "thread_id": message_detail.get("threadId"), "subject": metadata_headers.get("subject", ""), "from": metadata_headers.get("from", ""), "date": metadata_headers.get("date", ""), "snippet": message_detail.get("snippet", ""), "labels": message_detail.get("labelIds", []), "trust": "untrusted_external_content", "secret_ref": "google_oauth_ref"})');
+  lines.push('    return normalized_messages');
+  lines.push('');
+  lines.push('async def _clear_google_search_calendar(access_token, query):');
+  lines.push('    calendar_params = {"singleEvents": "true", "orderBy": "startTime", "maxResults": "20", "timeMin": datetime.datetime.utcnow().isoformat() + "Z", "timeMax": (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat() + "Z"}');
+  lines.push('    if query: calendar_params["q"] = str(query)');
+  lines.push('    calendar_payload = await _clear_google_fetch_json("https://www.googleapis.com/calendar/v3/calendars/primary/events?" + urlencode(calendar_params), headers=_clear_google_headers(access_token))');
+  lines.push('    normalized_events = []');
+  lines.push('    for calendar_event in calendar_payload.get("items", []):');
+  lines.push('        normalized_events.append({"id": calendar_event.get("id"), "title": calendar_event.get("summary", ""), "description": calendar_event.get("description", ""), "start": (calendar_event.get("start") or {}).get("dateTime") or (calendar_event.get("start") or {}).get("date"), "end": (calendar_event.get("end") or {}).get("dateTime") or (calendar_event.get("end") or {}).get("date"), "location": calendar_event.get("location", ""), "meet_link": calendar_event.get("hangoutLink", ""), "html_link": calendar_event.get("htmlLink", ""), "organizer": {"email": (calendar_event.get("organizer") or {}).get("email", ""), "display_name": (calendar_event.get("organizer") or {}).get("displayName", "")} if calendar_event.get("organizer") else None, "attendees": [{"email": attendee.get("email", ""), "display_name": attendee.get("displayName", ""), "response_status": attendee.get("responseStatus", "")} for attendee in calendar_event.get("attendees", [])], "trust": "untrusted_external_content", "secret_ref": "google_oauth_ref"})');
+  lines.push('    return normalized_events');
+  lines.push('');
+  lines.push('async def _clear_google_workspace_search(service, query):');
+  lines.push('    access_token = await _clear_google_access_token()');
+  lines.push('    if service == "gmail": return await _clear_google_search_gmail(access_token, query)');
+  lines.push('    if service == "calendar": return await _clear_google_search_calendar(access_token, query)');
+  lines.push('    raise HTTPException(status_code=400, detail=f"Unknown Google Workspace service: {service}")');
+  lines.push('');
+  lines.push('@app.get("/api/google/auth/start")');
+  lines.push('async def google_auth_start(request: Request):');
+  lines.push('    if not os.environ.get("GOOGLE_CLIENT_ID") or not os.environ.get("GOOGLE_CLIENT_SECRET"):');
+  lines.push('        return JSONResponse(content={"error": "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before authorizing Google Workspace."}, status_code=503)');
+  lines.push('    google_state = secrets.token_hex(24)');
+  lines.push('    google_params = urlencode({"client_id": os.environ.get("GOOGLE_CLIENT_ID"), "redirect_uri": _clear_google_redirect_uri(request), "response_type": "code", "access_type": "offline", "prompt": "consent", "scope": " ".join(_GOOGLE_WORKSPACE_SCOPES), "state": google_state})');
+  lines.push('    auth_response = RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + google_params)');
+  lines.push('    auth_response.set_cookie("clear_google_oauth_state", google_state, httponly=True, samesite="lax", secure=request.url.scheme == "https", max_age=600)');
+  lines.push('    return auth_response');
+  lines.push('');
+  lines.push('@app.get("/api/google/auth/callback")');
+  lines.push('async def google_auth_callback(request: Request):');
+  lines.push('    expected_state = request.cookies.get("clear_google_oauth_state")');
+  lines.push('    returned_state = request.query_params.get("state")');
+  lines.push('    authorization_code = request.query_params.get("code")');
+  lines.push('    if not expected_state or expected_state != returned_state:');
+  lines.push('        return JSONResponse(content={"error": "Google authorization state did not match. Start authorization again."}, status_code=400)');
+  lines.push('    if not authorization_code:');
+  lines.push('        return JSONResponse(content={"error": "Google did not return an authorization code."}, status_code=400)');
+  lines.push('    token_payload = await _clear_google_fetch_json("https://oauth2.googleapis.com/token", method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, data=urlencode({"code": authorization_code, "client_id": os.environ.get("GOOGLE_CLIENT_ID"), "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"), "redirect_uri": _clear_google_redirect_uri(request), "grant_type": "authorization_code"}))');
+  lines.push('    profile_payload = await _clear_google_fetch_json("https://www.googleapis.com/oauth2/v2/userinfo", headers=_clear_google_headers(token_payload.get("access_token")))');
+  lines.push('    await _clear_google_save_token(token_payload, profile_payload)');
+  lines.push('    redirect_response = RedirectResponse("/connections?google=connected")');
+  lines.push('    redirect_response.delete_cookie("clear_google_oauth_state")');
+  lines.push('    return redirect_response');
+  lines.push('');
+  lines.push('@app.get("/api/google/auth/status")');
+  lines.push('async def google_auth_status():');
+  lines.push('    current_token = await _clear_google_current_token()');
+  lines.push('    return {"connected": bool(current_token), "email": current_token.get("email") if current_token else None, "scopes": _GOOGLE_WORKSPACE_SCOPES, "status": "connected" if current_token else "needs_authorization"}');
+  lines.push('');
+}
+
 /**
  * Compile to a complete, runnable Express.js server.
  */
 function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames = new Set()) {
   // Detect feature usage for auto-imports
   const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+  const hasGoogleWorkspace = bodyUsesGoogleWorkspace(body);
   const usesAuth = hasAuthScaffold || body.some(n =>
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
@@ -16036,6 +16325,9 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("  if (req.method === 'OPTIONS') return res.sendStatus(204);");
     lines.push('  next();');
     lines.push('});');
+  }
+  if (hasGoogleWorkspace) {
+    emitGoogleWorkspaceJS(lines);
   }
   if (hasAuthScaffold) {
     // 1:1-mapping provenance — the single Clear line `allow signup and login`
@@ -17210,6 +17502,7 @@ function compileToBrowserServer(body, errors) {
  */
 function compileToPythonBackend(body, errors, sourceMap = false) {
   const lines = [];
+  const pyHasGoogleWorkspace = bodyUsesGoogleWorkspace(body);
   lines.push(`# Generated by Clear v${CLEAR_VERSION}`);
   const pyBeDiagram = generateDiagram(body, '#');
   if (pyBeDiagram) lines.push(pyBeDiagram);
@@ -17217,6 +17510,10 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('import json');
   lines.push('import re');
   lines.push('import datetime');
+  if (pyHasGoogleWorkspace) {
+    lines.push('import secrets');
+    lines.push('from urllib.parse import urlencode');
+  }
   // subprocess — emit if any RUN_COMMAND nodes exist (including inside ASSIGN expressions)
   function pyHasRunCommand(nodes) {
     return nodes.some(n =>
@@ -17239,7 +17536,7 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
       (n.type === NodeType.BACKGROUND && n.body && pyHasExternalFetch(n.body))
     );
   }
-  if (pyHasExternalFetch(body)) lines.push('import httpx');
+  if (pyHasExternalFetch(body) || pyHasGoogleWorkspace) lines.push('import httpx');
   // Test emission (Session 46+): TEST_DEF nodes need pytest + httpx + json
   // for the async test harness. `_base_url` + `_auth_headers` are read from
   // environment variables so the same compiled file works locally and in CI.
@@ -17263,7 +17560,7 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('from contextlib import asynccontextmanager');
   }
   lines.push('from fastapi import FastAPI, Request, HTTPException, Depends');
-  lines.push('from fastapi.responses import JSONResponse');
+  lines.push(pyHasGoogleWorkspace ? 'from fastapi.responses import JSONResponse, RedirectResponse' : 'from fastapi.responses import JSONResponse');
   lines.push('');
   lines.push('app = FastAPI()');
   // Module-scope lookup for `call function NAME with ARG` dispatch in Python.
@@ -17352,6 +17649,9 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('');
   lines.push('db = _DB()');
   lines.push('');
+  if (pyHasGoogleWorkspace) {
+    emitGoogleWorkspacePython(lines);
+  }
 
   // Python _ask_ai utility (Anthropic API call)
   // Detect if _ask_ai is needed: AGENT, WORKFLOW, or ASK_AI nodes (including inside endpoints)

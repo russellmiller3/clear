@@ -773,7 +773,7 @@ These are deliberate non-goals. Each has been considered and rejected.
 
 | Feature | Reason |
 |---------|--------|
-| OAuth / social login | `allow signup and login` covers MVPs. OAuth is a rat's nest. |
+| Generic OAuth / arbitrary social login | Google Workspace is first-class for Gmail + Calendar. Other providers still need a deliberate primitive, not a generic OAuth blob. |
 | Soft delete | `deleted_at` field + filter. Not worth a keyword. |
 | Geolocation | One-liner `script:` call. Niche browser API. |
 | Camera / microphone | One-liner `script:` call. Niche. |
@@ -784,6 +784,20 @@ These are deliberate non-goals. Each has been considered and rejected.
 | Per-user app forks | Every employee seeing a fundamentally different version of the app destroys the shared ontology. Audit/compliance nightmare. See Live App Editing in ROADMAP for the right answer (owner-initiated changes that ship to everyone). |
 
 - **AI provider routing (Phase 6, 2026-05-13)** — Clear apps can target Anthropic Claude (default), OpenRouter, Google Gemini direct, or OpenAI. Top-level `ai provider is X` sets a default; per-call `via provider 'X'` on `ask ai` / `stream ask ai` / `classify` overrides on a single call. Runtime helper handles the HTTP shape per provider. Env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`.
+
+
+## Phase 6.5 (2026-05-15) - Google Workspace authorization
+
+| Feature | Canonical syntax | Emits |
+|---|---|---|
+| Google consent | `use google workspace` | OAuth start/callback/status routes plus an internal token table |
+| Google authorize button | `login with google` | Frontend redirect to `/api/google/auth/start` |
+| Gmail search | `messages = search gmail for query` | Gmail readonly API search with metadata/snippets, no raw token exposure |
+| Calendar search | `events = search google calendar for query` | Calendar readonly API search, including attendee names and emails when available |
+
+Runtime env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, optional `GOOGLE_REDIRECT_URI`.
+
+Guardrail: Gmail and Calendar data is external input. Compiled records are marked `trust: 'untrusted_external_content'` and `secret_ref: 'google_oauth_ref'`. Agents should see the data, never the OAuth token.
 
 
 ## Phase 5.5 (2026-05-13) — DaisyUI form widgets + Nixie theme

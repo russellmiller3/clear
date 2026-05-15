@@ -1025,3 +1025,20 @@ This is the Clear version of "define the outcome before the agent loops." The re
 - Ralph is the outcome grader.
 
 Mixing those into one "hint" system creates mush. Keeping them separate creates a real build contract: ask, translate, approve, build, check, repair.
+
+## Rule 24: Integrations Become Primitives When Guardrails Matter
+
+Some outside services are too important to hide behind `script:`. Google Workspace is the model case: Gmail and Calendar need user consent, token storage, refresh handling, external-content trust labels, and agent-safe secret references.
+
+The right Clear shape is a small first-class primitive:
+
+```clear
+use google workspace
+login with google
+messages = search gmail for query
+events = search google calendar for query
+```
+
+The wrong shape is a blob of OAuth code in an escape hatch. That hides the dangerous parts from the compiler and makes every app invent its own token policy.
+
+When an integration needs authorization, secret handling, user-visible consent, or agent guardrails, promote the narrow integration to Clear syntax. Do not create a generic "OAuth config" drawer unless the language can prove and enforce the same guardrails for every provider.
