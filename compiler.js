@@ -13751,6 +13751,16 @@ ${bodyHTML}
           parts.push(`<script>
 (function() {
   var ROUTES = [${routeList}];
+  function renderCurrentDate() {
+    var labels = document.querySelectorAll('[data-current-date="true"]');
+    if (!labels.length) return;
+    var text = new Date().toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    }).toUpperCase();
+    for (var i = 0; i < labels.length; i++) labels[i].textContent = text;
+  }
   function setActivePane(slug) {
     var app = document.querySelector('[data-app]');
     if (!app) return;
@@ -13838,6 +13848,7 @@ ${bodyHTML}
     }
   });
   window.addEventListener('popstate', function() { setActivePane(routeFromHash()); });
+  renderCurrentDate();
   setActivePane(routeFromHash());
 })();
 </script>`);
@@ -18829,8 +18840,8 @@ const CSS_COMPONENTS = [
   height: 16px;
   flex: 0 0 auto;
   border-radius: 9999px;
-  background: radial-gradient(circle at 30% 30%, oklch(var(--color-primary) / 1), oklch(30% 0.07 55deg) 80%);
-  box-shadow: 0 0 8px oklch(var(--color-primary) / 0.45), 0 0 16px oklch(var(--color-primary) / 0.22);
+  background: radial-gradient(circle at 30% 30%, #ffd093, #4a2a08 80%);
+  box-shadow: 0 0 8px rgb(255 184 108 / 0.45), 0 0 16px rgb(255 184 108 / 0.22);
 }
 .clear-app .clear-app-sidebar > h1:first-child::after {
   content: "0.1";
@@ -19033,12 +19044,25 @@ const CSS_COMPONENTS = [
   border-bottom: 0;
 }
 .clear-app-panes .clear-page-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
   font-family: "Instrument Serif", Georgia, serif;
   font-size: 38px !important;
   font-weight: 400;
   line-height: 1;
   color: var(--clear-ink);
   text-shadow: 0 0 8px oklch(var(--color-primary) / .12);
+}
+.clear-app-panes .clear-page-date {
+  color: var(--clear-ink-muted);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  text-shadow: none;
 }
 .clear-app-panes .clear-page-subtitle {
   display: none;
@@ -19143,6 +19167,35 @@ const CSS_COMPONENTS = [
   color: var(--clear-accent);
   border-color: var(--clear-accent);
   background: oklch(var(--color-primary) / .10);
+}
+.clear-app [data-pane="today"] .clear-section-card:has(> h2:first-child) {
+  margin-top: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.clear-app [data-pane="today"] .clear-section-card:has(> h2:first-child) > h2:first-child {
+  margin: 0 0 10px;
+  color: var(--clear-ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.clear-app [data-pane="today"] .clear-section-card:has(> h2:first-child) > p {
+  display: grid;
+  grid-template-columns: 78px 84px minmax(0, 1fr);
+  gap: 14px;
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--clear-line);
+  color: var(--clear-ink-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 @media (max-width: 720px) {
   .clear-app { grid-template-columns: 64px minmax(0, 1fr); }
