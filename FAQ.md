@@ -224,6 +224,55 @@ Short rule: each requirement should name actor, data, action/rule, and observabl
 
 ---
 
+## Are `requirements:`, `policy:`, `rule:`, and `enforce that` redundant? (2026-05-15)
+
+No. They are four enforcement layers with different jobs.
+
+- `requirements:` says what the app must do. It is the customer contract.
+- `policy:` says which broad danger classes are blocked everywhere. It is the Enact runtime fence.
+- `rule <name>:` gives a specific promise a name. It is the auditor-facing proof and receipt label.
+- `enforce that` is the actual tripwire. It stops the current path when a condition is false.
+
+Use them together when the behavior is important enough that a buyer, auditor, or future agent should see the whole chain.
+
+```clear
+requirements:
+  support agents can summarize tickets without exposing secrets
+  every blocked secret exposure records a named refusal
+
+policy:
+  block prompt injection
+  block reads on Secrets
+
+secret_visible is false
+
+rule support-summary-keeps-secrets-hidden:
+  enforce that secret_visible is false,
+    or fail with error message: 'Support summaries cannot expose secrets'
+
+agent 'Support Summarizer' receives ticket:
+  must not:
+    read raw secrets
+    change policies or permissions
+
+  enforce that ticket's trust is 'internal_ticket',
+    or fail with error message: 'Only trusted ticket records can be summarized'
+
+  summary = ask ai 'Summarize the ticket without secrets' with ticket
+  send back summary
+```
+
+How to read the example:
+
+- The requirements tell Ralph what "done" means.
+- The policy blocks prompt-injection and sensitive-table access at runtime.
+- The named rule makes the secret promise show up in proof and audit output.
+- The agent-level `enforce that` protects the exact AI call input before the prompt runs.
+
+This is not duplication. It is layered safety. If one layer is too broad to express the exact promise, the next layer names it. If one layer is a contract, another layer enforces it.
+
+---
+
 ## Where does the Meph tool-eval demo source live? (2026-05-09)
 
 `studio/eval-scenarios.js` exports `DEMO_SOURCE`, the shared Clear app used by `studio/eval-meph.js`. If tool evals fail in app-dependent scenarios, first run `node studio/meph-eval-scenarios.test.js` to prove the fixture still compiles.
