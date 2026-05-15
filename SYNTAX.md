@@ -1916,13 +1916,36 @@ upload file to 's3-bucket'
 # Accept file uploads in endpoints (see Accept File section)
 ```
 
-## Social Login
+## Google Workspace Authorization
 
 ```clear
-# Redirect-based social login
-login with 'google'
-login with 'github'
+use google workspace
+
+page 'Connections' at '/connections':
+  heading 'Connections'
+  button 'Authorize Gmail + Calendar':
+    login with google
+
+when user calls GET /api/inbox/search sending query:
+  messages = search gmail for query's q
+  send back messages
+
+when user calls GET /api/calendar/search sending query:
+  events = search google calendar for query's q
+  send back events
 ```
+
+`use google workspace` emits the consent routes and token table:
+
+- `GET /api/google/auth/start`
+- `GET /api/google/auth/callback`
+- `GET /api/google/auth/status`
+
+Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the runtime environment. `GOOGLE_REDIRECT_URI` is optional; without it, Clear builds `/api/google/auth/callback` from the request host.
+
+`login with google` is the frontend action. Use the bare provider name, not quotes. Quotes are for literal text; `google` here is a provider keyword.
+
+`search gmail for X` returns Gmail metadata and snippets. `search google calendar for X` returns event details, including attendee names and email addresses when Google provides them. Both results are marked `trust: 'untrusted_external_content'` and carry `secret_ref: 'google_oauth_ref'`; raw OAuth tokens stay in Clear's internal token table.
 
 ## Cookies
 

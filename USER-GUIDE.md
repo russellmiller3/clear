@@ -6432,3 +6432,23 @@ page 'Console':
 ```
 
 Amber on warm-dark, headings glow, focus rings glow. The whole page reads like a vintage CRT — perfect for AI control panels, dashboards, anything that wants the "machine talking to me" feel.
+
+### Let the app read Gmail and Calendar
+
+```clear
+use google workspace
+
+page 'Connections' at '/connections':
+  button 'Authorize Gmail + Calendar':
+    login with google
+
+when user calls GET /api/inbox/search sending query:
+  messages = search gmail for query's q
+  send back messages
+
+when user calls GET /api/calendar/search sending query:
+  events = search google calendar for query's q
+  send back events
+```
+
+This is not a `script:` escape hatch. Clear emits the Google consent flow, stores the token internally, and gives your app readable Gmail and Calendar records. Calendar events include attendees when Google returns them, including email addresses. Agents see a `secret_ref`, not the raw OAuth token.
