@@ -13613,7 +13613,7 @@ ${bodyHTML}
     var slug = href.replace(/^#?\\/?/, '');
     if (ROUTES.indexOf(slug) >= 0) {
       e.preventDefault();
-      history.pushState({slug: slug}, '', '#/' + slug);
+      history.pushState({slug: slug}, '', '/' + slug);
       setActivePane(slug);
     }
   });

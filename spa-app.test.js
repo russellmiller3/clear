@@ -350,4 +350,22 @@ describe('SPA app primitive — HTML emit (Cycle 11.3)', () => {
     const pane_app_html = pane_app.html || '';
     expect(pane_app_html).toContain('location.pathname');
   });
+
+  // Regression: 2026-05-14 — click handler pushed '#/chat' (hash-based URL)
+  // instead of '/chat' (path-based). After a nav click, location.pathname
+  // stayed '/' so syncActiveNav() never highlighted the right item, and the
+  // back button would land on the wrong pane via routeFromHash().
+  it('click handler pushes path-based URL not hash-based (no #/ prefix)', () => {
+    const nav_app_source = [
+      "app 'Lenat' at '/':",
+      "  pane 'Today' as 'today':",
+      "    heading 'Today'",
+      "  pane 'Chat' as 'chat':",
+      "    heading 'Chat'",
+    ].join('\n');
+    const nav_app = compileProgram(nav_app_source);
+    const nav_app_html = nav_app.html || '';
+    expect(nav_app_html).not.toContain("'#/' + slug");
+    expect(nav_app_html).toContain("'/' + slug");
+  });
 });
