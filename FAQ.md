@@ -1035,6 +1035,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 **How do I do X?**
 - [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
+- [How do I load a multi-file Clear project in Studio?](#how-do-i-load-a-multi-file-clear-project-in-studio)
 - [How does Publish show progress and the live URL?](#how-does-publish-show-progress-and-the-live-url)
 - [How do I share a compile failure trace?](#how-do-i-share-a-compile-failure-trace)
 - [How do I add a new approval action?](#how-do-i-add-a-new-approval-action)
@@ -1897,6 +1898,21 @@ Open Studio normally. New users default to Builder Mode. Use `?studio-mode=build
 **Source:** `studio/studio.html` CSS block starting at "BUILDER MODE" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
 
 **Full spec:** `ROADMAP.md` -> "Builder Mode - Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
+
+---
+
+### How do I load a multi-file Clear project in Studio?
+
+Click **Load** and select every `.clear` file in the small project at once, for example `main.clear` plus `components.clear`.
+
+Studio keeps those files together as one in-memory project. The file navigator under the source outline shows:
+- **Files** — every loaded file, with `main.clear` first.
+- **Imports** — files referenced by the active source, with missing imports shown as missing.
+- **Components** — every `define component X...` found across the loaded files.
+
+Click a file to open it. Click a component to open its source file and jump to that component. Compile still uses the app's main source, and Studio sends the loaded helper files to `/api/compile` as in-memory modules, so `import components.clear` works without writing a temporary bundle to disk.
+
+**Test:** `node studio/ide.test.js` covers loading `main.clear` + `components.clear`, switching files, preserving source, and compiling the imported component app.
 
 ---
 

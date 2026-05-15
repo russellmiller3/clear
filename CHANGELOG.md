@@ -1,3 +1,11 @@
+## 2026-05-15 - Studio file navigator for multi-file Clear projects (feature/studio-file-navigator)
+
+Studio now treats a set of loaded `.clear` files as one in-memory project instead of replacing the editor one file at a time. The Load button accepts multiple files, the navigator lists Files / Imports / Components, component clicks open the defining file, and switching files preserves edits.
+
+Compile now sends the app's main source plus an in-memory modules map to `/api/compile`, so `import components.clear` works in Studio the same way it already works through CLI/compiler callers.
+
+Verification: `node studio/ide.test.js` passes 60 / 60, including the new load `main.clear` + `components.clear`, switch, preserve, and compile flow.
+
 ## 2026-05-15 - Core 13 first-paint data coverage (feature/core-13-ssr-requests-backlog)
 
 Static same-app page-load reads now join the first-paint data path. A Clear page that says `on page load get deals from '/api/deals'` is filled before the browser starts when the URL is a safe same-app `/api/` read with no browser-state interpolation.

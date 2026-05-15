@@ -1,6 +1,6 @@
 # Clear — What You Can Build
 
-Clear is a programming language for building real web apps in plain English. One `.clear` file gives you a database, a server, a browser UI, and an AI assistant — no configuration, no boilerplate, no framework to learn.
+Clear is a programming language for building real web apps in plain English. One `.clear` file, or a small project of imported `.clear` files, gives you a database, a server, a browser UI, and an AI assistant — no configuration, no boilerplate, no framework to learn.
 
 ## Jump to a use case
 
@@ -168,7 +168,7 @@ Open Clear Studio at `http://localhost:3456`. Three panels: a code editor, a liv
 
 Meph writes Clear code, builds the app, runs tests, and fixes errors. For complex apps, Meph first writes a structured checklist of requirements and waits for your approval before touching any code. After building, a checking system called Ralph audits the result against those approved requirements and blocks Meph from declaring "done" if the evidence doesn't match — no more AI that says it's done but isn't.
 
-Thirteen template apps in the dropdown. One-click deploy to Fly.io. Rollback to any of the last 20 versions from inside the IDE.
+Thirteen template apps in the dropdown. One-click deploy to Fly.io. Rollback to any of the last 20 versions from inside the IDE. Multi-file projects load through the same file picker: Studio shows files, imports, and components, lets you switch between them, and compiles the main file with imported modules in memory.
 
 ---
 
@@ -570,6 +570,7 @@ Also under "Build full apps by writing English" in the exec summary: **Approval 
 | Copy compiler error | Compile errors show a "Copy compiler error" button with source context, diagnostics, and repair instructions |
 | Copy Terminal button | Preview-tabs row in Studio. One click strips HTML markup from the terminal entries, appends the current `.clear` source as a fenced block, and copies the result to the clipboard formatted as markdown so it pastes cleanly into a chat message to Claude or Meph. **Newest entry first** — matches the on-screen render order (the terminal pane shows most recent at top, so the clipboard text reads the same way). Distinct from "Copy compiler error" (compile-time only); this one captures runtime / test / prove output from a running app. Added 2026-05-04. |
 | Fresh-from-disk on Studio start | When you pick a template via the Studio dropdown, Studio remembers the template name. On every Studio start, it re-fetches that template from disk and replaces the editor's content if it has changed. A one-line confirmation appears in the terminal: "Refreshed deal-desk/main.clear from disk (was an older version in your editor)." Stops the old failure mode where edits to a template on disk never propagated into Studio because localStorage cached the editor content forever. Crash-recovery scratch (untemplated content) still uses localStorage as before. Added 2026-05-04. |
+| File navigator for multi-file Clear projects | The Load picker accepts multiple `.clear` files. Studio keeps them as one in-memory project, shows a navigator with Files, Imports, and Components, opens imported/component files without losing edits, and sends the main source plus an in-memory `modules` map to `/api/compile`. This makes `import components.clear` and `define component Card ...` workable inside Studio, not only in CLI/editor tooling. Added 2026-05-15. |
 | Source maps | Click preview element -> jumps to Clear source line (Alt+click in normal mode) |
 | Direct Edit toggle | Toolbar button next to Run/Stop. When on, ANY click in the preview (no Alt key) (a) jumps the editor cursor to that element's Clear source line, (b) drafts a `Help me edit this:` message in Meph's chat input with the line + 4 lines of context fenced as `clear`. Works for both srcdoc previews (web-only apps) and full-stack-app iframes (running on a separate port via `?clear-bridge=1`). Compiler-side: `data-clear-line="N"` is on every interactive HTML element via `clAttr(node)` in `buildHTML` — the Direct Edit feature uses that attribute. Click highlights the element with a 2px indigo outline so users see what was picked. |
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |

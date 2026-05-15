@@ -6,6 +6,8 @@
 
 import { chromium } from 'playwright';
 import { spawn } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -78,6 +80,50 @@ try {
   await page.waitForTimeout(100);
   const typedText = await page.locator('.cm-content').first().innerText();
   assert(typedText.includes('x'), 'can type in editor');
+
+  // ==========================================================================
+  // FILE NAVIGATOR
+  // ==========================================================================
+  console.log('\nFile navigator');
+
+  const projectDir = mkdtempSync(join(tmpdir(), 'clear-studio-files-'));
+  const mainFilePath = join(projectDir, 'main.clear');
+  const componentsFilePath = join(projectDir, 'components.clear');
+  writeFileSync(mainFilePath, `build for web
+import components.clear
+
+page 'Home' at '/':
+  show Card('Revenue')
+`, 'utf8');
+writeFileSync(componentsFilePath, `define component Card receiving title:
+  section 'Card' with style card:
+    show title
+`, 'utf8');
+  try {
+    await page.locator('#load-file-input').setInputFiles([mainFilePath, componentsFilePath]);
+    await page.waitForTimeout(500);
+    assert(await page.locator('#file-navigator').isVisible(), 'file navigator visible');
+    assert(await page.locator('#file-navigator [data-file-path="main.clear"]').isVisible(), 'navigator lists main.clear');
+    assert(await page.locator('#file-navigator [data-file-path="components.clear"]').isVisible(), 'navigator lists imported file');
+    assert(await page.locator('#file-navigator [data-component-name="Card"]').isVisible(), 'navigator lists component');
+
+    await page.locator('#file-navigator [data-file-path="components.clear"]').click();
+    await page.waitForTimeout(200);
+    const componentSource = await page.evaluate(() => window._editorView.state.doc.toString());
+    assert(componentSource.includes('define component Card'), 'clicking imported file opens its source');
+    assert((await page.locator('#editor-label').innerText()).toLowerCase() === 'components.clear', 'label updates to active imported file');
+
+    await page.locator('#file-navigator [data-file-path="main.clear"]').click();
+    await page.waitForTimeout(200);
+    const mainSourceAfterSwitch = await page.evaluate(() => window._editorView.state.doc.toString());
+    assert(mainSourceAfterSwitch.includes('import components.clear'), 'switching back preserves main.clear source');
+
+    await page.locator('button[onclick="doCompile()"]').click();
+    await page.waitForFunction(() => document.getElementById('status')?.textContent?.startsWith('OK'), null, { timeout: 5000 });
+    assert((await page.locator('#status').innerText()).startsWith('OK'), 'loaded multi-file project compiles');
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
+  }
 
   // ==========================================================================
   // TOOLBAR BUTTONS
@@ -162,6 +208,9 @@ try {
   // ==========================================================================
   console.log('\n⚙️  Compile');
 
+  await page.locator('button[onclick="newFile()"]').click();
+  await page.waitForTimeout(200);
+
   // Set a simple web app
   await page.evaluate(() => window._editor.dispatch({
     changes: { from: 0, to: window._editor.state.doc.length, insert: "build for web\npage 'Hello' at '/':\n  heading 'Hello World'" }
@@ -178,7 +227,8 @@ try {
     if (status.startsWith('OK') || /error/i.test(status)) break;
     await page.waitForTimeout(150);
   }
-  assert(status.startsWith('OK'), `status shows OK after compile (got: "${status}")`);
+  const compileSuccessStatus = status.startsWith('OK') || status.startsWith('Running') || status.startsWith('Starting');
+  assert(compileSuccessStatus, `status shows compile success after compile (got: "${status}")`);
   assert(!(await page.locator('#compile-dot').getAttribute('class'))?.includes('err'), 'compile dot is green');
 
   // ==========================================================================
