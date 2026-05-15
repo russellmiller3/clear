@@ -43,6 +43,23 @@ Runtime helpers live at `runtime/graph-edges.js` (JS) and
 consumers. The compiled HTML inlines an equivalent helper so pages
 render standalone without loading the runtime module.
 
+## Where do Lenat-style deep pane displays live? (2026-05-15)
+
+They are DISPLAY formats, not new page primitives. Use:
+
+```
+display all_concepts as capability explorer
+display all_records as record browser
+display all_audit_events as trace timeline
+```
+
+The parser keeps those multi-word formats intact in `parseDisplay`.
+`compiler.js` routes them through the reactive display loop and emits
+the master/detail/search/timeline shells in `buildHTML`.
+
+Use them when a page is an inspector pane. Keep plain tables for normal
+CRUD rows. Use the network graph chart for relationship maps.
+
 ## How do I split a Clear app across files? (2026-05-13)
 
 Use `import` (the canonical keyword) followed by the file name with its

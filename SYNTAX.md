@@ -589,6 +589,24 @@ display contacts as table showing name, email with delete and edit
 // "with edit" adds an Edit button that populates the form.
 ```
 
+### Deep Pane Displays
+
+Use these when the page is a dense inspector, not a simple table.
+
+```clear
+# Capability rows: concepts, skills, commands, actions.
+display all_concepts as capability explorer
+
+# Knowledge rows: saved records with concept_id, status, and payload_json.
+display all_records as record browser
+
+# Audit rows: at/event_kind/concept_id/payload_json event history.
+display all_audit_events as trace timeline
+```
+
+The compiler emits a Lenat-style master/detail surface: search on the left,
+selected detail on the right, compact filters, and dark-theme-aware styling.
+
 ## Charts (ECharts)
 
 ```clear

@@ -29686,6 +29686,68 @@ app 'Lenat' at '/':
   });
 });
 
+describe('Lenat deep panes — reusable display primitives', () => {
+  const paneFeatureSrc = `build for web
+theme 'nixie'
+app 'Lenat' at '/':
+  pane 'Capabilities' as 'capabilities':
+    all_concepts = [{id: 'IDEA', canonical_phrase: 'idea:', effect: 'internal', permission_scope: 'save', action_run_count: 3, synonyms_json: '["idea:","idea","new idea"]', slot_schema_json: '{"idea":{"type":"phrase","required":true}}'}]
+    display all_concepts as capability explorer
+  pane 'Knowledge' as 'knowledge':
+    all_records = [{id: 'r1', concept_id: 'IDEA', status: 'open', created_at: '2026-05-15T10:00:00.000Z', payload_json: '{"idea":"lenat clear parity","about":"Lenat"}'}]
+    display all_records as record browser
+  pane 'Map' as 'map':
+    all_records = [{id: 'r1', concept_id: 'IDEA', payload_json: 'Lenat'}, {id: 'r2', concept_id: 'PERSON', payload_json: 'Lenat'}]
+    display all_records as network graph showing edges via payload_json with color by concept_id
+  pane 'Trace' as 'trace':
+    all_audit_events = [{at: '2026-05-15T10:33:44.000Z', event_kind: 'server_started', concept_id: 'SERVER', payload_json: '{"port":50064}'}]
+    display all_audit_events as trace timeline`;
+  const paneFeatureResult = compileProgram(paneFeatureSrc);
+
+  it('T-DEEP-1: parser keeps multi-word deep-pane display formats intact', () => {
+    const ast = parse(`page 'App':
+  rows = []
+  display rows as capability explorer
+  display rows as record browser
+  display rows as trace timeline`);
+    const displays = ast.body[0].body.filter(node => node.type === NodeType.DISPLAY);
+    expect(displays.map(node => node.format)).toEqual(['capability_explorer', 'record_browser', 'trace_timeline']);
+    expect(displays.map(node => node.ui.tag)).toEqual(['capability_explorer', 'record_browser', 'trace_timeline']);
+  });
+
+  it('T-DEEP-2: capability explorer emits the Lenat master/detail shell', () => {
+    expect(paneFeatureResult.errors).toHaveLength(0);
+    expect(paneFeatureResult.html).toContain('class="clear-capability-explorer clear-lenat-explorer"');
+    expect(paneFeatureResult.html).toContain('data-capability-search');
+    expect(paneFeatureResult.html).toContain('data-capability-list');
+    expect(paneFeatureResult.html).toContain('data-capability-detail');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderCapabilityExplorer(');
+  });
+
+  it('T-DEEP-3: record browser emits chips, list, and detail affordances', () => {
+    expect(paneFeatureResult.html).toContain('class="clear-record-browser clear-lenat-explorer"');
+    expect(paneFeatureResult.html).toContain('data-record-search');
+    expect(paneFeatureResult.html).toContain('data-record-chips');
+    expect(paneFeatureResult.html).toContain('data-record-detail');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderRecordBrowser(');
+  });
+
+  it('T-DEEP-4: trace timeline emits compact filters and icon rows', () => {
+    expect(paneFeatureResult.html).toContain('class="clear-trace-timeline"');
+    expect(paneFeatureResult.html).toContain('data-trace-search');
+    expect(paneFeatureResult.html).toContain('data-trace-kind');
+    expect(paneFeatureResult.html).toContain('data-trace-days');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderTraceTimeline(');
+  });
+
+  it('T-DEEP-5: network graphs use the Lenat palette instead of generic blue business charts', () => {
+    expect(paneFeatureResult.html).toContain('class="clear-chart-card clear-network-card');
+    expect(paneFeatureResult.javascript).toContain('--clear-graph-person');
+    expect(paneFeatureResult.javascript).toContain('legend: _categories');
+    expect(paneFeatureResult.javascript).not.toContain("const _colors = ['#465fff'");
+  });
+});
+
 // =============================================================================
 // SUBTITLE UNDERSCORE INTERPOLATION (formatInlineText underscore guard)
 // Regression for: /_([^_]+)_/g consuming underscores inside {variable_name}

@@ -757,8 +757,22 @@ function displayNode(expression, format, label, line) {
   const displayLabel = label || (expression && expression.type === NodeType.VARIABLE_REF
     ? autoLabelFromName(expression.name)
     : 'Output');
+  const displayTags = {
+    table: 'table',
+    cards: 'cards',
+    list: 'list',
+    chat: 'chat',
+    gallery: 'gallery',
+    map: 'map',
+    calendar: 'calendar',
+    qr: 'qr',
+    qrcode: 'qr',
+    capability_explorer: 'capability_explorer',
+    record_browser: 'record_browser',
+    trace_timeline: 'trace_timeline',
+  };
   const ui = {
-    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : format === 'chat' ? 'chat' : format === 'gallery' ? 'gallery' : format === 'map' ? 'map' : format === 'calendar' ? 'calendar' : (format === 'qr' || format === 'qrcode') ? 'qr' : 'output',
+    tag: displayTags[format] || 'output',
     id: `output_${sanitizeForId(displayLabel.replace(/\s+/g, '_'))}`,
     label: displayLabel,
   };
@@ -9153,8 +9167,23 @@ function parseDisplay(tokens, line) {
   if (pos < tokens.length && tokens[pos].canonical === 'as_format') {
     pos++;
     if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
-      format = tokens[pos].value.toLowerCase();
-      pos++;
+      const firstFormatWord = String(tokens[pos].value).toLowerCase();
+      const secondFormatWord = pos + 1 < tokens.length && (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD)
+        ? String(tokens[pos + 1].value).toLowerCase()
+        : '';
+      const deepPaneFormats = {
+        'capability explorer': 'capability_explorer',
+        'record browser': 'record_browser',
+        'trace timeline': 'trace_timeline',
+      };
+      const deepPaneFormat = deepPaneFormats[`${firstFormatWord} ${secondFormatWord}`];
+      if (deepPaneFormat) {
+        format = deepPaneFormat;
+        pos += 2;
+      } else {
+        format = firstFormatWord;
+        pos++;
+      }
     }
   }
   // Handle "as json" synonym collision: tokenizer eats "as json" as single to_json keyword

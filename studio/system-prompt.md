@@ -628,6 +628,15 @@ display people as network graph showing edges via about with max 100 nodes
 display concepts as network graph showing edges via about with color by kind
 ```
 
+**Lenat-style inspector panes.** Use these when the user needs to browse
+knowledge, capabilities, or history. Use a normal table for CRUD rows.
+
+```clear
+display all_concepts as capability explorer
+display all_records as record browser
+display all_audit_events as trace timeline
+```
+
 ## Declaring the Owner (MANDATORY for any auth-enabled app)
 
 Every app with `allow signup and login` MUST also declare an owner:
