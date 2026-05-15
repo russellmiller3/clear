@@ -247,9 +247,9 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | # | Item | Status | Scope |
 |---|---|---|---|
 | GTM-2 | `landing/builders.html` — ranger-audience homepage candidate | **Shipped 2026-05-04**, see FEATURES.md | — |
-| GTM-2b | Promote `builders.html` to `landing/index.html` (default homepage) — currently no default exists | Open | 1 commit |
+| GTM-2b | Promote `builders.html` to `landing/index.html` (default homepage) — currently no default exists | **Shipped 2026-05-04** (`aba62cb`) | — |
 | GTM-4 | Find 5 real rangers (PMs / RevOps / marketers) on LinkedIn, DM, show Studio, watch what breaks | Ongoing | Continuous |
-| GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | Open | 2 days |
+| GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | **Shipped 2026-05-14** (Builder Mode default; `STUDIO_MODE_DEFAULT='builder'`; tile gallery; source hidden by default; `studio-onboarding-static.test.js` green) | — |
 | GTM-7 | Studio instrumentation — first-click tracking, time-to-first-app, where signups bounce | Open | 3 days |
 | GTM-8 | Soften / tweak the live `builders.html` page (Russell's three flagged calls — hero pain line, named competitors, dropped Marcus framing — all shipped as designed; easy to revisit) | Open | 1 commit |
 
