@@ -16762,47 +16762,113 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // Always ensure root is served
     pageRoutes.add('/');
 
-    // Build route → SSR-able defines map.
-    // Each entry: { variable: string, table: string } for every non-clientOnly
-    // CRUD lookup node in a page or pane body. These get pre-fetched server-side
+    // Build route → first-paint reads map.
+    // Table lookups and safe same-app page-load reads get pre-filled server-side
     // so the browser sees real data on first paint instead of the "0 flash."
-    const routeSsrDefines = new Map();
-    const collectSsrDefines = (bodyNodes) =>
-      (bodyNodes || []).filter(n => n && n.type === NodeType.CRUD && n.operation === 'lookup' && !n.clientOnly && n.variable && n.target)
-        .map(n => ({ variable: n.variable, table: pluralizeName(n.target) }));
+    const routeFirstPaintReads = new Map();
+    const isStaticSameAppRead = (urlPath) =>
+      typeof urlPath === 'string' &&
+      urlPath.startsWith('/api/') &&
+      !urlPath.includes('{') &&
+      !urlPath.includes(':');
+    const collectFirstPaintReads = (bodyNodes) => {
+      const readsByTarget = new Map();
+      const registerFirstPaintRead = (firstPaintRead) => {
+        if (!firstPaintRead || !firstPaintRead.targetName) return;
+        if (!readsByTarget.has(firstPaintRead.targetName)) readsByTarget.set(firstPaintRead.targetName, firstPaintRead);
+      };
+      const visitBody = (candidateNodes) => {
+        for (const astNode of (candidateNodes || [])) {
+          if (!astNode) continue;
+          if (astNode.type === NodeType.CRUD && astNode.operation === 'lookup' && !astNode.clientOnly && astNode.variable && astNode.target) {
+            registerFirstPaintRead({
+              sourceKind: 'table',
+              targetName: sanitizeName(astNode.variable),
+              tableName: pluralizeName(astNode.target),
+            });
+          }
+          if (astNode.type === NodeType.ON_PAGE_LOAD) {
+            for (const pageLoadStep of (astNode.body || [])) {
+              if (pageLoadStep &&
+                  pageLoadStep.type === NodeType.API_CALL &&
+                  pageLoadStep.method === 'GET' &&
+                  pageLoadStep.targetVar &&
+                  isStaticSameAppRead(pageLoadStep.url)) {
+                registerFirstPaintRead({
+                  sourceKind: 'api',
+                  targetName: sanitizeName(pageLoadStep.targetVar),
+                  urlPath: pageLoadStep.url,
+                });
+              }
+            }
+          }
+          if (astNode.body) visitBody(astNode.body);
+          if (astNode.thenBody) visitBody(astNode.thenBody);
+          if (astNode.elseBody) visitBody(astNode.elseBody);
+          if (astNode.panes) {
+            for (const childPane of astNode.panes) visitBody(childPane.body);
+          }
+        }
+      };
+      visitBody(bodyNodes);
+      return Array.from(readsByTarget.values());
+    };
     for (const p of pageNodes) {
       const route = p.route || '/';
       if (route.startsWith('/api/') || route.startsWith('/auth/')) continue;
-      const ssrDefs = collectSsrDefines(p.body);
-      if (ssrDefs.length > 0) routeSsrDefines.set(route, ssrDefs);
+      const firstPaintReads = collectFirstPaintReads(p.body);
+      if (firstPaintReads.length > 0) routeFirstPaintReads.set(route, firstPaintReads);
     }
     for (const appBlock of appBlocks) {
       const appRoute = appBlock.route || '/';
+      if (!appRoute.startsWith('/api/') && !appRoute.startsWith('/auth/')) {
+        const firstPaintReads = collectFirstPaintReads(appBlock.body);
+        if (firstPaintReads.length > 0) routeFirstPaintReads.set(appRoute, firstPaintReads);
+      }
       for (const pane of (appBlock.panes || [])) {
         const slug = pane.route || '';
         if (!slug) continue;
         const fullRoute = slug.startsWith('/') ? slug : (appRoute === '/' ? `/${slug}` : `${appRoute}/${slug}`);
         if (fullRoute.startsWith('/api/') || fullRoute.startsWith('/auth/')) continue;
-        const ssrDefs = collectSsrDefines(pane.body);
-        if (ssrDefs.length > 0) routeSsrDefines.set(fullRoute, ssrDefs);
+        const firstPaintReads = collectFirstPaintReads(pane.body);
+        if (firstPaintReads.length > 0) routeFirstPaintReads.set(fullRoute, firstPaintReads);
       }
+    }
+    const routeHasSameAppRead = Array.from(routeFirstPaintReads.values())
+      .some(routeReads => routeReads.some(firstPaintRead => firstPaintRead.sourceKind === 'api'));
+    if (routeHasSameAppRead) {
+      lines.push('async function _clearSsrGet(req, urlPath) {');
+      lines.push('  const _ssrForwardedHeaders = {};');
+      lines.push('  if (req.headers.cookie) _ssrForwardedHeaders.cookie = req.headers.cookie;');
+      lines.push('  if (req.headers.authorization) _ssrForwardedHeaders.authorization = req.headers.authorization;');
+      lines.push('  const _ssrFetchReply = await fetch(`http://127.0.0.1:${PORT}${urlPath}`, { headers: _ssrForwardedHeaders });');
+      lines.push('  if (!_ssrFetchReply.ok) return undefined;');
+      lines.push('  return await _ssrFetchReply.json();');
+      lines.push('}');
+      lines.push('');
     }
 
     // Use `{ root: __dirname }` option: Express 5's send module mishandles
     // absolute paths on non-root request URLs (confuses path vs URL). With
     // the root option, send resolves safely.
     //
-    // SSR: routes with non-clientOnly defines get an async handler that
+    // SSR: routes with first-paint reads get an async handler that
     // pre-fetches data, injects window.__CLEAR_INITIAL_STATE__, and sends
-    // the modified HTML. Routes without defines get a simple sendFile.
+    // the modified HTML. Routes without reads get a simple sendFile.
     for (const route of pageRoutes) {
-      const ssrDefs = routeSsrDefines.get(route);
-      if (ssrDefs && ssrDefs.length > 0) {
+      const firstPaintReads = routeFirstPaintReads.get(route);
+      if (firstPaintReads && firstPaintReads.length > 0) {
         lines.push(`app.get(${JSON.stringify(route)}, async (req, res) => {`);
         lines.push(`  try {`);
         lines.push(`    const _ssrState = {};`);
-        for (const def of ssrDefs) {
-          lines.push(`    _ssrState[${JSON.stringify(def.variable)}] = (await db.findAll(${JSON.stringify(def.table)})).map(_revive);`);
+        for (const firstPaintRead of firstPaintReads) {
+          if (firstPaintRead.sourceKind === 'table') {
+            lines.push(`    _ssrState[${JSON.stringify(firstPaintRead.targetName)}] = (await db.findAll(${JSON.stringify(firstPaintRead.tableName)})).map(_revive);`);
+          } else if (firstPaintRead.sourceKind === 'api') {
+            const stateSlotName = sanitizeName(firstPaintRead.targetName);
+            lines.push(`    const _ssr_${stateSlotName} = await _clearSsrGet(req, ${JSON.stringify(firstPaintRead.urlPath)});`);
+            lines.push(`    if (_ssr_${stateSlotName} !== undefined) _ssrState[${JSON.stringify(stateSlotName)}] = _ssr_${stateSlotName};`);
+          }
         }
         lines.push(`    const _html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');`);
         lines.push(`    const _stateScript = '<script>window.__CLEAR_INITIAL_STATE__ = ' + JSON.stringify(_ssrState) + ';</script>';`);

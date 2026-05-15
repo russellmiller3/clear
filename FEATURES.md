@@ -355,7 +355,7 @@ The tables below cover every feature in the language with exact syntax. Jump to 
 | File upload (client) | `upload doc to '/api/upload'` | FormData + fetch POST. |
 | File upload (server) | auto-wired on POST endpoints that match client upload URLs | `_upload.any()` multer middleware with memoryStorage + 10MB default. |
 | Auth-capability gate | silence `requires login` on mutation endpoints for auth-less toy apps | Compiler detects whether the app has `allow signup and login` OR a `Users` table with a `password` field. Auth-capable apps still get hard errors; auth-less apps get one advisory warning listing every public mutation. |
-| SSR default — server-side pre-fetch | `define X as: look up records in Y` inside a page body | The route handler pre-fetches the data before sending HTML and injects `window.__CLEAR_INITIAL_STATE__`. Reactive runtime hydrates on first paint — no loading flash. |
+| SSR default — server-side pre-fetch | `define X as: look up records in Y` inside a page body; static `on page load get X from '/api/X'` reads | The route handler pre-fetches direct table lookups and safe same-app page-load reads before sending HTML, then injects `window.__CLEAR_INITIAL_STATE__`. Reactive runtime hydrates on first paint — no loading flash. The canonical 13 apps are guarded by `core-13-ssr-first-paint.test.js`. |
 | SSR opt-out | `fetch this data in the browser, not from the server` (indented under a define, or inline after a comma) | Sets `clientOnly:true` on the lookup. Compiler skips it in the SSR pre-fetch; browser fetches it reactively. Use for real-time data or auth-scoped queries. |
 | Has many | `Users has many Posts` | Auto-generates nested GET endpoint |
 | Search | `search Posts for query` | Case-insensitive full-text |

@@ -1,3 +1,11 @@
+## 2026-05-15 - Core 13 first-paint data coverage (feature/core-13-ssr-requests-backlog)
+
+Static same-app page-load reads now join the first-paint data path. A Clear page that says `on page load get deals from '/api/deals'` is filled before the browser starts when the URL is a safe same-app `/api/` read with no browser-state interpolation.
+
+The regression set now names all 13 golden apps: the 8 core templates plus 5 Marcus workflow templates. `core-13-ssr-first-paint.test.js` proves every static same-app first-page read in those apps is present in the initial page data, and `clear.test.js` imports that guard so future compiler changes run it automatically.
+
+Verification: `core-13-ssr-first-paint.test.js`, `ssr-default.test.js`, and the full Clear suite are green at 3204 / 3204.
+
 ## 2026-05-14 — SSR-default: pages pre-fetch data on the server (feature/ssr-default-v2)
 
 `define X as: look up records in Y` inside a page body now triggers server-side pre-fetch. The route handler runs `db.findAll()` before `res.send()`, serializes the result into `window.__CLEAR_INITIAL_STATE__`, and injects it as an inline `<script>` immediately after `<body>`. The reactive runtime hydrates via `Object.assign(_state, window.__CLEAR_INITIAL_STATE__)` before `_recompute()` fires — no loading flash.

@@ -252,6 +252,7 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | Open | 2 days |
 | GTM-7 | Studio instrumentation — first-click tracking, time-to-first-app, where signups bounce | Open | 3 days |
 | GTM-8 | Soften / tweak the live `builders.html` page (Russell's three flagged calls — hero pain line, named competitors, dropped Marcus framing — all shipped as designed; easy to revisit) | Open | 1 commit |
+| GTM-9 | Studio file navigator for multi-file Clear apps — when a project imports `tables.clear`, `pages.clear`, or component files, Studio shows the app's file tree, lets users switch files, and saves the active file without losing the one-app mental model. | Open | 1-2 commits |
 
 **Pitch + pricing locked Session 35** (Vercel pattern, $99/$499/$Enterprise tiers). The prior Marcus-over-Sara framing predates the 2026-05-04 GTM lock — see `FAQ.md` → "What's the GTM direction?" for current. Full competitive analysis: `FAQ.md` → "Why does Clear Cloud beat Retool and Lovable?".
 
@@ -464,15 +465,6 @@ Full RL design: `RESEARCH.md`.
 
 - **Phase 6 (Lenat-in-Clear): provider routing for `ask ai` (2026-05-13)** — top-level `ai provider is openrouter|google|openai` + per-call `via provider 'X'` clause on ASK_AI / STREAM_AI / CLASSIFY. Runtime helper routes to the right HTTP shape (Anthropic, OpenRouter, Gemini direct, OpenAI). Resolution order: per-call > `CLEAR_AI_PROVIDER` env > top-level decl > anthropic default.
 
-
-## Phase SSR (2026-05-14) — COMPLETE
-
-Server-side rendering default for page-level data lookups.
-
-- **Parser:** `fetch this data in the browser, not from the server` directive (indented or inline) sets `clientOnly:true` on a CRUD lookup node. Multi-line and inline-comma forms both work.
-- **Compiler:** route handlers for pages with non-`clientOnly` `define X as: look up` nodes are now `async` handlers that pre-fetch via `db.findAll()` and inject `window.__CLEAR_INITIAL_STATE__` as an inline `<script>` after `<body>`.
-- **Runtime:** `Object.assign(_state, window.__CLEAR_INITIAL_STATE__)` hydrates on first paint before `_recompute()` fires.
-- 7 new tests in `ssr-default.test.js`. All 8 core templates smoke-test clean (0 errors).
 
 ## Phase 5.5 (2026-05-13) — COMPLETE
 

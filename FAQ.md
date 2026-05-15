@@ -2200,9 +2200,34 @@ Two JWT formats exist in the wild (legacy vs modern templates) — the eval runn
 
 **SSR-default**: `define X as: look up records in Y` inside a page body triggers server-side pre-fetch. The route handler runs `db.findAll()` before `res.send()`, serializes the result into `window.__CLEAR_INITIAL_STATE__`, and injects that as an inline `<script>` immediately after `<body>`. The reactive runtime reads it via `Object.assign(_state, window.__CLEAR_INITIAL_STATE__)` before `_recompute()` fires — so the table is populated on first paint, not after a second roundtrip.
 
+Static same-app page-load reads also use the first-paint path. Example: `on page load get deals from '/api/deals'`. Clear fills those before sending the page when the URL starts with `/api/` and has no browser-state interpolation.
+
 Pages with no defines, or with only `clientOnly` defines, skip the SSR path entirely and serve the static HTML normally.
 
 **Opt out** with `fetch this data in the browser, not from the server` (indented under the define, or inline after a comma). Use this for real-time data or auth-session-scoped queries that can't be pre-fetched without a user context.
+
+### Which 13 apps are the canonical first-paint regression set? (2026-05-15)
+
+These are the golden apps future-me must keep green when changing first-page data, Studio pattern memory, or app templates.
+
+**Core 8:**
+- `apps/todo-fullstack/main.clear`
+- `apps/crm-pro/main.clear`
+- `apps/blog-fullstack/main.clear`
+- `apps/live-chat/main.clear`
+- `apps/helpdesk-agent/main.clear`
+- `apps/booking/main.clear`
+- `apps/expense-tracker/main.clear`
+- `apps/ecom-agent/main.clear`
+
+**Marcus 5:**
+- `apps/deal-desk/main.clear`
+- `apps/approval-queue/main.clear`
+- `apps/internal-request-queue/main.clear`
+- `apps/onboarding-tracker/main.clear`
+- `apps/lead-router/main.clear`
+
+The regression guard is `core-13-ssr-first-paint.test.js`, imported by `clear.test.js`. It proves every static same-app page-load read in those apps has first-paint data before the browser starts.
 
 ---
 

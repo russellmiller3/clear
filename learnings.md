@@ -2682,3 +2682,17 @@ The decisive move is making intent machine-checkable. Requirements turn a vague 
 - **Pattern hooks can hurt when retrieval is poorly aimed.** A full hook that retrieves generic auth/KPI-ish context for a booking app can perform worse than docs-only; add local retrieval assertions before spending on another A/B.
 - **When a golden template lacks the hard prompt's primitive, seed a trusted language primitive.** Do not hope retrieval composes the missing behavior from adjacent snippets.
 - **Every negative paid retrieval result needs a zero-cost guard before the next paid run.** Add the primitive, assert the top match, then reopen the meter.
+
+## Session 2026-05-15: First-Paint Data Must Cover Real App Shapes
+
+The older first-paint path worked for direct table lookups, but the 13 golden apps mostly load data with same-app page-load reads. That meant the demos could compile cleanly while still opening as empty shells before the browser refreshed them.
+
+The durable fix was compiler-level: safe same-app page-load reads now join the same first-paint data path as direct table lookups. The proof is not "one demo looked right"; the regression guard walks all 13 golden apps and checks every static same-app read is present in the initial page data.
+
+### Gotchas-as-rules
+
+- **Test the real golden apps, not only synthetic examples.** A passing toy fixture can miss the shape the demos actually use.
+- **First-paint data belongs in the shared page-serving path.** Do not hand-patch individual templates when one compiler behavior should cover all of them.
+- **Skip browser-state reads on the server.** URLs with interpolation need the browser's current state and should remain browser-loaded.
+- **When a roadmap item ships, remove it from ROADMAP and move it to FEATURES/FAQ/CHANGELOG.** Backlog should mean future work, not history.
+- **Name the golden set in FAQ.** Future agents should not rediscover which 13 apps are load-bearing by scanning scripts.
