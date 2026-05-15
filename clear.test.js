@@ -29746,6 +29746,13 @@ app 'Lenat' at '/':
     expect(paneFeatureResult.javascript).toContain('legend: _categories');
     expect(paneFeatureResult.javascript).not.toContain("const _colors = ['#465fff'");
   });
+
+  it('T-DEEP-6: Lenat graph labels and capability slots read JSON payload fields', () => {
+    expect(paneFeatureResult.errors).toHaveLength(0);
+    expect(paneFeatureResult.javascript).toContain('recordPayload = _clearGraphPayload(r)');
+    expect(paneFeatureResult.html).toContain('selectedRow.slot_schema_json || selectedRow.slots_json');
+    expect(paneFeatureResult.html).toContain('synonymList = [selectedRow.canonical_phrase]');
+  });
 });
 
 // =============================================================================

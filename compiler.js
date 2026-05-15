@@ -323,8 +323,10 @@ export const UTILITY_FUNCTIONS = [
     return;
   }
   var synonyms = _clear_payload_object(selectedRow.synonyms_json);
-  var slots = _clear_payload_object(selectedRow.slot_schema_json);
+  var slots = _clear_payload_object(selectedRow.slot_schema_json || selectedRow.slots_json);
   var synonymList = Array.isArray(synonyms) ? synonyms : Object.values(synonyms);
+  synonymList = synonymList.filter(function(aliasText) { return aliasText != null && String(aliasText).trim() !== ''; }).map(String);
+  if (!synonymList.length && selectedRow.canonical_phrase) synonymList = [selectedRow.canonical_phrase];
   var slotNames = Object.keys(slots);
   detailEl.innerHTML = '<div class="clear-detail-kicker">Capability</div>'
     + '<h2 class="clear-detail-title">' + _esc(selectedRow.canonical_phrase || selectedRow.name || selectedRow.id || 'Capability') + '</h2>'
@@ -12889,14 +12891,24 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`      const _NODE_CAP = ${_nodeCap};`);
       lines.push(`      const _colorBy = ${_colorByJSON};`);
       lines.push(`      const _capped = _data.slice(0, _NODE_CAP);`);
+      lines.push(`      const _clearGraphPayload = (r) => {`);
+      lines.push(`        if (!r || typeof r !== 'object') return {};`);
+      lines.push(`        const rawPayload = r.payload_json || r.payload || r.content;`);
+      lines.push(`        if (!rawPayload) return {};`);
+      lines.push(`        if (typeof rawPayload === 'object') return rawPayload;`);
+      lines.push(`        try { const parsedPayload = JSON.parse(String(rawPayload)); return parsedPayload && typeof parsedPayload === 'object' ? parsedPayload : { value: parsedPayload }; } catch (parseError) { return { value: String(rawPayload) }; }`);
+      lines.push(`      };`);
       // Label resolution: name → what → idea → note → id. Matches the
       // runtime helper and Node Lenat's pickLabel so visualization stays
       // consistent across implementations.
       lines.push(`      const _pickLabel = (r) => {`);
       lines.push(`        if (!r || typeof r !== 'object') return '';`);
-      lines.push(`        for (const f of ['name','what','idea','note','id']) {`);
-      lines.push(`          const v = r[f];`);
-      lines.push(`          if (v != null && String(v).trim() !== '') return String(v);`);
+      lines.push(`        const recordPayload = _clearGraphPayload(r);`);
+      lines.push(`        for (const f of ['name','title','what','idea','note','person','company','task','content','summary','value','id']) {`);
+      lines.push(`          const rowValue = r[f];`);
+      lines.push(`          if (rowValue != null && String(rowValue).trim() !== '') return String(rowValue);`);
+      lines.push(`          const payloadValue = recordPayload[f];`);
+      lines.push(`          if (payloadValue != null && String(payloadValue).trim() !== '') return String(payloadValue);`);
       lines.push(`        }`);
       lines.push(`        return '';`);
       lines.push(`      };`);
@@ -12916,13 +12928,13 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`      for (const r of _capped) {`);
       lines.push(`        const _raw = r[_edgesField];`);
       lines.push(`        if (_raw == null) continue;`);
-      lines.push(`        const _txt = String(_raw);`);
+      lines.push(`        const _txt = String(_raw).toLowerCase();`);
       lines.push(`        if (_txt.trim() === '') continue;`);
       lines.push(`        for (const c of _capped) {`);
       lines.push(`          if (c === r) continue;`);
       lines.push(`          const _lbl = _pickLabel(c);`);
       lines.push(`          if (!_lbl) continue;`);
-      lines.push(`          if (_txt.includes(_lbl)) {`);
+      lines.push(`          if (_txt.includes(String(_lbl).toLowerCase())) {`);
       lines.push(`            _links.push({ source: String(r.id != null ? r.id : _pickLabel(r)), target: String(c.id != null ? c.id : _lbl) });`);
       lines.push(`          }`);
       lines.push(`        }`);
