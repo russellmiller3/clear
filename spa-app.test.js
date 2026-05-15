@@ -334,4 +334,20 @@ describe('SPA app primitive — HTML emit (Cycle 11.3)', () => {
     // or [data-active] / display:block on the first pane wrapper.
     expect(html).toMatch(/data-active="today"|activatePane\(['"]today['"]\)|setActivePane\(['"]today['"]\)/);
   });
+
+  it('router reads location.pathname as fallback when hash is empty (direct URL nav)', () => {
+    // When a user navigates directly to /chat (or Playwright does), the hash
+    // is empty. The router must fall back to pathname to activate the right pane.
+    // Without this, every direct /chat load shows the Today pane instead.
+    const pane_app_source = [
+      "app 'Lenat' at '/':",
+      "  pane 'Today' as 'today':",
+      "    heading 'Today'",
+      "  pane 'Chat' as 'chat':",
+      "    heading 'Chat'",
+    ].join('\n');
+    const pane_app = compileProgram(pane_app_source);
+    const pane_app_html = pane_app.html || '';
+    expect(pane_app_html).toContain('location.pathname');
+  });
 });

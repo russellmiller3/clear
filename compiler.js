@@ -13603,6 +13603,7 @@ ${bodyHTML}
   }
   function routeFromHash() {
     var h = (location.hash || '').replace(/^#\\/?/, '');
+    if (!h) h = (location.pathname || '/').replace(/^\\//, '');
     return ROUTES.indexOf(h) >= 0 ? h : ROUTES[0];
   }
   document.addEventListener('click', function(e) {
