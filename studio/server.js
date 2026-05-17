@@ -735,27 +735,67 @@ app.post('/api/prove-pdf', async (req, res) => {
 // =============================================================================
 // COMPILE
 // =============================================================================
+function normalizeStudioModulePath(rawPath) {
+  const normalizedSlashes = String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const pathSegments = [];
+  for (const segment of normalizedSlashes.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      pathSegments.pop();
+      continue;
+    }
+    pathSegments.push(segment);
+  }
+  return pathSegments.join('/');
+}
+
+function createStudioModuleResolver(moduleSources) {
+  if (!moduleSources || typeof moduleSources !== 'object' || Array.isArray(moduleSources)) return null;
+  const normalizedSources = new Map();
+  for (const [modulePath, moduleSource] of Object.entries(moduleSources)) {
+    if (typeof moduleSource !== 'string') continue;
+    normalizedSources.set(normalizeStudioModulePath(modulePath), moduleSource);
+  }
+  if (normalizedSources.size === 0) return null;
+
+  return (moduleName) => {
+    const normalizedName = normalizeStudioModulePath(moduleName);
+    const candidateNames = [
+      normalizedName,
+      normalizedName.toLowerCase().endsWith('.clear') ? normalizedName.slice(0, -6) : normalizedName + '.clear',
+      normalizedName.split('/').pop(),
+    ].filter(Boolean);
+    for (const candidateName of candidateNames) {
+      if (normalizedSources.has(candidateName)) return normalizedSources.get(candidateName);
+    }
+    return null;
+  };
+}
+
 app.post('/api/compile', (req, res) => {
   try {
-    const { source } = req.body;
+    const { source, modules } = req.body;
     if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
     if (!source.trim()) return res.json({ errors: [], warnings: [], compileTrace: null, html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
-    const result = compileProgram(source, { sourceMap: true, sourceName: 'Studio editor' });
+    const moduleResolver = createStudioModuleResolver(modules);
+    const compileOptions = { sourceMap: true, sourceName: 'Studio editor' };
+    if (moduleResolver) compileOptions.moduleResolver = moduleResolver;
+    const compiledProgram = compileProgram(source, compileOptions);
     _builderState.compiles_today++;
     _builderState.last_compile_at = Date.now();
-    _builderState.last_compile_ok = (result.errors || []).length === 0;
+    _builderState.last_compile_ok = (compiledProgram.errors || []).length === 0;
     if (_builderState.last_compile_ok) _builderState.successful_compiles++;
     else _builderState.failed_compiles++;
     res.json({
-      errors: result.errors || [],
-      warnings: result.warnings || [],
-      compileTrace: result.compileTrace || null,
-      html: result.html || null,
-      javascript: result.javascript || null,
-      serverJS: result.serverJS || null,
-      python: result.python || null,
-      browserServer: result.browserServer || null,
-      css: result.css || null,
+      errors: compiledProgram.errors || [],
+      warnings: compiledProgram.warnings || [],
+      compileTrace: compiledProgram.compileTrace || null,
+      html: compiledProgram.html || null,
+      javascript: compiledProgram.javascript || null,
+      serverJS: compiledProgram.serverJS || null,
+      python: compiledProgram.python || null,
+      browserServer: compiledProgram.browserServer || null,
+      css: compiledProgram.css || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

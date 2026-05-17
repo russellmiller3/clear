@@ -1,5 +1,13 @@
 # Engineering Learnings
 
+## 2026-05-15 - Studio file navigator: replacing a project is not the same as switching files
+
+**What bit us.** The first file-navigator pass used the same function for "load a new project" and "switch from one already-loaded file to another." That function saved the current editor before opening the target file. During project load, the "current editor" was still the old scratch buffer, so it overwrote the freshly loaded `main.clear`.
+
+**Rule of thumb.** Project replacement must install the file map first, then open the selected file without saving the old editor into the new project. File switching should save the current active file first.
+
+**Test shape.** A good Studio multi-file test needs all four user-visible checks: list loaded files, list imported components, switch to the component file, switch back to `main.clear`, then compile the imported app. A compile-only test would have missed the editor-state bug.
+
 ## 2026-05-13 — Phase 5 (Lenat-in-Clear): `display X as network graph` lands as a CHART kind
 
 **What shipped.** A fifth chart kind — `display X as network graph showing edges via Y` — that parses to a CHART node with `chartType: 'network'` and compiles to an ECharts force-directed graph. Optional `with max N nodes` and `with color by FIELD` modifiers. Runtime helpers `runtime/graph-edges.js` + `runtime/graph_edges.py` mirror the same logic for server-side / Python use.
