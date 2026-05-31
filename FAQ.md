@@ -465,11 +465,15 @@ Then Ralph looks for implementation evidence with the same fact shape. It can pa
 
 **Where it lives.**
 - `studio/supervisor/requirements-facts.js` - requirement/app fact normalization.
-- `studio/supervisor/requirements-audit.js` - Ralph audit integration.
+- `studio/supervisor/requirements-audit.js` - Ralph audit integration (also tags each finding with a Miller constraint family).
+- `lib/miller/index.js` - domain-agnostic violation-vector engine (constraint families -> priority-weighted energy -> ranked repair hints).
+- `studio/supervisor/miller-ralph.js` - maps Ralph's audit into the Miller engine (consumer #1); `studio/ralph-layer.js` renders the vector + ranked repair in the retry message.
 - `studio/supervisor/meph-pattern-preflight.js` - injects machine-readable requirement facts into full-hook preflight.
 - `scripts/meph-pattern-live-probe.mjs` - saves requirement facts, app facts, browser evidence, and state evidence in trial artifacts.
 
 **Current slice.** Booking overlap prevention is the first fact-backed Ralph detector. The vocabulary is intentionally small and should grow by fixtures, not one-off regexes.
+
+**Miller violation vector (2026-05-30).** Ralph's findings are now scored as a priority-weighted violation vector. Each detector owns a constraint family (approval/audit/role/storage hard; agent/read/concurrency medium; notification/ui soft); unmet requirements become per-family magnitudes; a positional-base projection guarantees one hard miss outweighs any pile of soft ones. The retry message ranks repairs worst-first, so Meph fixes a missing approval workflow before cosmetic spacing. The engine (`lib/miller/`) is domain-agnostic — conformance tests run it on Towers of Hanoi and a robot arm. The gate decision is unchanged; only the scoring and ordering are new.
 
 ---
 

@@ -1,5 +1,15 @@
 # Engineering Learnings
 
+## 2026-05-30 — Miller v2 violation-vector engine: general core + Ralph as consumer #1
+
+**What shipped.** A domain-agnostic violation-vector engine in `lib/miller/` (`buildViolationVector` → `projectEnergy` → `generateRepairHints`), with the app-checker (Ralph) wired in as its first consumer (`studio/supervisor/miller-ralph.js`). Ralph's flat "missing requirements" list became a priority-weighted vector: hard families (approval/audit/role) outweigh soft ones (notification/ui), and the retry message ranks repairs worst-first. Gate decision (`audit.ok`) unchanged.
+
+### Gotchas-as-rules
+- **`testUtils` import depth differs by directory — check a sibling test before writing a new one.** Tests in `lib/` use `./testUtils.js`; tests in `studio/supervisor/` use `../../lib/testUtils.js`. I copied the `lib/` pattern into a `studio/supervisor/` test and hit `ERR_MODULE_NOT_FOUND: studio/testUtils.js` — a misleading "wrong red" that looked like the module under test was missing, not the harness import. Always open an existing sibling test's first import line before authoring a test in an unfamiliar directory.
+- **Build the general engine, then wire the domain in as a consumer — don't bolt scoring onto the domain.** The easy path was a `score()` welded onto `requirements-audit.js`. The better path is a reusable engine that knows nothing about Clear/Ralph, with Ralph as consumer #1. ~30% more code bought a conformance-tested general core (proven on Towers of Hanoi + a 2-link robot arm) and a clean re-score layer.
+- **The re-score layer must never re-judge the gate.** `audit.ok` is computed exactly as before; the engine only groups + ranks existing findings. Per the earlier "don't make layers fight over the verdict" lesson — the vector consumes the audit, it is not a second authority.
+- **The hardest item was also the right one.** The instinct was to ship the "narrow slice" (scoring on requirements-audit) and defer the "general framework." Russell's standing rule (build the best version, not the easy one) forced the general engine — which turned out to ALSO be the cleaner design AND the only thing that tests the novel claim (auto-constructing the vector from prose).
+
 ## 2026-05-13 — Phase 5 (Lenat-in-Clear): `display X as network graph` lands as a CHART kind
 
 **What shipped.** A fifth chart kind — `display X as network graph showing edges via Y` — that parses to a CHART node with `chartType: 'network'` and compiles to an ECharts force-directed graph. Optional `with max N nodes` and `with color by FIELD` modifiers. Runtime helpers `runtime/graph-edges.js` + `runtime/graph_edges.py` mirror the same logic for server-side / Python use.

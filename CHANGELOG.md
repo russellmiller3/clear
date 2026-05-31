@@ -1,3 +1,14 @@
+## 2026-05-30 — Miller v2 violation-vector engine + Ralph wiring (feature/miller-ralph-cost)
+
+The app-checker (Ralph) no longer hands back a flat pass/fail list of missing requirements. Its findings are now scored as a **priority-weighted violation vector**: failures are grouped into constraint families, a hard miss (missing approval, role check, audit trail) outweighs any pile of soft ones (notification, dashboard cosmetics), and the "you're not done" message ranks repairs worst-first.
+
+- `lib/miller/index.js` — domain-agnostic engine: `buildViolationVector` → `projectEnergy` (positional-base weighting that is provably priority-preserving) → `generateRepairHints`. Enforces the four Miller-admissibility axioms (coverage, monotonicity, distinguishability, priority-preservation). 9/9 axiom tests.
+- `lib/miller/conformance.test.js` — the SAME engine scored against Towers of Hanoi and a 2-link robot arm. 5/5. Proves the engine is general, not requirements-shaped.
+- `studio/supervisor/miller-ralph.js` — consumer #1: maps each requirements-audit detector to a family (approval/role_check/enforcement/audit/storage hard; agent/read/concurrency medium; notification/ui soft). The fake-complete deal-desk app (discount + Pending status, no real approval) scores a hard approval+audit violation ranked above cosmetics. 4/4.
+- `studio/ralph-layer.js` — the retry message leads with the vector (e.g. `approval=2, audit=2`) and lists gaps worst-first. Gate decision (`audit.ok`) unchanged; only the scoring + ordering is new.
+
+Verification: 9 + 5 + 4 + 10 targeted tests, 24/24 requirements-audit regression, 321/321 server tests, 3204/3204 compiler suite green. Plan: `plans/plan-miller-v2-violation-vector-2026-05-30.md`. Follow-up: a Meph system-prompt note + paid Meph eval to confirm the ranked feedback changes repair order (gated on budget).
+
 ## 2026-05-15 - Core 13 first-paint data coverage (feature/core-13-ssr-requests-backlog)
 
 Static same-app page-load reads now join the first-paint data path. A Clear page that says `on page load get deals from '/api/deals'` is filled before the browser starts when the URL is a safe same-app `/api/` read with no browser-state interpolation.

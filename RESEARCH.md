@@ -43,6 +43,12 @@ That result does not say "patterns are bad." It says retrieval can hurt when the
 
 **Conclusion:** the DBs are accelerators. Ralph is the gate. The DBs can make the first draft less wrong; Ralph prevents a wrong first draft from becoming a shipped answer.
 
+## Miller v2 — Ralph's verdict becomes a priority-weighted violation vector (2026-05-30)
+
+Ralph used to emit a flat list: "these requirements are unmet." The Miller v2 layer keeps the same gate decision but re-scores the findings as a structured **violation vector** — failures grouped into constraint families with priority tiers, projected to a scalar energy where one hard-family miss (approval, role, audit) outweighs any pile of soft ones (notification, cosmetics). The retry message ranks repairs worst-first, so the model fixes the load-bearing gap before the cosmetic one.
+
+Why it matters for the training signal: the violation vector is a richer, lower-variance label than pass/fail. A failed build now carries *which families* failed and *how hard* — a structured target the re-ranker and curriculum can eventually learn from, instead of a single "wrong" bit. The engine (`lib/miller/`) is domain-agnostic (conformance-tested on Towers of Hanoi and a 2-link robot arm); the novel, Clear-specific claim under test is whether automatically constructing a Miller-admissible vector *from natural-language requirements* improves verification and repair over flat pass/fail. The fake-complete deal-desk app is the first evidence: it scores `(approval, audit)` hard and ranks the approval fix first. Open question (needs a paid Meph eval): does the ranked feedback measurably change Meph's repair order? The grand "constraints are primary, objectives derived" framing is interesting but mostly known (weighted MaxSAT, soft-constraint hierarchies, penalty methods); the auto-construction-from-prose question is the part Clear is uniquely positioned to answer.
+
 The durable research frame is now:
 
 ```text
