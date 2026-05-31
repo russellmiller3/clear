@@ -101,6 +101,26 @@ describe('ralph-layer.formatRalphMessage', () => {
     expect(message).not.toContain('requirement 6');
     expect(message).toContain('3 more');
   });
+
+  it('leads with the violation vector and ranks hard families above soft ones', () => {
+    const message = formatRalphMessage({
+      audit: {
+        items: [
+          { text: 'pretty dashboard', status: 'missing', reason: 'No dashboard.', family: 'ui' },
+          { text: 'discounts over 30% need CRO approval', status: 'missing', reason: 'No approval route.', family: 'approval' },
+        ],
+      },
+      retryIndex: 1,
+      maxRetries: 2,
+    });
+
+    expect(message).toContain('Violation vector');
+    expect(message).toContain('approval=2');
+    // The hard family (approval) must appear in the ranked list before the soft family (ui).
+    const approvalPosition = message.indexOf('CRO approval');
+    const dashboardPosition = message.indexOf('pretty dashboard');
+    expect(approvalPosition < dashboardPosition).toBe(true);
+  });
 });
 
 describe('ralph-layer.readRalphConfig', () => {
