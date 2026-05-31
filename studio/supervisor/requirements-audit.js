@@ -8,6 +8,27 @@ const PASS = 'passed';
 const MISSING = 'missing';
 const UNVERIFIED = 'unverified';
 
+// Each detector owns a Miller constraint family (see studio/supervisor/miller-ralph.js). The Ralph
+// adapter turns these tags into a priority-weighted violation vector. For the typed-facts detector
+// the family depends on the fact kind, so it is resolved from the result's facts (TYPED_FAMILY).
+const DETECTOR_FAMILY = {
+  detectApprovalRouting: 'approval',
+  detectAuditTrail: 'audit',
+  detectDealCreation: 'workflow',
+  detectNamedAgent: 'agent',
+  detectOptimisticLock: 'concurrency',
+  detectLoginSubmit: 'auth',
+  detectApproveReject: 'enforcement',
+  detectNotification: 'notification',
+  detectDashboardList: 'ui',
+};
+const TYPED_FAMILY = {
+  storage: 'storage',
+  domain_rule: 'domain_rule',
+  read: 'read_access',
+  role_rule: 'role_check',
+};
+
 export function auditRequirements({
   source = '',
   ast = null,
@@ -71,12 +92,19 @@ function auditRequirement(requirement, ctx) {
   ];
 
   for (const detector of detectors) {
-    const result = detector(text, normalized, ctx);
-    if (result) {
+    const detectorVerdict = detector(text, normalized, ctx);
+    if (detectorVerdict) {
+      // Tag the constraint family so the Miller adapter can build a priority-weighted vector.
+      // Simple detectors map by name; the typed-facts detector resolves by its fact kind.
+      const family = detectorVerdict.family
+        || DETECTOR_FAMILY[detector.name]
+        || TYPED_FAMILY[detectorVerdict.facts?.[0]?.kind]
+        || 'unknown';
       return {
         id: requirement.id || `req_${ctx.index + 1}`,
         text,
-        ...result,
+        ...detectorVerdict,
+        family,
       };
     }
   }
@@ -87,6 +115,7 @@ function auditRequirement(requirement, ctx) {
     status: UNVERIFIED,
     reason: 'No Ralph detector can verify this requirement yet.',
     evidence: [],
+    family: 'unknown',
   };
 }
 
