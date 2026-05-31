@@ -3,6 +3,7 @@ import {
   extractAppFacts,
   normalizeRequirementFacts,
 } from './requirements-facts.js';
+import { evaluateAudit } from './miller-ralph.js';
 
 const PASS = 'passed';
 const MISSING = 'missing';
@@ -50,6 +51,7 @@ export function auditRequirements({
       ok: true,
       summary: 'No requirements to audit.',
       items,
+      miller: evaluateAudit({ items }),
     };
   }
 
@@ -57,6 +59,10 @@ export function auditRequirements({
     ok: items.every(item => item.status === PASS),
     summary: summarize(items),
     items,
+    // First-class Miller view: constraint-family vector, priority-weighted energy, ranked repair.
+    // Re-scores the items above; never changes `ok`. Lets the server, probe artifacts, and the
+    // MF-2 eval record WHICH families failed and HOW hard, not just pass/fail.
+    miller: evaluateAudit({ items }),
   };
 }
 

@@ -77,4 +77,24 @@ when user sends new deal to '/api/deals':
   });
 });
 
+describe('miller-ralph — auditRequirements exposes a first-class miller field', () => {
+  it('attaches { vector, energy, hints } to every audit result so the system can record it', () => {
+    const source = `create a deals table:
+  rep_email
+  discount_percent
+  status
+
+when user sends new deal to '/api/deals':
+  save new deal`;
+    const requirements = ['discounts of 30 percent or more require CRO approval'];
+
+    const audit = auditRequirements({ source, requirements });
+
+    expect(audit.miller != null).toBe(true);
+    expect(typeof audit.miller.energy).toBe('number');
+    expect(audit.miller.vector.approval > 0).toBe(true);
+    expect(Array.isArray(audit.miller.hints)).toBe(true);
+  });
+});
+
 run();
