@@ -1,4 +1,42 @@
+# Handoff — 2026-05-30 (Miller v2 violation-vector engine — SHIPPED)
+
+## Epic SHIPPED: Miller v2 reasoning layer (all 4 cycles green)
+Russell handed the full Miller v2 spec + working notes. The app-checker (Ralph) now scores its
+findings as a priority-weighted **violation vector** (constraint families → energy → ranked repair)
+instead of a flat pass/fail list. Built best-version: a GENERAL engine, with Ralph as consumer #1.
+
+**What shipped (5 commits on feature/miller-ralph-cost):**
+- `lib/miller/index.js` — domain-agnostic engine. 9/9 axiom tests (coverage, monotonicity,
+  distinguishability, priority-preservation via positional-base weighting).
+- `lib/miller/conformance.test.js` — same engine on Towers of Hanoi + a 2-link robot arm. 5/5. Proves general.
+- `studio/supervisor/miller-ralph.js` — consumer #1: detector→family map, missing=2/unverified=1
+  magnitudes. `requirements-audit.js` now tags every finding with its family. 4/4.
+- `studio/ralph-layer.js` — retry message leads with the vector + worst-first repair list. 10/10.
+- Docs cascade: CHANGELOG, FEATURES, FAQ, RESEARCH, learnings, ROADMAP (MF-2).
+- Gate decision (`audit.ok`) UNCHANGED — the layer re-scores, never re-judges.
+- Verification: 3204/3204 compiler, 321/321 server, 24/24 requirements-audit, all targeted green.
+
+**Plan:** `plans/plan-miller-v2-violation-vector-2026-05-30.md`
+
+**Next (ROADMAP MF-2, budget-gated):** run a paid Meph eval on the fake-complete deal-desk app to
+test whether the ranked feedback measurably changes Meph's repair order (fix approval before
+cosmetics). Add a Meph system-prompt note about the ranked feedback in the SAME change — that change
+triggers the paid Meph eval, so it was deferred this session.
+
+**Working tree:** UNRELATED dirty files (cookbook.md, .claude/settings.json, deleted cookbook-updater
+hook, .codex/) are NOT mine — left untouched per the 2026-05-29 note.
+
+---
+
 # Handoff — 2026-05-14 session 3 (SPA routing complete, Studio bundle, UAT shortcut)
+
+# Handoff checkpoint - 2026-05-29
+
+- Correction: Russell asked whether Clear currently supports Facts + Constraints + Goals as canonical meaning, not whether that would be a good design.
+- Current factual answer: partially. Clear has typed requirements/app facts for Ralph, proof obligations for pure rules and agent tool bounds, canonical syntax aliases, and effect classification. It does not have one canonical semantic graph or energy-function-ready IR today.
+- Repo was already on `feature/meph-voice` with unrelated dirty files before this checkpoint. Leave them alone unless Russell redirects.
+
+---
 
 ## What shipped this session
 
@@ -299,3 +337,10 @@ The audit script reports 5 HIGH-severity NodeType gaps still. Some are likely fa
 ## Resume prompt (paste into fresh session)
 
 > Read HANDOFF.md and start on item 1 (AI assistant calls on Python). The runtime helper `_ask_ai` already exists in compileToPythonBackend (line ~15812). The gap is the AGENT and WORKFLOW node-type handlers — they don't yet wire the helper into compiled Python apps. Mirror the JS scaffold's `compileToJSBackend` AGENT/WORKFLOW patterns. Apply the gotchas from learnings.md: substring collisions on JS keywords inside Python strings (no `let` / `const` / `function` / `return` / `=>` / `;` in any docstring or comment the Python emit embeds), the find_one / insert canonical names are now available on every Python database backend so use them. Current main commit: `0589d44`.
+# Handoff checkpoint - 2026-05-29
+
+- Russell asked whether Clear is total, decidable, and verifiable.
+- Answer grounded in current docs: Clear is total-by-default for accidental hangs; pure business logic and static agent/tool claims are verifiable; full source-to-runtime formal proof is not shipped yet.
+- Repo was already on `feature/meph-voice` with unrelated dirty files before this checkpoint. Leave them alone unless Russell redirects.
+
+---
