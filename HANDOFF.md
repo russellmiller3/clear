@@ -5,13 +5,15 @@ Russell handed the full Miller v2 spec + working notes. The app-checker (Ralph) 
 findings as a priority-weighted **violation vector** (constraint families → energy → ranked repair)
 instead of a flat pass/fail list. Built best-version: a GENERAL engine, with Ralph as consumer #1.
 
-**What shipped (5 commits on feature/miller-ralph-cost):**
+**What shipped (6 commits on feature/miller-ralph-cost):**
 - `lib/miller/index.js` — domain-agnostic engine. 9/9 axiom tests (coverage, monotonicity,
   distinguishability, priority-preservation via positional-base weighting).
 - `lib/miller/conformance.test.js` — same engine on Towers of Hanoi + a 2-link robot arm. 5/5. Proves general.
 - `studio/supervisor/miller-ralph.js` — consumer #1: detector→family map, missing=2/unverified=1
-  magnitudes. `requirements-audit.js` now tags every finding with its family. 4/4.
+  magnitudes. `requirements-audit.js` now tags every finding with its family. 5/5.
 - `studio/ralph-layer.js` — retry message leads with the vector + worst-first repair list. 10/10.
+- `requirements-audit.js` — every audit result now carries a first-class `miller: {vector, energy,
+  hints}` field (not just the message), so the server / probe artifacts / MF-2 eval can record it.
 - Docs cascade: CHANGELOG, FEATURES, FAQ, RESEARCH, learnings, ROADMAP (MF-2).
 - Gate decision (`audit.ok`) UNCHANGED — the layer re-scores, never re-judges.
 - Verification: 3204/3204 compiler, 321/321 server, 24/24 requirements-audit, all targeted green.
