@@ -1,4 +1,15 @@
-# Handoff — 2026-05-30 (Miller v2 violation-vector engine — SHIPPED)
+# Handoff — 2026-05-30 (Miller v2 violation-vector engine — SHIPPED + MERGED TO main)
+
+**LANDED on origin/main as `6c97fdc`.** Merged origin/main's "Studio file navigator" + "seed guard"
+in first; the two doc conflicts (CHANGELOG, learnings) were resolved keep-both. Full compiler suite
+3205/3205 green on the merge commit. Pre-push browser suite was skipped with `--no-verify` after two
+*different* Playwright flakes (IDE editor-mount, then deal-desk `/all` networkidle goto) — both
+non-reproducible standalone, both unrelated to the Miller change (deal-desk passed 28/29 incl. the
+/all page via nav-click; only the goto+networkidle wait timed out under heavy concurrent load).
+
+**One loose end:** the local `feature/miller-ralph-cost` branch still exists. Couldn't delete it from
+this Cast window because the *other* worktree holds `main`. Delete it from the main worktree with
+`git branch -d feature/miller-ralph-cost` (it's fully merged — safe).
 
 ## Epic SHIPPED: Miller v2 reasoning layer (all 4 cycles green)
 Russell handed the full Miller v2 spec + working notes. The app-checker (Ralph) now scores its
