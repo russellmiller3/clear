@@ -49,6 +49,19 @@ Ralph used to emit a flat list: "these requirements are unmet." The Miller v2 la
 
 Why it matters for the training signal: the violation vector is a richer, lower-variance label than pass/fail. A failed build now carries *which families* failed and *how hard* — a structured target the re-ranker and curriculum can eventually learn from, instead of a single "wrong" bit. The engine (`lib/miller/`) is domain-agnostic (conformance-tested on Towers of Hanoi and a 2-link robot arm); the novel, Clear-specific claim under test is whether automatically constructing a Miller-admissible vector *from natural-language requirements* improves verification and repair over flat pass/fail. The fake-complete deal-desk app is the first evidence: it scores `(approval, audit)` hard and ranks the approval fix first. Open question (needs a paid Meph eval): does the ranked feedback measurably change Meph's repair order? The grand "constraints are primary, objectives derived" framing is interesting but mostly known (weighted MaxSAT, soft-constraint hierarchies, penalty methods); the auto-construction-from-prose question is the part Clear is uniquely positioned to answer.
 
+**First A/B result (2026-05-30 — single-turn repair, Haiku 4.5, 6 trials/arm, $0.026).** NULL result.
+Control (flat feedback) and treatment (ranked vector + worst-first order) BOTH fixed the hard gaps
+(approval, audit) 6/6 — no difference. The task SATURATED: given a small fake-complete app + feedback
+that names the gaps + a syntax primer, Haiku fixes everything in one turn regardless of ordering.
+Honest read: ranking does not change one-shot repair when the model can already fix every gap. It
+would only plausibly matter under resource pressure — many more gaps than fit one turn, a hard output
+cap, a weaker model, or a multi-turn budget where fixing the load-bearing gap first compounds. This
+matches the prior intuition that the scalar/ranking buys little for the easy case; the vector's
+clearer value is (a) human-readable, demo-friendly feedback and (b) a recorded per-evaluation signal
+for telemetry/training — NOT a proven one-shot behavior nudge. Harness: `scripts/miller-ab-repair.mjs`
+(`--dry-run` is free; defaults to Haiku). Next test if pursued: a 10+ gap fixture with a hard output
+cap to force prioritization, or a weaker model, so ranking has room to matter.
+
 The durable research frame is now:
 
 ```text
