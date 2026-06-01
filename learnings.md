@@ -10,6 +10,14 @@
 - **The re-score layer must never re-judge the gate.** `audit.ok` is computed exactly as before; the engine only groups + ranks existing findings. Per the earlier "don't make layers fight over the verdict" lesson — the vector consumes the audit, it is not a second authority.
 - **The hardest item was also the right one.** The instinct was to ship the "narrow slice" (scoring on requirements-audit) and defer the "general framework." Russell's standing rule (build the best version, not the easy one) forced the general engine — which turned out to ALSO be the cleaner design AND the only thing that tests the novel claim (auto-constructing the vector from prose).
 
+## 2026-05-15 - Studio file navigator: replacing a project is not the same as switching files
+
+**What bit us.** The first file-navigator pass used the same function for "load a new project" and "switch from one already-loaded file to another." That function saved the current editor before opening the target file. During project load, the "current editor" was still the old scratch buffer, so it overwrote the freshly loaded `main.clear`.
+
+**Rule of thumb.** Project replacement must install the file map first, then open the selected file without saving the old editor into the new project. File switching should save the current active file first.
+
+**Test shape.** A good Studio multi-file test needs all four user-visible checks: list loaded files, list imported components, switch to the component file, switch back to `main.clear`, then compile the imported app. A compile-only test would have missed the editor-state bug.
+
 ## 2026-05-13 — Phase 5 (Lenat-in-Clear): `display X as network graph` lands as a CHART kind
 
 **What shipped.** A fifth chart kind — `display X as network graph showing edges via Y` — that parses to a CHART node with `chartType: 'network'` and compiles to an ECharts force-directed graph. Optional `with max N nodes` and `with color by FIELD` modifiers. Runtime helpers `runtime/graph-edges.js` + `runtime/graph_edges.py` mirror the same logic for server-side / Python use.
@@ -2706,3 +2714,4 @@ The durable fix was compiler-level: safe same-app page-load reads now join the s
 - **Skip browser-state reads on the server.** URLs with interpolation need the browser's current state and should remain browser-loaded.
 - **When a roadmap item ships, remove it from ROADMAP and move it to FEATURES/FAQ/CHANGELOG.** Backlog should mean future work, not history.
 - **Name the golden set in FAQ.** Future agents should not rediscover which 13 apps are load-bearing by scanning scripts.
+- **Seed idempotence must cover every table the seed fills.** Checking only the first table can make a demo say "already seeded" while later data is still missing.

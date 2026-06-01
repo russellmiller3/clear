@@ -121,7 +121,7 @@ AI coding is roughly half of all frontier-model inference today, growing fastest
 - API keeps `compileProgram()` on servers Russell controls. Side effects worth more than IP: **usage telemetry** (which syntax, errors, features), **per-user gating** (free/paid tiers, kill switch), **instant patches** (fix a compiler bug, every user has it next compile).
 - Devs are conditioned to network calls in the agent loop; an extra 100ms is invisible.
 
-**Audit ground truth (2026-04-24, updated 2026-05-13):** Architecture supports multi-file + components today (`import module.clear`, `define component X receiving Y:` — proven in `apps/crm-spa/`). The module-import keyword was renamed to `import` on 2026-05-13 (canonical) with `include` as a silent alias; `use` is reserved for future declarative-configuration syntax. Studio IDE does NOT support multi-file — single-file only. That's why the wedge is **editor integration** (LSP + VSCode/Cursor extension), not Studio multi-file.
+**Audit ground truth (2026-04-24, updated 2026-05-15):** Architecture supports multi-file + components today (`import module.clear`, `define component X receiving Y:` — proven in `apps/crm-spa/`). The module-import keyword was renamed to `import` on 2026-05-13 (canonical) with `include` as a silent alias; `use` is reserved for future declarative-configuration syntax. Studio can now load multiple local `.clear` files, list files/imports/components, switch between files without losing edits, and compile the project with in-memory imported modules. The Dave wedge is still **editor integration** (LSP + VSCode/Cursor extension), because professional devs live in their editor even though Studio now covers the local project case.
 
 ### What's left on the Dave-first thread
 
@@ -252,7 +252,6 @@ The product Marcus presses "Publish" in. Building on top of already-shipped Phas
 | GTM-5 | Studio onboarding — new users land in Meph chat with "What do you want to build?" not in editor | Open | 2 days |
 | GTM-7 | Studio instrumentation — first-click tracking, time-to-first-app, where signups bounce | Open | 3 days |
 | GTM-8 | Soften / tweak the live `builders.html` page (Russell's three flagged calls — hero pain line, named competitors, dropped Marcus framing — all shipped as designed; easy to revisit) | Open | 1 commit |
-| GTM-9 | Studio file navigator for multi-file Clear apps — when a project imports `tables.clear`, `pages.clear`, or component files, Studio shows the app's file tree, lets users switch files, and saves the active file without losing the one-app mental model. | Open | 1-2 commits |
 
 **Pitch + pricing locked Session 35** (Vercel pattern, $99/$499/$Enterprise tiers). The prior Marcus-over-Sara framing predates the 2026-05-04 GTM lock — see `FAQ.md` → "What's the GTM direction?" for current. Full competitive analysis: `FAQ.md` → "Why does Clear Cloud beat Retool and Lovable?".
 

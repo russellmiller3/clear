@@ -9,13 +9,23 @@ The app-checker (Ralph) no longer hands back a flat pass/fail list of missing re
 
 Verification: 9 + 5 + 4 + 10 targeted tests, 24/24 requirements-audit regression, 321/321 server tests, 3204/3204 compiler suite green. Plan: `plans/plan-miller-v2-violation-vector-2026-05-30.md`. Follow-up: a Meph system-prompt note + paid Meph eval to confirm the ranked feedback changes repair order (gated on budget).
 
+## 2026-05-15 - Studio file navigator for multi-file Clear projects (feature/studio-file-navigator)
+
+Studio now treats a set of loaded `.clear` files as one in-memory project instead of replacing the editor one file at a time. The Load button accepts multiple files, the navigator lists Files / Imports / Components, component clicks open the defining file, and switching files preserves edits.
+
+Compile now sends the app's main source plus an in-memory modules map to `/api/compile`, so `import components.clear` works in Studio the same way it already works through CLI/compiler callers.
+
+Verification: `node studio/ide.test.js` passes 60 / 60, including the new load `main.clear` + `components.clear`, switch, preserve, and compile flow.
+
 ## 2026-05-15 - Core 13 first-paint data coverage (feature/core-13-ssr-requests-backlog)
 
 Static same-app page-load reads now join the first-paint data path. A Clear page that says `on page load get deals from '/api/deals'` is filled before the browser starts when the URL is a safe same-app `/api/` read with no browser-state interpolation.
 
 The regression set now names all 13 golden apps: the 8 core templates plus 5 Marcus workflow templates. `core-13-ssr-first-paint.test.js` proves every static same-app first-page read in those apps is present in the initial page data, and `clear.test.js` imports that guard so future compiler changes run it automatically.
 
-Verification: `core-13-ssr-first-paint.test.js`, `ssr-default.test.js`, and the full Clear suite are green at 3204 / 3204.
+The publish gate also caught a partial-seed bug in the expense tracker: seed endpoints skipped as soon as the first seeded table had data, even if later tables were still empty. Seed endpoints now skip only when every table they populate already has rows, so a warm category table cannot leave expenses empty.
+
+Verification: `core-13-ssr-first-paint.test.js`, `ssr-default.test.js`, the full Clear suite, and the Studio browser suite are green. Current full suite: 3205 / 3205. Current Studio browser suite: 75 / 75.
 
 ## 2026-05-14 — SSR-default: pages pre-fetch data on the server (feature/ssr-default-v2)
 

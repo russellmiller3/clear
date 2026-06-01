@@ -267,6 +267,18 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .toc-btn.toc-sub { font-size: 10.5px; color: var(--tx3); background: transparent; border: 1px dashed var(--bd2); }
 .toc-btn.toc-active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 1px 4px color-mix(in oklch, var(--accent) 40%, transparent); }
 .toc-btn.toc-sub.toc-active { background: color-mix(in oklch, var(--accent) 80%, transparent); border-color: var(--accent); }
+#file-navigator { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 7px 12px; background: var(--bg); border-bottom: 1px solid var(--bd2); max-height: 116px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
+.file-nav-section { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.file-nav-heading { font-size: 10px; color: var(--tx4); font-family: var(--font); text-transform: uppercase; letter-spacing: .06em; }
+.file-nav-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; border: 1px solid var(--bd2); background: var(--bg2); color: var(--tx2); border-radius: 6px; padding: 3px 8px; font-family: var(--font); font-size: 11px; line-height: 1.3; cursor: pointer; }
+.file-nav-btn:hover { color: var(--tx); border-color: color-mix(in oklch, var(--accent) 35%, var(--bd2)); background: color-mix(in oklch, var(--accent) 9%, var(--bg2)); }
+.file-nav-btn.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+.file-nav-btn.missing { color: var(--tx4); border-style: dashed; cursor: default; }
+.file-nav-btn.missing:hover { background: var(--bg2); color: var(--tx4); border-color: var(--bd2); }
+.file-nav-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-nav-meta { flex-shrink: 0; color: inherit; opacity: .72; font-family: var(--mono); font-size: 10px; }
+.file-nav-empty { color: var(--tx4); font-size: 11px; font-family: var(--font); }
+@media (max-width: 900px) { #file-navigator { grid-template-columns: 1fr; max-height: 150px; } }
 #errors { padding: 10px 14px; background: var(--bg2); border-top: 1px solid var(--bd); max-height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 11px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #errors:empty { display: none; }
 .error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; display: flex; align-items: baseline; gap: 6px; }
@@ -861,7 +873,7 @@ body.builder-mode.show-source #editor-pane {
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="newFile()">New</button>
     <button class="toolbar-btn" onclick="document.getElementById('load-file-input').click()" title="Load a .clear file from disk">Load</button>
-    <input type="file" id="load-file-input" accept=".clear,.txt" style="display:none">
+    <input type="file" id="load-file-input" accept=".clear,.txt" multiple style="display:none">
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
@@ -951,6 +963,7 @@ body.builder-mode.show-source #editor-pane {
       </div>
     </div>
     <div id="editor-toc"></div>
+    <div id="file-navigator"></div>
     <div id="editor-mount"></div>
     <div id="errors"></div>
   </div>
@@ -1190,6 +1203,7 @@ let clearHighlight = makeHighlightStyle();
 let compileTimer = null;
 let suppressAutoCompile = false;
 let lastCompiled = null;
+let compileRequestGeneration = 0;
 // Persistent source map: { clearLine -> { start, end, code } } built after each compile
 let sourceMapData = null; // { forward: { clearLine: [{ start, end }] }, reverse: { compiledLine: clearLine }, compiledLines: [] }
 let sourceMapTab = null; // which compiled sub-tab key the source map was built from ('serverJS', 'javascript', 'python')
@@ -1354,13 +1368,19 @@ const proveGutterExt = gutter({
   },
 });
 
-const _savedEditor = localStorage.getItem('clear_editor_content');
-const editor = new EditorView({
-  doc: _savedEditor || `# Welcome to Clear Studio
+const DEFAULT_PROJECT_FILE_PATH = 'main.clear';
+const WELCOME_EDITOR_SOURCE = `# Welcome to Clear Studio
 # Pick a template from the dropdown, or start typing.
 
 show 'Hello, Clear!'
-`,
+`;
+const _savedEditor = localStorage.getItem('clear_editor_content');
+const _restoredProject = restoreStudioProject(_savedEditor || WELCOME_EDITOR_SOURCE);
+let studioProjectFiles = new Map(_restoredProject.fileEntries);
+let activeStudioProjectPath = _restoredProject.activePath;
+
+const editor = new EditorView({
+  doc: studioProjectFiles.get(activeStudioProjectPath) || WELCOME_EDITOR_SOURCE,
   extensions: [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -1381,10 +1401,10 @@ show 'Hello, Clear!'
         // Don't auto-compile on keystrokes — user presses Compile manually
       }
       if (update.docChanged) {
-        updateEditorTOC(update.state.doc.toString());
-        syncBuilderThemePicker(update.state.doc.toString());
-        // Persist editor content to survive crashes
-        try { localStorage.setItem('clear_editor_content', update.state.doc.toString()); } catch (_) {}
+        const sourceText = update.state.doc.toString();
+        updateEditorTOC(sourceText);
+        syncBuilderThemePicker(sourceText);
+        handleProjectSourceChange(sourceText);
       }
       // Show/hide Quote button based on selection
       if (update.selectionSet || update.docChanged) {
@@ -1412,6 +1432,275 @@ show 'Hello, Clear!'
 
 // Source map: click Clear line → show compiled lines
 editor.dom.addEventListener('click', handleEditorClick);
+
+// Project files: Studio can now hold a small Clear project in memory instead
+// of treating every loaded file as a destructive editor replacement.
+function restoreStudioProject(fallbackSource) {
+  try {
+    const storedProject = JSON.parse(localStorage.getItem('clear_project_files') || 'null');
+    if (storedProject && Array.isArray(storedProject.fileEntries) && storedProject.fileEntries.length > 0) {
+      const normalizedEntries = storedProject.fileEntries
+        .filter(entry => Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string')
+        .map(entry => [normalizeProjectPath(entry[0]), entry[1]]);
+      if (normalizedEntries.length > 0) {
+        const selectedPath = normalizeProjectPath(storedProject.activePath || normalizedEntries[0][0]);
+        const activePath = normalizedEntries.some(entry => entry[0] === selectedPath)
+          ? selectedPath
+          : normalizedEntries[0][0];
+        return { fileEntries: normalizedEntries, activePath };
+      }
+    }
+  } catch (_) {}
+  return { fileEntries: [[DEFAULT_PROJECT_FILE_PATH, fallbackSource]], activePath: DEFAULT_PROJECT_FILE_PATH };
+}
+
+function normalizeProjectPath(rawPath) {
+  const normalizedSlashes = String(rawPath || DEFAULT_PROJECT_FILE_PATH).replace(/\\/g, '/').replace(/^\/+/, '');
+  const pathSegments = [];
+  for (const segment of normalizedSlashes.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      pathSegments.pop();
+      continue;
+    }
+    pathSegments.push(segment);
+  }
+  return pathSegments.join('/') || DEFAULT_PROJECT_FILE_PATH;
+}
+
+function projectDirectory(projectPath) {
+  const pathSegments = normalizeProjectPath(projectPath).split('/');
+  pathSegments.pop();
+  return pathSegments.join('/');
+}
+
+function sortProjectPaths(leftPath, rightPath) {
+  const leftLower = leftPath.toLowerCase();
+  const rightLower = rightPath.toLowerCase();
+  const leftIsMain = leftLower === 'main.clear' || leftLower.endsWith('/main.clear');
+  const rightIsMain = rightLower === 'main.clear' || rightLower.endsWith('/main.clear');
+  if (leftIsMain && !rightIsMain) return -1;
+  if (!leftIsMain && rightIsMain) return 1;
+  return leftPath.localeCompare(rightPath);
+}
+
+function rememberActiveProjectSource(sourceText) {
+  const editorSource = sourceText == null ? editor.state.doc.toString() : String(sourceText);
+  studioProjectFiles.set(activeStudioProjectPath, editorSource);
+  try {
+    localStorage.setItem('clear_editor_content', editorSource);
+    localStorage.setItem('clear_project_files', JSON.stringify({
+      activePath: activeStudioProjectPath,
+      fileEntries: Array.from(studioProjectFiles.entries()),
+    }));
+  } catch (_) {}
+}
+
+function handleProjectSourceChange(sourceText) {
+  rememberActiveProjectSource(sourceText);
+  renderFileNavigator();
+}
+
+function chooseMainProjectPath() {
+  if (studioProjectFiles.has(DEFAULT_PROJECT_FILE_PATH)) return DEFAULT_PROJECT_FILE_PATH;
+  const mainPath = Array.from(studioProjectFiles.keys())
+    .find(projectPath => projectPath.toLowerCase().endsWith('/main.clear'));
+  return mainPath || activeStudioProjectPath;
+}
+
+function getProjectSource() {
+  rememberActiveProjectSource();
+  const mainPath = chooseMainProjectPath();
+  return studioProjectFiles.get(mainPath) || editor.state.doc.toString();
+}
+
+function getProjectModuleSources() {
+  rememberActiveProjectSource();
+  const moduleSources = {};
+  for (const [projectPath, sourceText] of studioProjectFiles.entries()) {
+    moduleSources[projectPath] = sourceText;
+    if (projectPath.toLowerCase().endsWith('.clear')) {
+      moduleSources[projectPath.slice(0, -6)] = sourceText;
+    }
+  }
+  return moduleSources;
+}
+
+function chooseBestProjectPath(projectFiles) {
+  const projectPaths = Array.from(projectFiles.keys()).sort(sortProjectPaths);
+  return projectPaths[0] || DEFAULT_PROJECT_FILE_PATH;
+}
+
+function setStudioProjectFiles(projectEntries, selectedPath) {
+  const nextFiles = new Map();
+  for (const entry of projectEntries) {
+    const projectPath = normalizeProjectPath(entry.path);
+    nextFiles.set(projectPath, String(entry.source || ''));
+  }
+  if (nextFiles.size === 0) return;
+  studioProjectFiles = nextFiles;
+  const preferredPath = selectedPath ? normalizeProjectPath(selectedPath) : chooseBestProjectPath(nextFiles);
+  activeStudioProjectPath = nextFiles.has(preferredPath) ? preferredPath : chooseBestProjectPath(nextFiles);
+  openProjectFile(activeStudioProjectPath, { rememberCurrent: false });
+  renderFileNavigator();
+}
+
+function openProjectFile(projectPath, switchSettings = {}) {
+  const selectedPath = normalizeProjectPath(projectPath);
+  if (!studioProjectFiles.has(selectedPath)) return;
+  if (switchSettings.rememberCurrent !== false) rememberActiveProjectSource();
+  activeStudioProjectPath = selectedPath;
+  const selectedSource = studioProjectFiles.get(selectedPath) || '';
+  suppressAutoCompile = true;
+  editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: selectedSource } });
+  suppressAutoCompile = false;
+  const label = document.getElementById('editor-label');
+  if (label) label.textContent = selectedPath;
+  updateEditorTOC(selectedSource);
+  syncBuilderThemePicker(selectedSource);
+  rememberActiveProjectSource(selectedSource);
+  renderFileNavigator();
+}
+
+function readProjectFile(uploadedFile) {
+  return new Promise((resolveFile, rejectFile) => {
+    const reader = new FileReader();
+    reader.onload = loadEvent => resolveFile({
+      path: normalizeProjectPath(uploadedFile.webkitRelativePath || uploadedFile.name),
+      source: String(loadEvent.target?.result || ''),
+    });
+    reader.onerror = () => rejectFile(reader.error || new Error('Unable to read ' + uploadedFile.name));
+    reader.readAsText(uploadedFile);
+  });
+}
+
+function extractProjectImportTarget(rawImportStatement) {
+  let importStatement = String(rawImportStatement || '').trim();
+  const fromMatch = importStatement.match(/\bfrom\s+(.+)$/i);
+  if (fromMatch) importStatement = fromMatch[1].trim();
+  importStatement = importStatement.replace(/\s+as\s+[A-Za-z_][\w-]*\s*$/i, '').trim();
+  if (/^npm\b/i.test(importStatement)) return '';
+  const quotedPath = importStatement.match(/^['"`]([^'"`]+)['"`]/);
+  if (quotedPath) return quotedPath[1].trim();
+  return importStatement.split(/\s+/)[0].replace(/^['"`]|['"`]$/g, '').trim();
+}
+
+function resolveProjectImport(importPath, fromPath) {
+  const cleanPath = extractProjectImportTarget(importPath);
+  if (!cleanPath) return '';
+  const withExtension = /\.[A-Za-z0-9]+$/.test(cleanPath) ? cleanPath : cleanPath + '.clear';
+  const baseDirectory = projectDirectory(fromPath || activeStudioProjectPath);
+  const relativePath = withExtension.startsWith('/')
+    ? withExtension.slice(1)
+    : baseDirectory
+      ? baseDirectory + '/' + withExtension
+      : withExtension;
+  return normalizeProjectPath(relativePath);
+}
+
+function parseProjectSource(sourceText, fromPath) {
+  const imports = [];
+  const components = [];
+  String(sourceText || '').split(/\r?\n/).forEach((sourceLine, lineIndex) => {
+    const trimmedLine = sourceLine.trim();
+    const importMatch = trimmedLine.match(/^(?:import|include)\s+(.+)$/i);
+    if (importMatch) {
+      const resolvedPath = resolveProjectImport(importMatch[1], fromPath);
+      if (resolvedPath) {
+        imports.push({ rawPath: extractProjectImportTarget(importMatch[1]), resolvedPath, line: lineIndex + 1 });
+      }
+    }
+    const componentMatch = trimmedLine.match(/^define\s+component\s+([A-Za-z_][\w-]*)/i);
+    if (componentMatch) {
+      components.push({ name: componentMatch[1], line: lineIndex + 1 });
+    }
+  });
+  return { imports, components };
+}
+
+function renderFileNavigator() {
+  const navigatorEl = document.getElementById('file-navigator');
+  if (!navigatorEl) return;
+  const projectPaths = Array.from(studioProjectFiles.keys()).sort(sortProjectPaths);
+  const activeSource = studioProjectFiles.get(activeStudioProjectPath) || editor.state.doc.toString();
+  const projectShape = parseProjectSource(activeSource, activeStudioProjectPath);
+  const projectComponents = [];
+  for (const projectPath of projectPaths) {
+    const fileShape = parseProjectSource(studioProjectFiles.get(projectPath) || '', projectPath);
+    for (const componentRecord of fileShape.components) {
+      projectComponents.push({ ...componentRecord, projectPath });
+    }
+  }
+  const fileButtons = projectPaths.map(projectPath => {
+    const activeClass = projectPath === activeStudioProjectPath ? ' active' : '';
+    return `<button type="button" class="file-nav-btn${activeClass}" data-file-path="${escAttr(projectPath)}">` +
+      `<span class="file-nav-name">${escHtml(projectPath)}</span>` +
+      `<span class="file-nav-meta">${projectPath === chooseMainProjectPath() ? 'main' : 'file'}</span>` +
+      `</button>`;
+  }).join('');
+  const importButtons = projectShape.imports.length
+    ? projectShape.imports.map(importRecord => {
+      const missingClass = studioProjectFiles.has(importRecord.resolvedPath) ? '' : ' missing';
+      const disabledAttr = studioProjectFiles.has(importRecord.resolvedPath) ? '' : ' disabled';
+      return `<button type="button" class="file-nav-btn${missingClass}" data-import-path="${escAttr(importRecord.resolvedPath)}"${disabledAttr}>` +
+        `<span class="file-nav-name">${escHtml(importRecord.rawPath || importRecord.resolvedPath)}</span>` +
+        `<span class="file-nav-meta">${studioProjectFiles.has(importRecord.resolvedPath) ? 'import' : 'missing'}</span>` +
+        `</button>`;
+    }).join('')
+    : '<div class="file-nav-empty">No imports in this file</div>';
+  const componentButtons = projectComponents.length
+    ? projectComponents.map(componentRecord =>
+      `<button type="button" class="file-nav-btn" data-component-name="${escAttr(componentRecord.name)}" data-component-line="${componentRecord.line}" data-component-path="${escAttr(componentRecord.projectPath)}">` +
+      `<span class="file-nav-name">${escHtml(componentRecord.name)}</span>` +
+      `<span class="file-nav-meta">${escHtml(componentRecord.projectPath)}</span>` +
+      `</button>`
+    ).join('')
+    : '<div class="file-nav-empty">No components in this file</div>';
+
+  navigatorEl.innerHTML =
+    `<section class="file-nav-section">` +
+    `<div class="file-nav-heading">Files</div>` +
+    fileButtons +
+    `</section>` +
+    `<section class="file-nav-section">` +
+    `<div class="file-nav-heading">Imports</div>` +
+    importButtons +
+    `</section>` +
+    `<section class="file-nav-section">` +
+    `<div class="file-nav-heading">Components</div>` +
+    componentButtons +
+    `</section>`;
+}
+
+const fileNavigatorEl = document.getElementById('file-navigator');
+if (fileNavigatorEl) {
+  fileNavigatorEl.addEventListener('click', clickEvent => {
+    const fileButton = clickEvent.target.closest('[data-file-path]');
+    if (fileButton && !fileButton.disabled) {
+      openProjectFile(fileButton.dataset.filePath);
+      return;
+    }
+    const importButton = clickEvent.target.closest('[data-import-path]');
+    if (importButton && !importButton.disabled) {
+      openProjectFile(importButton.dataset.importPath);
+      return;
+    }
+    const componentButton = clickEvent.target.closest('[data-component-line]');
+    if (componentButton) {
+      const componentLine = parseInt(componentButton.dataset.componentLine || '1', 10);
+      const componentPath = normalizeProjectPath(componentButton.dataset.componentPath || activeStudioProjectPath);
+      if (studioProjectFiles.has(componentPath) && componentPath !== activeStudioProjectPath) {
+        openProjectFile(componentPath);
+      }
+      window.jumpToLine(componentLine);
+    }
+  });
+}
+
+window.getSource = getProjectSource;
+window.getProjectModules = getProjectModuleSources;
+window.switchProjectFile = openProjectFile;
+renderFileNavigator();
 
 // TOC pill scroll-tracking — highlight the section nearest the top of the visible editor area.
 // Throttled with rAF so scrolling stays smooth.
@@ -1826,18 +2115,22 @@ async function runCompileAnimation(clearSource, compiledCode) {
 }
 
 async function autoCompile() {
-  const source = editor.state.doc.toString();
+  const requestGeneration = ++compileRequestGeneration;
+  const source = getProjectSource();
+  const modules = getProjectModuleSources();
   setStatus('compiling', 'Compiling...');
   runScanAnimation(source); // fire-and-forget; real result replaces it when done
   const t0 = performance.now();
   try {
-    const r = await fetch('/api/compile', {
+    const compileResponse = await fetch('/api/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source }),
+      body: JSON.stringify({ source, modules }),
     });
     const elapsed = Math.round(performance.now() - t0);
-    lastCompiled = await r.json();
+    const compiledPayload = await compileResponse.json();
+    if (requestGeneration !== compileRequestGeneration) return;
+    lastCompiled = compiledPayload;
     // Auto-prove: fire-and-forget on every compile attempt, regardless of
     // validator errors. The prover walks the AST directly and produces
     // verdicts even when other parts of the source don't validate, so the
@@ -1905,7 +2198,7 @@ async function autoCompile() {
         } catch { /* no tenant yet — hide Deploy */ }
       })();
       // Show/hide contextual tabs and meta chips
-      const srcInfo = parseSourceInfo();
+      const srcInfo = parseSourceInfo(source);
       document.getElementById('data-tab-btn').style.display = srcInfo.tables.length > 0 ? '' : 'none';
       document.getElementById('api-tab-btn').style.display = srcInfo.endpoints.length > 0 ? '' : 'none';
       document.getElementById('download-btn').style.display = lastCompiled.html ? '' : 'none';
@@ -1961,6 +2254,7 @@ async function autoCompile() {
         '</div>';
     }
   } catch (err) {
+    if (requestGeneration !== compileRequestGeneration) return;
     console.error('Compile error:', err);
     setStatus('err', err.message || 'Compile failed');
     // Show crash errors in Code pane too
@@ -3480,7 +3774,7 @@ function parseSourceInfo(source) {
 function showMetaChips() {
   const el = document.getElementById('meta-chips');
   if (!el || !lastCompiled) { if (el) el.innerHTML = ''; return; }
-  const { tables, endpoints, agents, hasAuth } = parseSourceInfo();
+  const { tables, endpoints, agents, hasAuth } = parseSourceInfo(getProjectSource());
   const chips = [];
   if (tables.length) chips.push(`<span class="chip chip-table">🗄 ${tables.length} table${tables.length > 1 ? 's' : ''}</span>`);
   if (endpoints.length) chips.push(`<span class="chip chip-route">⚡ ${endpoints.length} endpoint${endpoints.length > 1 ? 's' : ''}</span>`);
@@ -3496,7 +3790,7 @@ function showMetaChips() {
 // DATA TAB — live view of in-memory tables
 // ==========================================================================
 function getTableNames() {
-  return parseSourceInfo().tables;
+  return parseSourceInfo(getProjectSource()).tables;
 }
 
 window.toggleAddRow = function(tableName) {
@@ -6032,42 +6326,50 @@ window.highlightEditorLines = function(startLine, endLine, msg) {
 // ==========================================================================
 // LOAD FILE FROM DISK
 // ==========================================================================
-document.getElementById('load-file-input').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    suppressAutoCompile = true;
-    editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: ev.target.result } });
-    suppressAutoCompile = false;
-    document.getElementById('editor-label').textContent = file.name;
-    document.getElementById('template-picker').value = '';
+document.getElementById('load-file-input').addEventListener('change', async function(loadEvent) {
+  const selectedFiles = Array.from(loadEvent.target.files || []);
+  if (selectedFiles.length === 0) return;
+  try {
+    const projectEntries = await Promise.all(selectedFiles.map(readProjectFile));
+    const selectedPath = chooseBestProjectPath(new Map(projectEntries.map(entry => [normalizeProjectPath(entry.path), entry.source])));
+    setStudioProjectFiles(projectEntries, selectedPath);
+    const picker = document.getElementById('template-picker');
+    if (picker) picker.value = '';
+    try { localStorage.removeItem('clear_editor_loaded_template'); } catch (_) {}
     lastCompiled = null;
-    showToast('Loaded ' + file.name);
-  };
-  reader.readAsText(file);
-  e.target.value = ''; // reset so same file can be re-loaded
+    showToast('Loaded ' + projectEntries.length + ' file' + (projectEntries.length === 1 ? '' : 's'));
+  } catch (err) {
+    showToast('Could not load file: ' + (err.message || 'unknown error'));
+  } finally {
+    loadEvent.target.value = ''; // reset so the same files can be re-loaded
+  }
 });
 
 // ==========================================================================
 // TEMPLATES
 // ==========================================================================
 window.newFile = function() {
-  editor.dispatch({
-    changes: { from: 0, to: editor.state.doc.length, insert: `build for web and javascript backend
+  activeStudioProjectPath = DEFAULT_PROJECT_FILE_PATH;
+  studioProjectFiles = new Map([[DEFAULT_PROJECT_FILE_PATH, `build for web and javascript backend
 database is local memory
 
 # Your app here
 
-` },
+`]]);
+  editor.dispatch({
+    changes: { from: 0, to: editor.state.doc.length, insert: studioProjectFiles.get(DEFAULT_PROJECT_FILE_PATH) },
   });
   document.getElementById('editor-label').textContent = 'main.clear';
   document.getElementById('template-picker').value = '';
   localStorage.removeItem('clear_editor_content');
+  localStorage.removeItem('clear_project_files');
+  localStorage.removeItem('clear_editor_loaded_template');
   localStorage.removeItem('clear_terminal_log');
   localStorage.removeItem('clear_terminal_entries');
   terminalEntries = ['<span class="term-status">Terminal ready. Click Run to start an app.</span>'];
   terminalLog = '';
+  rememberActiveProjectSource();
+  renderFileNavigator();
   autoCompile();
 };
 
@@ -6108,16 +6410,10 @@ async function loadTemplateByName(name) {
   try {
     studioTelemetry.firstClick('template_picker');
     window._studioFirstAppVia = 'template';
-    const r = await fetch('/api/template/' + name);
-    const source = await r.text();
-    suppressAutoCompile = true;
-    editor.dispatch({
-      changes: { from: 0, to: editor.state.doc.length, insert: source },
-    });
-    suppressAutoCompile = false;
+    const templateResponse = await fetch('/api/template/' + name);
+    const templateSource = await templateResponse.text();
+    setStudioProjectFiles([{ path: name + '/main.clear', source: templateSource }], name + '/main.clear');
     clearTimeout(compileTimer);
-    const label = document.getElementById('editor-label');
-    if (label) label.textContent = name + '/main.clear';
     lastCompiled = null;
     // Remember which template the editor is showing so the next Studio start
     // can refresh the source from disk (see refreshLoadedTemplateFromDisk
@@ -6152,19 +6448,13 @@ async function refreshLoadedTemplateFromDisk() {
   try { loadedName = localStorage.getItem('clear_editor_loaded_template'); } catch (_) {}
   if (!loadedName) return; // no template tracked — leave the editor alone
   try {
-    const r = await fetch('/api/template/' + loadedName);
-    if (!r.ok) return;
-    const diskSource = await r.text();
+    const templateResponse = await fetch('/api/template/' + loadedName);
+    if (!templateResponse.ok) return;
+    const diskSource = await templateResponse.text();
     if (!diskSource) return;
     const editorSource = (window._editor && window._editor.state.doc.toString()) || '';
     if (diskSource === editorSource) return; // already in sync
-    // Replace editor content with the disk version. autoCompile fires next.
-    suppressAutoCompile = true;
-    window._editor.dispatch({
-      changes: { from: 0, to: window._editor.state.doc.length, insert: diskSource },
-    });
-    suppressAutoCompile = false;
-    try { localStorage.setItem('clear_editor_content', diskSource); } catch (_) {}
+    setStudioProjectFiles([{ path: loadedName + '/main.clear', source: diskSource }], loadedName + '/main.clear');
     appendTerminalText('Refreshed ' + loadedName + '/main.clear from disk (was an older version in your editor).', 'term-ok');
     // Recompile against the new source so the running app, prove badge,
     // and tests all reflect what's on disk now.

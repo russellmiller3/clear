@@ -21176,6 +21176,28 @@ when user calls POST /api/categories sending cat:
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).not.toContain('_existing');
   });
+
+  it('seed endpoint only skips when every table it seeds already has rows', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Categories table:
+  name, required
+create a Expenses table:
+  description, required
+when user calls POST /api/seed:
+  create c1:
+    name is 'Food'
+  save c1 as new Category
+  create e1:
+    description is 'Groceries'
+  save e1 as new Expense
+  send back 'seeded'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const _seedTables = [\"categories\",\"expenses\"]");
+    expect(r.javascript).toContain('_seedExistingCounts.every');
+    expect(r.javascript).not.toContain("const _existing = await db.findAll('categories');");
+  });
 });
 
 // =============================================================================
