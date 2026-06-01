@@ -41,17 +41,21 @@ export function shouldRalphRetry({
 
 export function formatRalphMessage({ audit, retryIndex, maxRetries, blockOnUnverified = true } = {}) {
   const gaps = blockingItems(audit?.items || [], blockOnUnverified);
-  const rankedGaps = rankGapsWorstFirst(gaps);
-  const showCount = Math.min(5, rankedGaps.length);
-  const lines = rankedGaps.slice(0, showCount).map(formatGapLine);
-  const more = rankedGaps.length > showCount ? `\n  ... and ${rankedGaps.length - showCount} more` : '';
-
-  // Miller view of exactly the blocking gaps: which constraint families are violated, how hard.
-  const { vector } = evaluateAudit({ items: gaps });
-  const vectorSummary = formatVector(vector);
+  // A/B control arm: CLEAR_MILLER_RANK_DISABLE=1 reproduces the pre-Miller message (original gap
+  // order, no violation-vector line), so the A/B sweep can isolate the ranked-feedback variable.
+  const rankDisabled = process.env.CLEAR_MILLER_RANK_DISABLE === '1';
+  const orderedGaps = rankDisabled ? gaps : rankGapsWorstFirst(gaps);
+  const showCount = Math.min(5, orderedGaps.length);
+  const lines = orderedGaps.slice(0, showCount).map(formatGapLine);
+  const more = orderedGaps.length > showCount ? `\n  ... and ${orderedGaps.length - showCount} more` : '';
 
   const messageLines = ['You are not done yet. The app does not satisfy the approved requirements.'];
-  if (vectorSummary) messageLines.push(`Violation vector (worst first): ${vectorSummary}`);
+  if (!rankDisabled) {
+    // Miller view of exactly the blocking gaps: which constraint families are violated, how hard.
+    const { vector } = evaluateAudit({ items: gaps });
+    const vectorSummary = formatVector(vector);
+    if (vectorSummary) messageLines.push(`Violation vector (worst first): ${vectorSummary}`);
+  }
   messageLines.push(lines.join('\n') + more);
   messageLines.push('');
   messageLines.push('Fix the Clear source. Do not rewrite the requirements unless the user asks.');
