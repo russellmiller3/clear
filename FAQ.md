@@ -475,6 +475,8 @@ Then Ralph looks for implementation evidence with the same fact shape. It can pa
 
 **Miller violation vector (2026-05-30).** Ralph's findings are now scored as a priority-weighted violation vector. Each detector owns a constraint family (approval/audit/role/storage hard; agent/read/concurrency medium; notification/ui soft); unmet requirements become per-family magnitudes; a positional-base projection guarantees one hard miss outweighs any pile of soft ones. The retry message ranks repairs worst-first, so Meph fixes a missing approval workflow before cosmetic spacing. The engine (`lib/miller/`) is domain-agnostic — conformance tests run it on Towers of Hanoi and a robot arm. The gate decision is unchanged; only the scoring and ordering are new.
 
+**A/B the ranked feedback (2026-05-30).** `scripts/miller-ab-repair.mjs` runs a single-turn repair A/B: same fake-complete deal-desk fixture, control (`CLEAR_MILLER_RANK_DISABLE=1`, flat message) vs treatment (ranked vector), re-audits the model's one fix, measures the approval/audit fix-rate per arm. `--dry-run` is free; defaults to Haiku. First run was a NULL (both arms 6/6 — the task saturated, i.e. the model fixed every gap regardless of ordering). See RESEARCH.md for the write-up and when ranking would plausibly matter (resource-pressured tasks).
+
 ---
 
 ## How do requirements, pattern memory, repair hints, and Ralph fit together? (2026-05-08)

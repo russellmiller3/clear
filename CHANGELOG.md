@@ -1,3 +1,16 @@
+## 2026-05-30 — Miller A/B toggle + single-turn repair harness (NULL first result)
+
+Added `CLEAR_MILLER_RANK_DISABLE=1` to `studio/ralph-layer.js`: it reproduces the pre-Miller flat retry
+message (original gap order, no vector line), so an A/B can isolate the ranked-feedback variable
+(treatment = default ranked, control = flag set). `scripts/miller-ab-repair.mjs` runs the MF-2 A/B —
+one fake-complete deal-desk fixture, control vs treatment, re-audits the model's one-shot repair,
+measures hard-gap (approval/audit) fix rate. Defaults Haiku 4.5; `--dry-run` is free.
+
+First run (6 trials/arm, $0.026): control 6/6, treatment 6/6 — NO difference. The task saturated (the
+model fixes every gap in one turn regardless of feedback ordering). Honest read: ranking does not
+change one-shot repair when the model can already fix everything; it would only matter under resource
+pressure (many gaps + output cap, weaker model, multi-turn). Full write-up in RESEARCH.md.
+
 ## 2026-05-30 — Miller v2 violation-vector engine + Ralph wiring (feature/miller-ralph-cost)
 
 The app-checker (Ralph) no longer hands back a flat pass/fail list of missing requirements. Its findings are now scored as a **priority-weighted violation vector**: failures are grouped into constraint families, a hard miss (missing approval, role check, audit trail) outweighs any pile of soft ones (notification, dashboard cosmetics), and the "you're not done" message ranks repairs worst-first.
