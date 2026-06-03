@@ -249,6 +249,7 @@ The tables below cover every feature in the language with exact syntax. Jump to 
 | Checkbox | `'Active' is a checkbox input saved as active` | |
 | Textarea | `'Bio' is a textarea input saved as bio` | |
 | File input | `'Upload' is a file input saved as doc` | |
+| Form block | `form:` / `form 'Signup':` | Shorthand for a form-styled section. Groups inputs and submit buttons. Does not steal `form is {}` payload variables. |
 | Buttons | `button 'Save':` + action block, or `button 'Save' that sends form to '/api/save'` | Inline `that` actions use third-person verbs; domain actions must name business data, not only toast feedback. Selected-record updates require a `change ... from ... to ...` line before `update ... at ...`; deletes use `delete selected_record from /api/...` |
 | Links | `link 'Docs' to '/docs'` | Also accepts `link to '/docs' with label 'Docs'`; canonical form puts visible text first. |
 | Sections | `section 'Results':` | With style presets |

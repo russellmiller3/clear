@@ -1900,6 +1900,12 @@ const CANONICAL_DISPATCH = new Map([
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
+  ['form', (ctx) => {
+    if (!isFormBlockHeader(ctx.lines[ctx.i])) return undefined;
+    const parsed = parseFormBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
   ['nav', (ctx) => {
     const parsed = parseNav(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
@@ -6910,6 +6916,26 @@ function parseSection(lines, startIdx, blockIndent, errors) {
   const node = sectionNode(title, body, line, styleName);
   if (inlineModifiers.length > 0) node.inlineModifiers = inlineModifiers;
   return { node, endIdx };
+}
+
+function parseFormBlock(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  const title = tokens[1]?.type === TokenType.STRING ? tokens[1].value : 'Form';
+  const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+
+  if (body.length === 0) {
+    errors.push({ line, message: `The form is empty - add inputs or buttons inside it, indented below. Example:\n  form:\n    'Name' is a text input saved as name\n    button 'Save':\n      send name to '/api/save'` });
+  }
+
+  return { node: sectionNode(title, body, line, 'form'), endIdx };
+}
+
+function isFormBlockHeader(lineInfo) {
+  const rawHeader = String(lineInfo?.raw || '').trim();
+  if (!rawHeader.endsWith(':')) return false;
+  const formTokens = lineInfo?.tokens || [];
+  return formTokens.length === 1 || (formTokens.length === 2 && formTokens[1].type === TokenType.STRING);
 }
 
 // =============================================================================

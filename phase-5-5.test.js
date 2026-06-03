@@ -177,3 +177,38 @@ page 'Console':
     }
   });
 });
+
+describe('Phase 5.5.8 — form block parser', () => {
+  it('accepts a form block containing an input and submit button', () => {
+    const compiled_form = compileProgram(`build for web
+page 'Chat' at '/':
+  heading 'Chat'
+  form:
+    'Message' is a text input saved as message
+    button 'Send':
+      send message to '/api/chat'`);
+
+    expect(compiled_form.errors).toHaveLength(0);
+    expect(compiled_form.html).toContain('Message');
+    expect(compiled_form.html).toContain('Send');
+  });
+
+  it('lowers a titled form block to the existing form-styled section', () => {
+    const parsed_form = parse(`form 'Chat':
+  'Message' is a text input saved as message`);
+    const form_section = parsed_form.body[0];
+
+    expect(parsed_form.errors).toHaveLength(0);
+    expect(form_section.type).toBe('section');
+    expect(form_section.title).toBe('Chat');
+    expect(form_section.styleName).toBe('form');
+  });
+
+  it('leaves form payload variables alone when the line is an assignment', () => {
+    const compiled_form_payload = compileProgram(`form is {}
+button "Save" that sends form to '/api/save'`, { target: 'web' });
+
+    expect(compiled_form_payload.errors).toHaveLength(0);
+    expect(compiled_form_payload.warnings).toHaveLength(0);
+  });
+});

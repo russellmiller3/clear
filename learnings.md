@@ -1,5 +1,15 @@
 # Engineering Learnings
 
+## 2026-06-03 - Seed success can still hide missing child rows
+
+**What bit us.** The `form:` fix itself was correct, but the pre-push app suite exposed `blog-fullstack` returning zero posts after `/api/seed` said `seeded`. Two quiet compiler bugs stacked: idempotent seed inserts did not write the saved parent row back into the local variable, and public reads were still filtered by creator ownership when the table also had creator-only change/delete rules.
+
+### Gotchas-as-rules
+- **Seed endpoints need row-count proof, not just a success string.** If a seed says `seeded`, immediately fetch the child table and prove rows exist.
+- **Idempotent inserts must return the existing or inserted row.** Otherwise downstream `parent's id` reads `undefined` and child rows vanish.
+- **Creator filters must follow action scope.** `anyone can read` means reads stay public, even if the creator owns later change/delete actions.
+- **Clean stale app ports before rerunning broad e2e.** A leftover `node server.js` on a template port can make a fresh suite talk to the wrong app.
+
 ## 2026-05-30 — Miller v2 violation-vector engine: general core + Ralph as consumer #1
 
 **What shipped.** A domain-agnostic violation-vector engine in `lib/miller/` (`buildViolationVector` → `projectEnergy` → `generateRepairHints`), with the app-checker (Ralph) wired in as its first consumer (`studio/supervisor/miller-ralph.js`). Ralph's flat "missing requirements" list became a priority-weighted vector: hard families (approval/audit/role) outweigh soft ones (notification/ui), and the retry message ranks repairs worst-first. Gate decision (`audit.ok`) unchanged.
@@ -2715,3 +2725,13 @@ The durable fix was compiler-level: safe same-app page-load reads now join the s
 - **When a roadmap item ships, remove it from ROADMAP and move it to FEATURES/FAQ/CHANGELOG.** Backlog should mean future work, not history.
 - **Name the golden set in FAQ.** Future agents should not rediscover which 13 apps are load-bearing by scanning scripts.
 - **Seed idempotence must cover every table the seed fills.** Checking only the first table can make a demo say "already seeded" while later data is still missing.
+
+## Session 2026-06-03: Form Block Keyword Must Stay Narrow
+
+Clear already had form ingredients: inputs, buttons, form-styled sections, and "send form" payload buttons. It did not have a bare `form:` block opener. Adding `form` as a keyword fixed the user-facing typo error, but the first pass accidentally parsed `form is {}` as an empty form block.
+
+### Gotchas-as-rules
+
+- **Keyword dispatch must claim only its real shape.** If a word can also be a variable, check the full line shape before consuming it.
+- **Block openers should prove they are block openers.** For `form`, require the source line to end in `:` and allow only an optional quoted title before parsing a block.
+- **Regression tests need both new syntax and old nearby syntax.** Add the positive `form:` case and the guard that `form is {}` still works as payload data.

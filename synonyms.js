@@ -182,6 +182,7 @@ const SYNONYM_TABLE = Object.freeze({
   // naturally in plain English. Both canonicalize to `app`.
   app: Object.freeze(['app', 'spa']),
   section: Object.freeze(['section', 'group']),
+  form: Object.freeze(['form']),
   style: Object.freeze(['style']),
   theme: Object.freeze(['theme']),
   ask_for: Object.freeze(['ask for']),
@@ -547,6 +548,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.44.0';
+const SYNONYM_VERSION = '0.45.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

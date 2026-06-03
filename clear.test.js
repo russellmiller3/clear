@@ -4999,6 +4999,21 @@ describe('Compiler - per-row creator filter auto-injection (OWASP Piece 1, cycle
     expect(result.javascript).not.toContain('user_id: req.user');
   });
 
+  it('does NOT inject user_id filter when anyone can read but creator owns changes', () => {
+    const compiledPublicReadApp = compileProgram(`build for backend
+database is local memory
+create a Posts table:
+  title, text
+  anyone can read
+  the post's creator can change or delete
+
+when user requests data from /api/posts:
+  posts = look up all Posts
+  send back posts`);
+    expect(compiledPublicReadApp.errors.length).toBe(0);
+    expect(compiledPublicReadApp.javascript).not.toContain('user_id: req.user');
+  });
+
   it('composes creator filter with tenant scope so both layers fire on the same lookup', () => {
     // Defense-in-depth: a regulated app declaring BOTH `database is shared
     // with tenant scope` AND `the deal's creator can ...` must emit BOTH
@@ -5228,6 +5243,23 @@ database is local memory
 create a Posts table:
   title, text
   anyone can read
+
+when user requests data from /api/posts:
+  posts = look up all Posts
+  send back posts`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python || '';
+    expect(py).not.toMatch(/"user_id":\s*request\.user/);
+  });
+
+  it('Python lookup does NOT inject user_id when anyone can read but creator owns changes', () => {
+    const src = `target: python backend
+database is local memory
+create a Posts table:
+  title, text
+  anyone can read
+  the post's creator can change or delete
 
 when user requests data from /api/posts:
   posts = look up all Posts
@@ -12767,6 +12799,29 @@ describe('Syntax v2 - save as new', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('insert');
     expect(result.javascript).toContain('_pick');
+  });
+
+  it('keeps the saved row available after an idempotent seed insert', () => {
+    const compiledSeedApp = compileProgram(`build for javascript backend
+database is local memory
+create an Authors table:
+  email, required, unique
+create a Posts table:
+  title, required
+  author belongs to Authors
+when user sends seed to /api/seed:
+  create author:
+    email is 'author@example.com'
+  save author as new Author
+  create post:
+    title is 'Hello'
+    author is author's id
+  save post as new Post
+  send back 'seeded'`);
+    expect(compiledSeedApp.errors).toHaveLength(0);
+    const emittedSeedServer = compiledSeedApp.serverJS || compiledSeedApp.javascript || '';
+    expect(emittedSeedServer).toContain("author = _existing_author || await _clearTry(() => db.insert('authors'");
+    expect(emittedSeedServer).toContain("author: author?.id");
   });
 });
 

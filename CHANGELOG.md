@@ -1,3 +1,13 @@
+## 2026-06-03 - Form block parser
+
+`form:` and `form 'Title':` now compile as a form-styled section. This matches the shape agents naturally write for grouped inputs and submit buttons, instead of falling into the typo path that suggested `for`.
+
+The parser only claims the word `form` when the source line is a real block opener. `form is {}` still parses as a normal payload variable, so existing button shortcuts like `button 'Save' that sends form to '/api/save'` keep working.
+
+The ship gate also exposed two silent template/runtime compiler bugs. Idempotent seed inserts now assign the local variable to the existing or newly inserted row, so child seed records can use the parent's id. Public read rules now stay public even when a separate creator rule owns change/delete.
+
+Verification: exact request smoke, rebuilt Studio compiler bundle smoke, focused blog-fullstack seed/API probe, full compiler suite green at 3211 / 3211, and Studio e2e green at 75 / 75.
+
 ## 2026-05-30 — Miller A/B toggle + single-turn repair harness (NULL first result)
 
 Added `CLEAR_MILLER_RANK_DISABLE=1` to `studio/ralph-layer.js`: it reproduces the pre-Miller flat retry
