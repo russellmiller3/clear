@@ -2517,6 +2517,24 @@ helper falls back to a single non-streaming call and yields the whole answer
 as one chunk. Anthropic, OpenRouter, and OpenAI all stream properly. (Phase
 6, 2026-05-13.)
 
+## Q: How do I group inputs into a form card? (Phase 5.5)
+
+```clear
+form:
+  'Message' is a text input saved as message
+  button 'Send':
+    send message to '/api/chat'
+
+form 'Contact':
+  'Email' is a text input saved as email
+  button 'Join':
+    send email to '/api/signup'
+```
+
+`form:` is the short wrapper for `section 'Form' with style form:`. Use it
+for grouped inputs and submit buttons. If you write `form is {}`, Clear treats
+that as a normal variable assignment so payload shortcuts can still send the
+whole form.
 
 ## Q: How do I add a date+time picker to a Clear page? (Phase 5.5)
 

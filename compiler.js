@@ -5109,6 +5109,11 @@ function compileCrud(node, ctx, pad) {
       || [])
     : [];
   const _hasCreatorPolicy = _crudPolicies.some(p => p && p.subject === 'creator');
+  const _policyAllows = (accessPolicy, actionName) =>
+    Array.isArray(accessPolicy.actions) && accessPolicy.actions.includes(actionName);
+  const _hasAnyoneReadPolicy = _crudPolicies.some(p => p && p.subject === 'anyone' && _policyAllows(p, 'read'));
+  const _hasCreatorReadPolicy = _crudPolicies.some(p => p && p.subject === 'creator' && _policyAllows(p, 'read'));
+  const _shouldFilterCreatorReads = _hasCreatorReadPolicy && !_hasAnyoneReadPolicy;
 
   // Cloudflare Workers (D1 SQLite) path — emits env.DB.prepare/bind/run.
   // D1 is SQLite over HTTP, so every query must parameterize through .bind()
@@ -5159,7 +5164,7 @@ function compileCrud(node, ctx, pad) {
       // both filters stack when both rules apply.
       const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : null;
       const extraPairs = [];
-      if (_hasCreatorPolicy) extraPairs.push('"user_id": request.user.get("id")');
+      if (_shouldFilterCreatorReads) extraPairs.push('"user_id": request.user.get("id")');
       if (ctx.tenantScope) extraPairs.push('"tenant_id": request.user.get("tenant_id")');
       const extraStr = extraPairs.join(', ');
       let pyFilter;
@@ -5359,12 +5364,12 @@ function compileCrud(node, ctx, pad) {
     // be the row's creator. Composes with tenantWrap so a regulated
     // app with both layers stacks both checks. Plan: OWASP Piece 1,
     // 2026-05-05.
-    const creatorWrap = (filterExpr) => _hasCreatorPolicy
+    const creatorWrap = (filterExpr) => _shouldFilterCreatorReads
       ? `{ ...${filterExpr}, user_id: req.user && req.user.id }`
       : filterExpr;
     const baseFilter = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
     const wrappedFilter = tenantWrap(creatorWrap(baseFilter));
-    const where = node.condition || ctx.tenantScope || _hasCreatorPolicy ? `, ${wrappedFilter}` : '';
+    const where = node.condition || ctx.tenantScope || _shouldFilterCreatorReads ? `, ${wrappedFilter}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
     let lookupCode;
     if (isSingleLookup) {
@@ -5431,6 +5436,10 @@ function compileCrud(node, ctx, pad) {
         if (node.resultVar) {
           return dedupCheck +
             `${pad}const ${sanitizeName(node.resultVar)} = ${existingVar} || await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+        }
+        if (node.isInsert) {
+          return dedupCheck +
+            `${pad}${varCode} = ${existingVar} || await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
         }
         return dedupCheck +
           `${pad}if (!${existingVar}) await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;

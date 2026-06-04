@@ -1464,6 +1464,22 @@ style card:
 'Resume' is a file input saved as a resume
 ```
 
+Wrap related inputs and submit buttons in a form card:
+```
+form:
+  'Message' is a text input saved as message
+  button 'Send':
+    send message to '/api/chat'
+
+form 'Contact':
+  'Email' is a text input saved as email
+  button 'Join':
+    send email to '/api/signup'
+```
+
+Use `form:` or `form 'Title':` for UI grouping. Keep `form is {}` only when
+you intentionally need a payload variable named `form`.
+
 Every input-like control must name the state variable it changes on the same
 line. Use `saved as` for dropdowns, checkboxes, menus, sliders, file inputs,
 text areas, and text editors.

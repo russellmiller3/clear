@@ -1,5 +1,15 @@
 # Engineering Learnings
 
+## 2026-06-03 - Seed success can still hide missing child rows
+
+**What bit us.** The `form:` fix itself was correct, but the pre-push app suite exposed `blog-fullstack` returning zero posts after `/api/seed` said `seeded`. Two quiet compiler bugs stacked: idempotent seed inserts did not write the saved parent row back into the local variable, and public reads were still filtered by creator ownership when the table also had creator-only change/delete rules.
+
+### Gotchas-as-rules
+- **Seed endpoints need row-count proof, not just a success string.** If a seed says `seeded`, immediately fetch the child table and prove rows exist.
+- **Idempotent inserts must return the existing or inserted row.** Otherwise downstream `parent's id` reads `undefined` and child rows vanish.
+- **Creator filters must follow action scope.** `anyone can read` means reads stay public, even if the creator owns later change/delete actions.
+- **Clean stale app ports before rerunning broad e2e.** A leftover `node server.js` on a template port can make a fresh suite talk to the wrong app.
+
 ## 2026-05-15 - Studio file navigator: replacing a project is not the same as switching files
 
 **What bit us.** The first file-navigator pass used the same function for "load a new project" and "switch from one already-loaded file to another." That function saved the current editor before opening the target file. During project load, the "current editor" was still the old scratch buffer, so it overwrote the freshly loaded `main.clear`.

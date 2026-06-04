@@ -508,6 +508,21 @@ is accepted when a user naturally writes the destination first.
 'Name' is a text input that saves to name
 ```
 
+Wrap related inputs and buttons in a form card with `form:`. A titled form uses
+`form 'Title':`. Both compile to the existing form-styled section.
+
+```clear
+form:
+  'Message' is a text input saved as message
+  button 'Send':
+    send message to '/api/chat'
+
+form 'Contact':
+  'Email' is a text input saved as email
+  button 'Join':
+    send email to '/api/signup'
+```
+
 Every interactive input must name the state variable it changes on the same
 line. This applies to text inputs, dropdowns, checkboxes, menus, sliders, file
 inputs, text areas, and text editors.
@@ -889,6 +904,7 @@ section 'Widget'  with style app_card:     # bg-base-200, rounded-xl, border, sh
 # ── Generic ────────────────────────────────────────────────────────────────────
 section 'Box'  with style card:            # bg-base-100, border, rounded, p-6
 section 'Form' with style form:            # bg-base-100, border, p-8, max-w-lg
+form 'Signup':                             # same form preset, shorter
 section 'Code' with style code_box:        # bg-base-200, font-mono, border
 ```
 

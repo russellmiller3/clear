@@ -6356,6 +6356,25 @@ openrouter'".
 
 These five widgets close the parity gap with the reference Lenat app and any other DaisyUI-styled app you'd build in Clear.
 
+### A form card wrapper
+
+```clear
+page 'Chat':
+  form:
+    'Message' is a text input saved as message
+    button 'Send':
+      send message to '/api/chat'
+
+  form 'Contact':
+    'Email' is a text input saved as email
+    button 'Join':
+      send email to '/api/signup'
+```
+
+`form:` is the short form of `section 'Form' with style form:`. It groups
+inputs and buttons in a polished form card. `form is {}` still means a normal
+payload variable, so existing "send form" button shortcuts keep working.
+
 ### A reminder app with a datetime picker
 
 ```clear
