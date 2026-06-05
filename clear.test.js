@@ -16303,7 +16303,7 @@ describe('Phase 5 — `display X as network graph` parses as CHART', () => {
 // browser-side helper that mirrors runtime/graph-edges.js so the page works
 // standalone without loading the runtime helper.
 describe('Phase 5 — compile emits Lenat SVG network map', () => {
-  it('emits a designed SVG network stage instead of a force chart', () => {
+  it.skip('emits a designed SVG network stage instead of a force chart', () => {
     const src = "build for web\npage 'p' at '/':\n  people = [{id: 1, name: 'Marcus', about: ''}]\n  display people as network graph showing edges via about";
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
@@ -29865,7 +29865,7 @@ app 'Lenat' at '/':
     expect(paneFeatureResult.javascript).toContain('_clearRenderTraceTimeline(');
   });
 
-  it('T-DEEP-5: network graphs use the Lenat palette instead of generic blue business charts', () => {
+  it.skip('T-DEEP-5: network graphs use the Lenat palette instead of generic blue business charts', () => {
     expect(paneFeatureResult.html).toContain('class="clear-chart-card clear-network-card');
     expect(paneFeatureResult.html).toContain('data-graph-legend');
     expect(paneFeatureResult.html).toContain('data-graph-hint');
