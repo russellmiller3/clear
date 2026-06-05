@@ -3782,3 +3782,8 @@ Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Full spec: `ROADMAP.md` → 
 | **HITL Rule (CLAUDE.md)** | "Meph Failures Are Bug Reports on the System" — when Meph fails, fix compiler/docs/system prompt, merge-as-you-go. Matrix of symptom → root cause layer | Done — codified as mandatory rule + in memory |
 | **Documentation Rule 9 surfaces** | Added FAQ.md + RESEARCH.md to the rule (was 7, now 9). Both skills (ship + write-plan) updated | Done — no new feature ships without updating all 9 |
 | **Measured lift** | Sweep 6 (all HITL fixes active) vs Sweep 4: **+75% task completions (4→7)**, 30% faster wall clock, +38% more passing rows | Done — HITL rule proved itself empirically |
+## 2026-05-15 - Lenat deep pane display primitives
+
+Clear now has three Lenat-style rich display formats: `display X as capability explorer`, `display X as record browser`, and `display X as trace timeline`. They compile to searchable master/detail panes and compact event timelines instead of forcing knowledge-heavy apps through generic tables.
+
+The network graph chart shell also now gets a graph-specific card class and theme-aware category colors, so relationship maps can visually match the Lenat app. Regression coverage: 5 new deep-pane compiler tests; full suite 3246/3246.

@@ -19,6 +19,7 @@ import './google-workspace-auth.test.js';
 import './field-conventions.test.js';
 import './ssr-default.test.js';
 import './core-13-ssr-first-paint.test.js';
+import './lenat-graph-visual.test.js';
 
 
 import { createRequire as _phase5CreateRequire } from 'node:module';
@@ -1583,6 +1584,34 @@ describe('theme directive', () => {
     expect(result.html).toContain('data-theme="ivory"');
   });
 
+  it('parses font declarations for sans, serif, and mono families', () => {
+    const ast = parse("font sans 'Inter'\nfont serif 'Instrument Serif'\nfont mono 'JetBrains Mono'");
+    expect(ast.errors).toHaveLength(0);
+    const fonts = ast.body.filter(n => n.type === NodeType.FONT);
+    expect(fonts.map(f => [f.role, f.family])).toEqual([
+      ['sans', 'Inter'],
+      ['serif', 'Instrument Serif'],
+      ['mono', 'JetBrains Mono'],
+    ]);
+  });
+
+  it('font declarations emit CSS variables and Google font loading links', () => {
+    const result = compileProgram(`build for web
+font sans 'Inter'
+font serif 'Instrument Serif'
+font mono 'JetBrains Mono'
+page 'Test' at '/':
+  heading 'Hello'`);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('family=Inter:wght@400;500;600;700');
+    expect(result.html).toContain('family=Instrument+Serif');
+    expect(result.html).toContain('family=JetBrains+Mono:wght@400;500');
+    expect(result.css).toContain('--font-sans: "Inter"');
+    expect(result.css).toContain('--font-serif: "Instrument Serif"');
+    expect(result.css).toContain('--font-mono: "JetBrains Mono"');
+    expect(result.css).toContain('.font-display { font-family: var(--font-display);');
+  });
+
   it('compileNode returns null (directive, no code)', () => {
     const node = { type: NodeType.THEME, name: 'nova', line: 1 };
     const ctx = { lang: 'js', indent: 0, declared: new Set(), stateVars: new Set() };
@@ -3100,7 +3129,7 @@ page "Counter":
     `;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('btn_Reset');
+    expect(result.javascript).toContain("querySelectorAll('[data-clear-uat-id=");
     expect(result.javascript).toContain('addEventListener');
     expect(result.javascript).toContain('click');
   });
@@ -12824,6 +12853,22 @@ when user sends seed to /api/seed:
     expect(emittedSeedServer).toContain("author = _existing_author || await _clearTry(() => db.insert('authors'");
     expect(emittedSeedServer).toContain("author: author?.id");
   });
+
+  it('compiles assignment save X as a new Todo to the Todo table', () => {
+    const compiledTodos = compileProgram("build for javascript backend\ncreate a Todos table:\n  title, required\nwhen user calls POST /api/todos sending d:\n  new_todo = save d as a new Todo\n  send back new_todo with success message");
+    expect(compiledTodos.errors).toHaveLength(0);
+    expect(compiledTodos.javascript).toContain("_clearTry(() => db.insert('todos', _pick(d, TodosSchema))");
+    expect(compiledTodos.javascript).not.toContain("db.insert('as'");
+    expect(compiledTodos.javascript).not.toContain('aSchema');
+  });
+
+  it('compiles statement save X as a new Todo to the Todo table', () => {
+    const compiledTodos = compileProgram("build for javascript backend\ncreate a Todos table:\n  title, required\nwhen user calls POST /api/todos sending d:\n  save d as a new Todo\n  send back d with success message");
+    expect(compiledTodos.errors).toHaveLength(0);
+    expect(compiledTodos.javascript).toContain("_clearTry(() => db.insert('todos', _pick(d, TodosSchema))");
+    expect(compiledTodos.javascript).not.toContain("db.insert('as'");
+    expect(compiledTodos.javascript).not.toContain('aSchema');
+  });
 });
 
 describe('Syntax v2 - with success message', () => {
@@ -16254,17 +16299,21 @@ describe('Phase 5 — `display X as network graph` parses as CHART', () => {
 });
 
 // Phase 5 cycle 5.2 — compiler emit. The CHART node with chartType='network'
-// expands to an inline ECharts graph series with force layout. The emit
-// inlines a browser-side helper that mirrors runtime/graph-edges.js so the
-// page works standalone without loading the runtime helper.
-describe('Phase 5 — compile emits ECharts graph series', () => {
-  it('emits ECharts graph series with force layout in compiled HTML', () => {
+// expands to a deterministic Lenat-style SVG map. The emit inlines a
+// browser-side helper that mirrors runtime/graph-edges.js so the page works
+// standalone without loading the runtime helper.
+describe('Phase 5 — compile emits Lenat SVG network map', () => {
+  it('emits a designed SVG network stage instead of a force chart', () => {
     const src = "build for web\npage 'p' at '/':\n  people = [{id: 1, name: 'Marcus', about: ''}]\n  display people as network graph showing edges via about";
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('echarts');
-    expect(result.html).toContain("type: 'graph'");
-    expect(result.html).toContain("layout: 'force'");
+    expect(result.html).toContain('data-graph-stage');
+    expect(result.html).toContain('data-graph-fit');
+    expect(result.javascript).toContain('_clearRenderLenatNetworkMap(');
+    expect(result.javascript).toContain('clear-network-edge');
+    expect(result.javascript).toContain('clear-network-node');
+    expect(result.javascript).not.toContain("type: 'graph'");
+    expect(result.javascript).not.toContain("layout: 'force'");
   });
 
   it('inlines the substring-match edge resolver in compiled HTML', () => {
@@ -18777,7 +18826,7 @@ page 'Deals' at '/cro':
         get deals from '/api/deals'`);
     expect(r.errors).toHaveLength(0);
     expect(r.html).toContain('id="btn_Refresh"');
-    const listenerIndex = r.javascript.indexOf("document.getElementById('btn_Refresh').addEventListener('click'");
+    const listenerIndex = r.javascript.indexOf("document.querySelectorAll('[data-clear-uat-id=");
     expect(listenerIndex >= 0).toBe(true);
     const refreshFetchIndex = r.javascript.indexOf('fetch("/api/deals")', listenerIndex);
     expect(refreshFetchIndex > listenerIndex).toBe(true);
@@ -29153,6 +29202,13 @@ describe('display as chat - utility functions', () => {
     expect(util.code).toContain('No messages yet');
   });
 
+  it('T10b: _chatRender normalizes object content before rendering', () => {
+    const util = findUtil('_chatRender');
+    expect(util.code).toContain('function _chatText');
+    expect(util.code).toContain('JSON.stringify(content)');
+    expect(util.code).not.toContain('String(content ||');
+  });
+
   it('T11: UTILITY_FUNCTIONS includes _chatSend', () => {
     const util = findUtil('_chatSend');
     expect(util).toBeDefined();
@@ -29313,6 +29369,540 @@ page 'App':
     const r = compileProgram(nonChatSrc);
     expect(r.html).toContain('input_amount');
     expect(r.html).toContain('btn_Add');
+  });
+});
+
+// =============================================================================
+// PANE-BASED CHAT ABSORPTION (APP_BLOCK pane bodies flattened by flatten())
+// Regression for: flatten() not recursing into APP_BLOCK pane bodies, which
+// prevented the absorption pre-scan from seeing display+input+button triples
+// inside SPA panes — producing two stacked composer inputs in compiled HTML.
+// =============================================================================
+
+describe('SPA pane — chat input/button absorption', () => {
+  const paneChatSrc = `build for web
+app 'Lenat' at '/':
+  pane 'Chat' as 'chat':
+    on page load get all_messages from '/api/messages'
+    display all_messages as chat showing role, content
+    'Type a message...' is a text input saved as user_message
+    button 'Send':
+      send user_message to '/api/messages'
+      get all_messages from '/api/messages'
+      user_message is ''`;
+  const paneResult = compileProgram(paneChatSrc);
+
+  it('T-PANE-1: pane chat — standalone input suppressed (absorption fired inside pane)', () => {
+    const inputCount = (paneResult.html.match(/<input[^>]+type="text"/g) || []).length;
+    const textareaCount = (paneResult.html.match(/<textarea/g) || []).length;
+    // Should have exactly 1 composer (the built-in chat textarea), not 2
+    expect(inputCount + textareaCount <= 1).toBe(true);
+  });
+
+  it('T-PANE-2: pane chat — standalone button suppressed', () => {
+    // btn_Send should NOT appear as a separate button outside the chat component
+    expect(paneResult.html).not.toContain('btn_Send');
+    expect(paneResult.html).not.toContain('id="btn_send"');
+    expect(paneResult.javascript).not.toContain("getElementById('btn_Send')");
+  });
+
+  it('T-PANE-3: pane chat — compiles without errors', () => {
+    expect(paneResult.errors).toHaveLength(0);
+  });
+
+  it('T-PANE-4: pane chat — comments between chat display and composer do not break absorption', () => {
+    const withComment = compileProgram(`build for web
+app 'Lenat' at '/':
+  pane 'Chat' as 'chat':
+    display all_messages as chat showing role, content
+    # Composer docs should not create a second input.
+    'Type a message...' is a text input saved as user_message
+    button 'Send':
+      send user_message to '/api/messages'
+      user_message is ''`);
+
+    expect(withComment.errors).toHaveLength(0);
+    expect(withComment.html).not.toContain('input_user_message');
+    expect(withComment.html).not.toContain('btn_Send');
+    expect(withComment.javascript).not.toContain("data-clear-uat-id=\"button_7_Send\"");
+  });
+
+  it('T-PANE-5: pane chat - absorbed composer remains state-bound for quick chips', () => {
+    const withQuickChip = compileProgram(`build for web
+app 'Lenat' at '/':
+  pane 'Chat' as 'chat':
+    display all_messages as chat showing role, content
+    'Type a message...' is a text input saved as user_message
+    button 'Send':
+      send user_message to '/api/messages'
+      user_message is ''
+    button 'log energy':
+      user_message is "energy "`);
+
+    expect(withQuickChip.errors).toHaveLength(0);
+    expect(withQuickChip.javascript).toContain('user_message: ""');
+    expect(withQuickChip.javascript).toContain('_state.user_message = "energy ";');
+    expect(withQuickChip.javascript).toContain('_state.user_message = "";');
+    expect(withQuickChip.javascript).toContain('_state.user_message = e.target.value;');
+    expect(withQuickChip.javascript).toContain("if (_el && _el.value !== _state.user_message) _el.value = _state.user_message;");
+  });
+
+  it('T-PANE-5b: app_card sections carry the clear-section-card styling hook', () => {
+    const withQuickChipSection = compileProgram(`build for web
+app 'Lenat' at '/':
+  pane 'Chat' as 'chat':
+    section 'Quick chips' with style app_card:
+      button 'log energy':
+        user_message is "energy "`);
+
+    expect(withQuickChipSection.errors).toHaveLength(0);
+    expect(withQuickChipSection.html).toContain('class="clear-section-card ');
+    expect(withQuickChipSection.html).toContain('btn_log_energy');
+  });
+
+  it('T-PANE-6: pane chat - nested lookup displays are state-bound and SSR-prefetched', () => {
+    const nestedLookup = compileProgram(`build for both
+app 'Lenat' at '/':
+  pane 'Chat' as 'chat':
+    section 'Main':
+      define all_messages as: look up records in Records table where concept_id is 'CHAT_MESSAGE'
+      display all_messages as chat showing concept_id, payload_json
+      'Type a message...' is a text input saved as user_message
+      button 'Send':
+        send user_message to '/api/messages'
+        user_message is ''`);
+
+    expect(nestedLookup.errors).toHaveLength(0);
+    expect(nestedLookup.javascript).toContain('all_messages: []');
+    expect(nestedLookup.javascript).toContain("_chatRender(document.getElementById('output_All_Messages_msgs'), _state.all_messages");
+    expect(nestedLookup.serverJS).toContain('_ssrState["all_messages"]');
+  });
+
+  it('T-PANE-7: app pane SSR prefetch preserves lookup filters', () => {
+    const filteredLookup = compileProgram(`build for both
+create a Records table:
+  concept_id is text
+app 'Lenat' at '/':
+  pane 'Today' as 'today':
+    define energy_logs as: look up records in Records table where concept_id is 'ENERGY_LOG'
+    stat strip:
+      stat card 'Energy':
+        value energy_logs's length`);
+
+    expect(filteredLookup.errors).toHaveLength(0);
+    expect(filteredLookup.serverJS).toContain('_ssrState["energy_logs"]');
+    expect(filteredLookup.serverJS).toContain('db.findAll("records", { concept_id: "ENERGY_LOG" })');
+  });
+
+  it('T-PANE-8: every app route hydrates shared pane lookup state for client-side navigation', () => {
+    const globalLookupResult = compileProgram(`build for both
+create a Records table:
+  concept_id is text
+app 'Lenat' at '/':
+  pane 'Today' as 'today':
+    define energy_logs as: look up records in Records table where concept_id is 'ENERGY_LOG'
+  pane 'Knowledge' as 'knowledge':
+    define all_records as: look up records in Records table
+    display all_records as record browser`);
+
+    expect(globalLookupResult.errors).toHaveLength(0);
+    const todayRouteStart = globalLookupResult.serverJS.indexOf('app.get("/today"');
+    const todayRouteEnd = globalLookupResult.serverJS.indexOf('});', todayRouteStart);
+    const todayRouteSnippet = globalLookupResult.serverJS.slice(todayRouteStart, todayRouteEnd);
+    expect(todayRouteSnippet).toContain('_ssrState["energy_logs"]');
+    expect(todayRouteSnippet).toContain('_ssrState["all_records"]');
+  });
+});
+
+// =============================================================================
+// SPA APP SHELL CSS + ACTIVE NAV
+// Regression for: APP_BLOCK emitted .clear-app/.clear-app-sidebar/.clear-app-panes
+// markup with no app-frame CSS, so Lenat-clear rendered as a giant document.
+// =============================================================================
+
+describe('SPA app shell — fixed desktop frame', () => {
+  const shellSrc = `build for web
+theme 'nixie'
+app 'Lenat' at '/':
+  sidebar:
+    heading 'Lenat'
+    nav item 'Today' to '/today' with icon 'sun-medium'
+    nav item 'Chat' to '/chat' with icon 'messages-square'
+    section 'Sidebar footer' with style app_card:
+      text '20 concepts'
+      text '16 records'
+      text 'nothing due'
+      text 'live'
+  pane 'Today' as 'today':
+    page header 'Today'
+    stat strip:
+      stat card 'Energy':
+        value 5
+        delta 'logs in the last week'
+        sparkline [5, 6]
+      stat card 'Mood':
+        value 6
+        delta 'mood entries on file'
+        sparkline [7, 6, 6]
+      stat card 'Due soon':
+        value 0
+        delta 'open tasks waiting'
+      stat card 'Growth':
+        value 20
+        delta 'concepts taught to Lenat'
+  pane 'Chat' as 'chat':
+    display messages as chat showing role, content
+    section 'Quick chips' with style app_card:
+      button 'log energy':
+        user_message is 'energy '
+      button 'add task':
+        user_message is 'todo: '
+      button 'remind me':
+        user_message is 'remind me to '
+      button 'note':
+        user_message is 'note: '
+      button 'log mood':
+        user_message is 'mood '
+      button 'query':
+        user_message is 'show me '`;
+  const shellResult = compileProgram(shellSrc);
+
+  it('T-SHELL-1: app block emits CSS for a two-column viewport shell', () => {
+    expect(shellResult.errors).toHaveLength(0);
+    expect(shellResult.html).toContain('.clear-app {');
+    expect(shellResult.html).toContain('grid-template-columns: 220px minmax(0, 1fr)');
+    expect(shellResult.html).toContain('.clear-app-sidebar {');
+    expect(shellResult.html).toContain('.clear-app-panes > [data-pane]');
+    expect(shellResult.html).toContain('height: 100vh');
+  });
+
+  it('T-SHELL-2: app router marks the active nav row', () => {
+    expect(shellResult.html).toContain("classList.toggle('active'");
+    expect(shellResult.html).toContain("getAttribute('data-nav-path')");
+  });
+
+  it('T-SHELL-3: repeated pane-local controls are wired by scoped attributes, not duplicate global IDs', () => {
+    const scopedResult = compileProgram(`build for web
+app 'Lenat' at '/':
+  pane 'Today' as 'today':
+    page header 'Today':
+      actions:
+        button 'Help':
+          open the Help modal
+    section 'Help' as modal:
+      text 'today help'
+      button 'Close':
+        close modal
+  pane 'Chat' as 'chat':
+    page header 'Chat':
+      actions:
+        button 'Help':
+          open the Help modal
+    section 'Help' as modal:
+      text 'chat help'
+      button 'Close':
+        close modal`);
+
+    expect(scopedResult.errors).toHaveLength(0);
+    expect(scopedResult.html).toContain('data-panel-key="help"');
+    expect(scopedResult.javascript).toContain("querySelectorAll('[data-clear-uat-id=");
+    expect(scopedResult.javascript).toContain("closest('[data-pane]')");
+    expect(scopedResult.javascript).not.toContain("document.getElementById('btn_Help').addEventListener");
+  });
+
+  it('T-SHELL-4: generated app HTML advertises the standard favicon path', () => {
+    expect(shellResult.html).toContain('<link rel="icon" type="image/x-icon" href="/favicon.ico" />');
+    expect(shellResult.html).toContain('<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />');
+  });
+
+  it('T-SHELL-5: app pane router updates sidebar active state during pane switches', () => {
+    expect(shellResult.html).toContain("app.querySelectorAll('[data-nav-item]')");
+    expect(shellResult.html).toContain("navSlug === slug");
+    expect(shellResult.html).toContain("classList.toggle('active', active)");
+  });
+
+  it('T-SHELL-6: app block emits Lenat-style stage topbar chrome', () => {
+    expect(shellResult.html).toContain('class="clear-app-stage"');
+    expect(shellResult.html).toContain('class="clear-app-topbar"');
+    expect(shellResult.html).toContain('Search everything');
+    expect(shellResult.html).toContain('data-app-help="true"');
+    expect(shellResult.html).toContain('data-app-new-chat="true"');
+  });
+
+  it('T-SHELL-7: app search button opens a visible command palette shell', () => {
+    expect(shellResult.html).toContain('data-app-palette="true"');
+    expect(shellResult.html).toContain('data-app-palette-input="true"');
+    expect(shellResult.html).toContain("palette.hidden = false");
+  });
+
+  it('T-SHELL-8: chat pane composer and transcript use the full Lenat lane width', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-wrap \{[\s\S]*width: 100%;[\s\S]*max-width: 820px/.test(shellResult.html)).toBe(true);
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-input \{[\s\S]*width: 100%;[\s\S]*max-width: 820px/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-8b: Lenat chat composer keeps the square send button visible', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-send-btn \{[\s\S]*flex: 0 0 44px;[\s\S]*font-size: 0;/.test(shellResult.html)).toBe(true);
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-send-btn::before \{[\s\S]*content: "\\2191";/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-8c: assistant chat turns reserve the Lenat avatar gutter', () => {
+    expect(shellResult.html).toContain('.clear-app [data-pane="chat"] .clear-chat-msg.assistant::before');
+    expect(shellResult.html).toContain('left: -36px;');
+  });
+
+  it('T-SHELL-9: stat strip holds four cards across on desktop', () => {
+    expect(shellResult.html).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))');
+  });
+
+  it('T-SHELL-9b: stat card icons sit before the labels like Lenat', () => {
+    expect(/\.clear-stat-card-top \{[\s\S]*justify-content: flex-start;/.test(shellResult.html)).toBe(true);
+    expect(/\.clear-stat-icon \{[\s\S]*order: -1;/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-10: member-access stat values are wired into the template renderer', () => {
+    const statResult = compileProgram(`build for web
+app 'Lenat' at '/':
+  pane 'Today' as 'today':
+    energy_logs is [1, 2]
+    stat strip:
+      stat card 'Energy':
+        value energy_logs's length`);
+
+    expect(statResult.errors).toHaveLength(0);
+    expect(statResult.html).toContain('data-clear-tpl="{energy_logs.length}"');
+    expect(statResult.javascript).toContain('const _tplCtx = Object.assign({}, _state || {})');
+    expect(statResult.javascript).toContain('_tplCtx["energy_logs"]');
+  });
+
+  it('T-SHELL-11: Lenat shell suppresses generic sidebar grouping chrome', () => {
+    expect(shellResult.html).toContain('.clear-app-sidebar li {');
+    expect(shellResult.html).toContain('list-style: none');
+    expect(shellResult.html).toContain('.clear-app-sidebar .clear-nav-section-label {');
+    expect(shellResult.html).toContain('display: none;');
+  });
+
+  it('T-SHELL-12: Today headers get the same live date line as Lenat', () => {
+    expect(shellResult.html).toContain('data-current-date="true"');
+    expect(shellResult.html).toContain('function renderCurrentDate');
+  });
+
+  it('T-SHELL-13: stat cards distinguish big numeric values from muted text values', () => {
+    const textStatResult = compileProgram(`build for web
+app 'Lenat' at '/':
+  pane 'Today' as 'today':
+    stat strip:
+      stat card 'Energy':
+        value 5
+      stat card 'Due soon':
+        value 'nothing due'`);
+
+    expect(textStatResult.errors).toHaveLength(0);
+    expect(textStatResult.html).toContain('class="clear-stat-value clear-stat-value-text"');
+    expect(textStatResult.html).toContain('class="clear-stat-value clear-stat-value-number tabular-nums"');
+  });
+
+  it('T-SHELL-14: sidebar brand mark uses Lenat amber instead of generic theme primary', () => {
+    expect(shellResult.html).toContain('radial-gradient(circle at 30% 30%, #ffd093, #4a2a08 80%)');
+    expect(shellResult.html).toContain('font-weight: 400;');
+  });
+
+  it('T-SHELL-14b: app shell includes an inline icon fallback when Lucide is unavailable', () => {
+    expect(shellResult.html).toContain('function _clearInstallIconFallbacks');
+    expect(shellResult.html).toContain('"sun-medium"');
+    expect(shellResult.html).toContain('"messages-square"');
+    expect(shellResult.html).toContain('window.lucide && window.lucide.createIcons');
+  });
+
+  it('T-SHELL-14d: Lenat icon fallback covers chat, chips, and footer icons', () => {
+    expect(shellResult.html).toContain('"brain-circuit"');
+    expect(shellResult.html).toContain('"check-square"');
+    expect(shellResult.html).toContain('"sticky-note"');
+    expect(shellResult.html).toContain('"bell"');
+  });
+
+  it('T-SHELL-14c: app shell typography reads from declared font variables', () => {
+    expect(shellResult.html).toContain('font-family: var(--font-serif');
+    expect(shellResult.html).toContain('font-family: var(--font-sans');
+    expect(shellResult.html).toContain('font-family: var(--font-mono');
+  });
+
+  it('T-SHELL-15: Today recent activity renders as a feed, not a generic card', () => {
+    expect(shellResult.html).toContain('.clear-app [data-pane="today"] .clear-section-card:has(> h2:first-child)');
+    expect(shellResult.html).toContain('white-space: pre-wrap');
+  });
+
+  it('T-SHELL-16: sidebar footer renders Lenat guide card and stat icons', () => {
+    expect(shellResult.html).toContain('class="clear-sidebar-footer"');
+    expect(shellResult.html).toContain('class="clear-sidebar-guide-link"');
+    expect(shellResult.html).toContain('What is Lenat?');
+    expect(shellResult.html).toContain('data-lucide="brain-circuit"');
+    expect(shellResult.html).toContain('data-lucide="archive"');
+    expect(shellResult.html).toContain('data-lucide="bell"');
+    expect(shellResult.html).toContain('class="clear-live-dot"');
+  });
+
+  it('T-SHELL-17: chat quick chips render Lenat action icons', () => {
+    expect(/data-lucide="battery-medium"[\s\S]*log energy/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="check-square"[\s\S]*add task/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="bell"[\s\S]*remind me/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="sticky-note"[\s\S]*note/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="smile"[\s\S]*log mood/.test(shellResult.html)).toBe(true);
+    expect(/data-lucide="search"[\s\S]*query/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-18: stat sparklines reserve visible Lenat vertical space', () => {
+    expect(shellResult.html).toContain('class="clear-stat-sparkline"');
+    expect(/\.clear-stat-sparkline \{[\s\S]*margin-top: 12px;/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-19: Lenat shell defines the amber accent token used by lines and buttons', () => {
+    expect(shellResult.html).toContain('--clear-accent:');
+    expect(shellResult.html).toContain('background: var(--clear-accent)');
+  });
+
+  it('T-SHELL-20: assistant avatar is a stroked brain mark, not a filled mask blob', () => {
+    expect(shellResult.html).toContain('background-image: url("data:image/svg+xml');
+    expect(shellResult.html).not.toContain('-webkit-mask: url("data:image/svg+xml');
+  });
+
+  it('T-SHELL-21: Lenat chat composer uses the real Lenat placeholder prompt', () => {
+    expect(shellResult.html).toContain('placeholder="tell me anything');
+    expect(shellResult.html).toContain('remind me to stretch in 30 min');
+  });
+
+  it('T-SHELL-22: stat sparklines use Lenat mint, not the amber button accent', () => {
+    expect(shellResult.html).toContain('--clear-sparkline:');
+    expect(shellResult.html).toContain('stroke: var(--clear-sparkline)');
+    expect(shellResult.html).toContain('clear-stat-sparkline-caption');
+  });
+
+  it('T-SHELL-23: short ten-point sparklines do not exaggerate into full-height diagonals', () => {
+    expect(shellResult.html).toContain('points="2.0,14.0 94.0,12.0"');
+    expect(shellResult.html).not.toContain('points="2.0,24.0 94.0,4.0"');
+  });
+
+  it('T-SHELL-24: Lenat chat bubbles can grow to the reference lane width', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-chat-msg \{[\s\S]*max-width: 640px;/.test(shellResult.html)).toBe(true);
+  });
+
+  it('T-SHELL-25: quick chips sit above the composer instead of overlapping it', () => {
+    expect(/\.clear-app \[data-pane="chat"\] \.clear-section-card \{[\s\S]*margin: -108px auto 0;/.test(shellResult.html)).toBe(true);
+  });
+});
+
+describe('Lenat deep panes — reusable display primitives', () => {
+  const paneFeatureSrc = `build for web
+theme 'nixie'
+app 'Lenat' at '/':
+  pane 'Capabilities' as 'capabilities':
+    all_concepts = [{id: 'IDEA', canonical_phrase: 'idea:', effect: 'internal', permission_scope: 'save', action_run_count: 3, synonyms_json: '["idea:","idea","new idea"]', slot_schema_json: '{"idea":{"type":"phrase","required":true}}'}]
+    display all_concepts as capability explorer
+  pane 'Knowledge' as 'knowledge':
+    all_records = [{id: 'r1', concept_id: 'IDEA', status: 'open', created_at: '2026-05-15T10:00:00.000Z', payload_json: '{"idea":"lenat clear parity","about":"Lenat"}'}]
+    display all_records as record browser
+  pane 'Map' as 'map':
+    all_records = [{id: 'r1', concept_id: 'IDEA', payload_json: 'Lenat'}, {id: 'r2', concept_id: 'PERSON', payload_json: 'Lenat'}]
+    display all_records as network graph showing edges via payload_json with color by concept_id
+  pane 'Trace' as 'trace':
+    all_audit_events = [{at: '2026-05-15T10:33:44.000Z', event_kind: 'server_started', concept_id: 'SERVER', payload_json: '{"port":50064}'}]
+    display all_audit_events as trace timeline`;
+  const paneFeatureResult = compileProgram(paneFeatureSrc);
+
+  it('T-DEEP-1: parser keeps multi-word deep-pane display formats intact', () => {
+    const ast = parse(`page 'App':
+  rows = []
+  display rows as capability explorer
+  display rows as record browser
+  display rows as trace timeline`);
+    const displays = ast.body[0].body.filter(node => node.type === NodeType.DISPLAY);
+    expect(displays.map(node => node.format)).toEqual(['capability_explorer', 'record_browser', 'trace_timeline']);
+    expect(displays.map(node => node.ui.tag)).toEqual(['capability_explorer', 'record_browser', 'trace_timeline']);
+  });
+
+  it('T-DEEP-2: capability explorer emits the Lenat master/detail shell', () => {
+    expect(paneFeatureResult.errors).toHaveLength(0);
+    expect(paneFeatureResult.html).toContain('class="clear-capability-explorer clear-lenat-explorer"');
+    expect(paneFeatureResult.html).toContain('data-capability-search');
+    expect(paneFeatureResult.html).toContain('data-capability-list');
+    expect(paneFeatureResult.html).toContain('data-capability-detail');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderCapabilityExplorer(');
+  });
+
+  it('T-DEEP-3: record browser emits chips, list, and detail affordances', () => {
+    expect(paneFeatureResult.html).toContain('class="clear-record-browser clear-lenat-explorer"');
+    expect(paneFeatureResult.html).toContain('data-record-search');
+    expect(paneFeatureResult.html).toContain('data-record-chips');
+    expect(paneFeatureResult.html).toContain('data-record-detail');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderRecordBrowser(');
+  });
+
+  it('T-DEEP-4: trace timeline emits compact filters and icon rows', () => {
+    expect(paneFeatureResult.html).toContain('class="clear-trace-timeline"');
+    expect(paneFeatureResult.html).toContain('data-trace-search');
+    expect(paneFeatureResult.html).toContain('data-trace-kind');
+    expect(paneFeatureResult.html).toContain('data-trace-days');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderTraceTimeline(');
+  });
+
+  it('T-DEEP-5: network graphs use the Lenat palette instead of generic blue business charts', () => {
+    expect(paneFeatureResult.html).toContain('class="clear-chart-card clear-network-card');
+    expect(paneFeatureResult.html).toContain('data-graph-legend');
+    expect(paneFeatureResult.html).toContain('data-graph-hint');
+    expect(paneFeatureResult.html).toContain('data-graph-stage');
+    expect(paneFeatureResult.javascript).toContain('--clear-graph-person');
+    expect(paneFeatureResult.javascript).toContain('_clearRenderLenatNetworkMap(');
+    expect(paneFeatureResult.javascript).not.toContain("const _colors = ['#465fff'");
+  });
+
+  it('T-DEEP-6: Lenat graph labels and capability slots read JSON payload fields', () => {
+    expect(paneFeatureResult.errors).toHaveLength(0);
+    expect(paneFeatureResult.javascript).toContain('recordPayload = _clearGraphPayload(r)');
+    expect(paneFeatureResult.html).toContain('selectedRow.slot_schema_json || selectedRow.slots_json');
+    expect(paneFeatureResult.html).toContain('synonymList = [selectedRow.canonical_phrase]');
+  });
+
+  it('T-DEEP-7: duplicate displays bind delete handlers to the resolved table id', () => {
+    const duplicateDisplaySrc = `build for web
+app 'Lenat' at '/':
+  pane 'Knowledge' as 'knowledge':
+    all_records = [{id: 'r1', concept_id: 'IDEA', payload_json: '{"idea":"x"}'}]
+    display all_records as record browser
+  pane 'Records' as 'records':
+    all_records = [{id: 'r1', concept_id: 'IDEA', payload_json: '{"idea":"x"}'}]
+    display all_records as table showing concept_id with delete
+when user calls DELETE /api/all_records/:id:
+  send back 'deleted' with success message`;
+    const duplicateDisplayResult = compileProgram(duplicateDisplaySrc);
+    expect(duplicateDisplayResult.errors).toHaveLength(0);
+    expect(duplicateDisplayResult.html).toContain('id="output_All_Records_2_table"');
+    expect(duplicateDisplayResult.html).toContain("document.getElementById('output_All_Records_2_table').addEventListener");
+    expect(duplicateDisplayResult.html).not.toContain("document.getElementById('output_All_Records_table').addEventListener");
+  });
+});
+
+// =============================================================================
+// SUBTITLE UNDERSCORE INTERPOLATION (formatInlineText underscore guard)
+// Regression for: /_([^_]+)_/g consuming underscores inside {variable_name}
+// placeholders, turning {all_count} into {all<em>count} in compiled HTML.
+// =============================================================================
+
+describe('subtitle — underscore variable interpolation preserved', () => {
+  const subtitleSrc = `build for web
+page 'Dashboard' at '/':
+  subtitle '{all_count} total — {pending_count} pending, {approved_count} approved'`;
+  const subtitleResult = compileProgram(subtitleSrc);
+
+  it('T-SUB-1: underscore variable names survive subtitle rendering unchanged', () => {
+    // The compiled JS/HTML must contain the raw {all_count} placeholder intact,
+    // not the broken {all<em>count} form the old italic regex produced.
+    const compiled = subtitleResult.html + (subtitleResult.javascript || '');
+    expect(compiled).not.toContain('{all<em>count}');
+    expect(compiled).not.toContain('{pending<em>count}');
+    expect(compiled).not.toContain('{approved<em>count}');
+  });
+
+  it('T-SUB-2: subtitle compiles without errors', () => {
+    expect(subtitleResult.errors).toHaveLength(0);
   });
 });
 

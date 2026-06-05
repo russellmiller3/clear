@@ -1541,9 +1541,14 @@ display response as table called 'Results'
 display rate as percent called 'Growth'
 display created as date called 'Created'
 display config as json called 'Config'
+display all_concepts as capability explorer
+display all_records as record browser
+display all_audit_events as trace timeline
 ```
 
-Format types: `dollars`/`currency` (toLocaleString USD), `percent`, `date`, `json` (formatted `<pre>`), `number` (default).
+Format types: `dollars`/`currency` (toLocaleString USD), `percent`, `date`, `json` (formatted `<pre>`), `number` (default), plus rich inspectors: `table`, `cards`, `chat`, `capability explorer`, `record browser`, `trace timeline`.
+
+Use the rich inspector formats for app panes where the user browses many related rows. `capability explorer` expects concept/capability-shaped rows, `record browser` expects saved knowledge rows, and `trace timeline` expects audit-event rows.
 
 The label auto-generates from the variable name: `subtotal` -> "Subtotal",
 `total_due` -> "Total Due". Only use `called` when the label differs.

@@ -273,6 +273,9 @@ The tables below cover every feature in the language with exact syntax. Jump to 
 | Table | `display X as table showing col1, col2` | Polished HTML table — auto-detects status pills, avatar circles, money columns; sortable headers; selectable rows; **auto-emitted toolbar search input** that filters rows in-place across all visible columns (Codex chunk #5, 2026-04-26 — every `display X as table` gets it for free, no syntax to opt in) |
 | Table actions block | `display X as table ... with actions:` + indented `'Label' is style` lines | Hover-revealed action buttons in rightmost column (styles: primary, ghost, danger, secondary) |
 | Detail panel | `detail panel for selected_deal:` + body + `actions:` | 340px right rail populated from the selected table row, with sticky bottom action buttons. Comment-only and vague update buttons are compile errors |
+| Capability explorer | `display concepts as capability explorer` | Lenat-style master/detail explorer for capability/concept rows: search, grouped list, triggers, slots, effect/scope details |
+| Record browser | `display records as record browser` | Lenat-style knowledge browser for record rows: search, concept filter chips, list, detail payload panel |
+| Trace timeline | `display audit_events as trace timeline` | Lenat-style event timeline with search, event-kind filter, time-window filter, and compact trace rows |
 | Cards | `display X as cards showing name, description` | Card grid |
 | List | `display X as list` | Bullet list |
 | Currency | `display X as dollars` | `$1,234.56` |

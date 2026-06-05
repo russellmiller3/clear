@@ -341,6 +341,7 @@ export const NodeType = Object.freeze({
   UNIT_ASSERT: 'unit_assert', // Value-level assertion: expect x is 5, expect x is greater than 3
   STYLE_DEF: 'style_def',
   THEME: 'theme',
+  FONT: 'font',
 
   // Backend features (Phase 5)
   ENDPOINT: 'endpoint',
@@ -761,8 +762,22 @@ function displayNode(expression, format, label, line) {
   const displayLabel = label || (expression && expression.type === NodeType.VARIABLE_REF
     ? autoLabelFromName(expression.name)
     : 'Output');
+  const displayTags = {
+    table: 'table',
+    cards: 'cards',
+    list: 'list',
+    chat: 'chat',
+    gallery: 'gallery',
+    map: 'map',
+    calendar: 'calendar',
+    qr: 'qr',
+    qrcode: 'qr',
+    capability_explorer: 'capability_explorer',
+    record_browser: 'record_browser',
+    trace_timeline: 'trace_timeline',
+  };
   const ui = {
-    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : format === 'chat' ? 'chat' : format === 'gallery' ? 'gallery' : format === 'map' ? 'map' : format === 'calendar' ? 'calendar' : (format === 'qr' || format === 'qrcode') ? 'qr' : 'output',
+    tag: displayTags[format] || 'output',
     id: `output_${sanitizeForId(displayLabel.replace(/\s+/g, '_'))}`,
     label: displayLabel,
   };
@@ -1384,6 +1399,27 @@ const CANONICAL_DISPATCH = new Map([
     } else {
       ctx.body.push({ type: NodeType.THEME, name: themeName, line: ctx.line });
     }
+    return ctx.i + 1;
+  }],
+  ['font', (ctx) => {
+    if (ctx.tokens.length < 2) {
+      ctx.errors.push({ line: ctx.line, message: "font needs a family — try: font sans 'Inter', font serif 'Instrument Serif', or font mono 'JetBrains Mono'" });
+      return ctx.i + 1;
+    }
+    const roles = new Set(['sans', 'serif', 'mono', 'display']);
+    let role = 'sans';
+    let familyToken = ctx.tokens[1];
+    const maybeRole = String(ctx.tokens[1]?.value || '').toLowerCase();
+    if (roles.has(maybeRole)) {
+      role = maybeRole;
+      familyToken = ctx.tokens[2];
+    }
+    if (!familyToken || (familyToken.type !== TokenType.STRING && familyToken.type !== TokenType.IDENTIFIER && familyToken.type !== TokenType.KEYWORD)) {
+      ctx.errors.push({ line: ctx.line, message: `font ${role} needs a family name — try: font ${role} 'Inter'` });
+      return ctx.i + 1;
+    }
+    const family = String(familyToken.value || '').replace(/^['"]|['"]$/g, '');
+    ctx.body.push({ type: NodeType.FONT, role, family, line: ctx.line });
     return ctx.i + 1;
   }],
   ['define_role', (ctx) => {
@@ -8259,6 +8295,15 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
 // CRUD OPERATIONS (Phase 9)
 // =============================================================================
 
+function skipOptionalArticles(tokens, pos) {
+  while (pos < tokens.length) {
+    const value = String(tokens[pos].value || '').toLowerCase();
+    if (value !== 'a' && value !== 'an' && value !== 'the') break;
+    pos++;
+  }
+  return pos;
+}
+
 function parseSave(tokens, line) {
   let pos = 1; // skip "save"
   if (pos >= tokens.length) {
@@ -8305,8 +8350,13 @@ function parseSave(tokens, line) {
   } else if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
     pos++; // "save X to Y" = update existing
   }
+  pos = skipOptionalArticles(tokens, pos);
   // Skip optional "new": "save X as new Model"
-  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
+  if (pos < tokens.length && String(tokens[pos].value || '').toLowerCase() === 'new') {
+    isInsert = true;
+    pos++;
+    pos = skipOptionalArticles(tokens, pos);
+  }
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a target. Example: save new_user to Users' };
   }
@@ -8641,9 +8691,14 @@ function parseSaveAssignment(name, tokens, pos, line) {
       || (typeof tokens[pos].value === 'string' && (tokens[pos].value.toLowerCase() === 'as' || tokens[pos].value.toLowerCase() === 'to')))) {
     pos++;
   }
+  pos = skipOptionalArticles(tokens, pos);
   // Skip optional "new" before target: "save X as new Todo"
   let isInsert = false;
-  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
+  if (pos < tokens.length && String(tokens[pos].value || '').toLowerCase() === 'new') {
+    isInsert = true;
+    pos++;
+    pos = skipOptionalArticles(tokens, pos);
+  }
   let target = 'unknown';
   if (pos < tokens.length) {
     target = tokens[pos].value;
@@ -9155,8 +9210,23 @@ function parseDisplay(tokens, line) {
   if (pos < tokens.length && tokens[pos].canonical === 'as_format') {
     pos++;
     if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
-      format = tokens[pos].value.toLowerCase();
-      pos++;
+      const firstFormatWord = String(tokens[pos].value).toLowerCase();
+      const secondFormatWord = pos + 1 < tokens.length && (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD)
+        ? String(tokens[pos + 1].value).toLowerCase()
+        : '';
+      const deepPaneFormats = {
+        'capability explorer': 'capability_explorer',
+        'record browser': 'record_browser',
+        'trace timeline': 'trace_timeline',
+      };
+      const deepPaneFormat = deepPaneFormats[`${firstFormatWord} ${secondFormatWord}`];
+      if (deepPaneFormat) {
+        format = deepPaneFormat;
+        pos += 2;
+      } else {
+        format = firstFormatWord;
+        pos++;
+      }
     }
   }
   // Handle "as json" synonym collision: tokenizer eats "as json" as single to_json keyword
@@ -12296,6 +12366,36 @@ function parsePrimary(tokens, pos, line, end) {
   // `items = get all Items where owner is this user_id`. Previously this
   // only worked inside specific forms (delete/update/look up with this X).
   // Now it works in any expression position.
+  if (tok.value === 'call' && pos + 1 < maxPos && tokens[pos + 1].value === 'function') {
+    let withIndex = -1;
+    for (let scan = pos + 2; scan < maxPos; scan++) {
+      const tk = tokens[scan];
+      if (tk.value === 'with' || tk.canonical === 'with') { withIndex = scan; break; }
+    }
+    const nameEnd = withIndex >= 0 ? withIndex : maxPos;
+    const nameExpr = parseExpression(tokens, pos + 2, line, nameEnd);
+    if (nameExpr.error || !nameExpr.node) {
+      return { error: "`call function` needs a function name. Example: call function GREET with 'world'" };
+    }
+    let argExpr = null;
+    let nextPos = nameExpr.nextPos || nameEnd;
+    if (withIndex >= 0 && withIndex + 1 < maxPos) {
+      const parsedArg = parseExpression(tokens, withIndex + 1, line, maxPos);
+      if (parsedArg.error) return parsedArg;
+      argExpr = parsedArg.node;
+      nextPos = parsedArg.nextPos || maxPos;
+    }
+    return {
+      node: {
+        type: NodeType.CALL_FUNCTION,
+        functionName: nameExpr.node,
+        argument: argExpr,
+        line,
+      },
+      nextPos,
+    };
+  }
+
   if (tok.value === 'this' && pos + 1 < maxPos) {
     const nextTok = tokens[pos + 1];
     // Only match if the next token is a plausible identifier name.

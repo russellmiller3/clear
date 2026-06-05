@@ -1970,9 +1970,7 @@ shared phrases — render it as a **network graph**:
 ```clear
 define all_records as: look up records in Records table
 
-display all_records as network graph
-  showing edges via payload_json
-  with color by concept_id
+display all_records as network graph showing edges via payload_json with color by concept_id
 ```
 
 Each row becomes a node. The compiler scans the field named after `showing
@@ -1984,6 +1982,18 @@ kinds (tasks vs notes vs people in Lenat, for example).
 The result is a force-directed layout: bigger nodes mean more connections,
 nodes that share many edges cluster together, isolated rows sit at the
 edge. Used in Lenat-Clear's "How it connects" pane.
+
+For Lenat-style data browsers, use the inspector displays:
+
+```clear
+display all_concepts as capability explorer
+display all_records as record browser
+display all_audit_events as trace timeline
+```
+
+These are for dense panes where the user searches, filters, and inspects one
+row in detail. A table is still the better choice when the user is editing
+business rows like deals, tickets, or tasks.
 
 ---
 
