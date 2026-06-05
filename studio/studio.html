@@ -465,6 +465,10 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 /* Meta chips */
 #meta-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 12px; border-bottom: 1px solid var(--bd); min-height: 0; }
 #meta-chips:empty { display: none; }
+/* Meph-watching badge — floats top-right over the preview iframe, visible only when an app is live */
+#meph-watching-badge { display: none; position: absolute; top: 8px; right: 10px; z-index: 20; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 20px; font-size: 11px; font-weight: 500; color: var(--tx3); background: color-mix(in oklch, var(--bg3) 90%, transparent); border: 1px solid var(--bd2); white-space: nowrap; pointer-events: none; letter-spacing: .15px; }
+#meph-watching-badge.visible { display: inline-flex; }
+#meph-watching-badge svg { width: 11px; height: 11px; stroke: var(--tx4); flex-shrink: 0; }
 .chip { font-size: 10px; font-family: var(--mono); padding: 2px 7px; border-radius: 4px; border: none; color: var(--tx3); background: none; white-space: nowrap; cursor: default; user-select: none; }
 .chip.chip-table { color: var(--accent); }
 .chip.chip-agent { color: var(--green); }
@@ -1001,9 +1005,14 @@ body.builder-mode.show-source #editor-pane {
       <button class="prev-tab" onclick="showTab('supervisor')" title="Run sweeps, browse past sessions, drill into trajectories">Supervisor</button>
       <button class="prev-tab" onclick="copyTerminal()" title="Copy the full terminal output (with the .clear source attached) to the clipboard so you can paste it to Claude/Meph for help" style="font-size:10px;padding:2px 6px;opacity:0.85;">Copy Terminal</button>
       <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
-      <button class="prev-tab" id="fullscreen-toggle-btn" onclick="togglePreviewFullscreen()" title="Hide editor + chat — preview takes the whole window. Press Esc or click again to restore." style="margin-left:auto;font-size:11px;">⛶ Fullscreen</button>
+      <button class="prev-tab" id="screenshot-btn" onclick="doScreenshot()" title="Screenshot the preview — downloads a PNG for HTML apps, opens a new tab for running server apps" style="margin-left:auto;font-size:11px;">&#128247; Screenshot</button>
+      <button class="prev-tab" id="fullscreen-toggle-btn" onclick="togglePreviewFullscreen()" title="Hide editor + chat — preview takes the whole window. Press Esc or click again to restore." style="font-size:11px;">⛶ Fullscreen</button>
     </div>
     <div id="meta-chips"></div>
+    <div id="meph-watching-badge" title="Meph can read your clicks, inputs, and form submissions in this preview — it helps him check if the app works correctly">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      Meph can see interactions
+    </div>
     <div id="preview-content">
       <div class="empty-state">
         <div class="icon">&#9654;</div>
@@ -2279,6 +2288,7 @@ function showCompiledAppPreview() {
   compileAnimCancel = true;
   compileAnimRunning = false;
   showTab('output');
+  updateMephWatchingBadge();
 }
 
 function showOutput() {
@@ -2782,6 +2792,50 @@ function appendTerminalText(text, cls) {
   const json = prettyJson(text);
   if (json) { appendTerminal(json + '\n'); return; }
   appendTerminal('<span class="' + (cls || 'term-out') + '">' + escHtml(text) + '</span>\n');
+}
+
+// Screenshot — captures #preview-content and stages it in the Meph chat input.
+// User can then add context ("this button is broken") or just hit Send.
+window.doScreenshot = async function() {
+  const target = document.getElementById('preview-content');
+  if (!target || (!runningPort && !lastCompiled)) {
+    showToast('No preview to capture — compile an app first');
+    return;
+  }
+  try {
+    if (typeof html2canvas === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        script.onload = resolve; script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    const canvas = await html2canvas(target, {
+      useCORS: true, allowTaint: false, logging: false,
+      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#fff',
+      scale: window.devicePixelRatio || 1,
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+    pendingImages.push({ dataUrl, mediaType: 'image/png' });
+    renderImagePreviews();
+    // Open chat panel if collapsed, then focus input
+    const chatPane = document.getElementById('chat-pane');
+    if (chatPane && chatPane.classList.contains('collapsed') && typeof toggleChat === 'function') toggleChat();
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) { chatInput.focus(); chatInput.placeholder = 'Describe the issue, or just send…'; }
+    showToast('Preview staged in chat');
+  } catch (e) {
+    showToast('Capture failed — paste a screenshot from your OS instead');
+  }
+};
+
+function updateMephWatchingBadge() {
+  const badge = document.getElementById('meph-watching-badge');
+  if (!badge) return;
+  // Visible whenever a live app is in the preview — server or HTML
+  const hasLiveApp = runningPort || (lastCompiled && lastCompiled.html);
+  badge.classList.toggle('visible', !!hasLiveApp);
 }
 
 // Fullscreen toggle — hides the editor + Meph chat panes so the running app
@@ -4255,6 +4309,7 @@ window.doRun = async function() {
       setStatus('ok', 'Running :' + data.port);
       runningPort = data.port;
       studioTelemetry.firstApp('run');
+      updateMephWatchingBadge();
       // Show output — but don't switch tabs if compile animation is playing
       if (!compileAnimRunning) {
         showTab('output');
@@ -4274,6 +4329,7 @@ window.doStop = async function() {
   appendTerminal('<span class="term-status">Server stopped.</span>\n');
   setStatus('ok', 'Stopped');
   runningPort = null;
+  updateMephWatchingBadge();
   if (activeTab === 'output') showOutput();
 };
 
