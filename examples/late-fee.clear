@@ -1,0 +1,42 @@
+/*
+  Late-fee calculator -- overdue invoice fees.
+
+  ARCHITECTURE
+  ============
+  (pure logic -- no database, no pages, no network)
+
+      late_fee(days_overdue, daily_rate, cap)
+            |
+            v
+      test blocks  --->  expect fee is <amount>
+
+  An overdue invoice racks up a fee for each day it is late,
+  but the fee never climbs past a cap the business sets.
+*/
+
+define function late_fee(days_overdue, daily_rate, cap):
+  if days_overdue <= 0:
+    return 0
+  otherwise:
+    uncapped_fee = days_overdue * daily_rate
+    if uncapped_fee > cap:
+      return cap
+    otherwise:
+      return uncapped_fee
+
+
+test 'three days overdue at five dollars a day is fifteen dollars':
+  fee = late_fee(3, 5, 100)
+  expect fee is 15
+
+test 'an invoice paid on time owes nothing':
+  fee = late_fee(0, 5, 100)
+  expect fee is 0
+
+test 'paying early is never a credit -- the fee floors at zero':
+  fee = late_fee(-2, 5, 100)
+  expect fee is 0
+
+test 'the fee never climbs past the cap the business sets':
+  fee = late_fee(50, 5, 100)
+  expect fee is 100
