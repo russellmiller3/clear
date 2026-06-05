@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clear Studio</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%234ab8d8'/%3E%3Cstop offset='100%25' stop-color='%231a6a85'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M16 2L4 10v12l12 8 12-8V10L16 2z' fill='url(%23g)' opacity='0.9'/%3E%3Cpath d='M16 2L4 10l12 8 12-8L16 2z' fill='white' opacity='0.25'/%3E%3Cpath d='M4 10l12 8v12L4 22V10z' fill='%23000' opacity='0.1'/%3E%3C/svg%3E"/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Orbitron:wght@700&display=swap');
@@ -50,7 +51,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 
 /* Layout */
 #app { display: flex; flex-direction: column; height: 100vh; }
-#toolbar { flex-shrink: 0; height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: linear-gradient(180deg, var(--bg2), var(--bg)); border-bottom: 1px solid var(--bd); overflow-x: auto; overflow-y: hidden; }
+/* Wrap to a second row instead of clipping on laptop widths — every control keeps its label (Obvious Over Cryptic rule), nothing gets cut off. */
+#toolbar { flex-shrink: 0; min-height: 46px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; row-gap: 6px; padding: 6px 14px; background: linear-gradient(180deg, var(--bg2), var(--bg)); border-bottom: 1px solid var(--bd); }
 #main-area { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 #editor-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; }
 /* Pane resizer — 6px visible line, but a 22px-wide invisible hit target
@@ -115,7 +117,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #toolbar select { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: var(--font); cursor: pointer; transition: border-color .15s; }
 #toolbar select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 #builder-theme-picker { min-width: 92px; }
-.toolbar-sep { width: 1px; height: 22px; background: var(--bd2); }
+.toolbar-sep { width: 1px; height: 22px; background: var(--bd2); flex: 0 0 auto; }
+/* Pushes the reference links + status to the right edge so the toolbar reads as groups. */
+.toolbar-spacer { flex: 1 1 auto; min-width: 6px; }
+/* Reference items (Syntax, Guide) — link-styled, not button-styled, so they read as "look it up" not "do something". */
+.toolbar-link { background: none; border: none; color: var(--tx3); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 6px; white-space: nowrap; flex: 0 0 auto; transition: color .15s, background .15s; }
+.toolbar-link:hover { color: var(--accent); background: color-mix(in oklch, var(--accent) 10%, transparent); }
+.toolbar-link svg { width: 13px; height: 13px; opacity: .85; }
 /* Pearlescent toolbar buttons (Russell, 2026-05-04). Two stacked
    background-image layers — pearl base + opal sweep parked off-screen
    right. Hover animates background-position right-to-left over 720ms. */
@@ -580,6 +588,7 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 #chat-scroll-btn { display: none; position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); width: 38px; height: 38px; border-radius: 50%; padding: 0; border: 1px solid color-mix(in oklch, var(--bg3) 60%, black); cursor: pointer; z-index: 10; background: radial-gradient(ellipse at 45% 32%, color-mix(in oklch, var(--bg3) 55%, white) 0%, var(--bg3) 52%, color-mix(in oklch, var(--bg3) 60%, black) 100%); box-shadow: 0 4px 14px rgba(0,0,0,.22), inset 0 1px 2px rgba(255,255,255,.65), inset 0 -2px 4px rgba(0,0,0,.18); display: none; align-items: center; justify-content: center; color: var(--tx2); transition: transform .1s, box-shadow .1s; }
 #chat-scroll-btn:hover { transform: translateX(-50%) translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 1px 2px rgba(255,255,255,.65), inset 0 -2px 4px rgba(0,0,0,.18); }
 #chat-scroll-btn:active { transform: translateX(-50%) translateY(1px); box-shadow: 0 2px 6px rgba(0,0,0,.18), inset 0 1px 2px rgba(0,0,0,.12), inset 0 -1px 2px rgba(255,255,255,.2); }
+#chat-scroll-btn svg { width: 17px; height: 17px; }
 #chat-input-area { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--bd); background: var(--bg2); }
 #chat-input { flex: 1; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 10px; padding: 10px 14px; font-size: 13px; font-family: var(--font); resize: none; transition: border-color .15s; }
 #chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -647,7 +656,8 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 .toolbar-btn:active::after { opacity: 1; transition: opacity 0s; }
 
 /* Theme toggle */
-#theme-toggle { background: none; border: 1px solid var(--bd2); border-radius: 20px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .2s; color: var(--tx3); }
+#theme-toggle { background: none; border: 1px solid var(--bd2); border-radius: 20px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .2s; color: var(--tx3); flex: 0 0 auto; }
+#theme-toggle svg { width: 15px; height: 15px; }
 #theme-toggle:hover { border-color: var(--accent); color: var(--accent); transform: rotate(20deg); }
 
 /* Chat loading indicator */
@@ -892,25 +902,29 @@ body.builder-mode.show-source #editor-pane {
       <option value="builder">AI mode</option>
     </select>
     <span class="toolbar-sep"></span>
-    <button class="toolbar-btn" onclick="newFile()">New</button>
-    <button class="toolbar-btn" onclick="document.getElementById('load-file-input').click()" title="Load a .clear file from disk">Load</button>
+    <!-- File group: create / open / save / download -->
+    <button class="toolbar-btn" onclick="newFile()" title="Start a fresh, blank Clear file">New</button>
+    <button class="toolbar-btn" onclick="document.getElementById('load-file-input').click()" title="Open a .clear file from your computer">Load</button>
     <input type="file" id="load-file-input" accept=".clear,.txt" multiple style="display:none">
+    <button class="toolbar-btn" onclick="doSave()" title="Save this Clear file to your Desktop">Save</button>
+    <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download the built app as an HTML file" style="display:none">Download</button>
+    <span class="toolbar-sep"></span>
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
-    <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
-    <button class="toolbar-btn" onclick="doProve()" title="Run the Decidable Core math prover against this source — proves test blocks as theorems and surfaces counterexamples">Prove</button>
-    <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show/hide .clear source" style="display:none">Show Source ◀</button>
+    <!-- Build / run group: turn the Clear code into a running app -->
+    <button class="toolbar-btn" onclick="doCompile()" title="Build the app from your Clear code — sets up the data, the behind-the-scenes server, and the page, then starts it if it has a backend. (Ctrl+S)">Compile</button>
+    <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Start (or restart) the already-built app without rebuilding it. (Ctrl+Enter)" style="display:none">Run</button>
+    <button id="stop-btn" class="toolbar-btn" onclick="doStop()" title="Stop the running app" style="display:none">Stop</button>
+    <button class="toolbar-btn" onclick="doProve()" title="Prove your business rules hold for every possible input — turns each rule into a checked theorem and shows any counterexample">Prove</button>
+    <button id="direct-edit-btn" class="toolbar-btn" onclick="toggleDirectEdit()" title="Direct Edit: switch it on, then click any part of the running app in the preview. Studio jumps to the Clear line that made it and drafts a change in chat. Needs a compiled app showing in the preview." style="display:none;white-space:nowrap;flex-shrink:0;">Direct Edit</button>
+    <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show or hide the .clear source code" style="display:none">Show Source</button>
     <select id="builder-theme-picker" title="Preview theme" style="display:none"></select>
-    <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
-    <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
-    <button id="direct-edit-btn" class="toolbar-btn" onclick="toggleDirectEdit()" title="Click any piece of the running app to jump to its Clear source line and draft a Meph edit" style="display:none;white-space:nowrap;flex-shrink:0;">Direct Edit</button>
     <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
-    <span class="toolbar-sep"></span>
-    <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
-    <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download compiled HTML" style="display:none">Download</button>
-    <button class="toolbar-btn" onclick="openDocs('syntax')" title="Syntax reference">Syntax</button>
-    <button class="toolbar-btn" onclick="openDocs('user-guide')" title="User guide">Guide</button>
-    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
+    <span class="toolbar-spacer"></span>
+    <!-- Reference links: look something up (lighter weight than action buttons) -->
+    <button class="toolbar-link" onclick="openDocs('syntax')" title="Syntax reference — how to write Clear"><i data-lucide="code"></i>Syntax</button>
+    <button class="toolbar-link" onclick="openDocs('user-guide')" title="User guide — learn Clear step by step"><i data-lucide="book-open"></i>Guide</button>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark"></button>
     <span id="plan-badge" class="plan-badge" style="display:none" onclick="window.location='/billing'" title="Click to manage billing"></span>
     <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <span id="tests-stats-badge" class="compile-stats-badge tests-stats-badge"></span>
@@ -947,7 +961,7 @@ body.builder-mode.show-source #editor-pane {
     </div>
     <div id="meph-todos"></div>
     <div id="chat-messages"></div>
-    <button id="chat-scroll-btn" onclick="scrollChatToBottom()" title="Scroll to latest"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></button>
+    <button id="chat-scroll-btn" onclick="scrollChatToBottom()" title="Scroll to latest"><i data-lucide="arrow-down"></i></button>
     <div id="chat-input-area">
       <textarea id="chat-input" rows="2" placeholder="Ask Meph to build something... (Enter to send)"></textarea>
       <button id="chat-mic" onclick="toggleMic()" title="Speak to Meph (voice mode)" style="display:none;background:var(--bg3);color:var(--tx);border:1px solid var(--bd2);border-radius:10px;padding:10px 12px;font-size:15px;cursor:pointer;transition:all .15s;">🎙</button>
@@ -1012,7 +1026,7 @@ body.builder-mode.show-source #editor-pane {
     </div>
     <div id="meta-chips"></div>
     <div id="meph-watching-badge" title="Meph can read your clicks, inputs, and form submissions in this preview — it helps him check if the app works correctly">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      <i data-lucide="eye"></i>
       Meph can see interactions
     </div>
     <div id="preview-content">
@@ -6958,13 +6972,21 @@ window.doSave = async function() {
 // ==========================================================================
 let currentTheme = localStorage.getItem('clear_theme') || 'light';
 document.documentElement.setAttribute('data-theme', currentTheme);
-document.getElementById('theme-toggle').textContent = currentTheme === 'light' ? '🌙' : '☀️';
+// Moon when in light mode (click → go dark), sun when in dark mode (click → go light).
+// Lucide icons: drop in an <i data-lucide> then ask Lucide to paint it.
+function _paintThemeToggle() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.innerHTML = '<i data-lucide="' + (currentTheme === 'light' ? 'moon' : 'sun') + '"></i>';
+  if (window.lucide && lucide.createIcons) lucide.createIcons();
+}
+_paintThemeToggle();
 
 window.toggleTheme = function() {
   currentTheme = currentTheme === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', currentTheme);
   localStorage.setItem('clear_theme', currentTheme);
-  document.getElementById('theme-toggle').textContent = currentTheme === 'light' ? '🌙' : '☀️';
+  _paintThemeToggle();
 };
 
 // ==========================================================================
@@ -7085,7 +7107,7 @@ window.toggleSource = function() {
   const body = document.body;
   const btn = document.getElementById('source-toggle-btn');
   const shown = body.classList.toggle('show-source');
-  btn.textContent = shown ? 'Hide Source ▶' : 'Show Source ◀';
+  btn.textContent = shown ? 'Hide Source' : 'Show Source';
   btn.title = shown ? 'Hide .clear source' : 'Show .clear source';
 };
 
