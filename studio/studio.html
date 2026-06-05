@@ -6221,6 +6221,10 @@ function updateScrollBtn() {
   if (!btn || !el) return;
   const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 60;
   btn.style.display = atBottom ? 'none' : 'flex';
+  // Float it a half inch (~48px) above the input box — works in both Dev and
+  // AI mode even though the input area is a different height in each.
+  const inputArea = document.getElementById('chat-input-area');
+  if (inputArea) btn.style.bottom = (inputArea.offsetHeight + 48) + 'px';
 }
 
 document.getElementById('chat-messages').addEventListener('scroll', updateScrollBtn);
