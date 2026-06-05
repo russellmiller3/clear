@@ -2485,6 +2485,23 @@ Use `nav section` for sidebar groups and `nav item` for linked rows. Use
 icon names when they contain hyphens. Do not use plain text rows for real app
 navigation anymore.
 
+**NEVER use emoji in designs — use Lucide icons (MANDATORY).** Decorative
+icons in app chrome — buttons, nav items, headings, stat cards, empty states,
+badges — must be Lucide icons (`with icon 'name'`), never emoji glyphs. Emoji
+render inconsistently across operating systems and browsers and read amateur on
+a real product. Every icon name comes from lucide.dev/icons (e.g. `inbox`,
+`check`, `shield`, `zap`, `circle-alert`, `trash-2`). The compiled app already
+loads Lucide and paints these automatically.
+
+- ✅ `nav item 'Pending' to '/pending' with icon 'inbox'`
+- ✅ `stat card 'Revenue': value total_revenue icon 'trending-up'`
+- ❌ `heading '📥 Pending'` — emoji in chrome
+- ❌ `button '✅ Approve'` — use `with icon 'check'` shape instead
+
+**The only exception is when the user explicitly asks for an emoji**, or when an
+emoji is genuine user-entered content (a chat message, a todo someone typed) —
+that's data, not design, and stays as-is.
+
 **`app_content` workbench rule** (prefer explicit content chrome):
 ```clear
 section 'Content' with style app_content:
