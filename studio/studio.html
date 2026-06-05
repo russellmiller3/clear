@@ -4245,7 +4245,7 @@ window.doRun = async function() {
       studioTelemetry.firstApp('run');
       // Show output — but don't switch tabs if compile animation is playing
       if (!compileAnimRunning) {
-        showTab('compiled');
+        showTab('output');
       }
       // Auto-run tests after server starts — switch to Tests tab if any fail
       autoRunTests();
