@@ -1020,6 +1020,7 @@ body.builder-mode.show-source #editor-pane {
       <button class="prev-tab" onclick="showTab('flywheel')" title="Factor DB training signal — rows accumulated from every Meph session">Flywheel</button>
       <button class="prev-tab" onclick="showTab('supervisor')" title="Run sweeps, browse past sessions, drill into trajectories">Supervisor</button>
       <button class="prev-tab" onclick="copyTerminal()" title="Copy the full terminal output (with the .clear source attached) to the clipboard so you can paste it to Claude/Meph for help" style="font-size:10px;padding:2px 6px;opacity:0.85;">Copy Terminal</button>
+      <button class="prev-tab" onclick="copyDebugBundle()" title="Copy the WHOLE session — the full chat with Meph (every move he made), all compiler errors and warnings, the terminal, and your source — into one paste. Use this when something looks wrong in the preview or Meph is stuck." style="font-size:10px;padding:2px 6px;opacity:0.85;">Copy Bundle</button>
       <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
       <button class="prev-tab" id="screenshot-btn" onclick="doScreenshot()" title="Screenshot the preview — downloads a PNG for HTML apps, opens a new tab for running server apps" style="margin-left:auto;font-size:11px;">&#128247; Screenshot</button>
       <button class="prev-tab" id="fullscreen-toggle-btn" onclick="togglePreviewFullscreen()" title="Hide editor + chat — preview takes the whole window. Press Esc or click again to restore." style="font-size:11px;">⛶ Fullscreen</button>
@@ -2790,6 +2791,80 @@ window.copyTerminal = async function() {
     appendTerminalText('Copied terminal output (' + lines.length + ' line(s)) plus source to clipboard. Paste it into a chat to ask for help.', 'term-ok');
   } catch (err) {
     appendTerminalText('Could not copy terminal: ' + (err.message || String(err)), 'term-err');
+  }
+};
+
+// Copy Debug Bundle — the WHOLE picture for debugging, not just the terminal:
+// the full chat (you + every move Meph made), all compiler errors + warnings,
+// the terminal output, and the .clear source. One paste tells the helper
+// everything that happened. Use this when something looks wrong in the preview
+// or Meph is stuck — Copy Terminal alone misses the chat and the compiler gaps.
+window.copyDebugBundle = async function() {
+  const stripHtml = (h) => { const tmp = document.createElement('div'); tmp.innerHTML = h; return (tmp.textContent || tmp.innerText || '').trim(); };
+  const parts = [];
+  parts.push('# Clear Studio — full debug bundle');
+  parts.push('_Chat + Meph\'s moves + compiler errors + terminal + source, for debugging._');
+  parts.push('');
+
+  // 1) Compiler errors + warnings — what the build is unhappy about
+  parts.push('## Compiler errors & warnings');
+  const errs = (lastCompiled && lastCompiled.errors) || [];
+  const warns = (lastCompiled && lastCompiled.warnings) || [];
+  if (errs.length || warns.length) {
+    if (errs.length) {
+      parts.push('### Errors');
+      errs.forEach(e => parts.push('- Line ' + (e.line || '?') + ': ' + (e.message || String(e))));
+    }
+    if (warns.length) {
+      parts.push('### Warnings');
+      warns.forEach(w => parts.push('- ' + (typeof w === 'string' ? w : (w.message || JSON.stringify(w)))));
+    }
+  } else {
+    parts.push('_(none — last compile was clean, or nothing has compiled yet)_');
+  }
+  parts.push('');
+
+  // 2) Full chat — you + Meph, including every tool step Meph took
+  parts.push('## Chat transcript (you + Meph, including Meph\'s tool steps)');
+  if (chatMessages && chatMessages.length) {
+    chatMessages.forEach(m => {
+      if (m.role === 'system') return;
+      let body = '';
+      if (typeof m.content === 'string') body = m.content;
+      else if (Array.isArray(m.content)) body = m.content.map(c => c.type === 'text' ? c.text : '[' + (c.type || 'item') + ']').join(' ');
+      const steps = [];
+      if (Array.isArray(m.timeline)) m.timeline.forEach(ev => { if (ev.type === 'tool') steps.push('    - tool: ' + (ev.summary || ev.name || 'step')); });
+      else if (Array.isArray(m.toolSteps)) m.toolSteps.forEach(s => steps.push('    - tool: ' + (s.summary || s.name || String(s))));
+      parts.push('**' + (m.role === 'user' ? 'You' : 'Meph') + ':** ' + (body || '').trim());
+      if (steps.length) parts.push(steps.join('\n'));
+      parts.push('');
+    });
+  } else {
+    parts.push('_(no chat yet)_');
+    parts.push('');
+  }
+
+  // 3) Terminal output (newest first, matches the on-screen order)
+  const termLines = terminalEntries.slice().reverse().map(stripHtml).filter(Boolean);
+  parts.push('## Terminal output (newest first)');
+  parts.push(termLines.length ? '```\n' + termLines.join('\n') + '\n```' : '_(empty)_');
+  parts.push('');
+
+  // 4) The source that produced all of the above
+  const source = (window._editor && window._editor.state.doc.toString()) || '';
+  if (source.trim()) {
+    parts.push('## Source (.clear)');
+    parts.push('```clear\n' + source + '\n```');
+  }
+
+  const text = parts.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    const msg = 'Copied FULL debug bundle (' + (chatMessages ? chatMessages.filter(m => m.role !== 'system').length : 0) + ' chat msgs, ' + errs.length + ' errors, ' + warns.length + ' warnings, ' + termLines.length + ' terminal lines) + source. Paste it into a chat to ask for help.';
+    appendTerminalText(msg, 'term-ok');
+    showToast('Debug bundle copied');
+  } catch (err) {
+    appendTerminalText('Could not copy debug bundle: ' + (err.message || String(err)), 'term-err');
   }
 };
 
