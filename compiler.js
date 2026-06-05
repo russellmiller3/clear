@@ -17887,6 +17887,9 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
               sourceKind: 'table',
               targetName: sanitizeName(astNode.variable),
               tableName: pluralizeName(astNode.target),
+              // Preserve any `where ...` filter so the first-paint read matches
+              // what the page actually queries (e.g. records WHERE concept_id is X).
+              filter: astNode.condition ? conditionToFilter(astNode.condition, ctx) : null,
             });
           }
           if (astNode.type === NodeType.ON_PAGE_LOAD) {
@@ -17923,17 +17926,24 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     }
     for (const appBlock of appBlocks) {
       const appRoute = appBlock.route || '/';
-      if (!appRoute.startsWith('/api/') && !appRoute.startsWith('/auth/')) {
-        const firstPaintReads = collectFirstPaintReads(appBlock.body);
-        if (firstPaintReads.length > 0) routeFirstPaintReads.set(appRoute, firstPaintReads);
+      // Gather first-paint reads from the app body AND every pane, deduped by
+      // target name. Client-side navigation swaps panes without a full reload,
+      // so every pane route must hydrate the WHOLE app's shared lookup state —
+      // otherwise landing on /today and clicking to /knowledge shows empty data.
+      const sharedByTarget = new Map();
+      const addShared = (reads) => { for (const r of reads) if (!sharedByTarget.has(r.targetName)) sharedByTarget.set(r.targetName, r); };
+      addShared(collectFirstPaintReads(appBlock.body));
+      for (const pane of (appBlock.panes || [])) addShared(collectFirstPaintReads(pane.body));
+      const sharedReads = Array.from(sharedByTarget.values());
+      if (sharedReads.length > 0 && !appRoute.startsWith('/api/') && !appRoute.startsWith('/auth/')) {
+        routeFirstPaintReads.set(appRoute, sharedReads);
       }
       for (const pane of (appBlock.panes || [])) {
         const slug = pane.route || '';
         if (!slug) continue;
         const fullRoute = slug.startsWith('/') ? slug : (appRoute === '/' ? `/${slug}` : `${appRoute}/${slug}`);
         if (fullRoute.startsWith('/api/') || fullRoute.startsWith('/auth/')) continue;
-        const firstPaintReads = collectFirstPaintReads(pane.body);
-        if (firstPaintReads.length > 0) routeFirstPaintReads.set(fullRoute, firstPaintReads);
+        if (sharedReads.length > 0) routeFirstPaintReads.set(fullRoute, sharedReads);
       }
     }
     const routeHasSameAppRead = Array.from(routeFirstPaintReads.values())
@@ -17965,7 +17975,10 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
         lines.push(`    const _ssrState = {};`);
         for (const firstPaintRead of firstPaintReads) {
           if (firstPaintRead.sourceKind === 'table') {
-            lines.push(`    _ssrState[${JSON.stringify(firstPaintRead.targetName)}] = (await db.findAll(${JSON.stringify(firstPaintRead.tableName)})).map(_revive);`);
+            const findArgs = firstPaintRead.filter
+              ? `${JSON.stringify(firstPaintRead.tableName)}, ${firstPaintRead.filter}`
+              : JSON.stringify(firstPaintRead.tableName);
+            lines.push(`    _ssrState[${JSON.stringify(firstPaintRead.targetName)}] = (await db.findAll(${findArgs})).map(_revive);`);
           } else if (firstPaintRead.sourceKind === 'api') {
             const stateSlotName = sanitizeName(firstPaintRead.targetName);
             lines.push(`    const _ssr_${stateSlotName} = await _clearSsrGet(req, ${JSON.stringify(firstPaintRead.urlPath)});`);
