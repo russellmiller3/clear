@@ -441,14 +441,49 @@ export const UTILITY_FUNCTIONS = [
     if (!query) return true;
     return JSON.stringify(eventRow).toLowerCase().includes(query);
   });
+  function _clear_trace_icon(kindName) {
+    var normalizedKind = String(kindName || '').toLowerCase();
+    if (normalizedKind.includes('input')) return 'message-circle';
+    if (normalizedKind.includes('server')) return 'power';
+    if (normalizedKind.includes('permission')) return 'shield-alert';
+    if (normalizedKind.includes('heartbeat') || normalizedKind.includes('remind')) return 'bell';
+    if (normalizedKind.includes('action')) return 'zap';
+    if (normalizedKind.includes('concept')) return 'circle-arrow-right';
+    if (normalizedKind.includes('record')) return 'archive';
+    return 'activity';
+  }
+  function _clear_trace_kind(kindName) {
+    return String(kindName || 'event').replace(/[-_]+/g, ' ').toUpperCase();
+  }
+  function _clear_trace_time(rawTime) {
+    var parsedTime = rawTime ? new Date(rawTime) : null;
+    if (!parsedTime || Number.isNaN(parsedTime.getTime())) return '--:--:--';
+    return parsedTime.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function _clear_trace_day(rawTime) {
+    var parsedTime = rawTime ? new Date(rawTime) : null;
+    if (!parsedTime || Number.isNaN(parsedTime.getTime())) return 'Today';
+    var today = new Date();
+    if (parsedTime.toDateString() === today.toDateString()) return 'Today';
+    return parsedTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+  function _clear_trace_detail(eventRow, payload, kindName) {
+    var detail = payload.message || payload.text || payload.action || payload.record || payload.reason || payload.value || eventRow.message || eventRow.detail || eventRow.payload_json || kindName.replace(/[-_]+/g, ' ');
+    return _clear_compact_text(detail, 180);
+  }
+  var lastDay = '';
   listEl.innerHTML = matches.map(function(eventRow) {
     var payload = _clear_payload_object(eventRow.payload_json || eventRow.payload);
     var kindName = String(eventRow.event_kind || eventRow.kind || 'event');
-    var title = payload.message || payload.text || payload.action || eventRow.message || kindName.replace(/_/g, ' ');
-    var meta = [_clear_relative_time(eventRow.at || eventRow.created_at || eventRow.time), eventRow.concept_id || eventRow.record_id || 'system'].filter(Boolean).join(' · ');
-    return '<article class="clear-trace-row"><span class="clear-trace-dot"></span><div><div class="clear-trace-title">' + _esc(_clear_compact_text(title, 140)) + '</div><div class="clear-trace-meta">' + _esc(kindName) + ' · ' + _esc(meta) + '</div></div></article>';
+    var rawTime = eventRow.at || eventRow.created_at || eventRow.time;
+    var dayName = _clear_trace_day(rawTime);
+    var dayHtml = dayName !== lastDay ? '<div class="clear-trace-day">' + _esc(dayName) + '</div>' : '';
+    lastDay = dayName;
+    var detail = _clear_trace_detail(eventRow, payload, kindName);
+    return dayHtml + '<article class="clear-trace-row"><span class="clear-trace-time">' + _esc(_clear_trace_time(rawTime)) + '</span><span class="clear-trace-icon"><i data-lucide="' + _esc(_clear_trace_icon(kindName)) + '"></i></span><span class="clear-trace-kind">' + _esc(_clear_trace_kind(kindName)) + '</span><span class="clear-trace-detail">' + _esc(detail) + '</span></article>';
   }).join('') || '<div class="clear-empty-state">No trace events match.</div>';
-}`, deps: ['_esc', '_clear_payload_object', '_clear_compact_text', '_clear_relative_time'] },
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}`, deps: ['_esc', '_clear_payload_object', '_clear_compact_text'] },
   // PERF-4: virtual scrolling for large tables. Below 100 rows: render everything
   // (DOM handles it fine). At 100+ rows: fixed 40px row height, scroll-triggered
   // windowed render of visible rows + 5-row buffer. Padding rows above/below
@@ -12913,12 +12948,21 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`        }`);
       lines.push(`        return '';`);
       lines.push(`      };`);
+      lines.push(`      const _formatGraphCategory = (rawCategory) => {`);
+      lines.push(`        const normalizedCategory = String(rawCategory || 'other').trim().toLowerCase().replace(/_/g, '-');`);
+      lines.push(`        if (normalizedCategory.includes('person')) return 'person';`);
+      lines.push(`        if (normalizedCategory.includes('company')) return 'company';`);
+      lines.push(`        if (normalizedCategory.includes('idea')) return 'idea';`);
+      lines.push(`        if (normalizedCategory.includes('task')) return 'task';`);
+      lines.push(`        if (normalizedCategory.includes('note')) return 'note';`);
+      lines.push(`        return 'other';`);
+      lines.push(`      };`);
       // Build node array. Each node carries an id, a display name, and
       // optionally a category (used by ECharts to color by).
       lines.push(`      const _nodes = _capped.map((r) => {`);
       lines.push(`        const _id = String(r.id != null ? r.id : _pickLabel(r));`);
       lines.push(`        const n = { id: _id, name: _pickLabel(r) || _id };`);
-      lines.push(`        if (_colorBy && r[_colorBy] != null) n.category = String(r[_colorBy]);`);
+      lines.push(`        if (_colorBy && r[_colorBy] != null) n.category = _formatGraphCategory(r[_colorBy]);`);
       lines.push(`        return n;`);
       lines.push(`      });`);
       // Edge scan — O(N²) over the capped record list. For each record,
@@ -12940,17 +12984,42 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`          }`);
       lines.push(`        }`);
       lines.push(`      }`);
+      lines.push(`      const _degreeByNode = new Map();`);
+      lines.push(`      _links.forEach(link => {`);
+      lines.push(`        _degreeByNode.set(link.source, (_degreeByNode.get(link.source) || 0) + 1);`);
+      lines.push(`        _degreeByNode.set(link.target, (_degreeByNode.get(link.target) || 0) + 1);`);
+      lines.push(`      });`);
+      lines.push(`      _nodes.forEach(node => {`);
+      lines.push(`        const degree = _degreeByNode.get(node.id) || 0;`);
+      lines.push(`        node.symbolSize = 9 + Math.min(degree, 5) * 4;`);
+      lines.push(`        node.itemStyle = { borderWidth: degree ? 2 : 1, borderColor: 'rgba(244,232,216,0.62)', shadowBlur: degree ? 18 : 0, shadowColor: 'rgba(227,184,115,0.26)' };`);
+      lines.push(`      });`);
       // Build categories when color-by is requested. ECharts uses the
       // category index → color from the supplied color palette.
       lines.push(`      let _categories = undefined;`);
       lines.push(`      if (_colorBy) {`);
       lines.push(`        const _seen = new Set();`);
       lines.push(`        _nodes.forEach(n => { if (n.category != null) _seen.add(n.category); });`);
-      lines.push(`        _categories = Array.from(_seen).map(name => ({ name }));`);
+      lines.push(`        const _preferredCategories = ['person', 'company', 'idea', 'task', 'note', 'other'];`);
+      lines.push(`        const _orderedCategories = _preferredCategories.filter(name => _seen.has(name)).concat(Array.from(_seen).filter(name => !_preferredCategories.includes(name)).sort());`);
+      lines.push(`        _categories = _orderedCategories.map(name => ({ name }));`);
       lines.push(`        const _catIdx = new Map(_categories.map((c, i) => [c.name, i]));`);
       lines.push(`        _nodes.forEach(n => { if (n.category != null) n.category = _catIdx.get(n.category); });`);
       lines.push(`      }`);
-      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(20,14,10,0.96)', borderColor: 'rgba(227,184,115,0.35)', textStyle: { color: '#f4e8d8' } }, legend: _categories ? [{ data: _categories.map(c => c.name), textStyle: { color: '#b8a887' } }] : undefined, series: [{ type: 'graph', layout: 'force', data: _nodes, links: _links, categories: _categories, roam: true, force: { repulsion: 220, edgeLength: 150, gravity: 0.05 }, label: { show: true, position: 'right', color: '#f4e8d8', fontSize: 12, fontWeight: 700, textBorderColor: 'rgba(7,5,3,0.92)', textBorderWidth: 3 }, lineStyle: { color: 'source', curveness: 0.16, opacity: 0.72 }, emphasis: { focus: 'adjacency', lineStyle: { width: 3 } } }] }, true);`);
+      lines.push(`      const _legendEl = _chartEl.closest('.clear-network-card') && _chartEl.closest('.clear-network-card').querySelector('[data-graph-legend]');`);
+      lines.push(`      if (_legendEl && _categories) {`);
+      lines.push(`        _legendEl.innerHTML = '';`);
+      lines.push(`        _categories.forEach((category, categoryIndex) => {`);
+      lines.push(`          const itemEl = document.createElement('span');`);
+      lines.push(`          itemEl.className = 'clear-network-legend-item';`);
+      lines.push(`          const dotEl = document.createElement('i');`);
+      lines.push(`          dotEl.style.background = _colors[categoryIndex % _colors.length];`);
+      lines.push(`          itemEl.appendChild(dotEl);`);
+      lines.push(`          itemEl.appendChild(document.createTextNode(category.name));`);
+      lines.push(`          _legendEl.appendChild(itemEl);`);
+      lines.push(`        });`);
+      lines.push(`      }`);
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(20,14,10,0.96)', borderColor: 'rgba(227,184,115,0.35)', textStyle: { color: '#f4e8d8' } }, legend: undefined, series: [{ type: 'graph', layout: 'force', data: _nodes, links: _links, categories: _categories, roam: true, force: { repulsion: 360, edgeLength: [120, 220], gravity: 0.03 }, label: { show: true, position: 'right', color: '#f4e8d8', fontSize: 12, fontWeight: 700, textBorderColor: 'rgba(7,5,3,0.92)', textBorderWidth: 3 }, labelLayout: { hideOverlap: true }, lineStyle: { color: 'source', curveness: 0.16, opacity: 0.72 }, emphasis: { focus: 'adjacency', lineStyle: { width: 3 } } }] }, true);`);
     } else if (chartType === 'pie') {
       if (groupBy) {
         // Group by field and count
@@ -15133,10 +15202,20 @@ ${optionsHtml}
           const chartClass = node.chartType === 'network'
             ? 'clear-chart-card clear-network-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4'
             : 'clear-chart-card bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-5 pt-4 pb-4';
-          parts.push(`    <div class="${chartClass}" id="${chartId}">
+          if (node.chartType === 'network') {
+            parts.push(`    <div class="${chartClass}" id="${chartId}">
+      <div class="clear-network-strip">
+        <div class="clear-network-legend" data-graph-legend></div>
+        <div class="clear-network-hint" data-graph-hint>click a node to open the record · larger nodes = more links</div>
+      </div>
+      <div id="${chartId}_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
+    </div>`);
+          } else {
+            parts.push(`    <div class="${chartClass}" id="${chartId}">
       <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>${subtitleHtml}
       <div id="${chartId}_canvas" class="clear-chart-canvas" style="width:100%;height:360px;"></div>
     </div>`);
+          }
           hasChart = true;
           break;
         }
@@ -19610,9 +19689,6 @@ const CSS_COMPONENTS = [
   text-transform: uppercase;
   text-shadow: none;
 }
-.clear-app-panes .clear-page-subtitle {
-  display: none;
-}
 .clear-app-panes .clear-page-actions {
   display: none;
 }
@@ -19770,7 +19846,6 @@ const CSS_COMPONENTS = [
   white-space: pre;
 }
 .clear-lenat-explorer,
-.clear-trace-timeline,
 .clear-network-card {
   width: 100%;
 }
@@ -19782,7 +19857,6 @@ const CSS_COMPONENTS = [
 }
 .clear-explorer-list,
 .clear-explorer-detail,
-.clear-trace-timeline,
 .clear-network-card {
   border: 1px solid var(--clear-line);
   border-radius: 8px;
@@ -20004,7 +20078,21 @@ const CSS_COMPONENTS = [
 }
 .clear-trace-timeline {
   min-height: calc(100vh - 170px);
+  width: 100%;
   overflow: hidden;
+}
+.clear-trace-tools {
+  padding: 0;
+  border-bottom: 0;
+  margin: 0 0 16px;
+  max-width: 600px;
+}
+.clear-trace-tools .clear-search-wrap {
+  flex: 1 1 320px;
+  background: var(--clear-bg-panel);
+}
+.clear-trace-tools select {
+  min-width: 118px;
 }
 .clear-trace-tools select {
   min-height: 38px;
@@ -20017,41 +20105,106 @@ const CSS_COMPONENTS = [
   padding: 7px 28px 7px 10px;
 }
 .clear-trace-list {
-  height: calc(100vh - 230px);
+  height: calc(100vh - 225px);
   overflow: auto;
-  padding: 12px 16px 20px;
+  padding: 0 0 20px;
+  max-width: 980px;
+}
+.clear-trace-day {
+  margin: 0 0 10px;
+  padding: 14px 0 6px;
+  color: var(--clear-ink-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 .clear-trace-row {
   position: relative;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px 0;
+  grid-template-columns: 76px 34px 130px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 47px;
+  padding: 9px 4px;
   border-bottom: 1px solid var(--clear-line);
 }
-.clear-trace-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 5px;
-  border-radius: 999px;
-  background: var(--clear-accent);
-  box-shadow: 0 0 10px rgb(255 184 108 / .35);
+.clear-trace-row:hover {
+  background: linear-gradient(90deg, rgb(255 184 108 / .06), transparent 65%);
 }
-.clear-trace-title {
+.clear-trace-time {
+  color: var(--clear-ink-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.clear-trace-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--clear-accent);
+}
+.clear-trace-icon svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 5px rgb(255 184 108 / .18));
+}
+.clear-trace-kind {
+  color: var(--clear-accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.clear-trace-detail {
+  min-width: 0;
   color: var(--clear-ink);
-  font-size: 14px;
-  font-weight: 650;
+  font-family: var(--font-mono);
+  font-size: 13px;
   line-height: 1.35;
-}
-.clear-trace-meta {
-  margin-top: 4px;
-  color: var(--clear-ink-muted);
-  font-size: 12px;
-  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 .clear-network-card {
   padding: 0;
   overflow: hidden;
+}
+.clear-network-strip {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--clear-line);
+}
+.clear-network-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 13px;
+}
+.clear-network-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--clear-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.clear-network-legend-item i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgb(255 184 108 / .18);
+}
+.clear-network-hint {
+  color: var(--clear-ink-muted);
+  font-size: 12px;
+  font-style: italic;
+  white-space: nowrap;
 }
 .clear-network-card h3 {
   padding: 18px 22px 0;
@@ -20063,8 +20216,8 @@ const CSS_COMPONENTS = [
   text-transform: uppercase;
 }
 .clear-network-card .clear-chart-canvas {
-  min-height: calc(100vh - 220px);
-  height: calc(100vh - 220px) !important;
+  min-height: calc(100vh - 260px);
+  height: calc(100vh - 260px) !important;
 }
 @media (max-width: 720px) {
   .clear-app { grid-template-columns: 64px minmax(0, 1fr); }
