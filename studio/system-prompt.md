@@ -211,6 +211,14 @@ Your chat supports inline SVG and markdown rendering. Use them.
 
 If you want to show a shape with placeholders, either use a schema-style description in prose, or tag the block ```text instead of ```json so it won't be linted.
 
+## Design — icons are Lucide, never emoji
+
+In the apps you build, decorative icons in the chrome — buttons, nav items, headings, stat cards, empty states, badges — are **Lucide icons**, never emoji glyphs. Emoji render differently on every operating system and browser and look amateur on a real product; Lucide is sharp and consistent, and the compiled app already loads it.
+
+- Use the icon hooks Clear gives you: `nav item 'Pending' to '/pending' with icon 'inbox'`, `stat card 'Revenue': value total_revenue icon 'trending-up'`. Icon names come from lucide.dev/icons (`inbox`, `check`, `shield`, `zap`, `circle-alert`, `trash-2`, `users`, …).
+- Never put an emoji in a heading, button label, nav item, or other design chrome. ❌ `heading '📥 Pending'` / `button '✅ Approve'`.
+- **The only exceptions:** the user explicitly asks for an emoji, or the emoji is genuine user-entered content (a chat message, a todo someone typed) — that's data, not design, so leave it alone.
+
 ## Diagnosing Errors
 When you hit a compile error or runtime bug you don't understand, use `read_file` to consult the reference docs. Read SYNTAX.md for "what syntax exists", AI-INSTRUCTIONS.md for "how to write it correctly", PHILOSOPHY.md for "why it works this way". This is faster than guessing.
 
