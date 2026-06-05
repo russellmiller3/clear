@@ -1,3 +1,8 @@
+import { RALPH_FAMILIES, evaluateAudit } from './supervisor/miller-ralph.js';
+
+// Family priority lookup for ranking gaps worst-first in the retry message.
+const FAMILY_TIER = new Map(RALPH_FAMILIES.map(family => [family.key, family.tier]));
+
 export const RALPH_DEFAULTS = Object.freeze({
   MAX_RETRIES: 2,
   ENABLED_ENV: 'MEPH_REQUIREMENTS_RALPH',
@@ -36,17 +41,26 @@ export function shouldRalphRetry({
 
 export function formatRalphMessage({ audit, retryIndex, maxRetries, blockOnUnverified = true } = {}) {
   const gaps = blockingItems(audit?.items || [], blockOnUnverified);
-  const showCount = Math.min(5, gaps.length);
-  const lines = gaps.slice(0, showCount).map(formatGapLine);
-  const more = gaps.length > showCount ? `\n  ... and ${gaps.length - showCount} more` : '';
+  // A/B control arm: CLEAR_MILLER_RANK_DISABLE=1 reproduces the pre-Miller message (original gap
+  // order, no violation-vector line), so the A/B sweep can isolate the ranked-feedback variable.
+  const rankDisabled = process.env.CLEAR_MILLER_RANK_DISABLE === '1';
+  const orderedGaps = rankDisabled ? gaps : rankGapsWorstFirst(gaps);
+  const showCount = Math.min(5, orderedGaps.length);
+  const lines = orderedGaps.slice(0, showCount).map(formatGapLine);
+  const more = orderedGaps.length > showCount ? `\n  ... and ${orderedGaps.length - showCount} more` : '';
 
-  return [
-    'You are not done yet. The app does not satisfy the approved requirements.',
-    lines.join('\n') + more,
-    '',
-    'Fix the Clear source. Do not rewrite the requirements unless the user asks.',
-    `(ralph-retry ${retryIndex}/${normalizeRetryCap(maxRetries)})`,
-  ].join('\n');
+  const messageLines = ['You are not done yet. The app does not satisfy the approved requirements.'];
+  if (!rankDisabled) {
+    // Miller view of exactly the blocking gaps: which constraint families are violated, how hard.
+    const { vector } = evaluateAudit({ items: gaps });
+    const vectorSummary = formatVector(vector);
+    if (vectorSummary) messageLines.push(`Violation vector (worst first): ${vectorSummary}`);
+  }
+  messageLines.push(lines.join('\n') + more);
+  messageLines.push('');
+  messageLines.push('Fix the Clear source. Do not rewrite the requirements unless the user asks.');
+  messageLines.push(`(ralph-retry ${retryIndex}/${normalizeRetryCap(maxRetries)})`);
+  return messageLines.join('\n');
 }
 
 export function readRalphConfig(env = {}) {
@@ -86,4 +100,27 @@ function normalizeRetryCap(maxRetries) {
   return (typeof maxRetries === 'number' && maxRetries >= 0)
     ? maxRetries
     : RALPH_DEFAULTS.MAX_RETRIES;
+}
+
+function tierOfFamily(familyKey) {
+  return FAMILY_TIER.has(familyKey) ? FAMILY_TIER.get(familyKey) : 1;
+}
+
+// Worst-first: hardest constraint family first, then missing before unverified.
+function rankGapsWorstFirst(gaps) {
+  const STATUS_RANK = { missing: 2, unverified: 1 };
+  return [...gaps].sort((left, right) => {
+    const tierGap = tierOfFamily(right.family) - tierOfFamily(left.family);
+    if (tierGap !== 0) return tierGap;
+    return (STATUS_RANK[right.status] || 0) - (STATUS_RANK[left.status] || 0);
+  });
+}
+
+// Compact "approval=2, audit=1" summary, families ordered hardest-first, zeros omitted.
+function formatVector(vector) {
+  return Object.entries(vector || {})
+    .filter(([, magnitude]) => magnitude > 0)
+    .sort((left, right) => tierOfFamily(right[0]) - tierOfFamily(left[0]))
+    .map(([familyKey, magnitude]) => `${familyKey}=${magnitude}`)
+    .join(', ');
 }

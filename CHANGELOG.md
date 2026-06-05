@@ -8,6 +8,30 @@ The ship gate also exposed two silent template/runtime compiler bugs. Idempotent
 
 Verification: exact request smoke, rebuilt Studio compiler bundle smoke, focused blog-fullstack seed/API probe, full compiler suite green at 3211 / 3211, and Studio e2e green at 75 / 75.
 
+## 2026-05-30 — Miller A/B toggle + single-turn repair harness (NULL first result)
+
+Added `CLEAR_MILLER_RANK_DISABLE=1` to `studio/ralph-layer.js`: it reproduces the pre-Miller flat retry
+message (original gap order, no vector line), so an A/B can isolate the ranked-feedback variable
+(treatment = default ranked, control = flag set). `scripts/miller-ab-repair.mjs` runs the MF-2 A/B —
+one fake-complete deal-desk fixture, control vs treatment, re-audits the model's one-shot repair,
+measures hard-gap (approval/audit) fix rate. Defaults Haiku 4.5; `--dry-run` is free.
+
+First run (6 trials/arm, $0.026): control 6/6, treatment 6/6 — NO difference. The task saturated (the
+model fixes every gap in one turn regardless of feedback ordering). Honest read: ranking does not
+change one-shot repair when the model can already fix everything; it would only matter under resource
+pressure (many gaps + output cap, weaker model, multi-turn). Full write-up in RESEARCH.md.
+
+## 2026-05-30 — Miller v2 violation-vector engine + Ralph wiring (feature/miller-ralph-cost)
+
+The app-checker (Ralph) no longer hands back a flat pass/fail list of missing requirements. Its findings are now scored as a **priority-weighted violation vector**: failures are grouped into constraint families, a hard miss (missing approval, role check, audit trail) outweighs any pile of soft ones (notification, dashboard cosmetics), and the "you're not done" message ranks repairs worst-first.
+
+- `lib/miller/index.js` — domain-agnostic engine: `buildViolationVector` → `projectEnergy` (positional-base weighting that is provably priority-preserving) → `generateRepairHints`. Enforces the four Miller-admissibility axioms (coverage, monotonicity, distinguishability, priority-preservation). 9/9 axiom tests.
+- `lib/miller/conformance.test.js` — the SAME engine scored against Towers of Hanoi and a 2-link robot arm. 5/5. Proves the engine is general, not requirements-shaped.
+- `studio/supervisor/miller-ralph.js` — consumer #1: maps each requirements-audit detector to a family (approval/role_check/enforcement/audit/storage hard; agent/read/concurrency medium; notification/ui soft). The fake-complete deal-desk app (discount + Pending status, no real approval) scores a hard approval+audit violation ranked above cosmetics. 4/4.
+- `studio/ralph-layer.js` — the retry message leads with the vector (e.g. `approval=2, audit=2`) and lists gaps worst-first. Gate decision (`audit.ok`) unchanged; only the scoring + ordering is new.
+
+Verification: 9 + 5 + 4 + 10 targeted tests, 24/24 requirements-audit regression, 321/321 server tests, 3204/3204 compiler suite green. Plan: `plans/plan-miller-v2-violation-vector-2026-05-30.md`. Follow-up: a Meph system-prompt note + paid Meph eval to confirm the ranked feedback changes repair order (gated on budget).
+
 ## 2026-05-15 - Studio file navigator for multi-file Clear projects (feature/studio-file-navigator)
 
 Studio now treats a set of loaded `.clear` files as one in-memory project instead of replacing the editor one file at a time. The Load button accepts multiple files, the navigator lists Files / Imports / Components, component clicks open the defining file, and switching files preserves edits.
