@@ -28154,6 +28154,27 @@ button 'Reload':
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('location.reload()');
   });
+
+  // refresh X from URL — re-fetch into a reactive variable and re-render the
+  // list/display bound to it. Must NOT do a full page reload. Regression for
+  // the requests.md bug: "refresh X from '/api/...' does not re-render display X".
+  it('refresh X from URL re-fetches into state, not a page reload', () => {
+    const src = `build for web
+
+show msgs as list
+
+button 'Send':
+  refresh msgs from '/api/messages'
+`;
+    const compiled = compileProgram(src);
+    expect(compiled.errors).toHaveLength(0);
+    // It should fetch the URL...
+    expect(compiled.javascript).toContain('/api/messages');
+    // ...write into the reactive state variable so the bound list re-renders...
+    expect(compiled.javascript).toContain('_state.msgs');
+    // ...and NOT blow away the whole page.
+    expect(compiled.javascript).not.toContain('location.reload()');
+  });
 });
 
 // ============================================================

@@ -3663,8 +3663,37 @@ function parseRecordApiEffect(tokens, line) {
   };
 }
 
-// "refresh page" / "reload page" — page refresh in web apps
+// "refresh X from '/url'" — re-fetch data into the reactive variable X and
+// re-render whatever displays it (e.g. `show X as list`). Same mechanic as
+// `get X from '/url'`; only bare "refresh" / "refresh page" reloads the page.
 CANONICAL_DISPATCH.set('refresh', (ctx) => {
+  if (ctx.tokens.length >= 4 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
+    const fromIdx = ctx.tokens.findIndex((t, idx) => idx >= 2 && t.value === 'from');
+    if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length) {
+      const targetVar = ctx.tokens[1].value;
+      // Optional "with field1, field2" trailer — sent as a POST body when the
+      // target endpoint streams, ignored for plain GETs (matches `get X from`).
+      const fields = [];
+      let withPos = -1;
+      for (let k = fromIdx + 2; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].value === 'with' || ctx.tokens[k].canonical === 'with') { withPos = k; break; }
+      }
+      const url = tokenPathText(ctx.tokens.slice(fromIdx + 1, withPos > 0 ? withPos : ctx.tokens.length));
+      if (url) {
+        if (withPos > 0) {
+          for (let k = withPos + 1; k < ctx.tokens.length; k++) {
+            if (ctx.tokens[k].type === TokenType.COMMA || ctx.tokens[k].canonical === 'and') continue;
+            if (ctx.tokens[k].type === TokenType.IDENTIFIER || ctx.tokens[k].type === TokenType.KEYWORD) {
+              fields.push(ctx.tokens[k].value);
+            }
+          }
+        }
+        ctx.body.push({ type: NodeType.API_CALL, method: 'GET', url, targetVar, fields, line: ctx.line });
+        return ctx.i + 1;
+      }
+    }
+  }
+  // Bare "refresh" / "refresh page" / "reload page" — full page reload.
   ctx.body.push({ type: NodeType.REFRESH, line: ctx.line });
   return ctx.i + 1;
 });
