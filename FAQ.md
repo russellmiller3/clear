@@ -88,6 +88,23 @@ only the keyword renamed). Canonical-rename spec:
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 
+## Where does Ralph live, and what should I read before code-searching it? (2026-05-12)
+
+Ralph is Meph's requirements-done checker. It audits the generated app against approved requirements and blocks a false "done" when the evidence is missing.
+
+Read these first:
+- Product map: `FEATURES.md` -> "Studio" and "Requirements/Ralph loop".
+- Requirements examples: `requirements-sample.md`.
+- Retry/blocking layer: `studio/ralph-layer.js`.
+- Requirement fact extraction: `studio/supervisor/requirements-facts.js`.
+- Requirement audit integration: `studio/supervisor/requirements-audit.js`.
+- Live smoke harness: `scripts/meph-requirements-live-smoke.mjs`.
+- Full-loop eval harness: `studio/eval-fullloop-harness.js` and `studio/eval-fullloop.js`.
+
+Rule: search `FAQ.md` and `FEATURES.md` first. If those docs do not point to the thing, update them after you find it.
+
+---
+
 ## How do I build a text-routing dispatcher? (2026-05-14 — replaces old `runtime grammar`)
 
 The `runtime grammar / frame / on match` primitive was removed 2026-05-14 (PHILOSOPHY §1:1 cleanup — one keyword was packaging a table, a registry, a matcher, and a dispatch block). The replacement is six composable primitives you assemble yourself:
@@ -418,11 +435,9 @@ Current audit snapshot after mining the rest of `apps/` and adding four language
 
 The fourth language primitive covers hard booking workflows: rooms, customers, bookings, available-room search, overlap rejection, and cancellation. A local integration test now requires a hard booking prompt to retrieve that primitive first before any paid booking A/B rerun.
 
-**One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `studio/canonical-examples.md`) remains a CLI/reference experiment, but Meph compile hints no longer use it. Exact-error hints from `code_actions` still exist because they solve a different problem: "this compile error was fixed this way."
+**One pattern system:** reusable shape hints now come from `clear_programming_patterns`. The old markdown shape-search path (`scripts/match-shape.mjs` over `studio/canonical-examples.md`) remains a CLI/reference experiment, but Meph no longer receives a separate exact-error repair-hint layer during normal compile retries.
 
-**Old hint setup vs pattern preflight:** the older Claude-built hint path was a repair loop. It fired after a compile result, searched `code_actions` for past fixes to similar errors, and asked Meph to emit `HINT_APPLIED` so we could track whether the repair hint was used. That is still useful for "I hit this compiler error, what fixed it before?" It is weaker for first-draft app quality because it waits until Meph has already written the wrong shape.
-
-The pattern preflight is a planning loop. It fires before Meph answers complex Clear app or feature-shape requests, injects syntax docs, and searches trusted primitives. It is the right path for "what shape should this app have before code exists?" The two systems are not equal competitors: repair hints are post-error memory; pattern preflight is pre-write design memory.
+**Pattern preflight vs compiler feedback:** pattern preflight is a planning loop. It fires before Meph answers complex Clear app or feature-shape requests, injects syntax docs, and searches trusted primitives. Compiler errors are now fed back directly through the Snap retry loop as hidden Meph context. Meph should read the exact compiler messages and fix the source; it should not emit `HINT_APPLIED` tags.
 
 **Live probe quality rubric:** full-app pattern probes now score generated apps beyond time and compile/pass. `scoreAppQualityRubric()` gives a 100-point deterministic score:
 - 5 source written
@@ -479,7 +494,7 @@ Then Ralph looks for implementation evidence with the same fact shape. It can pa
 
 ---
 
-## How do requirements, pattern memory, repair hints, and Ralph fit together? (2026-05-08)
+## How do requirements, pattern memory, compiler feedback, and Ralph fit together? (2026-05-08)
 
 They are four different layers. Do not merge them.
 
@@ -487,7 +502,7 @@ They are four different layers. Do not merge them.
 
 **Pattern memory is the reusable example library.** After requirements are approved, the pattern preflight searches `clear_programming_patterns` using both the user request and the approved requirements. Meph gets the relevant snippets, not the whole template, unless it explicitly reads a full template.
 
-**Repair hints are post-error memory.** Exact-error hints from `code_actions` still fire after compile results. They answer "what fixed this compiler error before?" They do not define the app's contract and they are not a second pattern DB.
+**Compiler feedback is the repair loop.** Compile errors are sent back to Meph as hidden context through Snap. They answer "what is broken in this source right now?" They do not define the app's contract and they are not a second pattern DB.
 
 **Ralph is the done checker.** After Meph writes code and the compile is clean, Ralph audits the generated source against the approved requirements. If a requirement is missing or only echoed in the `requirements:` text, Ralph sends Meph back for repair. If the retry budget is exhausted, Studio blocks the false "done."
 
@@ -499,11 +514,11 @@ The full flow:
 3. User approves or revises the requirements in Studio.
 4. Server injects syntax docs, AI instructions, and pattern snippets retrieved from approved requirements.
 5. Meph writes tests and app code.
-6. Compiler and Snap fix syntax/runtime/UI-reachability issues.
+6. Compiler and Snap send private compiler feedback until syntax/runtime/UI-reachability issues are fixed.
 7. Ralph audits implementation evidence against requirements.
 8. Missing evidence triggers repair, not success.
 
-The important boundary: requirements are customer intent, pattern memory is reusable language shape, repair hints are compiler-error history, and Ralph is outcome verification.
+The important boundary: requirements are customer intent, pattern memory is reusable language shape, compiler feedback is current-source repair, and Ralph is outcome verification.
 
 ---
 
@@ -1636,24 +1651,20 @@ Three pieces (Session 38):
 
 Bundle file: `studio/supervisor/reranker.json` (created manually after training by copying from `/tmp/reranker-XX.json` to here). Server loads it at boot; absent bundle = fallback to raw BM25 ordering.
 
-### How does a hint get to Meph?
+### How does compiler feedback get to Meph?
 
-1. Meph calls the `compile` tool with current source
-2. If `r.errors.length > 0`, server computes `archetype` + `error_sig`
-3. `factorDB.querySuggestions()` returns top-10 candidates via tiered BM25 (same error in this archetype → same error anywhere → same-archetype gold rows)
-4. If EBM bundle loaded: `rank(bundle, candidates, featurizeFactorRow)` rescores + resorts
-5. Top 3 repair hints return in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
-6. Meph reads them in the tool result of his next turn
+1. Meph calls the `compile` tool with current source.
+2. If compile errors remain, Snap formats the exact compiler messages as hidden Meph context.
+3. The hidden feedback is appended as a private user message, not streamed to the visible chat.
+4. Meph edits the Clear source and compiles again until the app passes or the retry budget expires.
 
-Reusable pattern snippets are separate from repair hints but now use the same Factor DB-backed hint payload. `factorDB.queryProgrammingPatterns()` adds `result.hints.pattern_text` from `clear_programming_patterns`. The old markdown shape-match hint layer is retired from Meph.
-
-2026-05-01 verification tightened the boundary. The regression test now asserts the dispatcher returns a compile-tool result string containing the `HINT_APPLIED` protocol and the worked source snippet. That is the string `/api/chat` sends back to Meph, so the test proves delivery at the agent-visible boundary rather than only inside helper state.
+Reusable pattern snippets are separate from compiler feedback. `factorDB.queryProgrammingPatterns()` adds `result.hints.pattern_text` from `clear_programming_patterns` during pattern preflight. The old markdown shape-match hint layer and the old exact-error `HINT_APPLIED` repair-tag flow are retired from normal Meph compile retries.
 
 Telemetry notes:
 
-- `scripts/factor-db-summary.mjs` counts text labels: `yes`, `partial`, and `inferred`.
-- `studio/supervisor/verify-hint-flow.js` should distinguish exact-error repair hints, pattern DB snippets, and no hint. Do not collapse a weak delivered hint into `none`.
-- A rejected hint still proves delivery. It means Meph saw the hint and said it did not help.
+- `model_benchmark_tool_calls` is the source of truth for whether a model actually used docs, pattern search, app tools, screenshots, or request writing.
+- Pattern DB snippets still log through tool-call results and pattern-preflight artifacts.
+- The old exact-error repair-tag telemetry is historical only. New compiler repair evidence should come from Snap retry feedback, compile results, and Ralph outcomes.
 
 ### How do we know whether hints make Meph better?
 

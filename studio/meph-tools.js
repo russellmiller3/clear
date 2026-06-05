@@ -457,12 +457,9 @@ export function editCodeTool(input, ctx, helpersOrCompileProgram) {
       ctx.setLastCompileResult(r);
       const result = { applied: true, errors: r.errors, warnings: r.warnings };
 
-      // Factor DB trajectory logging — mirrors compileTool's logAction shape.
-      // Cycle 4 of the cc-agent hint fix: without a row logged here, the
-      // post-turn HINT_APPLIED parser (in server.js / cc-agent) has no row id
-      // to update, so hint_applied stays NULL even when Meph reads + uses the
-      // hints. Setting ctx.hintState.lastFactorRowId before attachHintsForCompileResult
-      // runs gives the helper a real row to track against.
+      // Factor DB trajectory logging mirrors compileTool's logAction shape.
+      // Keeping lastFactorRowId current lets later test/API tools attach outcome
+      // evidence to the compile cycle that produced the running app.
       if (fullHelpers && ctx.factorDB && input.code) {
         try {
           const { sha1, safeArchetype, currentStep } = fullHelpers;
@@ -496,13 +493,9 @@ export function editCodeTool(input, ctx, helpersOrCompileProgram) {
         } catch { /* non-fatal — logging is observability, not correctness */ }
       }
 
-      // Hint pipeline attach — runs only when called via dispatch (full helpers
-      // bag) AND ctx has the Factor DB wired. cc-agent's edit_code lands here
-      // and now gets the same retrieval + reranker output that compileTool's
-      // explicit `compile` call would have produced. Closes the gap documented
-      // in snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md (97% of cc-agent
-      // rows had hint_applied=NULL because this auto-compile path skipped
-      // querySuggestions entirely).
+      // Pattern pipeline attach — runs only when called via dispatch (full
+      // helpers bag) AND ctx has the Factor DB wired. edit_code gets the same
+      // curated pattern snippets that compileTool would have returned.
       if (fullHelpers && ctx.factorDB) {
         try {
           attachHintsForCompileResult(input.code, r, ctx, fullHelpers, result);
@@ -1049,15 +1042,12 @@ export function runTestsTool(input, ctx, parseTestOutput) {
 }
 
 /**
- * Attach Factor-DB-retrieved hints to a compile result. Lifted out of compileTool
- * so editCodeTool can call the same path on its auto-compile (the cc-agent code
- * path bypasses compileTool — see snapshots/flywheel-cc-agent-hint-gap-2026-04-29.md).
+ * Attach Factor-DB-retrieved pattern snippets to a compile result. Lifted out of
+ * compileTool so editCodeTool can call the same path on its auto-compile.
  *
- * Mutates `result.hints` (text-match block + shape-search additive layer) and
- * `ctx.hintState` (so the post-turn HINT_APPLIED parser can find the right row).
- * No-op when ctx.factorDB is null, ctx.disableFactorHints is true,
- * CLEAR_HINT_DISABLE=1, OR hint retrieval
- * raises (every block is wrapped in try/catch — non-fatal by design).
+ * Mutates `result.hints` with curated pattern DB matches. Exact compiler-error
+ * repair hints are retired from normal Meph compile retries; Snap now sends the
+ * compiler errors back as hidden Meph feedback instead.
  *
  * Inputs:
  *   source  : the Clear source string Meph just compiled
@@ -1068,120 +1058,12 @@ export function runTestsTool(input, ctx, parseTestOutput) {
  *   result  : the in-flight compile-tool response object that hints get attached to
  */
 export function attachHintsForCompileResult(source, r, ctx, helpers, result) {
-  const { sha1, safeArchetype, currentStep, classifyErrorCategory, rankPairwise, rankEBM, featurizeRow } = helpers;
-
-  // ── Factor DB suggestion injection (flywheel closes here) ──
+  // ── Factor DB pattern injection ──
   // ctx.disableFactorHints/CLEAR_HINT_DISABLE=1 short-circuits the entire retrieval path. Enables
   // honest A/B measurement of hint effect on Meph's live pass rate.
   // The off-arm pays zero DB-query cost so the A/B measures hint *effect*,
   // not hint *compute overhead*.
   const hintsDisabled = ctx.disableFactorHints === true || process.env.CLEAR_HINT_DISABLE === '1';
-  if (ctx.factorDB && r.errors.length > 0 && source && !hintsDisabled) {
-    try {
-      const archetype = safeArchetype(source);
-      const errorSig = sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(source));
-      // Retrieve wider pool when any reranker is loaded so it has room to reorder.
-      const retrievalK = (ctx.pairwiseBundle || ctx.ebmBundle) ? 10 : 3;
-      let hintRows = ctx.factorDB.querySuggestions({
-        archetype,
-        error_sig: errorSig,
-        topK: retrievalK,
-      });
-
-      // Rerank order of preference (highest → fallback):
-      //   1. Pairwise logistic — scores each candidate AGAINST the current error
-      //   2. Pointwise EBM — regression on row quality
-      //   3. BM25 raw — ordering from querySuggestions
-      let rerankedBy = 'bm25';
-      if (ctx.pairwiseBundle && hintRows.length > 0) {
-        try {
-          const errorCategory = classifyErrorCategory(
-            'Compile with ' + r.errors.length + ' error(s): ' +
-            (r.errors[0]?.message || '')
-          );
-          const currentStepHere = currentStep(source, ctx.sessionSteps);
-          for (const c of hintRows) {
-            try {
-              const prev = ctx.factorDB._db.prepare(
-                'SELECT patch_summary FROM code_actions WHERE session_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1'
-              ).get(c.session_id, c.created_at);
-              c.target_error_category = classifyErrorCategory(prev?.patch_summary || '');
-            } catch { c.target_error_category = 'none'; }
-          }
-          const rerankerCtx = {
-            archetype,
-            error_sig: errorSig,
-            error_category: errorCategory,
-            step_index: currentStepHere?.index ?? 0,
-            source_before: source,
-          };
-          const ranked = rankPairwise(ctx.pairwiseBundle, rerankerCtx, hintRows);
-          hintRows = ranked.slice(0, 3);
-          rerankedBy = 'pairwise';
-        } catch {
-          // Fall through to EBM on any failure — better to ship a hint
-          // ranked by the older model than to ship nothing.
-        }
-      }
-      if (rerankedBy === 'bm25' && ctx.ebmBundle && hintRows.length > 0) {
-        try {
-          const ranked = rankEBM(ctx.ebmBundle, hintRows, featurizeRow);
-          hintRows = ranked.slice(0, 3);
-          rerankedBy = 'ebm';
-        } catch {
-          hintRows = hintRows.slice(0, 3);
-        }
-      } else if (rerankedBy === 'bm25') {
-        hintRows = hintRows.slice(0, 3);
-      }
-      // Observability — distinguish "no candidates found" from "Meph ignored hints"
-      console.log(`[hints] archetype=${archetype} retrieved=${hintRows.length} reranked_by=${rerankedBy}${hintRows.length > 0 ? ' top_tier=' + hintRows[0].tier : ''}`);
-      if (hintRows.length > 0) {
-        const tiers = hintRows.map(h => h.tier);
-        const hasExact = tiers.some(t => t.startsWith('exact_error'));
-        const note = hasExact
-          ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
-          : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
-
-        const tierLabel = (t) => {
-          if (!t) return 'retrieved match';
-          if (t.startsWith('exact_error_same_archetype')) return 'SAME ERROR in same archetype';
-          if (t.startsWith('exact_error')) return 'SAME ERROR anywhere';
-          if (t.startsWith('same_archetype')) return 'same archetype, different error';
-          return t.replace(/_/g, ' ');
-        };
-        const hintBlocks = hintRows.map((h, i) => {
-          const scoreLabel = typeof h.pairwise_score === 'number'
-            ? `pairwise=${h.pairwise_score.toFixed(3)}`
-            : typeof h.ebm_score === 'number'
-              ? `EBM=${h.ebm_score.toFixed(3)}`
-              : 'score=n/a';
-          const header = `── Past Fix #${i + 1} [${tierLabel(h.tier)}, ${scoreLabel}, test_score=${h.test_score || 0}] ──`;
-          const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
-          const raw = (h.source_before || '').slice(0, 600);
-          const trimmed = raw.lastIndexOf('\n') > 400 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
-          const code = trimmed ? `Source that worked:\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
-          return [header, summary, code].filter(Boolean).join('\n');
-        }).join('\n\n');
-        const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
-
-        const topTier = hintRows[0]?.tier || '';
-        const tagRequired = `\n\n⚠ REQUIRED: Start your very next text block with \`HINT_APPLIED: yes, tier=${topTier}, helpful=<yes|no|partial>\` if you're going to use these hints, OR \`HINT_APPLIED: no, reason=<short reason>\` if they don't fit your real problem. Tag first, then your analysis. This is tracking signal, not optional.`;
-
-        const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
-
-        result.hints = {
-          note,
-          reranked_by: rerankedBy,
-          text,
-        };
-        ctx.hintState.hintsInjectedRowId = ctx.hintState.lastFactorRowId;
-        ctx.hintState.hintsInjectedErrorCount = r.errors.length;
-        ctx.hintState.hintsInjectedTier = hintRows[0]?.tier || null;
-        ctx.hintState.postHintMinErrorCount = null;
-      }
-    } catch { /* non-fatal */ }
-  }
 
   // Curated app-pattern DB (13 canonical apps): Meph gets examples from the
   // same SQLite memory as the flywheel instead of only the markdown fallback.
@@ -1308,17 +1190,6 @@ export function compileTool(input, ctx, helpers) {
           step_index: step?.index ?? null,
           step_name: step?.name || null,
         });
-        // Inference fallback: if hints were already served on an earlier
-        // compile in this turn, track the minimum error count seen since.
-        // If Meph later forgets to emit HINT_APPLIED, a drop in errors is
-        // a reasonable signal that the hint helped.
-        if (ctx.hintState.hintsInjectedRowId
-            && ctx.hintState.lastFactorRowId !== ctx.hintState.hintsInjectedRowId) {
-          if (ctx.hintState.postHintMinErrorCount === null
-              || r.errors.length < ctx.hintState.postHintMinErrorCount) {
-            ctx.hintState.postHintMinErrorCount = r.errors.length;
-          }
-        }
       } catch { /* non-fatal */ }
     }
     // ────────────────────────────────────────────────────────────────

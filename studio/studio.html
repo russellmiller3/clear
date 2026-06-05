@@ -423,6 +423,21 @@ body.direct-edit-mode #preview-content iframe { cursor: crosshair; }
 .meph-todo.pending .todo-icon::before { content: '○'; }
 .meph-todo.in_progress .todo-icon::before { content: '◉'; }
 .meph-todo.completed .todo-icon::before { content: '✓'; }
+.chat-history-shell { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.chat-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-history-title { font-size: 14px; font-weight: 600; color: var(--tx); }
+.chat-history-search { width: 100%; box-sizing: border-box; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 8px 10px; font: 12px var(--font); }
+.chat-history-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+.chat-history-list { display: flex; flex-direction: column; gap: 6px; }
+.chat-history-item { text-align: left; background: var(--bg); color: var(--tx2); border: 1px solid var(--bd); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.chat-history-item:hover { border-color: var(--accent); background: color-mix(in oklch, var(--accent) 7%, var(--bg)); }
+.chat-history-meta { font-family: var(--mono); font-size: 10px; color: var(--tx3); margin-bottom: 4px; }
+.chat-history-task { font-size: 12px; font-weight: 600; color: var(--tx); margin-bottom: 4px; }
+.chat-history-snippet { font-size: 11px; line-height: 1.45; color: var(--tx3); }
+.chat-history-detail { border-top: 1px solid var(--bd); margin-top: 8px; padding-top: 10px; }
+.chat-history-message { border: 1px solid var(--bd); border-radius: 8px; padding: 8px; margin-bottom: 6px; background: var(--bg); }
+.chat-history-role { font-family: var(--mono); font-size: 10px; color: var(--accent); margin-bottom: 4px; text-transform: uppercase; }
+.chat-history-body { font-size: 12px; line-height: 1.5; color: var(--tx2); white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto; }
 .code-tabs { display: flex; gap: 2px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
 .code-tab { background: none; border: none; padding: 4px 12px; border-radius: 4px; color: var(--tx3); font-size: 11px; font-family: var(--font); font-weight: 500; cursor: pointer; transition: all .15s; }
 .code-tab:hover { background: var(--bg3); color: var(--tx); }
@@ -912,6 +927,7 @@ body.builder-mode.show-source #editor-pane {
       </span>
       <div style="display:flex;gap:4px;">
         <button class="toolbar-btn" onclick="newChat()" style="font-size:11px;padding:2px 8px;" title="Clear chat history">New</button>
+        <button class="toolbar-btn" onclick="showChatHistory()" style="font-size:11px;padding:2px 8px;" title="List and search previous Meph chats">History</button>
         <button class="toolbar-btn" onclick="showMemory()" style="font-size:11px;padding:2px 8px;" title="Meph's persistent memory">Memory</button>
         <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Meph">Personality</button>
         <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
@@ -959,6 +975,7 @@ body.builder-mode.show-source #editor-pane {
       <span><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></span>
       <div style="display:flex;gap:4px;align-items:center;">
         <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)" style="font-size:11px;padding:2px 8px;">↩ Undo</button>
+        <button class="toolbar-btn" onclick="copyEditorSource()" title="Copy the Clear source in the editor" style="font-size:11px;padding:2px 8px;">Copy Source</button>
         <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Meph chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
       </div>
     </div>
@@ -1780,17 +1797,6 @@ window._editorView = editor;  // For tests
 window._sourceMapData = () => sourceMapData; // For debugging/tests
 window._debug = () => ({ compileAnimRunning, sourceMapTab, compiledTab, hasCompiledView: !!compiledView, hasSourceMap: !!sourceMapData, activeTab });
 
-// Russell's startup-freshness rule (2026-05-04): if the editor is showing a
-// previously-picked template (deal-desk, helpdesk-agent, etc.), refresh from
-// disk on every Studio start. The function below is defined later in this
-// file (after loadTemplateByName); fire it as soon as the editor exists so
-// the user sees the latest disk content before they touch anything.
-queueMicrotask(() => {
-  if (typeof window.refreshLoadedTemplateFromDisk === 'function') {
-    window.refreshLoadedTemplateFromDisk();
-  }
-});
-
 // ==========================================================================
 // ROTATING QUOTES
 // ==========================================================================
@@ -2191,7 +2197,7 @@ async function autoCompile() {
       // Deploy button is visible on compile success when the customer has an active plan
       (async () => {
         try {
-          const tr = await fetch('/api/tenant').then(r => r.ok ? r.json() : null).catch(() => null);
+          const tr = await fetchTenantStatus();
           const canDeploy = tr && tr.ok && tr.plan && tr.plan !== 'cancelled';
           document.getElementById('deploy-btn').style.display = canDeploy ? '' : 'none';
           updatePlanBadge(tr);
@@ -2210,22 +2216,12 @@ async function autoCompile() {
         runCompileAnimation(source, animTarget);
       }
 
-      // Auto-preview: web apps show instantly; JS backends auto-run
-      // BUT don't switch tabs if compile animation is playing
-      if (!compileAnimRunning) {
-        if (lastCompiled.html && !lastCompiled.serverJS) {
-          showTab('output');
-        } else if (lastCompiled.serverJS) {
-          if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
-          doRun();
-        } else {
-          if (activeTab === 'output') showOutput();
-          else if (activeTab === 'compiled') showCompiled();
-        }
-      } else if (lastCompiled.serverJS) {
-        // Still start the server in the background, just don't switch tabs
+      // Compile is a user-facing build action: end on Preview so the result is visible.
+      if (lastCompiled.serverJS) {
         if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
-        doRun();
+        await doRun();
+      } else {
+        showCompiledAppPreview();
       }
     } else {
       if (dot) dot.className = 'dot err';
@@ -2278,6 +2274,12 @@ window.doUndo = function() { if (undoCmd) undoCmd(editor); editor.focus(); };
 // ==========================================================================
 let activeTab = 'output';
 let runningPort = null; // port where backend app is running
+
+function showCompiledAppPreview() {
+  compileAnimCancel = true;
+  compileAnimRunning = false;
+  showTab('output');
+}
 
 function showOutput() {
   const el = document.getElementById('preview-content');
@@ -2762,6 +2764,16 @@ window.copyTerminal = async function() {
     appendTerminalText('Copied terminal output (' + lines.length + ' line(s)) plus source to clipboard. Paste it into a chat to ask for help.', 'term-ok');
   } catch (err) {
     appendTerminalText('Could not copy terminal: ' + (err.message || String(err)), 'term-err');
+  }
+};
+
+window.copyEditorSource = async function() {
+  const source = (window._editor && window._editor.state.doc.toString()) || '';
+  try {
+    await navigator.clipboard.writeText(source);
+    appendTerminalText('Copied Clear source to clipboard.', 'term-ok');
+  } catch (err) {
+    appendTerminalText('Could not copy Clear source: ' + (err.message || String(err)), 'term-err');
   }
 };
 
@@ -4281,6 +4293,20 @@ function updatePlanBadge(t) {
   el.style.color = over ? '#e74c3c' : 'var(--tx2)';
 }
 
+function hasClearTenantCookie() {
+  return document.cookie.split(';').some(part => part.trim().startsWith('clear_tenant='));
+}
+
+async function fetchTenantStatus() {
+  if (!hasClearTenantCookie()) return null;
+  try {
+    const r = await fetch('/api/tenant');
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 function deployStageLabel(status) {
   if (!status) return 'starting…';
   const s = status.status || status;
@@ -4784,12 +4810,116 @@ function showErrors(errors, warnings, compileTrace) {
   el.innerHTML = html;
 }
 
+function stringifyChatValueForCopy(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value, null, 2); }
+  catch { return String(value); }
+}
+
+function formatChatContentForCopy(content) {
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (part?.type === 'text') return part.text || '';
+      if (part?.type === 'image') return '[image attachment omitted from clipboard]';
+      return '[' + (part?.type || 'unknown attachment') + ']';
+    }).filter(Boolean).join('\n');
+  }
+  return stringifyChatValueForCopy(content);
+}
+
+function formatMessageTimelineForCopy(message) {
+  const timeline = Array.isArray(message?.timeline) ? message.timeline : [];
+  if (!timeline.length) return '';
+  const lines = [];
+  for (const event of timeline) {
+    if (event.type === 'thinking' && String(event.text || '').trim()) {
+      lines.push('[thinking]');
+      lines.push(String(event.text || '').trim());
+    } else if (event.type === 'text' && String(event.text || '').trim()) {
+      lines.push(String(event.text || '').trim());
+    } else if (event.type === 'tool') {
+      const label = event.summary || event.name || 'tool';
+      lines.push('[tool] ' + label + (event.done ? '' : ' (still running)'));
+    }
+  }
+  return lines.join('\n\n');
+}
+
+function formatRequirementsContextForCopy(message) {
+  const parts = [];
+  if (message?.requirementsReview) {
+    const review = message.requirementsReview;
+    parts.push('Requirements review:');
+    for (const req of (review.requirements || [])) parts.push('- ' + req);
+    if (review.errors?.length) {
+      parts.push('Requirement errors:');
+      for (const err of review.errors) parts.push('- ' + err);
+    }
+    if (review.approved) parts.push('Requirements approved.');
+  }
+  if (message?.requirementsAudit) {
+    const audit = message.requirementsAudit;
+    parts.push('Requirements audit: ' + (audit.summary || ''));
+    for (const item of (audit.items || [])) {
+      parts.push('- ' + (item.status || 'unknown') + ': ' + (item.text || 'Unnamed requirement') + (item.reason ? ' -- ' + item.reason : ''));
+    }
+  }
+  return parts.join('\n');
+}
+
+function formatMephChatContextForCopy(messages) {
+  const visible = (Array.isArray(messages) ? messages : chatMessages).filter(m => m && m.role !== 'system');
+  const parts = ['## Meph chat context', ''];
+  if (!visible.length) {
+    parts.push('_(No Meph chat messages in this browser session.)_');
+    return parts.join('\n');
+  }
+  visible.forEach((message, index) => {
+    const speaker = message.role === 'assistant' ? 'Meph' : message.role === 'user' ? 'Russell' : message.role || 'message';
+    parts.push('### ' + (index + 1) + '. ' + speaker);
+    parts.push('');
+    const timelineText = speaker === 'Meph' ? formatMessageTimelineForCopy(message) : '';
+    const body = (timelineText || formatChatContentForCopy(message.content)).trim();
+    parts.push(body || '_(no visible text)_');
+    if (!timelineText && Array.isArray(message.toolSteps) && message.toolSteps.length) {
+      parts.push('');
+      parts.push('Tools:');
+      for (const step of message.toolSteps) {
+        const label = typeof step === 'object' ? (step.summary || step.name || 'tool') : step;
+        parts.push('- ' + label);
+      }
+    }
+    const requirementsContext = formatRequirementsContextForCopy(message);
+    if (requirementsContext) {
+      parts.push('');
+      parts.push(requirementsContext);
+    }
+    if (message.streaming) {
+      parts.push('');
+      parts.push('_(This message was still streaming when copied.)_');
+    }
+    parts.push('');
+  });
+  return parts.join('\n').trim();
+}
+
+function buildCompilerErrorClipboardText(traceText) {
+  return [
+    traceText,
+    '',
+    '---',
+    '',
+    formatMephChatContextForCopy(chatMessages),
+  ].join('\n');
+}
+
 window.copyCompileTrace = async function() {
   const text = lastCompiled?.compileTrace?.pasteText;
   if (!text) return;
   try {
-    await navigator.clipboard.writeText(text);
-    appendTerminalText('Copied compiler error.');
+    await navigator.clipboard.writeText(buildCompilerErrorClipboardText(text));
+    appendTerminalText('Copied compiler error plus Meph chat context.');
   } catch (err) {
     appendTerminalText('Could not copy compiler error: ' + (err.message || String(err)));
   }
@@ -4879,17 +5009,25 @@ let lastSentMephModel = selectedMephModel;
 let mephModelChangedSinceLastSend = false;
 let approvedRequirements = null;
 let approvedRequirementsId = null;
+let lastMephContextUsage = null;
+let promptOnlyContextUsage = null;
+let mephCostTrackerActive = false;
+let mephUsageTotals = { inputTokens: 0, outputTokens: 0, costUSD: 0 };
+let mephUsageSeen = new Set();
+let currentMephTodos = [];
 
 let showingKeySetup = false;
 
 window.newChat = function() {
   if (currentAbort) currentAbort.abort();
+  resetMephSessionStateForNewChat();
   chatMessages = [];
   approvedRequirements = null;
   approvedRequirementsId = null;
   localStorage.removeItem('clear_chat_messages');
   showingKeySetup = false;
   document.getElementById('chat-messages').innerHTML = '';
+  renderMephTodos([]);
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
   document.getElementById('chat-send').disabled = false;
   document.getElementById('chat-send').style.display = '';
@@ -4966,6 +5104,140 @@ window.closeMemory = function() {
   showingKeySetup = false;
   renderChat();
 };
+
+function chatHistoryText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(part => {
+      if (typeof part === 'string') return part;
+      if (!part || typeof part !== 'object') return '';
+      if (typeof part.text === 'string') return part.text;
+      if (part.type === 'image') return '[image]';
+      try { return JSON.stringify(part); } catch { return ''; }
+    }).filter(Boolean).join('\n');
+  }
+  if (content && typeof content === 'object') {
+    try { return JSON.stringify(content); } catch { return ''; }
+  }
+  return '';
+}
+
+function chatHistoryTime(seconds) {
+  const value = Number(seconds || 0);
+  if (!value) return 'unknown time';
+  try { return new Date(value * 1000).toLocaleString(); } catch { return 'unknown time'; }
+}
+
+function renderChatHistoryShell(query = '') {
+  return `<div class="chat-history-shell">
+    <div class="chat-history-head">
+      <div class="chat-history-title">Previous chats</div>
+      <button class="toolbar-btn" onclick="closeChatHistory()" style="font-size:11px;padding:2px 8px;">Close</button>
+    </div>
+    <input id="chat-history-search" class="chat-history-search" value="${escAttr(query)}" placeholder="Search previous chats..." oninput="queueChatHistorySearch()">
+    <div id="chat-history-list" class="chat-history-list"><div class="chat-history-snippet">Loading...</div></div>
+    <div id="chat-history-detail" class="chat-history-detail" style="display:none"></div>
+  </div>`;
+}
+
+function renderChatHistoryList(chats) {
+  const list = document.getElementById('chat-history-list');
+  if (!list) return;
+  if (!Array.isArray(chats) || chats.length === 0) {
+    list.innerHTML = '<div class="chat-history-snippet">No saved chats found.</div>';
+    return;
+  }
+  list.innerHTML = chats.map(chat => {
+    const title = chat.task || '(untitled chat)';
+    const meta = `${chatHistoryTime(chat.ended_at || chat.updated_at)} · ${chat.message_count || 0} messages · ${chat.model || 'unknown'}`;
+    return `<button class="chat-history-item" onclick="openChatHistory('${escAttr(chat.id)}')">
+      <div class="chat-history-meta">${escHtml(meta)}</div>
+      <div class="chat-history-task">${escHtml(title)}</div>
+      <div class="chat-history-snippet">${escHtml(chat.snippet || '')}</div>
+    </button>`;
+  }).join('');
+}
+
+function renderChatHistoryDetail(chat) {
+  const detail = document.getElementById('chat-history-detail');
+  if (!detail) return;
+  const messages = Array.isArray(chat.messages) ? chat.messages : [];
+  const renderedMessages = messages.slice(-12).map(message => {
+    const role = message.role || 'message';
+    const body = chatHistoryText(message.content);
+    return `<div class="chat-history-message">
+      <div class="chat-history-role">${escHtml(role)}</div>
+      <div class="chat-history-body">${escHtml(body || '(empty)')}</div>
+    </div>`;
+  }).join('');
+  detail.style.display = '';
+  detail.innerHTML = `<div class="chat-history-head">
+      <div class="chat-history-title">${escHtml(chat.task || chat.id || 'Chat')}</div>
+      <button class="toolbar-btn" onclick="copyChatHistory('${escAttr(chat.id)}')" style="font-size:11px;padding:2px 8px;">Copy</button>
+    </div>
+    <div class="chat-history-meta">${escHtml(chatHistoryTime(chat.ended_at || chat.started_at))} · ${escHtml(chat.model || 'unknown')}</div>
+    ${renderedMessages || '<div class="chat-history-snippet">No messages recorded.</div>'}`;
+}
+
+let chatHistorySearchTimer = null;
+window.showChatHistory = async function(query = '') {
+  showingKeySetup = true;
+  const el = document.getElementById('chat-messages');
+  el.innerHTML = renderChatHistoryShell(query);
+  await loadChatHistory(query);
+  const input = document.getElementById('chat-history-search');
+  if (input) input.focus();
+};
+
+window.queueChatHistorySearch = function() {
+  clearTimeout(chatHistorySearchTimer);
+  chatHistorySearchTimer = setTimeout(() => {
+    const input = document.getElementById('chat-history-search');
+    loadChatHistory(input ? input.value : '');
+  }, 180);
+};
+
+window.loadChatHistory = async function(query = '') {
+  const list = document.getElementById('chat-history-list');
+  if (list) list.innerHTML = '<div class="chat-history-snippet">Searching...</div>';
+  try {
+    const res = await fetch('/api/meph-chats?limit=50&q=' + encodeURIComponent(query));
+    const data = await res.json();
+    renderChatHistoryList(data.chats || []);
+  } catch (err) {
+    if (list) list.innerHTML = '<div class="chat-history-snippet">Could not load previous chats.</div>';
+  }
+};
+
+window.openChatHistory = async function(id) {
+  const detail = document.getElementById('chat-history-detail');
+  if (detail) { detail.style.display = ''; detail.innerHTML = '<div class="chat-history-snippet">Loading chat...</div>'; }
+  try {
+    const res = await fetch('/api/meph-chats/' + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load chat');
+    renderChatHistoryDetail(data.chat);
+  } catch (err) {
+    if (detail) detail.innerHTML = '<div class="chat-history-snippet">Could not load this chat.</div>';
+  }
+};
+
+window.copyChatHistory = async function(id) {
+  try {
+    const res = await fetch('/api/meph-chats/' + encodeURIComponent(id));
+    const data = await res.json();
+    await navigator.clipboard.writeText(JSON.stringify(data.chat || data, null, 2));
+    showToast('Copied previous chat.');
+  } catch (err) {
+    showToast('Could not copy chat.');
+  }
+};
+
+window.closeChatHistory = function() {
+  showingKeySetup = false;
+  renderChat();
+};
+
 window.showKeySetup = function() {
   showingKeySetup = true;
   const el = document.getElementById('chat-messages');
@@ -5586,17 +5858,99 @@ function restoreChatOrWelcome() {
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
 }
 
-function updateContextMeter(percent, used, max) {
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function estimateChatMessagesContextTokens(messages) {
+  const visible = Array.isArray(messages) ? messages.filter(m => m && m.role !== 'system') : [];
+  const chars = visible.reduce((sum, message) => sum + JSON.stringify(message.content || '').length, 0);
+  return Math.round(chars / 4);
+}
+
+function resetMephCostTracker({ keepVisible = true } = {}) {
+  mephCostTrackerActive = keepVisible;
+  mephUsageTotals = { inputTokens: 0, outputTokens: 0, costUSD: 0 };
+  mephUsageSeen = new Set();
+}
+
+function resetMephSessionStateForNewChat() {
+  const max = lastMephContextUsage?.max || promptOnlyContextUsage?.max || 200000;
+  const priorUsed = lastMephContextUsage?.used || promptOnlyContextUsage?.used || 0;
+  const promptUsed = Math.max(0, priorUsed - estimateChatMessagesContextTokens(chatMessages));
+  promptOnlyContextUsage = {
+    used: promptUsed,
+    max,
+    percent: max ? Math.round((promptUsed / max) * 100) : 0,
+  };
+  lastMephContextUsage = { ...promptOnlyContextUsage };
+  resetMephCostTracker({ keepVisible: true });
+  renderMephSessionMeter();
+}
+
+function renderMephSessionMeter() {
   const meter = document.getElementById('context-meter');
   const bar = document.getElementById('context-bar');
   const label = document.getElementById('context-label');
   if (!meter || !bar || !label) return;
+  const hasContext = !!lastMephContextUsage;
+  const hasCost = mephCostTrackerActive || mephUsageTotals.costUSD > 0;
+  if (!hasContext && !hasCost) {
+    meter.style.display = 'none';
+    return;
+  }
+  const max = lastMephContextUsage?.max || 200000;
+  const used = lastMephContextUsage?.used || 0;
+  const percent = lastMephContextUsage?.percent ?? (max ? Math.round((used / max) * 100) : 0);
   meter.style.display = 'flex';
   bar.style.width = percent + '%';
   bar.style.background = percent > 80 ? 'var(--red)' : percent > 50 ? 'var(--warning, orange)' : 'var(--accent)';
   const usedK = Math.round(used / 1000);
   const maxK = Math.round(max / 1000);
-  label.textContent = `${usedK}k / ${maxK}k tokens (${percent}%)`;
+  const costText = '$' + mephUsageTotals.costUSD.toFixed(4);
+  label.textContent = `${usedK}k / ${maxK}k tokens (${percent}%)` + (hasCost ? ` · ${costText}` : '');
+  label.title = hasCost
+    ? `${mephUsageTotals.inputTokens} input / ${mephUsageTotals.outputTokens} output model tokens this chat`
+    : '';
+}
+
+function updateContextMeter(percent, used, max) {
+  lastMephContextUsage = { percent, used, max };
+  const promptUsed = Math.max(0, used - estimateChatMessagesContextTokens(chatMessages));
+  promptOnlyContextUsage = {
+    used: promptUsed,
+    max,
+    percent: max ? Math.round((promptUsed / max) * 100) : 0,
+  };
+  renderMephSessionMeter();
+}
+
+function recordMephModelUsage(usage = {}) {
+  const usageId = usage.openrouter_generation_id || usage.generation_id || usage.id || '';
+  if (usageId && mephUsageSeen.has(usageId)) return;
+  if (usageId) mephUsageSeen.add(usageId);
+
+  const inputTokens = firstFiniteNumber(usage.input_tokens, usage.prompt_tokens)
+    + finiteNumber(usage.cache_read_input_tokens)
+    + finiteNumber(usage.cache_creation_input_tokens);
+  const outputTokens = firstFiniteNumber(usage.output_tokens, usage.completion_tokens);
+  const costUSD = firstFiniteNumber(usage.openrouter_cost, usage.costUSD, usage.cost_usd, usage.cost);
+
+  mephCostTrackerActive = true;
+  mephUsageTotals.inputTokens += inputTokens;
+  mephUsageTotals.outputTokens += outputTokens;
+  mephUsageTotals.costUSD += costUSD;
+  renderMephSessionMeter();
 }
 
 function saveChatState() {
@@ -6144,6 +6498,8 @@ window.sendChat = async function() {
         } else if (ev.type === 'test_results') {
           testResults[ev.testType] = ev;
           if (activeTab === 'tests') showTests();
+        } else if (ev.type === 'model_usage') {
+          recordMephModelUsage(ev.usage);
         } else if (ev.type === 'todo_update') {
           renderMephTodos(ev.todos);
         } else if (ev.type === 'requirements_review') {
@@ -6646,8 +7002,9 @@ document.addEventListener('keydown', e => {
 function renderMephTodos(todos) {
   const el = document.getElementById('meph-todos');
   if (!el) return;
-  if (!todos || todos.length === 0) { el.innerHTML = ''; return; }
-  el.innerHTML = todos.map(t =>
+  currentMephTodos = Array.isArray(todos) ? todos : [];
+  if (currentMephTodos.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = currentMephTodos.map(t =>
     `<div class="meph-todo ${t.status}"><span class="todo-icon"></span>${escHtml(t.status === 'in_progress' ? t.activeForm : t.content)}</div>`
   ).join('');
 }
@@ -6784,7 +7141,7 @@ loadTemplates();
 // Fetch tenant info on boot — drives Deploy button visibility + plan badge
 (async () => {
   try {
-    const t = await fetch('/api/tenant').then(r => r.ok ? r.json() : null).catch(() => null);
+    const t = await fetchTenantStatus();
     updatePlanBadge(t);
   } catch {}
 })();

@@ -45,6 +45,56 @@
 
 Lessons learned during Clear compiler development. Scan the TOC before starting work.
 
+## Session 2026-05-12: Studio startup should not restore old editor state
+
+Studio was restoring the last editor source from browser storage and then refreshing the last selected template from disk. That made a restart reopen approval-queue even when the expected startup state was a blank editor.
+
+### Gotchas-as-rules
+
+- **Startup defaults beat browser persistence.** If the product says "new session starts blank," ignore stale localStorage on boot.
+- **Template freshness should not auto-load a template.** Refreshing a selected template is useful only after the user selects one.
+- **Clear all paired persistence keys together.** Source text and selected template name must reset as a pair.
+
+## Session 2026-05-12: Chat transcripts are not quality records
+
+Meph chat history belongs in Studio, but transcript files are a different artifact from session-quality rows. A manually saved transcript with a UTF-8 BOM exposed both edges: history search should tolerate BOMs, and quality dashboards should ignore transcript files.
+
+### Gotchas-as-rules
+
+- **Transcript readers should tolerate UTF-8 BOMs.** Debug files and Windows-created fixtures can carry one.
+- **Measurement endpoints must filter to their own record type.** Chat transcripts should not masquerade as quality rows.
+- **History search should fail soft on weird files.** One bad saved chat should not break browsing the rest.
+
+## Session 2026-05-12: Compile should land on the running app
+
+The Compile button successfully built and ran full-stack apps, but the final UI handoff switched users into the generated-code view. That left the preview iframe stale or visibly refused even though the app server had come up.
+
+### Gotchas-as-rules
+
+- **Successful Compile should end on Preview.** Users asked to see the app result, not generated plumbing.
+- **Backend preview refresh must happen after the live port is known.** A server-start success should rebuild the iframe from the current port.
+- **Editor copy buttons should read CodeMirror state.** Copy source from the editor document, not DOM text or compiled output.
+
+## Session 2026-05-12: New chat must reset every session-only Meph surface
+
+The New button cleared saved chat messages, but it left the context meter and task list looking like the old session was still active. That made a fresh Meph run feel contaminated before the user typed anything.
+
+### Gotchas-as-rules
+
+- **New chat must clear every session-only surface.** Chat, task list, token meter, and cost tracker reset together.
+- **Token reset should preserve only prompt/tool baseline.** Old user and Meph turns must not keep inflating the visible context count.
+- **Cost tracking should use provider usage metadata.** For OpenRouter, prefer the streamed `openrouter_cost` value over local price guesses.
+
+## Session 2026-05-12: Copyable compiler failures need the chat context
+
+The compiler trace had the failing line, source snapshot, and diagnostics, but it dropped the conversation that caused Meph to write that source. A fresh debugging session could see what broke without seeing the user's intent.
+
+### Gotchas-as-rules
+
+- **Copyable compiler failures need the chat that produced them.** Include current Russell/Meph turns with the trace.
+- **Do not copy image payload bytes into text packets.** Include an explicit attachment placeholder instead.
+- **Clipboard tests should check the copied packet, not just the button label.** A visible copy button can still copy the wrong context.
+
 ## Session 2026-05-12: Missing app intent should compile-error, not auto-invent UI
 
 A protected page redirected to `/login`, but the app source never declared a login page. The wrong fix was to synthesize a login page. That violates Clear's source-of-truth rule: the source is the contract, not a hint.
@@ -2710,6 +2760,7 @@ The decisive move is making intent machine-checkable. Requirements turn a vague 
 - **Pattern hooks can hurt when retrieval is poorly aimed.** A full hook that retrieves generic auth/KPI-ish context for a booking app can perform worse than docs-only; add local retrieval assertions before spending on another A/B.
 - **When a golden template lacks the hard prompt's primitive, seed a trusted language primitive.** Do not hope retrieval composes the missing behavior from adjacent snippets.
 - **Every negative paid retrieval result needs a zero-cost guard before the next paid run.** Add the primitive, assert the top match, then reopen the meter.
+- **FAQ and FEATURES are the map before code search.** If an agent has to broad-search for a named Clear subsystem like Ralph, the docs are missing a direct pointer; patch the map and enforce docs-first search.
 
 ## Session 2026-05-15: First-Paint Data Must Cover Real App Shapes
 

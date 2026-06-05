@@ -53,7 +53,7 @@ import {
   selectedModelNeedsOpenRouterKey,
   selectChatMessagesForModel,
 } from './ghost-meph/model-picker.js';
-import { shouldSnapRetry, formatSnapMessage, readSnapConfig } from './snap-layer.js';
+import { shouldSnapRetry, formatCompilerFeedbackMessage, readSnapConfig } from './snap-layer.js';
 import { shouldRalphRetry, formatRalphMessage, readRalphConfig } from './ralph-layer.js';
 // dispatchTool is the post-GM-2 single entry point for every Meph tool call.
 // The runTestsTool import stays alongside because /api/run-tests (the Studio
@@ -3260,24 +3260,132 @@ app.post('/api/supervisor/clear-sweep', (req, res) => {
 
 // Dev-only: session quality records for re-ranker debugging.
 // Hidden from Studio UI. Not shown to Meph. Training signal only.
-app.get('/api/session-quality', (req, res) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
-    const files = readdirSync(SESSIONS_DIR)
-      .filter(f => f.endsWith('.json'))
-      .sort()
-      .slice(-limit);
-    const records = files.map(f => {
-      try { return JSON.parse(readFileSync(join(SESSIONS_DIR, f), 'utf8')); }
-      catch { return null; }
-    }).filter(Boolean);
-    res.json(records);
+  function readSessionJsonFile(fullPath) {
+    const text = readFileSync(fullPath, 'utf8').replace(/^\uFEFF/, '');
+    return JSON.parse(text);
+  }
+
+  app.get('/api/session-quality', (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+      const files = readdirSync(SESSIONS_DIR)
+        .filter(f => f.endsWith('.json') && !f.endsWith('.transcript.json'))
+        .sort()
+        .slice(-limit);
+      const records = files.map(f => {
+        try { return readSessionJsonFile(join(SESSIONS_DIR, f)); }
+        catch { return null; }
+      }).filter(Boolean);
+      res.json(records);
   } catch (err) {
     res.json([]);
   }
 });
 
 // Memory file endpoints (for UI button — Meph also accesses via edit_file tool)
+function messageContentText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(part => {
+      if (typeof part === 'string') return part;
+      if (!part || typeof part !== 'object') return '';
+      if (typeof part.text === 'string') return part.text;
+      if (typeof part.content === 'string') return part.content;
+      if (part.type === 'image') return '[image]';
+      try { return JSON.stringify(part); } catch { return ''; }
+    }).filter(Boolean).join('\n');
+  }
+  if (content && typeof content === 'object') {
+    try { return JSON.stringify(content); } catch { return ''; }
+  }
+  return '';
+}
+
+function transcriptSearchText(chat) {
+  const messageText = Array.isArray(chat.messages)
+    ? chat.messages.map(m => `${m.role || ''}: ${messageContentText(m.content)}`).join('\n')
+    : '';
+  return [chat.task, messageText, chat.final_source].filter(Boolean).join('\n');
+}
+
+function transcriptMatches(chat, query) {
+  const terms = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = transcriptSearchText(chat).toLowerCase();
+  return terms.every(term => haystack.includes(term));
+}
+
+function transcriptSnippet(chat, query, max = 220) {
+  const text = transcriptSearchText(chat).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const q = String(query || '').trim().toLowerCase();
+  const firstTerm = q.split(/\s+/).filter(Boolean)[0] || '';
+  const idx = firstTerm ? text.toLowerCase().indexOf(firstTerm) : -1;
+  const start = idx >= 0 ? Math.max(0, idx - 60) : 0;
+  const snippet = text.slice(start, start + max);
+  return (start > 0 ? '...' : '') + snippet + (start + max < text.length ? '...' : '');
+}
+
+  function readTranscriptFile(file) {
+    const fullPath = join(SESSIONS_DIR, file);
+    const chat = readSessionJsonFile(fullPath);
+    const stats = statSync(fullPath);
+    return { chat, stats };
+  }
+
+function summarizeTranscript(chat, stats, query = '') {
+  return {
+    id: chat.id,
+    started_at: chat.started_at || null,
+    ended_at: chat.ended_at || null,
+    updated_at: Math.floor(stats.mtimeMs / 1000),
+    model: chat.model || 'unknown',
+    backend: chat.backend || 'unknown',
+    task: chat.task || '',
+    message_count: chat.message_count || (Array.isArray(chat.messages) ? chat.messages.length : 0),
+    snippet: transcriptSnippet(chat, query),
+  };
+}
+
+app.get('/api/meph-chats', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+    const query = String(req.query.q || '').trim();
+    const chats = readdirSync(SESSIONS_DIR)
+      .filter(file => file.endsWith('.transcript.json'))
+      .map(file => {
+        try {
+          const { chat, stats } = readTranscriptFile(file);
+          return { chat, stats };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .filter(({ chat }) => transcriptMatches(chat, query))
+      .sort((a, b) => (b.chat.ended_at || Math.floor(b.stats.mtimeMs / 1000)) - (a.chat.ended_at || Math.floor(a.stats.mtimeMs / 1000)))
+      .slice(0, limit)
+      .map(({ chat, stats }) => summarizeTranscript(chat, stats, query));
+    res.json({ chats, query });
+  } catch (err) {
+    res.status(500).json({ chats: [], error: err.message });
+  }
+});
+
+app.get('/api/meph-chats/:id', (req, res) => {
+  const id = String(req.params.id || '');
+  if (!/^[a-zA-Z0-9._:-]+$/.test(id)) return res.status(400).json({ error: 'Invalid chat id' });
+  const file = `${id}.transcript.json`;
+  const fullPath = join(SESSIONS_DIR, file);
+  if (!existsSync(fullPath)) return res.status(404).json({ error: 'Chat not found' });
+  try {
+    const { chat } = readTranscriptFile(file);
+    res.json({ chat });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/read-file', (req, res) => {
   const fname = String(req.body.filename || '').replace(/[^a-zA-Z0-9._-]/g, '-');
   if (fname !== 'meph-memory.md') return res.json({ error: 'Only meph-memory.md is readable from the UI.' });
@@ -3461,83 +3569,16 @@ app.post('/api/chat', async (req, res) => {
   let _lastFactorRowId = null;
   let _sourceBeforeEdit = currentSource; // captured before each patch/write, used as source_before
 
-  // Hint-usage tracking. Accumulates Meph's full text across tool-use iterations
-  // so we can parse the HINT_APPLIED tag after end_turn. _hintsInjectedRowId
-  // remembers which compile row had hints — that's the row we update so the
-  // tracking joins cleanly to retrieval telemetry.
+  // Legacy hint-usage fields remain in the tool context for old telemetry rows,
+  // but the exact-error HINT_APPLIED repair flow is retired. Compiler errors now
+  // go back to Meph as hidden Snap feedback instead.
   let _allAssistantText = '';
   let _hintsInjectedRowId = null;
-  // Inference fallback: if hints are served but Meph forgets to emit
-  // HINT_APPLIED, we can still infer whether the hint likely helped by
-  // watching error counts across subsequent compiles in the same turn.
-  // If error count drops after hints → probably useful → log applied=1,
-  // helpful='inferred'. Never overwrites a real tag; only fires when Meph
-  // didn't announce. Kept in a distinct `helpful` bucket ('inferred') so
-  // ranker training can choose whether to use this weaker signal.
   let _hintsInjectedErrorCount = null;
   let _hintsInjectedTier = null;
   let _postHintMinErrorCount = null;
 
-  // Parse Meph's HINT_APPLIED tag and write the result to the row that carried
-  // the hints. Called from BOTH exit paths (end_turn and iteration-limit) so
-  // we track hint usage even when Meph fails to converge — which is when
-  // tracking is most valuable. `source` is "end_turn" or "iter_limit" for logs.
-  const _captureHintUsage = (source) => {
-    try {
-      if (_factorDB && _hintsInjectedRowId) {
-        // If Meph emitted multiple tags (one per compile-with-hints), take
-        // the LAST one — it reflects his final assessment after all iterations.
-        const all = [..._allAssistantText.matchAll(/HINT_APPLIED:\s*([^\n]+)/gi)];
-        const m = all.length > 0 ? all[all.length - 1] : null;
-        if (m) {
-          const body = m[1].trim();
-          const appliedWord = body.match(/^(yes|no)/i);
-          const tierM = body.match(/tier=([a-z_]+)/i);
-          const helpfulM = body.match(/helpful=([a-z]+)/i);
-          const reasonM = body.match(/reason=([^,\n]+)/i);
-          const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
-          // Tier preference: Meph's explicit tag > the top tier we served > null.
-          // Meph typically omits `tier=` on `HINT_APPLIED: no` (no point citing a
-          // tier he rejected) — record the served tier so we retain which tier
-          // was being rejected, not a null.
-          const recordedTier = (tierM && tierM[1]) || _hintsInjectedTier || null;
-          _factorDB.logHintUsage(_hintsInjectedRowId, {
-            applied,
-            tier: recordedTier,
-            helpful: helpfulM ? helpfulM[1].toLowerCase() : null,
-            reason: reasonM ? reasonM[1].trim().slice(0, 200) : null,
-          });
-          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} applied=${applied} tier=${recordedTier || '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
-        } else {
-          // No tag from Meph. Try the inference fallback: if a later compile
-          // in this same turn had fewer errors than when hints were served,
-          // the hint likely helped. Log as applied=1, helpful='inferred' so
-          // ranker training can opt in or out of this weaker signal.
-          // CRUCIAL: never overwrite with helpful='yes' — 'inferred' is a
-          // distinct value so the honest-label set (yes/no/partial) stays clean.
-          const canInfer =
-            _hintsInjectedErrorCount !== null &&
-            _postHintMinErrorCount !== null &&
-            _postHintMinErrorCount < _hintsInjectedErrorCount;
-          if (canInfer) {
-            _factorDB.logHintUsage(_hintsInjectedRowId, {
-              applied: 1,
-              tier: _hintsInjectedTier,
-              helpful: 'inferred',
-              reason: `no tag; errors ${_hintsInjectedErrorCount}→${_postHintMinErrorCount} after hint`,
-            });
-            console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source}+inference applied=1 tier=${_hintsInjectedTier || '-'} helpful=inferred (errors ${_hintsInjectedErrorCount}→${_postHintMinErrorCount})`);
-          } else {
-            console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} NO_TAG (hints injected, Meph didn't announce${_hintsInjectedErrorCount !== null ? `, errors stayed at ${_postHintMinErrorCount ?? _hintsInjectedErrorCount}` : ''})`);
-          }
-        }
-      } else if (_factorDB && !_hintsInjectedRowId && /HINT_APPLIED:/i.test(_allAssistantText)) {
-        console.warn(`[hint-usage] via=${source} HALLUCINATED (Meph emitted HINT_APPLIED with no hints in context)`);
-      }
-    } catch (err) {
-      console.warn(`[hint-usage] parse failed: ${err.message}`);
-    }
-  };
+  const _captureHintUsage = () => {};
 
   // Tool execution. `validateToolInput` and `describeMephTool` extracted to
   // `studio/meph-tools.js` (GM-2 step 2) so the future MCP server can
@@ -4016,7 +4057,7 @@ app.post('/api/chat', async (req, res) => {
           currentMessages.push({ role: 'assistant', content: assistantContent });
           currentMessages.push({
             role: 'user',
-            content: formatSnapMessage({
+            content: formatCompilerFeedbackMessage({
               errors: currentErrors,
               retryIndex: snapRetryCount,
               maxRetries: snapConfig.maxRetries,

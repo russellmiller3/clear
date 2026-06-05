@@ -1323,7 +1323,7 @@ assert(loggedActions[0].compile_ok === 1,
 assert(hrFdbCtx.hintState.lastFactorRowId === 777,
   `compileTool mirrors logAction return into hintState.lastFactorRowId (got ${hrFdbCtx.hintState.lastFactorRowId})`);
 
-// --- 7. Factor DB + errors + hint rows: hints attached to result
+// --- 7. Factor DB + errors: exact-error repair hints are no longer injected
 let querySuggestionCalls = 0;
 const hintRow = {
   tier: 'exact_error_same_archetype',
@@ -1346,18 +1346,12 @@ const hintCtx = new MephContext({
   pairwiseBundle: { weights: 'fake' },
 });
 const comp7 = JSON.parse(compileTool({}, hintCtx, compileHelpers));
-assert(querySuggestionCalls === 1,
-  `compileTool with errors + factorDB calls querySuggestions once (got ${querySuggestionCalls})`);
-assert(comp7.hints && typeof comp7.hints.text === 'string',
-  `compileTool attaches hints.text when hint rows present (got ${comp7.hints ? 'yes' : 'no'})`);
-assert(comp7.hints.text.includes('SAME ERROR in same archetype'),
-  'compileTool hints.text includes tier label for exact_error_same_archetype rows');
-assert(comp7.hints.reranked_by === 'pairwise',
-  `compileTool marks reranked_by=pairwise when pairwiseBundle present (got ${comp7.hints.reranked_by})`);
-assert(hintCtx.hintState.hintsInjectedRowId === 888,
-  `compileTool updates hintsInjectedRowId when hints attached (got ${hintCtx.hintState.hintsInjectedRowId})`);
-assert(hintCtx.hintState.hintsInjectedTier === 'exact_error_same_archetype',
-  'compileTool records top-hint tier in hintState');
+assert(querySuggestionCalls === 0,
+  `compileTool should not call querySuggestions for retired exact-error hints (got ${querySuggestionCalls})`);
+assert(!comp7.hints?.text?.includes('HINT_APPLIED'),
+  'compileTool no longer asks Meph to emit HINT_APPLIED');
+assert(hintCtx.hintState.hintsInjectedRowId === null,
+  `compileTool leaves hintState clean when exact-error hints are retired (got ${hintCtx.hintState.hintsInjectedRowId})`);
 
 // --- 7b. Curated pattern DB: compile hints include canonical app patterns
 let patternQueryCalls = 0;
@@ -1418,8 +1412,8 @@ const ebmCtx = new MephContext({
   ebmBundle: { weights: 'fake' },
 });
 const comp8 = JSON.parse(compileTool({}, ebmCtx, compileHelpers));
-assert(comp8.hints?.reranked_by === 'ebm',
-  `compileTool falls back to EBM when only ebmBundle present (got ${comp8.hints?.reranked_by})`);
+assert(!comp8.hints?.reranked_by,
+  `compileTool does not run exact-error EBM hint reranking anymore (got ${comp8.hints?.reranked_by})`);
 
 // --- 9. No reranker: hints stay in BM25 order
 const bm25Ctx = new MephContext({
@@ -1428,8 +1422,8 @@ const bm25Ctx = new MephContext({
   sessionId: 'sess-bm25',
 });
 const comp9 = JSON.parse(compileTool({}, bm25Ctx, compileHelpers));
-assert(comp9.hints?.reranked_by === 'bm25',
-  `compileTool reports reranked_by=bm25 when no reranker bundle (got ${comp9.hints?.reranked_by})`);
+assert(!comp9.hints?.reranked_by,
+  `compileTool does not run exact-error BM25 hint retrieval anymore (got ${comp9.hints?.reranked_by})`);
 
 // --- 9b. CLEAR_HINT_DISABLE=1 env flag short-circuits hint retrieval
 // Session 44 / Track 1.2: enables honest A/B measurement of hint effect on
@@ -1486,8 +1480,7 @@ assert(requestDisabledQueryCalls === 0,
 assert(requestDisabledPatternCalls === 0,
   `disableFactorHints skips queryProgrammingPatterns entirely (got ${requestDisabledPatternCalls} calls)`);
 
-// And: when the flag is back off (unset or != '1'), hints flow normally.
-// Guards against a regression where the flag check accidentally inverts.
+// And: when the flag is back off (unset or != '1'), exact-error hints stay retired.
 delete process.env.CLEAR_HINT_DISABLE;
 let renabledQueryCalls = 0;
 const fdbReenabled = {
@@ -1502,10 +1495,10 @@ const renabledCtx = new MephContext({
   pairwiseBundle: { weights: 'fake' },
 });
 const compReenabled = JSON.parse(compileTool({}, renabledCtx, compileHelpers));
-assert(renabledQueryCalls === 1,
-  `flag unset: querySuggestions called as normal (got ${renabledQueryCalls})`);
-assert(compReenabled.hints && compReenabled.hints.text,
-  'flag unset: hints flow through normally (no inversion regression)');
+assert(renabledQueryCalls === 0,
+  `flag unset: exact-error querySuggestions still not called (got ${renabledQueryCalls})`);
+assert(!compReenabled.hints?.text?.includes('HINT_APPLIED'),
+  'flag unset: compile result still does not include HINT_APPLIED guidance');
 if (origHintDisable !== undefined) process.env.CLEAR_HINT_DISABLE = origHintDisable;
 
 // --- 9c. Dispatcher path: compile tool-result carries hint text to Meph.
@@ -1527,38 +1520,14 @@ const dispatchedRaw = await dispatchTool('compile', {}, dispatchedCtx, compileHe
 assert(typeof dispatchedRaw === 'string',
   'dispatchTool compile returns a string suitable for tool_result.content');
 const dispatchedCompile = JSON.parse(dispatchedRaw);
-assert(dispatchedQueryCalls === 1,
-  `dispatchTool compile calls hint retrieval once (got ${dispatchedQueryCalls})`);
-assert(dispatchedCompile.hints?.text?.includes('HINT_APPLIED: yes'),
-  'dispatchTool compile result carries HINT_APPLIED guidance to Meph');
-assert(dispatchedCompile.hints?.text?.includes('Source that worked:'),
-  'dispatchTool compile result carries the worked source snippet to Meph');
-assert(dispatchedCtx.hintState.hintsInjectedRowId === 902,
-  `dispatchTool compile mirrors hint row id for later usage tracking (got ${dispatchedCtx.hintState.hintsInjectedRowId})`);
+assert(dispatchedQueryCalls === 0,
+  `dispatchTool compile no longer calls exact-error hint retrieval (got ${dispatchedQueryCalls})`);
+assert(!dispatchedCompile.hints?.text?.includes('HINT_APPLIED'),
+  'dispatchTool compile result does not carry HINT_APPLIED guidance to Meph');
+assert(dispatchedCtx.hintState.hintsInjectedRowId === null,
+  `dispatchTool compile keeps hint row id empty after retiring exact-error hints (got ${dispatchedCtx.hintState.hintsInjectedRowId})`);
 
-// --- 10. Inference fallback: postHintMinErrorCount tracks drops after hint-serve
-const dropCtx = new MephContext({
-  source: 'database:\n  bogus garbage\n',
-  factorDB: {
-    logAction: () => 999,
-    querySuggestions: () => [],
-    _db: { prepare: () => ({ get: () => null }) },
-  },
-  sessionId: 'sess-drop',
-  // Pretend hints were served on row 555 in a prior compile
-  hintState: {
-    lastFactorRowId: null,
-    hintsInjectedRowId: 555,
-    hintsInjectedErrorCount: 5,
-    hintsInjectedTier: 'exact_error',
-    postHintMinErrorCount: null,
-  },
-});
-compileTool({}, dropCtx, compileHelpers);
-assert(typeof dropCtx.hintState.postHintMinErrorCount === 'number',
-  `compileTool updates postHintMinErrorCount on post-hint compile (got ${dropCtx.hintState.postHintMinErrorCount})`);
-
-// --- 11. compileProgram throws → { error: message }
+// --- 10. compileProgram throws → { error: message }
 const throwingHelpers = {
   ...compileHelpers,
   compileProgram: () => { throw new Error('synthetic compile crash'); },
@@ -1574,7 +1543,7 @@ assert(comp11.error?.includes('synthetic compile crash'),
 // now calls attachHintsForCompileResult and ships hints back to Meph.
 // =====================================================================
 
-// edit_code with full helpers + factorDB + a compile error should fire hints
+// edit_code with full helpers + factorDB + a compile error should not fire retired exact-error hints
 let editQuerySuggestionCalls = 0;
 const editHintRow = {
   tier: 'exact_error_same_archetype',
@@ -1602,12 +1571,10 @@ const editResult = JSON.parse(editCodeTool(
   editCtx,
   compileHelpers
 ));
-assert(editQuerySuggestionCalls === 1,
-  `edit_code with errors + factorDB calls querySuggestions once via the helper (got ${editQuerySuggestionCalls})`);
-assert(editResult.hints && typeof editResult.hints.text === 'string',
-  `edit_code attaches hints.text when called via dispatch with errors (got ${editResult.hints ? 'yes' : 'no'})`);
-assert(editResult.hints.text.includes('SAME ERROR in same archetype'),
-  'edit_code hint text includes tier label for exact_error_same_archetype rows');
+assert(editQuerySuggestionCalls === 0,
+  `edit_code with errors + factorDB does not call retired querySuggestions path (got ${editQuerySuggestionCalls})`);
+assert(!editResult.hints?.text?.includes('HINT_APPLIED'),
+  'edit_code does not attach HINT_APPLIED guidance when exact-error hints are retired');
 
 // edit_code with bare compileProgram (legacy test call site) should NOT fire hints
 let legacyQueryCalls = 0;

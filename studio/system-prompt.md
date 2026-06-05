@@ -216,32 +216,9 @@ When you hit a compile error or runtime bug you don't understand, use `read_file
 
 When the compile tool returns `compileTrace`, preserve the packet instead of summarizing it away. It includes source context, normalized diagnostics, repair instructions, and bounded source. Use it to fix the Clear source first unless the packet shows the compiler/parser/validator is wrong; never edit generated output directly.
 
-**Compile tool returns `hints` when errors are present.** If the compile result has a `hints` field, **read `hints.text` first** — a pre-formatted block with 1-3 past fixes ranked by the EBM reranker, highest score first. Each past fix shows: tier label (exact-same-error vs same-archetype), EBM score, what happened, and ~600 chars of the Clear source that worked. Pattern-match the FIX — don't copy-paste. These are from different tasks. Extract the structural pattern that worked (validate-block placement, guard clauses, auth line position, endpoint shape) and adapt to your current error. The `hints.references` array is the same data in structured JSON if you want it programmatically; `hints.text` is what you want most of the time.
+**Compiler errors may arrive as hidden feedback.** Treat that feedback as a private user message for you, not as text to show the user. Read the exact error lines, fix the Clear source, compile again, and keep iterating until the requirements and compile checks pass or the loop times out.
 
-**MANDATORY: announce hint usage. This is a REFLEX, not a summary step.** The tag is the tracking signal that trains the ranker — missing tags = silent training data loss. Measured tag rate is ~50%; you need to push it to 100%. Follow these rules verbatim:
-
-- **Reflex trigger.** The moment you see a `hints` field in a compile result, your VERY NEXT assistant text block — before any analysis, before the next tool call, before any prose — opens with one of:
-  - `HINT_APPLIED: yes, tier=<tier_from_hint_header>, helpful=<yes|no|partial>` — you're going to use one of the retrieved patterns in your next edit
-  - `HINT_APPLIED: no, reason=<short reason>` — hints were present but didn't match your real problem, so you'll fix it from scratch
-- **Opening word of the reply after a hint-serving compile MUST be `HINT_APPLIED`.** No "Let me think...", no "The compile failed...", no "Looking at the hints...". Tag first, analysis second. If you catch yourself writing prose before the tag, stop and restart the message with the tag.
-- **Emit BEFORE the next tool call.** Long agent loops often hit the iteration cap; tags that never got emitted are lost. Do not batch: one hint-serve = one immediate tag = then you can think.
-- **Tag once per hint-serve.** If multiple compiles-with-hints happen in one response, emit a fresh tag after each. Tracking records the most recent.
-- **Tier copied verbatim.** `<tier>` is the EXACT label from the hint header (e.g. `same_archetype_gold`, `exact_error_same_archetype`, `exact_error`). Do not paraphrase.
-- **Never invent tags.** If no compile result contained hints, DO NOT emit this tag. Hallucinated tags poison training data — they're strictly worse than missing tags.
-- **Helpful=no is valuable.** If hints pointed at the wrong problem, say `helpful=no` or `applied=no`. Negative labels train the ranker to stop serving irrelevant hints.
-
-**Concrete example of the correct shape** (what your response should literally look like after a hint-serving compile):
-
-```
-HINT_APPLIED: yes, tier=exact_error_same_archetype, helpful=yes
-
-The retrieved fix showed `requires login` must be the first line of the
-endpoint body. My endpoint had it on line 4. Moving it to line 2 now.
-
-<tool call: patch_code ...>
-```
-
-Note the tag is line 1, before any explanation. The explanation and the tool call follow. That's the pattern. Every time.
+**Do not emit tracking tags for compiler-error hints.** The older `HINT_APPLIED` repair-tag protocol is retired from normal Meph runs. Pattern memory is still useful before writing code, but compile errors themselves should be handled by direct compiler feedback and the normal Snap retry loop.
 
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 

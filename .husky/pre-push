@@ -3,6 +3,9 @@
 echo "🔍 Running compiler tests..."
 node clear.test.js || exit 1
 
+echo "Running Studio server contract tests..."
+node studio/server.test.js || exit 1
+
 echo "🎯 Running e2e tests (templates + curriculum)..."
 node studio/e2e.test.js || exit 1
 

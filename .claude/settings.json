@@ -91,6 +91,18 @@
           },
           {
             "type": "command",
+            "command": "node .claude/hooks/docs-first-search.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking FAQ.md and FEATURES.md were searched before broad code search..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/benchmark-narration-guard.mjs",
+            "timeout": 5,
+            "statusMessage": "Checking paid benchmark runs are visible while they run..."
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/ship-docs-cascade-gate.mjs",
             "timeout": 10,
             "statusMessage": "Verifying CHANGELOG / FEATURES / FAQ are all updated before shipping to main..."
