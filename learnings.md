@@ -2776,3 +2776,13 @@ The durable fix was compiler-level: safe same-app page-load reads now join the s
 - **When a roadmap item ships, remove it from ROADMAP and move it to FEATURES/FAQ/CHANGELOG.** Backlog should mean future work, not history.
 - **Name the golden set in FAQ.** Future agents should not rediscover which 13 apps are load-bearing by scanning scripts.
 - **Seed idempotence must cover every table the seed fills.** Checking only the first table can make a demo say "already seeded" while later data is still missing.
+
+## Session 2026-06-03: Form Block Keyword Must Stay Narrow
+
+Clear already had form ingredients: inputs, buttons, form-styled sections, and "send form" payload buttons. It did not have a bare `form:` block opener. Adding `form` as a keyword fixed the user-facing typo error, but the first pass accidentally parsed `form is {}` as an empty form block.
+
+### Gotchas-as-rules
+
+- **Keyword dispatch must claim only its real shape.** If a word can also be a variable, check the full line shape before consuming it.
+- **Block openers should prove they are block openers.** For `form`, require the source line to end in `:` and allow only an optional quoted title before parsing a block.
+- **Regression tests need both new syntax and old nearby syntax.** Add the positive `form:` case and the guard that `form is {}` still works as payload data.
