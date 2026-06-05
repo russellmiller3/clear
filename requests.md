@@ -1,5 +1,17 @@
 # Compiler & Runtime Requests
 
+## 2026-06-04 — `refresh X from '/api/...'` did not re-render `display X` — DONE 2026-06-04
+
+**Fixed this session.** `refresh msgs from '/api/messages'` was parsed as bare
+`refresh`, which threw away everything after it and compiled to
+`window.location.reload()` — a full page reload, not a targeted list update. The
+parser now detects the `refresh X from URL` form and emits the same
+fetch-into-reactive-variable node that `get X from URL` already uses, so the
+bound `show X as list` re-renders in place. Bare `refresh` / `refresh page` /
+`reload page` still reload the page. Regression test in `clear.test.js`; all 8
+core templates compile clean. (Original report lived in the other worktree's
+requests.md — Basic AI Agent Demo, "Send Message" button.)
+
 ## 2026-04-28 — Components silently drop nav-section / nav-item children — DONE 2026-04-28
 
 **Fixed in commit (this session).** Components now compile their HTML-only children (NAV_SECTION, NAV_ITEM, PAGE_HEADER, STAT_STRIP, STAT_CARD, TAB_STRIP, etc.) by routing them through the same buildHTML walker pages use. The component function returns the full HTML string with all children rendered. SHOW and CONTENT children still use the existing inline path so dynamic interpolation (`show user_name`) keeps working. Verified end-to-end via the preview tools: deal-desk's `DealDeskSidebar` component now renders 11 nav links + 3 section labels on every sub-page (was: only the heading).
