@@ -17,7 +17,8 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",
     "express": "^5.2.1",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "z3-solver": "^4.16.0"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.10.3",
