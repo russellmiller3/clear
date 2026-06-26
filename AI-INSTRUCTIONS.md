@@ -599,26 +599,29 @@ Use the prover **in addition to** the test runner — they cover different thing
 The big win: any test where input variables are **free** (not bound by an assignment in the test body) auto-promotes to a "for any input" universal proof. Example:
 
 ```clear
-define function add(a, b):
+define function add(a is number, b is number):   # TYPE the params — see below
   return a + b
 
 test 'addition is commutative for any inputs':
   expect add(a, b) is add(b, a)        # a, b are free → forall a, b
 ```
 
-The prover proves this for ALL possible inputs, not just specific examples. That's the moonshot claim — Clear is the only AI coding tool whose output comes with a math certificate.
+The prover proves this for ALL possible inputs, not just specific examples. That's the moonshot claim — Clear is the only AI coding tool whose output comes with a math certificate. The decision engine is **SMT-backed (Z3)**.
 
-**What proves universally today:**
-- Arithmetic identities (`x + 0`, `x * 1`, `x * 0`)
-- Commutativity of `+` and `*`
-- Associativity of `+`
-- Like-term collection (`x + x` proves equal to `2 * x`)
-- Functions with `if/then/otherwise` whose branches reduce to the same canonical form
+**What proves universally today (Z3-backed):**
+- Arithmetic identities, commutativity/associativity/distributivity, like-term and polynomial equalities (`x + x` == `2 * x`, `(a+b)*(a-b)` == `a*a - b*b`)
+- **Bounds and inequalities** — `expect square(x) is at least 0` proves `x*x >= 0`; `expect commission(deal) is at most 50000`
+- Multiplication and division (`(2*a*b)/100` == `2*(a*b/100)`)
+- `if/then/otherwise` whose branches reduce to the same form, and "for all" universal numeric claims
+- A FALSE claim comes back FAILED with the **exact counterexample input**
 
-**What does NOT prove yet (returns honest UNKNOWN):**
-- Full distributivity over division (e.g. `(2*a*b)/100` vs `2*(a*b/100)`)
-- Path-dependent claims that depend on assumed inequalities
+**RULE — type your numeric params so constraints actually PROVE.** `define function f(x is number):` lets the prover treat `x` as a number and prove arithmetic about it. An **untyped** value used in arithmetic (e.g. `f(x)` with `x` left untyped) returns PARTIAL — "can't prove without types" — never a false PROVED. So when you want a numeric rule proven, annotate the params.
+
+**What still returns PARTIAL / UNVERIFIABLE:**
+- Genuinely undecidable nonlinear goals (Z3 may time out → PARTIAL)
+- Untyped values used in arithmetic (add types to resolve)
 - Recursive functions (would need induction principles)
+- Anything that touches the world (DB / network / AI / time) → UNVERIFIABLE
 
 **Demos to cargo-cult:** `examples/proofs/{invoice,pricing,eligibility,theorems,deal-desk-math}.clear`. 58 proofs total covering tax math, discounts, eligibility checks, universal theorems, and deal-desk business math.
 
