@@ -450,7 +450,7 @@ async function main() {
   }
   ensureClearRuntime();
   const source = readFileSync(filePath, 'utf8');
-  const proofBundle = prove(source);
+  const proofBundle = await prove(source);
   const compiled = compileProgram(source);
   const ast = compiled.ast;
   const serverJS = compiled.serverJS || compiled.javascript || '';

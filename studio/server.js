@@ -613,7 +613,7 @@ app.post('/api/prove', async (req, res) => {
     if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
     if (!source.trim()) return res.json({ bundle: { status: 'empty', counts: {} }, formatted: 'No source to prove.' });
     const { prove, formatBundle } = await import('../lib/prover/index.js');
-    const bundle = prove(source);
+    const bundle = await prove(source);
     res.json({ bundle, formatted: formatBundle(bundle) });
   } catch (err) {
     res.status(500).json({ error: err.message });

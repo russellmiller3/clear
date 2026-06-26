@@ -288,7 +288,7 @@ async function tryRunProver(source) {
     const proverModule = await import(
       pathToFileURL(resolve(__dirname, '..', 'lib', 'prover', 'index.js')).href
     );
-    return proverModule.prove(source);
+    return await proverModule.prove(source);
   } catch (err) {
     // Prover failure must never break the test run. Return null so callers
     // skip the proof line gracefully.
@@ -448,7 +448,7 @@ async function proveCommand(args) {
 
   const { prove, formatBundle } = await import(pathToFileURL(resolve(__dirname, '..', 'lib', 'prover', 'index.js')).href);
   const { formatProveOutput } = await import(pathToFileURL(resolve(__dirname, '..', 'lib', 'proof-business-language.mjs')).href);
-  const bundle = prove(loaded.source);
+  const bundle = await prove(loaded.source);
 
   // --bundle: write a sidecar .proof.json next to the source.
   if (args.includes('--bundle')) {

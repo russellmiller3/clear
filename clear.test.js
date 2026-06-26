@@ -31810,26 +31810,27 @@ rule big-deal-needs-cro:
   });
 });
 
-describe('rule keyword — prover', () => {
-  it('produces a per-rule entry in the bundle for every rule_def in the file', () => {
+// name-by-use-override: preserving existing `src` test-fixture names during async conversion
+await describeAsync('rule keyword — prover', async () => {
+  await itAsync('produces a per-rule entry in the bundle for every rule_def in the file', async () => {
     const src = `rule discount-cap:
   enforce that 1 is less than 2, or fail with error message: 'too big'`;
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     expect(Array.isArray(bundle.rules)).toBe(true);
     expect(bundle.rules.length).toBe(1);
     expect(bundle.rules[0].name).toBe('discount-cap');
   });
 
-  it('marks a tautological rule body as PROVED', () => {
+  await itAsync('marks a tautological rule body as PROVED', async () => {
     const src = `rule trivially-true:
   enforce that 1 is less than 2, or fail with error message: 'never fires'`;
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'trivially-true');
     expect(rule).toBeTruthy();
     expect(rule.verdict).toBe('proved');
   });
 
-  it('marks a rule body that calls into an effect as UNVERIFIABLE', () => {
+  await itAsync('marks a rule body that calls into an effect as UNVERIFIABLE', async () => {
     // The body has a CRUD lookup, which is impure. Any rule body that
     // talks to the database (or any effect) cannot be proved
     // universally — mark as unverifiable with a reason.
@@ -31838,7 +31839,7 @@ describe('rule keyword — prover', () => {
 rule reads-database:
   found = look up Deal where status is 'pending'
   enforce that found is not nothing, or fail with error message: 'no deal found'`;
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'reads-database');
     expect(rule).toBeTruthy();
     expect(rule.verdict).toBe('unverifiable');
@@ -31846,33 +31847,33 @@ rule reads-database:
     expect(rule.reason.length > 0).toBe(true);
   });
 
-  it('marks a rule body that has a counterexample as DISPROVED', () => {
+  await itAsync('marks a rule body that has a counterexample as DISPROVED', async () => {
     // 1 > 2 is universally false — the guard always trips; the rule
     // refuses every input. The "rule never holds" case is a counterexample.
     const src = `rule always-fails:
   enforce that 1 is greater than 2, or fail with error message: 'always wrong'`;
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     const rule = bundle.rules.find(r => r.name === 'always-fails');
     expect(rule).toBeTruthy();
     expect(rule.verdict).toBe('disproved');
   });
 
-  it('attributes per-rule verdict counts in the bundle summary', () => {
+  await itAsync('attributes per-rule verdict counts in the bundle summary', async () => {
     const src = `rule rule_a:
   enforce that 1 is less than 2, or fail with error message: 'tautology'
 rule rule_b:
   enforce that 1 is greater than 2, or fail with error message: 'counterexample'`;
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     expect(bundle.ruleCounts).toBeTruthy();
     expect(bundle.ruleCounts.proved).toBe(1);
     expect(bundle.ruleCounts.disproved).toBe(1);
     expect(bundle.ruleCounts.total).toBe(2);
   });
 
-  it('renders rule verdicts in formatBundle output (CLI surface)', () => {
+  await itAsync('renders rule verdicts in formatBundle output (CLI surface)', async () => {
     const src = `rule discount-cap:
   enforce that 1 is less than 2, or fail with error message: 'tautology'`;
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     const text = formatProofBundle(bundle);
     expect(text).toContain('discount-cap');
     expect(/proved|PROVED/.test(text)).toBe(true);
@@ -31904,14 +31905,15 @@ describe('rule keyword — clear test --prove summary line', () => {
   });
 });
 
-describe('rule keyword — tour file regression', () => {
-  it('examples/rule-keyword-tour.clear produces 1 PROVED, 1 DISPROVED, 1 UNVERIFIABLE', () => {
+// name-by-use-override: preserving existing `src`/`fs` test-fixture names during async conversion
+await describeAsync('rule keyword — tour file regression', async () => {
+  await itAsync('examples/rule-keyword-tour.clear produces 1 PROVED, 1 DISPROVED, 1 UNVERIFIABLE', async () => {
     const fs = readFileSync;
     const src = fs(
       pathJoin(pathDirname(fileURLToPath(import.meta.url)), 'examples', 'rule-keyword-tour.clear'),
       'utf8'
     );
-    const bundle = proveSource(src);
+    const bundle = await proveSource(src);
     expect(bundle.ruleCounts).toBeTruthy();
     expect(bundle.ruleCounts.proved).toBe(1);
     expect(bundle.ruleCounts.disproved).toBe(1);
