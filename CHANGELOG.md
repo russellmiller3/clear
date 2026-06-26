@@ -1,3 +1,12 @@
+## 2026-06-26 — Z3 SMT backend for the symbolic prover (feature/z3-prover-backend)
+
+Replaced the prover's hand-rolled symbolic decision core (~380 LOC of term-rewriting) with an industrial SMT solver — [z3-solver](https://www.npmjs.com/package/z3-solver), the official Z3 WASM build, Node-side. Everything above the decision seam is unchanged: the PROVED/FAILED/PARTIAL/UNVERIFIABLE taxonomy, the impurity boundary, the business-language explanations, and the agent closed-world analysis all sit on top untouched. `simplify` stays as a display + path-constraint normalizer.
+
+- **More power:** Z3 decides linear arithmetic, quantified "for all" claims, and more theories — many goals the old engine returned PARTIAL on now come back PROVED or FAILED with a real counterexample.
+- **Sound by type (bug fixed):** the old engine could treat `+` as commutative even for strings (a false PROVED). Now numeric `+` is Real arithmetic, an untyped value is an uninterpreted sort so arithmetic on it returns PARTIAL (never a guess), and only provably-string operands use non-commutative concat.
+- **`prove()` is now async** (Z3's API is async); all call sites await it.
+- **Safety nets:** the pre-Z3 engine is archived verbatim in `lib/prover/legacy-symbolic/` (restorable) and runs as a differential oracle in `z3/parity.test.js` — proving Z3 never downgrades a goal the old engine PROVED. Full existing prover suite green (clear.test.js 3205, index 53, symbolic 37, runtime-witness, business-rules-eval) plus new `z3/{z3,encode,parity}.test.js`.
+
 ## 2026-06-03 - Form block parser
 
 `form:` and `form 'Title':` now compile as a form-styled section. This matches the shape agents naturally write for grouped inputs and submit buttons, instead of falling into the typo path that suggested `for`.
