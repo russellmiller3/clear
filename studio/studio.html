@@ -1417,13 +1417,15 @@ const WELCOME_EDITOR_SOURCE = `# Welcome to Clear Studio
 
 show 'Hello, Clear!'
 `;
-const _savedEditor = localStorage.getItem('clear_editor_content');
-const _restoredProject = restoreStudioProject(_savedEditor || WELCOME_EDITOR_SOURCE);
+// The editor starts BLANK on every load — no welcome boilerplate, and no stale
+// restore of the last session's source from localStorage. A fresh, clean slate.
+const EMPTY_EDITOR_SOURCE = '';
+const _restoredProject = restoreStudioProject(WELCOME_EDITOR_SOURCE);
 let studioProjectFiles = new Map(_restoredProject.fileEntries);
 let activeStudioProjectPath = _restoredProject.activePath;
 
 const editor = new EditorView({
-  doc: studioProjectFiles.get(activeStudioProjectPath) || WELCOME_EDITOR_SOURCE,
+  doc: EMPTY_EDITOR_SOURCE,
   extensions: [
     lineNumbers(),
     highlightActiveLineGutter(),
