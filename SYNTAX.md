@@ -2325,7 +2325,17 @@ test 'addition is commutative for any inputs':
   expect add(a, b) is add(b, a)        # a, b are free → forall a, b
 ```
 
-The simplifier knows constant folding, commutativity, associativity, identity rules (`x+0`, `x*1`, `x*0`), and like-term collection (`x + x → 2*x`). It does NOT yet know full distributivity over division.
+The decision engine is **SMT-backed (Z3)** (2026-06-26), so it proves real arithmetic — not just simple algebra: multiplication and division, identities, **bounds and inequalities**, and "for all" claims. Examples that now PROVE:
+
+```clear
+test 'a square is never negative':
+  expect square(x) is at least 0          # proves x*x >= 0 for ALL x
+
+test 'a $1,000,000 deal pays exactly $50,000':
+  expect commission(1000000) is 50000      # commission = deal * 5 / 100
+```
+
+When a claim is FALSE the prover returns FAILED with the **exact counterexample input** (e.g. `expect square(x) is greater than 0` fails with `x = 0`). When a goal is genuinely undecidable, or an **untyped** value is used in arithmetic, it returns PARTIAL — never a false PROVED. **To make a numeric constraint actually prove, give the parameters types:** `define function commission(deal_size is number):`. (Runnable proof of all this, with the old engine as a before/after baseline: `node lib/prover/z3/capability.test.js`.)
 
 The prover refuses to verify anything that touches the world (database, network, AI, email, time, randomness, UI) — those get an UNVERIFIABLE verdict. The TDD test runner still covers them via `clear test`.
 
